@@ -1,32 +1,37 @@
 import { Sidebar } from "@/components/layout-sidebar";
 import { StatCard } from "@/components/stat-card";
+import { useOrganization, useDashboardStats } from "@/hooks/use-organization";
 import { useLeads } from "@/hooks/use-leads";
 import { useProperties } from "@/hooks/use-properties";
-import { useNotes } from "@/hooks/use-notes";
-import { Users, Map, Banknote, TrendingUp, Activity } from "lucide-react";
+import { Users, Map, Banknote, TrendingUp, Activity, Building2, Crown } from "lucide-react";
 import { motion } from "framer-motion";
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip } from "recharts";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export default function Dashboard() {
+  const { data: organization, isLoading: orgLoading } = useOrganization();
+  const { data: stats, isLoading: statsLoading } = useDashboardStats();
   const { data: leads = [] } = useLeads();
   const { data: properties = [] } = useProperties();
-  const { data: notes = [] } = useNotes();
 
-  const totalRevenue = notes.reduce((acc, note) => acc + Number(note.monthlyPayment), 0);
-  const activeNotes = notes.filter(n => n.status === "active").length;
-  const underContract = properties.filter(p => p.status === "under_contract").length;
+  const isLoading = orgLoading || statsLoading;
 
-  // Chart Data Preparation
+  const pipelineValue = properties
+    .filter(p => p.status === "under_contract" || p.status === "listed")
+    .reduce((acc, p) => acc + Number(p.listPrice || 0), 0);
+
   const statusData = [
-    { name: 'Available', value: properties.filter(p => p.status === 'available').length, color: '#3b82f6' },
+    { name: 'Available', value: properties.filter(p => p.status === 'available' || p.status === 'listed').length, color: '#3b82f6' },
     { name: 'Sold', value: properties.filter(p => p.status === 'sold').length, color: '#10b981' },
     { name: 'Contract', value: properties.filter(p => p.status === 'under_contract').length, color: '#f59e0b' },
   ];
 
   const leadStatusData = [
     { name: 'New', value: leads.filter(l => l.status === 'new').length },
-    { name: 'Contacting', value: leads.filter(l => l.status === 'contacting').length },
-    { name: 'Negotiation', value: leads.filter(l => l.status === 'negotiation').length },
+    { name: 'Contacting', value: leads.filter(l => l.status === 'contacting' || l.status === 'mailed').length },
+    { name: 'Negotiation', value: leads.filter(l => l.status === 'negotiation' || l.status === 'negotiating').length },
     { name: 'Closed', value: leads.filter(l => l.status === 'closed').length },
   ];
 
@@ -45,20 +50,56 @@ export default function Dashboard() {
     show: { translateY: 0, opacity: 1 }
   };
 
+  const getTierColor = (tier: string) => {
+    switch (tier) {
+      case "pro": return "bg-purple-500/10 text-purple-500 border-purple-500/20";
+      case "scale": return "bg-amber-500/10 text-amber-500 border-amber-500/20";
+      case "starter": return "bg-blue-500/10 text-blue-500 border-blue-500/20";
+      default: return "bg-slate-500/10 text-slate-500 border-slate-500/20";
+    }
+  };
+
   return (
     <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950">
       <Sidebar />
       <main className="flex-1 md:ml-64 p-8">
         <div className="max-w-7xl mx-auto space-y-8">
           
-          <div className="flex justify-between items-end">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
             <div>
-              <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Dashboard</h1>
+              <h1 className="text-3xl font-bold text-slate-900 dark:text-white" data-testid="text-dashboard-title">
+                Dashboard
+              </h1>
               <p className="text-slate-500 mt-2">Overview of your land empire performance.</p>
             </div>
-            <div className="flex gap-2 text-sm text-slate-500">
-              <span className="flex items-center gap-1"><Activity className="w-4 h-4" /> System Online</span>
-            </div>
+            
+            {isLoading ? (
+              <Skeleton className="h-12 w-64" />
+            ) : organization && (
+              <Card className="border-none shadow-sm bg-white/50 dark:bg-slate-900/50 backdrop-blur">
+                <CardContent className="flex items-center gap-3 p-3">
+                  <Building2 className="w-5 h-5 text-slate-500" />
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium" data-testid="text-organization-name">
+                      {organization.name}
+                    </span>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge 
+                        variant="outline" 
+                        className={`text-xs ${getTierColor(organization.subscriptionTier)}`}
+                        data-testid="badge-subscription-tier"
+                      >
+                        <Crown className="w-3 h-3 mr-1" />
+                        {organization.subscriptionTier.charAt(0).toUpperCase() + organization.subscriptionTier.slice(1)}
+                      </Badge>
+                      <span className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Activity className="w-3 h-3" /> Online
+                      </span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
 
           <motion.div 
@@ -69,36 +110,40 @@ export default function Dashboard() {
           >
             <motion.div variants={item}>
               <StatCard 
-                title="Total Leads" 
-                value={leads.length} 
-                icon={Users} 
-                trend="+12% from last month"
-                color="blue"
-              />
-            </motion.div>
-            <motion.div variants={item}>
-              <StatCard 
-                title="Properties" 
-                value={properties.length} 
+                title="Total Properties" 
+                value={isLoading ? "-" : stats?.activeProperties ?? properties.length} 
                 icon={Map} 
-                trend={`${underContract} under contract`}
+                trend={`${properties.filter(p => p.status === 'owned').length} owned`}
                 color="purple"
+                data-testid="stat-total-properties"
               />
             </motion.div>
             <motion.div variants={item}>
               <StatCard 
                 title="Active Notes" 
-                value={activeNotes} 
+                value={isLoading ? "-" : stats?.activeNotes ?? 0} 
                 icon={Banknote} 
                 color="emerald"
+                data-testid="stat-active-notes"
               />
             </motion.div>
             <motion.div variants={item}>
               <StatCard 
                 title="Monthly Cashflow" 
-                value={`$${totalRevenue.toLocaleString()}`} 
+                value={isLoading ? "-" : `$${(stats?.monthlyRevenue ?? 0).toLocaleString()}`} 
                 icon={TrendingUp} 
                 trend="Projected Income"
+                data-testid="stat-monthly-cashflow"
+              />
+            </motion.div>
+            <motion.div variants={item}>
+              <StatCard 
+                title="Pipeline Value" 
+                value={`$${pipelineValue.toLocaleString()}`} 
+                icon={Users} 
+                trend={`${leads.length} leads`}
+                color="blue"
+                data-testid="stat-pipeline-value"
               />
             </motion.div>
           </motion.div>
@@ -131,11 +176,11 @@ export default function Dashboard() {
                   </PieChart>
                 </ResponsiveContainer>
               </div>
-              <div className="flex justify-center gap-6 mt-4">
+              <div className="flex justify-center gap-6 mt-4 flex-wrap">
                 {statusData.map((entry) => (
                   <div key={entry.name} className="flex items-center gap-2">
                     <div className="w-3 h-3 rounded-full" style={{ backgroundColor: entry.color }} />
-                    <span className="text-sm font-medium text-slate-600">{entry.name}</span>
+                    <span className="text-sm font-medium text-slate-600 dark:text-slate-400">{entry.name}</span>
                   </div>
                 ))}
               </div>

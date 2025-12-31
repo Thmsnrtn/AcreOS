@@ -21,6 +21,7 @@ const navItems = [
   { label: "Inventory", icon: Map, href: "/properties" },
   { label: "Finance", icon: Banknote, href: "/finance" },
   { label: "AI Command", icon: Bot, href: "/agents" },
+  { label: "Settings", icon: Settings, href: "/settings" },
 ];
 
 export function Sidebar() {
