@@ -1,9 +1,11 @@
 import { db } from "./db";
-import { eq, and, desc, sql, count, sum } from "drizzle-orm";
+import { eq, and, desc, sql, count, sum, arrayContains } from "drizzle-orm";
+import { aiConversations, aiMessages } from "@shared/schema";
 import {
   organizations, teamMembers, leads, leadActivities, properties, deals,
   notes, payments, campaigns, agentConfigs, agentTasks, conversations,
   messages, activityLog, usageEvents,
+  aiAgentProfiles, aiToolDefinitions, aiExecutionRuns, aiMemory,
   type Organization, type InsertOrganization,
   type TeamMember, type InsertTeamMember,
   type Lead, type InsertLead,
@@ -16,6 +18,10 @@ import {
   type AgentTask, type InsertAgentTask,
   type Conversation, type InsertConversation,
   type Message, type InsertMessage,
+  type AiAgentProfile, type InsertAiAgentProfile,
+  type AiToolDefinition, type InsertAiToolDefinition,
+  type AiExecutionRun, type InsertAiExecutionRun,
+  type AiMemory, type InsertAiMemory,
 } from "@shared/schema";
 
 // Helper to calculate amortization schedule
@@ -159,6 +165,33 @@ export interface IStorage {
   
   // Usage tracking
   trackUsage(orgId: number, eventType: string, quantity?: number, metadata?: any): Promise<void>;
+  
+  // AI Agent Profiles
+  getAiAgentProfiles(): Promise<AiAgentProfile[]>;
+  getAiAgentProfile(role: string): Promise<AiAgentProfile | undefined>;
+
+  // AI Tool Definitions  
+  getAiToolDefinitions(): Promise<AiToolDefinition[]>;
+  getAiToolsByRole(role: string): Promise<AiToolDefinition[]>;
+
+  // AI Execution Runs
+  getAiExecutionRuns(orgId: number): Promise<AiExecutionRun[]>;
+  createAiExecutionRun(run: InsertAiExecutionRun): Promise<AiExecutionRun>;
+  updateAiExecutionRun(id: number, updates: Partial<AiExecutionRun>): Promise<AiExecutionRun>;
+
+  // AI Memory
+  getAiMemory(orgId: number): Promise<AiMemory[]>;
+  createAiMemory(memory: InsertAiMemory): Promise<AiMemory>;
+  deleteAiMemory(id: number): Promise<void>;
+
+  // AI Conversations (Command Center)
+  getAiConversations(orgId: number): Promise<any[]>;
+  getAiConversation(id: number): Promise<any | undefined>;
+  createAiConversation(conv: any): Promise<any>;
+  updateAiConversation(id: number, updates: any): Promise<any>;
+  deleteAiConversation(id: number): Promise<void>;
+  getAiMessages(conversationId: number): Promise<any[]>;
+  createAiMessage(message: any): Promise<any>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -592,6 +625,106 @@ export class DatabaseStorage implements IStorage {
       quantity,
       metadata,
     });
+  }
+  
+  // AI Agent Profiles
+  async getAiAgentProfiles() {
+    return await db.select().from(aiAgentProfiles).where(eq(aiAgentProfiles.isActive, true));
+  }
+  
+  async getAiAgentProfile(role: string) {
+    const [profile] = await db.select().from(aiAgentProfiles)
+      .where(and(eq(aiAgentProfiles.role, role), eq(aiAgentProfiles.isActive, true)));
+    return profile;
+  }
+  
+  // AI Tool Definitions
+  async getAiToolDefinitions() {
+    return await db.select().from(aiToolDefinitions);
+  }
+  
+  async getAiToolsByRole(role: string) {
+    const tools = await db.select().from(aiToolDefinitions);
+    return tools.filter(tool => 
+      tool.agentRoles === null || tool.agentRoles.includes(role)
+    );
+  }
+  
+  // AI Execution Runs
+  async getAiExecutionRuns(orgId: number) {
+    return await db.select().from(aiExecutionRuns)
+      .where(eq(aiExecutionRuns.organizationId, orgId))
+      .orderBy(desc(aiExecutionRuns.startedAt));
+  }
+  
+  async createAiExecutionRun(run: InsertAiExecutionRun) {
+    const [newRun] = await db.insert(aiExecutionRuns).values(run).returning();
+    return newRun;
+  }
+  
+  async updateAiExecutionRun(id: number, updates: Partial<AiExecutionRun>) {
+    const [updated] = await db.update(aiExecutionRuns)
+      .set(updates)
+      .where(eq(aiExecutionRuns.id, id))
+      .returning();
+    return updated;
+  }
+  
+  // AI Memory
+  async getAiMemory(orgId: number) {
+    return await db.select().from(aiMemory)
+      .where(eq(aiMemory.organizationId, orgId))
+      .orderBy(desc(aiMemory.createdAt));
+  }
+  
+  async createAiMemory(memory: InsertAiMemory) {
+    const [newMemory] = await db.insert(aiMemory).values(memory).returning();
+    return newMemory;
+  }
+  
+  async deleteAiMemory(id: number) {
+    await db.delete(aiMemory).where(eq(aiMemory.id, id));
+  }
+
+  // AI Conversations (Command Center)
+  async getAiConversations(orgId: number) {
+    return await db.select().from(aiConversations)
+      .where(eq(aiConversations.organizationId, orgId))
+      .orderBy(desc(aiConversations.updatedAt));
+  }
+
+  async getAiConversation(id: number) {
+    const [conv] = await db.select().from(aiConversations).where(eq(aiConversations.id, id));
+    return conv;
+  }
+
+  async createAiConversation(conv: { organizationId: number; userId: string; title: string; agentRole: string }) {
+    const [newConv] = await db.insert(aiConversations).values(conv).returning();
+    return newConv;
+  }
+
+  async updateAiConversation(id: number, updates: { title?: string }) {
+    const [updated] = await db.update(aiConversations)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(aiConversations.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteAiConversation(id: number) {
+    await db.delete(aiMessages).where(eq(aiMessages.conversationId, id));
+    await db.delete(aiConversations).where(eq(aiConversations.id, id));
+  }
+
+  async getAiMessages(conversationId: number) {
+    return await db.select().from(aiMessages)
+      .where(eq(aiMessages.conversationId, conversationId))
+      .orderBy(aiMessages.createdAt);
+  }
+
+  async createAiMessage(message: { conversationId: number; role: string; content: string; toolCalls?: any[] }) {
+    const [newMessage] = await db.insert(aiMessages).values(message).returning();
+    return newMessage;
   }
 }
 

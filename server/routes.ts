@@ -12,18 +12,29 @@ import {
 // Auth imports
 import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
 
+// AI imports
+import { processChat, processChatStream, agentProfiles, getOrCreateConversation } from "./ai/executive";
+
 // Middleware to get/create organization for authenticated user
 async function getOrCreateOrg(req: Request, res: Response, next: NextFunction) {
   if (!req.user) {
     return res.status(401).json({ message: "Unauthorized" });
   }
   
-  const userId = (req.user as any).id;
+  // Get user ID from Replit Auth claims
+  const user = req.user as any;
+  const userId = user.claims?.sub || user.id;
+  
+  if (!userId) {
+    console.error("No user ID found in session:", user);
+    return res.status(401).json({ message: "Invalid user session" });
+  }
+  
   let org = await storage.getOrganizationByOwner(userId);
   
   if (!org) {
     // Create default organization for new user
-    const displayName = (req.user as any).username || (req.user as any).email || "User";
+    const displayName = user.claims?.first_name || user.username || user.email || "User";
     const slug = `org-${userId}-${Date.now()}`;
     org = await storage.createOrganization({
       name: `${displayName}'s Organization`,
@@ -404,6 +415,125 @@ export async function registerRoutes(
   api.get("/api/conversations/:id/messages", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const messages = await storage.getMessages(Number(req.params.id));
     res.json(messages);
+  });
+  
+  // ============================================
+  // AI COMMAND CENTER
+  // ============================================
+  
+  // Get available AI agents
+  api.get("/api/ai/agents", isAuthenticated, async (req, res) => {
+    res.json(Object.values(agentProfiles));
+  });
+  
+  // Get conversation history
+  api.get("/api/ai/conversations", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const conversations = await storage.getAiConversations(org.id);
+    res.json(conversations);
+  });
+  
+  // Get a specific conversation with messages
+  api.get("/api/ai/conversations/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const conversationId = parseInt(req.params.id);
+    const conversation = await storage.getAiConversation(conversationId);
+    
+    if (!conversation || conversation.organizationId !== org.id) {
+      return res.status(404).json({ message: "Conversation not found" });
+    }
+    
+    const messages = await storage.getAiMessages(conversationId);
+    res.json({ conversation, messages });
+  });
+  
+  // Create new conversation
+  api.post("/api/ai/conversations", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const user = req.user as any;
+    const userId = user.claims?.sub || user.id;
+    const { agentRole = "executive" } = req.body;
+    
+    const conversation = await storage.createAiConversation({
+      organizationId: org.id,
+      userId,
+      title: "New Conversation",
+      agentRole
+    });
+    
+    res.status(201).json(conversation);
+  });
+  
+  // Send a message (non-streaming)
+  api.post("/api/ai/chat", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = req.user as any;
+      const userId = user.claims?.sub || user.id;
+      const { message, conversationId, agentRole } = req.body;
+      
+      if (!message) {
+        return res.status(400).json({ message: "Message is required" });
+      }
+      
+      const result = await processChat(message, org, userId, {
+        conversationId,
+        agentRole
+      });
+      
+      res.json(result);
+    } catch (error: any) {
+      console.error("AI Chat error:", error);
+      res.status(500).json({ message: error.message || "AI processing failed" });
+    }
+  });
+  
+  // Send a message (streaming)
+  api.post("/api/ai/chat/stream", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = req.user as any;
+      const userId = user.claims?.sub || user.id;
+      const { message, conversationId, agentRole } = req.body;
+      
+      if (!message) {
+        return res.status(400).json({ message: "Message is required" });
+      }
+      
+      // Set up SSE
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      
+      const stream = processChatStream(message, org, userId, {
+        conversationId,
+        agentRole
+      });
+      
+      for await (const event of stream) {
+        res.write(`data: ${JSON.stringify(event)}\n\n`);
+      }
+      
+      res.end();
+    } catch (error: any) {
+      console.error("AI Stream error:", error);
+      res.write(`data: ${JSON.stringify({ type: "error", error: error.message })}\n\n`);
+      res.end();
+    }
+  });
+  
+  // Delete a conversation
+  api.delete("/api/ai/conversations/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const conversationId = parseInt(req.params.id);
+    const conversation = await storage.getAiConversation(conversationId);
+    
+    if (!conversation || conversation.organizationId !== org.id) {
+      return res.status(404).json({ message: "Conversation not found" });
+    }
+    
+    await storage.deleteAiConversation(conversationId);
+    res.json({ success: true });
   });
   
   // ============================================

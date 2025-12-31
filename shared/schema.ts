@@ -480,6 +480,82 @@ export const usageEvents = pgTable("usage_events", {
 });
 
 // ============================================
+// AI COMMAND CENTER
+// ============================================
+
+// AI Agent Profiles - predefined specialist agents
+export const aiAgentProfiles = pgTable("ai_agent_profiles", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(), // "Alex", "Uma", "Maya", etc.
+  role: text("role").notNull(), // "acquisitions", "underwriting", "marketing", "research", "documents"
+  displayName: text("display_name").notNull(), // "Acquisitions Specialist"
+  description: text("description").notNull(),
+  systemPrompt: text("system_prompt").notNull(),
+  capabilities: text("capabilities").array().notNull(), // ["analyze_leads", "score_opportunities"]
+  icon: text("icon").notNull(), // lucide icon name
+  isActive: boolean("is_active").default(true),
+});
+
+// AI Tool Definitions - available tools for agents
+export const aiToolDefinitions = pgTable("ai_tool_definitions", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().unique(), // "get_leads", "create_note"
+  displayName: text("display_name").notNull(),
+  description: text("description").notNull(),
+  category: text("category").notNull(), // "crm", "finance", "marketing", "research"
+  parameters: jsonb("parameters").notNull(), // JSON schema for parameters
+  requiresApproval: boolean("requires_approval").default(false), // high-risk actions
+  agentRoles: text("agent_roles").array(), // which agents can use this tool
+});
+
+// AI Execution Runs - tracks agent task executions
+export const aiExecutionRuns = pgTable("ai_execution_runs", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").notNull(),
+  conversationId: integer("conversation_id"),
+  agentRole: text("agent_role").notNull(),
+  status: text("status").notNull().default("pending"), // pending, running, completed, failed, requires_approval
+  input: jsonb("input").notNull(),
+  output: jsonb("output"),
+  toolCalls: jsonb("tool_calls"), // array of tool calls made
+  startedAt: timestamp("started_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+  error: text("error"),
+});
+
+// AI Memory/Context - stores important facts and preferences
+export const aiMemory = pgTable("ai_memory", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").notNull(),
+  memoryType: text("memory_type").notNull(), // "fact", "preference", "procedure"
+  content: text("content").notNull(),
+  source: text("source"), // where this memory came from
+  createdAt: timestamp("created_at").defaultNow(),
+  expiresAt: timestamp("expires_at"),
+});
+
+// AI Conversations - chat history with AI agents
+export const aiConversations = pgTable("ai_conversations", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").notNull(),
+  userId: text("user_id").notNull(),
+  title: text("title").notNull(),
+  agentRole: text("agent_role").notNull().default("executive"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// AI Messages - individual messages in conversations
+export const aiMessages = pgTable("ai_messages", {
+  id: serial("id").primaryKey(),
+  conversationId: integer("conversation_id").notNull(),
+  role: text("role").notNull(), // user, assistant, system
+  content: text("content").notNull(),
+  toolCalls: jsonb("tool_calls").$type<any[]>(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// ============================================
 // RELATIONS
 // ============================================
 
@@ -577,6 +653,15 @@ export const insertMessageSchema = createInsertSchema(messages).omit({
   id: true, createdAt: true 
 });
 
+// AI Command Center
+export const insertAiAgentProfileSchema = createInsertSchema(aiAgentProfiles).omit({ id: true });
+export const insertAiToolDefinitionSchema = createInsertSchema(aiToolDefinitions).omit({ id: true });
+export const insertAiExecutionRunSchema = createInsertSchema(aiExecutionRuns).omit({ id: true });
+export const insertAiMemorySchema = createInsertSchema(aiMemory).omit({ id: true });
+
+export const insertAiConversationSchema = createInsertSchema(aiConversations).omit({ id: true });
+export const insertAiMessageSchema = createInsertSchema(aiMessages).omit({ id: true });
+
 // ============================================
 // TYPE EXPORTS
 // ============================================
@@ -634,6 +719,28 @@ export type ActivityLogEntry = typeof activityLog.$inferSelect;
 
 // Usage Events
 export type UsageEvent = typeof usageEvents.$inferSelect;
+
+// AI Agent Profiles
+export type AiAgentProfile = typeof aiAgentProfiles.$inferSelect;
+export type InsertAiAgentProfile = z.infer<typeof insertAiAgentProfileSchema>;
+
+// AI Tool Definitions
+export type AiToolDefinition = typeof aiToolDefinitions.$inferSelect;
+export type InsertAiToolDefinition = z.infer<typeof insertAiToolDefinitionSchema>;
+
+// AI Execution Runs
+export type AiExecutionRun = typeof aiExecutionRuns.$inferSelect;
+export type InsertAiExecutionRun = z.infer<typeof insertAiExecutionRunSchema>;
+
+// AI Memory
+export type AiMemory = typeof aiMemory.$inferSelect;
+export type InsertAiMemory = z.infer<typeof insertAiMemorySchema>;
+
+export type AiConversation = typeof aiConversations.$inferSelect;
+export type InsertAiConversation = z.infer<typeof insertAiConversationSchema>;
+
+export type AiMessage = typeof aiMessages.$inferSelect;
+export type InsertAiMessage = z.infer<typeof insertAiMessageSchema>;
 
 // ============================================
 // SUBSCRIPTION TIERS CONFIGURATION

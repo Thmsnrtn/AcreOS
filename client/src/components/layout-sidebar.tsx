@@ -8,7 +8,8 @@ import {
   Bot, 
   Settings,
   LogOut,
-  Menu
+  Menu,
+  MessageSquare
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useState } from "react";
@@ -20,7 +21,8 @@ const navItems = [
   { label: "Leads (CRM)", icon: Users, href: "/leads" },
   { label: "Inventory", icon: Map, href: "/properties" },
   { label: "Finance", icon: Banknote, href: "/finance" },
-  { label: "AI Command", icon: Bot, href: "/agents" },
+  { label: "AI Agents", icon: Bot, href: "/agents" },
+  { label: "AI Command Center", icon: MessageSquare, href: "/command-center" },
   { label: "Settings", icon: Settings, href: "/settings" },
 ];
 

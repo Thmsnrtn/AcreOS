@@ -11,6 +11,7 @@ import LeadsPage from "@/pages/leads";
 import PropertiesPage from "@/pages/properties";
 import FinancePage from "@/pages/finance";
 import AgentsPage from "@/pages/agents";
+import CommandCenterPage from "@/pages/command-center";
 import SettingsPage from "@/pages/settings";
 import AuthPage from "@/pages/auth-page";
 import NotFound from "@/pages/not-found";
@@ -54,6 +55,9 @@ function Router() {
       </Route>
       <Route path="/agents">
         {() => <ProtectedRoute component={AgentsPage} />}
+      </Route>
+      <Route path="/command-center">
+        {() => <ProtectedRoute component={CommandCenterPage} />}
       </Route>
       <Route path="/settings">
         {() => <ProtectedRoute component={SettingsPage} />}
