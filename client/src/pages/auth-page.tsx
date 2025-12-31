@@ -9,7 +9,7 @@ export default function AuthPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+      <div className="min-h-screen flex items-center justify-center bg-background desert-gradient">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     );
@@ -24,16 +24,18 @@ export default function AuthPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800 p-4">
-      <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1500382017468-9049fed747ef?q=80&w=2500&auto=format&fit=crop')] opacity-10 bg-cover bg-center mix-blend-overlay" />
+    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
+      <div className="absolute inset-0 bg-gradient-to-br from-[#8B4513] via-[#A0522D] to-[#CD853F]" />
+      <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1500382017468-9049fed747ef?q=80&w=2500&auto=format&fit=crop')] opacity-20 bg-cover bg-center mix-blend-overlay" />
+      <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
       
-      <Card className="w-full max-w-md relative z-10 border-white/10 bg-black/40 backdrop-blur-xl shadow-2xl">
+      <Card className="w-full max-w-md relative z-10 floating-window border-white/20 bg-black/40 backdrop-blur-2xl">
         <CardContent className="p-8 text-center space-y-6">
           <div>
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent mb-2">
+            <h1 className="text-4xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent mb-2">
               AcreOS
             </h1>
-            <p className="text-slate-300 text-lg">
+            <p className="text-white/80 text-lg">
               The Operating System for Land Investors.
             </p>
           </div>
@@ -41,12 +43,13 @@ export default function AuthPage() {
           <div className="space-y-4 pt-4">
             <Button 
               size="lg" 
-              className="w-full bg-white text-slate-900 hover:bg-slate-100 font-bold"
+              className="w-full font-bold"
               onClick={handleLogin}
+              data-testid="button-login"
             >
               Sign In with Replit
             </Button>
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-white/50">
               Secure authentication powered by Replit.
             </p>
           </div>

@@ -30,9 +30,9 @@ export default function AgentsPage() {
   };
 
   return (
-    <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950">
+    <div className="flex min-h-screen bg-background desert-gradient">
       <Sidebar />
-      <main className="flex-1 md:ml-64 p-8 h-screen flex flex-col">
+      <main className="flex-1 md:ml-[17rem] p-8 h-screen flex flex-col">
         <div className="max-w-7xl mx-auto w-full flex-1 flex flex-col gap-6">
           
           <div className="flex items-center gap-3">

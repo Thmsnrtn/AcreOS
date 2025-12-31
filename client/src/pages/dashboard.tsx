@@ -23,9 +23,9 @@ export default function Dashboard() {
     .reduce((acc, p) => acc + Number(p.listPrice || 0), 0);
 
   const statusData = [
-    { name: 'Available', value: properties.filter(p => p.status === 'available' || p.status === 'listed').length, color: '#3b82f6' },
-    { name: 'Sold', value: properties.filter(p => p.status === 'sold').length, color: '#10b981' },
-    { name: 'Contract', value: properties.filter(p => p.status === 'under_contract').length, color: '#f59e0b' },
+    { name: 'Available', value: properties.filter(p => p.status === 'available' || p.status === 'listed').length, color: 'hsl(16, 70%, 50%)' },
+    { name: 'Sold', value: properties.filter(p => p.status === 'sold').length, color: 'hsl(85, 25%, 45%)' },
+    { name: 'Contract', value: properties.filter(p => p.status === 'under_contract').length, color: 'hsl(35, 60%, 50%)' },
   ];
 
   const leadStatusData = [
@@ -40,45 +40,45 @@ export default function Dashboard() {
     show: {
       opacity: 1,
       transition: {
-        staggerChildren: 0.1
+        staggerChildren: 0.08
       }
     }
   };
 
   const item = {
-    hidden: { translateY: 20, opacity: 0 },
+    hidden: { translateY: 12, opacity: 0 },
     show: { translateY: 0, opacity: 1 }
   };
 
   const getTierColor = (tier: string) => {
     switch (tier) {
-      case "pro": return "bg-purple-500/10 text-purple-500 border-purple-500/20";
-      case "scale": return "bg-amber-500/10 text-amber-500 border-amber-500/20";
-      case "starter": return "bg-blue-500/10 text-blue-500 border-blue-500/20";
-      default: return "bg-slate-500/10 text-slate-500 border-slate-500/20";
+      case "pro": return "bg-primary/10 text-primary border-primary/20";
+      case "scale": return "bg-accent/10 text-accent border-accent/20";
+      case "starter": return "bg-primary/10 text-primary border-primary/20";
+      default: return "bg-muted text-muted-foreground border-border";
     }
   };
 
   return (
-    <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950">
+    <div className="flex min-h-screen bg-background desert-gradient">
       <Sidebar />
-      <main className="flex-1 md:ml-64 p-8">
+      <main className="flex-1 md:ml-[17rem] p-6 md:p-8">
         <div className="max-w-7xl mx-auto space-y-8">
           
           <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
             <div>
-              <h1 className="text-3xl font-bold text-slate-900 dark:text-white" data-testid="text-dashboard-title">
+              <h1 className="text-3xl font-bold text-foreground" data-testid="text-dashboard-title">
                 Dashboard
               </h1>
-              <p className="text-slate-500 mt-2">Overview of your land empire performance.</p>
+              <p className="text-muted-foreground mt-2">Overview of your land investment performance.</p>
             </div>
             
             {isLoading ? (
               <Skeleton className="h-12 w-64" />
             ) : organization && (
-              <Card className="border-none shadow-sm bg-white/50 dark:bg-slate-900/50 backdrop-blur">
+              <Card className="glass-panel border-none">
                 <CardContent className="flex items-center gap-3 p-3">
-                  <Building2 className="w-5 h-5 text-slate-500" />
+                  <Building2 className="w-5 h-5 text-muted-foreground" />
                   <div className="flex flex-col">
                     <span className="text-sm font-medium" data-testid="text-organization-name">
                       {organization.name}
@@ -106,7 +106,7 @@ export default function Dashboard() {
             variants={container}
             initial="hidden"
             animate="show"
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"
+            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5"
           >
             <motion.div variants={item}>
               <StatCard 
@@ -114,7 +114,7 @@ export default function Dashboard() {
                 value={isLoading ? "-" : stats?.activeProperties ?? properties.length} 
                 icon={Map} 
                 trend={`${properties.filter(p => p.status === 'owned').length} owned`}
-                color="purple"
+                color="terracotta"
                 data-testid="stat-total-properties"
               />
             </motion.div>
@@ -123,7 +123,7 @@ export default function Dashboard() {
                 title="Active Notes" 
                 value={isLoading ? "-" : stats?.activeNotes ?? 0} 
                 icon={Banknote} 
-                color="emerald"
+                color="sage"
                 data-testid="stat-active-notes"
               />
             </motion.div>
@@ -142,70 +142,81 @@ export default function Dashboard() {
                 value={`$${pipelineValue.toLocaleString()}`} 
                 icon={Users} 
                 trend={`${leads.length} leads`}
-                color="blue"
+                color="sand"
                 data-testid="stat-pipeline-value"
               />
             </motion.div>
           </motion.div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <motion.div 
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.4 }}
-              className="bg-white dark:bg-card p-6 rounded-2xl border shadow-sm"
+              transition={{ delay: 0.3 }}
             >
-              <h3 className="text-lg font-bold mb-6">Inventory Status</h3>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={statusData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={60}
-                      outerRadius={80}
-                      paddingAngle={5}
-                      dataKey="value"
-                    >
-                      {statusData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="flex justify-center gap-6 mt-4 flex-wrap">
-                {statusData.map((entry) => (
-                  <div key={entry.name} className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: entry.color }} />
-                    <span className="text-sm font-medium text-slate-600 dark:text-slate-400">{entry.name}</span>
+              <Card className="floating-window">
+                <CardContent className="p-6">
+                  <h3 className="text-lg font-semibold mb-6">Inventory Status</h3>
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={statusData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={60}
+                          outerRadius={80}
+                          paddingAngle={5}
+                          dataKey="value"
+                        >
+                          {statusData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                      </PieChart>
+                    </ResponsiveContainer>
                   </div>
-                ))}
-              </div>
+                  <div className="flex justify-center gap-6 mt-4 flex-wrap">
+                    {statusData.map((entry) => (
+                      <div key={entry.name} className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: entry.color }} />
+                        <span className="text-sm font-medium text-muted-foreground">{entry.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
             </motion.div>
 
             <motion.div 
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.5 }}
-              className="bg-white dark:bg-card p-6 rounded-2xl border shadow-sm"
+              transition={{ delay: 0.4 }}
             >
-              <h3 className="text-lg font-bold mb-6">Lead Pipeline</h3>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={leadStatusData}>
-                    <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
-                    <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `${value}`} />
-                    <Tooltip 
-                      cursor={{fill: 'transparent'}}
-                      contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                    />
-                    <Bar dataKey="value" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
+              <Card className="floating-window">
+                <CardContent className="p-6">
+                  <h3 className="text-lg font-semibold mb-6">Lead Pipeline</h3>
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={leadStatusData}>
+                        <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
+                        <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `${value}`} />
+                        <Tooltip 
+                          cursor={{fill: 'transparent'}}
+                          contentStyle={{ 
+                            borderRadius: '12px', 
+                            border: 'none', 
+                            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.12)',
+                            background: 'hsl(var(--card))'
+                          }}
+                        />
+                        <Bar dataKey="value" fill="hsl(var(--primary))" radius={[6, 6, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </CardContent>
+              </Card>
             </motion.div>
           </div>
         </div>

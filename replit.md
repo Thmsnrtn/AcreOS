@@ -8,6 +8,17 @@ AcreOS is a full-stack SaaS application designed for land investors to manage th
 
 Preferred communication style: Simple, everyday language.
 
+### Design Preferences
+- **Color Scheme**: Sedona Desert theme
+  - Light mode: Warm sandy creams, terracotta primary, desert sage green accents
+  - Dark mode: Deep warm browns, rich terracotta, subtle sage greens
+- **UI Style**: macOS Tahoe-inspired
+  - Glassmorphism effects with backdrop blur
+  - Floating window appearance with subtle shadows
+  - Rounded corners (0.875rem radius)
+  - Vibrancy effects on sidebars
+  - System fonts (-apple-system, SF Pro)
+
 ## System Architecture
 
 ### Frontend Architecture

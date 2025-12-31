@@ -229,13 +229,13 @@ export default function CommandCenterPage() {
   const messages = currentConversation?.messages || [];
 
   return (
-    <div className="flex min-h-screen bg-slate-50 dark:bg-slate-950">
+    <div className="flex min-h-screen bg-background desert-gradient">
       <Sidebar />
-      <main className="flex-1 md:ml-64 h-screen flex flex-col overflow-hidden">
+      <main className="flex-1 md:ml-[17rem] h-screen flex flex-col overflow-hidden">
         <div className="flex flex-1 overflow-hidden">
-          {/* Conversation Sidebar */}
-          <div className="w-72 border-r bg-background flex flex-col">
-            <div className="p-4 border-b">
+          {/* Conversation Sidebar - macOS Tahoe style */}
+          <div className="w-72 border-r border-border vibrancy-sidebar flex flex-col">
+            <div className="p-4 border-b border-border">
               <Button
                 onClick={handleNewConversation}
                 className="w-full"
@@ -299,7 +299,7 @@ export default function CommandCenterPage() {
           {/* Main Chat Area */}
           <div className="flex-1 flex flex-col overflow-hidden">
             {/* Agent Selection */}
-            <div className="p-4 border-b bg-background">
+            <div className="p-4 border-b border-border glass-panel">
               <h2 className="text-sm font-medium text-muted-foreground mb-3">Select Agent</h2>
               <div className="flex gap-3 overflow-x-auto pb-2">
                 {agentsLoading ? (
@@ -414,7 +414,7 @@ export default function CommandCenterPage() {
                                         </pre>
                                         {tc.result && (
                                           <>
-                                            <div className="font-semibold text-emerald-600 dark:text-emerald-400 mt-2 mb-1">
+                                            <div className="font-semibold text-accent mt-2 mb-1">
                                               Result:
                                             </div>
                                             <pre className="overflow-x-auto text-muted-foreground">
@@ -449,7 +449,7 @@ export default function CommandCenterPage() {
                                   {!tc.result ? (
                                     <Loader2 className="w-3 h-3 animate-spin ml-auto" />
                                   ) : (
-                                    <ChevronRight className="w-3 h-3 ml-auto text-emerald-500" />
+                                    <ChevronRight className="w-3 h-3 ml-auto text-accent" />
                                   )}
                                 </div>
                               ))}
@@ -474,7 +474,7 @@ export default function CommandCenterPage() {
             </ScrollArea>
 
             {/* Input Area */}
-            <div className="p-4 border-t bg-background">
+            <div className="p-4 border-t border-border glass-panel">
               <div className="max-w-3xl mx-auto flex gap-3">
                 <Textarea
                   ref={textareaRef}

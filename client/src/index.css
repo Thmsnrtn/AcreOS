@@ -1,77 +1,108 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=SF+Pro+Display:wght@300;400;500;600;700&family=SF+Pro+Text:wght@400;500;600&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --font-sans: 'Plus Jakarta Sans', sans-serif;
-  --font-display: 'Outfit', sans-serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
 
-  /* Deep, Professional Blue-Grey Theme with Emerald Accents (Money/Land) */
-  --background: 210 40% 98%;
-  --foreground: 222 47% 11%;
+  /* Sedona Desert Color Scheme - Light Mode */
+  /* Warm sandy cream background */
+  --background: 35 45% 96%;
+  --foreground: 20 30% 15%;
 
-  --card: 0 0% 100%;
-  --card-foreground: 222 47% 11%;
+  /* Cards: Warm white with subtle warmth */
+  --card: 40 40% 99%;
+  --card-foreground: 20 30% 15%;
 
-  --popover: 0 0% 100%;
-  --popover-foreground: 222 47% 11%;
+  --popover: 40 40% 99%;
+  --popover-foreground: 20 30% 15%;
 
-  /* Primary: Trustworthy Deep Blue */
-  --primary: 221 83% 53%;
-  --primary-foreground: 210 40% 98%;
+  /* Primary: Rich Terracotta */
+  --primary: 16 70% 50%;
+  --primary-foreground: 40 40% 98%;
 
-  /* Secondary: Soft Slate */
-  --secondary: 210 40% 96.1%;
-  --secondary-foreground: 222 47% 11.2%;
+  /* Secondary: Warm Sand */
+  --secondary: 35 30% 92%;
+  --secondary-foreground: 20 30% 20%;
 
-  /* Muted: Subtle Grays */
-  --muted: 210 40% 96.1%;
-  --muted-foreground: 215.4 16.3% 46.9%;
+  /* Muted: Desert Sage */
+  --muted: 35 25% 93%;
+  --muted-foreground: 25 15% 45%;
 
-  /* Accent: Emerald Green (Growth/Land) */
-  --accent: 151 55% 42%;
-  --accent-foreground: 210 40% 98%;
+  /* Accent: Desert Sage Green */
+  --accent: 85 25% 45%;
+  --accent-foreground: 40 40% 98%;
 
-  --destructive: 0 84.2% 60.2%;
-  --destructive-foreground: 210 40% 98%;
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 40 40% 98%;
 
-  --border: 214.3 31.8% 91.4%;
-  --input: 214.3 31.8% 91.4%;
-  --ring: 221 83% 53%;
+  /* Warm-toned borders */
+  --border: 30 20% 88%;
+  --input: 30 20% 88%;
+  --ring: 16 70% 50%;
 
-  --radius: 0.75rem;
+  --radius: 0.875rem;
+
+  /* Sidebar: Warm sandstone */
+  --sidebar-background: 32 35% 94%;
+  --sidebar-foreground: 20 30% 20%;
+  --sidebar-primary: 16 70% 50%;
+  --sidebar-primary-foreground: 40 40% 98%;
+  --sidebar-accent: 35 40% 90%;
+  --sidebar-accent-foreground: 20 30% 20%;
+  --sidebar-border: 30 25% 85%;
+  --sidebar-ring: 16 70% 50%;
 }
 
 .dark {
-  --background: 222 47% 11%;
-  --foreground: 210 40% 98%;
+  /* Sedona Desert Color Scheme - Dark Mode */
+  /* Deep warm brown like desert night */
+  --background: 20 25% 10%;
+  --foreground: 35 30% 92%;
 
-  --card: 222 47% 13%;
-  --card-foreground: 210 40% 98%;
+  /* Cards: Rich warm brown */
+  --card: 20 22% 14%;
+  --card-foreground: 35 30% 92%;
 
-  --popover: 222 47% 11%;
-  --popover-foreground: 210 40% 98%;
+  --popover: 20 22% 12%;
+  --popover-foreground: 35 30% 92%;
 
-  --primary: 217 91% 60%;
-  --primary-foreground: 222 47.4% 11.2%;
+  /* Primary: Warm Terracotta (brighter for dark mode) */
+  --primary: 18 75% 55%;
+  --primary-foreground: 20 25% 10%;
 
-  --secondary: 217.2 32.6% 17.5%;
-  --secondary-foreground: 210 40% 98%;
+  /* Secondary: Deep clay */
+  --secondary: 20 20% 18%;
+  --secondary-foreground: 35 30% 90%;
 
-  --muted: 217.2 32.6% 17.5%;
-  --muted-foreground: 215 20.2% 65.1%;
+  /* Muted: Subtle warm gray */
+  --muted: 20 18% 20%;
+  --muted-foreground: 30 20% 60%;
 
-  --accent: 151 55% 42%;
-  --accent-foreground: 210 40% 98%;
+  /* Accent: Desert Sage Green */
+  --accent: 85 30% 40%;
+  --accent-foreground: 35 30% 95%;
 
-  --destructive: 0 62.8% 30.6%;
-  --destructive-foreground: 210 40% 98%;
+  --destructive: 0 62% 45%;
+  --destructive-foreground: 35 30% 95%;
 
-  --border: 217.2 32.6% 17.5%;
-  --input: 217.2 32.6% 17.5%;
-  --ring: 224.3 76.3% 48%;
+  /* Warm dark borders */
+  --border: 20 18% 22%;
+  --input: 20 18% 22%;
+  --ring: 18 75% 55%;
+
+  /* Sidebar: Deep warm brown */
+  --sidebar-background: 20 22% 12%;
+  --sidebar-foreground: 35 30% 90%;
+  --sidebar-primary: 18 75% 55%;
+  --sidebar-primary-foreground: 20 25% 10%;
+  --sidebar-accent: 20 20% 18%;
+  --sidebar-accent-foreground: 35 30% 90%;
+  --sidebar-border: 20 18% 20%;
+  --sidebar-ring: 18 75% 55%;
 }
 
 @layer base {
@@ -81,41 +112,169 @@
   body {
     @apply bg-background text-foreground antialiased;
     font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: -0.01em;
   }
 }
 
-/* Custom Scrollbar */
+/* macOS Tahoe-inspired scrollbars */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
 }
 ::-webkit-scrollbar-track {
   @apply bg-transparent;
 }
 ::-webkit-scrollbar-thumb {
-  @apply bg-muted-foreground/20 rounded-full;
+  @apply bg-foreground/15 rounded-full;
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-muted-foreground/40;
+  @apply bg-foreground/25;
 }
 
-/* Utilities for visual polish */
+/* macOS Tahoe Glass Panel Effect */
 .glass-panel {
-  @apply bg-white/70 dark:bg-black/40 backdrop-blur-lg border border-white/20 dark:border-white/10 shadow-xl;
+  @apply backdrop-blur-2xl border shadow-lg;
+  background: rgba(255, 255, 255, 0.72);
+  border-color: rgba(255, 255, 255, 0.5);
+}
+.dark .glass-panel {
+  background: rgba(40, 35, 30, 0.75);
+  border-color: rgba(255, 255, 255, 0.08);
 }
 
+/* Floating window effect like macOS */
+.floating-window {
+  @apply rounded-xl shadow-2xl;
+  box-shadow: 
+    0 0 0 0.5px rgba(0, 0, 0, 0.08),
+    0 8px 40px rgba(0, 0, 0, 0.12),
+    0 12px 24px -8px rgba(0, 0, 0, 0.1);
+}
+.dark .floating-window {
+  box-shadow: 
+    0 0 0 0.5px rgba(255, 255, 255, 0.05),
+    0 8px 40px rgba(0, 0, 0, 0.5),
+    0 12px 24px -8px rgba(0, 0, 0, 0.4);
+}
+
+/* Subtle card hover transitions */
 .card-hover {
-  @apply transition-all duration-300 hover:shadow-lg hover:-translate-y-1 hover:border-primary/20;
+  @apply transition-all duration-200 ease-out;
+}
+.card-hover:hover {
+  @apply shadow-lg;
+  transform: translateY(-1px);
 }
 
+/* macOS-style vibrancy for sidebars */
+.vibrancy-sidebar {
+  @apply backdrop-blur-xl;
+  background: rgba(245, 240, 235, 0.85);
+}
+.dark .vibrancy-sidebar {
+  background: rgba(35, 30, 25, 0.9);
+}
+
+/* Animation utilities */
 .animate-in {
-  animation: fadeIn 0.5s ease-out;
+  animation: fadeSlideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+@keyframes fadeSlideIn {
+  from { 
+    opacity: 0; 
+    transform: translateY(8px) scale(0.98); 
+  }
+  to { 
+    opacity: 1; 
+    transform: translateY(0) scale(1); 
+  }
+}
+
+/* macOS-style focus rings */
+*:focus-visible {
+  @apply outline-none ring-2 ring-primary/40 ring-offset-2 ring-offset-background;
+}
+
+/* Smooth page transitions */
+.page-transition {
+  @apply transition-opacity duration-200 ease-out;
+}
+
+/* Desert gradient overlays */
+.desert-gradient {
+  background: linear-gradient(
+    135deg,
+    hsl(35 45% 96%) 0%,
+    hsl(30 40% 94%) 50%,
+    hsl(25 35% 92%) 100%
+  );
+}
+.dark .desert-gradient {
+  background: linear-gradient(
+    135deg,
+    hsl(20 25% 10%) 0%,
+    hsl(18 22% 12%) 50%,
+    hsl(16 20% 14%) 100%
+  );
+}
+
+/* Hover elevation utilities */
+.hover-elevate {
+  @apply transition-all duration-200 ease-out;
+}
+.hover-elevate:hover {
+  @apply bg-foreground/5;
+}
+.dark .hover-elevate:hover {
+  background-color: hsl(var(--foreground) / 0.08);
+}
+
+.active-elevate-2 {
+  @apply transition-all duration-100 ease-out;
+}
+.active-elevate-2:active {
+  @apply bg-foreground/10;
+  transform: scale(0.98);
+}
+
+/* Toggle elevation system */
+.toggle-elevate {
+  @apply transition-all duration-150 ease-out;
+}
+.toggle-elevated {
+  @apply bg-primary/10;
+}
+.dark .toggle-elevated {
+  @apply bg-primary/15;
+}
+
+/* Remove default hover/active when needed */
+.no-default-hover-elevate:hover {
+  @apply bg-transparent;
+}
+.no-default-active-elevate:active {
+  transform: none;
+  @apply bg-transparent;
+}
+
+/* macOS-style pill buttons */
+.pill-button {
+  @apply px-4 py-1.5 rounded-full text-sm font-medium transition-all duration-150;
+}
+
+/* Subtle inset effect for inputs */
+.inset-input {
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+.dark .inset-input {
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2);
 }
