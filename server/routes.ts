@@ -112,7 +112,6 @@ export async function registerRoutes(
   // Seed Data
   const existingLeads = await storage.getLeads();
   if (existingLeads.length === 0) {
-    console.log("Seeding database...");
     await storage.createLead({
       firstName: "John",
       lastName: "Doe",

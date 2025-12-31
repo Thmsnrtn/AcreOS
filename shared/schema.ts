@@ -9,7 +9,7 @@ export * from "./models/chat";
 
 // === TABLE DEFINITIONS ===
 
-// CRM: Leads/Customers
+// Leads/Customers (AcreOS CRM)
 export const leads = pgTable("leads", {
   id: serial("id").primaryKey(),
   firstName: text("first_name").notNull(),
@@ -21,7 +21,7 @@ export const leads = pgTable("leads", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// Inventory: Properties
+// Inventory: Properties (AcreOS Inventory)
 export const properties = pgTable("properties", {
   id: serial("id").primaryKey(),
   apn: text("apn").notNull(), // Assessor's Parcel Number
@@ -35,7 +35,7 @@ export const properties = pgTable("properties", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// Finance: Notes (Geekpay replacement)
+// Finance: Notes (AcreOS Finance - Geekpay replacement)
 export const notes = pgTable("notes", {
   id: serial("id").primaryKey(),
   propertyId: integer("property_id").references(() => properties.id),
@@ -49,7 +49,16 @@ export const notes = pgTable("notes", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// AI Agents: Tasks for automation
+// Subscription tiers and billing status
+export const subscriptions = pgTable("subscriptions", {
+  id: serial("id").primaryKey(),
+  tier: text("tier").notNull().default("free"), // free, basic, pro, enterprise
+  status: text("status").notNull().default("active"),
+  nextBillingDate: timestamp("next_billing_date"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// AI Agents: Tasks for automation (AcreOS Agents)
 export const agentTasks = pgTable("agent_tasks", {
   id: serial("id").primaryKey(),
   agentType: text("agent_type").notNull(), // research, marketing, negotiation

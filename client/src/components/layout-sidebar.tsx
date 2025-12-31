@@ -32,7 +32,7 @@ export function Sidebar() {
     <div className="flex flex-col h-full bg-slate-900 text-slate-50">
       <div className="p-6">
         <h1 className="text-2xl font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
-          Dirt Rich AI
+          AcreOS
         </h1>
         <p className="text-xs text-slate-400 mt-1">Automation Platform</p>
       </div>

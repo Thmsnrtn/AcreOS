@@ -31,10 +31,10 @@ export default function AuthPage() {
         <CardContent className="p-8 text-center space-y-6">
           <div>
             <h1 className="text-4xl font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent mb-2">
-              Dirt Rich AI
+              AcreOS
             </h1>
             <p className="text-slate-300 text-lg">
-              Automate your land investing empire.
+              The Operating System for Land Investors.
             </p>
           </div>
 
