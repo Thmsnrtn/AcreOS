@@ -61,10 +61,38 @@ The server implements a three-layer architecture:
 - **Team Members**: Users within organizations with roles
 - **Leads**: CRM records for potential buyers/sellers
 - **Properties**: Land inventory with status tracking
-- **Notes**: Promissory notes with amortization schedules
-- **Deals**: Transaction records linking leads and properties
+- **Notes**: Promissory notes with amortization schedules (GeekPay replacement)
+- **Payments**: Payment records with principal/interest split tracking
+- **Deals**: Transaction records linking leads and properties with pipeline stages
+- **Campaigns**: Marketing campaigns for direct mail, email, and SMS (LgPass replacement)
 - **Agent Tasks**: AI automation task queue
 - **Conversations/Messages**: Chat history for AI interactions
+
+### Key Features (LgPass/GeekPay Replacement)
+
+#### Finance Module (GeekPay Features)
+- Note/loan management with amortization schedules
+- Payment recording with automatic principal/interest split calculation
+- Borrower self-service portal (/portal/:accessToken)
+- Automatic balance updates and loan status transitions
+- Document generation for promissory notes
+
+#### Marketing Module (LgPass Features)
+- Direct mail campaign management
+- Email and SMS campaign support
+- Campaign metrics tracking (sent, delivered, opened, responded)
+- Budget tracking and spend monitoring
+
+#### Deal Pipeline
+- Kanban-style deal tracking board
+- Stages: Negotiating, Offer Sent, Countered, Accepted, In Escrow, Closed
+- Acquisition and disposition deal types
+- Property linking and closing details
+
+#### Document Generation
+- Promissory notes with borrower and property details
+- Warranty deeds with legal descriptions
+- Offer letters for lead outreach
 
 ## External Dependencies
 

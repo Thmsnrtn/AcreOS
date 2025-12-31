@@ -129,6 +129,11 @@ export const api = {
   },
 };
 
+export type InsertNote = z.infer<typeof insertNoteSchema>;
+export type InsertLead = z.infer<typeof insertLeadSchema>;
+export type InsertProperty = z.infer<typeof insertPropertySchema>;
+export type InsertAgentTask = z.infer<typeof insertAgentTaskSchema>;
+
 export function buildUrl(path: string, params?: Record<string, string | number>): string {
   let url = path;
   if (params) {

@@ -10,10 +10,13 @@ import Dashboard from "@/pages/dashboard";
 import LeadsPage from "@/pages/leads";
 import PropertiesPage from "@/pages/properties";
 import FinancePage from "@/pages/finance";
+import CampaignsPage from "@/pages/campaigns";
+import DealsPage from "@/pages/deals";
 import AgentsPage from "@/pages/agents";
 import CommandCenterPage from "@/pages/command-center";
 import SettingsPage from "@/pages/settings";
 import AuthPage from "@/pages/auth-page";
+import BorrowerPortal from "@/pages/borrower-portal";
 import NotFound from "@/pages/not-found";
 
 // Protected Route Wrapper
@@ -40,6 +43,10 @@ function Router() {
     <Switch>
       <Route path="/auth" component={AuthPage} />
       
+      {/* Public Borrower Portal */}
+      <Route path="/portal" component={BorrowerPortal} />
+      <Route path="/portal/:accessToken" component={BorrowerPortal} />
+      
       {/* Protected Routes */}
       <Route path="/">
         {() => <ProtectedRoute component={Dashboard} />}
@@ -50,8 +57,14 @@ function Router() {
       <Route path="/properties">
         {() => <ProtectedRoute component={PropertiesPage} />}
       </Route>
+      <Route path="/deals">
+        {() => <ProtectedRoute component={DealsPage} />}
+      </Route>
       <Route path="/finance">
         {() => <ProtectedRoute component={FinancePage} />}
+      </Route>
+      <Route path="/campaigns">
+        {() => <ProtectedRoute component={CampaignsPage} />}
       </Route>
       <Route path="/agents">
         {() => <ProtectedRoute component={AgentsPage} />}

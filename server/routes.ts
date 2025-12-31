@@ -309,8 +309,50 @@ export async function registerRoutes(
   api.post("/api/payments", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = (req as any).organization;
-      const input = insertPaymentSchema.parse({ ...req.body, organizationId: org.id });
+      const { noteId, amount, paymentDate, type = "regular", paymentMethod } = req.body;
+      
+      // Get the note to calculate interest and principal split
+      const note = await storage.getNote(org.id, noteId);
+      if (!note) {
+        return res.status(404).json({ message: "Note not found" });
+      }
+      
+      const currentBalance = Number(note.currentBalance || note.originalPrincipal);
+      const monthlyRate = Number(note.interestRate) / 100 / 12;
+      const interestPortion = currentBalance * monthlyRate;
+      const principalPortion = Math.max(0, Number(amount) - interestPortion);
+      const newBalance = Math.max(0, currentBalance - principalPortion);
+      
+      const input = insertPaymentSchema.parse({ 
+        noteId,
+        organizationId: org.id,
+        amount: String(amount),
+        principal: String(principalPortion),
+        interest: String(interestPortion),
+        paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
+        type,
+        status: "completed",
+        paymentMethod
+      });
+      
       const payment = await storage.createPayment(input);
+      
+      // Update the note balance and status
+      const paymentsCount = (await storage.getPayments(org.id, noteId)).length;
+      let noteStatus = note.status;
+      if (newBalance <= 0) {
+        noteStatus = "paid_off";
+      } else if (noteStatus === "late" || noteStatus === "delinquent") {
+        noteStatus = "active"; // Payment received, restore to active
+      }
+      
+      await storage.updateNote(note.id, { 
+        currentBalance: String(newBalance),
+        status: noteStatus,
+        lastPaymentDate: new Date(),
+        paymentsMade: paymentsCount
+      });
+      
       res.status(201).json(payment);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -646,6 +688,248 @@ export async function registerRoutes(
       );
       
       res.json({ subscription: activeSubscription || null });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // BORROWER PORTAL (Public, for GeekPay replacement)
+  // ============================================
+  
+  api.post("/api/borrower/verify", async (req, res) => {
+    try {
+      const { accessToken, email } = req.body;
+      
+      if (!accessToken || !email) {
+        return res.status(400).json({ message: "Access token and email are required" });
+      }
+      
+      // Look up note by access token (for now, we use note ID as token for simplicity)
+      const noteId = parseInt(accessToken);
+      if (isNaN(noteId)) {
+        return res.status(400).json({ message: "Invalid access token" });
+      }
+      
+      const note = await storage.getNote(0, noteId); // Use 0 as we verify by noteId
+      if (!note) {
+        return res.status(404).json({ message: "Loan not found" });
+      }
+      
+      // Verify borrower email
+      if (note.borrowerId) {
+        const borrower = await storage.getLead(note.organizationId, note.borrowerId);
+        if (!borrower || borrower.email?.toLowerCase() !== email.toLowerCase()) {
+          return res.status(401).json({ message: "Email does not match our records" });
+        }
+      }
+      
+      // Get payments for this note
+      const payments = await storage.getPayments(note.organizationId, note.id);
+      
+      // Get property info if linked
+      let property = null;
+      if (note.propertyId) {
+        property = await storage.getProperty(note.organizationId, note.propertyId);
+      }
+      
+      res.json({
+        note: { ...note, property },
+        payments,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+  
+  // Generate borrower portal link
+  api.post("/api/notes/:id/portal-link", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const noteId = Number(req.params.id);
+      
+      const note = await storage.getNote(org.id, noteId);
+      if (!note) {
+        return res.status(404).json({ message: "Note not found" });
+      }
+      
+      // For simplicity, use note ID as token (in production, use secure tokens)
+      const portalUrl = `${req.protocol}://${req.get('host')}/portal/${note.id}`;
+      
+      res.json({ url: portalUrl });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // DOCUMENT GENERATION (LgPass replacement)
+  // ============================================
+  
+  api.post("/api/documents/generate", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { type, entityType, entityId } = req.body;
+      
+      let documentContent = "";
+      let documentTitle = "";
+      
+      if (entityType === "note" && type === "promissory_note") {
+        const note = await storage.getNote(org.id, Number(entityId));
+        if (!note) {
+          return res.status(404).json({ message: "Note not found" });
+        }
+        
+        let borrowerName = "Borrower";
+        if (note.borrowerId) {
+          const borrower = await storage.getLead(org.id, note.borrowerId);
+          if (borrower) {
+            borrowerName = `${borrower.firstName} ${borrower.lastName}`;
+          }
+        }
+        
+        let propertyDesc = "Property";
+        if (note.propertyId) {
+          const property = await storage.getProperty(org.id, note.propertyId);
+          if (property) {
+            propertyDesc = `${property.county} County, ${property.state} - APN: ${property.apn}`;
+          }
+        }
+        
+        const startDateStr = note.startDate ? new Date(note.startDate).toLocaleDateString() : new Date().toLocaleDateString();
+        
+        documentTitle = `Promissory Note - ${borrowerName}`;
+        documentContent = `
+PROMISSORY NOTE
+
+Date: ${startDateStr}
+Lender: ${org.name}
+Borrower: ${borrowerName}
+
+Property: ${propertyDesc}
+
+PROMISE TO PAY
+For value received, Borrower promises to pay to Lender the principal sum of $${Number(note.originalPrincipal).toLocaleString()} with interest at the rate of ${note.interestRate}% per annum.
+
+PAYMENT TERMS
+- Monthly Payment: $${Number(note.monthlyPayment).toLocaleString()}
+- Term: ${note.termMonths} months
+- First Payment Due: ${note.firstPaymentDate ? new Date(note.firstPaymentDate).toLocaleDateString() : 'TBD'}
+
+LATE CHARGES
+If any payment is not received within ${note.gracePeriodDays || 10} days after its due date, Borrower agrees to pay a late charge of $${Number(note.lateFee || 0).toLocaleString()}.
+
+DEFAULT
+If Borrower fails to make any payment when due, the entire unpaid principal balance and accrued interest shall become immediately due and payable at Lender's option.
+
+SIGNATURES
+
+_______________________          _______________________
+Lender                           Borrower
+${org.name}                      ${borrowerName}
+`;
+      } else if (entityType === "property" && type === "deed") {
+        const property = await storage.getProperty(org.id, Number(entityId));
+        if (!property) {
+          return res.status(404).json({ message: "Property not found" });
+        }
+        
+        documentTitle = `Warranty Deed - ${property.apn}`;
+        documentContent = `
+WARRANTY DEED
+
+This Warranty Deed is made this _____ day of ____________, 20___
+
+GRANTOR: ${org.name}
+
+GRANTEE: _________________________________
+
+PROPERTY DESCRIPTION:
+County: ${property.county}
+State: ${property.state}
+Assessor's Parcel Number (APN): ${property.apn}
+
+Legal Description:
+${property.legalDescription || "[ATTACH LEGAL DESCRIPTION]"}
+
+CONSIDERATION: $________________
+
+GRANTOR hereby conveys and warrants to GRANTEE the above-described property, together with all improvements thereon, free and clear of all encumbrances except those of record.
+
+SIGNATURES
+
+_______________________          Date: ________________
+Grantor
+
+STATE OF ${property.state}
+COUNTY OF ${property.county}
+
+[NOTARY ACKNOWLEDGMENT]
+`;
+      } else if (entityType === "lead" && type === "offer_letter") {
+        const lead = await storage.getLead(org.id, Number(entityId));
+        if (!lead) {
+          return res.status(404).json({ message: "Lead not found" });
+        }
+        
+        const sellerAddress = [lead.address, lead.city, lead.state, lead.zip].filter(Boolean).join(", ");
+        
+        documentTitle = `Offer Letter - ${lead.firstName} ${lead.lastName}`;
+        documentContent = `
+OFFER TO PURCHASE REAL ESTATE
+
+Date: ${new Date().toLocaleDateString()}
+
+From: ${org.name}
+
+To: ${lead.firstName} ${lead.lastName}
+${sellerAddress || "[Address]"}
+
+Dear ${lead.firstName} ${lead.lastName},
+
+We are interested in purchasing your property and would like to make you the following offer:
+
+PROPERTY INFORMATION:
+[Property details to be filled in]
+
+OFFER TERMS:
+Purchase Price: $________________
+Closing Date: Within 30 days of acceptance
+Payment Method: [Cash/Financing]
+
+This offer is subject to clear title and satisfactory inspection.
+
+This offer is valid for 14 days from the date above.
+
+If you have any questions or would like to discuss this offer, please contact us.
+
+Sincerely,
+
+_______________________
+${org.name}
+
+---
+
+ACCEPTANCE
+
+I/We accept this offer on the terms stated above.
+
+_______________________          Date: ________________
+Seller Signature
+
+_______________________          Date: ________________
+Seller Signature (if applicable)
+`;
+      } else {
+        return res.status(400).json({ message: "Invalid document type or entity" });
+      }
+      
+      res.json({
+        title: documentTitle,
+        content: documentContent,
+        type,
+        generatedAt: new Date().toISOString(),
+      });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

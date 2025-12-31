@@ -9,7 +9,9 @@ import {
   Settings,
   LogOut,
   Menu,
-  MessageSquare
+  MessageSquare,
+  Mail,
+  GitBranch
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useState } from "react";
@@ -20,7 +22,9 @@ const navItems = [
   { label: "Dashboard", icon: LayoutDashboard, href: "/" },
   { label: "Leads (CRM)", icon: Users, href: "/leads" },
   { label: "Inventory", icon: Map, href: "/properties" },
+  { label: "Deal Pipeline", icon: GitBranch, href: "/deals" },
   { label: "Finance", icon: Banknote, href: "/finance" },
+  { label: "Campaigns", icon: Mail, href: "/campaigns" },
   { label: "AI Agents", icon: Bot, href: "/agents" },
   { label: "AI Command Center", icon: MessageSquare, href: "/command-center" },
   { label: "Settings", icon: Settings, href: "/settings" },
