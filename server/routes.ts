@@ -405,6 +405,121 @@ export async function registerRoutes(
     const messages = await storage.getMessages(Number(req.params.id));
     res.json(messages);
   });
+  
+  // ============================================
+  // STRIPE SUBSCRIPTION
+  // ============================================
+  
+  api.get("/api/stripe/products", async (req, res) => {
+    try {
+      const { stripeService } = await import("./stripeService");
+      const rows = await stripeService.listProductsWithPrices();
+      
+      const productsMap = new Map();
+      for (const row of rows as any[]) {
+        if (!productsMap.has(row.product_id)) {
+          productsMap.set(row.product_id, {
+            id: row.product_id,
+            name: row.product_name,
+            description: row.product_description,
+            active: row.product_active,
+            metadata: row.product_metadata,
+            prices: []
+          });
+        }
+        if (row.price_id) {
+          productsMap.get(row.product_id).prices.push({
+            id: row.price_id,
+            unit_amount: row.unit_amount,
+            currency: row.currency,
+            recurring: row.recurring,
+            active: row.price_active,
+            metadata: row.price_metadata,
+          });
+        }
+      }
+      
+      res.json(Array.from(productsMap.values()));
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+  
+  api.post("/api/stripe/checkout", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { stripeService } = await import("./stripeService");
+      const org = (req as any).organization;
+      const { priceId } = req.body;
+      
+      if (!priceId) {
+        return res.status(400).json({ message: "priceId is required" });
+      }
+      
+      let customerId = org.stripeCustomerId;
+      if (!customerId) {
+        const user = req.user as any;
+        const customer = await stripeService.createCustomer(
+          user.email,
+          user.id,
+          org.name
+        );
+        await storage.updateOrganization(org.id, { stripeCustomerId: customer.id });
+        customerId = customer.id;
+      }
+      
+      const session = await stripeService.createCheckoutSession(
+        customerId,
+        priceId,
+        `${req.protocol}://${req.get('host')}/settings?subscription=success`,
+        `${req.protocol}://${req.get('host')}/settings?subscription=cancelled`,
+        { organizationId: String(org.id) }
+      );
+      
+      res.json({ url: session.url });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+  
+  api.post("/api/stripe/portal", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { stripeService } = await import("./stripeService");
+      const org = (req as any).organization;
+      
+      if (!org.stripeCustomerId) {
+        return res.status(400).json({ message: "No subscription found" });
+      }
+      
+      const session = await stripeService.createCustomerPortalSession(
+        org.stripeCustomerId,
+        `${req.protocol}://${req.get('host')}/settings`
+      );
+      
+      res.json({ url: session.url });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+  
+  api.get("/api/stripe/subscription", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { stripeService } = await import("./stripeService");
+      const org = (req as any).organization;
+      
+      if (!org.stripeCustomerId) {
+        return res.json({ subscription: null });
+      }
+      
+      const subscriptions = await stripeService.getCustomerSubscriptions(org.stripeCustomerId);
+      const activeSubscription = subscriptions.find((s: any) => 
+        s.status === 'active' || s.status === 'trialing'
+      );
+      
+      res.json({ subscription: activeSubscription || null });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
 
   return httpServer;
 }
