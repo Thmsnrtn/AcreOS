@@ -80,8 +80,8 @@ export default function DealsPage() {
   return (
     <div className="flex min-h-screen bg-background desert-gradient">
       <Sidebar />
-      <main className="flex-1 md:ml-[17rem] p-8">
-        <div className="max-w-7xl mx-auto space-y-8">
+      <main className="flex-1 md:ml-[17rem] p-4 md:p-8 pb-24 md:pb-8">
+        <div className="max-w-7xl mx-auto space-y-6 md:space-y-8">
           
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>

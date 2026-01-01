@@ -44,8 +44,8 @@ export default function LeadsPage() {
   return (
     <div className="flex min-h-screen bg-background desert-gradient">
       <Sidebar />
-      <main className="flex-1 md:ml-[17rem] p-8">
-        <div className="max-w-7xl mx-auto space-y-8">
+      <main className="flex-1 md:ml-[17rem] p-4 md:p-8 pb-24 md:pb-8">
+        <div className="max-w-7xl mx-auto space-y-6 md:space-y-8">
           
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
@@ -68,7 +68,7 @@ export default function LeadsPage() {
           </div>
 
           <div className="bg-white dark:bg-card rounded-2xl shadow-sm border overflow-hidden">
-            <div className="p-4 border-b flex items-center gap-3">
+            <div className="p-4 border-b flex flex-wrap items-center gap-3">
               <div className="relative flex-1 max-w-sm">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input 
@@ -84,16 +84,17 @@ export default function LeadsPage() {
             {isLoading ? (
               <div className="p-8 text-center text-muted-foreground">Loading leads...</div>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-slate-50/50 dark:bg-slate-900/50">
-                    <TableHead>Name</TableHead>
-                    <TableHead>Contact</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
+              <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-slate-50/50 dark:bg-slate-900/50">
+                      <TableHead className="min-w-[120px]">Name</TableHead>
+                      <TableHead className="min-w-[180px]">Contact</TableHead>
+                      <TableHead className="min-w-[100px]">Status</TableHead>
+                      <TableHead className="text-right min-w-[80px]">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                   {filteredLeads?.length === 0 && leads?.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={4} className="p-0">
@@ -153,8 +154,9 @@ export default function LeadsPage() {
                       </TableCell>
                     </TableRow>
                   ))}
-                </TableBody>
-              </Table>
+                  </TableBody>
+                </Table>
+              </div>
             )}
           </div>
         </div>

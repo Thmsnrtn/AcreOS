@@ -83,8 +83,8 @@ export default function FinancePage() {
   return (
     <div className="flex min-h-screen bg-background desert-gradient">
       <Sidebar />
-      <main className="flex-1 md:ml-[17rem] p-8">
-        <div className="max-w-7xl mx-auto space-y-8">
+      <main className="flex-1 md:ml-[17rem] p-4 md:p-8 pb-24 md:pb-8">
+        <div className="max-w-7xl mx-auto space-y-6 md:space-y-8">
           
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
@@ -176,20 +176,21 @@ export default function FinancePage() {
               <CardDescription>Click a note to view details, payment history, and amortization schedule</CardDescription>
             </CardHeader>
             <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-muted/30">
-                    <TableHead>Borrower</TableHead>
-                    <TableHead>Property</TableHead>
-                    <TableHead className="text-right">Balance</TableHead>
-                    <TableHead className="text-right">Monthly</TableHead>
-                    <TableHead>Next Due</TableHead>
-                    <TableHead>Health</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
+              <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/30">
+                      <TableHead className="min-w-[140px]">Borrower</TableHead>
+                      <TableHead className="min-w-[140px]">Property</TableHead>
+                      <TableHead className="text-right min-w-[90px]">Balance</TableHead>
+                      <TableHead className="text-right min-w-[80px]">Monthly</TableHead>
+                      <TableHead className="min-w-[100px]">Next Due</TableHead>
+                      <TableHead className="min-w-[80px]">Health</TableHead>
+                      <TableHead className="min-w-[80px]">Status</TableHead>
+                      <TableHead className="min-w-[50px]"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                   {isLoading ? (
                     <TableRow>
                       <TableCell colSpan={8} className="text-center h-24">
@@ -265,8 +266,9 @@ export default function FinancePage() {
                       );
                     })
                   )}
-                </TableBody>
-              </Table>
+                  </TableBody>
+                </Table>
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -398,18 +400,19 @@ function NoteDetailDrawer({ note, onClose, onDelete }: { note: NoteWithDetails; 
             <TabsContent value="payments" className="mt-4">
               <Card>
                 <CardContent className="p-0">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Date</TableHead>
-                        <TableHead className="text-right">Amount</TableHead>
-                        <TableHead className="text-right">Principal</TableHead>
-                        <TableHead className="text-right">Interest</TableHead>
-                        <TableHead>Status</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {paymentsLoading ? (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="min-w-[90px]">Date</TableHead>
+                          <TableHead className="text-right min-w-[80px]">Amount</TableHead>
+                          <TableHead className="text-right min-w-[80px]">Principal</TableHead>
+                          <TableHead className="text-right min-w-[70px]">Interest</TableHead>
+                          <TableHead className="min-w-[70px]">Status</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {paymentsLoading ? (
                         <TableRow>
                           <TableCell colSpan={5} className="text-center h-16">
                             <div className="flex items-center justify-center gap-2">
@@ -447,8 +450,9 @@ function NoteDetailDrawer({ note, onClose, onDelete }: { note: NoteWithDetails; 
                           </TableRow>
                         ))
                       )}
-                    </TableBody>
-                  </Table>
+                      </TableBody>
+                    </Table>
+                  </div>
                 </CardContent>
               </Card>
             </TabsContent>
@@ -456,20 +460,21 @@ function NoteDetailDrawer({ note, onClose, onDelete }: { note: NoteWithDetails; 
             <TabsContent value="schedule" className="mt-4">
               <Card>
                 <CardContent className="p-0 max-h-80 overflow-y-auto">
-                  <Table>
-                    <TableHeader className="sticky top-0 bg-card">
-                      <TableRow>
-                        <TableHead>#</TableHead>
-                        <TableHead>Due Date</TableHead>
-                        <TableHead className="text-right">Payment</TableHead>
-                        <TableHead className="text-right">Principal</TableHead>
-                        <TableHead className="text-right">Interest</TableHead>
-                        <TableHead className="text-right">Balance</TableHead>
-                        <TableHead>Status</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {schedule.length === 0 ? (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader className="sticky top-0 bg-card">
+                        <TableRow>
+                          <TableHead className="min-w-[30px]">#</TableHead>
+                          <TableHead className="min-w-[90px]">Due Date</TableHead>
+                          <TableHead className="text-right min-w-[70px]">Payment</TableHead>
+                          <TableHead className="text-right min-w-[70px]">Principal</TableHead>
+                          <TableHead className="text-right min-w-[70px]">Interest</TableHead>
+                          <TableHead className="text-right min-w-[70px]">Balance</TableHead>
+                          <TableHead className="min-w-[50px]">Status</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {schedule.length === 0 ? (
                         <TableRow>
                           <TableCell colSpan={7} className="text-center h-16 text-muted-foreground">
                             No amortization schedule available
@@ -500,8 +505,9 @@ function NoteDetailDrawer({ note, onClose, onDelete }: { note: NoteWithDetails; 
                           </TableRow>
                         ))
                       )}
-                    </TableBody>
-                  </Table>
+                      </TableBody>
+                    </Table>
+                  </div>
                 </CardContent>
               </Card>
             </TabsContent>
