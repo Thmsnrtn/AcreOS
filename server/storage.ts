@@ -1,12 +1,13 @@
 import { db } from "./db";
 export { db };
-import { eq, and, desc, sql, count, sum, arrayContains } from "drizzle-orm";
+import { eq, and, desc, sql, count, sum, arrayContains, gte, lte, or } from "drizzle-orm";
 import { aiConversations, aiMessages } from "@shared/schema";
 import {
   organizations, teamMembers, leads, leadActivities, properties, deals,
   notes, payments, campaigns, agentConfigs, agentTasks, conversations,
   messages, activityLog, usageEvents,
   aiAgentProfiles, aiToolDefinitions, aiExecutionRuns, aiMemory,
+  vaAgents, vaActions, vaBriefings, vaCalendarEvents, vaTemplates,
   type Organization, type InsertOrganization,
   type TeamMember, type InsertTeamMember,
   type Lead, type InsertLead,
@@ -23,6 +24,11 @@ import {
   type AiToolDefinition, type InsertAiToolDefinition,
   type AiExecutionRun, type InsertAiExecutionRun,
   type AiMemory, type InsertAiMemory,
+  type VaAgent, type InsertVaAgent,
+  type VaAction, type InsertVaAction,
+  type VaBriefing, type InsertVaBriefing,
+  type VaCalendarEvent, type InsertVaCalendarEvent,
+  type VaTemplate, type InsertVaTemplate,
 } from "@shared/schema";
 
 // Helper to calculate amortization schedule
@@ -194,6 +200,41 @@ export interface IStorage {
   deleteAiConversation(id: number): Promise<void>;
   getAiMessages(conversationId: number): Promise<any[]>;
   createAiMessage(message: any): Promise<any>;
+
+  // VA (Virtual Assistants)
+  getVaAgents(orgId: number): Promise<VaAgent[]>;
+  getVaAgent(orgId: number, id: number): Promise<VaAgent | undefined>;
+  getVaAgentByType(orgId: number, agentType: string): Promise<VaAgent | undefined>;
+  createVaAgent(agent: InsertVaAgent): Promise<VaAgent>;
+  updateVaAgent(id: number, updates: Partial<InsertVaAgent>): Promise<VaAgent>;
+  initializeVaAgents(orgId: number): Promise<VaAgent[]>;
+
+  // VA Actions
+  getVaActions(orgId: number, options?: { agentId?: number; status?: string; limit?: number }): Promise<VaAction[]>;
+  getVaAction(id: number): Promise<VaAction | undefined>;
+  createVaAction(action: InsertVaAction): Promise<VaAction>;
+  updateVaAction(id: number, updates: Partial<VaAction>): Promise<VaAction>;
+  approveVaAction(id: number, userId: string): Promise<VaAction>;
+  rejectVaAction(id: number, reason: string): Promise<VaAction>;
+  getPendingActionsCount(orgId: number): Promise<number>;
+
+  // VA Briefings
+  getVaBriefings(orgId: number, limit?: number): Promise<VaBriefing[]>;
+  getLatestBriefing(orgId: number): Promise<VaBriefing | undefined>;
+  createVaBriefing(briefing: InsertVaBriefing): Promise<VaBriefing>;
+  markBriefingRead(id: number): Promise<VaBriefing>;
+
+  // VA Calendar Events
+  getVaCalendarEvents(orgId: number, startDate?: Date, endDate?: Date): Promise<VaCalendarEvent[]>;
+  createVaCalendarEvent(event: InsertVaCalendarEvent): Promise<VaCalendarEvent>;
+  updateVaCalendarEvent(id: number, updates: Partial<InsertVaCalendarEvent>): Promise<VaCalendarEvent>;
+  deleteVaCalendarEvent(id: number): Promise<void>;
+
+  // VA Templates
+  getVaTemplates(orgId: number, category?: string): Promise<VaTemplate[]>;
+  createVaTemplate(template: InsertVaTemplate): Promise<VaTemplate>;
+  updateVaTemplate(id: number, updates: Partial<InsertVaTemplate>): Promise<VaTemplate>;
+  deleteVaTemplate(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -731,6 +772,305 @@ export class DatabaseStorage implements IStorage {
   async createAiMessage(message: { conversationId: number; role: string; content: string; toolCalls?: any[] }) {
     const [newMessage] = await db.insert(aiMessages).values(message).returning();
     return newMessage;
+  }
+
+  // ============================================
+  // VA (Virtual Assistants) Implementation
+  // ============================================
+
+  async getVaAgents(orgId: number) {
+    return await db.select().from(vaAgents)
+      .where(eq(vaAgents.organizationId, orgId))
+      .orderBy(vaAgents.agentType);
+  }
+
+  async getVaAgent(orgId: number, id: number) {
+    const [agent] = await db.select().from(vaAgents)
+      .where(and(eq(vaAgents.organizationId, orgId), eq(vaAgents.id, id)));
+    return agent;
+  }
+
+  async getVaAgentByType(orgId: number, agentType: string) {
+    const [agent] = await db.select().from(vaAgents)
+      .where(and(eq(vaAgents.organizationId, orgId), eq(vaAgents.agentType, agentType)));
+    return agent;
+  }
+
+  async createVaAgent(agent: InsertVaAgent) {
+    const [newAgent] = await db.insert(vaAgents).values(agent).returning();
+    return newAgent;
+  }
+
+  async updateVaAgent(id: number, updates: Partial<InsertVaAgent>) {
+    const [updated] = await db.update(vaAgents)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(vaAgents.id, id))
+      .returning();
+    return updated;
+  }
+
+  async initializeVaAgents(orgId: number): Promise<VaAgent[]> {
+    const existingAgents = await this.getVaAgents(orgId);
+    if (existingAgents.length > 0) {
+      return existingAgents;
+    }
+
+    const defaultAgents: InsertVaAgent[] = [
+      {
+        organizationId: orgId,
+        agentType: "executive",
+        name: "Executive Assistant",
+        avatar: "Briefcase",
+        description: "Your personal executive assistant. Provides daily briefings, routes tasks to specialists, and keeps everything organized.",
+        isEnabled: true,
+        autonomyLevel: "supervised",
+        config: {
+          notifyOnAction: true,
+          autoApproveCategories: ["briefing", "summary", "reminder"],
+          escalateToHuman: ["financial_decision", "legal_document", "large_expense"],
+        },
+      },
+      {
+        organizationId: orgId,
+        agentType: "sales",
+        name: "Sales VA",
+        avatar: "MessageSquare",
+        description: "Handles buyer inquiries, qualifies leads, schedules callbacks, and nurtures prospects toward closing.",
+        isEnabled: true,
+        autonomyLevel: "supervised",
+        config: {
+          responseDelay: 5,
+          autoApproveCategories: ["follow_up", "qualification"],
+          escalateToHuman: ["price_negotiation", "contract_question"],
+        },
+      },
+      {
+        organizationId: orgId,
+        agentType: "acquisitions",
+        name: "Acquisitions VA",
+        avatar: "Target",
+        description: "Monitors seller leads, researches comps, drafts offers, and manages the acquisition pipeline.",
+        isEnabled: true,
+        autonomyLevel: "supervised",
+        config: {
+          autoApproveCategories: ["research", "comp_analysis"],
+          escalateToHuman: ["offer_submission", "contract_signing"],
+        },
+      },
+      {
+        organizationId: orgId,
+        agentType: "marketing",
+        name: "Marketing VA",
+        avatar: "Megaphone",
+        description: "Conducts market research, proposes campaigns, manages direct mail through Lob, and tracks marketing performance.",
+        isEnabled: true,
+        autonomyLevel: "supervised",
+        config: {
+          autoApproveCategories: ["research", "report"],
+          escalateToHuman: ["campaign_launch", "budget_increase"],
+        },
+      },
+      {
+        organizationId: orgId,
+        agentType: "collections",
+        name: "Collections VA",
+        avatar: "DollarSign",
+        description: "Monitors payment schedules, sends reminders, handles delinquencies, and manages note servicing.",
+        isEnabled: true,
+        autonomyLevel: "supervised",
+        config: {
+          autoApproveCategories: ["reminder", "payment_confirmation"],
+          escalateToHuman: ["default_notice", "legal_action"],
+        },
+      },
+      {
+        organizationId: orgId,
+        agentType: "research",
+        name: "Research VA",
+        avatar: "Search",
+        description: "Performs property due diligence, market analysis, zoning research, and gathers intelligence on opportunities.",
+        isEnabled: true,
+        autonomyLevel: "supervised",
+        config: {
+          autoApproveCategories: ["research", "report", "analysis"],
+        },
+      },
+    ];
+
+    const createdAgents: VaAgent[] = [];
+    for (const agent of defaultAgents) {
+      const created = await this.createVaAgent(agent);
+      createdAgents.push(created);
+    }
+    
+    return createdAgents;
+  }
+
+  // VA Actions
+  async getVaActions(orgId: number, options?: { agentId?: number; status?: string; limit?: number }) {
+    let query = db.select().from(vaActions)
+      .where(eq(vaActions.organizationId, orgId))
+      .orderBy(desc(vaActions.createdAt));
+    
+    const conditions = [eq(vaActions.organizationId, orgId)];
+    if (options?.agentId) {
+      conditions.push(eq(vaActions.agentId, options.agentId));
+    }
+    if (options?.status) {
+      conditions.push(eq(vaActions.status, options.status));
+    }
+    
+    const result = await db.select().from(vaActions)
+      .where(and(...conditions))
+      .orderBy(desc(vaActions.createdAt))
+      .limit(options?.limit || 100);
+    
+    return result;
+  }
+
+  async getVaAction(id: number) {
+    const [action] = await db.select().from(vaActions).where(eq(vaActions.id, id));
+    return action;
+  }
+
+  async createVaAction(action: InsertVaAction) {
+    const [newAction] = await db.insert(vaActions).values(action).returning();
+    return newAction;
+  }
+
+  async updateVaAction(id: number, updates: Partial<VaAction>) {
+    // Remove id and createdAt from updates to prevent accidental modification
+    const { id: _id, createdAt: _createdAt, ...safeUpdates } = updates as any;
+    const [updated] = await db.update(vaActions)
+      .set({ ...safeUpdates, updatedAt: new Date() })
+      .where(eq(vaActions.id, id))
+      .returning();
+    return updated;
+  }
+
+  async approveVaAction(id: number, userId: string) {
+    const [updated] = await db.update(vaActions)
+      .set({
+        status: "approved",
+        approvedBy: userId,
+        approvedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(vaActions.id, id))
+      .returning();
+    return updated;
+  }
+
+  async rejectVaAction(id: number, reason: string) {
+    const [updated] = await db.update(vaActions)
+      .set({
+        status: "rejected",
+        rejectionReason: reason,
+        updatedAt: new Date(),
+      })
+      .where(eq(vaActions.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getPendingActionsCount(orgId: number) {
+    const [result] = await db.select({ count: count() }).from(vaActions)
+      .where(and(
+        eq(vaActions.organizationId, orgId),
+        eq(vaActions.status, "proposed")
+      ));
+    return result?.count || 0;
+  }
+
+  // VA Briefings
+  async getVaBriefings(orgId: number, limit: number = 10) {
+    return await db.select().from(vaBriefings)
+      .where(eq(vaBriefings.organizationId, orgId))
+      .orderBy(desc(vaBriefings.createdAt))
+      .limit(limit);
+  }
+
+  async getLatestBriefing(orgId: number) {
+    const [briefing] = await db.select().from(vaBriefings)
+      .where(eq(vaBriefings.organizationId, orgId))
+      .orderBy(desc(vaBriefings.createdAt))
+      .limit(1);
+    return briefing;
+  }
+
+  async createVaBriefing(briefing: InsertVaBriefing) {
+    const [newBriefing] = await db.insert(vaBriefings).values(briefing).returning();
+    return newBriefing;
+  }
+
+  async markBriefingRead(id: number) {
+    const [updated] = await db.update(vaBriefings)
+      .set({ readAt: new Date() })
+      .where(eq(vaBriefings.id, id))
+      .returning();
+    return updated;
+  }
+
+  // VA Calendar Events
+  async getVaCalendarEvents(orgId: number, startDate?: Date, endDate?: Date) {
+    const conditions = [eq(vaCalendarEvents.organizationId, orgId)];
+    
+    if (startDate) {
+      conditions.push(gte(vaCalendarEvents.startTime, startDate));
+    }
+    if (endDate) {
+      conditions.push(lte(vaCalendarEvents.startTime, endDate));
+    }
+    
+    return await db.select().from(vaCalendarEvents)
+      .where(and(...conditions))
+      .orderBy(vaCalendarEvents.startTime);
+  }
+
+  async createVaCalendarEvent(event: InsertVaCalendarEvent) {
+    const [newEvent] = await db.insert(vaCalendarEvents).values(event).returning();
+    return newEvent;
+  }
+
+  async updateVaCalendarEvent(id: number, updates: Partial<InsertVaCalendarEvent>) {
+    const [updated] = await db.update(vaCalendarEvents)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(vaCalendarEvents.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteVaCalendarEvent(id: number) {
+    await db.delete(vaCalendarEvents).where(eq(vaCalendarEvents.id, id));
+  }
+
+  // VA Templates
+  async getVaTemplates(orgId: number, category?: string) {
+    const conditions = [eq(vaTemplates.organizationId, orgId)];
+    if (category) {
+      conditions.push(eq(vaTemplates.category, category));
+    }
+    
+    return await db.select().from(vaTemplates)
+      .where(and(...conditions))
+      .orderBy(vaTemplates.name);
+  }
+
+  async createVaTemplate(template: InsertVaTemplate) {
+    const [newTemplate] = await db.insert(vaTemplates).values(template).returning();
+    return newTemplate;
+  }
+
+  async updateVaTemplate(id: number, updates: Partial<InsertVaTemplate>) {
+    const [updated] = await db.update(vaTemplates)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(vaTemplates.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteVaTemplate(id: number) {
+    await db.delete(vaTemplates).where(eq(vaTemplates.id, id));
   }
 }
 

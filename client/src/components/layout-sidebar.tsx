@@ -11,7 +11,8 @@ import {
   Menu,
   MessageSquare,
   Mail,
-  GitBranch
+  GitBranch,
+  UsersRound
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useState } from "react";
@@ -27,6 +28,7 @@ const navItems = [
   { label: "Campaigns", icon: Mail, href: "/campaigns" },
   { label: "AI Agents", icon: Bot, href: "/agents" },
   { label: "AI Command Center", icon: MessageSquare, href: "/command-center" },
+  { label: "AI Team", icon: UsersRound, href: "/ai-team" },
   { label: "Settings", icon: Settings, href: "/settings" },
 ];
 

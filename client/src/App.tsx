@@ -14,6 +14,7 @@ import CampaignsPage from "@/pages/campaigns";
 import DealsPage from "@/pages/deals";
 import AgentsPage from "@/pages/agents";
 import CommandCenterPage from "@/pages/command-center";
+import AITeamPage from "@/pages/ai-team";
 import SettingsPage from "@/pages/settings";
 import AuthPage from "@/pages/auth-page";
 import BorrowerPortal from "@/pages/borrower-portal";
@@ -75,6 +76,9 @@ function Router() {
       </Route>
       <Route path="/command-center">
         {() => <ProtectedRoute component={CommandCenterPage} />}
+      </Route>
+      <Route path="/ai-team">
+        {() => <ProtectedRoute component={AITeamPage} />}
       </Route>
       <Route path="/settings">
         {() => <ProtectedRoute component={SettingsPage} />}

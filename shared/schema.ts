@@ -577,6 +577,217 @@ export const aiMessages = pgTable("ai_messages", {
 });
 
 // ============================================
+// AI VIRTUAL ASSISTANTS (Enhanced Agent System)
+// ============================================
+
+// VA Agent Registry - tracks each VA employee with their settings
+export const vaAgents = pgTable("va_agents", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  agentType: text("agent_type").notNull(), 
+  // executive, sales, acquisitions, marketing, collections, research
+  name: text("name").notNull(),
+  avatar: text("avatar"), // URL or lucide icon name
+  description: text("description"),
+  
+  // Status & Activity
+  isEnabled: boolean("is_enabled").notNull().default(true),
+  isActive: boolean("is_active").notNull().default(false), // currently processing something
+  lastActiveAt: timestamp("last_active_at"),
+  
+  // Behavior Settings
+  autonomyLevel: text("autonomy_level").notNull().default("supervised"),
+  // full_auto: takes action without asking
+  // supervised: proposes actions, waits for approval on important ones
+  // manual: only acts when explicitly asked
+  
+  // Agent-specific configuration
+  config: jsonb("config").$type<{
+    systemPrompt?: string;
+    workingHours?: { start: string; end: string; timezone: string };
+    responseDelay?: number; // minutes to wait before auto-responding
+    maxActionsPerDay?: number;
+    notifyOnAction?: boolean;
+    autoApproveCategories?: string[]; // action categories that don't need approval
+    escalateToHuman?: string[]; // triggers that should escalate to human
+    customInstructions?: string;
+  }>(),
+  
+  // Performance metrics
+  metrics: jsonb("metrics").$type<{
+    totalActions: number;
+    successfulActions: number;
+    pendingApproval: number;
+    lastDayActions: number;
+  }>(),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// VA Action Queue - tracks all proposed and completed actions
+export const vaActions = pgTable("va_actions", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  agentId: integer("agent_id").references(() => vaAgents.id).notNull(),
+  
+  // Action details
+  actionType: text("action_type").notNull(),
+  // Common actions: send_email, send_sms, update_lead, create_offer, 
+  // schedule_callback, propose_campaign, record_payment, send_reminder, etc.
+  category: text("category").notNull(),
+  // crm, marketing, finance, communication, research, admin
+  
+  title: text("title").notNull(),
+  description: text("description"),
+  
+  // Status tracking
+  status: text("status").notNull().default("proposed"),
+  // proposed: waiting for approval
+  // approved: ready to execute
+  // executing: currently running
+  // completed: successfully finished
+  // failed: execution failed
+  // rejected: user rejected the action
+  // cancelled: cancelled before execution
+  
+  priority: integer("priority").notNull().default(5), // 1=urgent, 5=normal, 10=low
+  
+  // Action payload
+  input: jsonb("input").notNull(), // parameters for the action
+  output: jsonb("output"), // result of execution
+  error: text("error"),
+  
+  // Related entities
+  relatedLeadId: integer("related_lead_id").references(() => leads.id),
+  relatedPropertyId: integer("related_property_id").references(() => properties.id),
+  relatedNoteId: integer("related_note_id").references(() => notes.id),
+  relatedCampaignId: integer("related_campaign_id").references(() => campaigns.id),
+  
+  // Approval tracking
+  requiresApproval: boolean("requires_approval").notNull().default(true),
+  approvedBy: text("approved_by"),
+  approvedAt: timestamp("approved_at"),
+  rejectionReason: text("rejection_reason"),
+  
+  // Timing
+  scheduledFor: timestamp("scheduled_for"), // when to execute (for scheduled actions)
+  executedAt: timestamp("executed_at"),
+  executionTimeMs: integer("execution_time_ms"),
+  
+  // Context
+  reasoning: text("reasoning"), // AI's explanation for why this action
+  confidence: numeric("confidence"), // 0-100 confidence score
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// VA Daily Briefings - generated summaries and insights
+export const vaBriefings = pgTable("va_briefings", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  
+  briefingType: text("briefing_type").notNull(), // daily, weekly, monthly, alert
+  title: text("title").notNull(),
+  summary: text("summary").notNull(),
+  
+  // Sections of the briefing
+  sections: jsonb("sections").$type<{
+    title: string;
+    content: string;
+    priority: number;
+    actionItems?: { text: string; actionId?: number }[];
+  }[]>(),
+  
+  // Key metrics snapshot
+  metrics: jsonb("metrics").$type<{
+    newLeads: number;
+    activeDeals: number;
+    paymentsReceived: number;
+    overduePayments: number;
+    pendingActions: number;
+    campaignsActive: number;
+  }>(),
+  
+  // Recommended actions
+  recommendations: jsonb("recommendations").$type<{
+    text: string;
+    priority: number;
+    agentType: string;
+    actionType?: string;
+  }[]>(),
+  
+  readAt: timestamp("read_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// VA Calendar Events - scheduled tasks and reminders
+export const vaCalendarEvents = pgTable("va_calendar_events", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  agentId: integer("agent_id").references(() => vaAgents.id),
+  
+  eventType: text("event_type").notNull(),
+  // callback, follow_up, campaign_launch, payment_due, task_deadline, review_needed
+  
+  title: text("title").notNull(),
+  description: text("description"),
+  
+  // Timing
+  startTime: timestamp("start_time").notNull(),
+  endTime: timestamp("end_time"),
+  allDay: boolean("all_day").default(false),
+  
+  // Recurrence
+  recurring: boolean("recurring").default(false),
+  recurrenceRule: text("recurrence_rule"), // iCal RRULE format
+  
+  // Related entities
+  relatedLeadId: integer("related_lead_id").references(() => leads.id),
+  relatedPropertyId: integer("related_property_id").references(() => properties.id),
+  relatedActionId: integer("related_action_id").references(() => vaActions.id),
+  
+  // Status
+  status: text("status").notNull().default("scheduled"),
+  // scheduled, completed, cancelled, rescheduled
+  completedAt: timestamp("completed_at"),
+  
+  // Notifications
+  reminderMinutes: integer("reminder_minutes").default(30),
+  reminded: boolean("reminded").default(false),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// VA Templates - reusable templates for common actions
+export const vaTemplates = pgTable("va_templates", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  
+  name: text("name").notNull(),
+  category: text("category").notNull(), // email, sms, offer, campaign, document
+  agentTypes: text("agent_types").array(), // which agents can use this template
+  
+  subject: text("subject"), // for emails
+  content: text("content").notNull(),
+  
+  // Variables that can be substituted
+  variables: jsonb("variables").$type<{
+    name: string;
+    description: string;
+    defaultValue?: string;
+  }[]>(),
+  
+  isActive: boolean("is_active").default(true),
+  usageCount: integer("usage_count").default(0),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// ============================================
 // RELATIONS
 // ============================================
 
@@ -683,6 +894,23 @@ export const insertAiMemorySchema = createInsertSchema(aiMemory).omit({ id: true
 export const insertAiConversationSchema = createInsertSchema(aiConversations).omit({ id: true });
 export const insertAiMessageSchema = createInsertSchema(aiMessages).omit({ id: true });
 
+// VA (Virtual Assistant) System
+export const insertVaAgentSchema = createInsertSchema(vaAgents).omit({ 
+  id: true, createdAt: true, updatedAt: true 
+});
+export const insertVaActionSchema = createInsertSchema(vaActions).omit({ 
+  id: true, createdAt: true, updatedAt: true 
+});
+export const insertVaBriefingSchema = createInsertSchema(vaBriefings).omit({ 
+  id: true, createdAt: true 
+});
+export const insertVaCalendarEventSchema = createInsertSchema(vaCalendarEvents).omit({ 
+  id: true, createdAt: true, updatedAt: true 
+});
+export const insertVaTemplateSchema = createInsertSchema(vaTemplates).omit({ 
+  id: true, createdAt: true, updatedAt: true 
+});
+
 // ============================================
 // TYPE EXPORTS
 // ============================================
@@ -762,6 +990,27 @@ export type InsertAiConversation = z.infer<typeof insertAiConversationSchema>;
 
 export type AiMessage = typeof aiMessages.$inferSelect;
 export type InsertAiMessage = z.infer<typeof insertAiMessageSchema>;
+
+// VA (Virtual Assistant) System
+export type VaAgent = typeof vaAgents.$inferSelect;
+export type InsertVaAgent = z.infer<typeof insertVaAgentSchema>;
+
+export type VaAction = typeof vaActions.$inferSelect;
+export type InsertVaAction = z.infer<typeof insertVaActionSchema>;
+
+export type VaBriefing = typeof vaBriefings.$inferSelect;
+export type InsertVaBriefing = z.infer<typeof insertVaBriefingSchema>;
+
+export type VaCalendarEvent = typeof vaCalendarEvents.$inferSelect;
+export type InsertVaCalendarEvent = z.infer<typeof insertVaCalendarEventSchema>;
+
+export type VaTemplate = typeof vaTemplates.$inferSelect;
+export type InsertVaTemplate = z.infer<typeof insertVaTemplateSchema>;
+
+// VA Agent Types
+export type VaAgentType = "executive" | "sales" | "acquisitions" | "marketing" | "collections" | "research";
+export type VaAutonomyLevel = "full_auto" | "supervised" | "manual";
+export type VaActionStatus = "proposed" | "approved" | "executing" | "completed" | "failed" | "rejected" | "cancelled";
 
 // ============================================
 // SUBSCRIPTION TIERS CONFIGURATION

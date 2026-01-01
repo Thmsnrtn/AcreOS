@@ -430,8 +430,7 @@ export async function registerRoutes(
       
       await storage.updateNote(note.id, { 
         currentBalance: String(newBalance),
-        status: noteStatus,
-        paymentsMade: paymentsCount
+        status: noteStatus
       });
       
       res.status(201).json(payment);
@@ -657,6 +656,262 @@ export async function registerRoutes(
     
     await storage.deleteAiConversation(conversationId);
     res.json({ success: true });
+  });
+  
+  // ============================================
+  // VA (VIRTUAL ASSISTANTS) SYSTEM
+  // ============================================
+  
+  // Get all VA agents for the organization
+  api.get("/api/va/agents", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const agents = await storage.initializeVaAgents(org.id);
+      res.json(agents);
+    } catch (error: any) {
+      console.error("Error fetching VA agents:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+  
+  // Get a specific VA agent
+  api.get("/api/va/agents/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const agentId = parseInt(req.params.id);
+      const agent = await storage.getVaAgent(org.id, agentId);
+      
+      if (!agent) {
+        return res.status(404).json({ message: "Agent not found" });
+      }
+      
+      res.json(agent);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+  
+  // Update a VA agent settings
+  api.patch("/api/va/agents/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const agentId = parseInt(req.params.id);
+      const agent = await storage.getVaAgent(org.id, agentId);
+      
+      if (!agent) {
+        return res.status(404).json({ message: "Agent not found" });
+      }
+      
+      const updated = await storage.updateVaAgent(agentId, req.body);
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+  
+  // Get VA actions (activity feed)
+  api.get("/api/va/actions", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const options: { agentId?: number; status?: string; limit?: number } = {};
+      
+      if (req.query.agentId) options.agentId = parseInt(req.query.agentId as string);
+      if (req.query.status) options.status = req.query.status as string;
+      if (req.query.limit) options.limit = parseInt(req.query.limit as string);
+      
+      const actions = await storage.getVaActions(org.id, options);
+      res.json(actions);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+  
+  // Get pending actions count
+  api.get("/api/va/actions/pending/count", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const count = await storage.getPendingActionsCount(org.id);
+      res.json({ count });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+  
+  // Approve an action
+  api.post("/api/va/actions/:id/approve", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { vaAgentService } = await import("./ai/vaService");
+      const user = req.user as any;
+      const userId = user.claims?.sub || user.id;
+      const actionId = parseInt(req.params.id);
+      
+      const action = await storage.getVaAction(actionId);
+      if (!action) {
+        return res.status(404).json({ message: "Action not found" });
+      }
+      
+      const updated = await storage.approveVaAction(actionId, userId);
+      
+      // Execute the action after approval
+      const executionResult = await vaAgentService.executeAgentAction(updated);
+      
+      // Get the final updated action with execution result
+      const finalAction = await storage.getVaAction(actionId);
+      res.json({ action: finalAction, executionResult });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+  
+  // Reject an action
+  api.post("/api/va/actions/:id/reject", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const actionId = parseInt(req.params.id);
+      const { reason } = req.body;
+      
+      const action = await storage.getVaAction(actionId);
+      if (!action) {
+        return res.status(404).json({ message: "Action not found" });
+      }
+      
+      const updated = await storage.rejectVaAction(actionId, reason || "Rejected by user");
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+  
+  // Process a task with an agent
+  api.post("/api/va/agents/:type/task", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { vaAgentService } = await import("./ai/vaService");
+      const org = (req as any).organization;
+      const agentType = req.params.type as any;
+      const { task } = req.body;
+      
+      if (!task) {
+        return res.status(400).json({ message: "Task description is required" });
+      }
+      
+      const result = await vaAgentService.processAgentTask(org.id, agentType, task);
+      res.json(result);
+    } catch (error: any) {
+      console.error("VA Task error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+  
+  // Get VA agent status
+  api.get("/api/va/agents/:type/status", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { vaAgentService } = await import("./ai/vaService");
+      const org = (req as any).organization;
+      const agentType = req.params.type as any;
+      
+      const status = await vaAgentService.getAgentStatus(org.id, agentType);
+      res.json(status);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+  
+  // Execute action manually
+  api.post("/api/va/actions/:id/execute", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { vaAgentService } = await import("./ai/vaService");
+      const actionId = parseInt(req.params.id);
+      
+      const action = await storage.getVaAction(actionId);
+      if (!action) {
+        return res.status(404).json({ message: "Action not found" });
+      }
+      
+      if (action.status !== "approved") {
+        return res.status(400).json({ message: "Action must be approved before execution" });
+      }
+      
+      const result = await vaAgentService.executeAgentAction(action);
+      const finalAction = await storage.getVaAction(actionId);
+      res.json({ action: finalAction, executionResult: result });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+  
+  // Process autonomous actions (for background job)
+  api.post("/api/va/actions/process-autonomous", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { vaAgentService } = await import("./ai/vaService");
+      const org = (req as any).organization;
+      
+      const result = await vaAgentService.processAutonomousActions(org.id);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+  
+  // Get briefings
+  api.get("/api/va/briefings", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const limit = parseInt(req.query.limit as string) || 10;
+      const briefings = await storage.getVaBriefings(org.id, limit);
+      res.json(briefings);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+  
+  // Generate a new briefing
+  api.post("/api/va/briefings/generate", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { vaAgentService } = await import("./ai/vaService");
+      const org = (req as any).organization;
+      const briefing = await vaAgentService.generateBriefing(org.id);
+      res.json(briefing);
+    } catch (error: any) {
+      console.error("Briefing generation error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+  
+  // Mark briefing as read
+  api.post("/api/va/briefings/:id/read", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const briefingId = parseInt(req.params.id);
+      const updated = await storage.markBriefingRead(briefingId);
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+  
+  // Get calendar events
+  api.get("/api/va/calendar", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const startDate = req.query.start ? new Date(req.query.start as string) : undefined;
+      const endDate = req.query.end ? new Date(req.query.end as string) : undefined;
+      const events = await storage.getVaCalendarEvents(org.id, startDate, endDate);
+      res.json(events);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+  
+  // Create calendar event
+  api.post("/api/va/calendar", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const event = await storage.createVaCalendarEvent({
+        ...req.body,
+        organizationId: org.id
+      });
+      res.json(event);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
   });
   
   // ============================================
