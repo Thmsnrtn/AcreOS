@@ -16,7 +16,6 @@ export function useCreateNote() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: InsertNote) => {
-      // Ensure date objects are properly serialized/coerced
       const validated = api.notes.create.input.parse({
         ...data,
         startDate: new Date(data.startDate),
@@ -30,6 +29,22 @@ export function useCreateNote() {
       });
       if (!res.ok) throw new Error("Failed to create note");
       return api.notes.create.responses[201].parse(await res.json());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.notes.list.path] });
+    },
+  });
+}
+
+export function useDeleteNote() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`/api/notes/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to delete note");
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.notes.list.path] });

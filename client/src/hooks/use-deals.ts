@@ -40,3 +40,16 @@ export function useUpdateDeal() {
     },
   });
 }
+
+export function useDeleteDeal() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("DELETE", `/api/deals/${id}`);
+      if (!res.ok) throw new Error("Failed to delete deal");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/deals'] });
+    },
+  });
+}

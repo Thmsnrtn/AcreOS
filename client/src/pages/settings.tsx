@@ -4,14 +4,17 @@ import {
   useStripeProducts, 
   useStripeSubscription,
   useCreateCheckoutSession,
-  useCreatePortalSession
+  useCreatePortalSession,
+  useUpdateOrganization
 } from "@/hooks/use-organization";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, Crown, Check, ExternalLink, CreditCard, Loader2 } from "lucide-react";
+import { Building2, Crown, Check, ExternalLink, CreditCard, Loader2, Lightbulb, RotateCcw } from "lucide-react";
 import { useEffect } from "react";
 import { useSearch } from "wouter";
 
@@ -26,6 +29,10 @@ export default function Settings() {
   
   const checkoutMutation = useCreateCheckoutSession();
   const portalMutation = useCreatePortalSession();
+  const updateOrgMutation = useUpdateOrganization();
+  
+  const settings = organization?.settings as Record<string, unknown> | null;
+  const showTips = settings?.showTips !== false;
 
   useEffect(() => {
     const subscriptionStatus = searchParams.get("subscription");
@@ -178,6 +185,82 @@ export default function Settings() {
                     </p>
                   )}
                 </>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Onboarding & Help Settings */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Lightbulb className="w-5 h-5" />
+                Help & Tips
+              </CardTitle>
+              <CardDescription>Configure onboarding assistance and contextual help</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="flex items-center justify-between gap-4">
+                <div className="space-y-0.5">
+                  <Label htmlFor="show-tips" className="text-base">Show Tips</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Display helpful tips and the getting started checklist
+                  </p>
+                </div>
+                <Switch
+                  id="show-tips"
+                  checked={showTips}
+                  onCheckedChange={async (checked) => {
+                    await updateOrgMutation.mutateAsync({
+                      settings: {
+                        ...(organization?.settings || {}),
+                        showTips: checked,
+                        checklistDismissed: checked ? false : settings?.checklistDismissed,
+                      },
+                    });
+                    toast({
+                      title: checked ? "Tips enabled" : "Tips disabled",
+                      description: checked 
+                        ? "You'll now see helpful tips throughout the app."
+                        : "Tips have been hidden. You can re-enable them anytime.",
+                    });
+                  }}
+                  disabled={updateOrgMutation.isPending}
+                  data-testid="switch-show-tips"
+                />
+              </div>
+              
+              {settings?.onboardingCompleted && (
+                <div className="flex items-center justify-between gap-4 pt-4 border-t">
+                  <div className="space-y-0.5">
+                    <Label className="text-base">Restart Onboarding</Label>
+                    <p className="text-sm text-muted-foreground">
+                      View the welcome tour again
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      await updateOrgMutation.mutateAsync({
+                        settings: {
+                          ...(organization?.settings || {}),
+                          onboardingCompleted: false,
+                          checklistDismissed: false,
+                          showTips: true,
+                        },
+                      });
+                      toast({
+                        title: "Onboarding reset",
+                        description: "Refresh the page to see the welcome tour.",
+                      });
+                    }}
+                    disabled={updateOrgMutation.isPending}
+                    data-testid="button-restart-onboarding"
+                  >
+                    <RotateCcw className="w-4 h-4 mr-2" />
+                    Restart Tour
+                  </Button>
+                </div>
               )}
             </CardContent>
           </Card>

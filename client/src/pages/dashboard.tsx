@@ -9,6 +9,8 @@ import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, 
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { OnboardingModal } from "@/components/onboarding-modal";
+import { GettingStartedChecklist } from "@/components/getting-started-checklist";
 
 export default function Dashboard() {
   const { data: organization, isLoading: orgLoading } = useOrganization();
@@ -62,6 +64,7 @@ export default function Dashboard() {
   return (
     <div className="flex min-h-screen bg-background desert-gradient">
       <Sidebar />
+      <OnboardingModal />
       <main className="flex-1 md:ml-[17rem] p-6 md:p-8 pb-24 md:pb-8">
         <div className="max-w-7xl mx-auto space-y-8">
           
@@ -147,6 +150,8 @@ export default function Dashboard() {
               />
             </motion.div>
           </motion.div>
+
+          <GettingStartedChecklist />
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <motion.div 

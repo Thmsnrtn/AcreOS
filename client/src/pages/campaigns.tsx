@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, Mail, MessageSquare, Send, Calendar, BarChart3, Users, Clock, Play, Pause, CheckCircle, FileText, Target, TrendingUp, Eye } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
 
@@ -141,6 +142,7 @@ export default function CampaignsPage() {
                 campaigns={campaigns || []} 
                 isLoading={isLoading}
                 onSelect={setSelectedCampaign}
+                onCreateNew={() => setIsCreateOpen(true)}
               />
             </TabsContent>
             <TabsContent value="active" className="mt-4">
@@ -148,6 +150,7 @@ export default function CampaignsPage() {
                 campaigns={campaigns?.filter(c => c.status === 'active') || []} 
                 isLoading={isLoading}
                 onSelect={setSelectedCampaign}
+                onCreateNew={() => setIsCreateOpen(true)}
               />
             </TabsContent>
             <TabsContent value="scheduled" className="mt-4">
@@ -155,6 +158,7 @@ export default function CampaignsPage() {
                 campaigns={campaigns?.filter(c => c.status === 'scheduled') || []} 
                 isLoading={isLoading}
                 onSelect={setSelectedCampaign}
+                onCreateNew={() => setIsCreateOpen(true)}
               />
             </TabsContent>
             <TabsContent value="completed" className="mt-4">
@@ -162,6 +166,7 @@ export default function CampaignsPage() {
                 campaigns={campaigns?.filter(c => c.status === 'completed') || []} 
                 isLoading={isLoading}
                 onSelect={setSelectedCampaign}
+                onCreateNew={() => setIsCreateOpen(true)}
               />
             </TabsContent>
           </Tabs>
@@ -178,10 +183,11 @@ export default function CampaignsPage() {
   );
 }
 
-function CampaignList({ campaigns, isLoading, onSelect }: { 
+function CampaignList({ campaigns, isLoading, onSelect, onCreateNew }: { 
   campaigns: Campaign[]; 
   isLoading: boolean;
   onSelect: (campaign: Campaign) => void;
+  onCreateNew: () => void;
 }) {
   if (isLoading) {
     return (
@@ -193,13 +199,13 @@ function CampaignList({ campaigns, isLoading, onSelect }: {
 
   if (campaigns.length === 0) {
     return (
-      <Card className="floating-window">
-        <CardContent className="py-12 text-center">
-          <Mail className="w-12 h-12 mx-auto text-muted-foreground/50 mb-4" />
-          <h3 className="text-lg font-medium mb-2">No campaigns yet</h3>
-          <p className="text-muted-foreground">Create your first marketing campaign to start reaching leads.</p>
-        </CardContent>
-      </Card>
+      <EmptyState
+        icon={Target}
+        title="No marketing campaigns"
+        description="Launch your first campaign to start reaching leads with direct mail, email, or SMS outreach."
+        actionLabel="Launch Your First Campaign"
+        onAction={onCreateNew}
+      />
     );
   }
 

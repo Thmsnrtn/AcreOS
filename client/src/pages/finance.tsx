@@ -1,5 +1,5 @@
 import { Sidebar } from "@/components/layout-sidebar";
-import { useNotes, useCreateNote } from "@/hooks/use-notes";
+import { useNotes, useCreateNote, useDeleteNote } from "@/hooks/use-notes";
 import { usePayments, useRecordPayment } from "@/hooks/use-payments";
 import { useLeads } from "@/hooks/use-leads";
 import { useProperties } from "@/hooks/use-properties";
@@ -16,9 +16,12 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
-import { Plus, DollarSign, Calendar, TrendingUp, AlertTriangle, CheckCircle, Clock, User, MapPin, FileText, CreditCard, X, Eye, Receipt, Calculator } from "lucide-react";
+import { Plus, DollarSign, Calendar, TrendingUp, AlertTriangle, CheckCircle, Clock, User, MapPin, FileText, CreditCard, X, Eye, Receipt, Calculator, Trash2, Loader2 } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { format, differenceInDays, addMonths, parseISO } from "date-fns";
+import { format, addMonths } from "date-fns";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 
 type NoteWithDetails = Note & {
   borrower?: Lead;
@@ -31,6 +34,8 @@ export default function FinancePage() {
   const { data: properties } = useProperties();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedNote, setSelectedNote] = useState<NoteWithDetails | null>(null);
+  const [deletingNote, setDeletingNote] = useState<NoteWithDetails | null>(null);
+  const { mutate: deleteNote, isPending: isDeleting } = useDeleteNote();
 
   const enrichedNotes: NoteWithDetails[] = (notes || []).map(note => ({
     ...note,
@@ -55,10 +60,21 @@ export default function FinancePage() {
 
   const getLoanHealth = (note: NoteWithDetails) => {
     if (!note.nextPaymentDate) return { status: 'good', label: 'Current', color: 'text-emerald-600' };
-    const daysUntilDue = differenceInDays(new Date(note.nextPaymentDate), new Date());
+    const daysUntilDue = Math.floor((new Date(note.nextPaymentDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
     if (daysUntilDue < 0) return { status: 'late', label: `${Math.abs(daysUntilDue)} days late`, color: 'text-red-600' };
     if (daysUntilDue <= 5) return { status: 'due', label: `Due in ${daysUntilDue} days`, color: 'text-amber-600' };
     return { status: 'good', label: 'Current', color: 'text-emerald-600' };
+  };
+
+  const handleDelete = () => {
+    if (deletingNote) {
+      deleteNote(deletingNote.id, {
+        onSuccess: () => {
+          setDeletingNote(null);
+          setSelectedNote(null);
+        },
+      });
+    }
   };
 
   return (
@@ -182,8 +198,14 @@ export default function FinancePage() {
                     </TableRow>
                   ) : enrichedNotes?.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center h-24 text-muted-foreground">
-                        No notes found. Create your first promissory note to get started.
+                      <TableCell colSpan={8} className="p-0">
+                        <EmptyState
+                          icon={FileText}
+                          title="No promissory notes yet"
+                          description="Create a note to track financing. Manage seller financing, track payments, and generate amortization schedules."
+                          actionLabel="Create Your First Note"
+                          onAction={() => setIsCreateOpen(true)}
+                        />
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -250,14 +272,26 @@ export default function FinancePage() {
       {selectedNote && (
         <NoteDetailDrawer 
           note={selectedNote} 
-          onClose={() => setSelectedNote(null)} 
+          onClose={() => setSelectedNote(null)}
+          onDelete={() => setDeletingNote(selectedNote)}
         />
       )}
+
+      <ConfirmDialog
+        open={!!deletingNote}
+        onOpenChange={(open) => !open && setDeletingNote(null)}
+        title="Delete Note"
+        description={`Are you sure you want to delete this promissory note for ${deletingNote?.borrower ? `${deletingNote.borrower.firstName} ${deletingNote.borrower.lastName}` : `Borrower #${deletingNote?.borrowerId}`}? This action cannot be undone and will permanently remove the note and its payment history.`}
+        confirmLabel="Delete Note"
+        onConfirm={handleDelete}
+        isLoading={isDeleting}
+        variant="destructive"
+      />
     </div>
   );
 }
 
-function NoteDetailDrawer({ note, onClose }: { note: NoteWithDetails; onClose: () => void }) {
+function NoteDetailDrawer({ note, onClose, onDelete }: { note: NoteWithDetails; onClose: () => void; onDelete: () => void }) {
   const { data: payments, isLoading: paymentsLoading } = usePayments(note.id);
   const [showRecordPayment, setShowRecordPayment] = useState(false);
 
@@ -286,9 +320,14 @@ function NoteDetailDrawer({ note, onClose }: { note: NoteWithDetails; onClose: (
                 {note.borrower ? `${note.borrower.firstName} ${note.borrower.lastName}` : `Borrower #${note.borrowerId}`}
               </p>
             </div>
-            <Button size="icon" variant="ghost" onClick={onClose} data-testid="button-close-drawer">
-              <X className="w-5 h-5" />
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button size="icon" variant="ghost" onClick={onDelete} data-testid="button-delete-note">
+                <Trash2 className="w-5 h-5 text-destructive" />
+              </Button>
+              <Button size="icon" variant="ghost" onClick={onClose} data-testid="button-close-drawer">
+                <X className="w-5 h-5" />
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -369,7 +408,12 @@ function NoteDetailDrawer({ note, onClose }: { note: NoteWithDetails; onClose: (
                     <TableBody>
                       {paymentsLoading ? (
                         <TableRow>
-                          <TableCell colSpan={5} className="text-center h-16">Loading...</TableCell>
+                          <TableCell colSpan={5} className="text-center h-16">
+                            <div className="flex items-center justify-center gap-2">
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              Loading...
+                            </div>
+                          </TableCell>
                         </TableRow>
                       ) : payments?.length === 0 ? (
                         <TableRow>
@@ -537,7 +581,6 @@ function RecordPaymentModal({ note, onClose }: { note: NoteWithDetails; onClose:
   const [amount, setAmount] = useState(note.monthlyPayment?.toString() || '');
   const [method, setMethod] = useState('ach');
 
-  const monthlyPayment = Number(note.monthlyPayment || 0);
   const interestRate = Number(note.interestRate || 0) / 100 / 12;
   const balance = Number(note.currentBalance || 0);
   
@@ -574,7 +617,7 @@ function RecordPaymentModal({ note, onClose }: { note: NoteWithDetails; onClose:
               type="number"
               value={amount}
               onChange={e => setAmount(e.target.value)}
-              placeholder={monthlyPayment.toString()}
+              placeholder={String(Number(note.monthlyPayment || 0))}
               data-testid="input-payment-amount"
             />
           </div>
@@ -610,11 +653,18 @@ function RecordPaymentModal({ note, onClose }: { note: NoteWithDetails; onClose:
           </div>
 
           <div className="flex gap-2">
-            <Button variant="outline" onClick={onClose} className="flex-1">
+            <Button variant="outline" onClick={onClose} className="flex-1" disabled={isPending}>
               Cancel
             </Button>
             <Button onClick={handleSubmit} disabled={isPending} className="flex-1" data-testid="button-submit-payment">
-              {isPending ? 'Recording...' : 'Record Payment'}
+              {isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Recording...
+                </>
+              ) : (
+                "Record Payment"
+              )}
             </Button>
           </div>
         </CardContent>
@@ -629,7 +679,7 @@ function NoteForm({ onSuccess }: { onSuccess: () => void }) {
   const { data: properties } = useProperties();
 
   const availableProperties = properties?.filter(p => p.status !== 'sold') || [];
-  const buyers = leads?.filter(l => l.type === 'buyer') || [];
+  const buyers = leads?.filter(l => l.type === 'buyer') || leads || [];
 
   const form = useForm<z.infer<typeof insertNoteSchema>>({
     resolver: zodResolver(insertNoteSchema),
@@ -668,141 +718,169 @@ function NoteForm({ onSuccess }: { onSuccess: () => void }) {
   };
 
   return (
-    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4">
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Borrower</label>
-          <Select onValueChange={(val) => form.setValue("borrowerId", parseInt(val))}>
-            <SelectTrigger data-testid="select-borrower">
-              <SelectValue placeholder="Select buyer" />
-            </SelectTrigger>
-            <SelectContent>
-              {buyers.length === 0 ? (
-                <SelectItem value="none" disabled>No buyers available</SelectItem>
-              ) : (
-                buyers.map(lead => (
-                  <SelectItem key={lead.id} value={lead.id.toString()}>
-                    {lead.firstName} {lead.lastName}
-                  </SelectItem>
-                ))
-              )}
-            </SelectContent>
-          </Select>
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4">
+        <div className="grid grid-cols-2 gap-4">
+          <FormField
+            control={form.control}
+            name="borrowerId"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Borrower</FormLabel>
+                <Select onValueChange={(val) => field.onChange(parseInt(val))}>
+                  <FormControl>
+                    <SelectTrigger data-testid="select-borrower">
+                      <SelectValue placeholder="Select buyer" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {buyers.length === 0 ? (
+                      <SelectItem value="none" disabled>No buyers available</SelectItem>
+                    ) : (
+                      buyers.map(lead => (
+                        <SelectItem key={lead.id} value={lead.id.toString()}>
+                          {lead.firstName} {lead.lastName}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="propertyId"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Property</FormLabel>
+                <Select onValueChange={(val) => field.onChange(parseInt(val))}>
+                  <FormControl>
+                    <SelectTrigger data-testid="select-property">
+                      <SelectValue placeholder="Select property" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {availableProperties.length === 0 ? (
+                      <SelectItem value="none" disabled>No properties available</SelectItem>
+                    ) : (
+                      availableProperties.map(prop => (
+                        <SelectItem key={prop.id} value={prop.id.toString()}>
+                          {prop.county}, {prop.state} ({prop.sizeAcres} ac)
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
         </div>
 
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Property</label>
-          <Select onValueChange={(val) => form.setValue("propertyId", parseInt(val))}>
-            <SelectTrigger data-testid="select-property">
-              <SelectValue placeholder="Select property" />
-            </SelectTrigger>
-            <SelectContent>
-              {availableProperties.length === 0 ? (
-                <SelectItem value="none" disabled>No properties available</SelectItem>
-              ) : (
-                availableProperties.map(prop => (
-                  <SelectItem key={prop.id} value={prop.id.toString()}>
-                    {prop.county}, {prop.state} ({prop.sizeAcres} ac)
-                  </SelectItem>
-                ))
-              )}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+        <div className="grid grid-cols-3 gap-4">
+          <FormField
+            control={form.control}
+            name="originalPrincipal"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Principal ($)</FormLabel>
+                <FormControl>
+                  <Input {...field} type="number" placeholder="10000" data-testid="input-principal" />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
 
-      <div className="grid grid-cols-3 gap-4">
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Principal ($)</label>
-          <Input 
-            {...form.register("originalPrincipal")} 
-            type="number" 
-            placeholder="10000" 
-            data-testid="input-principal"
+          <FormField
+            control={form.control}
+            name="interestRate"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Interest Rate (%)</FormLabel>
+                <FormControl>
+                  <Input {...field} type="number" placeholder="9" data-testid="input-interest-rate" />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
           />
-        </div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Interest Rate (%)</label>
-          <Input 
-            {...form.register("interestRate")} 
-            type="number" 
-            placeholder="9.9" 
-            step="0.1" 
-            data-testid="input-rate"
-          />
-        </div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Term (months)</label>
-          <Input 
-            {...form.register("termMonths", { valueAsNumber: true })} 
-            type="number" 
-            placeholder="60" 
-            data-testid="input-term"
-          />
-        </div>
-      </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Monthly Payment ($)</label>
-          <Input 
-            {...form.register("monthlyPayment")} 
-            type="number" 
-            placeholder={suggestedPayment > 0 ? suggestedPayment.toFixed(2) : "Auto-calculated"}
-            data-testid="input-monthly"
-          />
-          {suggestedPayment > 0 && (
-            <p className="text-xs text-muted-foreground">
-              Suggested: ${suggestedPayment.toFixed(2)}/mo
-            </p>
-          )}
-        </div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Start Date</label>
-          <Input 
-            type="date" 
-            onChange={(e) => form.setValue("startDate", new Date(e.target.value))} 
-            defaultValue={format(new Date(), 'yyyy-MM-dd')}
-            data-testid="input-start-date"
+          <FormField
+            control={form.control}
+            name="termMonths"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Term (months)</FormLabel>
+                <FormControl>
+                  <Input {...field} type="number" placeholder="60" data-testid="input-term" onChange={(e) => field.onChange(parseInt(e.target.value))} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
           />
         </div>
-      </div>
 
-      <div className="grid grid-cols-3 gap-4">
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Down Payment ($)</label>
-          <Input 
-            {...form.register("downPayment")} 
-            type="number" 
-            placeholder="0" 
-            data-testid="input-down-payment"
-          />
-        </div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Late Fee ($)</label>
-          <Input 
-            {...form.register("lateFee")} 
-            type="number" 
-            placeholder="25" 
-            data-testid="input-late-fee"
-          />
-        </div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Grace Period (days)</label>
-          <Input 
-            {...form.register("gracePeriodDays", { valueAsNumber: true })} 
-            type="number" 
-            placeholder="10" 
-            data-testid="input-grace-period"
-          />
-        </div>
-      </div>
+        {suggestedPayment > 0 && (
+          <div className="bg-muted/50 rounded-lg p-4">
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-muted-foreground">Calculated Monthly Payment</span>
+              <span className="text-lg font-bold font-mono text-emerald-600">${suggestedPayment.toFixed(2)}</span>
+            </div>
+          </div>
+        )}
 
-      <div className="pt-2">
-        <Button type="submit" className="w-full" disabled={isPending} data-testid="button-create-note-submit">
-          {isPending ? "Creating..." : "Create Note"}
-        </Button>
-      </div>
-    </form>
+        <div className="grid grid-cols-2 gap-4">
+          <FormField
+            control={form.control}
+            name="downPayment"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Down Payment ($)</FormLabel>
+                <FormControl>
+                  <Input {...field} type="number" placeholder="1000" data-testid="input-down-payment" />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="startDate"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Start Date</FormLabel>
+                <FormControl>
+                  <Input 
+                    type="date" 
+                    onChange={(e) => field.onChange(new Date(e.target.value))} 
+                    defaultValue={new Date().toISOString().split('T')[0]}
+                    data-testid="input-start-date"
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
+
+        <div className="pt-2">
+          <Button type="submit" className="w-full" disabled={isPending} data-testid="button-submit-note">
+            {isPending ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Creating Note...
+              </>
+            ) : (
+              "Create Note"
+            )}
+          </Button>
+        </div>
+      </form>
+    </Form>
   );
 }

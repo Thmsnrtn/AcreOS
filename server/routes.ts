@@ -284,6 +284,11 @@ export async function registerRoutes(
     res.json(note);
   });
   
+  api.delete("/api/notes/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    await storage.deleteNote(Number(req.params.id));
+    res.status(204).send();
+  });
+  
   // Calculate payment helper endpoint
   api.post("/api/notes/calculate-payment", isAuthenticated, async (req, res) => {
     const { principal, interestRate, termMonths } = req.body;

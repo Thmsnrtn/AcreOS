@@ -107,6 +107,7 @@ export interface IStorage {
   getNote(orgId: number, id: number): Promise<Note | undefined>;
   createNote(note: InsertNote): Promise<Note>;
   updateNote(id: number, updates: Partial<InsertNote>): Promise<Note>;
+  deleteNote(id: number): Promise<void>;
   getNoteCount(orgId: number): Promise<number>;
   getActiveNotesValue(orgId: number): Promise<number>;
   
@@ -408,6 +409,10 @@ export class DatabaseStorage implements IStorage {
       .where(eq(notes.id, id))
       .returning();
     return updated;
+  }
+  
+  async deleteNote(id: number) {
+    await db.delete(notes).where(eq(notes.id, id));
   }
   
   async getNoteCount(orgId: number) {

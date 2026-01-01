@@ -1,21 +1,34 @@
 import { Sidebar } from "@/components/layout-sidebar";
-import { useProperties, useCreateProperty } from "@/hooks/use-properties";
+import { useProperties, useCreateProperty, useDeleteProperty } from "@/hooks/use-properties";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertPropertySchema } from "@shared/schema";
+import { insertPropertySchema, type Property } from "@shared/schema";
 import { z } from "zod";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, MapPin, Ruler, DollarSign } from "lucide-react";
+import { Plus, MapPin, Ruler, DollarSign, Trash2, Loader2 } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 
 export default function PropertiesPage() {
   const { data: properties, isLoading } = useProperties();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [deletingProperty, setDeletingProperty] = useState<Property | null>(null);
+  const { mutate: deleteProperty, isPending: isDeleting } = useDeleteProperty();
+
+  const handleDelete = () => {
+    if (deletingProperty) {
+      deleteProperty(deletingProperty.id, {
+        onSuccess: () => setDeletingProperty(null),
+      });
+    }
+  };
 
   return (
     <div className="flex min-h-screen bg-background desert-gradient">
@@ -25,12 +38,12 @@ export default function PropertiesPage() {
           
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-bold">Inventory</h1>
+              <h1 className="text-3xl font-bold" data-testid="text-page-title">Inventory</h1>
               <p className="text-muted-foreground">Track land parcels and their status.</p>
             </div>
             <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
               <DialogTrigger asChild>
-                <Button className="shadow-lg hover:shadow-primary/25">
+                <Button className="shadow-lg hover:shadow-primary/25" data-testid="button-add-property">
                   <Plus className="w-4 h-4 mr-2" /> Add Property
                 </Button>
               </DialogTrigger>
@@ -52,32 +65,64 @@ export default function PropertiesPage() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {properties?.map((property) => (
-                <PropertyCard key={property.id} property={property} />
+                <PropertyCard 
+                  key={property.id} 
+                  property={property} 
+                  onDelete={() => setDeletingProperty(property)}
+                />
               ))}
               {properties?.length === 0 && (
-                <div className="col-span-full text-center py-20 text-muted-foreground">
-                  No properties in inventory.
+                <div className="col-span-full">
+                  <EmptyState
+                    icon={MapPin}
+                    title="No properties yet"
+                    description="No properties in your inventory. Add your first property to start tracking land parcels and their status."
+                    actionLabel="Add Your First Property"
+                    onAction={() => setIsCreateOpen(true)}
+                  />
                 </div>
               )}
             </div>
           )}
         </div>
       </main>
+
+      <ConfirmDialog
+        open={!!deletingProperty}
+        onOpenChange={(open) => !open && setDeletingProperty(null)}
+        title="Delete Property"
+        description={`Are you sure you want to delete this property in ${deletingProperty?.county}, ${deletingProperty?.state} (APN: ${deletingProperty?.apn})? This action cannot be undone and will permanently remove the property from your inventory.`}
+        confirmLabel="Delete Property"
+        onConfirm={handleDelete}
+        isLoading={isDeleting}
+        variant="destructive"
+      />
     </div>
   );
 }
 
-function PropertyCard({ property }: { property: any }) {
+function PropertyCard({ property, onDelete }: { property: Property; onDelete: () => void }) {
   return (
-    <Card className="card-hover border-border/50 group">
+    <Card className="card-hover border-border/50 group" data-testid={`card-property-${property.id}`}>
       <div className="h-32 bg-slate-100 dark:bg-slate-900 relative overflow-hidden flex items-center justify-center">
-        {/* Placeholder for map image - typically integration with Mapbox/Google Maps */}
         <MapPin className="w-12 h-12 text-slate-300 dark:text-slate-700" />
-        <div className="absolute top-4 right-4">
+        <div className="absolute top-4 right-4 flex gap-2">
           <Badge variant={property.status === 'available' ? 'default' : 'secondary'} className="capitalize shadow-sm">
             {property.status.replace('_', ' ')}
           </Badge>
         </div>
+        <Button 
+          variant="destructive" 
+          size="icon"
+          className="absolute top-4 left-4 opacity-0 group-hover:opacity-100 transition-opacity"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+          data-testid={`button-delete-property-${property.id}`}
+        >
+          <Trash2 className="w-4 h-4" />
+        </Button>
       </div>
       <CardContent className="p-6">
         <div className="mb-4">
@@ -105,6 +150,13 @@ function PropertyForm({ onSuccess }: { onSuccess: () => void }) {
   const form = useForm<z.infer<typeof insertPropertySchema>>({
     resolver: zodResolver(insertPropertySchema),
     defaultValues: {
+      apn: "",
+      sizeAcres: "",
+      county: "",
+      state: "",
+      purchasePrice: "",
+      marketValue: "",
+      description: "",
       status: "available",
     }
   });
@@ -114,54 +166,122 @@ function PropertyForm({ onSuccess }: { onSuccess: () => void }) {
   };
 
   return (
-    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4">
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <label className="text-sm font-medium">APN</label>
-          <Input {...form.register("apn")} placeholder="123-456-789" />
-          {form.formState.errors.apn && <p className="text-xs text-red-500">{form.formState.errors.apn.message}</p>}
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4">
+        <div className="grid grid-cols-2 gap-4">
+          <FormField
+            control={form.control}
+            name="apn"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>APN</FormLabel>
+                <FormControl>
+                  <Input {...field} placeholder="123-456-789" data-testid="input-apn" />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="sizeAcres"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Acres</FormLabel>
+                <FormControl>
+                  <Input {...field} placeholder="5.0" data-testid="input-acres" />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
         </div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Acres</label>
-          <Input {...form.register("sizeAcres")} placeholder="5.0" />
-          {form.formState.errors.sizeAcres && <p className="text-xs text-red-500">{form.formState.errors.sizeAcres.message}</p>}
-        </div>
-      </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <label className="text-sm font-medium">County</label>
-          <Input {...form.register("county")} placeholder="San Bernardino" />
-          {form.formState.errors.county && <p className="text-xs text-red-500">{form.formState.errors.county.message}</p>}
+        <div className="grid grid-cols-2 gap-4">
+          <FormField
+            control={form.control}
+            name="county"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>County</FormLabel>
+                <FormControl>
+                  <Input {...field} placeholder="San Bernardino" data-testid="input-county" />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="state"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>State</FormLabel>
+                <FormControl>
+                  <Input {...field} placeholder="CA" data-testid="input-state" />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
         </div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium">State</label>
-          <Input {...form.register("state")} placeholder="CA" />
-          {form.formState.errors.state && <p className="text-xs text-red-500">{form.formState.errors.state.message}</p>}
-        </div>
-      </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Purchase Price</label>
-          <Input {...form.register("purchasePrice")} placeholder="5000" type="number" />
+        <div className="grid grid-cols-2 gap-4">
+          <FormField
+            control={form.control}
+            name="purchasePrice"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Purchase Price</FormLabel>
+                <FormControl>
+                  <Input {...field} placeholder="5000" type="number" data-testid="input-purchase-price" />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="marketValue"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Market Value</FormLabel>
+                <FormControl>
+                  <Input {...field} placeholder="15000" type="number" data-testid="input-market-value" />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
         </div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Market Value</label>
-          <Input {...form.register("marketValue")} placeholder="15000" type="number" />
+
+        <FormField
+          control={form.control}
+          name="description"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Description</FormLabel>
+              <FormControl>
+                <Input {...field} placeholder="Beautiful desert lot with road access..." data-testid="input-description" />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <div className="pt-2">
+          <Button type="submit" className="w-full" disabled={isPending} data-testid="button-submit-property">
+            {isPending ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Adding...
+              </>
+            ) : (
+              "Add Property"
+            )}
+          </Button>
         </div>
-      </div>
-
-      <div className="space-y-2">
-        <label className="text-sm font-medium">Description</label>
-        <Input {...form.register("description")} placeholder="Beautiful desert lot with road access..." />
-      </div>
-
-      <div className="pt-2">
-        <Button type="submit" className="w-full" disabled={isPending}>
-          {isPending ? "Adding..." : "Add Property"}
-        </Button>
-      </div>
-    </form>
+      </form>
+    </Form>
   );
 }

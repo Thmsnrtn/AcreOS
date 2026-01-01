@@ -17,7 +17,6 @@ export function useCreateProperty() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: InsertProperty) => {
-      // Coerce numeric strings to numbers if needed (though schema uses numeric string for decimals usually)
       const validated = api.properties.create.input.parse(data);
       const res = await fetch(api.properties.create.path, {
         method: "POST",
@@ -27,6 +26,22 @@ export function useCreateProperty() {
       });
       if (!res.ok) throw new Error("Failed to create property");
       return api.properties.create.responses[201].parse(await res.json());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.properties.list.path] });
+    },
+  });
+}
+
+export function useDeleteProperty() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`/api/properties/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to delete property");
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.properties.list.path] });

@@ -1,27 +1,42 @@
 import { Sidebar } from "@/components/layout-sidebar";
-import { useLeads, useCreateLead, useUpdateLead } from "@/hooks/use-leads";
+import { useLeads, useCreateLead, useUpdateLead, useDeleteLead } from "@/hooks/use-leads";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertLeadSchema } from "@shared/schema";
+import { insertLeadSchema, type Lead } from "@shared/schema";
 import { z } from "zod";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, Mail, Phone, MoreHorizontal } from "lucide-react";
+import { Plus, Search, Mail, Phone, Trash2, Edit, Loader2, Users } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 
 export default function LeadsPage() {
   const { data: leads, isLoading } = useLeads();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [editingLead, setEditingLead] = useState<Lead | null>(null);
+  const [deletingLead, setDeletingLead] = useState<Lead | null>(null);
   const [search, setSearch] = useState("");
+  const { mutate: deleteLead, isPending: isDeleting } = useDeleteLead();
 
   const filteredLeads = leads?.filter(l => 
     l.lastName.toLowerCase().includes(search.toLowerCase()) || 
     l.email?.toLowerCase().includes(search.toLowerCase())
   );
+
+  const handleDelete = () => {
+    if (deletingLead) {
+      deleteLead(deletingLead.id, {
+        onSuccess: () => setDeletingLead(null),
+      });
+    }
+  };
 
   return (
     <div className="flex min-h-screen bg-background desert-gradient">
@@ -31,12 +46,12 @@ export default function LeadsPage() {
           
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-bold">Leads CRM</h1>
+              <h1 className="text-3xl font-bold" data-testid="text-page-title">Leads CRM</h1>
               <p className="text-muted-foreground">Manage your potential buyers and sellers.</p>
             </div>
             <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
               <DialogTrigger asChild>
-                <Button className="shadow-lg hover:shadow-primary/25">
+                <Button className="shadow-lg hover:shadow-primary/25" data-testid="button-add-lead">
                   <Plus className="w-4 h-4 mr-2" /> Add New Lead
                 </Button>
               </DialogTrigger>
@@ -58,6 +73,7 @@ export default function LeadsPage() {
                   className="pl-9 bg-slate-50 dark:bg-slate-900 border-none"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
+                  data-testid="input-search-leads"
                 />
               </div>
             </div>
@@ -75,15 +91,28 @@ export default function LeadsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredLeads?.length === 0 && (
+                  {filteredLeads?.length === 0 && leads?.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={4} className="p-0">
+                        <EmptyState
+                          icon={Users}
+                          title="No leads yet"
+                          description="Start by adding your first lead. Track potential buyers and sellers through your sales pipeline."
+                          actionLabel="Add Your First Lead"
+                          onAction={() => setIsCreateOpen(true)}
+                        />
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {filteredLeads?.length === 0 && leads && leads.length > 0 && (
                     <TableRow>
                       <TableCell colSpan={4} className="text-center h-32 text-muted-foreground">
-                        No leads found. Create one to get started.
+                        No leads found matching your search.
                       </TableCell>
                     </TableRow>
                   )}
                   {filteredLeads?.map((lead) => (
-                    <TableRow key={lead.id} className="group">
+                    <TableRow key={lead.id} className="group" data-testid={`row-lead-${lead.id}`}>
                       <TableCell className="font-medium">
                         {lead.firstName} {lead.lastName}
                       </TableCell>
@@ -97,9 +126,27 @@ export default function LeadsPage() {
                         <LeadStatusBadge status={lead.status} />
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button variant="ghost" size="icon" className="opacity-0 group-hover:opacity-100 transition-opacity">
-                          <MoreHorizontal className="w-4 h-4" />
-                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm" data-testid={`button-actions-lead-${lead.id}`}>
+                              Actions
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => setEditingLead(lead)} data-testid={`button-edit-lead-${lead.id}`}>
+                              <Edit className="w-4 h-4 mr-2" />
+                              Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuItem 
+                              onClick={() => setDeletingLead(lead)} 
+                              className="text-destructive"
+                              data-testid={`button-delete-lead-${lead.id}`}
+                            >
+                              <Trash2 className="w-4 h-4 mr-2" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -109,6 +156,31 @@ export default function LeadsPage() {
           </div>
         </div>
       </main>
+
+      <Dialog open={!!editingLead} onOpenChange={(open) => !open && setEditingLead(null)}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Edit Lead</DialogTitle>
+          </DialogHeader>
+          {editingLead && (
+            <LeadForm 
+              lead={editingLead} 
+              onSuccess={() => setEditingLead(null)} 
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={!!deletingLead}
+        onOpenChange={(open) => !open && setDeletingLead(null)}
+        title="Delete Lead"
+        description={`Are you sure you want to delete ${deletingLead?.firstName} ${deletingLead?.lastName}? This action cannot be undone and will permanently remove this lead from your CRM.`}
+        confirmLabel="Delete Lead"
+        onConfirm={handleDelete}
+        isLoading={isDeleting}
+        variant="destructive"
+      />
     </div>
   );
 }
@@ -129,67 +201,132 @@ function LeadStatusBadge({ status }: { status: string }) {
   );
 }
 
-function LeadForm({ onSuccess }: { onSuccess: () => void }) {
-  const { mutate, isPending } = useCreateLead();
+function LeadForm({ lead, onSuccess }: { lead?: Lead; onSuccess: () => void }) {
+  const { mutate: createLead, isPending: isCreating } = useCreateLead();
+  const { mutate: updateLead, isPending: isUpdating } = useUpdateLead();
+  const isPending = isCreating || isUpdating;
+
   const form = useForm<z.infer<typeof insertLeadSchema>>({
     resolver: zodResolver(insertLeadSchema),
     defaultValues: {
-      status: "new",
+      firstName: lead?.firstName || "",
+      lastName: lead?.lastName || "",
+      email: lead?.email || "",
+      phone: lead?.phone || "",
+      status: lead?.status || "new",
     }
   });
 
   const onSubmit = (data: z.infer<typeof insertLeadSchema>) => {
-    mutate(data, {
-      onSuccess: () => onSuccess(),
-    });
+    if (lead) {
+      updateLead({ id: lead.id, ...data }, {
+        onSuccess: () => onSuccess(),
+      });
+    } else {
+      createLead(data, {
+        onSuccess: () => onSuccess(),
+      });
+    }
   };
 
   return (
-    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4">
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <label className="text-sm font-medium">First Name</label>
-          <Input {...form.register("firstName")} placeholder="John" />
-          {form.formState.errors.firstName && <p className="text-xs text-red-500">{form.formState.errors.firstName.message}</p>}
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4">
+        <div className="grid grid-cols-2 gap-4">
+          <FormField
+            control={form.control}
+            name="firstName"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>First Name</FormLabel>
+                <FormControl>
+                  <Input {...field} placeholder="John" data-testid="input-first-name" />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="lastName"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Last Name</FormLabel>
+                <FormControl>
+                  <Input {...field} placeholder="Doe" data-testid="input-last-name" />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
         </div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Last Name</label>
-          <Input {...form.register("lastName")} placeholder="Doe" />
-          {form.formState.errors.lastName && <p className="text-xs text-red-500">{form.formState.errors.lastName.message}</p>}
+        
+        <FormField
+          control={form.control}
+          name="email"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Email</FormLabel>
+              <FormControl>
+                <Input {...field} placeholder="john@example.com" type="email" data-testid="input-email" />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="phone"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Phone</FormLabel>
+              <FormControl>
+                <Input {...field} placeholder="(555) 123-4567" data-testid="input-phone" />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="status"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Status</FormLabel>
+              <Select onValueChange={field.onChange} value={field.value || "new"}>
+                <FormControl>
+                  <SelectTrigger data-testid="select-status">
+                    <SelectValue placeholder="Select status" />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  <SelectItem value="new">New</SelectItem>
+                  <SelectItem value="contacting">Contacting</SelectItem>
+                  <SelectItem value="negotiation">Negotiation</SelectItem>
+                  <SelectItem value="closed">Closed</SelectItem>
+                  <SelectItem value="dead">Dead</SelectItem>
+                </SelectContent>
+              </Select>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <div className="pt-2">
+          <Button type="submit" className="w-full" disabled={isPending} data-testid="button-submit-lead">
+            {isPending ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                {lead ? "Saving..." : "Creating..."}
+              </>
+            ) : (
+              lead ? "Save Changes" : "Create Lead"
+            )}
+          </Button>
         </div>
-      </div>
-      
-      <div className="space-y-2">
-        <label className="text-sm font-medium">Email</label>
-        <Input {...form.register("email")} placeholder="john@example.com" type="email" />
-      </div>
-
-      <div className="space-y-2">
-        <label className="text-sm font-medium">Phone</label>
-        <Input {...form.register("phone")} placeholder="(555) 123-4567" />
-      </div>
-
-      <div className="space-y-2">
-        <label className="text-sm font-medium">Status</label>
-        <Select onValueChange={(val) => form.setValue("status", val)} defaultValue="new">
-          <SelectTrigger>
-            <SelectValue placeholder="Select status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="new">New</SelectItem>
-            <SelectItem value="contacting">Contacting</SelectItem>
-            <SelectItem value="negotiation">Negotiation</SelectItem>
-            <SelectItem value="closed">Closed</SelectItem>
-            <SelectItem value="dead">Dead</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="pt-2">
-        <Button type="submit" className="w-full" disabled={isPending}>
-          {isPending ? "Creating..." : "Create Lead"}
-        </Button>
-      </div>
-    </form>
+      </form>
+    </Form>
   );
 }

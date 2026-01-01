@@ -1,5 +1,5 @@
 import { Sidebar } from "@/components/layout-sidebar";
-import { useDeals, useCreateDeal, useUpdateDeal } from "@/hooks/use-deals";
+import { useDeals, useCreateDeal, useUpdateDeal, useDeleteDeal } from "@/hooks/use-deals";
 import { useProperties } from "@/hooks/use-properties";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -9,11 +9,14 @@ import { z } from "zod";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, MapPin, DollarSign, Calendar, ArrowRight, Building, TrendingUp, CheckCircle, X, GripVertical, FileText } from "lucide-react";
+import { Plus, MapPin, DollarSign, Calendar, Building, TrendingUp, CheckCircle, X, GripVertical, FileText, Trash2, Loader2, Briefcase } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 
 type DealWithProperty = Deal & { property?: Property };
 
@@ -41,6 +44,8 @@ export default function DealsPage() {
   const { data: properties } = useProperties();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedDeal, setSelectedDeal] = useState<DealWithProperty | null>(null);
+  const [deletingDeal, setDeletingDeal] = useState<DealWithProperty | null>(null);
+  const { mutate: deleteDeal, isPending: isDeleting } = useDeleteDeal();
 
   const enrichedDeals: DealWithProperty[] = (deals || []).map(deal => ({
     ...deal,
@@ -57,6 +62,17 @@ export default function DealsPage() {
   const closedValue = enrichedDeals
     .filter(d => d.status === 'closed')
     .reduce((sum, d) => sum + Number(d.acceptedAmount || 0), 0);
+
+  const handleDelete = () => {
+    if (deletingDeal) {
+      deleteDeal(deletingDeal.id, {
+        onSuccess: () => {
+          setDeletingDeal(null);
+          setSelectedDeal(null);
+        },
+      });
+    }
+  };
 
   return (
     <div className="flex min-h-screen bg-background desert-gradient">
@@ -147,53 +163,75 @@ export default function DealsPage() {
             </Card>
           </div>
 
-          <div className="overflow-x-auto pb-4">
-            <div className="flex gap-4 min-w-max">
-              {dealStages.map((stage) => {
-                const stageDeals = enrichedDeals.filter(d => d.status === stage.value);
-                return (
-                  <div key={stage.value} className="w-72 flex-shrink-0">
-                    <div className={`rounded-t-xl px-4 py-3 ${stage.color}`}>
-                      <div className="flex items-center justify-between">
-                        <h3 className="font-medium">{stage.label}</h3>
-                        <Badge variant="secondary" className="font-mono">
-                          {stageDeals.length}
-                        </Badge>
+          {!isLoading && enrichedDeals.length === 0 ? (
+            <EmptyState
+              icon={Briefcase}
+              title="No deals in your pipeline"
+              description="Create your first deal to start tracking acquisitions and dispositions through your pipeline."
+              actionLabel="Create Your First Deal"
+              onAction={() => setIsCreateOpen(true)}
+            />
+          ) : (
+            <div className="overflow-x-auto pb-4">
+              <div className="flex gap-4 min-w-max">
+                {dealStages.map((stage) => {
+                  const stageDeals = enrichedDeals.filter(d => d.status === stage.value);
+                  return (
+                    <div key={stage.value} className="w-72 flex-shrink-0">
+                      <div className={`rounded-t-xl px-4 py-3 ${stage.color}`}>
+                        <div className="flex items-center justify-between">
+                          <h3 className="font-medium">{stage.label}</h3>
+                          <Badge variant="secondary" className="font-mono">
+                            {stageDeals.length}
+                          </Badge>
+                        </div>
+                      </div>
+                      <div className="bg-muted/30 rounded-b-xl p-2 min-h-[400px] space-y-2">
+                        {isLoading ? (
+                          <div className="text-center py-8 text-muted-foreground text-sm">
+                            Loading...
+                          </div>
+                        ) : stageDeals.length === 0 ? (
+                          <div className="text-center py-8 text-muted-foreground text-sm">
+                            No deals
+                          </div>
+                        ) : (
+                          stageDeals.map((deal) => (
+                            <DealCard 
+                              key={deal.id} 
+                              deal={deal} 
+                              onSelect={() => setSelectedDeal(deal)}
+                            />
+                          ))
+                        )}
                       </div>
                     </div>
-                    <div className="bg-muted/30 rounded-b-xl p-2 min-h-[400px] space-y-2">
-                      {isLoading ? (
-                        <div className="text-center py-8 text-muted-foreground text-sm">
-                          Loading...
-                        </div>
-                      ) : stageDeals.length === 0 ? (
-                        <div className="text-center py-8 text-muted-foreground text-sm">
-                          No deals
-                        </div>
-                      ) : (
-                        stageDeals.map((deal) => (
-                          <DealCard 
-                            key={deal.id} 
-                            deal={deal} 
-                            onSelect={() => setSelectedDeal(deal)}
-                          />
-                        ))
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </main>
 
       {selectedDeal && (
         <DealDetailDrawer 
           deal={selectedDeal} 
-          onClose={() => setSelectedDeal(null)} 
+          onClose={() => setSelectedDeal(null)}
+          onDelete={() => setDeletingDeal(selectedDeal)}
         />
       )}
+
+      <ConfirmDialog
+        open={!!deletingDeal}
+        onOpenChange={(open) => !open && setDeletingDeal(null)}
+        title="Delete Deal"
+        description={`Are you sure you want to delete this ${deletingDeal?.type === 'acquisition' ? 'acquisition' : 'disposition'} deal${deletingDeal?.property ? ` for ${deletingDeal.property.county}, ${deletingDeal.property.state}` : ''}? This action cannot be undone.`}
+        confirmLabel="Delete Deal"
+        onConfirm={handleDelete}
+        isLoading={isDeleting}
+        variant="destructive"
+      />
     </div>
   );
 }
@@ -244,7 +282,7 @@ function DealCard({ deal, onSelect }: { deal: DealWithProperty; onSelect: () => 
   );
 }
 
-function DealDetailDrawer({ deal, onClose }: { deal: DealWithProperty; onClose: () => void }) {
+function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty; onClose: () => void; onDelete: () => void }) {
   const { mutate: updateDeal, isPending } = useUpdateDeal();
 
   const handleStatusChange = (newStatus: string) => {
@@ -272,9 +310,14 @@ function DealDetailDrawer({ deal, onClose }: { deal: DealWithProperty; onClose: 
                 {deal.property ? `${deal.property.county}, ${deal.property.state}` : `Deal #${deal.id}`}
               </h2>
             </div>
-            <Button size="icon" variant="ghost" onClick={onClose}>
-              <X className="w-5 h-5" />
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button size="icon" variant="ghost" onClick={onDelete} data-testid="button-delete-deal">
+                <Trash2 className="w-5 h-5 text-destructive" />
+              </Button>
+              <Button size="icon" variant="ghost" onClick={onClose}>
+                <X className="w-5 h-5" />
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -301,6 +344,11 @@ function DealDetailDrawer({ deal, onClose }: { deal: DealWithProperty; onClose: 
                   <SelectItem value="cancelled">Cancelled</SelectItem>
                 </SelectContent>
               </Select>
+              {isPending && (
+                <p className="text-sm text-muted-foreground mt-2 flex items-center gap-2">
+                  <Loader2 className="w-3 h-3 animate-spin" /> Updating...
+                </p>
+              )}
             </CardContent>
           </Card>
 
@@ -453,85 +501,145 @@ function DealForm({ onSuccess }: { onSuccess: () => void }) {
   };
 
   return (
-    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4">
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Deal Type</label>
-          <Select 
-            value={form.watch("type")} 
-            onValueChange={(val) => form.setValue("type", val)}
-          >
-            <SelectTrigger data-testid="select-deal-type">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="acquisition">Acquisition (Buying)</SelectItem>
-              <SelectItem value="disposition">Disposition (Selling)</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4">
+        <div className="grid grid-cols-2 gap-4">
+          <FormField
+            control={form.control}
+            name="type"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Deal Type</FormLabel>
+                <Select onValueChange={field.onChange} value={field.value || "acquisition"}>
+                  <FormControl>
+                    <SelectTrigger data-testid="select-deal-type">
+                      <SelectValue />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="acquisition">Acquisition (Buying)</SelectItem>
+                    <SelectItem value="disposition">Disposition (Selling)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
 
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Property</label>
-          <Select onValueChange={(val) => form.setValue("propertyId", parseInt(val))}>
-            <SelectTrigger data-testid="select-deal-property">
-              <SelectValue placeholder="Select property" />
-            </SelectTrigger>
-            <SelectContent>
-              {properties?.map(prop => (
-                <SelectItem key={prop.id} value={prop.id.toString()}>
-                  {prop.county}, {prop.state} ({prop.sizeAcres} ac)
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Offer Amount ($)</label>
-          <Input 
-            {...form.register("offerAmount")} 
-            type="number" 
-            placeholder="5000" 
-            data-testid="input-offer-amount"
+          <FormField
+            control={form.control}
+            name="propertyId"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Property</FormLabel>
+                <Select onValueChange={(val) => field.onChange(parseInt(val))}>
+                  <FormControl>
+                    <SelectTrigger data-testid="select-deal-property">
+                      <SelectValue placeholder="Select property" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {properties?.map(prop => (
+                      <SelectItem key={prop.id} value={prop.id.toString()}>
+                        {prop.county}, {prop.state} ({prop.sizeAcres} ac)
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
           />
         </div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Offer Date</label>
-          <Input 
-            type="date" 
-            onChange={(e) => form.setValue("offerDate", new Date(e.target.value))} 
-            data-testid="input-offer-date"
-          />
-        </div>
-      </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Title Company</label>
-          <Input 
-            {...form.register("titleCompany")} 
-            placeholder="ABC Title Co" 
-            data-testid="input-title-company"
+        <div className="grid grid-cols-2 gap-4">
+          <FormField
+            control={form.control}
+            name="offerAmount"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Offer Amount ($)</FormLabel>
+                <FormControl>
+                  <Input 
+                    {...field}
+                    type="number" 
+                    placeholder="5000" 
+                    data-testid="input-offer-amount"
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="offerDate"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Offer Date</FormLabel>
+                <FormControl>
+                  <Input 
+                    type="date" 
+                    onChange={(e) => field.onChange(new Date(e.target.value))} 
+                    data-testid="input-offer-date"
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
           />
         </div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Target Closing</label>
-          <Input 
-            type="date" 
-            onChange={(e) => form.setValue("closingDate", new Date(e.target.value))} 
-            data-testid="input-closing-date"
-          />
-        </div>
-      </div>
 
-      <div className="pt-2">
-        <Button type="submit" className="w-full" disabled={isPending} data-testid="button-create-deal-submit">
-          {isPending ? "Creating..." : "Create Deal"}
-        </Button>
-      </div>
-    </form>
+        <div className="grid grid-cols-2 gap-4">
+          <FormField
+            control={form.control}
+            name="titleCompany"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Title Company</FormLabel>
+                <FormControl>
+                  <Input 
+                    {...field}
+                    placeholder="ABC Title Co" 
+                    data-testid="input-title-company"
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="closingDate"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Target Closing</FormLabel>
+                <FormControl>
+                  <Input 
+                    type="date" 
+                    onChange={(e) => field.onChange(new Date(e.target.value))} 
+                    data-testid="input-closing-date"
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
+
+        <div className="pt-2">
+          <Button type="submit" className="w-full" disabled={isPending} data-testid="button-create-deal-submit">
+            {isPending ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Creating...
+              </>
+            ) : (
+              "Create Deal"
+            )}
+          </Button>
+        </div>
+      </form>
+    </Form>
   );
 }

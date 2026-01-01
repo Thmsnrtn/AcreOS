@@ -29,6 +29,10 @@ export const organizations = pgTable("organizations", {
     companyAddress?: string;
     companyPhone?: string;
     companyEmail?: string;
+    onboardingCompleted?: boolean;
+    showTips?: boolean;
+    checklistDismissed?: boolean;
+    notificationsConfigured?: boolean;
   }>(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
