@@ -29,12 +29,11 @@ export function useLead(id: number) {
 export function useCreateLead() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: InsertLead) => {
-      const validated = api.leads.create.input.parse(data);
+    mutationFn: async (data: Omit<InsertLead, 'organizationId'>) => {
       const res = await fetch(api.leads.create.path, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(validated),
+        body: JSON.stringify(data),
         credentials: "include",
       });
       if (!res.ok) {
@@ -56,12 +55,11 @@ export function useUpdateLead() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, ...updates }: { id: number } & UpdateLeadRequest) => {
-      const validated = api.leads.update.input.parse(updates);
       const url = buildUrl(api.leads.update.path, { id });
       const res = await fetch(url, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(validated),
+        body: JSON.stringify(updates),
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed to update lead");

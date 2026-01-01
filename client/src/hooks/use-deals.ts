@@ -18,7 +18,7 @@ export function useDeal(id: number) {
 export function useCreateDeal() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: InsertDeal) => {
+    mutationFn: async (data: Omit<InsertDeal, 'organizationId'>) => {
       const res = await apiRequest("POST", "/api/deals", data);
       return res.json();
     },

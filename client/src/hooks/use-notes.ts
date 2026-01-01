@@ -15,16 +15,14 @@ export function useNotes() {
 export function useCreateNote() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: InsertNote) => {
-      const validated = api.notes.create.input.parse({
-        ...data,
-        startDate: new Date(data.startDate),
-      });
-      
+    mutationFn: async (data: Omit<InsertNote, 'organizationId'>) => {
       const res = await fetch(api.notes.create.path, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(validated),
+        body: JSON.stringify({
+          ...data,
+          startDate: new Date(data.startDate),
+        }),
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed to create note");

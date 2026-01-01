@@ -6,6 +6,9 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertCampaignSchema, type Campaign } from "@shared/schema";
 import { z } from "zod";
+
+// Client-side form schema that omits organizationId (added by server)
+const campaignFormSchema = insertCampaignSchema.omit({ organizationId: true });
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -420,15 +423,15 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
 function CampaignForm({ onSuccess }: { onSuccess: () => void }) {
   const { mutate, isPending } = useCreateCampaign();
   
-  const form = useForm<z.infer<typeof insertCampaignSchema>>({
-    resolver: zodResolver(insertCampaignSchema),
+  const form = useForm<z.infer<typeof campaignFormSchema>>({
+    resolver: zodResolver(campaignFormSchema),
     defaultValues: {
       status: "draft",
       type: "direct_mail",
     }
   });
 
-  const onSubmit = (data: z.infer<typeof insertCampaignSchema>) => {
+  const onSubmit = (data: z.infer<typeof campaignFormSchema>) => {
     mutate(data, { onSuccess });
   };
 

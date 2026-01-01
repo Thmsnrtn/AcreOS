@@ -16,12 +16,11 @@ export function useProperties() {
 export function useCreateProperty() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: InsertProperty) => {
-      const validated = api.properties.create.input.parse(data);
+    mutationFn: async (data: Omit<InsertProperty, 'organizationId'>) => {
       const res = await fetch(api.properties.create.path, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(validated),
+        body: JSON.stringify(data),
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed to create property");

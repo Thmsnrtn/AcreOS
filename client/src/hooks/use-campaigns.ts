@@ -18,7 +18,7 @@ export function useCampaign(id: number) {
 export function useCreateCampaign() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: InsertCampaign) => {
+    mutationFn: async (data: Omit<InsertCampaign, 'organizationId'>) => {
       const res = await apiRequest("POST", "/api/campaigns", data);
       return res.json();
     },

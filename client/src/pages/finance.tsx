@@ -8,6 +8,9 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertNoteSchema, type Note, type Lead, type Property } from "@shared/schema";
 import { z } from "zod";
+
+// Client-side form schema that omits organizationId (added by server)
+const noteFormSchema = insertNoteSchema.omit({ organizationId: true });
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -681,8 +684,8 @@ function NoteForm({ onSuccess }: { onSuccess: () => void }) {
   const availableProperties = properties?.filter(p => p.status !== 'sold') || [];
   const buyers = leads?.filter(l => l.type === 'buyer') || leads || [];
 
-  const form = useForm<z.infer<typeof insertNoteSchema>>({
-    resolver: zodResolver(insertNoteSchema),
+  const form = useForm<z.infer<typeof noteFormSchema>>({
+    resolver: zodResolver(noteFormSchema),
     defaultValues: {
       status: "active",
       startDate: new Date(),

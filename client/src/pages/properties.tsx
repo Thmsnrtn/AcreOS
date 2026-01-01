@@ -5,6 +5,9 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertPropertySchema, type Property } from "@shared/schema";
 import { z } from "zod";
+
+// Client-side form schema that omits organizationId (added by server)
+const propertyFormSchema = insertPropertySchema.omit({ organizationId: true });
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -147,8 +150,8 @@ function PropertyCard({ property, onDelete }: { property: Property; onDelete: ()
 
 function PropertyForm({ onSuccess }: { onSuccess: () => void }) {
   const { mutate, isPending } = useCreateProperty();
-  const form = useForm<z.infer<typeof insertPropertySchema>>({
-    resolver: zodResolver(insertPropertySchema),
+  const form = useForm<z.infer<typeof propertyFormSchema>>({
+    resolver: zodResolver(propertyFormSchema),
     defaultValues: {
       apn: "",
       sizeAcres: "",
@@ -161,7 +164,7 @@ function PropertyForm({ onSuccess }: { onSuccess: () => void }) {
     }
   });
 
-  const onSubmit = (data: z.infer<typeof insertPropertySchema>) => {
+  const onSubmit = (data: z.infer<typeof propertyFormSchema>) => {
     mutate(data, { onSuccess });
   };
 

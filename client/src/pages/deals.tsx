@@ -6,6 +6,9 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertDealSchema, type Deal, type Property } from "@shared/schema";
 import { z } from "zod";
+
+// Client-side form schema that omits organizationId (added by server)
+const dealFormSchema = insertDealSchema.omit({ organizationId: true });
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -488,15 +491,15 @@ function DealForm({ onSuccess }: { onSuccess: () => void }) {
   const { mutate, isPending } = useCreateDeal();
   const { data: properties } = useProperties();
   
-  const form = useForm<z.infer<typeof insertDealSchema>>({
-    resolver: zodResolver(insertDealSchema),
+  const form = useForm<z.infer<typeof dealFormSchema>>({
+    resolver: zodResolver(dealFormSchema),
     defaultValues: {
       status: "negotiating",
       type: "acquisition",
     }
   });
 
-  const onSubmit = (data: z.infer<typeof insertDealSchema>) => {
+  const onSubmit = (data: z.infer<typeof dealFormSchema>) => {
     mutate(data, { onSuccess });
   };
 

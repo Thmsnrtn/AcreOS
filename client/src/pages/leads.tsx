@@ -5,6 +5,9 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertLeadSchema, type Lead } from "@shared/schema";
 import { z } from "zod";
+
+// Client-side form schema that omits organizationId (added by server)
+const leadFormSchema = insertLeadSchema.omit({ organizationId: true });
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -206,8 +209,8 @@ function LeadForm({ lead, onSuccess }: { lead?: Lead; onSuccess: () => void }) {
   const { mutate: updateLead, isPending: isUpdating } = useUpdateLead();
   const isPending = isCreating || isUpdating;
 
-  const form = useForm<z.infer<typeof insertLeadSchema>>({
-    resolver: zodResolver(insertLeadSchema),
+  const form = useForm<z.infer<typeof leadFormSchema>>({
+    resolver: zodResolver(leadFormSchema),
     defaultValues: {
       firstName: lead?.firstName || "",
       lastName: lead?.lastName || "",
@@ -217,7 +220,7 @@ function LeadForm({ lead, onSuccess }: { lead?: Lead; onSuccess: () => void }) {
     }
   });
 
-  const onSubmit = (data: z.infer<typeof insertLeadSchema>) => {
+  const onSubmit = (data: z.infer<typeof leadFormSchema>) => {
     if (lead) {
       updateLead({ id: lead.id, ...data }, {
         onSuccess: () => onSuccess(),
