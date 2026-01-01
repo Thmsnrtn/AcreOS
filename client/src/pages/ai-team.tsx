@@ -228,8 +228,8 @@ export default function AITeamPage() {
   return (
     <div className="flex min-h-screen bg-background desert-gradient">
       <Sidebar />
-      <main className="flex-1 md:ml-[17rem] h-screen flex flex-col overflow-hidden pb-24 md:pb-0">
-        <div className="p-6 border-b border-border">
+      <main className="flex-1 md:ml-[17rem] h-screen flex flex-col overflow-hidden">
+        <div className="p-4 pt-16 md:pt-6 md:p-6 border-b border-border">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
               <h1 className="text-2xl font-bold" data-testid="text-page-title">AI Team</h1>

@@ -245,10 +245,10 @@ export default function CommandCenterPage() {
   return (
     <div className="flex min-h-screen bg-background desert-gradient">
       <Sidebar />
-      <main className="flex-1 md:ml-[17rem] h-screen flex flex-col overflow-hidden pb-24 md:pb-0">
+      <main className="flex-1 md:ml-[17rem] h-screen flex flex-col overflow-hidden">
         {isMobile ? (
-          <div className="flex flex-col flex-1 overflow-hidden">
-            <div className="px-4 pt-2 border-b border-border bg-background/50 backdrop-blur-sm">
+          <div className="flex flex-col flex-1 overflow-hidden pb-24">
+            <div className="px-4 pt-14 pb-2 border-b border-border bg-background/50 backdrop-blur-sm">
               <Tabs value={mobileTab} onValueChange={setMobileTab} className="w-full">
                 <TabsList className="w-full">
                   <TabsTrigger value="conversations" className="flex-1">History</TabsTrigger>
