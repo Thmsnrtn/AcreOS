@@ -1,5 +1,6 @@
 import { Sidebar } from "@/components/layout-sidebar";
 import { useProperties, useCreateProperty, useDeleteProperty } from "@/hooks/use-properties";
+import { useFetchPropertyParcel } from "@/hooks/use-parcels";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -13,11 +14,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, MapPin, Ruler, DollarSign, Trash2, Loader2 } from "lucide-react";
+import { Plus, MapPin, Ruler, DollarSign, Trash2, Loader2, Map as MapIcon, RefreshCw } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { SinglePropertyMap } from "@/components/property-map";
 
 export default function PropertiesPage() {
   const { data: properties, isLoading } = useProperties();
@@ -105,42 +107,91 @@ export default function PropertiesPage() {
 }
 
 function PropertyCard({ property, onDelete }: { property: Property; onDelete: () => void }) {
+  const { mutate: fetchParcel, isPending: isFetchingParcel } = useFetchPropertyParcel();
+  const hasMapData = property.parcelBoundary && property.parcelCentroid;
+
   return (
     <Card className="card-hover border-border/50 group" data-testid={`card-property-${property.id}`}>
-      <div className="h-32 bg-slate-100 dark:bg-slate-900 relative overflow-hidden flex items-center justify-center">
-        <MapPin className="w-12 h-12 text-slate-300 dark:text-slate-700" />
-        <div className="absolute top-4 right-4 flex gap-2">
-          <Badge variant={property.status === 'available' ? 'default' : 'secondary'} className="capitalize shadow-sm">
+      <div className="h-40 bg-slate-100 dark:bg-slate-900 relative overflow-hidden">
+        {hasMapData ? (
+          <SinglePropertyMap
+            boundary={property.parcelBoundary}
+            centroid={property.parcelCentroid}
+            apn={property.apn}
+            height="160px"
+          />
+        ) : (
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center">
+              <MapPin className="w-8 h-8 text-slate-300 dark:text-slate-700 mx-auto mb-2" />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  fetchParcel(property.id);
+                }}
+                disabled={isFetchingParcel}
+                data-testid={`button-fetch-parcel-${property.id}`}
+              >
+                {isFetchingParcel ? (
+                  <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Fetching...</>
+                ) : (
+                  <><MapIcon className="w-3 h-3 mr-1" /> Fetch Map</>
+                )}
+              </Button>
+            </div>
+          </div>
+        )}
+        <div className="absolute top-2 right-2 flex gap-1 z-10">
+          <Badge variant={property.status === 'available' ? 'default' : 'secondary'} className="capitalize shadow-sm text-xs">
             {property.status.replace('_', ' ')}
           </Badge>
         </div>
-        <Button 
-          variant="destructive" 
-          size="icon"
-          className="absolute top-4 left-4 opacity-0 group-hover:opacity-100 transition-opacity"
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete();
-          }}
-          data-testid={`button-delete-property-${property.id}`}
-        >
-          <Trash2 className="w-4 h-4" />
-        </Button>
+        <div className="absolute top-2 left-2 flex gap-1 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+          <Button 
+            variant="destructive" 
+            size="icon"
+            className="h-7 w-7"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+            data-testid={`button-delete-property-${property.id}`}
+          >
+            <Trash2 className="w-3 h-3" />
+          </Button>
+          {hasMapData && (
+            <Button 
+              variant="secondary" 
+              size="icon"
+              className="h-7 w-7"
+              onClick={(e) => {
+                e.stopPropagation();
+                fetchParcel(property.id);
+              }}
+              disabled={isFetchingParcel}
+              data-testid={`button-refresh-parcel-${property.id}`}
+            >
+              <RefreshCw className={`w-3 h-3 ${isFetchingParcel ? 'animate-spin' : ''}`} />
+            </Button>
+          )}
+        </div>
       </div>
-      <CardContent className="p-6">
-        <div className="mb-4">
-          <h3 className="font-bold text-lg truncate">{property.county}, {property.state}</h3>
-          <p className="text-sm text-muted-foreground font-mono">APN: {property.apn}</p>
+      <CardContent className="p-4">
+        <div className="mb-3">
+          <h3 className="font-bold text-base truncate">{property.county}, {property.state}</h3>
+          <p className="text-xs text-muted-foreground font-mono">APN: {property.apn}</p>
         </div>
         
-        <div className="grid grid-cols-2 gap-4 text-sm">
-          <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
-            <Ruler className="w-4 h-4" />
+        <div className="grid grid-cols-2 gap-3 text-xs">
+          <div className="flex items-center gap-1.5 text-muted-foreground">
+            <Ruler className="w-3.5 h-3.5" />
             <span>{property.sizeAcres} Acres</span>
           </div>
-          <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
-            <DollarSign className="w-4 h-4" />
-            <span>${Number(property.marketValue).toLocaleString()}</span>
+          <div className="flex items-center gap-1.5 text-muted-foreground">
+            <DollarSign className="w-3.5 h-3.5" />
+            <span>${Number(property.marketValue || 0).toLocaleString()}</span>
           </div>
         </div>
       </CardContent>

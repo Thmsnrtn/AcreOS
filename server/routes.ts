@@ -195,6 +195,72 @@ export async function registerRoutes(
   });
   
   // ============================================
+  // PARCEL LOOKUP (Regrid Integration)
+  // ============================================
+  
+  api.post("/api/parcels/lookup", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const { lookupParcelByAPN, lookupParcelByCoordinates } = await import("./services/parcel");
+    
+    const { apn, lat, lng, state, county } = req.body;
+    
+    if (!apn && (!lat || !lng)) {
+      return res.status(400).json({ message: "Provide either APN or coordinates (lat/lng)" });
+    }
+    
+    let result;
+    if (apn) {
+      // Build state/county path if provided
+      let path: string | undefined;
+      if (state && county) {
+        path = `/us/${state.toLowerCase()}/${county.toLowerCase().replace(/\s+/g, "-")}`;
+      }
+      result = await lookupParcelByAPN(apn, path);
+    } else {
+      result = await lookupParcelByCoordinates(lat, lng);
+    }
+    
+    if (!result.found) {
+      return res.status(404).json({ message: result.error || "Parcel not found" });
+    }
+    
+    res.json(result.parcel);
+  });
+  
+  // Update property with parcel data
+  api.post("/api/properties/:id/fetch-parcel", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const { lookupParcelByAPN } = await import("./services/parcel");
+    const org = (req as any).organization;
+    
+    const property = await storage.getProperty(org.id, Number(req.params.id));
+    if (!property) {
+      return res.status(404).json({ message: "Property not found" });
+    }
+    
+    // Build state/county path
+    let path: string | undefined;
+    if (property.state && property.county) {
+      path = `/us/${property.state.toLowerCase()}/${property.county.toLowerCase().replace(/\s+/g, "-")}`;
+    }
+    
+    const result = await lookupParcelByAPN(property.apn, path);
+    
+    if (!result.found || !result.parcel) {
+      return res.status(404).json({ message: result.error || "Parcel not found" });
+    }
+    
+    // Update property with parcel data
+    const updated = await storage.updateProperty(property.id, {
+      parcelBoundary: result.parcel.boundary,
+      parcelCentroid: result.parcel.centroid,
+      parcelData: result.parcel.data,
+      latitude: String(result.parcel.centroid.lat),
+      longitude: String(result.parcel.centroid.lng),
+    });
+    
+    res.json(updated);
+  });
+  
+  // ============================================
   // DEALS (Acquisitions/Dispositions)
   // ============================================
   

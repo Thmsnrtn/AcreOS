@@ -165,6 +165,23 @@ export const properties = pgTable("properties", {
   latitude: numeric("latitude"),
   longitude: numeric("longitude"),
   
+  // Parcel boundary data (GeoJSON polygon from Regrid)
+  parcelBoundary: jsonb("parcel_boundary").$type<{
+    type: "Polygon" | "MultiPolygon";
+    coordinates: number[][][] | number[][][][];
+  }>(),
+  parcelCentroid: jsonb("parcel_centroid").$type<{
+    lat: number;
+    lng: number;
+  }>(),
+  parcelData: jsonb("parcel_data").$type<{
+    regridId?: string;
+    owner?: string;
+    ownerAddress?: string;
+    taxAmount?: string;
+    lastUpdated?: string;
+  }>(),
+  
   // Timestamps
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
