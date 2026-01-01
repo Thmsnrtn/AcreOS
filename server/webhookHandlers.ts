@@ -51,6 +51,13 @@ export class WebhookHandlers {
         return;
       }
 
+      // Security: Verify the session ID matches what was stored when payment was initiated
+      // This prevents replay attacks and ensures payment was actually created for this note
+      if (note.pendingCheckoutSessionId !== session.id) {
+        console.error(`Session ID mismatch for note ${note.id}. Expected: ${note.pendingCheckoutSessionId}, Got: ${session.id}`);
+        return;
+      }
+
       const existingPayments = await storage.getPayments(note.organizationId, note.id);
       const alreadyRecorded = existingPayments.some(p => p.transactionId === session.id);
       if (alreadyRecorded) {
@@ -111,6 +118,7 @@ export class WebhookHandlers {
         amortizationSchedule: updatedSchedule,
         nextPaymentDate: nextPaymentDate,
         status: newBalance <= 0 ? 'paid_off' : 'active',
+        pendingCheckoutSessionId: null, // Clear after successful payment
       });
 
       console.log(`Borrower portal payment processed: Note ${note.id}, Amount: $${amount}, New Balance: $${newBalance}`);

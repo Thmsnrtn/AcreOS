@@ -26,6 +26,59 @@ import { parseCSV, importLeads, importProperties, getExpectedLeadColumns, getExp
 // Usage limits
 import { checkUsageLimit, getAllUsageLimits, UsageLimitError, TIER_LIMITS } from "./services/usageLimits";
 
+// ============================================
+// RATE LIMITER (In-memory for portal endpoints)
+// ============================================
+interface RateLimitEntry {
+  count: number;
+  resetAt: number;
+}
+
+const rateLimitStore = new Map<string, RateLimitEntry>();
+
+function createRateLimiter(maxRequests: number, windowMs: number) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const ip = req.ip || req.socket.remoteAddress || 'unknown';
+    const key = `${ip}:${req.path}`;
+    const now = Date.now();
+    
+    const entry = rateLimitStore.get(key);
+    
+    if (!entry || now >= entry.resetAt) {
+      rateLimitStore.set(key, { count: 1, resetAt: now + windowMs });
+      return next();
+    }
+    
+    if (entry.count >= maxRequests) {
+      const retryAfter = Math.ceil((entry.resetAt - now) / 1000);
+      res.setHeader('Retry-After', retryAfter.toString());
+      return res.status(429).json({ 
+        message: `Rate limit exceeded. Try again in ${retryAfter} seconds.`,
+        retryAfter 
+      });
+    }
+    
+    entry.count++;
+    return next();
+  };
+}
+
+// Rate limiter for portal payment endpoints: 5 requests per minute per IP
+const portalPaymentRateLimiter = createRateLimiter(5, 60 * 1000);
+
+// Clean up old rate limit entries every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of rateLimitStore.entries()) {
+    if (now >= entry.resetAt) {
+      rateLimitStore.delete(key);
+    }
+  }
+}, 5 * 60 * 1000);
+
+// Maximum rows allowed per CSV import
+const MAX_CSV_IMPORT_ROWS = 500;
+
 // Configure multer for CSV file uploads (5MB max)
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -223,6 +276,30 @@ export async function registerRoutes(
         return res.status(400).json({ message: "CSV file is empty or has no data rows" });
       }
       
+      // Check row count limit
+      if (csvData.length > MAX_CSV_IMPORT_ROWS) {
+        return res.status(400).json({ 
+          message: `CSV file exceeds maximum of ${MAX_CSV_IMPORT_ROWS} rows. Your file has ${csvData.length} rows. Please split into smaller files.`,
+          rowCount: csvData.length,
+          maxRows: MAX_CSV_IMPORT_ROWS,
+        });
+      }
+      
+      // Pre-check usage limits before importing
+      const usageCheck = await checkUsageLimit(org.id, "leads");
+      if (usageCheck.limit !== null) {
+        const wouldExceed = usageCheck.current + csvData.length > usageCheck.limit;
+        if (wouldExceed) {
+          return res.status(429).json({
+            message: `Import would exceed your plan limit of ${usageCheck.limit} leads (current: ${usageCheck.current}, importing: ${csvData.length}). Upgrade your plan to import more leads.`,
+            current: usageCheck.current,
+            importing: csvData.length,
+            limit: usageCheck.limit,
+            tier: usageCheck.tier,
+          });
+        }
+      }
+      
       const result = await importLeads(csvData, org.id);
       res.json(result);
     } catch (err) {
@@ -343,6 +420,30 @@ export async function registerRoutes(
       
       if (csvData.length === 0) {
         return res.status(400).json({ message: "CSV file is empty or has no data rows" });
+      }
+      
+      // Check row count limit
+      if (csvData.length > MAX_CSV_IMPORT_ROWS) {
+        return res.status(400).json({ 
+          message: `CSV file exceeds maximum of ${MAX_CSV_IMPORT_ROWS} rows. Your file has ${csvData.length} rows. Please split into smaller files.`,
+          rowCount: csvData.length,
+          maxRows: MAX_CSV_IMPORT_ROWS,
+        });
+      }
+      
+      // Pre-check usage limits before importing
+      const usageCheck = await checkUsageLimit(org.id, "properties");
+      if (usageCheck.limit !== null) {
+        const wouldExceed = usageCheck.current + csvData.length > usageCheck.limit;
+        if (wouldExceed) {
+          return res.status(429).json({
+            message: `Import would exceed your plan limit of ${usageCheck.limit} properties (current: ${usageCheck.current}, importing: ${csvData.length}). Upgrade your plan to import more properties.`,
+            current: usageCheck.current,
+            importing: csvData.length,
+            limit: usageCheck.limit,
+            tier: usageCheck.tier,
+          });
+        }
       }
       
       const result = await importProperties(csvData, org.id);
@@ -1542,16 +1643,22 @@ export async function registerRoutes(
       
       // Look up note by access token
       const note = await storage.getNoteByAccessToken(accessToken);
+      
+      // Security: Use generic "not found" for all failure cases to avoid information leakage
+      // Do NOT expose whether access token exists or email matches
       if (!note) {
-        return res.status(404).json({ message: "Loan not found" });
+        return res.status(404).json({ message: "Loan not found or credentials invalid" });
       }
       
-      // Verify borrower email
+      // Verify borrower email - return same generic error if mismatch
       if (note.borrowerId) {
         const borrower = await storage.getLead(note.organizationId, note.borrowerId);
         if (!borrower || borrower.email?.toLowerCase() !== email.toLowerCase()) {
-          return res.status(401).json({ message: "Email does not match our records" });
+          return res.status(404).json({ message: "Loan not found or credentials invalid" });
         }
+      } else {
+        // No borrower linked - cannot verify, treat as not found
+        return res.status(404).json({ message: "Loan not found or credentials invalid" });
       }
       
       // Get payments for this note
@@ -1580,7 +1687,8 @@ export async function registerRoutes(
   });
   
   // Create Stripe checkout session for borrower portal payment
-  api.post("/api/portal/:accessToken/payment", async (req, res) => {
+  // Rate limited: 5 requests per minute per IP
+  api.post("/api/portal/:accessToken/payment", portalPaymentRateLimiter, async (req, res) => {
     try {
       const { accessToken } = req.params;
       const { amount } = req.body;
@@ -1640,6 +1748,9 @@ export async function registerRoutes(
           type: 'borrower_portal_payment',
         },
       });
+      
+      // Store the checkout session ID on the note for webhook verification
+      await storage.updateNote(note.id, { pendingCheckoutSessionId: session.id });
       
       res.json({ url: session.url, sessionId: session.id });
     } catch (err: any) {

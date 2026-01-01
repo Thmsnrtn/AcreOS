@@ -298,6 +298,9 @@ export const notes = pgTable("notes", {
   // Portal access token for borrowers
   accessToken: text("access_token").unique(),
   
+  // Pending checkout session ID for webhook verification
+  pendingCheckoutSessionId: text("pending_checkout_session_id"),
+  
   notes: text("notes_text"), // Renamed to avoid conflict with table name
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
