@@ -939,8 +939,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateVaAction(id: number, updates: Partial<VaAction>) {
-    // Remove id and createdAt from updates to prevent accidental modification
-    const { id: _id, createdAt: _createdAt, ...safeUpdates } = updates as any;
+    // Remove immutable fields from updates to prevent accidental modification
+    const { 
+      id: _id, 
+      createdAt: _createdAt, 
+      organizationId: _orgId,
+      agentId: _agentId,
+      ...safeUpdates 
+    } = updates as any;
     const [updated] = await db.update(vaActions)
       .set({ ...safeUpdates, updatedAt: new Date() })
       .where(eq(vaActions.id, id))

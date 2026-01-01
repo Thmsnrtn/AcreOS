@@ -903,13 +903,9 @@ Keep it concise and actionable.`;
   async executeAgentAction(action: VaAction): Promise<{ success: boolean; result?: any; error?: string }> {
     const startTime = Date.now();
     
-    // Guard against executing non-approved actions
-    if (action.status === "completed" || action.status === "failed" || action.status === "executing") {
-      return { success: false, error: `Action is already ${action.status}` };
-    }
-    
-    if (action.status === "rejected" || action.status === "cancelled") {
-      return { success: false, error: `Cannot execute ${action.status} action` };
+    // Only approved actions can be executed
+    if (action.status !== "approved") {
+      return { success: false, error: `Action must be approved before execution (current status: ${action.status})` };
     }
     
     try {
