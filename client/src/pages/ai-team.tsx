@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import {
   Briefcase,
@@ -120,6 +121,7 @@ export default function AITeamPage() {
   const [taskDialogOpen, setTaskDialogOpen] = useState(false);
   const [taskInput, setTaskInput] = useState("");
   const [customInstructions, setCustomInstructions] = useState("");
+  const [mobileTab, setMobileTab] = useState<string>("agents");
 
   const { data: agents = defaultAgents, isLoading: agentsLoading } = useQuery<VAAgent[]>({
     queryKey: ["/api/va/agents"],
@@ -251,7 +253,387 @@ export default function AITeamPage() {
           </div>
         </div>
 
-        <div className="flex-1 flex overflow-hidden">
+        {/* Mobile Tabbed Layout */}
+        <div className="flex-1 flex flex-col overflow-hidden md:hidden pb-24">
+          <Tabs value={mobileTab} onValueChange={setMobileTab} className="flex-1 flex flex-col overflow-hidden">
+            <div className="px-4 pt-2">
+              <TabsList className="w-full" data-testid="mobile-tabs">
+                <TabsTrigger value="agents" className="flex-1" data-testid="tab-agents">Agents</TabsTrigger>
+                <TabsTrigger value="activity" className="flex-1" data-testid="tab-activity">Activity</TabsTrigger>
+                <TabsTrigger value="details" className="flex-1" data-testid="tab-details">Details</TabsTrigger>
+              </TabsList>
+            </div>
+
+            <TabsContent value="agents" className="flex-1 overflow-hidden mt-0">
+              <ScrollArea className="h-full">
+                <div className="p-3 space-y-2" data-testid="list-agents-mobile">
+                  {agentsLoading ? (
+                    Array.from({ length: 6 }).map((_, i) => (
+                      <Skeleton key={i} className="h-20 w-full rounded-lg" />
+                    ))
+                  ) : (
+                    agents.map((agent) => {
+                      const IconComponent = getAgentIcon(agent.type);
+                      const isSelected = selectedAgentId === agent.id;
+                      return (
+                        <div
+                          key={agent.id}
+                          onClick={() => {
+                            setSelectedAgentId(agent.id);
+                            setMobileTab("details");
+                          }}
+                          className={`p-3 rounded-lg cursor-pointer transition-colors ${
+                            isSelected
+                              ? "bg-primary/10 ring-1 ring-primary"
+                              : "hover-elevate"
+                          }`}
+                          data-testid={`card-agent-mobile-${agent.type}`}
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className={`p-2 rounded-lg ${isSelected ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
+                              <IconComponent className="w-4 h-4" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium text-sm truncate">{agent.name}</span>
+                                <div className={`w-2 h-2 rounded-full ${getAgentStatusColor(agent.status)}`} />
+                              </div>
+                              <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
+                                {agent.description}
+                              </p>
+                              <div className="flex items-center gap-2 mt-2">
+                                {agent.pendingActions > 0 && (
+                                  <Badge variant="secondary" className="text-xs">
+                                    {agent.pendingActions} pending
+                                  </Badge>
+                                )}
+                                <Switch
+                                  checked={agent.enabled}
+                                  onCheckedChange={(checked) => {
+                                    updateAgentMutation.mutate({
+                                      id: agent.id,
+                                      updates: { enabled: checked },
+                                    });
+                                  }}
+                                  onClick={(e) => e.stopPropagation()}
+                                  data-testid={`switch-agent-enabled-mobile-${agent.type}`}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </ScrollArea>
+            </TabsContent>
+
+            <TabsContent value="activity" className="flex-1 overflow-hidden mt-0 flex flex-col">
+              {briefing && (
+                <Card className="mx-4 mt-2 border-primary/20 bg-primary/5">
+                  <CardContent className="p-4">
+                    <div className="flex items-start gap-3">
+                      <Zap className="w-5 h-5 text-primary mt-0.5" />
+                      <div className="flex-1">
+                        <h3 className="font-semibold text-sm mb-1">Daily Briefing</h3>
+                        <p className="text-sm text-muted-foreground">{briefing.summary}</p>
+                        {briefing.highlights && briefing.highlights.length > 0 && (
+                          <ul className="mt-2 space-y-1">
+                            {briefing.highlights.slice(0, 3).map((h, i) => (
+                              <li key={i} className="text-xs text-muted-foreground flex items-center gap-2">
+                                <Check className="w-3 h-3 text-green-500" /> {h}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        <p className="text-xs text-muted-foreground mt-2">
+                          Generated {formatDistanceToNow(new Date(briefing.generatedAt), { addSuffix: true })}
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+              <div className="p-4 border-b border-border flex items-center gap-3 flex-wrap">
+                <h2 className="text-sm font-semibold text-muted-foreground mr-auto">Activity Feed</h2>
+                <Select value={agentFilter} onValueChange={setAgentFilter}>
+                  <SelectTrigger className="w-32" data-testid="select-agent-filter-mobile">
+                    <SelectValue placeholder="Agent" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Agents</SelectItem>
+                    {agents.map((agent) => (
+                      <SelectItem key={agent.type} value={agent.type}>{agent.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="w-32" data-testid="select-status-filter-mobile">
+                    <SelectValue placeholder="Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All</SelectItem>
+                    <SelectItem value="proposed">Proposed</SelectItem>
+                    <SelectItem value="approved">Approved</SelectItem>
+                    <SelectItem value="completed">Completed</SelectItem>
+                    <SelectItem value="rejected">Rejected</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <ScrollArea className="flex-1">
+                <div className="p-4 space-y-3" data-testid="list-actions-mobile">
+                  {actionsLoading ? (
+                    Array.from({ length: 5 }).map((_, i) => (
+                      <Skeleton key={i} className="h-24 w-full rounded-lg" />
+                    ))
+                  ) : filteredActions.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-16 text-center">
+                      <AlertCircle className="w-12 h-12 text-muted-foreground/30 mb-4" />
+                      <p className="text-muted-foreground text-sm">No actions match your filters</p>
+                    </div>
+                  ) : (
+                    filteredActions.map((action) => {
+                      const IconComponent = getAgentIcon(action.agentType);
+                      return (
+                        <Card key={action.id} className="overflow-visible" data-testid={`card-action-mobile-${action.id}`}>
+                          <CardContent className="p-4">
+                            <div className="flex items-start gap-3">
+                              <div className="p-2 rounded-lg bg-muted">
+                                <IconComponent className="w-4 h-4" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                  <span className="font-medium text-sm">{action.title}</span>
+                                  <Badge className={`text-xs ${getStatusColor(action.status)}`}>
+                                    {action.status}
+                                  </Badge>
+                                </div>
+                                <p className="text-sm text-muted-foreground">{action.description}</p>
+                                <div className="flex items-center gap-4 mt-2 flex-wrap">
+                                  <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                    <Clock className="w-3 h-3" />
+                                    {formatDistanceToNow(new Date(action.createdAt), { addSuffix: true })}
+                                  </span>
+                                  <span className="text-xs text-muted-foreground">{action.agentName}</span>
+                                </div>
+                              </div>
+                              {action.status === "proposed" && (
+                                <div className="flex items-center gap-2">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => rejectActionMutation.mutate(action.id)}
+                                    disabled={rejectActionMutation.isPending}
+                                    data-testid={`button-reject-action-mobile-${action.id}`}
+                                  >
+                                    <X className="w-4 h-4" />
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    onClick={() => approveActionMutation.mutate(action.id)}
+                                    disabled={approveActionMutation.isPending}
+                                    data-testid={`button-approve-action-mobile-${action.id}`}
+                                  >
+                                    <Check className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })
+                  )}
+                </div>
+              </ScrollArea>
+            </TabsContent>
+
+            <TabsContent value="details" className="flex-1 overflow-hidden mt-0">
+              {!selectedAgent ? (
+                <div className="flex-1 flex flex-col items-center justify-center p-6 text-center h-full">
+                  <Settings2 className="w-12 h-12 text-muted-foreground/30 mb-4" />
+                  <p className="text-muted-foreground text-sm">Select an agent to view details and settings</p>
+                </div>
+              ) : (
+                <ScrollArea className="h-full">
+                  <div className="p-4 border-b border-border">
+                    <div className="flex items-center gap-3">
+                      {(() => {
+                        const IconComponent = getAgentIcon(selectedAgent.type);
+                        return (
+                          <div className="p-3 rounded-lg bg-primary text-primary-foreground">
+                            <IconComponent className="w-5 h-5" />
+                          </div>
+                        );
+                      })()}
+                      <div>
+                        <h3 className="font-semibold" data-testid="text-selected-agent-name-mobile">{selectedAgent.name}</h3>
+                        <div className="flex items-center gap-2">
+                          <div className={`w-2 h-2 rounded-full ${getAgentStatusColor(selectedAgent.status)}`} />
+                          <span className="text-xs text-muted-foreground capitalize">{selectedAgent.status}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <p className="text-sm text-muted-foreground mt-3">{selectedAgent.description}</p>
+                  </div>
+                  <div className="p-4 space-y-6">
+                    <div>
+                      <h4 className="text-sm font-semibold mb-3">Settings</h4>
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between gap-4">
+                          <div>
+                            <p className="text-sm font-medium">Enabled</p>
+                            <p className="text-xs text-muted-foreground">Allow this agent to operate</p>
+                          </div>
+                          <Switch
+                            checked={selectedAgent.enabled}
+                            onCheckedChange={(checked) => {
+                              updateAgentMutation.mutate({
+                                id: selectedAgent.id,
+                                updates: { enabled: checked },
+                              });
+                            }}
+                            data-testid="switch-agent-enabled-detail-mobile"
+                          />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium mb-2">Autonomy Level</p>
+                          <Select
+                            value={selectedAgent.autonomyLevel}
+                            onValueChange={(value: VAAgent["autonomyLevel"]) => {
+                              updateAgentMutation.mutate({
+                                id: selectedAgent.id,
+                                updates: { autonomyLevel: value },
+                              });
+                            }}
+                          >
+                            <SelectTrigger data-testid="select-autonomy-level-mobile">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="full_auto">Full Auto</SelectItem>
+                              <SelectItem value="supervised">Supervised</SelectItem>
+                              <SelectItem value="manual">Manual</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {selectedAgent.autonomyLevel === "full_auto" && "Agent acts without approval"}
+                            {selectedAgent.autonomyLevel === "supervised" && "Agent proposes actions for approval"}
+                            {selectedAgent.autonomyLevel === "manual" && "Agent only acts when assigned tasks"}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium mb-2">Custom Instructions</p>
+                          <Textarea
+                            placeholder="Add custom instructions for this agent..."
+                            value={customInstructions || selectedAgent.customInstructions || ""}
+                            onChange={(e) => setCustomInstructions(e.target.value)}
+                            className="min-h-[100px]"
+                            data-testid="textarea-custom-instructions-mobile"
+                          />
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="mt-2"
+                            onClick={() => {
+                              updateAgentMutation.mutate({
+                                id: selectedAgent.id,
+                                updates: { customInstructions },
+                              });
+                            }}
+                            disabled={updateAgentMutation.isPending}
+                            data-testid="button-save-instructions-mobile"
+                          >
+                            Save Instructions
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <Dialog open={taskDialogOpen} onOpenChange={setTaskDialogOpen}>
+                        <DialogTrigger asChild>
+                          <Button className="w-full" data-testid="button-assign-task-mobile">
+                            <Play className="w-4 h-4 mr-2" />
+                            Assign Task
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                          <DialogHeader>
+                            <DialogTitle>Assign Task to {selectedAgent.name}</DialogTitle>
+                            <DialogDescription>
+                              Describe the task you want this agent to perform.
+                            </DialogDescription>
+                          </DialogHeader>
+                          <Textarea
+                            placeholder="E.g., Send follow-up emails to all leads who haven't responded in 7 days..."
+                            value={taskInput}
+                            onChange={(e) => setTaskInput(e.target.value)}
+                            className="min-h-[120px]"
+                            data-testid="textarea-task-input-mobile"
+                          />
+                          <DialogFooter>
+                            <Button
+                              variant="outline"
+                              onClick={() => setTaskDialogOpen(false)}
+                              data-testid="button-cancel-task-mobile"
+                            >
+                              Cancel
+                            </Button>
+                            <Button
+                              onClick={() => {
+                                submitTaskMutation.mutate({
+                                  agentType: selectedAgent.type,
+                                  task: taskInput,
+                                });
+                              }}
+                              disabled={!taskInput.trim() || submitTaskMutation.isPending}
+                              data-testid="button-submit-task-mobile"
+                            >
+                              {submitTaskMutation.isPending ? (
+                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              ) : null}
+                              Submit Task
+                            </Button>
+                          </DialogFooter>
+                        </DialogContent>
+                      </Dialog>
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-semibold mb-3">Recent Actions</h4>
+                      {agentActions.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">No recent actions</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {agentActions.slice(0, 5).map((action) => (
+                            <div
+                              key={action.id}
+                              className="p-3 rounded-lg bg-muted/50"
+                              data-testid={`card-agent-action-mobile-${action.id}`}
+                            >
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-sm font-medium truncate">{action.title}</span>
+                                <Badge className={`text-xs shrink-0 ${getStatusColor(action.status)}`}>
+                                  {action.status}
+                                </Badge>
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                {formatDistanceToNow(new Date(action.createdAt), { addSuffix: true })}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </ScrollArea>
+              )}
+            </TabsContent>
+          </Tabs>
+        </div>
+
+        {/* Desktop 3-Panel Layout */}
+        <div className="flex-1 hidden md:flex overflow-hidden">
           <div className="w-72 border-r border-border vibrancy-sidebar flex flex-col overflow-hidden">
             <div className="p-4 border-b border-border">
               <h2 className="text-sm font-semibold text-muted-foreground">Agent Roster</h2>
