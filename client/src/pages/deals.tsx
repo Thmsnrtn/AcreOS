@@ -1,25 +1,27 @@
 import { Sidebar } from "@/components/layout-sidebar";
-import { useDeals, useCreateDeal, useUpdateDeal, useDeleteDeal } from "@/hooks/use-deals";
+import { useDeals, useCreateDeal, useUpdateDeal, useDeleteDeal, useSaveDealAnalysis } from "@/hooks/use-deals";
 import { useProperties } from "@/hooks/use-properties";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertDealSchema, type Deal, type Property } from "@shared/schema";
 import { z } from "zod";
+import { DealCalculator, type AnalysisResults } from "@/components/deal-calculator";
+import { useToast } from "@/hooks/use-toast";
 
-// Client-side form schema that omits organizationId (added by server)
 const dealFormSchema = insertDealSchema.omit({ organizationId: true });
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, MapPin, DollarSign, Calendar, Building, TrendingUp, CheckCircle, X, GripVertical, FileText, Trash2, Loader2, Briefcase } from "lucide-react";
+import { Plus, MapPin, DollarSign, Calendar, Building, TrendingUp, CheckCircle, X, GripVertical, FileText, Trash2, Loader2, Briefcase, Calculator } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type DealWithProperty = Deal & { property?: Property };
 
@@ -287,21 +289,44 @@ function DealCard({ deal, onSelect }: { deal: DealWithProperty; onSelect: () => 
 
 function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty; onClose: () => void; onDelete: () => void }) {
   const { mutate: updateDeal, isPending } = useUpdateDeal();
+  const { mutate: saveAnalysis, isPending: isSavingAnalysis } = useSaveDealAnalysis();
+  const { toast } = useToast();
 
   const handleStatusChange = (newStatus: string) => {
     updateDeal({ id: deal.id, status: newStatus });
   };
 
+  const handleSaveAnalysis = (results: AnalysisResults) => {
+    saveAnalysis(
+      { dealId: deal.id, analysisResults: results },
+      {
+        onSuccess: () => {
+          toast({
+            title: "Analysis Saved",
+            description: "ROI analysis has been saved to this deal.",
+          });
+        },
+        onError: () => {
+          toast({
+            title: "Error",
+            description: "Failed to save analysis. Please try again.",
+            variant: "destructive",
+          });
+        },
+      }
+    );
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" onClick={onClose}>
       <div 
-        className="fixed right-0 top-0 h-full w-full max-w-lg bg-background shadow-2xl overflow-y-auto"
+        className="fixed right-0 top-0 h-full w-full max-w-2xl bg-background shadow-2xl overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
         <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b p-6">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-4">
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <Badge variant={deal.type === 'acquisition' ? 'default' : 'secondary'}>
                   {deal.type === 'acquisition' ? 'Acquisition' : 'Disposition'}
                 </Badge>
@@ -324,163 +349,188 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
           </div>
         </div>
 
-        <div className="p-6 space-y-6">
-          <Card className="glass-panel">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Update Status</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Select 
-                value={deal.status} 
-                onValueChange={handleStatusChange}
-                disabled={isPending}
-              >
-                <SelectTrigger data-testid="select-deal-status">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {dealStages.map(stage => (
-                    <SelectItem key={stage.value} value={stage.value}>
-                      {stage.label}
-                    </SelectItem>
-                  ))}
-                  <SelectItem value="cancelled">Cancelled</SelectItem>
-                </SelectContent>
-              </Select>
-              {isPending && (
-                <p className="text-sm text-muted-foreground mt-2 flex items-center gap-2">
-                  <Loader2 className="w-3 h-3 animate-spin" /> Updating...
-                </p>
-              )}
-            </CardContent>
-          </Card>
+        <div className="p-6">
+          <Tabs defaultValue="details" className="space-y-6">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="details" data-testid="tab-deal-details">
+                <FileText className="w-4 h-4 mr-2" />
+                Details
+              </TabsTrigger>
+              <TabsTrigger value="analysis" data-testid="tab-deal-analysis">
+                <Calculator className="w-4 h-4 mr-2" />
+                ROI Analysis
+              </TabsTrigger>
+            </TabsList>
 
-          <div className="grid grid-cols-2 gap-4">
-            <Card className="glass-panel">
-              <CardContent className="p-4">
-                <p className="text-sm text-muted-foreground">Offer Amount</p>
-                <p className="text-xl font-bold font-mono">
-                  ${Number(deal.offerAmount || 0).toLocaleString()}
-                </p>
-              </CardContent>
-            </Card>
-            <Card className="glass-panel">
-              <CardContent className="p-4">
-                <p className="text-sm text-muted-foreground">Accepted Amount</p>
-                <p className="text-xl font-bold font-mono text-emerald-600">
-                  ${Number(deal.acceptedAmount || 0).toLocaleString()}
-                </p>
-              </CardContent>
-            </Card>
-          </div>
+            <TabsContent value="details" className="space-y-6">
+              <Card className="glass-panel">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base">Update Status</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Select 
+                    value={deal.status} 
+                    onValueChange={handleStatusChange}
+                    disabled={isPending}
+                  >
+                    <SelectTrigger data-testid="select-deal-status">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {dealStages.map(stage => (
+                        <SelectItem key={stage.value} value={stage.value}>
+                          {stage.label}
+                        </SelectItem>
+                      ))}
+                      <SelectItem value="cancelled">Cancelled</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {isPending && (
+                    <p className="text-sm text-muted-foreground mt-2 flex items-center gap-2">
+                      <Loader2 className="w-3 h-3 animate-spin" /> Updating...
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
 
-          {deal.property && (
-            <Card className="glass-panel">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <MapPin className="w-4 h-4" /> Property Details
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <p className="text-muted-foreground">Location</p>
-                    <p className="font-medium">{deal.property.county}, {deal.property.state}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">APN</p>
-                    <p className="font-mono">{deal.property.apn}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Size</p>
-                    <p className="font-medium">{deal.property.sizeAcres} acres</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Assessed Value</p>
-                    <p className="font-mono">${Number(deal.property.assessedValue || 0).toLocaleString()}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          <Card className="glass-panel">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Calendar className="w-4 h-4" /> Timeline
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3 text-sm">
-                {deal.offerDate && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Offer Date</span>
-                    <span>{format(new Date(deal.offerDate), 'MMM d, yyyy')}</span>
-                  </div>
-                )}
-                {deal.closingDate && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Closing Date</span>
-                    <span>{format(new Date(deal.closingDate), 'MMM d, yyyy')}</span>
-                  </div>
-                )}
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Created</span>
-                  <span>{deal.createdAt ? format(new Date(deal.createdAt), 'MMM d, yyyy') : 'N/A'}</span>
-                </div>
+              <div className="grid grid-cols-2 gap-4">
+                <Card className="glass-panel">
+                  <CardContent className="p-4">
+                    <p className="text-sm text-muted-foreground">Offer Amount</p>
+                    <p className="text-xl font-bold font-mono">
+                      ${Number(deal.offerAmount || 0).toLocaleString()}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card className="glass-panel">
+                  <CardContent className="p-4">
+                    <p className="text-sm text-muted-foreground">Accepted Amount</p>
+                    <p className="text-xl font-bold font-mono text-emerald-600">
+                      ${Number(deal.acceptedAmount || 0).toLocaleString()}
+                    </p>
+                  </CardContent>
+                </Card>
               </div>
-            </CardContent>
-          </Card>
 
-          {deal.titleCompany && (
-            <Card className="glass-panel">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base">Closing Details</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Title Company</span>
-                    <span>{deal.titleCompany}</span>
+              {deal.property && (
+                <Card className="glass-panel">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <MapPin className="w-4 h-4" /> Property Details
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <p className="text-muted-foreground">Location</p>
+                        <p className="font-medium">{deal.property.county}, {deal.property.state}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">APN</p>
+                        <p className="font-mono">{deal.property.apn}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Size</p>
+                        <p className="font-medium">{deal.property.sizeAcres} acres</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Assessed Value</p>
+                        <p className="font-mono">${Number(deal.property.assessedValue || 0).toLocaleString()}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              <Card className="glass-panel">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Calendar className="w-4 h-4" /> Timeline
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3 text-sm">
+                    {deal.offerDate && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Offer Date</span>
+                        <span>{format(new Date(deal.offerDate), 'MMM d, yyyy')}</span>
+                      </div>
+                    )}
+                    {deal.closingDate && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Closing Date</span>
+                        <span>{format(new Date(deal.closingDate), 'MMM d, yyyy')}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Created</span>
+                      <span>{deal.createdAt ? format(new Date(deal.createdAt), 'MMM d, yyyy') : 'N/A'}</span>
+                    </div>
                   </div>
-                  {deal.escrowNumber && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Escrow #</span>
-                      <span className="font-mono">{deal.escrowNumber}</span>
-                    </div>
-                  )}
-                  {deal.closingCosts && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Closing Costs</span>
-                      <span className="font-mono">${Number(deal.closingCosts).toLocaleString()}</span>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          )}
+                </CardContent>
+              </Card>
 
-          {deal.notes && (
-            <Card className="glass-panel">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <FileText className="w-4 h-4" /> Notes
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm whitespace-pre-wrap">{deal.notes}</p>
-              </CardContent>
-            </Card>
-          )}
+              {deal.titleCompany && (
+                <Card className="glass-panel">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">Closing Details</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Title Company</span>
+                        <span>{deal.titleCompany}</span>
+                      </div>
+                      {deal.escrowNumber && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Escrow #</span>
+                          <span className="font-mono">{deal.escrowNumber}</span>
+                        </div>
+                      )}
+                      {deal.closingCosts && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Closing Costs</span>
+                          <span className="font-mono">${Number(deal.closingCosts).toLocaleString()}</span>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
-          <div className="flex gap-2">
-            <Button variant="outline" className="flex-1">
-              Generate Documents
-            </Button>
-            <Button className="flex-1">
-              View Property
-            </Button>
-          </div>
+              {deal.notes && (
+                <Card className="glass-panel">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <FileText className="w-4 h-4" /> Notes
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm whitespace-pre-wrap">{deal.notes}</p>
+                  </CardContent>
+                </Card>
+              )}
+
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1">
+                  Generate Documents
+                </Button>
+                <Button className="flex-1">
+                  View Property
+                </Button>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="analysis">
+              <DealCalculator 
+                deal={deal} 
+                property={deal.property}
+                onSave={handleSaveAnalysis}
+                isSaving={isSavingAnalysis}
+                showSaveButton={true}
+              />
+            </TabsContent>
+          </Tabs>
         </div>
       </div>
     </div>

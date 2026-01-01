@@ -12,6 +12,7 @@ import PropertiesPage from "@/pages/properties";
 import FinancePage from "@/pages/finance";
 import CampaignsPage from "@/pages/campaigns";
 import DealsPage from "@/pages/deals";
+import ToolsPage from "@/pages/tools";
 import AgentsPage from "@/pages/agents";
 import CommandCenterPage from "@/pages/command-center";
 import AITeamPage from "@/pages/ai-team";
@@ -70,6 +71,9 @@ function Router() {
       </Route>
       <Route path="/campaigns">
         {() => <ProtectedRoute component={CampaignsPage} />}
+      </Route>
+      <Route path="/tools">
+        {() => <ProtectedRoute component={ToolsPage} />}
       </Route>
       <Route path="/agents">
         {() => <ProtectedRoute component={AgentsPage} />}

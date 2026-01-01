@@ -16,6 +16,29 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 // AI imports
 import { processChat, processChatStream, agentProfiles, getOrCreateConversation } from "./ai/executive";
 
+// Export imports
+import { exportLeadsToCSV, exportPropertiesToCSV, exportNotesToCSV } from "./services/export";
+
+// Import imports
+import multer from "multer";
+import { parseCSV, importLeads, importProperties, getExpectedLeadColumns, getExpectedPropertyColumns } from "./services/import";
+
+// Usage limits
+import { checkUsageLimit, getAllUsageLimits, UsageLimitError, TIER_LIMITS } from "./services/usageLimits";
+
+// Configure multer for CSV file uploads (5MB max)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === "text/csv" || file.originalname.endsWith(".csv")) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only CSV files are allowed"));
+    }
+  },
+});
+
 // Middleware to get/create organization for authenticated user
 async function getOrCreateOrg(req: Request, res: Response, next: NextFunction) {
   if (!req.user) {
@@ -101,6 +124,16 @@ export async function registerRoutes(
     res.json(SUBSCRIPTION_TIERS);
   });
   
+  api.get("/api/usage", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const usage = await getAllUsageLimits(org.id);
+    res.json(usage);
+  });
+  
+  api.get("/api/usage/limits", async (req, res) => {
+    res.json(TIER_LIMITS);
+  });
+  
   // ============================================
   // TEAM MEMBERS
   // ============================================
@@ -131,6 +164,18 @@ export async function registerRoutes(
   api.post("/api/leads", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = (req as any).organization;
+      
+      const usageCheck = await checkUsageLimit(org.id, "leads");
+      if (!usageCheck.allowed) {
+        return res.status(429).json({
+          message: `Lead limit reached (${usageCheck.current}/${usageCheck.limit}). Upgrade your plan to add more leads.`,
+          current: usageCheck.current,
+          limit: usageCheck.limit,
+          resourceType: usageCheck.resourceType,
+          tier: usageCheck.tier,
+        });
+      }
+      
       const input = insertLeadSchema.parse({ ...req.body, organizationId: org.id });
       const lead = await storage.createLead(input);
       res.status(201).json(lead);
@@ -153,6 +198,74 @@ export async function registerRoutes(
     res.status(204).send();
   });
   
+  api.get("/api/leads/export", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const csv = await exportLeadsToCSV(org.id);
+    const date = new Date().toISOString().split("T")[0];
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", `attachment; filename="leads-${date}.csv"`);
+    res.send(csv);
+  });
+  
+  api.post("/api/leads/import", isAuthenticated, getOrCreateOrg, upload.single("file"), async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const file = req.file;
+      
+      if (!file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+      
+      const csvString = file.buffer.toString("utf-8");
+      const csvData = parseCSV(csvString);
+      
+      if (csvData.length === 0) {
+        return res.status(400).json({ message: "CSV file is empty or has no data rows" });
+      }
+      
+      const result = await importLeads(csvData, org.id);
+      res.json(result);
+    } catch (err) {
+      console.error("Lead import error:", err);
+      res.status(400).json({ 
+        message: err instanceof Error ? err.message : "Failed to import leads" 
+      });
+    }
+  });
+  
+  api.post("/api/leads/import/preview", isAuthenticated, getOrCreateOrg, upload.single("file"), async (req, res) => {
+    try {
+      const file = req.file;
+      
+      if (!file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+      
+      const csvString = file.buffer.toString("utf-8");
+      const csvData = parseCSV(csvString);
+      
+      if (csvData.length === 0) {
+        return res.status(400).json({ message: "CSV file is empty or has no data rows" });
+      }
+      
+      const headers = Object.keys(csvData[0]);
+      const preview = csvData.slice(0, 5);
+      const expectedColumns = getExpectedLeadColumns();
+      
+      res.json({
+        totalRows: csvData.length,
+        headers,
+        preview,
+        expectedColumns,
+      });
+    } catch (err) {
+      console.error("Lead import preview error:", err);
+      res.status(400).json({ 
+        message: err instanceof Error ? err.message : "Failed to parse CSV" 
+      });
+    }
+  });
+  
   // ============================================
   // PROPERTIES (INVENTORY)
   // ============================================
@@ -173,6 +286,18 @@ export async function registerRoutes(
   api.post("/api/properties", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = (req as any).organization;
+      
+      const usageCheck = await checkUsageLimit(org.id, "properties");
+      if (!usageCheck.allowed) {
+        return res.status(429).json({
+          message: `Property limit reached (${usageCheck.current}/${usageCheck.limit}). Upgrade your plan to add more properties.`,
+          current: usageCheck.current,
+          limit: usageCheck.limit,
+          resourceType: usageCheck.resourceType,
+          tier: usageCheck.tier,
+        });
+      }
+      
       const input = insertPropertySchema.parse({ ...req.body, organizationId: org.id });
       const property = await storage.createProperty(input);
       res.status(201).json(property);
@@ -193,6 +318,153 @@ export async function registerRoutes(
   api.delete("/api/properties/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     await storage.deleteProperty(Number(req.params.id));
     res.status(204).send();
+  });
+  
+  api.get("/api/properties/export", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const csv = await exportPropertiesToCSV(org.id);
+    const date = new Date().toISOString().split("T")[0];
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", `attachment; filename="properties-${date}.csv"`);
+    res.send(csv);
+  });
+  
+  api.post("/api/properties/import", isAuthenticated, getOrCreateOrg, upload.single("file"), async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const file = req.file;
+      
+      if (!file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+      
+      const csvString = file.buffer.toString("utf-8");
+      const csvData = parseCSV(csvString);
+      
+      if (csvData.length === 0) {
+        return res.status(400).json({ message: "CSV file is empty or has no data rows" });
+      }
+      
+      const result = await importProperties(csvData, org.id);
+      res.json(result);
+    } catch (err) {
+      console.error("Property import error:", err);
+      res.status(400).json({ 
+        message: err instanceof Error ? err.message : "Failed to import properties" 
+      });
+    }
+  });
+  
+  api.post("/api/properties/import/preview", isAuthenticated, getOrCreateOrg, upload.single("file"), async (req, res) => {
+    try {
+      const file = req.file;
+      
+      if (!file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+      
+      const csvString = file.buffer.toString("utf-8");
+      const csvData = parseCSV(csvString);
+      
+      if (csvData.length === 0) {
+        return res.status(400).json({ message: "CSV file is empty or has no data rows" });
+      }
+      
+      const headers = Object.keys(csvData[0]);
+      const preview = csvData.slice(0, 5);
+      const expectedColumns = getExpectedPropertyColumns();
+      
+      res.json({
+        totalRows: csvData.length,
+        headers,
+        preview,
+        expectedColumns,
+      });
+    } catch (err) {
+      console.error("Property import preview error:", err);
+      res.status(400).json({ 
+        message: err instanceof Error ? err.message : "Failed to parse CSV" 
+      });
+    }
+  });
+  
+  // ============================================
+  // COMPS ANALYSIS (Comparable Properties)
+  // ============================================
+  
+  api.get("/api/properties/:id/comps", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const property = await storage.getProperty(org.id, Number(req.params.id));
+      
+      if (!property) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+      
+      const lat = property.parcelCentroid?.lat || (property.latitude ? parseFloat(String(property.latitude)) : null);
+      const lng = property.parcelCentroid?.lng || (property.longitude ? parseFloat(String(property.longitude)) : null);
+      
+      if (!lat || !lng) {
+        return res.status(400).json({ 
+          message: "Property coordinates not available. Please fetch parcel data first.",
+          error: "missing_coordinates"
+        });
+      }
+      
+      const radiusMiles = parseFloat(req.query.radius as string) || 5;
+      const filters: import("./services/comps").CompsFilters = {};
+      
+      if (req.query.minAcreage) filters.minAcreage = parseFloat(req.query.minAcreage as string);
+      if (req.query.maxAcreage) filters.maxAcreage = parseFloat(req.query.maxAcreage as string);
+      if (req.query.propertyType) filters.propertyType = req.query.propertyType as string;
+      if (req.query.minSaleDate) filters.minSaleDate = req.query.minSaleDate as string;
+      if (req.query.maxSaleDate) filters.maxSaleDate = req.query.maxSaleDate as string;
+      if (req.query.maxResults) filters.maxResults = parseInt(req.query.maxResults as string);
+      
+      const subjectAcreage = property.sizeAcres ? parseFloat(String(property.sizeAcres)) : 0;
+      
+      const { getPropertyComps } = await import("./services/comps");
+      const result = await getPropertyComps(lat, lng, subjectAcreage, radiusMiles, filters);
+      
+      res.json({
+        ...result,
+        subjectProperty: {
+          id: property.id,
+          apn: property.apn,
+          address: property.address,
+          acreage: subjectAcreage,
+          coordinates: { lat, lng },
+        },
+      });
+    } catch (err) {
+      console.error("Comps lookup error:", err);
+      res.status(500).json({ 
+        message: err instanceof Error ? err.message : "Failed to fetch comparable properties" 
+      });
+    }
+  });
+  
+  api.post("/api/comps/search", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { lat, lng, radius, subjectAcreage, filters } = req.body;
+      
+      if (!lat || !lng) {
+        return res.status(400).json({ message: "Latitude and longitude are required" });
+      }
+      
+      const radiusMiles = radius || 5;
+      const acreage = subjectAcreage || 0;
+      
+      const { getPropertyComps } = await import("./services/comps");
+      const result = await getPropertyComps(lat, lng, acreage, radiusMiles, filters || {});
+      
+      res.json(result);
+    } catch (err) {
+      console.error("Comps search error:", err);
+      res.status(500).json({ 
+        message: err instanceof Error ? err.message : "Failed to search comparable properties" 
+      });
+    }
   });
   
   // ============================================
@@ -309,6 +581,103 @@ export async function registerRoutes(
   });
   
   // ============================================
+  // DUE DILIGENCE TEMPLATES & CHECKLISTS
+  // ============================================
+  
+  api.get("/api/due-diligence/templates", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const templates = await storage.getDueDiligenceTemplates(org.id);
+    if (templates.length === 0) {
+      const initialized = await storage.initializeDefaultTemplates(org.id);
+      return res.json(initialized);
+    }
+    res.json(templates);
+  });
+  
+  api.get("/api/due-diligence/templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const template = await storage.getDueDiligenceTemplate(Number(req.params.id));
+    if (!template) return res.status(404).json({ message: "Template not found" });
+    res.json(template);
+  });
+  
+  api.post("/api/due-diligence/templates", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const template = await storage.createDueDiligenceTemplate({
+        ...req.body,
+        organizationId: org.id,
+      });
+      res.status(201).json(template);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      throw err;
+    }
+  });
+  
+  api.put("/api/due-diligence/templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const template = await storage.updateDueDiligenceTemplate(Number(req.params.id), req.body);
+    if (!template) return res.status(404).json({ message: "Template not found" });
+    res.json(template);
+  });
+  
+  api.delete("/api/due-diligence/templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    await storage.deleteDueDiligenceTemplate(Number(req.params.id));
+    res.status(204).send();
+  });
+  
+  api.get("/api/properties/:id/due-diligence", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const items = await storage.getPropertyDueDiligence(Number(req.params.id));
+    res.json(items);
+  });
+  
+  api.post("/api/properties/:id/due-diligence/apply-template", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { templateId } = req.body;
+      if (!templateId) {
+        return res.status(400).json({ message: "templateId is required" });
+      }
+      const items = await storage.applyTemplateToProperty(Number(req.params.id), templateId);
+      res.json(items);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Failed to apply template" });
+    }
+  });
+  
+  api.post("/api/properties/:id/due-diligence", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const item = await storage.createDueDiligenceItem({
+        ...req.body,
+        propertyId: Number(req.params.id),
+      });
+      res.status(201).json(item);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      throw err;
+    }
+  });
+  
+  api.put("/api/due-diligence/items/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const user = req.user as any;
+    const userId = user?.claims?.sub || user?.id;
+    const updates = { ...req.body };
+    if (updates.completed === true && userId) {
+      updates.completedBy = userId;
+    }
+    const item = await storage.updateDueDiligenceItem(Number(req.params.id), updates);
+    if (!item) return res.status(404).json({ message: "Item not found" });
+    res.json(item);
+  });
+  
+  api.delete("/api/due-diligence/items/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    await storage.deleteDueDiligenceItem(Number(req.params.id));
+    res.status(204).send();
+  });
+  
+  // ============================================
   // NOTES (Seller Financing)
   // ============================================
   
@@ -328,6 +697,17 @@ export async function registerRoutes(
   api.post("/api/notes", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = (req as any).organization;
+      
+      const usageCheck = await checkUsageLimit(org.id, "notes");
+      if (!usageCheck.allowed) {
+        return res.status(429).json({
+          message: `Note limit reached (${usageCheck.current}/${usageCheck.limit}). Upgrade your plan to add more notes.`,
+          current: usageCheck.current,
+          limit: usageCheck.limit,
+          resourceType: usageCheck.resourceType,
+          tier: usageCheck.tier,
+        });
+      }
       
       // Calculate monthly payment if not provided
       let monthlyPayment = req.body.monthlyPayment;
@@ -366,6 +746,15 @@ export async function registerRoutes(
     res.status(204).send();
   });
   
+  api.get("/api/notes/export", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const csv = await exportNotesToCSV(org.id);
+    const date = new Date().toISOString().split("T")[0];
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", `attachment; filename="notes-${date}.csv"`);
+    res.send(csv);
+  });
+  
   // Calculate payment helper endpoint
   api.post("/api/notes/calculate-payment", isAuthenticated, async (req, res) => {
     const { principal, interestRate, termMonths } = req.body;
@@ -375,6 +764,78 @@ export async function registerRoutes(
       Number(termMonths)
     );
     res.json({ monthlyPayment: payment });
+  });
+  
+  // ============================================
+  // DOCUMENT GENERATION
+  // ============================================
+  
+  // Generate promissory note PDF
+  api.get("/api/notes/:id/document", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { generatePromissoryNote } = await import("./services/documents");
+      const org = (req as any).organization;
+      
+      const pdfBuffer = await generatePromissoryNote(Number(req.params.id), org.id);
+      
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="promissory-note-${req.params.id}.pdf"`);
+      res.send(pdfBuffer);
+    } catch (err: any) {
+      console.error("PDF generation error:", err);
+      res.status(err.message === "Note not found" ? 404 : 500).json({ 
+        message: err.message || "Failed to generate PDF" 
+      });
+    }
+  });
+  
+  // Generate warranty deed PDF
+  api.get("/api/properties/:id/deed", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { generateWarrantyDeed } = await import("./services/documents");
+      const org = (req as any).organization;
+      
+      const pdfBuffer = await generateWarrantyDeed(Number(req.params.id), org.id);
+      
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="warranty-deed-${req.params.id}.pdf"`);
+      res.send(pdfBuffer);
+    } catch (err: any) {
+      console.error("PDF generation error:", err);
+      res.status(err.message === "Property not found" ? 404 : 500).json({ 
+        message: err.message || "Failed to generate PDF" 
+      });
+    }
+  });
+  
+  // Generate offer letter PDF
+  api.post("/api/documents/offer-letter", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { generateOfferLetter } = await import("./services/documents");
+      const org = (req as any).organization;
+      const { leadId, propertyId, offerAmount, earnestMoney, closingDate, contingencies, additionalTerms } = req.body;
+      
+      if (!leadId || !propertyId) {
+        return res.status(400).json({ message: "leadId and propertyId are required" });
+      }
+      
+      const pdfBuffer = await generateOfferLetter(
+        Number(leadId),
+        Number(propertyId),
+        org.id,
+        { offerAmount, earnestMoney, closingDate, contingencies, additionalTerms }
+      );
+      
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="offer-letter-${leadId}-${propertyId}.pdf"`);
+      res.send(pdfBuffer);
+    } catch (err: any) {
+      console.error("PDF generation error:", err);
+      const notFound = err.message === "Lead not found" || err.message === "Property not found";
+      res.status(notFound ? 404 : 500).json({ 
+        message: err.message || "Failed to generate PDF" 
+      });
+    }
   });
   
   // ============================================
@@ -512,6 +973,18 @@ export async function registerRoutes(
   api.post("/api/agents/tasks", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = (req as any).organization;
+      
+      const usageCheck = await checkUsageLimit(org.id, "ai_requests");
+      if (!usageCheck.allowed) {
+        return res.status(429).json({
+          message: `Daily AI request limit reached (${usageCheck.current}/${usageCheck.limit}). Upgrade your plan for more AI requests.`,
+          current: usageCheck.current,
+          limit: usageCheck.limit,
+          resourceType: usageCheck.resourceType,
+          tier: usageCheck.tier,
+        });
+      }
+      
       const input = insertAgentTaskSchema.parse({ ...req.body, organizationId: org.id });
       const task = await storage.createAgentTask(input);
       res.status(201).json(task);
@@ -598,6 +1071,19 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Message is required" });
       }
       
+      const usageCheck = await checkUsageLimit(org.id, "ai_requests");
+      if (!usageCheck.allowed) {
+        return res.status(429).json({
+          message: `Daily AI request limit reached (${usageCheck.current}/${usageCheck.limit}). Upgrade your plan for more AI requests.`,
+          current: usageCheck.current,
+          limit: usageCheck.limit,
+          resourceType: usageCheck.resourceType,
+          tier: usageCheck.tier,
+        });
+      }
+      
+      await storage.trackUsage(org.id, "ai_request");
+      
       const result = await processChat(message, org, userId, {
         conversationId,
         agentRole
@@ -621,6 +1107,19 @@ export async function registerRoutes(
       if (!message) {
         return res.status(400).json({ message: "Message is required" });
       }
+      
+      const usageCheck = await checkUsageLimit(org.id, "ai_requests");
+      if (!usageCheck.allowed) {
+        return res.status(429).json({
+          message: `Daily AI request limit reached (${usageCheck.current}/${usageCheck.limit}). Upgrade your plan for more AI requests.`,
+          current: usageCheck.current,
+          limit: usageCheck.limit,
+          resourceType: usageCheck.resourceType,
+          tier: usageCheck.tier,
+        });
+      }
+      
+      await storage.trackUsage(org.id, "ai_request");
       
       // Set up SSE
       res.setHeader("Content-Type", "text/event-stream");
@@ -1041,13 +1540,8 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Access token and email are required" });
       }
       
-      // Look up note by access token (for now, we use note ID as token for simplicity)
-      const noteId = parseInt(accessToken);
-      if (isNaN(noteId)) {
-        return res.status(400).json({ message: "Invalid access token" });
-      }
-      
-      const note = await storage.getNote(0, noteId); // Use 0 as we verify by noteId
+      // Look up note by access token
+      const note = await storage.getNoteByAccessToken(accessToken);
       if (!note) {
         return res.status(404).json({ message: "Loan not found" });
       }
@@ -1061,7 +1555,7 @@ export async function registerRoutes(
       }
       
       // Get payments for this note
-      const payments = await storage.getPayments(note.organizationId, note.id);
+      const notePayments = await storage.getPayments(note.organizationId, note.id);
       
       // Get property info if linked
       let property = null;
@@ -1069,11 +1563,192 @@ export async function registerRoutes(
         property = await storage.getProperty(note.organizationId, note.propertyId);
       }
       
+      // Get borrower info
+      let borrower = null;
+      if (note.borrowerId) {
+        borrower = await storage.getLead(note.organizationId, note.borrowerId);
+      }
+      
       res.json({
         note: { ...note, property },
-        payments,
+        payments: notePayments,
+        borrower: borrower ? { firstName: borrower.firstName, lastName: borrower.lastName } : null,
       });
     } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+  
+  // Create Stripe checkout session for borrower portal payment
+  api.post("/api/portal/:accessToken/payment", async (req, res) => {
+    try {
+      const { accessToken } = req.params;
+      const { amount } = req.body;
+      
+      if (!accessToken) {
+        return res.status(400).json({ message: "Access token is required" });
+      }
+      
+      const note = await storage.getNoteByAccessToken(accessToken);
+      if (!note) {
+        return res.status(404).json({ message: "Loan not found" });
+      }
+      
+      const paymentAmount = amount ? Number(amount) : Number(note.monthlyPayment || 0);
+      if (paymentAmount <= 0) {
+        return res.status(400).json({ message: "Invalid payment amount" });
+      }
+      
+      // Get Stripe client
+      const { getUncachableStripeClient, getStripePublishableKey } = await import("./stripeClient");
+      const stripe = await getUncachableStripeClient();
+      
+      // Get borrower info for customer description
+      let borrowerName = "Borrower";
+      let borrowerEmail = undefined;
+      if (note.borrowerId) {
+        const borrower = await storage.getLead(note.organizationId, note.borrowerId);
+        if (borrower) {
+          borrowerName = `${borrower.firstName} ${borrower.lastName}`;
+          borrowerEmail = borrower.email || undefined;
+        }
+      }
+      
+      // Create checkout session for one-time payment
+      const baseUrl = `${req.protocol}://${req.get('host')}`;
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        line_items: [{
+          price_data: {
+            currency: 'usd',
+            product_data: {
+              name: `Loan Payment - Note #${note.id}`,
+              description: `Payment for ${borrowerName}`,
+            },
+            unit_amount: Math.round(paymentAmount * 100), // Convert to cents
+          },
+          quantity: 1,
+        }],
+        mode: 'payment',
+        success_url: `${baseUrl}/portal/${accessToken}?payment=success&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${baseUrl}/portal/${accessToken}?payment=cancelled`,
+        customer_email: borrowerEmail,
+        metadata: {
+          noteId: note.id.toString(),
+          accessToken,
+          paymentAmount: paymentAmount.toString(),
+          type: 'borrower_portal_payment',
+        },
+      });
+      
+      res.json({ url: session.url, sessionId: session.id });
+    } catch (err: any) {
+      console.error("Portal payment error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+  
+  // Verify Stripe payment and create payment record
+  api.post("/api/portal/:accessToken/verify-payment", async (req, res) => {
+    try {
+      const { accessToken } = req.params;
+      const { sessionId } = req.body;
+      
+      if (!accessToken || !sessionId) {
+        return res.status(400).json({ message: "Access token and session ID are required" });
+      }
+      
+      const note = await storage.getNoteByAccessToken(accessToken);
+      if (!note) {
+        return res.status(404).json({ message: "Loan not found" });
+      }
+      
+      // Verify Stripe session
+      const { getUncachableStripeClient } = await import("./stripeClient");
+      const stripe = await getUncachableStripeClient();
+      
+      const session = await stripe.checkout.sessions.retrieve(sessionId);
+      
+      if (session.payment_status !== 'paid') {
+        return res.status(400).json({ message: "Payment not completed" });
+      }
+      
+      // Check if payment already recorded for this session
+      const existingPayments = await storage.getPayments(note.organizationId, note.id);
+      const alreadyRecorded = existingPayments.some(p => p.transactionId === sessionId);
+      if (alreadyRecorded) {
+        return res.json({ success: true, message: "Payment already recorded" });
+      }
+      
+      const paymentAmount = session.amount_total ? session.amount_total / 100 : Number(note.monthlyPayment);
+      
+      // Calculate principal/interest split from amortization schedule
+      const schedule = note.amortizationSchedule || [];
+      const nextPendingPayment = schedule.find(s => s.status === 'pending');
+      
+      let principalAmount = 0;
+      let interestAmount = 0;
+      
+      if (nextPendingPayment) {
+        // Use amortization schedule for split
+        const ratio = paymentAmount / nextPendingPayment.payment;
+        principalAmount = Number((nextPendingPayment.principal * ratio).toFixed(2));
+        interestAmount = Number((nextPendingPayment.interest * ratio).toFixed(2));
+      } else {
+        // Calculate split based on current balance and rate
+        const monthlyRate = Number(note.interestRate) / 100 / 12;
+        interestAmount = Number((Number(note.currentBalance) * monthlyRate).toFixed(2));
+        principalAmount = Number((paymentAmount - interestAmount).toFixed(2));
+        if (principalAmount < 0) principalAmount = 0;
+      }
+      
+      // Create payment record
+      const payment = await storage.createPayment({
+        organizationId: note.organizationId,
+        noteId: note.id,
+        amount: paymentAmount.toString(),
+        principalAmount: principalAmount.toString(),
+        interestAmount: interestAmount.toString(),
+        feeAmount: "0",
+        lateFeeAmount: "0",
+        paymentDate: new Date(),
+        dueDate: note.nextPaymentDate || new Date(),
+        paymentMethod: 'card',
+        transactionId: sessionId,
+        status: 'completed',
+      });
+      
+      // Update note balance
+      const newBalance = Math.max(0, Number(note.currentBalance) - principalAmount);
+      
+      // Update amortization schedule status
+      let updatedSchedule = schedule;
+      if (nextPendingPayment) {
+        updatedSchedule = schedule.map(s => 
+          s.paymentNumber === nextPendingPayment.paymentNumber 
+            ? { ...s, status: 'paid' } 
+            : s
+        );
+      }
+      
+      // Calculate next payment date
+      const nextPaymentDate = new Date(note.nextPaymentDate || new Date());
+      nextPaymentDate.setMonth(nextPaymentDate.getMonth() + 1);
+      
+      await storage.updateNote(note.id, {
+        currentBalance: newBalance.toString(),
+        amortizationSchedule: updatedSchedule,
+        nextPaymentDate: nextPaymentDate,
+        status: newBalance <= 0 ? 'paid_off' : 'active',
+      });
+      
+      res.json({ 
+        success: true, 
+        payment,
+        newBalance,
+      });
+    } catch (err: any) {
+      console.error("Payment verification error:", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -1089,8 +1764,8 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Note not found" });
       }
       
-      // For simplicity, use note ID as token (in production, use secure tokens)
-      const portalUrl = `${req.protocol}://${req.get('host')}/portal/${note.id}`;
+      // Use the access token for the portal URL
+      const portalUrl = `${req.protocol}://${req.get('host')}/portal/${note.accessToken}`;
       
       res.json({ url: portalUrl });
     } catch (err: any) {

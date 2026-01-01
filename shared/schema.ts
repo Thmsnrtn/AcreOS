@@ -216,6 +216,26 @@ export const deals = pgTable("deals", {
     uploadedAt: string;
   }[]>(),
   
+  // ROI Analysis Results
+  analysisResults: jsonb("analysis_results").$type<{
+    purchasePrice: number;
+    downPayment: number;
+    financedAmount: number;
+    interestRate: number;
+    holdingCostsMonthly: number;
+    holdingPeriodMonths: number;
+    improvementCosts: number;
+    expectedSalePrice: number;
+    totalInvestment: number;
+    totalCost: number;
+    grossProfit: number;
+    netProfit: number;
+    roiPercent: number;
+    annualizedRoi: number;
+    cashOnCashReturn: number;
+    calculatedAt: string;
+  }>(),
+  
   notes: text("notes"),
   assignedTo: integer("assigned_to"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -274,6 +294,9 @@ export const notes = pgTable("notes", {
     balance: number;
     status: string; // pending, paid, late, missed
   }[]>(),
+  
+  // Portal access token for borrowers
+  accessToken: text("access_token").unique(),
   
   notes: text("notes_text"), // Renamed to avoid conflict with table name
   createdAt: timestamp("created_at").defaultNow(),
@@ -1011,6 +1034,78 @@ export type InsertVaTemplate = z.infer<typeof insertVaTemplateSchema>;
 export type VaAgentType = "executive" | "sales" | "acquisitions" | "marketing" | "collections" | "research";
 export type VaAutonomyLevel = "full_auto" | "supervised" | "manual";
 export type VaActionStatus = "proposed" | "approved" | "executing" | "completed" | "failed" | "rejected" | "cancelled";
+
+// ============================================
+// DUE DILIGENCE CHECKLISTS
+// ============================================
+
+// Checklist item type for templates
+export type DueDiligenceChecklistItem = {
+  id: string;
+  category: string;
+  name: string;
+  description?: string;
+  required: boolean;
+};
+
+// Due diligence templates
+export const dueDiligenceTemplates = pgTable("due_diligence_templates", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  name: text("name").notNull(),
+  items: jsonb("items").$type<DueDiligenceChecklistItem[]>().notNull(),
+  isDefault: boolean("is_default").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Due diligence items for tracking completion on individual properties
+export const dueDiligenceItems = pgTable("due_diligence_items", {
+  id: serial("id").primaryKey(),
+  propertyId: integer("property_id").references(() => properties.id).notNull(),
+  templateId: integer("template_id").references(() => dueDiligenceTemplates.id),
+  itemName: text("item_name").notNull(),
+  category: text("category").notNull(),
+  completed: boolean("completed").notNull().default(false),
+  completedBy: text("completed_by"), // user ID who completed
+  completedAt: timestamp("completed_at"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Insert schemas
+export const insertDueDiligenceTemplateSchema = createInsertSchema(dueDiligenceTemplates).omit({ id: true, createdAt: true });
+export const insertDueDiligenceItemSchema = createInsertSchema(dueDiligenceItems).omit({ id: true, createdAt: true });
+
+// Types
+export type DueDiligenceTemplate = typeof dueDiligenceTemplates.$inferSelect;
+export type InsertDueDiligenceTemplate = z.infer<typeof insertDueDiligenceTemplateSchema>;
+export type DueDiligenceItem = typeof dueDiligenceItems.$inferSelect;
+export type InsertDueDiligenceItem = z.infer<typeof insertDueDiligenceItemSchema>;
+
+// Default templates for land investment due diligence
+export const DEFAULT_DUE_DILIGENCE_TEMPLATES = [
+  {
+    name: "Standard Land Due Diligence",
+    items: [
+      { id: "title-1", category: "Title Search", name: "Clear title verified", description: "Confirm property has clear title with no disputes", required: true },
+      { id: "title-2", category: "Title Search", name: "No liens on property", description: "Check for any outstanding liens", required: true },
+      { id: "title-3", category: "Title Search", name: "No encumbrances", description: "Verify no restrictive encumbrances", required: true },
+      { id: "title-4", category: "Title Search", name: "Back taxes paid", description: "Confirm all property taxes are current", required: true },
+      { id: "physical-1", category: "Physical", name: "Access road verified", description: "Legal access to property confirmed", required: true },
+      { id: "physical-2", category: "Physical", name: "Utilities available", description: "Check availability of electric, water, sewer", required: false },
+      { id: "physical-3", category: "Physical", name: "Topography assessed", description: "Evaluate terrain and buildability", required: false },
+      { id: "physical-4", category: "Physical", name: "Flood zone check", description: "Verify FEMA flood zone status", required: true },
+      { id: "physical-5", category: "Physical", name: "Environmental review", description: "Check for environmental issues or wetlands", required: true },
+      { id: "legal-1", category: "Legal", name: "Zoning verified", description: "Confirm current zoning and allowed uses", required: true },
+      { id: "legal-2", category: "Legal", name: "Restrictions reviewed", description: "Check deed restrictions and HOA rules", required: false },
+      { id: "legal-3", category: "Legal", name: "Easements identified", description: "Locate and review all easements", required: true },
+      { id: "legal-4", category: "Legal", name: "Mineral rights confirmed", description: "Verify mineral rights status", required: false },
+      { id: "financial-1", category: "Financial", name: "Tax assessment reviewed", description: "Review current tax assessment value", required: true },
+      { id: "financial-2", category: "Financial", name: "Market comps analyzed", description: "Compare to recent sales in area", required: true },
+      { id: "financial-3", category: "Financial", name: "ROI calculation completed", description: "Calculate expected return on investment", required: false },
+    ],
+  },
+] as const;
 
 // ============================================
 // SUBSCRIPTION TIERS CONFIGURATION

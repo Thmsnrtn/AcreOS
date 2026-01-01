@@ -146,3 +146,58 @@ The server implements a three-layer architecture:
 - Mobile bottom navigation for phone users
 - Safe area support for iOS notch devices
 - Responsive design for all screen sizes
+
+## Production Readiness Features (Implemented)
+
+### Usage Limit Enforcement
+- Tier-based limits: Free (10/5/5), Starter (100/50/25), Professional (1000/500/100), Enterprise (unlimited)
+- Enforced on leads, properties, notes, and AI requests
+- Visual usage display in Settings with progress bars
+- Upgrade prompts when at 80%+ capacity
+
+### Data Import/Export
+- CSV export for leads, properties, and notes
+- CSV import with preview, validation, and error reporting
+- Proper escaping and formatting for data integrity
+
+### Document Generation (jsPDF)
+- Promissory notes with amortization schedules
+- Warranty deeds with legal descriptions
+- Offer letters for seller outreach
+- AcreOS-branded headers on all documents
+
+### Borrower Payment Portal
+- Token-based access at /portal/:accessToken
+- Stripe one-time payments for loan payments
+- Payment verification and balance updates
+- Amortization schedule display
+
+### Due Diligence Checklists
+- Default templates with 16 land investment checks
+- Categories: Title Search, Physical, Legal, Financial
+- Progress tracking with completion badges
+- Notes field for each checklist item
+
+### Comps Analysis
+- Regrid API integration for nearby parcel lookup
+- Distance-weighted market value estimation
+- Caching to handle API rate limits
+- Visual display in property detail view
+
+### ROI Calculator
+- Deal analysis with all input parameters
+- Annualized ROI and cash-on-cash return
+- Available in Tools, Deal detail, and Property modal
+- Save analysis results to deal records
+
+## Future Integrations (Not Yet Connected)
+
+### Email (SendGrid)
+- User dismissed the managed integration
+- To implement: Add SENDGRID_API_KEY secret manually
+- Or re-attempt integration setup via Replit connectors
+
+### SMS (Twilio)
+- Integration available but not yet set up
+- Use search_integrations("twilio") to configure
+- Required for campaign SMS sending

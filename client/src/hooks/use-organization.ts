@@ -73,6 +73,27 @@ export function useDashboardStats() {
   });
 }
 
+export interface UsageLimitsData {
+  tier: "free" | "starter" | "professional" | "enterprise";
+  usage: {
+    leads: { current: number; limit: number | null; percentage: number | null };
+    properties: { current: number; limit: number | null; percentage: number | null };
+    notes: { current: number; limit: number | null; percentage: number | null };
+    ai_requests: { current: number; limit: number | null; percentage: number | null };
+  };
+}
+
+export function useUsageLimits() {
+  return useQuery<UsageLimitsData>({
+    queryKey: ["/api/usage"],
+    queryFn: async () => {
+      const res = await fetch("/api/usage", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch usage data");
+      return res.json();
+    },
+  });
+}
+
 export function useStripeProducts() {
   return useQuery<StripeProduct[]>({
     queryKey: ["/api/stripe/products"],

@@ -53,3 +53,16 @@ export function useDeleteDeal() {
     },
   });
 }
+
+export function useSaveDealAnalysis() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ dealId, analysisResults }: { dealId: number; analysisResults: object }) => {
+      const res = await apiRequest("PUT", `/api/deals/${dealId}`, { analysisResults });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/deals'] });
+    },
+  });
+}

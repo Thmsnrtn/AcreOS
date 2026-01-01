@@ -19,7 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
-import { Plus, DollarSign, Calendar, TrendingUp, AlertTriangle, CheckCircle, Clock, User, MapPin, FileText, CreditCard, X, Eye, Receipt, Calculator, Trash2, Loader2 } from "lucide-react";
+import { Plus, DollarSign, Calendar, TrendingUp, AlertTriangle, CheckCircle, Clock, User, MapPin, FileText, CreditCard, X, Eye, Receipt, Calculator, Trash2, Loader2, Download } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format, addMonths } from "date-fns";
@@ -38,7 +38,30 @@ export default function FinancePage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedNote, setSelectedNote] = useState<NoteWithDetails | null>(null);
   const [deletingNote, setDeletingNote] = useState<NoteWithDetails | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
   const { mutate: deleteNote, isPending: isDeleting } = useDeleteNote();
+
+  const handleExport = async () => {
+    setIsExporting(true);
+    try {
+      const response = await fetch('/api/notes/export', { credentials: 'include' });
+      if (!response.ok) throw new Error('Failed to export');
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const filename = response.headers.get('Content-Disposition')?.split('filename=')[1]?.replace(/"/g, '') || 'notes.csv';
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Export error:', error);
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   const enrichedNotes: NoteWithDetails[] = (notes || []).map(note => ({
     ...note,
@@ -91,19 +114,30 @@ export default function FinancePage() {
               <h1 className="text-3xl font-bold" data-testid="text-page-title">Finance</h1>
               <p className="text-muted-foreground">Manage promissory notes and track payments like GeekPay.</p>
             </div>
-            <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-              <DialogTrigger asChild>
-                <Button data-testid="button-create-note">
-                  <Plus className="w-4 h-4 mr-2" /> Create Note
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-[600px] floating-window">
-                <DialogHeader>
-                  <DialogTitle>Create Promissory Note</DialogTitle>
-                </DialogHeader>
-                <NoteForm onSuccess={() => setIsCreateOpen(false)} />
-              </DialogContent>
-            </Dialog>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button 
+                variant="outline" 
+                onClick={handleExport} 
+                disabled={isExporting}
+                data-testid="button-export-notes"
+              >
+                {isExporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
+                Export CSV
+              </Button>
+              <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+                <DialogTrigger asChild>
+                  <Button data-testid="button-create-note">
+                    <Plus className="w-4 h-4 mr-2" /> Create Note
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-[600px] floating-window">
+                  <DialogHeader>
+                    <DialogTitle>Create Promissory Note</DialogTitle>
+                  </DialogHeader>
+                  <NoteForm onSuccess={() => setIsCreateOpen(false)} />
+                </DialogContent>
+              </Dialog>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -299,6 +333,30 @@ export default function FinancePage() {
 function NoteDetailDrawer({ note, onClose, onDelete }: { note: NoteWithDetails; onClose: () => void; onDelete: () => void }) {
   const { data: payments, isLoading: paymentsLoading } = usePayments(note.id);
   const [showRecordPayment, setShowRecordPayment] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  const handleDownloadPdf = async () => {
+    setIsDownloading(true);
+    try {
+      const response = await fetch(`/api/notes/${note.id}/document`, {
+        credentials: 'include',
+      });
+      if (!response.ok) throw new Error('Failed to generate PDF');
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `promissory-note-${note.id}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Download error:', error);
+    } finally {
+      setIsDownloading(false);
+    }
+  };
 
   const schedule = note.amortizationSchedule || [];
   const paidPayments = schedule.filter(s => s.status === 'paid').length;
@@ -326,6 +384,15 @@ function NoteDetailDrawer({ note, onClose, onDelete }: { note: NoteWithDetails; 
               </p>
             </div>
             <div className="flex items-center gap-2">
+              <Button 
+                size="icon" 
+                variant="ghost" 
+                onClick={handleDownloadPdf} 
+                disabled={isDownloading}
+                data-testid="button-download-note-pdf"
+              >
+                {isDownloading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
+              </Button>
               <Button size="icon" variant="ghost" onClick={onDelete} data-testid="button-delete-note">
                 <Trash2 className="w-5 h-5 text-destructive" />
               </Button>

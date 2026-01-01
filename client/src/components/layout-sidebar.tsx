@@ -12,7 +12,8 @@ import {
   MessageSquare,
   Mail,
   GitBranch,
-  UsersRound
+  UsersRound,
+  Calculator
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useState } from "react";
@@ -26,6 +27,7 @@ const navItems = [
   { label: "Deal Pipeline", icon: GitBranch, href: "/deals" },
   { label: "Finance", icon: Banknote, href: "/finance" },
   { label: "Campaigns", icon: Mail, href: "/campaigns" },
+  { label: "Tools", icon: Calculator, href: "/tools" },
   { label: "AI Agents", icon: Bot, href: "/agents" },
   { label: "AI Command Center", icon: MessageSquare, href: "/command-center" },
   { label: "AI Team", icon: UsersRound, href: "/ai-team" },

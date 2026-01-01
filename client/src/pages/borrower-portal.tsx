@@ -7,14 +7,14 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { DollarSign, Calendar, FileText, CreditCard, CheckCircle, Clock, AlertTriangle, User, MapPin, Building, Phone, Mail, Shield, Download } from "lucide-react";
+import { DollarSign, Calendar, CreditCard, CheckCircle, Clock, AlertTriangle, Building, Phone, Mail, Shield, Loader2 } from "lucide-react";
 import { format, differenceInDays } from "date-fns";
 import type { Note, Payment, Property } from "@shared/schema";
 
 type BorrowerLoanData = {
   note: Note & { property?: Property };
   payments: Payment[];
+  borrower?: { firstName: string; lastName: string } | null;
 };
 
 export default function BorrowerPortal() {
@@ -112,7 +112,7 @@ export default function BorrowerPortal() {
     );
   }
 
-  return <BorrowerDashboard data={loanData} />;
+  return <BorrowerDashboard data={loanData} accessToken={accessToken} />;
 }
 
 function BorrowerLandingPage() {
@@ -168,9 +168,51 @@ function BorrowerLandingPage() {
   );
 }
 
-function BorrowerDashboard({ data }: { data: BorrowerLoanData }) {
-  const { note, payments } = data;
+function BorrowerDashboard({ data, accessToken }: { data: BorrowerLoanData; accessToken: string }) {
+  const { note, payments, borrower } = data;
   const [showPaymentForm, setShowPaymentForm] = useState(false);
+  const [paymentStatusState, setPaymentStatusMessage] = useState<{ type: 'success' | 'error' | null; message: string }>({ type: null, message: '' });
+  const [isVerifyingPayment, setIsVerifyingPayment] = useState(false);
+  
+  // Check for payment success/cancel in URL params
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const paymentResult = urlParams.get('payment');
+    const sessionId = urlParams.get('session_id');
+    
+    if (paymentResult === 'success' && sessionId) {
+      setIsVerifyingPayment(true);
+      verifyPayment(sessionId);
+      // Clean up URL
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (paymentResult === 'cancelled') {
+      setPaymentStatusMessage({ type: 'error', message: 'Payment was cancelled' });
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
+  
+  const verifyPayment = async (sessionId: string) => {
+    try {
+      const res = await fetch(`/api/portal/${accessToken}/verify-payment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId }),
+      });
+      
+      if (res.ok) {
+        setPaymentStatusMessage({ type: 'success', message: 'Payment successful! Your payment has been recorded.' });
+        // Reload page to get updated data
+        setTimeout(() => window.location.reload(), 2000);
+      } else {
+        const data = await res.json();
+        setPaymentStatusMessage({ type: 'error', message: data.message || 'Payment verification failed' });
+      }
+    } catch (err) {
+      setPaymentStatusMessage({ type: 'error', message: 'Failed to verify payment' });
+    } finally {
+      setIsVerifyingPayment(false);
+    }
+  };
   
   const schedule = note.amortizationSchedule || [];
   const paidPayments = schedule.filter(s => s.status === 'paid').length;
@@ -181,7 +223,7 @@ function BorrowerDashboard({ data }: { data: BorrowerLoanData }) {
     .filter(p => p.status === 'completed')
     .reduce((sum, p) => sum + Number(p.amount || 0), 0);
 
-  const getPaymentStatus = () => {
+  const getPaymentStatusBadge = () => {
     if (!note.nextPaymentDate) return { status: 'current', label: 'Current', color: 'bg-emerald-100 text-emerald-800' };
     const daysUntilDue = differenceInDays(new Date(note.nextPaymentDate), new Date());
     if (daysUntilDue < 0) return { status: 'late', label: `${Math.abs(daysUntilDue)} days past due`, color: 'bg-red-100 text-red-800' };
@@ -189,21 +231,47 @@ function BorrowerDashboard({ data }: { data: BorrowerLoanData }) {
     return { status: 'current', label: 'Current', color: 'bg-emerald-100 text-emerald-800' };
   };
 
-  const paymentStatus = getPaymentStatus();
+  const paymentStatusBadge = getPaymentStatusBadge();
+  const borrowerName = borrower ? `${borrower.firstName} ${borrower.lastName}` : 'Borrower';
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#F5E6D3] to-[#E8D4C4] dark:from-[#2D2118] dark:to-[#1A130D]">
       <header className="border-b bg-background/80 backdrop-blur sticky top-0 z-10">
-        <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
+        <div className="max-w-5xl mx-auto px-4 py-4 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-3">
             <Building className="w-6 h-6 text-primary" />
-            <span className="font-bold text-lg">AcreOS Borrower Portal</span>
+            <div>
+              <span className="font-bold text-lg">AcreOS Borrower Portal</span>
+              <p className="text-sm text-muted-foreground">Welcome, {borrowerName}</p>
+            </div>
           </div>
-          <Badge className={paymentStatus.color}>
-            {paymentStatus.label}
+          <Badge className={paymentStatusBadge.color}>
+            {paymentStatusBadge.label}
           </Badge>
         </div>
       </header>
+      
+      {isVerifyingPayment && (
+        <div className="max-w-5xl mx-auto px-4 py-4">
+          <div className="p-4 rounded-lg bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-400 flex items-center gap-2">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Verifying your payment...
+          </div>
+        </div>
+      )}
+      
+      {paymentStatusState.type && (
+        <div className="max-w-5xl mx-auto px-4 py-4">
+          <div className={`p-4 rounded-lg flex items-center gap-2 ${
+            paymentStatusState.type === 'success' 
+              ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-400' 
+              : 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-400'
+          }`}>
+            {paymentStatusState.type === 'success' ? <CheckCircle className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
+            {paymentStatusState.message}
+          </div>
+        </div>
+      )}
 
       <main className="max-w-5xl mx-auto px-4 py-8 space-y-6">
         <div className="grid md:grid-cols-3 gap-4">
@@ -507,6 +575,7 @@ function BorrowerDashboard({ data }: { data: BorrowerLoanData }) {
       {showPaymentForm && (
         <PaymentFormModal 
           note={note} 
+          accessToken={accessToken}
           onClose={() => setShowPaymentForm(false)} 
         />
       )}
@@ -514,30 +583,45 @@ function BorrowerDashboard({ data }: { data: BorrowerLoanData }) {
   );
 }
 
-function PaymentFormModal({ note, onClose }: { note: Note; onClose: () => void }) {
+function PaymentFormModal({ note, accessToken, onClose }: { note: Note; accessToken: string; onClose: () => void }) {
   const [amount, setAmount] = useState(note.monthlyPayment?.toString() || '');
-  const [method, setMethod] = useState('ach');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleSubmit = async () => {
+  const handleStripePayment = async () => {
     setIsProcessing(true);
+    setError('');
+    
     try {
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      alert("Payment submitted successfully! You will receive a confirmation email.");
-      onClose();
-    } catch (err) {
-      alert("Payment failed. Please try again.");
-    } finally {
+      const res = await fetch(`/api/portal/${accessToken}/payment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: Number(amount) }),
+      });
+      
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.message || 'Failed to create payment session');
+      }
+      
+      const { url } = await res.json();
+      if (url) {
+        window.location.href = url;
+      } else {
+        throw new Error('No payment URL returned');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Payment failed. Please try again.');
       setIsProcessing(false);
     }
   };
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
-      <Card className="w-full max-w-md floating-window" onClick={e => e.stopPropagation()}>
+      <Card className="w-full max-w-md" onClick={e => e.stopPropagation()}>
         <CardHeader>
           <CardTitle>Make a Payment</CardTitle>
-          <CardDescription>Pay securely online</CardDescription>
+          <CardDescription>Pay securely with Stripe</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
@@ -547,6 +631,8 @@ function PaymentFormModal({ note, onClose }: { note: Note; onClose: () => void }
               value={amount}
               onChange={e => setAmount(e.target.value)}
               placeholder={note.monthlyPayment?.toString()}
+              min="1"
+              step="0.01"
               data-testid="input-portal-payment-amount"
             />
             <p className="text-xs text-muted-foreground">
@@ -554,71 +640,46 @@ function PaymentFormModal({ note, onClose }: { note: Note; onClose: () => void }
             </p>
           </div>
 
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Payment Method</label>
-            <Select value={method} onValueChange={setMethod}>
-              <SelectTrigger data-testid="select-portal-payment-method">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ach">ACH Bank Transfer (Free)</SelectItem>
-                <SelectItem value="card">Credit/Debit Card (+3% fee)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {method === 'ach' && (
-            <div className="space-y-4 p-4 rounded-lg bg-muted/50">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Routing Number</label>
-                <Input placeholder="123456789" data-testid="input-routing" />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Account Number</label>
-                <Input placeholder="1234567890" data-testid="input-account" />
-              </div>
+          <div className="p-4 rounded-lg bg-muted/50 space-y-2">
+            <div className="flex items-center gap-2">
+              <CreditCard className="w-4 h-4 text-muted-foreground" />
+              <span className="text-sm font-medium">Card Payment</span>
             </div>
-          )}
-
-          {method === 'card' && (
-            <div className="space-y-4 p-4 rounded-lg bg-muted/50">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Card Number</label>
-                <Input placeholder="4242 4242 4242 4242" data-testid="input-card-number" />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Expiry</label>
-                  <Input placeholder="MM/YY" data-testid="input-expiry" />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">CVC</label>
-                  <Input placeholder="123" data-testid="input-cvc" />
-                </div>
-              </div>
-              <p className="text-xs text-amber-600">
-                A 3% processing fee will be added for card payments.
-              </p>
+            <p className="text-xs text-muted-foreground">
+              You will be redirected to Stripe to securely complete your payment.
+            </p>
+          </div>
+          
+          {error && (
+            <div className="p-3 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-400 text-sm">
+              {error}
             </div>
           )}
 
           <div className="flex gap-2 pt-2">
-            <Button variant="outline" onClick={onClose} className="flex-1">
+            <Button variant="outline" onClick={onClose} className="flex-1" disabled={isProcessing}>
               Cancel
             </Button>
             <Button 
-              onClick={handleSubmit} 
-              disabled={isProcessing} 
+              onClick={handleStripePayment} 
+              disabled={isProcessing || !amount || Number(amount) <= 0} 
               className="flex-1"
               data-testid="button-submit-portal-payment"
             >
-              {isProcessing ? "Processing..." : `Pay $${Number(amount || 0).toLocaleString()}`}
+              {isProcessing ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Redirecting...
+                </>
+              ) : (
+                `Pay $${Number(amount || 0).toLocaleString()}`
+              )}
             </Button>
           </div>
 
           <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
             <Shield className="w-3 h-3" />
-            <span>Payments are secure and encrypted</span>
+            <span>Payments are secure and encrypted via Stripe</span>
           </div>
         </CardContent>
       </Card>

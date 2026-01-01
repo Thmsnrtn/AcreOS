@@ -8,6 +8,7 @@ import {
   messages, activityLog, usageEvents,
   aiAgentProfiles, aiToolDefinitions, aiExecutionRuns, aiMemory,
   vaAgents, vaActions, vaBriefings, vaCalendarEvents, vaTemplates,
+  dueDiligenceTemplates, dueDiligenceItems,
   type Organization, type InsertOrganization,
   type TeamMember, type InsertTeamMember,
   type Lead, type InsertLead,
@@ -29,6 +30,9 @@ import {
   type VaBriefing, type InsertVaBriefing,
   type VaCalendarEvent, type InsertVaCalendarEvent,
   type VaTemplate, type InsertVaTemplate,
+  type DueDiligenceTemplate, type InsertDueDiligenceTemplate,
+  type DueDiligenceItem, type InsertDueDiligenceItem,
+  DEFAULT_DUE_DILIGENCE_TEMPLATES,
 } from "@shared/schema";
 
 // Helper to calculate amortization schedule
@@ -112,6 +116,7 @@ export interface IStorage {
   // Notes (Financing)
   getNotes(orgId: number): Promise<Note[]>;
   getNote(orgId: number, id: number): Promise<Note | undefined>;
+  getNoteByAccessToken(accessToken: string): Promise<Note | undefined>;
   createNote(note: InsertNote): Promise<Note>;
   updateNote(id: number, updates: Partial<InsertNote>): Promise<Note>;
   deleteNote(id: number): Promise<void>;
@@ -235,6 +240,21 @@ export interface IStorage {
   createVaTemplate(template: InsertVaTemplate): Promise<VaTemplate>;
   updateVaTemplate(id: number, updates: Partial<InsertVaTemplate>): Promise<VaTemplate>;
   deleteVaTemplate(id: number): Promise<void>;
+
+  // Due Diligence Templates
+  getDueDiligenceTemplates(orgId: number): Promise<DueDiligenceTemplate[]>;
+  getDueDiligenceTemplate(id: number): Promise<DueDiligenceTemplate | undefined>;
+  createDueDiligenceTemplate(template: InsertDueDiligenceTemplate): Promise<DueDiligenceTemplate>;
+  updateDueDiligenceTemplate(id: number, updates: Partial<InsertDueDiligenceTemplate>): Promise<DueDiligenceTemplate>;
+  deleteDueDiligenceTemplate(id: number): Promise<void>;
+  initializeDefaultTemplates(orgId: number): Promise<DueDiligenceTemplate[]>;
+
+  // Due Diligence Items (property checklist)
+  getPropertyDueDiligence(propertyId: number): Promise<DueDiligenceItem[]>;
+  createDueDiligenceItem(item: InsertDueDiligenceItem): Promise<DueDiligenceItem>;
+  updateDueDiligenceItem(id: number, updates: Partial<InsertDueDiligenceItem>): Promise<DueDiligenceItem>;
+  deleteDueDiligenceItem(id: number): Promise<void>;
+  applyTemplateToProperty(propertyId: number, templateId: number): Promise<DueDiligenceItem[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -411,6 +431,12 @@ export class DatabaseStorage implements IStorage {
     return note;
   }
   
+  async getNoteByAccessToken(accessToken: string) {
+    const [note] = await db.select().from(notes)
+      .where(eq(notes.accessToken, accessToken));
+    return note;
+  }
+  
   async createNote(noteData: InsertNote) {
     // Calculate amortization if not provided
     let amortization = noteData.amortizationSchedule;
@@ -426,12 +452,16 @@ export class DatabaseStorage implements IStorage {
     const maturityDate = new Date(noteData.startDate);
     maturityDate.setMonth(maturityDate.getMonth() + noteData.termMonths);
     
+    // Generate access token for borrower portal
+    const accessToken = noteData.accessToken || `note_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+    
     const [newNote] = await db.insert(notes).values({
       ...noteData,
       currentBalance: noteData.currentBalance || noteData.originalPrincipal,
       amortizationSchedule: amortization,
       maturityDate: maturityDate,
       nextPaymentDate: noteData.firstPaymentDate,
+      accessToken,
     }).returning();
     
     await this.logActivity({
@@ -1077,6 +1107,110 @@ export class DatabaseStorage implements IStorage {
 
   async deleteVaTemplate(id: number) {
     await db.delete(vaTemplates).where(eq(vaTemplates.id, id));
+  }
+
+  // Due Diligence Templates
+  async getDueDiligenceTemplates(orgId: number) {
+    return await db.select().from(dueDiligenceTemplates)
+      .where(eq(dueDiligenceTemplates.organizationId, orgId))
+      .orderBy(desc(dueDiligenceTemplates.isDefault), dueDiligenceTemplates.name);
+  }
+
+  async getDueDiligenceTemplate(id: number) {
+    const [template] = await db.select().from(dueDiligenceTemplates)
+      .where(eq(dueDiligenceTemplates.id, id));
+    return template;
+  }
+
+  async createDueDiligenceTemplate(template: InsertDueDiligenceTemplate) {
+    const [newTemplate] = await db.insert(dueDiligenceTemplates).values(template).returning();
+    return newTemplate;
+  }
+
+  async updateDueDiligenceTemplate(id: number, updates: Partial<InsertDueDiligenceTemplate>) {
+    const [updated] = await db.update(dueDiligenceTemplates)
+      .set(updates)
+      .where(eq(dueDiligenceTemplates.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteDueDiligenceTemplate(id: number) {
+    await db.delete(dueDiligenceTemplates).where(eq(dueDiligenceTemplates.id, id));
+  }
+
+  async initializeDefaultTemplates(orgId: number) {
+    const existing = await this.getDueDiligenceTemplates(orgId);
+    if (existing.length > 0) {
+      return existing;
+    }
+
+    const templates: DueDiligenceTemplate[] = [];
+    for (const templateData of DEFAULT_DUE_DILIGENCE_TEMPLATES) {
+      const template = await this.createDueDiligenceTemplate({
+        organizationId: orgId,
+        name: templateData.name,
+        items: templateData.items as any,
+        isDefault: true,
+      });
+      templates.push(template);
+    }
+    return templates;
+  }
+
+  // Due Diligence Items (property checklist)
+  async getPropertyDueDiligence(propertyId: number) {
+    return await db.select().from(dueDiligenceItems)
+      .where(eq(dueDiligenceItems.propertyId, propertyId))
+      .orderBy(dueDiligenceItems.category, dueDiligenceItems.itemName);
+  }
+
+  async createDueDiligenceItem(item: InsertDueDiligenceItem) {
+    const [newItem] = await db.insert(dueDiligenceItems).values(item).returning();
+    return newItem;
+  }
+
+  async updateDueDiligenceItem(id: number, updates: Partial<InsertDueDiligenceItem>) {
+    const updateData: any = { ...updates };
+    if (updates.completed === true && !updates.completedAt) {
+      updateData.completedAt = new Date();
+    }
+    if (updates.completed === false) {
+      updateData.completedAt = null;
+      updateData.completedBy = null;
+    }
+    const [updated] = await db.update(dueDiligenceItems)
+      .set(updateData)
+      .where(eq(dueDiligenceItems.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteDueDiligenceItem(id: number) {
+    await db.delete(dueDiligenceItems).where(eq(dueDiligenceItems.id, id));
+  }
+
+  async applyTemplateToProperty(propertyId: number, templateId: number) {
+    const template = await this.getDueDiligenceTemplate(templateId);
+    if (!template) {
+      throw new Error("Template not found");
+    }
+
+    await db.delete(dueDiligenceItems).where(eq(dueDiligenceItems.propertyId, propertyId));
+
+    const items: DueDiligenceItem[] = [];
+    for (const templateItem of template.items) {
+      const item = await this.createDueDiligenceItem({
+        propertyId,
+        templateId,
+        itemName: templateItem.name,
+        category: templateItem.category,
+        completed: false,
+        notes: templateItem.description || null,
+      });
+      items.push(item);
+    }
+    return items;
   }
 }
 

@@ -5,7 +5,8 @@ import {
   useStripeSubscription,
   useCreateCheckoutSession,
   useCreatePortalSession,
-  useUpdateOrganization
+  useUpdateOrganization,
+  useUsageLimits
 } from "@/hooks/use-organization";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,7 +15,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, Crown, Check, ExternalLink, CreditCard, Loader2, Lightbulb, RotateCcw, Database, Trash2 } from "lucide-react";
+import { Building2, Crown, Check, ExternalLink, CreditCard, Loader2, Lightbulb, RotateCcw, Database, Trash2, BarChart3, Users, Home, FileText, Sparkles, TrendingUp } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -31,6 +33,7 @@ export default function Settings() {
   const { data: organization, isLoading: orgLoading } = useOrganization();
   const { data: products, isLoading: productsLoading } = useStripeProducts();
   const { data: subscriptionData, isLoading: subLoading } = useStripeSubscription();
+  const { data: usageData, isLoading: usageLoading } = useUsageLimits();
   
   const checkoutMutation = useCreateCheckoutSession();
   const portalMutation = useCreatePortalSession();
@@ -239,6 +242,111 @@ export default function Settings() {
             </CardContent>
           </Card>
 
+          {/* Usage Limits */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <BarChart3 className="w-5 h-5" />
+                Usage & Limits
+              </CardTitle>
+              <CardDescription>Track your resource usage against your plan limits</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {usageLoading ? (
+                <div className="space-y-4">
+                  {[1, 2, 3, 4].map((i) => (
+                    <div key={i} className="space-y-2">
+                      <Skeleton className="h-4 w-24" />
+                      <Skeleton className="h-2 w-full" />
+                    </div>
+                  ))}
+                </div>
+              ) : usageData && (
+                <>
+                  {(() => {
+                    const usageItems = [
+                      { key: "leads" as const, label: "Leads", icon: Users, description: "Total leads in your CRM" },
+                      { key: "properties" as const, label: "Properties", icon: Home, description: "Properties in your inventory" },
+                      { key: "notes" as const, label: "Notes", icon: FileText, description: "Active seller finance notes" },
+                      { key: "ai_requests" as const, label: "AI Requests", icon: Sparkles, description: "Daily AI requests (resets at midnight)" },
+                    ];
+                    
+                    const nearLimitItems = usageItems.filter(item => {
+                      const usage = usageData.usage[item.key];
+                      return usage.percentage !== null && usage.percentage >= 80;
+                    });
+                    
+                    return (
+                      <>
+                        {nearLimitItems.length > 0 && usageData.tier !== "enterprise" && (
+                          <div className="flex items-start gap-3 p-4 rounded-md bg-amber-500/10 border border-amber-500/20 mb-4">
+                            <TrendingUp className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" />
+                            <div>
+                              <p className="font-medium text-amber-500">
+                                You're approaching your limits
+                              </p>
+                              <p className="text-sm text-muted-foreground mt-1">
+                                You've used 80%+ of your {nearLimitItems.map(i => i.label.toLowerCase()).join(", ")} allowance.
+                                Upgrade your plan to unlock higher limits.
+                              </p>
+                              <Button 
+                                size="sm" 
+                                className="mt-2"
+                                onClick={() => document.getElementById("pricing-section")?.scrollIntoView({ behavior: "smooth" })}
+                                data-testid="button-upgrade-from-usage"
+                              >
+                                <Crown className="w-4 h-4 mr-2" />
+                                View Upgrade Options
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                        
+                        <div className="grid gap-4">
+                          {usageItems.map((item) => {
+                            const usage = usageData.usage[item.key];
+                            const IconComponent = item.icon;
+                            const isUnlimited = usage.limit === null;
+                            const percentage = usage.percentage ?? 0;
+                            const isNearLimit = percentage >= 80;
+                            const isAtLimit = percentage >= 100;
+                            
+                            return (
+                              <div key={item.key} className="space-y-2" data-testid={`usage-item-${item.key}`}>
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <IconComponent className="w-4 h-4 text-muted-foreground" />
+                                    <span className="font-medium">{item.label}</span>
+                                  </div>
+                                  <span className="text-sm tabular-nums" data-testid={`text-usage-${item.key}`}>
+                                    {usage.current.toLocaleString()}
+                                    {!isUnlimited && (
+                                      <span className="text-muted-foreground"> / {usage.limit?.toLocaleString()}</span>
+                                    )}
+                                    {isUnlimited && (
+                                      <span className="text-muted-foreground"> (unlimited)</span>
+                                    )}
+                                  </span>
+                                </div>
+                                {!isUnlimited && (
+                                  <Progress 
+                                    value={Math.min(percentage, 100)} 
+                                    className={`h-2 ${isAtLimit ? "[&>div]:bg-red-500" : isNearLimit ? "[&>div]:bg-amber-500" : ""}`}
+                                  />
+                                )}
+                                <p className="text-xs text-muted-foreground">{item.description}</p>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </>
+                    );
+                  })()}
+                </>
+              )}
+            </CardContent>
+          </Card>
+
           {/* Onboarding & Help Settings */}
           <Card>
             <CardHeader>
@@ -316,7 +424,7 @@ export default function Settings() {
           </Card>
 
           {/* Pricing Tiers */}
-          <div className="space-y-4">
+          <div id="pricing-section" className="space-y-4">
             <h2 className="text-xl font-semibold">Available Plans</h2>
             
             {productsLoading ? (
