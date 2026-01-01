@@ -1,12 +1,13 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
-import { storage, calculateMonthlyPayment } from "./storage";
+import { storage, calculateMonthlyPayment, db } from "./storage";
 import { z } from "zod";
+import { eq } from "drizzle-orm";
 import { 
   insertLeadSchema, insertPropertySchema, insertNoteSchema, 
   insertCampaignSchema, insertAgentTaskSchema, insertDealSchema,
   insertPaymentSchema, insertOrganizationSchema, insertAgentConfigSchema,
-  SUBSCRIPTION_TIERS
+  SUBSCRIPTION_TIERS, payments, notes, deals, properties, leads, activityLog
 } from "@shared/schema";
 
 // Auth imports
@@ -430,7 +431,6 @@ export async function registerRoutes(
       await storage.updateNote(note.id, { 
         currentBalance: String(newBalance),
         status: noteStatus,
-        lastPaymentDate: new Date(),
         paymentsMade: paymentsCount
       });
       
@@ -1012,6 +1012,140 @@ Seller Signature (if applicable)
         generatedAt: new Date().toISOString(),
       });
     } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // DEMO DATA SEEDING
+  // ============================================
+  
+  api.post("/api/seed-demo-data", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      
+      // Sample leads
+      const demoLeads = [
+        { firstName: "John", lastName: "Martinez", type: "seller", email: "john.martinez@email.com", phone: "(602) 555-1234", address: "123 Desert Rose Lane", city: "Tucson", state: "AZ", zip: "85701", status: "responded", source: "tax_list", notes: "Inherited property, motivated to sell" },
+        { firstName: "Sarah", lastName: "Thompson", type: "seller", email: "sarah.t@email.com", phone: "(505) 555-2345", address: "456 Canyon View Dr", city: "Albuquerque", state: "NM", zip: "87101", status: "negotiating", source: "facebook", notes: "Moving out of state, needs quick close" },
+        { firstName: "Robert", lastName: "Chen", type: "buyer", email: "rchen@email.com", phone: "(512) 555-3456", address: "789 Oak Street", city: "Austin", state: "TX", zip: "78701", status: "qualified", source: "website", notes: "Looking for 5-10 acre recreational parcels" },
+        { firstName: "Maria", lastName: "Garcia", type: "seller", email: "mgarcia@email.com", phone: "(623) 555-4567", address: "321 Sunset Blvd", city: "Phoenix", state: "AZ", zip: "85001", status: "mailed", source: "tax_list", notes: "Initial mailer sent 2 weeks ago" },
+        { firstName: "David", lastName: "Wilson", type: "buyer", email: "dwilson@email.com", phone: "(702) 555-5678", address: "555 Palm Way", city: "Las Vegas", state: "NV", zip: "89101", status: "interested", source: "referral", notes: "Pre-approved for $50K, wants AZ or NM" },
+        { firstName: "Jennifer", lastName: "Brown", type: "seller", email: "jbrown@email.com", phone: "(480) 555-6789", address: "888 Cactus Court", city: "Scottsdale", state: "AZ", zip: "85251", status: "new", source: "craigslist", notes: "Responded to online ad" },
+      ];
+      
+      const createdLeads = [];
+      for (const lead of demoLeads) {
+        const created = await storage.createLead({ ...lead, organizationId: org.id });
+        createdLeads.push(created);
+      }
+      
+      // Sample properties
+      const demoProperties = [
+        { apn: "123-45-678", county: "Cochise", state: "AZ", sizeAcres: "5.2", status: "owned", purchasePrice: "8500", marketValue: "15000", description: "Beautiful 5+ acre parcel with mountain views near Willcox" },
+        { apn: "234-56-789", county: "Mohave", state: "AZ", sizeAcres: "2.5", status: "listed", purchasePrice: "3200", listPrice: "7900", marketValue: "7500", description: "2.5 acre lot in Golden Valley with road access" },
+        { apn: "345-67-890", county: "Luna", state: "NM", sizeAcres: "10.0", status: "owned", purchasePrice: "5000", marketValue: "12000", description: "10 acres of open desert land near Deming" },
+        { apn: "456-78-901", county: "Navajo", state: "AZ", sizeAcres: "1.25", status: "prospect", assessedValue: "4500", marketValue: "6000", description: "1.25 acre residential lot in Show Low area" },
+        { apn: "567-89-012", county: "Pinal", state: "AZ", sizeAcres: "40.0", status: "under_contract", purchasePrice: "28000", marketValue: "55000", description: "40 acre ranch parcel with well and power nearby" },
+      ];
+      
+      const createdProperties = [];
+      for (const prop of demoProperties) {
+        const created = await storage.createProperty({ ...prop, organizationId: org.id });
+        createdProperties.push(created);
+      }
+      
+      // Sample deals
+      const demoDeals = [
+        { name: "Cochise 5-Acre Purchase", type: "acquisition", stage: "closed", propertyId: createdProperties[0]?.id, leadId: createdLeads[0]?.id, purchasePrice: "8500", closingDate: new Date("2024-06-15") },
+        { name: "Mohave Lot Sale", type: "disposition", stage: "in_escrow", propertyId: createdProperties[1]?.id, leadId: createdLeads[2]?.id, salePrice: "7900", closingDate: new Date("2025-02-01") },
+        { name: "Luna County Acquisition", type: "acquisition", stage: "closed", propertyId: createdProperties[2]?.id, leadId: createdLeads[1]?.id, purchasePrice: "5000", closingDate: new Date("2024-09-20") },
+        { name: "Pinal Ranch Deal", type: "acquisition", stage: "offer_sent", propertyId: createdProperties[4]?.id, leadId: createdLeads[3]?.id, purchasePrice: "28000" },
+      ];
+      
+      for (const deal of demoDeals) {
+        await storage.createDeal({ ...deal, organizationId: org.id });
+      }
+      
+      // Sample notes (seller financing)
+      const startDate = new Date();
+      startDate.setMonth(startDate.getMonth() - 3);
+      const firstPaymentDate = new Date(startDate);
+      firstPaymentDate.setMonth(firstPaymentDate.getMonth() + 1);
+      
+      const demoNotes = [
+        { 
+          propertyId: createdProperties[0]?.id, 
+          borrowerName: "Michael Rodriguez", 
+          borrowerEmail: "mrodriguez@email.com", 
+          borrowerPhone: "(520) 555-7890",
+          originalPrincipal: "12000", 
+          currentBalance: "10800",
+          interestRate: "9.9", 
+          termMonths: 36, 
+          monthlyPayment: "387.50",
+          downPayment: "3000",
+          startDate,
+          firstPaymentDate,
+          status: "active",
+          gracePeriodDays: 10,
+          lateFee: "25",
+        },
+        { 
+          propertyId: createdProperties[2]?.id, 
+          borrowerName: "Amanda Foster", 
+          borrowerEmail: "afoster@email.com", 
+          borrowerPhone: "(575) 555-8901",
+          originalPrincipal: "8500", 
+          currentBalance: "7700",
+          interestRate: "10.5", 
+          termMonths: 24, 
+          monthlyPayment: "395.00",
+          downPayment: "2000",
+          startDate: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000),
+          firstPaymentDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+          status: "active",
+          gracePeriodDays: 10,
+          lateFee: "25",
+        },
+      ];
+      
+      for (const note of demoNotes) {
+        await storage.createNote({ ...note, organizationId: org.id });
+      }
+      
+      res.json({ 
+        success: true, 
+        message: "Demo data created successfully",
+        counts: {
+          leads: createdLeads.length,
+          properties: createdProperties.length,
+          deals: demoDeals.length,
+          notes: demoNotes.length,
+        }
+      });
+    } catch (err: any) {
+      console.error("Seed error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+  
+  // Clear demo data endpoint
+  api.post("/api/clear-demo-data", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      
+      // Delete in order to respect foreign key constraints
+      await db.delete(payments).where(eq(payments.organizationId, org.id));
+      await db.delete(notes).where(eq(notes.organizationId, org.id));
+      await db.delete(deals).where(eq(deals.organizationId, org.id));
+      await db.delete(properties).where(eq(properties.organizationId, org.id));
+      await db.delete(leads).where(eq(leads.organizationId, org.id));
+      await db.delete(activityLog).where(eq(activityLog.organizationId, org.id));
+      
+      res.json({ success: true, message: "All data cleared for your organization" });
+    } catch (err: any) {
+      console.error("Clear data error:", err);
       res.status(500).json({ message: err.message });
     }
   });

@@ -14,7 +14,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, Crown, Check, ExternalLink, CreditCard, Loader2, Lightbulb, RotateCcw } from "lucide-react";
+import { Building2, Crown, Check, ExternalLink, CreditCard, Loader2, Lightbulb, RotateCcw, Database, Trash2 } from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { useState } from "react";
 import { useEffect } from "react";
 import { useSearch } from "wouter";
 
@@ -22,6 +26,7 @@ export default function Settings() {
   const { toast } = useToast();
   const search = useSearch();
   const searchParams = new URLSearchParams(search);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
   
   const { data: organization, isLoading: orgLoading } = useOrganization();
   const { data: products, isLoading: productsLoading } = useStripeProducts();
@@ -30,6 +35,51 @@ export default function Settings() {
   const checkoutMutation = useCreateCheckoutSession();
   const portalMutation = useCreatePortalSession();
   const updateOrgMutation = useUpdateOrganization();
+  
+  const seedDataMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/seed-demo-data", {});
+      if (!res.ok) throw new Error("Failed to seed demo data");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries();
+      toast({
+        title: "Demo data created",
+        description: `Added ${data.counts.leads} leads, ${data.counts.properties} properties, ${data.counts.deals} deals, and ${data.counts.notes} notes.`,
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to create demo data",
+        variant: "destructive",
+      });
+    },
+  });
+  
+  const clearDataMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/clear-demo-data", {});
+      if (!res.ok) throw new Error("Failed to clear data");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries();
+      setShowClearConfirm(false);
+      toast({
+        title: "Data cleared",
+        description: "All demo data has been removed from your organization.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to clear data",
+        variant: "destructive",
+      });
+    },
+  });
   
   const settings = organization?.settings as Record<string, unknown> | null;
   const showTips = settings?.showTips !== false;
@@ -371,8 +421,69 @@ export default function Settings() {
               </Card>
             )}
           </div>
+          
+          {/* Developer Tools */}
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-xl font-semibold flex items-center gap-2">
+                <Database className="w-5 h-5" />
+                Developer Tools
+              </h2>
+              <p className="text-muted-foreground text-sm">
+                Manage test data for development and demo purposes.
+              </p>
+            </div>
+            
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Demo Data</CardTitle>
+                <CardDescription>
+                  Populate your account with sample leads, properties, deals, and notes for testing.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-wrap gap-3">
+                <Button
+                  onClick={() => seedDataMutation.mutate()}
+                  disabled={seedDataMutation.isPending}
+                  data-testid="button-seed-demo-data"
+                >
+                  {seedDataMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Database className="w-4 h-4 mr-2" />
+                  )}
+                  Add Demo Data
+                </Button>
+                
+                <Button
+                  variant="destructive"
+                  onClick={() => setShowClearConfirm(true)}
+                  disabled={clearDataMutation.isPending}
+                  data-testid="button-clear-data"
+                >
+                  {clearDataMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Trash2 className="w-4 h-4 mr-2" />
+                  )}
+                  Clear All Data
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </main>
+      
+      <ConfirmDialog
+        open={showClearConfirm}
+        onOpenChange={setShowClearConfirm}
+        title="Clear All Data"
+        description="This will permanently delete all leads, properties, deals, notes, and payments from your organization. This action cannot be undone. Are you sure you want to continue?"
+        confirmLabel="Yes, Delete Everything"
+        onConfirm={() => clearDataMutation.mutate()}
+        isLoading={clearDataMutation.isPending}
+        variant="destructive"
+      />
     </div>
   );
 }

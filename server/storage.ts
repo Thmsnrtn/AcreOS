@@ -1,4 +1,5 @@
 import { db } from "./db";
+export { db };
 import { eq, and, desc, sql, count, sum, arrayContains } from "drizzle-orm";
 import { aiConversations, aiMessages } from "@shared/schema";
 import {
