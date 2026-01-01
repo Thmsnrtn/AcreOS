@@ -18,6 +18,10 @@ import SettingsPage from "@/pages/settings";
 import AuthPage from "@/pages/auth-page";
 import BorrowerPortal from "@/pages/borrower-portal";
 import NotFound from "@/pages/not-found";
+import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
+import { MobileBottomNav } from "@/components/mobile-bottom-nav";
+import { ErrorBoundary } from "@/components/error-boundary";
+import { OfflineIndicator } from "@/components/offline-indicator";
 
 // Protected Route Wrapper
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
@@ -81,14 +85,29 @@ function Router() {
   );
 }
 
+function AppContent() {
+  const { user } = useAuth();
+  
+  return (
+    <>
+      <Router />
+      {user && <MobileBottomNav />}
+      <PWAInstallPrompt />
+    </>
+  );
+}
+
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Router />
-      </TooltipProvider>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <OfflineIndicator />
+          <Toaster />
+          <AppContent />
+        </TooltipProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
 

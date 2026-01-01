@@ -119,3 +119,30 @@ The server implements a three-layer architecture:
 ### Development Tools
 - **Vite**: Development server with HMR
 - **Replit Plugins**: Runtime error overlay, cartographer, dev banner (dev only)
+
+## Multi-Platform Support
+
+### Progressive Web App (PWA)
+- Service worker for offline caching
+- Web app manifest for installation
+- iOS and Android home screen support
+- Push notification readiness
+
+### Mobile Apps (Capacitor)
+- **Configuration**: capacitor.config.ts
+- **Platforms**: iOS and Android
+- **Build**: See NATIVE_APPS.md for instructions
+- **Features**: Push notifications, haptic feedback, native keyboard handling
+
+### Desktop Apps (Tauri)
+- **Configuration**: src-tauri/tauri.conf.json
+- **Platforms**: macOS, Windows, Linux
+- **Build**: Requires Rust toolchain
+- Smaller and faster than Electron
+
+### Production Features
+- Error boundaries for graceful error handling
+- Offline indicator for connectivity status
+- Mobile bottom navigation for phone users
+- Safe area support for iOS notch devices
+- Responsive design for all screen sizes

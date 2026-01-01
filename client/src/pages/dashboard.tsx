@@ -62,7 +62,7 @@ export default function Dashboard() {
   return (
     <div className="flex min-h-screen bg-background desert-gradient">
       <Sidebar />
-      <main className="flex-1 md:ml-[17rem] p-6 md:p-8">
+      <main className="flex-1 md:ml-[17rem] p-6 md:p-8 pb-24 md:pb-8">
         <div className="max-w-7xl mx-auto space-y-8">
           
           <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
