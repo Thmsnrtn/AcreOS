@@ -81,7 +81,7 @@ async function getOrgCredentials(orgId: number): Promise<SendGridCredentials | n
     return {
       apiKey: decrypted.apiKey,
       fromEmail,
-      fromName,
+      fromName: fromName || undefined,
       source: 'organization',
     };
   } catch (error) {
