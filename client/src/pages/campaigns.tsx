@@ -1,7 +1,7 @@
 import { Sidebar } from "@/components/layout-sidebar";
-import { useCampaigns, useCreateCampaign, useUpdateCampaign } from "@/hooks/use-campaigns";
+import { useCampaigns, useCreateCampaign, useUpdateCampaign, useDirectMailStatus, useUpdateMailMode, useSendDirectMail, useMailEstimate } from "@/hooks/use-campaigns";
 import { useLeads } from "@/hooks/use-leads";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertCampaignSchema, type Campaign } from "@shared/schema";
@@ -9,7 +9,7 @@ import { z } from "zod";
 
 // Client-side form schema that omits organizationId (added by server)
 const campaignFormSchema = insertCampaignSchema.omit({ organizationId: true });
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -17,10 +17,12 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Mail, MessageSquare, Send, Calendar, BarChart3, Users, Clock, Play, Pause, CheckCircle, FileText, Target, TrendingUp, Eye } from "lucide-react";
+import { Plus, Mail, MessageSquare, Send, Calendar, BarChart3, Users, Clock, Play, Pause, CheckCircle, FileText, Target, TrendingUp, Eye, TestTube, Zap, AlertTriangle, DollarSign, Loader2 } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { format } from "date-fns";
+import { useToast } from "@/hooks/use-toast";
 
 const campaignTypes = [
   { value: 'direct_mail', label: 'Direct Mail', icon: Mail },
@@ -35,6 +37,102 @@ const statusColors: Record<string, string> = {
   paused: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400',
   completed: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400',
 };
+
+const pieceTypes = [
+  { value: 'postcard_4x6', label: 'Postcard 4x6', cost: 0.75 },
+  { value: 'postcard_6x9', label: 'Postcard 6x9', cost: 0.95 },
+  { value: 'postcard_6x11', label: 'Postcard 6x11', cost: 1.15 },
+  { value: 'letter_1_page', label: 'Letter (1 page)', cost: 1.25 },
+] as const;
+
+function MailModeIndicator() {
+  const { data: mailStatus, isLoading } = useDirectMailStatus();
+  const updateModeMutation = useUpdateMailMode();
+  const { toast } = useToast();
+
+  if (isLoading || !mailStatus) return null;
+
+  if (!mailStatus.isConfigured) {
+    return (
+      <Card className="glass-panel border-amber-200 dark:border-amber-800">
+        <CardContent className="p-4">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-500" />
+            <div>
+              <p className="font-medium">Direct Mail Not Configured</p>
+              <p className="text-sm text-muted-foreground">Add your Lob API key in settings to enable direct mail.</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const isTestMode = mailStatus.currentMode === 'test';
+  const canSwitchToLive = mailStatus.hasLiveMode;
+
+  const handleModeChange = async (checked: boolean) => {
+    const newMode = checked ? 'live' : 'test';
+    try {
+      await updateModeMutation.mutateAsync(newMode);
+      toast({
+        title: newMode === 'live' ? 'Live Mode Enabled' : 'Test Mode Enabled',
+        description: newMode === 'live' 
+          ? 'Mail will now be sent and billed.' 
+          : 'Mail will not actually be sent.',
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Failed to switch mode',
+        description: error.message,
+        variant: 'destructive',
+      });
+    }
+  };
+
+  return (
+    <Card className={`glass-panel ${isTestMode ? 'border-blue-200 dark:border-blue-800' : 'border-emerald-200 dark:border-emerald-800'}`}>
+      <CardContent className="p-4">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            {isTestMode ? (
+              <TestTube className="w-5 h-5 text-blue-500" />
+            ) : (
+              <Zap className="w-5 h-5 text-emerald-500" />
+            )}
+            <div>
+              <div className="flex items-center gap-2">
+                <p className="font-medium">
+                  {isTestMode ? 'Test Mode' : 'Live Mode'}
+                </p>
+                <Badge className={isTestMode ? 'bg-blue-100 text-blue-800' : 'bg-emerald-100 text-emerald-800'}>
+                  {isTestMode ? 'Safe' : 'Active'}
+                </Badge>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                {isTestMode 
+                  ? 'Mail pieces are simulated - no actual mail is sent.' 
+                  : 'Real mail will be sent and costs will be deducted.'}
+              </p>
+            </div>
+          </div>
+          {canSwitchToLive && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Test</span>
+              <Switch
+                checked={!isTestMode}
+                onCheckedChange={handleModeChange}
+                disabled={updateModeMutation.isPending}
+                data-testid="switch-mail-mode"
+              />
+              <span className="text-sm text-muted-foreground">Live</span>
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function CampaignsPage() {
   const { data: campaigns, isLoading } = useCampaigns();
@@ -73,6 +171,8 @@ export default function CampaignsPage() {
               </DialogContent>
             </Dialog>
           </div>
+
+          <MailModeIndicator />
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <Card className="glass-panel">
@@ -277,13 +377,242 @@ function CampaignList({ campaigns, isLoading, onSelect, onCreateNew }: {
   );
 }
 
+function SendMailDialog({ 
+  campaign, 
+  availableLeads, 
+  mailStatus, 
+  onClose 
+}: { 
+  campaign: Campaign; 
+  availableLeads: any[]; 
+  mailStatus: { isConfigured: boolean; currentMode: 'test' | 'live' };
+  onClose: () => void;
+}) {
+  const { toast } = useToast();
+  const sendMutation = useSendDirectMail();
+  const estimateMutation = useMailEstimate();
+  const [pieceType, setPieceType] = useState<string>('postcard_4x6');
+  const [selectedLeadIds, setSelectedLeadIds] = useState<number[]>(availableLeads.map(l => l.id));
+  
+  // Fetch estimate on mount and when pieceType or selection changes
+  const fetchEstimate = () => {
+    if (selectedLeadIds.length > 0) {
+      estimateMutation.mutate({
+        pieceType,
+        recipientCount: selectedLeadIds.length,
+      });
+    }
+  };
+
+  // Fetch estimate on initial load
+  useEffect(() => {
+    fetchEstimate();
+  }, []);
+
+  // Refetch when piece type changes
+  const handlePieceTypeChange = (newType: string) => {
+    setPieceType(newType);
+    if (selectedLeadIds.length > 0) {
+      estimateMutation.mutate({
+        pieceType: newType,
+        recipientCount: selectedLeadIds.length,
+      });
+    }
+  };
+
+  const handleSend = async () => {
+    try {
+      const result = await sendMutation.mutateAsync({
+        campaignId: campaign.id,
+        pieceType,
+        leadIds: selectedLeadIds,
+      });
+      
+      toast({
+        title: result.isTestMode ? 'Test Mail Sent' : 'Mail Sent',
+        description: result.message,
+      });
+      onClose();
+    } catch (error: any) {
+      toast({
+        title: 'Failed to send mail',
+        description: error.message,
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const isTestMode = mailStatus.currentMode === 'test';
+  const selectedPiece = pieceTypes.find(p => p.value === pieceType);
+  const estimatedCost = selectedPiece ? selectedPiece.cost * selectedLeadIds.length : 0;
+
+  return (
+    <Dialog open onOpenChange={() => onClose()}>
+      <DialogContent className="sm:max-w-[500px] floating-window">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Mail className="w-5 h-5" />
+            Send Direct Mail
+          </DialogTitle>
+          <DialogDescription>
+            Configure and send mail pieces for "{campaign.name}"
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-4">
+          <Card className={`${isTestMode ? 'border-blue-200 dark:border-blue-800' : 'border-emerald-200 dark:border-emerald-800'}`}>
+            <CardContent className="p-3">
+              <div className="flex items-center gap-2">
+                {isTestMode ? (
+                  <TestTube className="w-4 h-4 text-blue-500" />
+                ) : (
+                  <Zap className="w-4 h-4 text-emerald-500" />
+                )}
+                <span className="text-sm font-medium">
+                  {isTestMode ? 'Test Mode - No real mail will be sent' : 'Live Mode - Real mail will be sent'}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Mail Piece Type</label>
+            <Select value={pieceType} onValueChange={handlePieceTypeChange}>
+              <SelectTrigger data-testid="select-piece-type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {pieceTypes.map(type => (
+                  <SelectItem key={type.value} value={type.value}>
+                    <div className="flex items-center justify-between gap-4">
+                      <span>{type.label}</span>
+                      <span className="text-muted-foreground">${type.cost.toFixed(2)}/piece</span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Recipients</label>
+            <p className="text-sm text-muted-foreground">
+              {selectedLeadIds.length} of {availableLeads.length} leads with valid addresses selected
+            </p>
+          </div>
+
+          <Card className="bg-muted/50">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Estimated Cost</p>
+                  <p className="text-2xl font-bold flex items-center gap-1">
+                    <DollarSign className="w-5 h-5" />
+                    {estimatedCost.toFixed(2)}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm text-muted-foreground">
+                    {selectedLeadIds.length} pieces
+                  </p>
+                  <p className="text-sm">
+                    @ ${selectedPiece?.cost.toFixed(2)}/each
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {estimateMutation.isPending && (
+            <Card className="border-muted">
+              <CardContent className="p-3">
+                <div className="flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">Checking credit balance...</span>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {estimateMutation.error && (
+            <Card className="border-red-200 dark:border-red-800">
+              <CardContent className="p-3">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-red-500" />
+                  <span className="text-sm text-red-600 dark:text-red-400">
+                    Failed to get estimate. Please try again.
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {estimateMutation.data && !estimateMutation.isPending && (
+            <Card className={estimateMutation.data.hasEnoughCredits ? 'border-emerald-200 dark:border-emerald-800' : 'border-red-200 dark:border-red-800'}>
+              <CardContent className="p-3">
+                <div className="flex items-center gap-2">
+                  {estimateMutation.data.hasEnoughCredits ? (
+                    <CheckCircle className="w-4 h-4 text-emerald-500" />
+                  ) : (
+                    <AlertTriangle className="w-4 h-4 text-red-500" />
+                  )}
+                  <span className="text-sm">
+                    {estimateMutation.data.hasEnoughCredits 
+                      ? `You have enough credits ($${(estimateMutation.data.creditBalance / 100).toFixed(2)} available)`
+                      : `Insufficient credits - need $${(estimateMutation.data.creditsNeeded / 100).toFixed(2)} more`}
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} data-testid="button-cancel-send">
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleSend}
+            disabled={
+              sendMutation.isPending || 
+              selectedLeadIds.length === 0 || 
+              estimateMutation.isPending ||
+              !!estimateMutation.error ||
+              (estimateMutation.data && !estimateMutation.data.hasEnoughCredits)
+            }
+            data-testid="button-confirm-send"
+          >
+            {sendMutation.isPending ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Sending...
+              </>
+            ) : (
+              <>
+                <Send className="w-4 h-4 mr-2" />
+                {isTestMode ? 'Send Test Mail' : 'Send Mail'}
+              </>
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClose: () => void }) {
   const { mutate: updateCampaign, isPending } = useUpdateCampaign();
+  const { data: leads } = useLeads();
+  const { data: mailStatus } = useDirectMailStatus();
+  const [showSendDialog, setShowSendDialog] = useState(false);
   
   const toggleStatus = () => {
     const newStatus = campaign.status === 'active' ? 'paused' : 'active';
     updateCampaign({ id: campaign.id, status: newStatus });
   };
+
+  const isDirectMail = campaign.type === 'direct_mail';
+  const availableLeads = leads?.filter(l => l.address && l.city && l.state && l.zip) || [];
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" onClick={onClose}>
@@ -299,7 +628,15 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
                 {campaign.status}
               </Badge>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
+              {isDirectMail && mailStatus?.isConfigured && (
+                <Button 
+                  onClick={() => setShowSendDialog(true)}
+                  data-testid="button-send-mail"
+                >
+                  <Mail className="w-4 h-4 mr-2" /> Send Mail
+                </Button>
+              )}
               {campaign.status !== 'completed' && (
                 <Button 
                   variant="outline" 
@@ -322,6 +659,15 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
             </div>
           </div>
         </div>
+
+        {showSendDialog && (
+          <SendMailDialog 
+            campaign={campaign}
+            availableLeads={availableLeads}
+            mailStatus={mailStatus!}
+            onClose={() => setShowSendDialog(false)}
+          />
+        )}
 
         <div className="p-6 space-y-6">
           <div className="grid grid-cols-2 gap-4">

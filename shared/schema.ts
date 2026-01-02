@@ -54,6 +54,7 @@ export const organizations = pgTable("organizations", {
     showTips?: boolean;
     checklistDismissed?: boolean;
     notificationsConfigured?: boolean;
+    mailMode?: "test" | "live";
   }>(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),

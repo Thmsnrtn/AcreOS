@@ -1434,14 +1434,18 @@ export async function registerRoutes(
       const organization = await storage.getOrganization(org.id);
       const senderAddress = {
         name: organization?.name || 'AcreOS User',
-        addressLine1: '123 Main St', // Would need org address fields
+        addressLine1: organization?.settings?.companyAddress || '123 Main St',
         city: 'Austin',
         state: 'TX',
         zip: '78701',
       };
 
+      // Get current mail mode from organization settings
+      const mailMode = (org.settings?.mailMode || 'test') as 'test' | 'live';
+      const isTestMode = mailMode === 'test';
+
       // Actually send the mail pieces via Lob
-      const sendResults: Array<{ leadId: number; success: boolean; lobId?: string; error?: string }> = [];
+      const sendResults: Array<{ leadId: number; success: boolean; lobId?: string; error?: string; isTest?: boolean }> = [];
       
       for (const lead of validLeads) {
         try {
@@ -1459,8 +1463,8 @@ export async function registerRoutes(
                 zip: lead.zip!,
               },
               from: senderAddress,
-            });
-            sendResults.push({ leadId: lead.id, success: true, lobId: result.id });
+            }, mailMode);
+            sendResults.push({ leadId: lead.id, success: true, lobId: result.id, isTest: isTestMode });
           } else {
             const result = await directMailService.sendLetter({
               file: campaign.content || '<html><body><p>Letter content</p></body></html>',
@@ -1472,8 +1476,8 @@ export async function registerRoutes(
                 zip: lead.zip!,
               },
               from: senderAddress,
-            });
-            sendResults.push({ leadId: lead.id, success: true, lobId: result.id });
+            }, mailMode);
+            sendResults.push({ leadId: lead.id, success: true, lobId: result.id, isTest: isTestMode });
           }
         } catch (err: any) {
           sendResults.push({ leadId: lead.id, success: false, error: err.message });
@@ -1513,11 +1517,14 @@ export async function registerRoutes(
 
       res.json({
         success: true,
+        isTestMode,
         piecesQueued: successCount,
         piecesFailed: failCount,
         totalCost: (costPerPiece * successCount) / 100,
         refunded: failCount > 0 ? (costPerPiece * failCount) / 100 : 0,
-        message: `${successCount} mail pieces sent${failCount > 0 ? `, ${failCount} failed (refunded)` : ''}`,
+        message: isTestMode 
+          ? `${successCount} test mail pieces queued (no actual mail sent)${failCount > 0 ? `, ${failCount} failed` : ''}`
+          : `${successCount} mail pieces sent${failCount > 0 ? `, ${failCount} failed (refunded)` : ''}`,
         details: sendResults,
       });
     } catch (error: any) {
@@ -1538,6 +1545,7 @@ export async function registerRoutes(
       const count = parseInt(recipientCount) || 0;
       const totalCost = costPerPiece * count;
       const balance = await creditService.getBalance(org.id);
+      const mailMode = org.settings?.mailMode || 'test';
       
       res.json({
         pieceType,
@@ -1547,6 +1555,8 @@ export async function registerRoutes(
         currentBalance: balance / 100,
         canAfford: balance >= totalCost,
         creditsNeeded: balance < totalCost ? (totalCost - balance) / 100 : 0,
+        mailMode,
+        isTestMode: mailMode === 'test',
       });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -1658,6 +1668,133 @@ export async function registerRoutes(
         scale: { credits: 25000, value: "$250.00" },
       },
     });
+  });
+  
+  // ============================================
+  // DIRECT MAIL SETTINGS & ESTIMATES
+  // ============================================
+  
+  // Get direct mail status and configuration
+  api.get("/api/direct-mail/status", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const { directMailService, DIRECT_MAIL_COSTS } = await import("./services/directMail");
+    
+    const currentMode = org.settings?.mailMode || 'test';
+    const availableModes = directMailService.getAvailableModes();
+    
+    res.json({
+      isConfigured: directMailService.isAvailable(),
+      currentMode,
+      availableModes,
+      hasTestMode: directMailService.hasTestMode(),
+      hasLiveMode: directMailService.hasLiveMode(),
+      pricing: DIRECT_MAIL_COSTS,
+      deliveryDays: directMailService.getEstimatedDeliveryDays(),
+    });
+  });
+  
+  // Update mail mode (test/live)
+  api.patch("/api/direct-mail/mode", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const { mode } = req.body;
+    
+    if (mode !== 'test' && mode !== 'live') {
+      return res.status(400).json({ error: "Mode must be 'test' or 'live'" });
+    }
+    
+    const { directMailService } = await import("./services/directMail");
+    
+    // Validate the mode is available
+    if (mode === 'live' && !directMailService.hasLiveMode()) {
+      return res.status(400).json({ error: "Live mode not available - no live API key configured" });
+    }
+    if (mode === 'test' && !directMailService.hasTestMode()) {
+      return res.status(400).json({ error: "Test mode not available - no test API key configured" });
+    }
+    
+    // Update organization settings
+    const updatedSettings = { ...org.settings, mailMode: mode };
+    const updated = await storage.updateOrganization(org.id, { settings: updatedSettings });
+    
+    res.json({ 
+      success: true, 
+      mode,
+      message: mode === 'test' 
+        ? 'Test mode enabled - mail will not actually be sent' 
+        : 'Live mode enabled - real mail will be sent and billed'
+    });
+  });
+  
+  // Get cost estimate for a batch of mail
+  api.post("/api/direct-mail/estimate", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { pieceType, recipientCount, recipientIds, campaignId } = req.body;
+      
+      const { directMailService, DIRECT_MAIL_COSTS } = await import("./services/directMail");
+      
+      if (!directMailService.isAvailable()) {
+        return res.status(400).json({ error: "Direct mail service not configured" });
+      }
+      
+      // Validate piece type
+      if (!DIRECT_MAIL_COSTS[pieceType as keyof typeof DIRECT_MAIL_COSTS]) {
+        return res.status(400).json({ error: "Invalid piece type" });
+      }
+      
+      // Calculate recipient count from IDs if provided
+      let count = recipientCount || 0;
+      if (recipientIds && Array.isArray(recipientIds)) {
+        count = recipientIds.length;
+      } else if (campaignId) {
+        // Get leads matching campaign criteria
+        const campaign = await storage.getCampaign(campaignId);
+        if (campaign && campaign.targetCriteria) {
+          const leads = await storage.getLeads(org.id);
+          // Filter leads by campaign criteria (simplified)
+          count = leads.length;
+        }
+      }
+      
+      if (count <= 0) {
+        return res.status(400).json({ error: "Must specify recipientCount, recipientIds, or campaignId" });
+      }
+      
+      const currentMode = org.settings?.mailMode || 'test';
+      const estimate = directMailService.estimateBatchCost(pieceType, count, currentMode);
+      
+      // Check if user has enough credits
+      const creditBalance = parseFloat(org.creditBalance || '0');
+      const hasEnoughCredits = creditBalance >= estimate.totalCost;
+      
+      res.json({
+        ...estimate,
+        currentMode,
+        creditBalance,
+        hasEnoughCredits,
+        creditsNeeded: hasEnoughCredits ? 0 : estimate.totalCost - creditBalance,
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || "Failed to generate estimate" });
+    }
+  });
+  
+  // Verify a single address
+  api.post("/api/direct-mail/verify-address", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { address } = req.body;
+      
+      const { directMailService } = await import("./services/directMail");
+      
+      if (!directMailService.isAvailable()) {
+        return res.status(400).json({ error: "Direct mail service not configured" });
+      }
+      
+      const result = await directMailService.verifyAddress(address);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || "Failed to verify address" });
+    }
   });
   
   // ============================================
