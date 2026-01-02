@@ -30,12 +30,13 @@ export function getSession() {
   return session({
     secret: process.env.SESSION_SECRET!,
     store: sessionStore,
-    resave: false,
+    resave: true, // Required for session persistence in Safari
     saveUninitialized: true, // Required for Safari - save session before OAuth redirect
+    rolling: true, // Refresh session on every response
     cookie: {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production" || process.env.REPL_SLUG !== undefined,
-      sameSite: "none", // Required for Safari cross-site OIDC flow
+      secure: true,
+      sameSite: "lax", // Safari handles 'lax' better than 'none'
       maxAge: sessionTtl,
     },
   });
@@ -105,10 +106,16 @@ export async function setupAuth(app: Express) {
 
   app.get("/api/login", (req, res, next) => {
     ensureStrategy(req.hostname);
-    passport.authenticate(`replitauth:${req.hostname}`, {
-      prompt: "login consent",
-      scope: ["openid", "email", "profile", "offline_access"],
-    })(req, res, next);
+    // Force session save before OAuth redirect (required for Safari)
+    req.session.save((err) => {
+      if (err) {
+        console.error("[auth] Session save error:", err);
+      }
+      passport.authenticate(`replitauth:${req.hostname}`, {
+        prompt: "login consent",
+        scope: ["openid", "email", "profile", "offline_access"],
+      })(req, res, next);
+    });
   });
 
   app.get("/api/callback", (req, res, next) => {
