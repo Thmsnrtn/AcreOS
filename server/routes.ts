@@ -157,6 +157,35 @@ export async function registerRoutes(
   await setupAuth(app);
   registerAuthRoutes(app);
   
+  // ============================================
+  // HEALTH CHECK (Public endpoint for monitoring)
+  // ============================================
+  app.get("/api/health", async (req, res) => {
+    try {
+      // Check database connection
+      await db.execute(sql`SELECT 1`);
+      
+      res.json({
+        status: "healthy",
+        timestamp: new Date().toISOString(),
+        services: {
+          database: "connected",
+          server: "running",
+        },
+      });
+    } catch (error: any) {
+      res.status(503).json({
+        status: "unhealthy",
+        timestamp: new Date().toISOString(),
+        services: {
+          database: "disconnected",
+          server: "running",
+        },
+        error: error.message,
+      });
+    }
+  });
+  
   // Protected API routes - all require authentication
   const api = app;
   

@@ -178,16 +178,37 @@ export class ApiQueueService {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - olderThanDays);
 
-    const result = await db
+    // Delete completed jobs older than cutoff
+    const completedResult = await db
       .delete(apiJobs)
       .where(
         and(
           eq(apiJobs.status, 'completed'),
           lt(apiJobs.completedAt!, cutoffDate)
         )
-      );
+      )
+      .returning({ id: apiJobs.id });
 
-    return 0;
+    // Also delete failed jobs older than cutoff (after 30 days)
+    const failedCutoff = new Date();
+    failedCutoff.setDate(failedCutoff.getDate() - 30);
+    
+    const failedResult = await db
+      .delete(apiJobs)
+      .where(
+        and(
+          eq(apiJobs.status, 'failed'),
+          lt(apiJobs.createdAt!, failedCutoff)
+        )
+      )
+      .returning({ id: apiJobs.id });
+
+    const totalDeleted = completedResult.length + failedResult.length;
+    if (totalDeleted > 0) {
+      console.log(`[queue] Cleaned up ${completedResult.length} completed and ${failedResult.length} failed jobs`);
+    }
+    
+    return totalDeleted;
   }
 }
 
