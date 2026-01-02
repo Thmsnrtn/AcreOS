@@ -271,7 +271,13 @@ export default function LeadsPage() {
                         <EmptyState
                           icon={Users}
                           title="No leads yet"
-                          description="Start by adding your first lead. Track potential buyers and sellers through your sales pipeline."
+                          description="Leads are your potential sellers and buyers. Import from CSV or add manually to start building your pipeline."
+                          secondaryDescription="A strong lead database is the foundation of your land investing business."
+                          tips={[
+                            "Import leads in bulk from county records or data providers",
+                            "Add leads manually as you find motivated sellers",
+                            "Track lead status from cold to hot to closed"
+                          ]}
                           actionLabel="Add Your First Lead"
                           onAction={() => setIsCreateOpen(true)}
                         />

@@ -305,7 +305,13 @@ function CampaignList({ campaigns, isLoading, onSelect, onCreateNew }: {
       <EmptyState
         icon={Target}
         title="No marketing campaigns"
-        description="Launch your first campaign to start reaching leads with direct mail, email, or SMS outreach."
+        description="Campaigns let you reach leads via email, SMS, or direct mail. Create templates and track performance."
+        secondaryDescription="Consistent outreach is key to finding motivated sellers and buyers."
+        tips={[
+          "Send direct mail postcards to absentee owners",
+          "Follow up with email sequences to warm leads",
+          "Track response rates to optimize your messaging"
+        ]}
         actionLabel="Launch Your First Campaign"
         onAction={onCreateNew}
       />

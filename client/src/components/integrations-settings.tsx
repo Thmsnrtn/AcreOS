@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { InfoCard } from "@/components/info-card";
 import { 
   Mail, 
   MessageSquare, 
@@ -18,7 +19,10 @@ import {
   EyeOff,
   Trash2,
   RefreshCw,
-  AlertCircle
+  AlertCircle,
+  Key,
+  Phone,
+  Send
 } from "lucide-react";
 import { SiSendgrid, SiTwilio } from "react-icons/si";
 import {
@@ -51,6 +55,7 @@ const PROVIDERS = [
     iconColor: 'text-blue-500',
     apiKeyLabel: 'SendGrid API Key',
     helpUrl: 'https://docs.sendgrid.com/ui/account-and-settings/api-keys',
+    helpText: 'Connect your SendGrid account to send emails from your own verified domain. This improves email deliverability and ensures recipients see your professional branding instead of a generic sender address.',
   },
   {
     id: 'twilio',
@@ -63,6 +68,7 @@ const PROVIDERS = [
     additionalFields: [
       { key: 'accountSid', label: 'Account SID', type: 'text' },
     ],
+    helpText: 'Connect your Twilio account to send SMS messages from your own phone numbers. Recipients will see your business number, building trust and enabling two-way conversations.',
   },
   {
     id: 'lob',
@@ -72,6 +78,7 @@ const PROVIDERS = [
     iconColor: 'text-green-500',
     apiKeyLabel: 'Lob API Key',
     helpUrl: 'https://www.lob.com/docs',
+    helpText: 'Connect your Lob account to send direct mail with your own custom return addresses. This creates a more professional impression and allows recipients to respond directly to your business address.',
   },
 ];
 
@@ -419,24 +426,45 @@ export function IntegrationsSettings() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        <InfoCard
+          icon={<Key className="w-4 h-4" />}
+          title="Why configure your own API keys?"
+          description="By default, campaigns send from our shared platform. Add your own keys to send from your verified domain for better deliverability and professional branding."
+          details="Using your own API keys gives you full control over your sending reputation, allows you to use your verified domains and phone numbers, and ensures your communications appear professional to recipients. You'll also have access to your own analytics and billing through each provider."
+          data-testid="info-card-api-keys"
+        />
+        
         {isLoading ? (
           <div className="flex items-center justify-center py-8">
             <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
           </div>
         ) : (
           PROVIDERS.map(provider => (
-            <IntegrationCard
-              key={provider.id}
-              provider={provider}
-              config={getConfig(provider.id)}
-              onConfigure={(id) => {
-                const p = PROVIDERS.find(p => p.id === id);
-                if (p) setConfigureProvider(p);
-              }}
-              onTest={(id) => testMutation.mutate(id)}
-              onDelete={(id) => deleteMutation.mutate(id)}
-              testingProvider={testingProvider}
-            />
+            <div key={provider.id} className="space-y-2">
+              <IntegrationCard
+                provider={provider}
+                config={getConfig(provider.id)}
+                onConfigure={(id) => {
+                  const p = PROVIDERS.find(p => p.id === id);
+                  if (p) setConfigureProvider(p);
+                }}
+                onTest={(id) => testMutation.mutate(id)}
+                onDelete={(id) => deleteMutation.mutate(id)}
+                testingProvider={testingProvider}
+              />
+              {provider.helpText && (
+                <InfoCard
+                  icon={provider.id === 'sendgrid' ? <Send className="w-4 h-4" /> : 
+                        provider.id === 'twilio' ? <Phone className="w-4 h-4" /> : 
+                        <FileText className="w-4 h-4" />}
+                  title={`About ${provider.name}`}
+                  description={provider.helpText}
+                  learnMoreUrl={provider.helpUrl}
+                  learnMoreText="View documentation"
+                  data-testid={`info-card-${provider.id}`}
+                />
+              )}
+            </div>
           ))
         )}
         

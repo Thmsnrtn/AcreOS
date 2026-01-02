@@ -172,7 +172,13 @@ export default function DealsPage() {
             <EmptyState
               icon={Briefcase}
               title="No deals in your pipeline"
-              description="Create your first deal to start tracking acquisitions and dispositions through your pipeline."
+              description="Track acquisitions and dispositions through your pipeline. Move deals through stages from lead to closed."
+              secondaryDescription="Stay organized and never let a deal fall through the cracks."
+              tips={[
+                "Create deals for properties you're negotiating on",
+                "Track offer amounts and accepted terms",
+                "Move deals through stages: negotiating, accepted, escrow, closed"
+              ]}
               actionLabel="Create Your First Deal"
               onAction={() => setIsCreateOpen(true)}
             />

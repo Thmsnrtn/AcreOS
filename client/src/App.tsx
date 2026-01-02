@@ -19,6 +19,7 @@ import CommandCenterPage from "@/pages/command-center";
 import AITeamPage from "@/pages/ai-team";
 import SupportPage from "@/pages/support";
 import SettingsPage from "@/pages/settings";
+import HelpPage from "@/pages/help";
 import AdminSupportPage from "@/pages/admin-support";
 import FounderDashboard from "@/pages/founder-dashboard";
 import AuthPage from "@/pages/auth-page";
@@ -93,6 +94,9 @@ function Router() {
       </Route>
       <Route path="/settings">
         {() => <ProtectedRoute component={SettingsPage} />}
+      </Route>
+      <Route path="/help">
+        {() => <ProtectedRoute component={HelpPage} />}
       </Route>
       <Route path="/admin/support">
         {() => <ProtectedRoute component={AdminSupportPage} />}

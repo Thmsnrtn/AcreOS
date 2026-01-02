@@ -225,7 +225,13 @@ export default function PropertiesPage() {
                   <EmptyState
                     icon={MapPin}
                     title="No properties yet"
-                    description="No properties in your inventory. Add your first property to start tracking land parcels and their status."
+                    description="Track your land inventory here. Add properties you're evaluating, under contract, or ready to sell."
+                    secondaryDescription="Keep all your property details, due diligence, and comps in one place."
+                    tips={[
+                      "Add properties you're researching or have under contract",
+                      "Run due diligence checklists to ensure nothing is missed",
+                      "Use comps analysis to determine fair market value"
+                    ]}
                     actionLabel="Add Your First Property"
                     onAction={() => setIsCreateOpen(true)}
                   />
