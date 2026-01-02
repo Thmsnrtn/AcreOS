@@ -190,6 +190,25 @@ The server implements a three-layer architecture:
 - Available in Tools, Deal detail, and Property modal
 - Save analysis results to deal records
 
+### Usage Metering & Credits System (Pay-As-You-Go)
+- **Prepaid Credit Balance**: Organizations have a credit balance (in cents) for usage-based features
+- **Credit Purchases**: $10, $25, $50, $100 credit packs via Stripe one-time checkout
+- **Monthly Allowances**: Each subscription tier includes monthly credits (Free: $1, Starter: $10, Pro: $50, Scale: $250)
+- **Billable Actions** with per-action pricing:
+  - Email Sent: $0.01
+  - SMS Sent: $0.03
+  - AI Chat Request: $0.02
+  - AI Image Generation: $0.25
+  - PDF Document: $0.05
+  - Comps Analysis: $0.10
+  - Direct Mail Piece: $0.75
+- **Pre-action Credit Checks**: All billable endpoints verify sufficient credits before processing
+- **Usage Dashboard**: Visual breakdown of spending by category, transaction history, balance display
+- **Low Balance Alerts**: Warning banner when balance drops below $2.00
+- **Cost Confirmation Modals**: Pre-action confirmation for bulk operations showing estimated cost
+- **Atomic Balance Updates**: Race-condition-safe credit deductions using SQL atomic operations
+- **Database Tables**: usage_records (action tracking), credit_transactions (purchase/debit history), usage_rates (configurable pricing)
+
 ## Future Integrations (Not Yet Connected)
 
 ### Email (SendGrid)

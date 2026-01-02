@@ -48,9 +48,10 @@ interface UsageSummary {
 export function UsageDashboard() {
   const [purchaseModalOpen, setPurchaseModalOpen] = useState(false);
 
-  const { data: balance, isLoading: balanceLoading } = useQuery<number>({
+  const { data: balanceData, isLoading: balanceLoading } = useQuery<{ balance: number }>({
     queryKey: ["/api/credits/balance"],
   });
+  const balance = balanceData?.balance ?? 0;
 
   const { data: usageSummary, isLoading: usageLoading } = useQuery<UsageSummary[]>({
     queryKey: ["/api/usage/summary"],
@@ -96,7 +97,7 @@ export function UsageDashboard() {
             <Skeleton className="h-12 w-40" />
           ) : (
             <div className="text-4xl font-bold" data-testid="text-credit-balance">
-              ${((balance || 0) / 100).toFixed(2)}
+              ${(balance / 100).toFixed(2)}
             </div>
           )}
         </CardContent>

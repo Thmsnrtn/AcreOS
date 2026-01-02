@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { eq, desc, sql, and, gte } from "drizzle-orm";
+import { eq, desc, sql, and } from "drizzle-orm";
 import {
   organizations,
   creditTransactions,
@@ -33,13 +33,15 @@ export class CreditService {
     description: string,
     metadata?: InsertCreditTransaction["metadata"]
   ): Promise<CreditTransaction> {
-    const currentBalance = await this.getBalance(organizationId);
-    const newBalance = currentBalance + amountCents;
-
-    await db
+    const [updated] = await db
       .update(organizations)
-      .set({ creditBalance: String(newBalance) })
-      .where(eq(organizations.id, organizationId));
+      .set({ 
+        creditBalance: sql`COALESCE(${organizations.creditBalance}, '0')::numeric + ${amountCents}` 
+      })
+      .where(eq(organizations.id, organizationId))
+      .returning({ newBalance: sql<number>`(COALESCE(${organizations.creditBalance}, '0')::numeric)::int` });
+
+    const newBalance = updated?.newBalance || amountCents;
 
     const [transaction] = await db
       .insert(creditTransactions)
@@ -62,18 +64,22 @@ export class CreditService {
     description: string,
     metadata?: InsertCreditTransaction["metadata"]
   ): Promise<CreditTransaction | null> {
-    const currentBalance = await this.getBalance(organizationId);
-    
-    if (currentBalance < amountCents) {
+    const [updated] = await db
+      .update(organizations)
+      .set({ 
+        creditBalance: sql`COALESCE(${organizations.creditBalance}, '0')::numeric - ${amountCents}` 
+      })
+      .where(
+        and(
+          eq(organizations.id, organizationId),
+          sql`COALESCE(${organizations.creditBalance}, '0')::numeric >= ${amountCents}`
+        )
+      )
+      .returning({ newBalance: sql<number>`(COALESCE(${organizations.creditBalance}, '0')::numeric)::int` });
+
+    if (!updated) {
       return null;
     }
-
-    const newBalance = currentBalance - amountCents;
-
-    await db
-      .update(organizations)
-      .set({ creditBalance: String(newBalance) })
-      .where(eq(organizations.id, organizationId));
 
     const [transaction] = await db
       .insert(creditTransactions)
@@ -81,7 +87,7 @@ export class CreditService {
         organizationId,
         type: "debit",
         amountCents: -amountCents,
-        balanceAfterCents: newBalance,
+        balanceAfterCents: updated.newBalance,
         description,
         metadata,
       })
@@ -117,13 +123,15 @@ export class CreditService {
       throw new Error(`Invalid credit pack: ${packId}`);
     }
 
-    const currentBalance = await this.getBalance(organizationId);
-    const newBalance = currentBalance + pack.amountCents;
-
-    await db
+    const [updated] = await db
       .update(organizations)
-      .set({ creditBalance: String(newBalance) })
-      .where(eq(organizations.id, organizationId));
+      .set({ 
+        creditBalance: sql`COALESCE(${organizations.creditBalance}, '0')::numeric + ${pack.amountCents}` 
+      })
+      .where(eq(organizations.id, organizationId))
+      .returning({ newBalance: sql<number>`(COALESCE(${organizations.creditBalance}, '0')::numeric)::int` });
+
+    const newBalance = updated?.newBalance || pack.amountCents;
 
     const [transaction] = await db
       .insert(creditTransactions)
@@ -239,17 +247,16 @@ export class UsageMeteringService {
     const billingMonth = new Date().toISOString().slice(0, 7);
 
     if (autoDeduct && totalCost > 0) {
-      const hasCredits = await this.creditService.hasEnoughCredits(organizationId, totalCost);
-      if (!hasCredits) {
-        return { record: null, deducted: false, insufficientCredits: true };
-      }
-
-      await this.creditService.deductCredits(
+      const deductResult = await this.creditService.deductCredits(
         organizationId,
         totalCost,
         `${USAGE_ACTION_TYPES[actionType]?.name || actionType} x${quantity}`,
         { actionType, quantity }
       );
+
+      if (!deductResult) {
+        return { record: null, deducted: false, insufficientCredits: true };
+      }
     }
 
     const [record] = await db
