@@ -26,6 +26,9 @@ import { parseCSV, importLeads, importProperties, getExpectedLeadColumns, getExp
 // Usage limits
 import { checkUsageLimit, getAllUsageLimits, UsageLimitError, TIER_LIMITS } from "./services/usageLimits";
 
+// Usage metering for credits
+import { usageMeteringService, creditService } from "./services/credits";
+
 // ============================================
 // RATE LIMITER (In-memory for portal endpoints)
 // ============================================
@@ -512,6 +515,18 @@ export async function registerRoutes(
         });
       }
       
+      // Credit pre-check for comps query (10 cents per query)
+      const compsCost = await usageMeteringService.calculateCost("comps_query", 1);
+      const hasCredits = await creditService.hasEnoughCredits(org.id, compsCost);
+      if (!hasCredits) {
+        const balance = await creditService.getBalance(org.id);
+        return res.status(402).json({
+          error: "Insufficient credits",
+          required: compsCost / 100,
+          balance: balance / 100,
+        });
+      }
+      
       const radiusMiles = parseFloat(req.query.radius as string) || 5;
       const filters: import("./services/comps").CompsFilters = {};
       
@@ -526,6 +541,14 @@ export async function registerRoutes(
       
       const { getPropertyComps } = await import("./services/comps");
       const result = await getPropertyComps(lat, lng, subjectAcreage, radiusMiles, filters);
+      
+      // Record usage after successful comps query
+      await usageMeteringService.recordUsage(org.id, "comps_query", 1, {
+        propertyId: property.id,
+        lat,
+        lng,
+        radiusMiles,
+      });
       
       res.json({
         ...result,
@@ -547,10 +570,23 @@ export async function registerRoutes(
   
   api.post("/api/comps/search", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const org = (req as any).organization;
       const { lat, lng, radius, subjectAcreage, filters } = req.body;
       
       if (!lat || !lng) {
         return res.status(400).json({ message: "Latitude and longitude are required" });
+      }
+      
+      // Credit pre-check for comps query (10 cents per query)
+      const compsCost = await usageMeteringService.calculateCost("comps_query", 1);
+      const hasCredits = await creditService.hasEnoughCredits(org.id, compsCost);
+      if (!hasCredits) {
+        const balance = await creditService.getBalance(org.id);
+        return res.status(402).json({
+          error: "Insufficient credits",
+          required: compsCost / 100,
+          balance: balance / 100,
+        });
       }
       
       const radiusMiles = radius || 5;
@@ -558,6 +594,13 @@ export async function registerRoutes(
       
       const { getPropertyComps } = await import("./services/comps");
       const result = await getPropertyComps(lat, lng, acreage, radiusMiles, filters || {});
+      
+      // Record usage after successful comps search
+      await usageMeteringService.recordUsage(org.id, "comps_query", 1, {
+        lat,
+        lng,
+        radiusMiles,
+      });
       
       res.json(result);
     } catch (err) {
@@ -877,7 +920,25 @@ export async function registerRoutes(
       const { generatePromissoryNote } = await import("./services/documents");
       const org = (req as any).organization;
       
+      // Credit pre-check for PDF generation (5 cents per document)
+      const pdfCost = await usageMeteringService.calculateCost("pdf_generated", 1);
+      const hasCredits = await creditService.hasEnoughCredits(org.id, pdfCost);
+      if (!hasCredits) {
+        const balance = await creditService.getBalance(org.id);
+        return res.status(402).json({
+          error: "Insufficient credits",
+          required: pdfCost / 100,
+          balance: balance / 100,
+        });
+      }
+      
       const pdfBuffer = await generatePromissoryNote(Number(req.params.id), org.id);
+      
+      // Record usage after successful PDF generation
+      await usageMeteringService.recordUsage(org.id, "pdf_generated", 1, {
+        documentType: "promissory_note",
+        noteId: Number(req.params.id),
+      });
       
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader("Content-Disposition", `attachment; filename="promissory-note-${req.params.id}.pdf"`);
@@ -896,7 +957,25 @@ export async function registerRoutes(
       const { generateWarrantyDeed } = await import("./services/documents");
       const org = (req as any).organization;
       
+      // Credit pre-check for PDF generation (5 cents per document)
+      const pdfCost = await usageMeteringService.calculateCost("pdf_generated", 1);
+      const hasCredits = await creditService.hasEnoughCredits(org.id, pdfCost);
+      if (!hasCredits) {
+        const balance = await creditService.getBalance(org.id);
+        return res.status(402).json({
+          error: "Insufficient credits",
+          required: pdfCost / 100,
+          balance: balance / 100,
+        });
+      }
+      
       const pdfBuffer = await generateWarrantyDeed(Number(req.params.id), org.id);
+      
+      // Record usage after successful PDF generation
+      await usageMeteringService.recordUsage(org.id, "pdf_generated", 1, {
+        documentType: "warranty_deed",
+        propertyId: Number(req.params.id),
+      });
       
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader("Content-Disposition", `attachment; filename="warranty-deed-${req.params.id}.pdf"`);
@@ -920,12 +999,31 @@ export async function registerRoutes(
         return res.status(400).json({ message: "leadId and propertyId are required" });
       }
       
+      // Credit pre-check for PDF generation (5 cents per document)
+      const pdfCost = await usageMeteringService.calculateCost("pdf_generated", 1);
+      const hasCredits = await creditService.hasEnoughCredits(org.id, pdfCost);
+      if (!hasCredits) {
+        const balance = await creditService.getBalance(org.id);
+        return res.status(402).json({
+          error: "Insufficient credits",
+          required: pdfCost / 100,
+          balance: balance / 100,
+        });
+      }
+      
       const pdfBuffer = await generateOfferLetter(
         Number(leadId),
         Number(propertyId),
         org.id,
         { offerAmount, earnestMoney, closingDate, contingencies, additionalTerms }
       );
+      
+      // Record usage after successful PDF generation
+      await usageMeteringService.recordUsage(org.id, "pdf_generated", 1, {
+        documentType: "offer_letter",
+        leadId: Number(leadId),
+        propertyId: Number(propertyId),
+      });
       
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader("Content-Disposition", `attachment; filename="offer-letter-${leadId}-${propertyId}.pdf"`);
@@ -1183,11 +1281,29 @@ export async function registerRoutes(
         });
       }
       
+      // Credit pre-check for AI chat (2 cents per request)
+      const aiChatCost = await usageMeteringService.calculateCost("ai_chat", 1);
+      const hasCredits = await creditService.hasEnoughCredits(org.id, aiChatCost);
+      if (!hasCredits) {
+        const balance = await creditService.getBalance(org.id);
+        return res.status(402).json({
+          error: "Insufficient credits",
+          required: aiChatCost / 100,
+          balance: balance / 100,
+        });
+      }
+      
       await storage.trackUsage(org.id, "ai_request");
       
       const result = await processChat(message, org, userId, {
         conversationId,
         agentRole
+      });
+      
+      // Record usage after successful AI chat
+      await usageMeteringService.recordUsage(org.id, "ai_chat", 1, {
+        conversationId,
+        agentRole,
       });
       
       res.json(result);
@@ -1220,6 +1336,18 @@ export async function registerRoutes(
         });
       }
       
+      // Credit pre-check for AI chat (2 cents per request)
+      const aiChatCost = await usageMeteringService.calculateCost("ai_chat", 1);
+      const hasCredits = await creditService.hasEnoughCredits(org.id, aiChatCost);
+      if (!hasCredits) {
+        const balance = await creditService.getBalance(org.id);
+        return res.status(402).json({
+          error: "Insufficient credits",
+          required: aiChatCost / 100,
+          balance: balance / 100,
+        });
+      }
+      
       await storage.trackUsage(org.id, "ai_request");
       
       // Set up SSE
@@ -1232,8 +1360,20 @@ export async function registerRoutes(
         agentRole
       });
       
+      let streamCompleted = false;
       for await (const event of stream) {
         res.write(`data: ${JSON.stringify(event)}\n\n`);
+        if ((event as any).type === "done") {
+          streamCompleted = true;
+        }
+      }
+      
+      // Record usage only after successful stream completion
+      if (streamCompleted) {
+        await usageMeteringService.recordUsage(org.id, "ai_chat", 1, {
+          conversationId,
+          agentRole,
+        });
       }
       
       res.end();

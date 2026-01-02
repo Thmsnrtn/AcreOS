@@ -15,11 +15,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, Crown, Check, ExternalLink, CreditCard, Loader2, Lightbulb, RotateCcw, Database, Trash2, BarChart3, Users, Home, FileText, Sparkles, TrendingUp } from "lucide-react";
+import { Building2, Crown, Check, ExternalLink, CreditCard, Loader2, Lightbulb, RotateCcw, Database, Trash2, BarChart3, Users, Home, FileText, Sparkles, TrendingUp, Coins } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { UsageDashboard } from "@/components/usage-dashboard";
 import { useState } from "react";
 import { useEffect } from "react";
 import { useSearch } from "wouter";
@@ -84,7 +85,12 @@ export default function Settings() {
     },
   });
   
-  const settings = organization?.settings as Record<string, unknown> | null;
+  const settings = organization?.settings as {
+    showTips?: boolean;
+    checklistDismissed?: boolean;
+    onboardingCompleted?: boolean;
+    [key: string]: unknown;
+  } | null;
   const showTips = settings?.showTips !== false;
 
   useEffect(() => {
@@ -346,6 +352,20 @@ export default function Settings() {
               )}
             </CardContent>
           </Card>
+
+          {/* Usage & Credits Dashboard */}
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-xl font-semibold flex items-center gap-2">
+                <Coins className="w-5 h-5" />
+                Usage & Credits
+              </h2>
+              <p className="text-muted-foreground text-sm">
+                Track your credit balance, usage history, and purchase more credits.
+              </p>
+            </div>
+            <UsageDashboard />
+          </div>
 
           {/* Onboarding & Help Settings */}
           <Card>

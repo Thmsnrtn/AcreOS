@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/use-auth";
 import { Loader2 } from "lucide-react";
 
+import { LowBalanceAlert } from "@/components/low-balance-alert";
 import Dashboard from "@/pages/dashboard";
 import LeadsPage from "@/pages/leads";
 import PropertiesPage from "@/pages/properties";
@@ -98,6 +99,7 @@ function AppContent() {
   
   return (
     <>
+      {user && <LowBalanceAlert />}
       <Router />
       {user && <MobileBottomNav />}
       <PWAInstallPrompt />
