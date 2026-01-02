@@ -2556,6 +2556,245 @@ Seller Signature (if applicable)
   });
 
   // ============================================
+  // CUSTOMER SUPPORT SYSTEM
+  // ============================================
+
+  // Create a new support case
+  api.post("/api/support/cases", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = (req as any).user;
+      const { subject, message } = req.body as { subject: string; message: string };
+      
+      if (!subject || !message) {
+        return res.status(400).json({ error: "Subject and message are required" });
+      }
+
+      const { supportBrainService } = await import("./services/supportBrain");
+      const { case: supportCase, classification } = await supportBrainService.createCase(
+        org.id,
+        user.id,
+        subject,
+        message
+      );
+
+      // Auto-handle the first message
+      const response = await supportBrainService.handleMessage(supportCase.id, message, org.id);
+
+      res.status(201).json({
+        case: supportCase,
+        response: response.response,
+        classification,
+      });
+    } catch (err: any) {
+      console.error("Create support case error:", err);
+      res.status(500).json({ error: err.message || "Failed to create support case" });
+    }
+  });
+
+  // Get user's support cases
+  api.get("/api/support/cases", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { status } = req.query as { status?: string };
+      const cases = await storage.getSupportCases(org.id, status);
+      res.json(cases);
+    } catch (err: any) {
+      console.error("Get support cases error:", err);
+      res.status(500).json({ error: err.message || "Failed to fetch support cases" });
+    }
+  });
+
+  // Get specific support case with messages
+  api.get("/api/support/cases/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const caseId = parseInt(req.params.id);
+      const supportCase = await storage.getSupportCase(caseId);
+      
+      if (!supportCase || supportCase.organizationId !== org.id) {
+        return res.status(404).json({ error: "Case not found" });
+      }
+
+      const messages = await storage.getSupportMessages(caseId);
+      const actions = await storage.getSupportActions(caseId);
+
+      res.json({ case: supportCase, messages, actions });
+    } catch (err: any) {
+      console.error("Get support case error:", err);
+      res.status(500).json({ error: err.message || "Failed to fetch support case" });
+    }
+  });
+
+  // Send message to a support case
+  api.post("/api/support/cases/:id/messages", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const caseId = parseInt(req.params.id);
+      const { message } = req.body as { message: string };
+
+      const supportCase = await storage.getSupportCase(caseId);
+      if (!supportCase || supportCase.organizationId !== org.id) {
+        return res.status(404).json({ error: "Case not found" });
+      }
+
+      if (supportCase.status === "closed" || supportCase.status === "resolved") {
+        return res.status(400).json({ error: "This case is already closed" });
+      }
+
+      const { supportBrainService } = await import("./services/supportBrain");
+      const response = await supportBrainService.handleMessage(caseId, message, org.id);
+
+      res.json({
+        userMessage: message,
+        aiResponse: response.response,
+        actionsTaken: response.actionsTaken,
+        escalated: response.escalated,
+      });
+    } catch (err: any) {
+      console.error("Send support message error:", err);
+      res.status(500).json({ error: err.message || "Failed to send message" });
+    }
+  });
+
+  // Rate satisfaction and close case
+  api.post("/api/support/cases/:id/rate", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const caseId = parseInt(req.params.id);
+      const { rating } = req.body as { rating: number };
+
+      const supportCase = await storage.getSupportCase(caseId);
+      if (!supportCase || supportCase.organizationId !== org.id) {
+        return res.status(404).json({ error: "Case not found" });
+      }
+
+      const { supportBrainService } = await import("./services/supportBrain");
+      await supportBrainService.rateSatisfaction(caseId, rating);
+
+      res.json({ success: true, message: "Thank you for your feedback!" });
+    } catch (err: any) {
+      console.error("Rate support case error:", err);
+      res.status(500).json({ error: err.message || "Failed to rate case" });
+    }
+  });
+
+  // Resolve case (user marking as resolved)
+  api.post("/api/support/cases/:id/resolve", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const caseId = parseInt(req.params.id);
+
+      const supportCase = await storage.getSupportCase(caseId);
+      if (!supportCase || supportCase.organizationId !== org.id) {
+        return res.status(404).json({ error: "Case not found" });
+      }
+
+      const { supportBrainService } = await import("./services/supportBrain");
+      await supportBrainService.resolveCase(caseId, "Resolved by user", "user");
+
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("Resolve support case error:", err);
+      res.status(500).json({ error: err.message || "Failed to resolve case" });
+    }
+  });
+
+  // Get all escalated cases (admin only - for now just check org owner)
+  api.get("/api/admin/support/escalated", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = (req as any).user;
+
+      // Simple admin check - org owner can see escalated cases
+      if (org.ownerId !== user.id) {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const cases = await storage.getEscalatedCases();
+      res.json(cases);
+    } catch (err: any) {
+      console.error("Get escalated cases error:", err);
+      res.status(500).json({ error: err.message || "Failed to fetch escalated cases" });
+    }
+  });
+
+  // Admin respond to escalated case
+  api.post("/api/admin/support/cases/:id/respond", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = (req as any).user;
+      const caseId = parseInt(req.params.id);
+      const { message, resolve } = req.body as { message: string; resolve?: boolean };
+
+      if (org.ownerId !== user.id) {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const supportCase = await storage.getSupportCase(caseId);
+      if (!supportCase) {
+        return res.status(404).json({ error: "Case not found" });
+      }
+
+      await storage.createSupportMessage({
+        caseId,
+        role: "human_support",
+        content: message,
+      });
+
+      if (resolve) {
+        await storage.updateSupportCase(caseId, {
+          status: "resolved",
+          resolvedAt: new Date(),
+          resolutionSummary: message,
+          resolutionType: "escalated_resolved",
+          assignedTo: user.id,
+        });
+      } else {
+        await storage.updateSupportCase(caseId, {
+          status: "awaiting_user",
+          assignedTo: user.id,
+        });
+      }
+
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("Admin respond to case error:", err);
+      res.status(500).json({ error: err.message || "Failed to respond to case" });
+    }
+  });
+
+  // Get support metrics
+  api.get("/api/admin/support/metrics", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = (req as any).user;
+
+      if (org.ownerId !== user.id) {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const allCases = await storage.getSupportCases(org.id);
+      const escalatedCases = await storage.getEscalatedCases();
+
+      const metrics = {
+        totalCases: allCases.length,
+        openCases: allCases.filter(c => c.status === "open" || c.status === "ai_handling" || c.status === "awaiting_user").length,
+        escalatedCases: escalatedCases.length,
+        resolvedCases: allCases.filter(c => c.status === "resolved" || c.status === "closed").length,
+        avgSatisfaction: allCases.filter(c => c.userSatisfaction).reduce((sum, c) => sum + (c.userSatisfaction || 0), 0) / 
+                        Math.max(1, allCases.filter(c => c.userSatisfaction).length),
+        autoResolvedRate: allCases.filter(c => c.resolutionType === "auto_resolved").length / Math.max(1, allCases.length),
+      };
+
+      res.json(metrics);
+    } catch (err: any) {
+      console.error("Get support metrics error:", err);
+      res.status(500).json({ error: err.message || "Failed to fetch support metrics" });
+    }
+  });
+
+  // ============================================
   // DEMO DATA SEEDING
   // ============================================
   

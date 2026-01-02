@@ -13,7 +13,8 @@ import {
   Mail,
   GitBranch,
   UsersRound,
-  Calculator
+  Calculator,
+  Headphones
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useState } from "react";
@@ -31,6 +32,7 @@ const navItems = [
   { label: "AI Agents", icon: Bot, href: "/agents" },
   { label: "AI Command Center", icon: MessageSquare, href: "/command-center" },
   { label: "AI Team", icon: UsersRound, href: "/ai-team" },
+  { label: "Support", icon: Headphones, href: "/support" },
   { label: "Settings", icon: Settings, href: "/settings" },
 ];
 

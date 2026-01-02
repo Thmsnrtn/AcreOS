@@ -1288,3 +1288,248 @@ export const SUBSCRIPTION_TIERS = {
 } as const;
 
 export type SubscriptionTier = keyof typeof SUBSCRIPTION_TIERS;
+
+// ============================================
+// AI CUSTOMER SUPPORT SYSTEM
+// ============================================
+
+// Support case categories and priorities
+export const SUPPORT_CATEGORIES = {
+  billing: { name: "Billing & Payments", priority: 2 },
+  technical: { name: "Technical Issue", priority: 2 },
+  account: { name: "Account Settings", priority: 1 },
+  feature: { name: "Feature Question", priority: 1 },
+  bug: { name: "Bug Report", priority: 3 },
+  data: { name: "Data & Import/Export", priority: 2 },
+  integration: { name: "Integration Help", priority: 2 },
+  other: { name: "Other", priority: 1 },
+} as const;
+
+export type SupportCategory = keyof typeof SUPPORT_CATEGORIES;
+
+// Support case statuses
+export const SUPPORT_STATUSES = {
+  open: { name: "Open", color: "blue" },
+  ai_handling: { name: "AI Handling", color: "purple" },
+  awaiting_user: { name: "Awaiting User Response", color: "yellow" },
+  escalated: { name: "Escalated to Human", color: "red" },
+  resolved: { name: "Resolved", color: "green" },
+  closed: { name: "Closed", color: "gray" },
+} as const;
+
+export type SupportStatus = keyof typeof SUPPORT_STATUSES;
+
+// Support cases (tickets)
+export const supportCases = pgTable("support_cases", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  userId: text("user_id").notNull(), // Replit user ID who created the case
+  
+  // Case details
+  subject: text("subject").notNull(),
+  category: text("category").notNull().default("other"), // billing, technical, account, feature, bug, data, integration, other
+  status: text("status").notNull().default("open"), // open, ai_handling, awaiting_user, escalated, resolved, closed
+  priority: integer("priority").notNull().default(1), // 1-5 (1=low, 5=critical)
+  
+  // AI classification
+  aiClassification: jsonb("ai_classification").$type<{
+    category: string;
+    confidence: number;
+    suggestedPlaybook?: string;
+    sentiment?: "positive" | "neutral" | "negative" | "frustrated";
+    urgency?: "low" | "medium" | "high" | "critical";
+  }>(),
+  
+  // Resolution tracking
+  resolvedAt: timestamp("resolved_at"),
+  resolutionSummary: text("resolution_summary"),
+  resolutionType: text("resolution_type"), // auto_resolved, user_resolved, escalated_resolved, closed_no_action
+  
+  // Escalation
+  escalatedAt: timestamp("escalated_at"),
+  escalationReason: text("escalation_reason"),
+  assignedTo: text("assigned_to"), // admin user ID if escalated
+  
+  // Metrics
+  aiAttempts: integer("ai_attempts").default(0), // how many times AI tried to resolve
+  userSatisfaction: integer("user_satisfaction"), // 1-5 rating after resolution
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertSupportCaseSchema = createInsertSchema(supportCases).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertSupportCase = z.infer<typeof insertSupportCaseSchema>;
+export type SupportCase = typeof supportCases.$inferSelect;
+
+// Support messages within a case
+export const supportMessages = pgTable("support_messages", {
+  id: serial("id").primaryKey(),
+  caseId: integer("case_id").references(() => supportCases.id).notNull(),
+  
+  // Message details
+  role: text("role").notNull(), // user, ai_support, human_support, system
+  content: text("content").notNull(),
+  
+  // AI-specific fields
+  aiModel: text("ai_model"), // which model generated the response
+  aiConfidence: numeric("ai_confidence"), // confidence in the response (0-1)
+  playbookUsed: text("playbook_used"), // which playbook was applied
+  
+  // Action tracking
+  actionsAttempted: jsonb("actions_attempted").$type<Array<{
+    action: string;
+    success: boolean;
+    details?: string;
+  }>>(),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertSupportMessageSchema = createInsertSchema(supportMessages).omit({ id: true, createdAt: true });
+export type InsertSupportMessage = z.infer<typeof insertSupportMessageSchema>;
+export type SupportMessage = typeof supportMessages.$inferSelect;
+
+// Support actions (what AI can do to resolve issues)
+export const supportActions = pgTable("support_actions", {
+  id: serial("id").primaryKey(),
+  caseId: integer("case_id").references(() => supportCases.id).notNull(),
+  messageId: integer("message_id").references(() => supportMessages.id),
+  
+  // Action details
+  actionType: text("action_type").notNull(), // credit_adjustment, settings_change, password_reset, data_export, etc.
+  actionDetails: jsonb("action_details").$type<Record<string, any>>(),
+  
+  // Outcome
+  success: boolean("success").notNull(),
+  errorMessage: text("error_message"),
+  resultDetails: jsonb("result_details").$type<Record<string, any>>(),
+  
+  // Audit trail
+  performedBy: text("performed_by").notNull(), // 'ai_support' or admin user ID
+  approvedBy: text("approved_by"), // if action required approval
+  
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertSupportActionSchema = createInsertSchema(supportActions).omit({ id: true, createdAt: true });
+export type InsertSupportAction = z.infer<typeof insertSupportActionSchema>;
+export type SupportAction = typeof supportActions.$inferSelect;
+
+// Support playbooks (automated resolution scripts)
+export const supportPlaybooks = pgTable("support_playbooks", {
+  id: serial("id").primaryKey(),
+  
+  // Playbook identity
+  name: text("name").notNull(),
+  slug: text("slug").notNull().unique(),
+  description: text("description"),
+  category: text("category").notNull(), // matches support categories
+  
+  // Trigger conditions
+  triggerPatterns: jsonb("trigger_patterns").$type<string[]>(), // keywords/patterns to match
+  triggerConditions: jsonb("trigger_conditions").$type<{
+    requiredContext?: string[];
+    excludePatterns?: string[];
+    minConfidence?: number;
+  }>(),
+  
+  // Actions to take
+  steps: jsonb("steps").$type<Array<{
+    stepNumber: number;
+    actionType: string;
+    actionParams: Record<string, any>;
+    successMessage: string;
+    failureMessage: string;
+    continueOnFailure: boolean;
+  }>>(),
+  
+  // Response templates
+  initialResponse: text("initial_response"), // first message to user
+  successResponse: text("success_response"), // if all steps succeed
+  failureResponse: text("failure_response"), // if steps fail
+  escalationResponse: text("escalation_response"), // if escalating
+  
+  // Guardrails
+  maxCreditAdjustment: integer("max_credit_adjustment"), // max cents AI can adjust
+  requiresApproval: boolean("requires_approval").default(false),
+  canEscalate: boolean("can_escalate").default(true),
+  
+  // Metrics
+  timesUsed: integer("times_used").default(0),
+  successRate: numeric("success_rate"),
+  
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertSupportPlaybookSchema = createInsertSchema(supportPlaybooks).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertSupportPlaybook = z.infer<typeof insertSupportPlaybookSchema>;
+export type SupportPlaybook = typeof supportPlaybooks.$inferSelect;
+
+// Default playbooks for common issues
+export const DEFAULT_SUPPORT_PLAYBOOKS = [
+  {
+    name: "Credit Balance Inquiry",
+    slug: "credit_balance_inquiry",
+    description: "Help users understand their credit balance and usage",
+    category: "billing",
+    triggerPatterns: ["credit balance", "credits", "how many credits", "usage", "charged", "balance"],
+    steps: [
+      { stepNumber: 1, actionType: "get_credit_balance", actionParams: {}, successMessage: "Retrieved your credit balance", failureMessage: "Could not retrieve balance", continueOnFailure: false },
+      { stepNumber: 2, actionType: "get_recent_usage", actionParams: { days: 30 }, successMessage: "Retrieved your recent usage", failureMessage: "Could not retrieve usage", continueOnFailure: true },
+    ],
+    initialResponse: "Let me check your credit balance and recent usage for you.",
+    successResponse: "Here's your current credit information. Is there anything specific you'd like to understand better?",
+    maxCreditAdjustment: 0,
+    canEscalate: true,
+  },
+  {
+    name: "Courtesy Credit Request",
+    slug: "courtesy_credit",
+    description: "Issue small courtesy credits for minor issues",
+    category: "billing",
+    triggerPatterns: ["refund", "credit", "compensation", "not working", "error", "failed", "issue"],
+    steps: [
+      { stepNumber: 1, actionType: "check_recent_issues", actionParams: {}, successMessage: "Checked for recent issues", failureMessage: "Could not check issues", continueOnFailure: false },
+      { stepNumber: 2, actionType: "issue_courtesy_credit", actionParams: { maxCents: 500 }, successMessage: "Issued courtesy credit", failureMessage: "Could not issue credit", continueOnFailure: false },
+    ],
+    initialResponse: "I understand you've had an issue. Let me look into this and see what I can do to help.",
+    successResponse: "I've added a courtesy credit to your account. Is there anything else I can help with?",
+    maxCreditAdjustment: 500, // $5 max
+    canEscalate: true,
+  },
+  {
+    name: "Feature Explanation",
+    slug: "feature_explanation",
+    description: "Explain how features work",
+    category: "feature",
+    triggerPatterns: ["how do i", "how does", "what is", "explain", "help with", "tutorial"],
+    steps: [
+      { stepNumber: 1, actionType: "identify_feature", actionParams: {}, successMessage: "Identified the feature", failureMessage: "Could not identify feature", continueOnFailure: false },
+      { stepNumber: 2, actionType: "generate_explanation", actionParams: {}, successMessage: "Generated explanation", failureMessage: "Could not generate explanation", continueOnFailure: false },
+    ],
+    initialResponse: "I'd be happy to help explain that feature!",
+    successResponse: "Does this help answer your question? Let me know if you'd like more details.",
+    maxCreditAdjustment: 0,
+    canEscalate: true,
+  },
+  {
+    name: "Technical Troubleshooting",
+    slug: "technical_troubleshooting",
+    description: "Diagnose and resolve technical issues",
+    category: "technical",
+    triggerPatterns: ["not working", "error", "broken", "bug", "problem", "can't", "won't", "stuck"],
+    steps: [
+      { stepNumber: 1, actionType: "run_diagnostics", actionParams: {}, successMessage: "Ran system diagnostics", failureMessage: "Could not run diagnostics", continueOnFailure: false },
+      { stepNumber: 2, actionType: "check_known_issues", actionParams: {}, successMessage: "Checked known issues", failureMessage: "Could not check issues", continueOnFailure: true },
+      { stepNumber: 3, actionType: "attempt_fix", actionParams: {}, successMessage: "Applied fix", failureMessage: "Could not apply fix", continueOnFailure: true },
+    ],
+    initialResponse: "I'm sorry to hear you're having trouble. Let me run some diagnostics to see what's happening.",
+    successResponse: "I've identified the issue and applied a fix. Please try again and let me know if you're still having problems.",
+    failureResponse: "I wasn't able to resolve this automatically. Let me escalate this to our team for a closer look.",
+    maxCreditAdjustment: 0,
+    canEscalate: true,
+  },
+] as const;

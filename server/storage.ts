@@ -10,6 +10,7 @@ import {
   vaAgents, vaActions, vaBriefings, vaCalendarEvents, vaTemplates,
   dueDiligenceTemplates, dueDiligenceItems,
   usageRecords, creditTransactions,
+  supportCases, supportMessages, supportActions, supportPlaybooks,
   type Organization, type InsertOrganization,
   type TeamMember, type InsertTeamMember,
   type Lead, type InsertLead,
@@ -35,6 +36,10 @@ import {
   type DueDiligenceItem, type InsertDueDiligenceItem,
   type UsageRecord,
   type CreditTransaction,
+  type InsertSupportCase, type SupportCase,
+  type InsertSupportMessage, type SupportMessage,
+  type InsertSupportAction, type SupportAction,
+  type SupportPlaybook,
   DEFAULT_DUE_DILIGENCE_TEMPLATES,
 } from "@shared/schema";
 
@@ -266,6 +271,26 @@ export interface IStorage {
   // Credit Transactions
   getCreditTransactions(orgId: number, limit?: number): Promise<CreditTransaction[]>;
   getCreditBalance(orgId: number): Promise<number>;
+
+  // Support Cases
+  createSupportCase(input: InsertSupportCase): Promise<SupportCase>;
+  getSupportCase(id: number): Promise<SupportCase | undefined>;
+  getSupportCases(organizationId: number, status?: string): Promise<SupportCase[]>;
+  updateSupportCase(id: number, data: Partial<InsertSupportCase>): Promise<SupportCase | undefined>;
+  getEscalatedCases(): Promise<SupportCase[]>;
+
+  // Support Messages
+  createSupportMessage(input: InsertSupportMessage): Promise<SupportMessage>;
+  getSupportMessages(caseId: number): Promise<SupportMessage[]>;
+
+  // Support Actions
+  createSupportAction(input: InsertSupportAction): Promise<SupportAction>;
+  getSupportActions(caseId: number): Promise<SupportAction[]>;
+
+  // Support Playbooks
+  getSupportPlaybooks(category?: string): Promise<SupportPlaybook[]>;
+  getSupportPlaybook(slug: string): Promise<SupportPlaybook | undefined>;
+  incrementPlaybookUsage(slug: string, success: boolean): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1263,6 +1288,107 @@ export class DatabaseStorage implements IStorage {
     const [org] = await db.select().from(organizations)
       .where(eq(organizations.id, orgId));
     return Number(org?.creditBalance || 0);
+  }
+
+  // Support Cases
+  async createSupportCase(input: InsertSupportCase) {
+    const [newCase] = await db.insert(supportCases).values(input).returning();
+    return newCase;
+  }
+
+  async getSupportCase(id: number) {
+    const [supportCase] = await db.select().from(supportCases)
+      .where(eq(supportCases.id, id));
+    return supportCase;
+  }
+
+  async getSupportCases(organizationId: number, status?: string) {
+    const conditions = [eq(supportCases.organizationId, organizationId)];
+    if (status) {
+      conditions.push(eq(supportCases.status, status));
+    }
+    return await db.select().from(supportCases)
+      .where(and(...conditions))
+      .orderBy(desc(supportCases.createdAt));
+  }
+
+  async updateSupportCase(id: number, data: Partial<InsertSupportCase>) {
+    const [updated] = await db.update(supportCases)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(supportCases.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getEscalatedCases() {
+    return await db.select().from(supportCases)
+      .where(eq(supportCases.status, "escalated"))
+      .orderBy(desc(supportCases.createdAt));
+  }
+
+  // Support Messages
+  async createSupportMessage(input: InsertSupportMessage) {
+    const [newMessage] = await db.insert(supportMessages).values(input).returning();
+    return newMessage;
+  }
+
+  async getSupportMessages(caseId: number) {
+    return await db.select().from(supportMessages)
+      .where(eq(supportMessages.caseId, caseId))
+      .orderBy(supportMessages.createdAt);
+  }
+
+  // Support Actions
+  async createSupportAction(input: InsertSupportAction) {
+    const [newAction] = await db.insert(supportActions).values(input).returning();
+    return newAction;
+  }
+
+  async getSupportActions(caseId: number) {
+    return await db.select().from(supportActions)
+      .where(eq(supportActions.caseId, caseId))
+      .orderBy(desc(supportActions.createdAt));
+  }
+
+  // Support Playbooks
+  async getSupportPlaybooks(category?: string) {
+    if (category) {
+      return await db.select().from(supportPlaybooks)
+        .where(and(
+          eq(supportPlaybooks.category, category),
+          eq(supportPlaybooks.isActive, true)
+        ))
+        .orderBy(supportPlaybooks.name);
+    }
+    return await db.select().from(supportPlaybooks)
+      .where(eq(supportPlaybooks.isActive, true))
+      .orderBy(supportPlaybooks.name);
+  }
+
+  async getSupportPlaybook(slug: string) {
+    const [playbook] = await db.select().from(supportPlaybooks)
+      .where(eq(supportPlaybooks.slug, slug));
+    return playbook;
+  }
+
+  async incrementPlaybookUsage(slug: string, success: boolean) {
+    const playbook = await this.getSupportPlaybook(slug);
+    if (playbook) {
+      const currentUsage = playbook.timesUsed || 0;
+      const currentRate = Number(playbook.successRate) || 0;
+      const newUsage = currentUsage + 1;
+      const newRate = success
+        ? String((currentRate * currentUsage + 100) / newUsage)
+        : String((currentRate * currentUsage) / newUsage);
+      
+      await db.update(supportPlaybooks)
+        .set({
+          timesUsed: newUsage,
+          successRate: newRate,
+          updatedAt: new Date(),
+        })
+        .where(eq(supportPlaybooks.slug, slug));
+    }
   }
 }
 

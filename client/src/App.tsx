@@ -17,7 +17,9 @@ import ToolsPage from "@/pages/tools";
 import AgentsPage from "@/pages/agents";
 import CommandCenterPage from "@/pages/command-center";
 import AITeamPage from "@/pages/ai-team";
+import SupportPage from "@/pages/support";
 import SettingsPage from "@/pages/settings";
+import AdminSupportPage from "@/pages/admin-support";
 import AuthPage from "@/pages/auth-page";
 import BorrowerPortal from "@/pages/borrower-portal";
 import NotFound from "@/pages/not-found";
@@ -85,8 +87,14 @@ function Router() {
       <Route path="/ai-team">
         {() => <ProtectedRoute component={AITeamPage} />}
       </Route>
+      <Route path="/support">
+        {() => <ProtectedRoute component={SupportPage} />}
+      </Route>
       <Route path="/settings">
         {() => <ProtectedRoute component={SettingsPage} />}
+      </Route>
+      <Route path="/admin/support">
+        {() => <ProtectedRoute component={AdminSupportPage} />}
       </Route>
 
       <Route component={NotFound} />
