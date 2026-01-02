@@ -2,10 +2,17 @@ import { useAuth } from "@/hooks/use-auth";
 import { Redirect } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Loader2 } from "lucide-react";
+import { Loader2, AlertTriangle } from "lucide-react";
+import { useMemo } from "react";
 
 export default function AuthPage() {
   const { user, isLoading } = useAuth();
+  
+  const isSafari = useMemo(() => {
+    if (typeof navigator === 'undefined') return false;
+    const ua = navigator.userAgent.toLowerCase();
+    return ua.includes('safari') && !ua.includes('chrome') && !ua.includes('chromium');
+  }, []);
 
   if (isLoading) {
     return (
@@ -40,12 +47,27 @@ export default function AuthPage() {
             </p>
           </div>
 
+          {isSafari && (
+            <div className="bg-amber-500/20 border border-amber-500/50 rounded-md p-3 text-left">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-amber-200">Safari Not Supported</p>
+                  <p className="text-xs text-amber-200/70 mt-1">
+                    Due to a known issue with Replit authentication in Safari, please use Chrome, Firefox, or Edge to sign in.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="space-y-4 pt-4">
             <Button 
               size="lg" 
               className="w-full font-bold"
               onClick={handleLogin}
               data-testid="button-login"
+              disabled={isSafari}
             >
               Sign In with Replit
             </Button>
