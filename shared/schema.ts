@@ -135,6 +135,39 @@ export const insertProvisionedPhoneNumberSchema = createInsertSchema(provisioned
 export type InsertProvisionedPhoneNumber = z.infer<typeof insertProvisionedPhoneNumberSchema>;
 export type ProvisionedPhoneNumber = typeof provisionedPhoneNumbers.$inferSelect;
 
+// Organization integrations for storing per-org API credentials
+export const organizationIntegrations = pgTable("organization_integrations", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  provider: text("provider").notNull(), // sendgrid, twilio, lob
+  isEnabled: boolean("is_enabled").default(true),
+  credentials: jsonb("credentials").$type<{
+    apiKey?: string;
+    accountSid?: string; // Twilio
+    authToken?: string; // Twilio
+    fromEmail?: string; // SendGrid default sender
+    fromName?: string; // SendGrid default sender name
+    fromPhoneNumber?: string; // Twilio default sender
+  }>(),
+  settings: jsonb("settings").$type<{
+    testMode?: boolean;
+    webhookSecret?: string;
+    defaultTemplateId?: string;
+  }>(),
+  lastValidatedAt: timestamp("last_validated_at"),
+  validationError: text("validation_error"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertOrganizationIntegrationSchema = createInsertSchema(organizationIntegrations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertOrganizationIntegration = z.infer<typeof insertOrganizationIntegrationSchema>;
+export type OrganizationIntegration = typeof organizationIntegrations.$inferSelect;
+
 // ============================================
 // CRM: LEADS & CONTACTS
 // ============================================

@@ -12,6 +12,7 @@ import {
   usageRecords, creditTransactions,
   supportCases, supportMessages, supportActions, supportPlaybooks,
   dunningEvents, systemAlerts,
+  verifiedEmailDomains, provisionedPhoneNumbers, organizationIntegrations,
   type Organization, type InsertOrganization,
   type TeamMember, type InsertTeamMember,
   type Lead, type InsertLead,
@@ -46,6 +47,9 @@ import {
   type SupportPlaybook,
   type DunningEvent, type InsertDunningEvent,
   type SystemAlert, type InsertSystemAlert,
+  type VerifiedEmailDomain, type InsertVerifiedEmailDomain,
+  type ProvisionedPhoneNumber, type InsertProvisionedPhoneNumber,
+  type OrganizationIntegration, type InsertOrganizationIntegration,
   DEFAULT_DUE_DILIGENCE_TEMPLATES,
 } from "@shared/schema";
 
@@ -1696,7 +1700,7 @@ export class DatabaseStorage implements IStorage {
       .where(gte(creditTransactions.createdAt, startOfMonth));
     const creditSalesThisMonth = creditTransactionsThisMonth
       .filter(t => t.type === 'purchase')
-      .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+      .reduce((sum, t) => sum + Number(t.amountCents || 0), 0);
 
     const totalMrr = allOrgs.reduce((sum, org) => {
       if (org.subscriptionStatus !== 'active') return sum;
@@ -1909,6 +1913,121 @@ export class DatabaseStorage implements IStorage {
     }
     
     return stats;
+  }
+
+  // Organization Integrations CRUD
+  async getOrganizationIntegrations(orgId: number): Promise<OrganizationIntegration[]> {
+    return await db.select().from(organizationIntegrations)
+      .where(eq(organizationIntegrations.organizationId, orgId))
+      .orderBy(organizationIntegrations.provider);
+  }
+
+  async getOrganizationIntegration(orgId: number, provider: string): Promise<OrganizationIntegration | undefined> {
+    const [integration] = await db.select().from(organizationIntegrations)
+      .where(and(
+        eq(organizationIntegrations.organizationId, orgId),
+        eq(organizationIntegrations.provider, provider)
+      ));
+    return integration;
+  }
+
+  async upsertOrganizationIntegration(data: InsertOrganizationIntegration): Promise<OrganizationIntegration> {
+    const existing = await this.getOrganizationIntegration(data.organizationId, data.provider);
+    
+    if (existing) {
+      const [updated] = await db.update(organizationIntegrations)
+        .set({
+          ...data,
+          updatedAt: new Date(),
+        })
+        .where(eq(organizationIntegrations.id, existing.id))
+        .returning();
+      return updated;
+    } else {
+      const [created] = await db.insert(organizationIntegrations).values(data).returning();
+      return created;
+    }
+  }
+
+  async deleteOrganizationIntegration(orgId: number, provider: string): Promise<void> {
+    await db.delete(organizationIntegrations)
+      .where(and(
+        eq(organizationIntegrations.organizationId, orgId),
+        eq(organizationIntegrations.provider, provider)
+      ));
+  }
+
+  async updateIntegrationValidation(orgId: number, provider: string, validatedAt: Date | null, error: string | null): Promise<void> {
+    await db.update(organizationIntegrations)
+      .set({
+        lastValidatedAt: validatedAt,
+        validationError: error,
+        updatedAt: new Date(),
+      })
+      .where(and(
+        eq(organizationIntegrations.organizationId, orgId),
+        eq(organizationIntegrations.provider, provider)
+      ));
+  }
+
+  // Verified Email Domains CRUD
+  async getVerifiedEmailDomains(orgId: number): Promise<VerifiedEmailDomain[]> {
+    return await db.select().from(verifiedEmailDomains)
+      .where(eq(verifiedEmailDomains.organizationId, orgId))
+      .orderBy(desc(verifiedEmailDomains.isDefault), verifiedEmailDomains.domain);
+  }
+
+  async getVerifiedEmailDomain(id: number): Promise<VerifiedEmailDomain | undefined> {
+    const [domain] = await db.select().from(verifiedEmailDomains)
+      .where(eq(verifiedEmailDomains.id, id));
+    return domain;
+  }
+
+  async createVerifiedEmailDomain(data: InsertVerifiedEmailDomain): Promise<VerifiedEmailDomain> {
+    const [domain] = await db.insert(verifiedEmailDomains).values(data).returning();
+    return domain;
+  }
+
+  async updateVerifiedEmailDomain(id: number, data: Partial<InsertVerifiedEmailDomain>): Promise<VerifiedEmailDomain> {
+    const [domain] = await db.update(verifiedEmailDomains)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(verifiedEmailDomains.id, id))
+      .returning();
+    return domain;
+  }
+
+  async deleteVerifiedEmailDomain(id: number): Promise<void> {
+    await db.delete(verifiedEmailDomains).where(eq(verifiedEmailDomains.id, id));
+  }
+
+  // Provisioned Phone Numbers CRUD
+  async getProvisionedPhoneNumbers(orgId: number): Promise<ProvisionedPhoneNumber[]> {
+    return await db.select().from(provisionedPhoneNumbers)
+      .where(eq(provisionedPhoneNumbers.organizationId, orgId))
+      .orderBy(desc(provisionedPhoneNumbers.isDefault), provisionedPhoneNumbers.phoneNumber);
+  }
+
+  async getProvisionedPhoneNumber(id: number): Promise<ProvisionedPhoneNumber | undefined> {
+    const [phone] = await db.select().from(provisionedPhoneNumbers)
+      .where(eq(provisionedPhoneNumbers.id, id));
+    return phone;
+  }
+
+  async createProvisionedPhoneNumber(data: InsertProvisionedPhoneNumber): Promise<ProvisionedPhoneNumber> {
+    const [phone] = await db.insert(provisionedPhoneNumbers).values(data).returning();
+    return phone;
+  }
+
+  async updateProvisionedPhoneNumber(id: number, data: Partial<InsertProvisionedPhoneNumber>): Promise<ProvisionedPhoneNumber> {
+    const [phone] = await db.update(provisionedPhoneNumbers)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(provisionedPhoneNumbers.id, id))
+      .returning();
+    return phone;
+  }
+
+  async deleteProvisionedPhoneNumber(id: number): Promise<void> {
+    await db.delete(provisionedPhoneNumbers).where(eq(provisionedPhoneNumbers.id, id));
   }
 }
 
