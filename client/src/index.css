@@ -8,101 +8,101 @@
   --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
   --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
 
-  /* Sedona Desert Color Scheme - Light Mode */
-  /* Warm sandy cream background */
-  --background: 35 45% 96%;
-  --foreground: 20 30% 15%;
+  /* American Southwest Modern Desert - Light Mode */
+  /* Clean warm cream background */
+  --background: 38 35% 96%;
+  --foreground: 20 25% 18%;
 
-  /* Cards: Warm white with subtle warmth */
-  --card: 40 40% 99%;
-  --card-foreground: 20 30% 15%;
+  /* Cards: Pure warm white */
+  --card: 40 30% 99%;
+  --card-foreground: 20 25% 18%;
 
-  --popover: 40 40% 99%;
-  --popover-foreground: 20 30% 15%;
+  --popover: 40 30% 99%;
+  --popover-foreground: 20 25% 18%;
 
-  /* Primary: Rich Terracotta */
-  --primary: 16 70% 50%;
-  --primary-foreground: 40 40% 98%;
+  /* Primary: Warm Terracotta */
+  --primary: 18 48% 52%;
+  --primary-foreground: 40 30% 98%;
 
-  /* Secondary: Warm Sand */
-  --secondary: 35 30% 92%;
-  --secondary-foreground: 20 30% 20%;
+  /* Secondary: Soft warm sand */
+  --secondary: 35 28% 91%;
+  --secondary-foreground: 20 25% 22%;
 
-  /* Muted: Desert Sage */
-  --muted: 35 25% 93%;
-  --muted-foreground: 25 15% 45%;
+  /* Muted: Light desert sand */
+  --muted: 33 25% 92%;
+  --muted-foreground: 20 12% 48%;
 
-  /* Accent: Desert Sage Green */
-  --accent: 85 25% 45%;
-  --accent-foreground: 40 40% 98%;
+  /* Accent: Desert Slate Blue */
+  --accent: 195 14% 48%;
+  --accent-foreground: 40 30% 98%;
 
-  --destructive: 0 72% 51%;
-  --destructive-foreground: 40 40% 98%;
+  --destructive: 0 65% 50%;
+  --destructive-foreground: 40 30% 98%;
 
-  /* Warm-toned borders */
-  --border: 30 20% 88%;
-  --input: 30 20% 88%;
-  --ring: 16 70% 50%;
+  /* Subtle warm borders */
+  --border: 33 18% 87%;
+  --input: 33 18% 87%;
+  --ring: 18 48% 52%;
 
-  --radius: 0.875rem;
+  --radius: 0.75rem;
 
-  /* Sidebar: Warm sandstone */
-  --sidebar-background: 32 35% 94%;
-  --sidebar-foreground: 20 30% 20%;
-  --sidebar-primary: 16 70% 50%;
-  --sidebar-primary-foreground: 40 40% 98%;
-  --sidebar-accent: 35 40% 90%;
-  --sidebar-accent-foreground: 20 30% 20%;
-  --sidebar-border: 30 25% 85%;
-  --sidebar-ring: 16 70% 50%;
+  /* Sidebar: Soft warm cream */
+  --sidebar-background: 35 30% 95%;
+  --sidebar-foreground: 20 25% 22%;
+  --sidebar-primary: 18 48% 52%;
+  --sidebar-primary-foreground: 40 30% 98%;
+  --sidebar-accent: 35 25% 90%;
+  --sidebar-accent-foreground: 20 25% 22%;
+  --sidebar-border: 33 20% 88%;
+  --sidebar-ring: 18 48% 52%;
 }
 
 .dark {
-  /* Sedona Desert Color Scheme - Dark Mode */
-  /* Deep warm brown like desert night */
-  --background: 20 25% 10%;
-  --foreground: 35 30% 92%;
+  /* American Southwest Modern Desert - Dark Mode */
+  /* Rich chocolate brown like desert night */
+  --background: 20 30% 8%;
+  --foreground: 35 25% 92%;
 
-  /* Cards: Rich warm brown */
-  --card: 20 22% 14%;
-  --card-foreground: 35 30% 92%;
+  /* Cards: Deep warm brown */
+  --card: 20 28% 12%;
+  --card-foreground: 35 25% 92%;
 
-  --popover: 20 22% 12%;
-  --popover-foreground: 35 30% 92%;
+  --popover: 20 28% 11%;
+  --popover-foreground: 35 25% 92%;
 
-  /* Primary: Warm Terracotta (brighter for dark mode) */
-  --primary: 18 75% 55%;
-  --primary-foreground: 20 25% 10%;
+  /* Primary: Warm Terracotta (brighter for visibility) */
+  --primary: 18 55% 58%;
+  --primary-foreground: 20 30% 8%;
 
-  /* Secondary: Deep clay */
-  --secondary: 20 20% 18%;
-  --secondary-foreground: 35 30% 90%;
+  /* Secondary: Deep earth */
+  --secondary: 20 22% 16%;
+  --secondary-foreground: 35 25% 88%;
 
-  /* Muted: Subtle warm gray */
-  --muted: 20 18% 20%;
-  --muted-foreground: 30 20% 60%;
+  /* Muted: Subtle warm earth */
+  --muted: 20 18% 18%;
+  --muted-foreground: 30 15% 58%;
 
-  /* Accent: Desert Sage Green */
-  --accent: 85 30% 40%;
-  --accent-foreground: 35 30% 95%;
+  /* Accent: Desert Slate Blue */
+  --accent: 195 16% 45%;
+  --accent-foreground: 35 25% 95%;
 
-  --destructive: 0 62% 45%;
-  --destructive-foreground: 35 30% 95%;
+  --destructive: 0 55% 48%;
+  --destructive-foreground: 35 25% 95%;
 
-  /* Warm dark borders */
-  --border: 20 18% 22%;
-  --input: 20 18% 22%;
-  --ring: 18 75% 55%;
+  /* Subtle warm borders */
+  --border: 20 16% 20%;
+  --input: 20 16% 20%;
+  --ring: 18 55% 58%;
 
-  /* Sidebar: Deep warm brown */
-  --sidebar-background: 20 22% 12%;
-  --sidebar-foreground: 35 30% 90%;
-  --sidebar-primary: 18 75% 55%;
-  --sidebar-primary-foreground: 20 25% 10%;
-  --sidebar-accent: 20 20% 18%;
-  --sidebar-accent-foreground: 35 30% 90%;
-  --sidebar-border: 20 18% 20%;
-  --sidebar-ring: 18 75% 55%;
+  /* Sidebar: Rich warm brown */
+  --sidebar-background: 20 26% 10%;
+  --sidebar-foreground: 35 25% 88%;
+  --sidebar-primary: 18 55% 58%;
+  --sidebar-primary-foreground: 20 30% 8%;
+  --sidebar-accent: 20 20% 15%;
+  --sidebar-accent-foreground: 35 25% 88%;
+  --sidebar-border: 20 16% 18%;
+  --sidebar-ring: 18 55% 58%;
 }
 
 @layer base {
@@ -139,15 +139,15 @@
   @apply bg-foreground/25;
 }
 
-/* macOS Tahoe Glass Panel Effect */
+/* Apple-style Glass Panel Effect */
 .glass-panel {
   @apply backdrop-blur-2xl border shadow-lg;
-  background: rgba(255, 255, 255, 0.72);
-  border-color: rgba(255, 255, 255, 0.5);
+  background: rgba(252, 250, 247, 0.78);
+  border-color: rgba(255, 255, 255, 0.6);
 }
 .dark .glass-panel {
-  background: rgba(40, 35, 30, 0.75);
-  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(35, 28, 22, 0.82);
+  border-color: rgba(255, 255, 255, 0.06);
 }
 
 /* Floating window effect like macOS */
@@ -174,13 +174,13 @@
   transform: translateY(-1px);
 }
 
-/* macOS-style vibrancy for sidebars */
+/* Apple-style vibrancy for sidebars */
 .vibrancy-sidebar {
   @apply backdrop-blur-xl;
-  background: rgba(245, 240, 235, 0.85);
+  background: rgba(248, 244, 238, 0.88);
 }
 .dark .vibrancy-sidebar {
-  background: rgba(35, 30, 25, 0.9);
+  background: rgba(32, 25, 20, 0.92);
 }
 
 /* Animation utilities */
@@ -209,21 +209,21 @@
   @apply transition-opacity duration-200 ease-out;
 }
 
-/* Desert gradient overlays */
+/* Modern desert gradient overlays */
 .desert-gradient {
   background: linear-gradient(
     135deg,
-    hsl(35 45% 96%) 0%,
-    hsl(30 40% 94%) 50%,
-    hsl(25 35% 92%) 100%
+    hsl(38 35% 96%) 0%,
+    hsl(35 30% 94%) 50%,
+    hsl(33 25% 92%) 100%
   );
 }
 .dark .desert-gradient {
   background: linear-gradient(
     135deg,
-    hsl(20 25% 10%) 0%,
-    hsl(18 22% 12%) 50%,
-    hsl(16 20% 14%) 100%
+    hsl(20 30% 8%) 0%,
+    hsl(20 28% 10%) 50%,
+    hsl(20 26% 12%) 100%
   );
 }
 
