@@ -56,7 +56,7 @@ export default function CampaignsPage() {
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <h1 className="text-3xl font-bold" data-testid="text-page-title">Marketing Campaigns</h1>
-              <p className="text-muted-foreground">Manage direct mail, email, and SMS campaigns like LgPass.</p>
+              <p className="text-muted-foreground">Manage direct mail, email, and SMS campaigns.</p>
             </div>
             <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
               <DialogTrigger asChild>

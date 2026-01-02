@@ -112,7 +112,7 @@ export default function FinancePage() {
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <h1 className="text-3xl font-bold" data-testid="text-page-title">Finance</h1>
-              <p className="text-muted-foreground">Manage promissory notes and track payments like GeekPay.</p>
+              <p className="text-muted-foreground">Manage promissory notes and track payments.</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Button 

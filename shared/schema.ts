@@ -283,7 +283,7 @@ export const deals = pgTable("deals", {
 });
 
 // ============================================
-// FINANCE: NOTES & PAYMENTS (GeekPay Replacement)
+// FINANCE: NOTES & PAYMENTS
 // ============================================
 
 // Seller-financed notes

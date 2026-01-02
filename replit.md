@@ -2,7 +2,7 @@
 
 ## Overview
 
-AcreOS is a full-stack SaaS platform for land investors, offering CRM, property tracking, financial note management, and AI-powered automation. It supports multi-tenancy with organization-based data isolation and Stripe-powered subscription billing. The platform aims to streamline land investment operations, replacing tools like LgPass and GeekPay, and providing a comprehensive solution for managing leads, properties, deals, and finances with advanced AI capabilities.
+AcreOS is a full-stack SaaS platform for land investors, offering CRM, property tracking, financial note management, and AI-powered automation. It supports multi-tenancy with organization-based data isolation and Stripe-powered subscription billing. The platform aims to streamline land investment operations, providing a comprehensive solution for managing leads, properties, deals, and finances with advanced AI capabilities.
 
 ## User Preferences
 

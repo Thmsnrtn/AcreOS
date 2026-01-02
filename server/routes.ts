@@ -2470,7 +2470,7 @@ export async function registerRoutes(
   });
 
   // ============================================
-  // BORROWER PORTAL (Public, for GeekPay replacement)
+  // BORROWER PORTAL (Public)
   // ============================================
   
   api.post("/api/borrower/verify", async (req, res) => {
@@ -2725,7 +2725,7 @@ export async function registerRoutes(
   });
 
   // ============================================
-  // DOCUMENT GENERATION (LgPass replacement)
+  // DOCUMENT GENERATION
   // ============================================
   
   api.post("/api/documents/generate", isAuthenticated, getOrCreateOrg, async (req, res) => {
