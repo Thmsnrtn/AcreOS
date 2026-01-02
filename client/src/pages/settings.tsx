@@ -22,6 +22,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { UsageDashboard } from "@/components/usage-dashboard";
 import { PricingGuide } from "@/components/pricing-guide";
+import { IntegrationsSettings } from "@/components/integrations-settings";
 import { useState } from "react";
 import { useEffect } from "react";
 import { useSearch } from "wouter";
@@ -377,6 +378,17 @@ export default function Settings() {
               </p>
             </div>
             <PricingGuide />
+          </div>
+
+          {/* Communication Integrations */}
+          <div className="space-y-4" data-testid="section-integrations">
+            <div>
+              <h2 className="text-xl font-semibold">Communication Integrations</h2>
+              <p className="text-muted-foreground text-sm">
+                Connect your own email, SMS, and direct mail providers for branded communications.
+              </p>
+            </div>
+            <IntegrationsSettings />
           </div>
 
           {/* Onboarding & Help Settings */}

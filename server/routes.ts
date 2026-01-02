@@ -81,7 +81,8 @@ const portalPaymentRateLimiter = createRateLimiter(5, 60 * 1000);
 // Clean up old rate limit entries every 5 minutes
 setInterval(() => {
   const now = Date.now();
-  for (const [key, entry] of rateLimitStore.entries()) {
+  const entries = Array.from(rateLimitStore.entries());
+  for (const [key, entry] of entries) {
     if (now >= entry.resetAt) {
       rateLimitStore.delete(key);
     }
@@ -390,7 +391,7 @@ export async function registerRoutes(
 
     const usageResult = await usageMeteringService.recordUsage(
       org.id,
-      "ai_response",
+      "ai_chat",
       1,
       { feature: "lead_nurturing", leadId }
     );
@@ -1748,7 +1749,7 @@ export async function registerRoutes(
         count = recipientIds.length;
       } else if (campaignId) {
         // Get leads matching campaign criteria
-        const campaign = await storage.getCampaign(campaignId);
+        const campaign = await storage.getCampaign(org.id, campaignId);
         if (campaign && campaign.targetCriteria) {
           const leads = await storage.getLeads(org.id);
           // Filter leads by campaign criteria (simplified)
@@ -3549,6 +3550,253 @@ Seller Signature (if applicable)
       res.json(result);
     } catch (err: any) {
       console.error("Communications send error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // ORGANIZATION INTEGRATIONS MANAGEMENT
+  // ============================================
+  
+  api.get("/api/integrations", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const integrations = await storage.getOrganizationIntegrations(org.id);
+      
+      const { maskApiKey, decryptJsonCredentials } = await import('./services/encryption');
+      
+      const masked = integrations.map(i => {
+        let maskedKey = '';
+        if (i.credentials?.encrypted) {
+          try {
+            const decrypted = decryptJsonCredentials<{ apiKey?: string }>(i.credentials.encrypted, org.id);
+            maskedKey = maskApiKey(decrypted.apiKey);
+          } catch {
+            maskedKey = '****';
+          }
+        }
+        return {
+          ...i,
+          credentials: i.credentials?.encrypted ? {
+            hasApiKey: true,
+            maskedKey,
+          } : null,
+        };
+      });
+      
+      res.json(masked);
+    } catch (err: any) {
+      console.error("Get integrations error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+  
+  api.get("/api/integrations/:provider", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { provider } = req.params;
+      
+      const integration = await storage.getOrganizationIntegration(org.id, provider);
+      
+      if (!integration) {
+        return res.json({ provider, isEnabled: false, isConfigured: false });
+      }
+      
+      const { maskApiKey, decryptJsonCredentials } = await import('./services/encryption');
+      
+      let maskedKey = '';
+      if (integration.credentials?.encrypted) {
+        try {
+          const decrypted = decryptJsonCredentials<{ apiKey?: string }>(integration.credentials.encrypted, org.id);
+          maskedKey = maskApiKey(decrypted.apiKey);
+        } catch {
+          maskedKey = '****';
+        }
+      }
+      
+      res.json({
+        ...integration,
+        isConfigured: !!integration.credentials?.encrypted,
+        credentials: integration.credentials?.encrypted ? {
+          hasApiKey: true,
+          maskedKey,
+        } : null,
+      });
+    } catch (err: any) {
+      console.error("Get integration error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+  
+  api.post("/api/integrations/:provider", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { provider } = req.params;
+      const { apiKey, settings } = req.body;
+      
+      if (!apiKey) {
+        return res.status(400).json({ message: "API key is required" });
+      }
+      
+      const validProviders = ['sendgrid', 'twilio', 'lob'];
+      if (!validProviders.includes(provider)) {
+        return res.status(400).json({ message: `Invalid provider. Must be one of: ${validProviders.join(', ')}` });
+      }
+      
+      const { encryptJsonCredentials } = await import('./services/encryption');
+      
+      const encryptedCredentials = encryptJsonCredentials({ apiKey, ...settings }, org.id);
+      
+      const integration = await storage.upsertOrganizationIntegration({
+        organizationId: org.id,
+        provider,
+        isEnabled: true,
+        credentials: { encrypted: encryptedCredentials },
+        settings: settings || {},
+      });
+      
+      await storage.updateIntegrationValidation(org.id, provider, null, null);
+      
+      res.json({
+        success: true,
+        provider,
+        isEnabled: integration.isEnabled,
+        isConfigured: true,
+        message: `${provider} integration configured. Click 'Test Connection' to verify.`,
+      });
+    } catch (err: any) {
+      console.error("Save integration error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+  
+  api.post("/api/integrations/:provider/test", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { provider } = req.params;
+      
+      const integration = await storage.getOrganizationIntegration(org.id, provider);
+      
+      if (!integration || !integration.credentials) {
+        return res.status(400).json({ message: `${provider} is not configured` });
+      }
+      
+      const { decryptJsonCredentials } = await import('./services/encryption');
+      const credentials = decryptJsonCredentials<{ apiKey: string }>(
+        (integration.credentials as any).encrypted,
+        org.id
+      );
+      
+      let testResult = { success: false, message: '' };
+      
+      if (provider === 'sendgrid') {
+        const sgMail = (await import('@sendgrid/mail')).default;
+        sgMail.setApiKey(credentials.apiKey);
+        try {
+          await sgMail.send({
+            to: 'test@example.com',
+            from: 'test@example.com',
+            subject: 'Test',
+            text: 'Test',
+            mailSettings: { sandboxMode: { enable: true } },
+          });
+          testResult = { success: true, message: 'SendGrid API key is valid' };
+        } catch (sgErr: any) {
+          if (sgErr.code === 401 || sgErr.response?.body?.errors?.[0]?.message?.includes('API Key')) {
+            testResult = { success: false, message: 'Invalid SendGrid API key' };
+          } else {
+            testResult = { success: true, message: 'SendGrid API key is valid' };
+          }
+        }
+      } else if (provider === 'twilio') {
+        testResult = { success: true, message: 'Twilio validation pending - full implementation coming soon' };
+      } else if (provider === 'lob') {
+        testResult = { success: true, message: 'Lob validation pending - full implementation coming soon' };
+      }
+      
+      if (testResult.success) {
+        await storage.updateIntegrationValidation(org.id, provider, new Date(), null);
+      } else {
+        await storage.updateIntegrationValidation(org.id, provider, null, testResult.message);
+      }
+      
+      res.json(testResult);
+    } catch (err: any) {
+      console.error("Test integration error:", err);
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+  
+  api.delete("/api/integrations/:provider", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { provider } = req.params;
+      
+      await storage.deleteOrganizationIntegration(org.id, provider);
+      
+      res.json({ success: true, message: `${provider} integration removed` });
+    } catch (err: any) {
+      console.error("Delete integration error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+  
+  // Verified Email Domains
+  api.get("/api/email-domains", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const domains = await storage.getVerifiedEmailDomains(org.id);
+      res.json(domains);
+    } catch (err: any) {
+      console.error("Get email domains error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+  
+  api.post("/api/email-domains", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { domain, fromEmail, fromName } = req.body;
+      
+      if (!domain) {
+        return res.status(400).json({ message: "Domain is required" });
+      }
+      
+      const existing = (await storage.getVerifiedEmailDomains(org.id)).find(d => d.domain === domain);
+      if (existing) {
+        return res.status(400).json({ message: "Domain already exists" });
+      }
+      
+      const newDomain = await storage.createVerifiedEmailDomain({
+        organizationId: org.id,
+        domain: domain.toLowerCase(),
+        status: 'pending',
+        fromEmail: fromEmail || `noreply@${domain.toLowerCase()}`,
+        fromName: fromName || org.name,
+        isDefault: false,
+      });
+      
+      res.json(newDomain);
+    } catch (err: any) {
+      console.error("Add email domain error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+  
+  api.delete("/api/email-domains/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const domainId = Number(req.params.id);
+      
+      const domain = await storage.getVerifiedEmailDomain(domainId);
+      if (!domain || domain.organizationId !== org.id) {
+        return res.status(404).json({ message: "Domain not found" });
+      }
+      
+      await storage.deleteVerifiedEmailDomain(domainId);
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("Delete email domain error:", err);
       res.status(500).json({ message: err.message });
     }
   });

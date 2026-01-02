@@ -142,6 +142,7 @@ export const organizationIntegrations = pgTable("organization_integrations", {
   provider: text("provider").notNull(), // sendgrid, twilio, lob
   isEnabled: boolean("is_enabled").default(true),
   credentials: jsonb("credentials").$type<{
+    encrypted?: string; // Encrypted JSON blob containing apiKey and other secrets
     apiKey?: string;
     accountSid?: string; // Twilio
     authToken?: string; // Twilio

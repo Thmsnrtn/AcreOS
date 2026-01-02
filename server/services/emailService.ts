@@ -1,8 +1,17 @@
 import sgMail from '@sendgrid/mail';
+import { storage } from '../storage';
+import { decryptJsonCredentials } from './encryption';
 
 let connectionSettings: any;
 
-async function getCredentials() {
+interface SendGridCredentials {
+  apiKey: string;
+  fromEmail: string;
+  fromName?: string;
+  source: 'organization' | 'platform';
+}
+
+async function getPlatformCredentials(): Promise<SendGridCredentials> {
   const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
   const xReplitToken = process.env.REPL_IDENTITY 
     ? 'repl ' + process.env.REPL_IDENTITY 
@@ -27,15 +36,78 @@ async function getCredentials() {
   if (!connectionSettings || (!connectionSettings.settings.api_key || !connectionSettings.settings.from_email)) {
     throw new Error('SendGrid not connected');
   }
-  return { apiKey: connectionSettings.settings.api_key, email: connectionSettings.settings.from_email };
+  return { 
+    apiKey: connectionSettings.settings.api_key, 
+    fromEmail: connectionSettings.settings.from_email,
+    source: 'platform'
+  };
 }
 
-export async function getUncachableSendGridClient() {
-  const { apiKey, email } = await getCredentials();
-  sgMail.setApiKey(apiKey);
+async function getOrgCredentials(orgId: number): Promise<SendGridCredentials | null> {
+  try {
+    const integration = await storage.getOrganizationIntegration(orgId, 'sendgrid');
+    
+    if (!integration || !integration.isEnabled || !integration.credentials?.encrypted) {
+      return null;
+    }
+    
+    const decrypted = decryptJsonCredentials<{ apiKey: string; fromEmail?: string; fromName?: string }>(
+      integration.credentials.encrypted,
+      orgId
+    );
+    
+    if (!decrypted.apiKey) {
+      return null;
+    }
+    
+    const domains = await storage.getVerifiedEmailDomains(orgId);
+    const defaultDomain = domains.find(d => d.isDefault && d.status === 'verified') || 
+                          domains.find(d => d.status === 'verified');
+    
+    let fromEmail = decrypted.fromEmail || defaultDomain?.fromEmail;
+    let fromName = decrypted.fromName || defaultDomain?.fromName;
+    
+    if (!fromEmail) {
+      try {
+        const platformCreds = await getPlatformCredentials();
+        fromEmail = platformCreds.fromEmail;
+        console.log('[EmailService] Using platform from-email for org-specific API key');
+      } catch {
+        console.warn('[EmailService] Org credentials have no verified sender and platform fallback unavailable');
+        return null;
+      }
+    }
+    
+    return {
+      apiKey: decrypted.apiKey,
+      fromEmail,
+      fromName,
+      source: 'organization',
+    };
+  } catch (error) {
+    console.error('[EmailService] Failed to get org credentials:', error);
+    return null;
+  }
+}
+
+async function getCredentials(orgId?: number): Promise<SendGridCredentials> {
+  if (orgId) {
+    const orgCreds = await getOrgCredentials(orgId);
+    if (orgCreds) {
+      return orgCreds;
+    }
+  }
+  return getPlatformCredentials();
+}
+
+export async function getUncachableSendGridClient(orgId?: number) {
+  const creds = await getCredentials(orgId);
+  sgMail.setApiKey(creds.apiKey);
   return {
     client: sgMail,
-    fromEmail: email
+    fromEmail: creds.fromEmail,
+    fromName: creds.fromName,
+    source: creds.source,
   };
 }
 
@@ -47,6 +119,7 @@ export interface EmailOptions {
   from?: string;
   fromName?: string;
   replyTo?: string;
+  organizationId?: number;
 }
 
 export interface EmailResult {
@@ -56,19 +129,19 @@ export interface EmailResult {
 }
 
 export class EmailService {
-  async isConfigured(): Promise<boolean> {
+  async isConfigured(orgId?: number): Promise<boolean> {
     try {
-      await getCredentials();
+      await getCredentials(orgId);
       return true;
     } catch {
       return false;
     }
   }
 
-  async getDefaultFromEmail(): Promise<string | null> {
+  async getDefaultFromEmail(orgId?: number): Promise<string | null> {
     try {
-      const { email } = await getCredentials();
-      return email;
+      const creds = await getCredentials(orgId);
+      return creds.fromEmail;
     } catch {
       return null;
     }
@@ -76,13 +149,14 @@ export class EmailService {
 
   async sendEmail(options: EmailOptions): Promise<EmailResult> {
     try {
-      const { client, fromEmail: defaultFromEmail } = await getUncachableSendGridClient();
+      const { client, fromEmail: defaultFromEmail, fromName: defaultFromName, source } = 
+        await getUncachableSendGridClient(options.organizationId);
       
       const msg = {
         to: options.to,
         from: {
           email: options.from || defaultFromEmail,
-          name: options.fromName || 'AcreOS',
+          name: options.fromName || defaultFromName || 'AcreOS',
         },
         subject: options.subject,
         text: options.text || options.html.replace(/<[^>]*>/g, ''),
@@ -93,6 +167,7 @@ export class EmailService {
       const [response] = await client.send(msg);
       const messageId = response.headers['x-message-id'] || `sg-${Date.now()}`;
       
+      console.log(`[EmailService] Email sent via ${source} credentials to ${options.to}`);
       return { success: true, messageId };
     } catch (error: any) {
       console.error('[EmailService] Failed to send email:', error);
@@ -100,10 +175,10 @@ export class EmailService {
     }
   }
 
-  async sendBulkEmails(emails: EmailOptions[]): Promise<EmailResult[]> {
+  async sendBulkEmails(emails: EmailOptions[], orgId?: number): Promise<EmailResult[]> {
     const results: EmailResult[] = [];
     for (const email of emails) {
-      const result = await this.sendEmail(email);
+      const result = await this.sendEmail({ ...email, organizationId: orgId });
       results.push(result);
       await new Promise(resolve => setTimeout(resolve, 100));
     }
@@ -112,6 +187,15 @@ export class EmailService {
 
   async getDeliveryStatus(messageId: string): Promise<'pending' | 'delivered' | 'failed' | 'unknown'> {
     return 'unknown';
+  }
+  
+  async getCredentialSource(orgId: number): Promise<'organization' | 'platform' | null> {
+    try {
+      const creds = await getCredentials(orgId);
+      return creds.source;
+    } catch {
+      return null;
+    }
   }
 }
 
