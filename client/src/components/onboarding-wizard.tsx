@@ -426,7 +426,7 @@ export function OnboardingWizard() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="sm:max-w-lg" data-testid="dialog-onboarding-wizard">
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto" data-testid="dialog-onboarding-wizard">
         <DialogHeader>
           <div className="flex items-center justify-between mb-2">
             <Badge variant="outline" className="text-xs">
@@ -511,7 +511,7 @@ export function OnboardingWizard() {
           </motion.div>
         </AnimatePresence>
 
-        <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:justify-between mt-4">
+        <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:justify-between mt-4 pb-4 sm:pb-0">
           <div className="flex gap-2">
             {currentStep > 0 && (
               <Button
