@@ -14,12 +14,14 @@ import {
   GitBranch,
   UsersRound,
   Calculator,
-  Headphones
+  Headphones,
+  Crown
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useState } from "react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
+import { useQuery } from "@tanstack/react-query";
 
 const navItems = [
   { label: "Dashboard", icon: LayoutDashboard, href: "/" },
@@ -41,6 +43,12 @@ export function Sidebar() {
   const { logout } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
 
+  const { data: isAdmin } = useQuery<{ isAdmin: boolean }>({
+    queryKey: ['/api/admin/check'],
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+  });
+
   const NavContent = () => (
     <div className="flex flex-col h-full vibrancy-sidebar">
       <div className="p-6 border-b border-sidebar-border">
@@ -51,6 +59,20 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 px-3 py-4 space-y-1">
+        {isAdmin?.isAdmin && (
+          <Link href="/founder" className={cn(
+            "flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all duration-150 group mb-2",
+            location === "/founder" 
+              ? "bg-amber-500 text-white shadow-md" 
+              : "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20"
+          )}>
+            <Crown className={cn(
+              "w-5 h-5 transition-colors", 
+              location === "/founder" ? "text-white" : "text-amber-500"
+            )} />
+            <span className="font-medium text-sm">Founder Dashboard</span>
+          </Link>
+        )}
         {navItems.map((item) => {
           const isActive = location === item.href;
           return (

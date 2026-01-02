@@ -340,6 +340,116 @@ export class UsageMeteringService {
 
     return created;
   }
+
+  // Check if auto-top-up should trigger and return the amount to add
+  async checkAutoTopUp(organizationId: number): Promise<{ shouldTopUp: boolean; amountCents: number }> {
+    const org = await db.query.organizations.findFirst({
+      where: eq(organizations.id, organizationId),
+    });
+
+    if (!org || !org.autoTopUpEnabled) {
+      return { shouldTopUp: false, amountCents: 0 };
+    }
+
+    const balance = Number(org.creditBalance || 0);
+    const threshold = org.autoTopUpThresholdCents || 200;
+    const topUpAmount = org.autoTopUpAmountCents || 2500;
+
+    if (balance < threshold) {
+      return { shouldTopUp: true, amountCents: topUpAmount };
+    }
+
+    return { shouldTopUp: false, amountCents: 0 };
+  }
+
+  // Apply monthly tier allowance to organization
+  async applyMonthlyAllowance(organizationId: number): Promise<CreditTransaction | null> {
+    const org = await db.query.organizations.findFirst({
+      where: eq(organizations.id, organizationId),
+    });
+
+    if (!org) return null;
+
+    const tier = (org.subscriptionTier || 'free') as SubscriptionTier;
+    const tierInfo = SUBSCRIPTION_TIERS[tier];
+    const monthlyCredits = tierInfo?.limits?.monthlyCredits || 0;
+    
+    if (!tierInfo || monthlyCredits <= 0) {
+      return null;
+    }
+
+    // Add monthly allowance (use db directly to avoid circular reference)
+    const [updated] = await db
+      .update(organizations)
+      .set({ 
+        creditBalance: sql`COALESCE(${organizations.creditBalance}, '0')::numeric + ${monthlyCredits}` 
+      })
+      .where(eq(organizations.id, organizationId))
+      .returning({ newBalance: sql<number>`(COALESCE(${organizations.creditBalance}, '0')::numeric)::int` });
+
+    const [transaction] = await db
+      .insert(creditTransactions)
+      .values({
+        organizationId,
+        type: 'allowance',
+        amountCents: monthlyCredits,
+        balanceAfterCents: updated?.newBalance || monthlyCredits,
+        description: `Monthly ${tierInfo.name} tier allowance`,
+        metadata: {
+          tier,
+          month: new Date().toISOString().slice(0, 7),
+        },
+      })
+      .returning();
+
+    console.log(`Applied monthly allowance: Org ${organizationId}, Tier ${tier}, Amount: $${(monthlyCredits / 100).toFixed(2)}`);
+    return transaction;
+  }
+
+  // Process all organizations for monthly allowance (called at billing cycle)
+  async processMonthlyAllowances(): Promise<{ processed: number; failed: number }> {
+    let processed = 0;
+    let failed = 0;
+
+    // Get all paid organizations
+    const paidOrgs = await db
+      .select()
+      .from(organizations)
+      .where(
+        sql`${organizations.subscriptionTier} IN ('starter', 'pro', 'scale') 
+            AND ${organizations.subscriptionStatus} = 'active'`
+      );
+
+    for (const org of paidOrgs) {
+      try {
+        await this.applyMonthlyAllowance(org.id);
+        processed++;
+      } catch (err) {
+        console.error(`Failed to apply monthly allowance for org ${org.id}:`, err);
+        failed++;
+      }
+    }
+
+    console.log(`Monthly allowances processed: ${processed} success, ${failed} failed`);
+    return { processed, failed };
+  }
+
+  // Update auto-top-up settings for an organization
+  async updateAutoTopUpSettings(
+    organizationId: number,
+    enabled: boolean,
+    thresholdCents?: number,
+    amountCents?: number
+  ): Promise<void> {
+    await db
+      .update(organizations)
+      .set({
+        autoTopUpEnabled: enabled,
+        ...(thresholdCents !== undefined && { autoTopUpThresholdCents: thresholdCents }),
+        ...(amountCents !== undefined && { autoTopUpAmountCents: amountCents }),
+      })
+      .where(eq(organizations.id, organizationId));
+  }
 }
 
 export const creditService = new CreditService();

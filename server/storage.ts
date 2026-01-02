@@ -4,21 +4,25 @@ import { eq, and, desc, sql, count, sum, arrayContains, gte, lte, or } from "dri
 import { aiConversations, aiMessages } from "@shared/schema";
 import {
   organizations, teamMembers, leads, leadActivities, properties, deals,
-  notes, payments, campaigns, agentConfigs, agentTasks, conversations,
+  notes, payments, paymentReminders, campaigns, campaignOptimizations, agentConfigs, agentTasks, conversations,
   messages, activityLog, usageEvents,
   aiAgentProfiles, aiToolDefinitions, aiExecutionRuns, aiMemory,
   vaAgents, vaActions, vaBriefings, vaCalendarEvents, vaTemplates,
   dueDiligenceTemplates, dueDiligenceItems,
   usageRecords, creditTransactions,
   supportCases, supportMessages, supportActions, supportPlaybooks,
+  dunningEvents, systemAlerts,
   type Organization, type InsertOrganization,
   type TeamMember, type InsertTeamMember,
   type Lead, type InsertLead,
+  type LeadActivity, type InsertLeadActivity,
   type Property, type InsertProperty,
   type Deal, type InsertDeal,
   type Note, type InsertNote,
   type Payment, type InsertPayment,
+  type PaymentReminder, type InsertPaymentReminder,
   type Campaign, type InsertCampaign,
+  type CampaignOptimization, type InsertCampaignOptimization,
   type AgentConfig, type InsertAgentConfig,
   type AgentTask, type InsertAgentTask,
   type Conversation, type InsertConversation,
@@ -40,6 +44,8 @@ import {
   type InsertSupportMessage, type SupportMessage,
   type InsertSupportAction, type SupportAction,
   type SupportPlaybook,
+  type DunningEvent, type InsertDunningEvent,
+  type SystemAlert, type InsertSystemAlert,
   DEFAULT_DUE_DILIGENCE_TEMPLATES,
 } from "@shared/schema";
 
@@ -90,6 +96,7 @@ export interface IStorage {
   getOrganization(id: number): Promise<Organization | undefined>;
   getOrganizationBySlug(slug: string): Promise<Organization | undefined>;
   getOrganizationByOwner(ownerId: string): Promise<Organization | undefined>;
+  getOrganizationByStripeCustomerId(customerId: string): Promise<Organization | undefined>;
   createOrganization(org: InsertOrganization): Promise<Organization>;
   updateOrganization(id: number, updates: Partial<InsertOrganization>): Promise<Organization>;
   
@@ -106,6 +113,13 @@ export interface IStorage {
   updateLead(id: number, updates: Partial<InsertLead>): Promise<Lead>;
   deleteLead(id: number): Promise<void>;
   getLeadCount(orgId: number): Promise<number>;
+  
+  // Lead Scoring & Nurturing
+  getLeadsNeedingScoring(orgId: number, limit?: number): Promise<Lead[]>;
+  getLeadsDueForFollowUp(orgId: number): Promise<Lead[]>;
+  createLeadActivity(activity: InsertLeadActivity): Promise<LeadActivity>;
+  getLeadActivities(leadId: number, limit?: number): Promise<LeadActivity[]>;
+  updateLeadScore(leadId: number, score: number, scoreFactors: Lead["scoreFactors"]): Promise<Lead>;
   
   // Properties
   getProperties(orgId: number): Promise<Property[]>;
@@ -141,6 +155,12 @@ export interface IStorage {
   getCampaign(orgId: number, id: number): Promise<Campaign | undefined>;
   createCampaign(campaign: InsertCampaign): Promise<Campaign>;
   updateCampaign(id: number, updates: Partial<InsertCampaign>): Promise<Campaign>;
+  
+  // Campaign Optimizations
+  getCampaignOptimizations(campaignId: number): Promise<CampaignOptimization[]>;
+  createCampaignOptimization(optimization: InsertCampaignOptimization): Promise<CampaignOptimization>;
+  markOptimizationImplemented(optimizationId: number, resultDelta: CampaignOptimization["resultDelta"]): Promise<CampaignOptimization>;
+  getCampaignsNeedingOptimization(orgId: number): Promise<Campaign[]>;
   
   // Agent Configs
   getAgentConfigs(orgId: number): Promise<AgentConfig[]>;
@@ -291,6 +311,40 @@ export interface IStorage {
   getSupportPlaybooks(category?: string): Promise<SupportPlaybook[]>;
   getSupportPlaybook(slug: string): Promise<SupportPlaybook | undefined>;
   incrementPlaybookUsage(slug: string, success: boolean): Promise<void>;
+
+  // Dunning Events
+  createDunningEvent(event: InsertDunningEvent): Promise<DunningEvent>;
+  getDunningEvents(orgId: number, status?: string): Promise<DunningEvent[]>;
+  getPendingDunningEvent(orgId: number, stripeInvoiceId: string): Promise<DunningEvent | undefined>;
+  updateDunningEvent(id: number, updates: Partial<InsertDunningEvent>): Promise<DunningEvent>;
+  resolveDunningEvents(orgId: number, stripeInvoiceId: string, resolutionType: string): Promise<void>;
+  getOrganizationsInDunning(): Promise<Organization[]>;
+
+  // System Alerts
+  createSystemAlert(alert: InsertSystemAlert): Promise<SystemAlert>;
+  getSystemAlerts(orgId?: number, status?: string): Promise<SystemAlert[]>;
+  updateSystemAlert(id: number, updates: Partial<InsertSystemAlert>): Promise<SystemAlert>;
+
+  // Payment Reminders (Finance Agent)
+  getDelinquentNotes(orgId: number): Promise<Note[]>;
+  getPendingReminders(limit?: number): Promise<PaymentReminder[]>;
+  getRemindersForNote(noteId: number): Promise<PaymentReminder[]>;
+  createPaymentReminder(reminder: InsertPaymentReminder): Promise<PaymentReminder>;
+  updatePaymentReminder(id: number, updates: Partial<InsertPaymentReminder>): Promise<PaymentReminder>;
+  markReminderSent(id: number): Promise<PaymentReminder>;
+  getNotesNeedingReminders(orgId: number): Promise<Note[]>;
+  getNotesWithUpcomingPayments(orgId: number, daysAhead: number): Promise<Note[]>;
+  getFinancePortfolioHealth(orgId: number): Promise<{
+    totalActiveNotes: number;
+    totalBalance: number;
+    currentNotes: number;
+    earlyDelinquent: number;
+    delinquent: number;
+    seriouslyDelinquent: number;
+    defaultCandidates: number;
+    remindersSentThisMonth: number;
+    collectionsThisMonth: number;
+  }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -307,6 +361,11 @@ export class DatabaseStorage implements IStorage {
   
   async getOrganizationByOwner(ownerId: string) {
     const [org] = await db.select().from(organizations).where(eq(organizations.ownerId, ownerId));
+    return org;
+  }
+
+  async getOrganizationByStripeCustomerId(customerId: string) {
+    const [org] = await db.select().from(organizations).where(eq(organizations.stripeCustomerId, customerId));
     return org;
   }
   
@@ -384,6 +443,61 @@ export class DatabaseStorage implements IStorage {
   async getLeadCount(orgId: number) {
     const [result] = await db.select({ count: count() }).from(leads).where(eq(leads.organizationId, orgId));
     return result?.count || 0;
+  }
+  
+  // Lead Scoring & Nurturing
+  async getLeadsNeedingScoring(orgId: number, limit: number = 50): Promise<Lead[]> {
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    return await db.select().from(leads)
+      .where(and(
+        eq(leads.organizationId, orgId),
+        sql`${leads.status} != 'dead'`,
+        sql`${leads.status} != 'closed'`,
+        or(
+          sql`${leads.lastScoreAt} IS NULL`,
+          lte(leads.lastScoreAt, oneDayAgo)
+        )
+      ))
+      .orderBy(sql`${leads.lastScoreAt} NULLS FIRST`)
+      .limit(limit);
+  }
+  
+  async getLeadsDueForFollowUp(orgId: number): Promise<Lead[]> {
+    const now = new Date();
+    return await db.select().from(leads)
+      .where(and(
+        eq(leads.organizationId, orgId),
+        sql`${leads.status} != 'dead'`,
+        sql`${leads.status} != 'closed'`,
+        lte(leads.nextFollowUpAt, now)
+      ))
+      .orderBy(leads.nextFollowUpAt)
+      .limit(100);
+  }
+  
+  async createLeadActivity(activity: InsertLeadActivity): Promise<LeadActivity> {
+    const [newActivity] = await db.insert(leadActivities).values(activity).returning();
+    return newActivity;
+  }
+  
+  async getLeadActivities(leadId: number, limit: number = 50): Promise<LeadActivity[]> {
+    return await db.select().from(leadActivities)
+      .where(eq(leadActivities.leadId, leadId))
+      .orderBy(desc(leadActivities.createdAt))
+      .limit(limit);
+  }
+  
+  async updateLeadScore(leadId: number, score: number, scoreFactors: Lead["scoreFactors"]): Promise<Lead> {
+    const [updated] = await db.update(leads)
+      .set({
+        score,
+        scoreFactors,
+        lastScoreAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(leads.id, leadId))
+      .returning();
+    return updated;
   }
   
   // Properties
@@ -595,6 +709,45 @@ export class DatabaseStorage implements IStorage {
       .where(eq(campaigns.id, id))
       .returning();
     return updated;
+  }
+  
+  // Campaign Optimizations
+  async getCampaignOptimizations(campaignId: number) {
+    return await db.select().from(campaignOptimizations)
+      .where(eq(campaignOptimizations.campaignId, campaignId))
+      .orderBy(desc(campaignOptimizations.createdAt));
+  }
+  
+  async createCampaignOptimization(optimization: InsertCampaignOptimization) {
+    const [newOptimization] = await db.insert(campaignOptimizations).values(optimization).returning();
+    return newOptimization;
+  }
+  
+  async markOptimizationImplemented(optimizationId: number, resultDelta: CampaignOptimization["resultDelta"]) {
+    const [updated] = await db.update(campaignOptimizations)
+      .set({ 
+        implemented: true, 
+        implementedAt: new Date(),
+        resultDelta
+      })
+      .where(eq(campaignOptimizations.id, optimizationId))
+      .returning();
+    return updated;
+  }
+  
+  async getCampaignsNeedingOptimization(orgId: number): Promise<Campaign[]> {
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    return await db.select().from(campaigns)
+      .where(and(
+        eq(campaigns.organizationId, orgId),
+        eq(campaigns.status, "active"),
+        sql`COALESCE(${campaigns.totalSent}, 0) > 100`,
+        or(
+          sql`${campaigns.lastOptimizedAt} IS NULL`,
+          lte(campaigns.lastOptimizedAt, sevenDaysAgo)
+        )
+      ))
+      .orderBy(desc(campaigns.totalSent));
   }
   
   // Agent Configs
@@ -1389,6 +1542,373 @@ export class DatabaseStorage implements IStorage {
         })
         .where(eq(supportPlaybooks.slug, slug));
     }
+  }
+
+  // Dunning Events
+  async createDunningEvent(event: InsertDunningEvent) {
+    const [newEvent] = await db.insert(dunningEvents).values(event).returning();
+    return newEvent;
+  }
+
+  async getDunningEvents(orgId: number, status?: string) {
+    if (status) {
+      return await db.select().from(dunningEvents)
+        .where(and(
+          eq(dunningEvents.organizationId, orgId),
+          eq(dunningEvents.status, status)
+        ))
+        .orderBy(desc(dunningEvents.createdAt));
+    }
+    return await db.select().from(dunningEvents)
+      .where(eq(dunningEvents.organizationId, orgId))
+      .orderBy(desc(dunningEvents.createdAt));
+  }
+
+  async getPendingDunningEvent(orgId: number, stripeInvoiceId: string) {
+    const [event] = await db.select().from(dunningEvents)
+      .where(and(
+        eq(dunningEvents.organizationId, orgId),
+        eq(dunningEvents.stripeInvoiceId, stripeInvoiceId),
+        or(
+          eq(dunningEvents.status, "pending"),
+          eq(dunningEvents.status, "scheduled_retry")
+        )
+      ));
+    return event;
+  }
+
+  async updateDunningEvent(id: number, updates: Partial<InsertDunningEvent>) {
+    const [updated] = await db.update(dunningEvents)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(dunningEvents.id, id))
+      .returning();
+    return updated;
+  }
+
+  async resolveDunningEvents(orgId: number, stripeInvoiceId: string, resolutionType: string) {
+    await db.update(dunningEvents)
+      .set({
+        status: "resolved",
+        resolvedAt: new Date(),
+        resolutionType,
+        updatedAt: new Date(),
+      })
+      .where(and(
+        eq(dunningEvents.organizationId, orgId),
+        eq(dunningEvents.stripeInvoiceId, stripeInvoiceId),
+        or(
+          eq(dunningEvents.status, "pending"),
+          eq(dunningEvents.status, "scheduled_retry")
+        )
+      ));
+  }
+
+  async getOrganizationsInDunning() {
+    return await db.select().from(organizations)
+      .where(and(
+        sql`${organizations.dunningStage} IS NOT NULL`,
+        sql`${organizations.dunningStage} != 'none'`
+      ));
+  }
+
+  // System Alerts
+  async createSystemAlert(alert: InsertSystemAlert) {
+    const [newAlert] = await db.insert(systemAlerts).values(alert).returning();
+    return newAlert;
+  }
+
+  async getSystemAlerts(orgId?: number, status?: string) {
+    const conditions = [];
+    if (orgId) conditions.push(eq(systemAlerts.organizationId, orgId));
+    if (status) conditions.push(eq(systemAlerts.status, status));
+    
+    if (conditions.length > 0) {
+      return await db.select().from(systemAlerts)
+        .where(and(...conditions))
+        .orderBy(desc(systemAlerts.createdAt));
+    }
+    return await db.select().from(systemAlerts)
+      .orderBy(desc(systemAlerts.createdAt));
+  }
+
+  async updateSystemAlert(id: number, updates: Partial<InsertSystemAlert>) {
+    const [updated] = await db.update(systemAlerts)
+      .set(updates)
+      .where(eq(systemAlerts.id, id))
+      .returning();
+    return updated;
+  }
+
+  async acknowledgeAlert(id: number) {
+    const [updated] = await db.update(systemAlerts)
+      .set({ status: "acknowledged", acknowledgedAt: new Date() })
+      .where(eq(systemAlerts.id, id))
+      .returning();
+    return updated;
+  }
+
+  async resolveAlert(id: number) {
+    const [updated] = await db.update(systemAlerts)
+      .set({ status: "resolved", resolvedAt: new Date() })
+      .where(eq(systemAlerts.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getAllOrganizations() {
+    return await db.select().from(organizations)
+      .orderBy(desc(organizations.createdAt));
+  }
+
+  async getAdminDashboardData() {
+    const now = new Date();
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const allOrgs = await db.select().from(organizations);
+    const allTeamMembers = await db.select().from(teamMembers);
+    
+    const orgsByTier = allOrgs.reduce((acc, org) => {
+      acc[org.subscriptionTier] = (acc[org.subscriptionTier] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const orgsInDunning = allOrgs.filter(org => org.dunningStage && org.dunningStage !== 'none');
+    const dunningByStage = orgsInDunning.reduce((acc, org) => {
+      acc[org.dunningStage!] = (acc[org.dunningStage!] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const activeUsers = allTeamMembers.filter(m => m.isActive).length;
+    const newSignupsThisWeek = allOrgs.filter(org => 
+      org.createdAt && new Date(org.createdAt) >= sevenDaysAgo
+    ).length;
+
+    const allAlerts = await this.getSystemAlerts();
+    const unresolvedAlerts = allAlerts.filter(a => a.status !== 'resolved' && a.status !== 'dismissed');
+    const alertsBySeverity = unresolvedAlerts.reduce((acc, alert) => {
+      acc[alert.severity] = (acc[alert.severity] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    const criticalAlerts = unresolvedAlerts.filter(a => a.severity === 'critical').slice(0, 5);
+
+    const creditTransactionsThisMonth = await db.select().from(creditTransactions)
+      .where(gte(creditTransactions.createdAt, startOfMonth));
+    const creditSalesThisMonth = creditTransactionsThisMonth
+      .filter(t => t.type === 'purchase')
+      .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+
+    const totalMrr = allOrgs.reduce((sum, org) => {
+      if (org.subscriptionStatus !== 'active') return sum;
+      const tierPrices: Record<string, number> = { free: 0, starter: 4900, pro: 9900, scale: 19900 };
+      return sum + (tierPrices[org.subscriptionTier] || 0);
+    }, 0);
+
+    const mrrAtRisk = orgsInDunning.reduce((sum, org) => {
+      const tierPrices: Record<string, number> = { free: 0, starter: 4900, pro: 9900, scale: 19900 };
+      return sum + (tierPrices[org.subscriptionTier] || 0);
+    }, 0);
+
+    const allAgentTasks = await db.select().from(agentTasks)
+      .orderBy(desc(agentTasks.createdAt))
+      .limit(500);
+
+    const leadNurturerTasks = allAgentTasks.filter(t => t.agentType === 'lead_nurturing');
+    const campaignOptimizerTasks = allAgentTasks.filter(t => t.agentType === 'campaign_optimizer');
+    const financeAgentTasks = allAgentTasks.filter(t => t.agentType === 'finance_agent');
+
+    const getAgentStatus = (tasks: typeof allAgentTasks) => {
+      const completed = tasks.filter(t => t.status === 'completed');
+      const pending = tasks.filter(t => t.status === 'pending' || t.status === 'queued');
+      const failed = tasks.filter(t => t.status === 'failed');
+      const lastRun = tasks.find(t => t.status === 'completed')?.completedAt;
+      return {
+        lastRun: lastRun ? new Date(lastRun).toISOString() : null,
+        processed: completed.length,
+        pending: pending.length,
+        failed: failed.length,
+        status: pending.length > 10 ? 'busy' : failed.length > 5 ? 'warning' : 'healthy'
+      };
+    };
+
+    return {
+      revenue: {
+        mrr: totalMrr,
+        creditSalesThisMonth,
+        totalRevenueThisMonth: totalMrr + creditSalesThisMonth,
+        mrrAtRisk
+      },
+      systemHealth: {
+        activeOrganizations: allOrgs.length,
+        totalUsers: allTeamMembers.length,
+        activeUsers,
+        uptime: 99.9
+      },
+      agents: {
+        leadNurturer: getAgentStatus(leadNurturerTasks),
+        campaignOptimizer: getAgentStatus(campaignOptimizerTasks),
+        financeAgent: getAgentStatus(financeAgentTasks),
+        apiQueue: {
+          pending: allAgentTasks.filter(t => t.status === 'pending' || t.status === 'queued').length,
+          failed: allAgentTasks.filter(t => t.status === 'failed').length
+        }
+      },
+      alerts: {
+        bySeverity: alertsBySeverity,
+        total: unresolvedAlerts.length,
+        critical: criticalAlerts
+      },
+      revenueAtRisk: {
+        dunningByStage,
+        totalMrrAtRisk: mrrAtRisk,
+        orgsApproachingCreditExhaustion: allOrgs.filter(org => 
+          Number(org.creditBalance || 0) < 500 && Number(org.creditBalance || 0) > 0
+        ).length
+      },
+      userActivity: {
+        activeUsers,
+        newSignupsThisWeek,
+        organizationsByTier: orgsByTier
+      }
+    };
+  }
+
+  // Payment Reminders (Finance Agent)
+  async getDelinquentNotes(orgId: number) {
+    const now = new Date();
+    return await db.select().from(notes)
+      .where(and(
+        eq(notes.organizationId, orgId),
+        eq(notes.status, "active"),
+        lte(notes.nextPaymentDate, now)
+      ))
+      .orderBy(notes.nextPaymentDate);
+  }
+
+  async getPendingReminders(limit = 50) {
+    const now = new Date();
+    return await db.select().from(paymentReminders)
+      .where(and(
+        eq(paymentReminders.status, "scheduled"),
+        lte(paymentReminders.scheduledFor, now)
+      ))
+      .orderBy(paymentReminders.scheduledFor)
+      .limit(limit);
+  }
+
+  async getRemindersForNote(noteId: number) {
+    return await db.select().from(paymentReminders)
+      .where(eq(paymentReminders.noteId, noteId))
+      .orderBy(desc(paymentReminders.createdAt));
+  }
+
+  async createPaymentReminder(reminder: InsertPaymentReminder) {
+    const [newReminder] = await db.insert(paymentReminders).values(reminder).returning();
+    return newReminder;
+  }
+
+  async updatePaymentReminder(id: number, updates: Partial<InsertPaymentReminder>) {
+    const [updated] = await db.update(paymentReminders)
+      .set(updates)
+      .where(eq(paymentReminders.id, id))
+      .returning();
+    return updated;
+  }
+
+  async markReminderSent(id: number) {
+    const [updated] = await db.update(paymentReminders)
+      .set({ status: "sent", sentAt: new Date() })
+      .where(eq(paymentReminders.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getNotesNeedingReminders(orgId: number) {
+    const now = new Date();
+    const threeDaysFromNow = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+    const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
+    
+    return await db.select().from(notes)
+      .where(and(
+        eq(notes.organizationId, orgId),
+        eq(notes.status, "active"),
+        lte(notes.nextPaymentDate, threeDaysFromNow),
+        or(
+          sql`${notes.lastReminderSentAt} IS NULL`,
+          lte(notes.lastReminderSentAt, threeDaysAgo)
+        )
+      ))
+      .orderBy(notes.nextPaymentDate);
+  }
+
+  async getNotesWithUpcomingPayments(orgId: number, daysAhead: number) {
+    const now = new Date();
+    const futureDate = new Date(now.getTime() + daysAhead * 24 * 60 * 60 * 1000);
+    
+    return await db.select().from(notes)
+      .where(and(
+        eq(notes.organizationId, orgId),
+        eq(notes.status, "active"),
+        gte(notes.nextPaymentDate, now),
+        lte(notes.nextPaymentDate, futureDate)
+      ))
+      .orderBy(notes.nextPaymentDate);
+  }
+
+  async getFinancePortfolioHealth(orgId: number) {
+    const activeNotes = await db.select().from(notes)
+      .where(and(
+        eq(notes.organizationId, orgId),
+        eq(notes.status, "active")
+      ));
+    
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+    
+    const remindersSent = await db.select({ count: count() })
+      .from(paymentReminders)
+      .where(and(
+        eq(paymentReminders.organizationId, orgId),
+        eq(paymentReminders.status, "sent"),
+        gte(paymentReminders.sentAt, startOfMonth)
+      ));
+    
+    const stats = {
+      totalActiveNotes: activeNotes.length,
+      totalBalance: activeNotes.reduce((sum, n) => sum + Number(n.currentBalance || 0), 0),
+      currentNotes: 0,
+      earlyDelinquent: 0,
+      delinquent: 0,
+      seriouslyDelinquent: 0,
+      defaultCandidates: 0,
+      remindersSentThisMonth: remindersSent[0]?.count || 0,
+      collectionsThisMonth: 0,
+    };
+    
+    for (const note of activeNotes) {
+      const delinquencyStatus = note.delinquencyStatus || "current";
+      switch (delinquencyStatus) {
+        case "current":
+          stats.currentNotes++;
+          break;
+        case "early_delinquent":
+          stats.earlyDelinquent++;
+          break;
+        case "delinquent":
+          stats.delinquent++;
+          break;
+        case "seriously_delinquent":
+          stats.seriouslyDelinquent++;
+          break;
+        case "default_candidate":
+          stats.defaultCandidates++;
+          stats.collectionsThisMonth++;
+          break;
+      }
+    }
+    
+    return stats;
   }
 }
 

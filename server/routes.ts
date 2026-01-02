@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
 import { storage, calculateMonthlyPayment, db } from "./storage";
 import { z } from "zod";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { 
   insertLeadSchema, insertPropertySchema, insertNoteSchema, 
   insertCampaignSchema, insertAgentTaskSchema, insertDealSchema,
@@ -28,6 +28,15 @@ import { checkUsageLimit, getAllUsageLimits, UsageLimitError, TIER_LIMITS } from
 
 // Usage metering for credits
 import { usageMeteringService, creditService } from "./services/credits";
+
+// Lead nurturing
+import { leadNurturerService } from "./services/leadNurturer";
+
+// Finance agent
+import { financeAgentService } from "./services/financeAgent";
+
+// Onboarding
+import { onboardingService, type BusinessType } from "./services/onboarding";
 
 // ============================================
 // RATE LIMITER (In-memory for portal endpoints)
@@ -176,6 +185,90 @@ export async function registerRoutes(
     res.json(updated);
   });
   
+  // ============================================
+  // ONBOARDING
+  // ============================================
+  
+  api.get("/api/onboarding/status", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const status = await onboardingService.getOnboardingStatus(org.id);
+      res.json(status);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+  
+  api.put("/api/onboarding/step", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { step, data, skipped } = req.body;
+      
+      if (typeof step !== "number" || step < 0 || step > 4) {
+        return res.status(400).json({ message: "Invalid step number" });
+      }
+      
+      const status = await onboardingService.updateOnboardingStep(
+        org.id, 
+        step, 
+        data || {},
+        skipped || false
+      );
+      res.json(status);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+  
+  api.post("/api/onboarding/provision", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { businessType } = req.body;
+      
+      if (!["land_flipper", "note_investor", "hybrid"].includes(businessType)) {
+        return res.status(400).json({ message: "Invalid business type" });
+      }
+      
+      const result = await onboardingService.provisionTemplates(org.id, businessType as BusinessType);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+  
+  api.post("/api/onboarding/complete", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      await onboardingService.completeOnboarding(org.id);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+  
+  api.post("/api/onboarding/tips", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { step } = req.body;
+      
+      const stepNumber = typeof step === "number" ? step : 0;
+      const tips = await onboardingService.generatePersonalizedTips(org.id, stepNumber);
+      res.json({ tips });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+  
+  api.post("/api/onboarding/reset", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      await onboardingService.resetOnboarding(org.id);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+  
   api.get("/api/subscription/tiers", async (req, res) => {
     res.json(SUBSCRIPTION_TIERS);
   });
@@ -252,6 +345,85 @@ export async function registerRoutes(
   api.delete("/api/leads/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     await storage.deleteLead(Number(req.params.id));
     res.status(204).send();
+  });
+  
+  // Lead Nurturing Endpoints
+  api.get("/api/leads/insights", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const insights = await leadNurturerService.getLeadInsights(org.id);
+    res.json(insights);
+  });
+
+  api.get("/api/leads/:id/activities", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const leadId = Number(req.params.id);
+    const limit = req.query.limit ? Number(req.query.limit) : 50;
+    const activities = await storage.getLeadActivities(leadId, limit);
+    res.json(activities);
+  });
+
+  api.post("/api/leads/:id/score", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const leadId = Number(req.params.id);
+    
+    const lead = await storage.getLead(org.id, leadId);
+    if (!lead) {
+      return res.status(404).json({ message: "Lead not found" });
+    }
+    
+    const scoredLead = await leadNurturerService.scoreLead(lead);
+    res.json({
+      lead: scoredLead,
+      score: scoredLead.score,
+      scoreFactors: scoredLead.scoreFactors,
+      nurturingStage: scoredLead.nurturingStage,
+    });
+  });
+
+  api.post("/api/leads/:id/nurture", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const leadId = Number(req.params.id);
+    
+    const lead = await storage.getLead(org.id, leadId);
+    if (!lead) {
+      return res.status(404).json({ message: "Lead not found" });
+    }
+
+    const usageResult = await usageMeteringService.recordUsage(
+      org.id,
+      "ai_response",
+      1,
+      { feature: "lead_nurturing", leadId }
+    );
+
+    if (usageResult.insufficientCredits) {
+      return res.status(402).json({
+        message: "Insufficient credits for AI follow-up generation",
+        error: "INSUFFICIENT_CREDITS",
+      });
+    }
+
+    const followUp = await leadNurturerService.generateFollowUp(lead);
+    
+    if (!followUp) {
+      return res.status(500).json({ message: "Failed to generate follow-up message" });
+    }
+
+    await storage.createLeadActivity({
+      organizationId: org.id,
+      leadId,
+      type: "ai_followup_generated",
+      description: `AI generated follow-up: ${followUp.subject}`,
+      metadata: {
+        subject: followUp.subject,
+        messagePreview: followUp.message.substring(0, 100),
+      },
+    });
+
+    res.json({
+      subject: followUp.subject,
+      message: followUp.message,
+      creditsUsed: 1,
+    });
   });
   
   api.get("/api/leads/export", isAuthenticated, getOrCreateOrg, async (req, res) => {
@@ -909,6 +1081,67 @@ export async function registerRoutes(
     );
     res.json({ monthlyPayment: payment });
   });
+
+  // ============================================
+  // FINANCE AGENT - DELINQUENCY & REMINDERS
+  // ============================================
+  
+  api.get("/api/notes/delinquent", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const delinquentNotes = await storage.getDelinquentNotes(org.id);
+    res.json(delinquentNotes);
+  });
+
+  api.get("/api/notes/:id/reminders", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const noteId = Number(req.params.id);
+    const note = await storage.getNote(org.id, noteId);
+    if (!note) return res.status(404).json({ message: "Note not found" });
+    
+    const reminders = await storage.getRemindersForNote(noteId);
+    res.json(reminders);
+  });
+
+  api.post("/api/notes/:id/send-reminder", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const noteId = Number(req.params.id);
+      const { type = "due" } = req.body;
+      
+      const validTypes = ["upcoming", "due", "late", "final_warning"];
+      if (!validTypes.includes(type)) {
+        return res.status(400).json({ message: "Invalid reminder type" });
+      }
+      
+      const result = await financeAgentService.sendManualReminder(noteId, org.id, type);
+      
+      if (!result.success) {
+        return res.status(400).json({ message: result.error });
+      }
+      
+      res.json({ success: true, reminderId: result.reminderId });
+    } catch (err: any) {
+      console.error("Error sending manual reminder:", err);
+      res.status(500).json({ message: err.message || "Failed to send reminder" });
+    }
+  });
+
+  api.get("/api/finance/health", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const health = await storage.getFinancePortfolioHealth(org.id);
+    res.json(health);
+  });
+
+  api.post("/api/finance/process", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const result = await financeAgentService.processOrganizationNotes(org.id);
+      res.json(result);
+    } catch (err: any) {
+      console.error("Error processing finance agent:", err);
+      res.status(500).json({ message: err.message || "Failed to process notes" });
+    }
+  });
   
   // ============================================
   // DOCUMENT GENERATION
@@ -1317,6 +1550,81 @@ export async function registerRoutes(
       });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
+    }
+  });
+  
+  // ============================================
+  // CAMPAIGN OPTIMIZATIONS
+  // ============================================
+  
+  api.get("/api/campaigns/analytics", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { campaignOptimizerService } = await import("./services/campaignOptimizer");
+      const analytics = await campaignOptimizerService.getCampaignAnalytics(org.id);
+      res.json(analytics);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || "Failed to get campaign analytics" });
+    }
+  });
+  
+  api.get("/api/campaigns/:id/optimizations", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const campaignId = parseInt(req.params.id);
+      
+      const campaign = await storage.getCampaign(org.id, campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+      
+      const optimizations = await storage.getCampaignOptimizations(campaignId);
+      res.json(optimizations);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || "Failed to get optimizations" });
+    }
+  });
+  
+  api.post("/api/campaigns/:id/optimize", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const campaignId = parseInt(req.params.id);
+      
+      const campaign = await storage.getCampaign(org.id, campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+      
+      const { campaignOptimizerService } = await import("./services/campaignOptimizer");
+      const result = await campaignOptimizerService.optimizeCampaign(campaign);
+      
+      res.json({
+        success: true,
+        campaignId,
+        metrics: result.metrics,
+        score: result.score,
+        suggestionsGenerated: result.savedOptimizations,
+        suggestions: result.suggestions,
+      });
+    } catch (error: any) {
+      console.error("Campaign optimization error:", error);
+      res.status(500).json({ error: error.message || "Failed to optimize campaign" });
+    }
+  });
+  
+  api.put("/api/optimizations/:id/implement", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const optimizationId = parseInt(req.params.id);
+      const { resultDelta } = req.body;
+      
+      const updated = await storage.markOptimizationImplemented(optimizationId, resultDelta || null);
+      if (!updated) {
+        return res.status(404).json({ error: "Optimization not found" });
+      }
+      
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || "Failed to mark optimization as implemented" });
     }
   });
   
@@ -2007,6 +2315,40 @@ export async function registerRoutes(
       );
       
       res.json({ checkoutUrl: session.url });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Get auto-top-up settings
+  api.get("/api/credits/auto-top-up", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      res.json({
+        enabled: org.autoTopUpEnabled || false,
+        thresholdCents: org.autoTopUpThresholdCents || 200,
+        amountCents: org.autoTopUpAmountCents || 2500,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Update auto-top-up settings
+  api.post("/api/credits/auto-top-up", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { usageMeteringService } = await import("./services/credits");
+      const org = (req as any).organization;
+      const { enabled, thresholdCents, amountCents } = req.body;
+      
+      await usageMeteringService.updateAutoTopUpSettings(
+        org.id,
+        enabled === true,
+        thresholdCents,
+        amountCents
+      );
+      
+      res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -2926,6 +3268,177 @@ Seller Signature (if applicable)
     } catch (err: any) {
       console.error("Clear data error:", err);
       res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // ADMIN / FOUNDER DASHBOARD
+  // ============================================
+  
+  async function isFounderAdmin(req: Request, res: Response, next: NextFunction) {
+    if (!req.user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+    
+    const user = req.user as any;
+    const userId = user.claims?.sub || user.id;
+    const userEmail = user.claims?.email || user.email;
+    
+    const founderEmail = process.env.FOUNDER_EMAIL;
+    if (founderEmail && userEmail === founderEmail) {
+      return next();
+    }
+    
+    const firstOrg = await storage.getOrganization(1);
+    if (firstOrg && firstOrg.ownerId === userId) {
+      return next();
+    }
+    
+    const userOrg = await storage.getOrganizationByOwner(userId);
+    if (userOrg) {
+      const teamMember = await storage.getTeamMember(userOrg.id, userId);
+      if (teamMember && teamMember.role === 'owner') {
+        return next();
+      }
+    }
+    
+    return res.status(403).json({ message: "Access denied. Admin privileges required." });
+  }
+
+  api.get("/api/admin/check", isAuthenticated, isFounderAdmin, async (req, res) => {
+    res.json({ isAdmin: true });
+  });
+
+  api.get("/api/admin/dashboard", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const dashboardData = await storage.getAdminDashboardData();
+      res.json(dashboardData);
+    } catch (err: any) {
+      console.error("Admin dashboard error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.get("/api/admin/alerts", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const status = req.query.status as string | undefined;
+      const alerts = await storage.getSystemAlerts(undefined, status);
+      res.json(alerts);
+    } catch (err: any) {
+      console.error("Admin alerts error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.put("/api/admin/alerts/:id/acknowledge", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const alertId = Number(req.params.id);
+      const updated = await storage.acknowledgeAlert(alertId);
+      res.json(updated);
+    } catch (err: any) {
+      console.error("Acknowledge alert error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.put("/api/admin/alerts/:id/resolve", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const alertId = Number(req.params.id);
+      const updated = await storage.resolveAlert(alertId);
+      res.json(updated);
+    } catch (err: any) {
+      console.error("Resolve alert error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.get("/api/admin/organizations", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const orgs = await storage.getAllOrganizations();
+      res.json(orgs);
+    } catch (err: any) {
+      console.error("Admin orgs error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.get("/api/admin/revenue", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const dashboardData = await storage.getAdminDashboardData();
+      res.json({
+        ...dashboardData.revenue,
+        revenueAtRisk: dashboardData.revenueAtRisk
+      });
+    } catch (err: any) {
+      console.error("Admin revenue error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.get("/api/integrations/status", isAuthenticated, async (req, res) => {
+    try {
+      const { communicationsService } = await import('./services/communications');
+      const status = communicationsService.getChannelStatus();
+      res.json(status);
+    } catch (err: any) {
+      console.error("Integration status error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.post("/api/communications/send", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { type, leadId, subject, content, template, variables } = req.body;
+      
+      if (!leadId || !type || !content) {
+        return res.status(400).json({ message: "leadId, type, and content are required" });
+      }
+      
+      const lead = await storage.getLead(org.id, leadId);
+      if (!lead) {
+        return res.status(404).json({ message: "Lead not found" });
+      }
+      
+      const { communicationsService } = await import('./services/communications');
+      const result = await communicationsService.sendToLead({
+        organizationId: org.id,
+        leadId: lead.id,
+        channel: type === 'email' ? 'email' : type === 'sms' ? 'sms' : 'both',
+        subject,
+        message: content,
+      });
+      
+      res.json(result);
+    } catch (err: any) {
+      console.error("Communications send error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.get("/api/system/health", async (req, res) => {
+    try {
+      const checks = {
+        database: false,
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
+        memory: process.memoryUsage()
+      };
+      
+      try {
+        const result = await db.execute(sql`SELECT 1 as ok`);
+        checks.database = true;
+      } catch (dbErr: any) {
+        console.error("[Health] Database check failed:", dbErr.message);
+        checks.database = false;
+      }
+      
+      res.json({
+        status: checks.database ? 'healthy' : 'degraded',
+        checks
+      });
+    } catch (err: any) {
+      res.status(500).json({ status: 'unhealthy', error: err.message });
     }
   });
 

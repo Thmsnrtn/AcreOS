@@ -9,7 +9,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, 
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { OnboardingModal } from "@/components/onboarding-modal";
+import { OnboardingWizard } from "@/components/onboarding-wizard";
 import { GettingStartedChecklist } from "@/components/getting-started-checklist";
 
 export default function Dashboard() {
@@ -64,7 +64,7 @@ export default function Dashboard() {
   return (
     <div className="flex min-h-screen bg-background desert-gradient">
       <Sidebar />
-      <OnboardingModal />
+      <OnboardingWizard />
       <main className="flex-1 md:ml-[17rem] p-4 pt-16 md:pt-8 md:p-8 pb-24 md:pb-8 overflow-x-hidden">
         <div className="max-w-7xl mx-auto space-y-8">
           

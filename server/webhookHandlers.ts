@@ -25,6 +25,7 @@ export class WebhookHandlers {
       throw new Error('Invalid webhook payload');
     }
 
+    // Handle checkout session completed
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object as Stripe.Checkout.Session;
       
@@ -39,8 +40,122 @@ export class WebhookHandlers {
       }
     }
 
+    // Handle invoice payment failed - trigger dunning
+    if (event.type === 'invoice.payment_failed') {
+      const invoice = event.data.object as Stripe.Invoice;
+      await WebhookHandlers.processPaymentFailed(invoice);
+      return;
+    }
+
+    // Handle invoice payment succeeded - resolve dunning
+    if (event.type === 'invoice.payment_succeeded') {
+      const invoice = event.data.object as Stripe.Invoice;
+      await WebhookHandlers.processPaymentSucceeded(invoice);
+      return;
+    }
+
+    // Handle subscription updates
+    if (event.type === 'customer.subscription.deleted') {
+      const subscription = event.data.object as Stripe.Subscription;
+      await WebhookHandlers.processSubscriptionCancelled(subscription);
+      return;
+    }
+
     const sync = await getStripeSync();
     await sync.processWebhook(payload, signature);
+  }
+
+  static async processPaymentFailed(invoice: Stripe.Invoice): Promise<void> {
+    try {
+      const customerId = typeof invoice.customer === 'string' 
+        ? invoice.customer 
+        : invoice.customer?.id;
+      
+      if (!customerId) {
+        console.error('No customer ID on failed invoice');
+        return;
+      }
+
+      // Find org by stripe customer ID
+      const org = await storage.getOrganizationByStripeCustomerId(customerId);
+      if (!org) {
+        console.log(`No organization found for Stripe customer: ${customerId}`);
+        return;
+      }
+
+      const subscriptionId = (invoice as any).subscription 
+        ? (typeof (invoice as any).subscription === 'string' ? (invoice as any).subscription : (invoice as any).subscription?.id)
+        : '';
+
+      const { dunningService } = await import('./services/dunning');
+      await dunningService.handlePaymentFailed(
+        org.id,
+        invoice.id,
+        subscriptionId || '',
+        invoice.amount_due,
+        invoice.attempt_count || 1
+      );
+
+      console.log(`Payment failed processed: Org ${org.id}, Invoice ${invoice.id}, Amount: $${invoice.amount_due / 100}`);
+    } catch (err) {
+      console.error('Error processing payment failed:', err);
+    }
+  }
+
+  static async processPaymentSucceeded(invoice: Stripe.Invoice): Promise<void> {
+    try {
+      const customerId = typeof invoice.customer === 'string' 
+        ? invoice.customer 
+        : invoice.customer?.id;
+      
+      if (!customerId) {
+        return;
+      }
+
+      const org = await storage.getOrganizationByStripeCustomerId(customerId);
+      if (!org) {
+        return;
+      }
+
+      // Only process if org was in dunning
+      if (org.dunningStage && org.dunningStage !== 'none') {
+        const { dunningService } = await import('./services/dunning');
+        await dunningService.handlePaymentSucceeded(
+          org.id,
+          invoice.id,
+          invoice.amount_paid
+        );
+
+        console.log(`Payment succeeded, dunning resolved: Org ${org.id}, Amount: $${invoice.amount_paid / 100}`);
+      }
+    } catch (err) {
+      console.error('Error processing payment succeeded:', err);
+    }
+  }
+
+  static async processSubscriptionCancelled(subscription: Stripe.Subscription): Promise<void> {
+    try {
+      const customerId = typeof subscription.customer === 'string'
+        ? subscription.customer
+        : subscription.customer?.id;
+
+      if (!customerId) return;
+
+      const org = await storage.getOrganizationByStripeCustomerId(customerId);
+      if (!org) return;
+
+      // Update org to free tier
+      await storage.updateOrganization(org.id, {
+        subscriptionTier: 'free',
+        subscriptionStatus: 'cancelled',
+        dunningStage: 'cancelled',
+        stripeSubscriptionId: null,
+      });
+
+      console.log(`Subscription cancelled: Org ${org.id}`);
+    } catch (err) {
+      console.error('Error processing subscription cancelled:', err);
+    }
   }
 
   static async processCreditPurchase(session: Stripe.Checkout.Session): Promise<void> {

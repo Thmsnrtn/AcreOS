@@ -419,39 +419,49 @@ export default function Settings() {
                 />
               </div>
               
-              {settings?.onboardingCompleted && (
-                <div className="flex items-center justify-between gap-4 pt-4 border-t">
-                  <div className="space-y-0.5">
-                    <Label className="text-base">Restart Onboarding</Label>
-                    <p className="text-sm text-muted-foreground">
-                      View the welcome tour again
-                    </p>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={async () => {
-                      await updateOrgMutation.mutateAsync({
-                        settings: {
-                          ...(organization?.settings || {}),
-                          onboardingCompleted: false,
-                          checklistDismissed: false,
-                          showTips: true,
-                        },
-                      });
-                      toast({
-                        title: "Onboarding reset",
-                        description: "Refresh the page to see the welcome tour.",
-                      });
-                    }}
-                    disabled={updateOrgMutation.isPending}
-                    data-testid="button-restart-onboarding"
-                  >
-                    <RotateCcw className="w-4 h-4 mr-2" />
-                    Restart Tour
-                  </Button>
+              <div className="flex items-center justify-between gap-4 pt-4 border-t">
+                <div className="space-y-0.5">
+                  <Label className="text-base">Start Onboarding Tour</Label>
+                  <p className="text-sm text-muted-foreground">
+                    {settings?.onboardingCompleted 
+                      ? "Re-run the guided setup wizard to update your configuration"
+                      : "Complete the guided setup wizard to configure your account"}
+                  </p>
                 </div>
-              )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    try {
+                      const res = await fetch("/api/onboarding/reset", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        credentials: "include",
+                      });
+                      if (res.ok) {
+                        queryClient.invalidateQueries({ queryKey: ["/api/organization"] });
+                        queryClient.invalidateQueries({ queryKey: ["/api/onboarding/status"] });
+                        toast({
+                          title: "Onboarding reset",
+                          description: "Navigate to the Dashboard to start the setup wizard.",
+                        });
+                        window.location.href = "/";
+                      }
+                    } catch (error) {
+                      toast({
+                        title: "Error",
+                        description: "Failed to reset onboarding",
+                        variant: "destructive",
+                      });
+                    }
+                  }}
+                  disabled={updateOrgMutation.isPending}
+                  data-testid="button-restart-onboarding"
+                >
+                  <RotateCcw className="w-4 h-4 mr-2" />
+                  {settings?.onboardingCompleted ? "Restart Tour" : "Start Tour"}
+                </Button>
+              </div>
             </CardContent>
           </Card>
 

@@ -20,6 +20,7 @@ import AITeamPage from "@/pages/ai-team";
 import SupportPage from "@/pages/support";
 import SettingsPage from "@/pages/settings";
 import AdminSupportPage from "@/pages/admin-support";
+import FounderDashboard from "@/pages/founder-dashboard";
 import AuthPage from "@/pages/auth-page";
 import BorrowerPortal from "@/pages/borrower-portal";
 import NotFound from "@/pages/not-found";
@@ -95,6 +96,9 @@ function Router() {
       </Route>
       <Route path="/admin/support">
         {() => <ProtectedRoute component={AdminSupportPage} />}
+      </Route>
+      <Route path="/founder">
+        {() => <ProtectedRoute component={FounderDashboard} />}
       </Route>
 
       <Route component={NotFound} />

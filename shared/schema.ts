@@ -22,6 +22,26 @@ export const organizations = pgTable("organizations", {
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
   creditBalance: numeric("credit_balance").default("0"), // prepaid credit balance in cents
+  // Dunning state
+  dunningStage: text("dunning_stage").default("none"), // none, grace_period, warning, restricted, suspended, cancelled
+  dunningStartedAt: timestamp("dunning_started_at"),
+  lastPaymentFailedAt: timestamp("last_payment_failed_at"),
+  // Auto top-up settings
+  autoTopUpEnabled: boolean("auto_top_up_enabled").default(false),
+  autoTopUpThresholdCents: integer("auto_top_up_threshold_cents").default(200), // Trigger when below $2
+  autoTopUpAmountCents: integer("auto_top_up_amount_cents").default(2500), // Add $25
+  // Onboarding wizard state
+  onboardingCompleted: boolean("onboarding_completed").default(false),
+  onboardingStep: integer("onboarding_step").default(0),
+  onboardingData: jsonb("onboarding_data").$type<{
+    businessType?: "land_flipper" | "note_investor" | "hybrid";
+    dataImported?: boolean;
+    stripeConnected?: boolean;
+    campaignCreated?: boolean;
+    completedSteps?: number[];
+    skippedSteps?: number[];
+    aiTips?: string[];
+  }>(),
   settings: jsonb("settings").$type<{
     timezone?: string;
     currency?: string;
@@ -79,6 +99,25 @@ export const leads = pgTable("leads", {
   tags: jsonb("tags").$type<string[]>(),
   assignedTo: integer("assigned_to"), // team member ID
   lastContactedAt: timestamp("last_contacted_at"),
+  
+  // Lead Scoring & Nurturing
+  score: integer("score"), // 0-100 lead score
+  scoreFactors: jsonb("score_factors").$type<{
+    responseRecency?: number;
+    emailEngagement?: number;
+    sourceBonus?: number;
+    statusBonus?: number;
+    recencyPenalty?: number;
+    total?: number;
+  }>(),
+  lastScoreAt: timestamp("last_score_at"),
+  emailOpens: integer("email_opens").default(0),
+  emailClicks: integer("email_clicks").default(0),
+  responses: integer("responses").default(0),
+  nurturingStage: text("nurturing_stage").default("new"), // hot, warm, cold, dead, new
+  nextFollowUpAt: timestamp("next_follow_up_at"),
+  lastAIMessageAt: timestamp("last_ai_message_at"),
+  
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -302,6 +341,12 @@ export const notes = pgTable("notes", {
   // Pending checkout session ID for webhook verification
   pendingCheckoutSessionId: text("pending_checkout_session_id"),
   
+  // Delinquency tracking
+  lastReminderSentAt: timestamp("last_reminder_sent_at"),
+  reminderCount: integer("reminder_count").default(0),
+  daysDelinquent: integer("days_delinquent").default(0),
+  delinquencyStatus: text("delinquency_status").default("current"), // current, early_delinquent, delinquent, seriously_delinquent, default_candidate
+  
   notes: text("notes_text"), // Renamed to avoid conflict with table name
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -334,6 +379,33 @@ export const payments = pgTable("payments", {
   processedAt: timestamp("processed_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+// Payment reminders for automated delinquency management
+export const paymentReminders = pgTable("payment_reminders", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  noteId: integer("note_id").references(() => notes.id).notNull(),
+  borrowerId: integer("borrower_id").references(() => leads.id),
+  
+  // Reminder type and timing
+  type: text("type").notNull(), // upcoming, due, late, final_warning
+  scheduledFor: timestamp("scheduled_for").notNull(),
+  sentAt: timestamp("sent_at"),
+  
+  // Delivery settings
+  channel: text("channel").notNull().default("email"), // email, sms, both
+  content: text("content"), // Generated message content
+  
+  // Status tracking
+  status: text("status").notNull().default("scheduled"), // scheduled, sent, failed, cancelled
+  failureReason: text("failure_reason"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertPaymentReminderSchema = createInsertSchema(paymentReminders).omit({ id: true, createdAt: true });
+export type InsertPaymentReminder = z.infer<typeof insertPaymentReminderSchema>;
+export type PaymentReminder = typeof paymentReminders.$inferSelect;
 
 // ============================================
 // MARKETING CAMPAIGNS
@@ -375,10 +447,49 @@ export const campaigns = pgTable("campaigns", {
   budget: numeric("budget"),
   spent: numeric("spent").default("0"),
   
+  // Optimization tracking
+  lastOptimizedAt: timestamp("last_optimized_at"),
+  optimizationScore: integer("optimization_score"), // 0-100
+  
   createdBy: integer("created_by"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+// Campaign optimizations (AI-powered suggestions)
+export const campaignOptimizations = pgTable("campaign_optimizations", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  campaignId: integer("campaign_id").references(() => campaigns.id).notNull(),
+  
+  type: text("type").notNull(), // content, timing, audience, budget
+  suggestion: text("suggestion").notNull(),
+  reasoning: text("reasoning").notNull(),
+  priority: text("priority").notNull().default("medium"), // high, medium, low
+  
+  implemented: boolean("implemented").default(false),
+  implementedAt: timestamp("implemented_at"),
+  resultDelta: jsonb("result_delta").$type<{
+    before?: {
+      openRate?: number;
+      clickRate?: number;
+      responseRate?: number;
+      costPerResponse?: number;
+    };
+    after?: {
+      openRate?: number;
+      clickRate?: number;
+      responseRate?: number;
+      costPerResponse?: number;
+    };
+  }>(),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertCampaignOptimizationSchema = createInsertSchema(campaignOptimizations).omit({ id: true, createdAt: true });
+export type InsertCampaignOptimization = z.infer<typeof insertCampaignOptimizationSchema>;
+export type CampaignOptimization = typeof campaignOptimizations.$inferSelect;
 
 // ============================================
 // AI AGENTS & AUTOMATION
@@ -932,7 +1043,10 @@ export const insertTeamMemberSchema = createInsertSchema(teamMembers).omit({
   id: true, invitedAt: true, joinedAt: true 
 });
 export const insertLeadSchema = createInsertSchema(leads).omit({ 
-  id: true, createdAt: true, updatedAt: true 
+  id: true, createdAt: true, updatedAt: true, lastScoreAt: true 
+});
+export const insertLeadActivitySchema = createInsertSchema(leadActivities).omit({ 
+  id: true, createdAt: true 
 });
 export const insertPropertySchema = createInsertSchema(properties).omit({ 
   id: true, createdAt: true, updatedAt: true 
@@ -1014,6 +1128,13 @@ export type InsertTeamMember = z.infer<typeof insertTeamMemberSchema>;
 // Leads
 export type Lead = typeof leads.$inferSelect;
 export type InsertLead = z.infer<typeof insertLeadSchema>;
+
+// Lead Activities
+export type LeadActivity = typeof leadActivities.$inferSelect;
+export type InsertLeadActivity = z.infer<typeof insertLeadActivitySchema>;
+
+// Nurturing Stage Type
+export type NurturingStage = "hot" | "warm" | "cold" | "dead" | "new";
 
 // Properties
 export type Property = typeof properties.$inferSelect;
@@ -1533,3 +1654,163 @@ export const DEFAULT_SUPPORT_PLAYBOOKS = [
     canEscalate: true,
   },
 ] as const;
+
+// ============================================
+// DUNNING & PAYMENT RECOVERY
+// ============================================
+
+// Dunning stages for progressive enforcement
+export const DUNNING_STAGES = {
+  none: { name: "Active", accessLevel: "full" },
+  grace_period: { name: "Grace Period", accessLevel: "full" },
+  warning: { name: "Payment Warning", accessLevel: "full" },
+  restricted: { name: "Restricted", accessLevel: "limited" },
+  suspended: { name: "Suspended", accessLevel: "none" },
+  cancelled: { name: "Cancelled", accessLevel: "none" },
+} as const;
+
+export type DunningStage = keyof typeof DUNNING_STAGES;
+
+// Dunning events track each payment failure and recovery attempt
+export const dunningEvents = pgTable("dunning_events", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  
+  // Stripe references
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  stripeInvoiceId: text("stripe_invoice_id"),
+  stripeCustomerId: text("stripe_customer_id"),
+  
+  // Event details
+  eventType: text("event_type").notNull(), // payment_failed, payment_succeeded, subscription_cancelled, etc.
+  attemptNumber: integer("attempt_number").notNull().default(1),
+  amountDueCents: integer("amount_due_cents"),
+  amountPaidCents: integer("amount_paid_cents"),
+  
+  // Status tracking
+  status: text("status").notNull().default("pending"), // pending, scheduled_retry, resolved, failed_final, escalated
+  dunningStage: text("dunning_stage").notNull().default("grace_period"), // current stage at time of event
+  
+  // Retry scheduling
+  nextRetryAt: timestamp("next_retry_at"),
+  retryCount: integer("retry_count").default(0),
+  maxRetries: integer("max_retries").default(4),
+  
+  // Notifications
+  notificationsSent: jsonb("notifications_sent").$type<Array<{
+    type: string;
+    sentAt: string;
+    channel: string;
+  }>>(),
+  
+  // Resolution
+  resolvedAt: timestamp("resolved_at"),
+  resolutionType: text("resolution_type"), // auto_recovered, manual_payment, subscription_cancelled, escalated
+  
+  // Metadata
+  metadata: jsonb("metadata").$type<Record<string, any>>(),
+  errorMessage: text("error_message"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertDunningEventSchema = createInsertSchema(dunningEvents).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertDunningEvent = z.infer<typeof insertDunningEventSchema>;
+export type DunningEvent = typeof dunningEvents.$inferSelect;
+
+// Default dunning configuration per tier
+export const DUNNING_CONFIG = {
+  retryScheduleDays: [3, 5, 7, 14], // Days after initial failure to retry
+  gracePeriodDays: 3, // Full access for first 3 days
+  warningPeriodDays: 7, // Warning stage days 4-7
+  restrictedPeriodDays: 14, // Restricted access days 8-14
+  finalCancellationDays: 21, // Cancel subscription after 21 days
+  notificationSchedule: [
+    { dayOffset: 0, type: "payment_failed", channel: "email" },
+    { dayOffset: 2, type: "reminder", channel: "email" },
+    { dayOffset: 6, type: "warning", channel: "email" },
+    { dayOffset: 13, type: "final_notice", channel: "email" },
+  ],
+} as const;
+
+// ============================================
+// FOUNDER ALERTS & SYSTEM NOTIFICATIONS
+// ============================================
+
+export const systemAlerts = pgTable("system_alerts", {
+  id: serial("id").primaryKey(),
+  
+  // Alert classification
+  alertType: text("alert_type").notNull(), // revenue_at_risk, high_churn, system_error, escalation, milestone
+  severity: text("severity").notNull().default("info"), // info, warning, critical
+  
+  // Content
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  
+  // Context
+  organizationId: integer("organization_id").references(() => organizations.id),
+  relatedEntityType: text("related_entity_type"), // organization, support_case, subscription, etc.
+  relatedEntityId: integer("related_entity_id"),
+  
+  // Status
+  status: text("status").notNull().default("new"), // new, acknowledged, resolved, dismissed
+  acknowledgedAt: timestamp("acknowledged_at"),
+  resolvedAt: timestamp("resolved_at"),
+  
+  // Auto-resolution
+  autoResolvable: boolean("auto_resolvable").default(false),
+  autoResolveAction: text("auto_resolve_action"),
+  
+  // Metadata
+  metadata: jsonb("metadata").$type<Record<string, any>>(),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertSystemAlertSchema = createInsertSchema(systemAlerts).omit({ id: true, createdAt: true });
+export type InsertSystemAlert = z.infer<typeof insertSystemAlertSchema>;
+export type SystemAlert = typeof systemAlerts.$inferSelect;
+
+// ============================================
+// API JOB QUEUE
+// ============================================
+
+export const apiJobs = pgTable("api_jobs", {
+  id: varchar("id", { length: 255 }).primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id),
+  type: text("type").notNull(), // openai, stripe, lob, sendgrid, twilio
+  operation: text("operation").notNull(),
+  payload: jsonb("payload"),
+  status: text("status").notNull().default("pending"), // pending, processing, retrying, completed, failed
+  retries: integer("retries").default(0),
+  maxRetries: integer("max_retries").default(3),
+  nextRetryAt: timestamp("next_retry_at"),
+  result: jsonb("result"),
+  error: text("error"),
+  createdAt: timestamp("created_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+});
+
+export const insertApiJobSchema = createInsertSchema(apiJobs).omit({ createdAt: true, completedAt: true });
+export type InsertApiJob = z.infer<typeof insertApiJobSchema>;
+export type ApiJob = typeof apiJobs.$inferSelect;
+
+// ============================================
+// DIGEST SUBSCRIPTIONS
+// ============================================
+
+export const digestSubscriptions = pgTable("digest_subscriptions", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id", { length: 255 }).notNull(),
+  organizationId: integer("organization_id").references(() => organizations.id),
+  frequency: text("frequency").notNull().default("weekly"), // daily, weekly, monthly
+  emailEnabled: boolean("email_enabled").default(true),
+  lastSentAt: timestamp("last_sent_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertDigestSubscriptionSchema = createInsertSchema(digestSubscriptions).omit({ id: true, createdAt: true });
+export type InsertDigestSubscription = z.infer<typeof insertDigestSubscriptionSchema>;
+export type DigestSubscription = typeof digestSubscriptions.$inferSelect;

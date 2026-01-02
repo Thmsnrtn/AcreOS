@@ -5,6 +5,10 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { getStripeSync } from "./stripeClient";
 import { WebhookHandlers } from "./webhookHandlers";
+import { leadNurturerService } from "./services/leadNurturer";
+import { db } from "./db";
+import { eq, sql } from "drizzle-orm";
+import { organizations } from "@shared/schema";
 
 const app = express();
 const httpServer = createServer(app);
@@ -169,6 +173,247 @@ app.use((req, res, next) => {
     },
     () => {
       log(`serving on port ${port}`);
+      
+      // Start lead nurturing background job (every 15 minutes)
+      startLeadNurturingJob();
+      
+      // Start campaign optimization background job (every hour)
+      startCampaignOptimizationJob();
+      
+      // Start finance agent background job (every 30 minutes)
+      startFinanceAgentJob();
+      
+      // Start API queue background job (every 10 seconds)
+      startApiQueueJob();
+      
+      // Start alerting background job (every hour)
+      startAlertingJob();
+      
+      // Start digest background job (every 6 hours)
+      startDigestJob();
     },
   );
 })();
+
+// Lead nurturing background job
+async function processLeadNurturing() {
+  try {
+    const activeOrgs = await db
+      .select({ id: organizations.id })
+      .from(organizations)
+      .where(sql`${organizations.subscriptionStatus} = 'active'`)
+      .limit(100);
+    
+    for (const org of activeOrgs) {
+      try {
+        const result = await leadNurturerService.processLeadsForOrg(org.id, {
+          scoringLimit: 20,
+          generateFollowUps: false,
+        });
+        
+        if (result.scored > 0 || result.errors.length > 0) {
+          log(`Lead nurturing for org ${org.id}: scored=${result.scored}, errors=${result.errors.length}`, 'nurturing');
+        }
+      } catch (err) {
+        log(`Lead nurturing error for org ${org.id}: ${err}`, 'nurturing');
+      }
+    }
+  } catch (err) {
+    log(`Lead nurturing job error: ${err}`, 'nurturing');
+  }
+}
+
+function startLeadNurturingJob() {
+  const FIFTEEN_MINUTES = 15 * 60 * 1000;
+  
+  log('Starting lead nurturing background job (every 15 minutes)', 'nurturing');
+  
+  // Run immediately on startup after a short delay
+  setTimeout(() => {
+    processLeadNurturing().catch(err => {
+      log(`Initial lead nurturing run failed: ${err}`, 'nurturing');
+    });
+  }, 30000); // Wait 30 seconds after startup
+  
+  // Then run every 15 minutes
+  setInterval(() => {
+    processLeadNurturing().catch(err => {
+      log(`Scheduled lead nurturing run failed: ${err}`, 'nurturing');
+    });
+  }, FIFTEEN_MINUTES);
+}
+
+// Campaign optimization background job
+async function processCampaignOptimizations() {
+  try {
+    const { campaignOptimizerService } = await import("./services/campaignOptimizer");
+    
+    const activeOrgs = await db
+      .select({ id: organizations.id })
+      .from(organizations)
+      .where(sql`${organizations.subscriptionStatus} = 'active'`)
+      .limit(100);
+    
+    for (const org of activeOrgs) {
+      try {
+        const result = await campaignOptimizerService.processOrganizationCampaigns(org.id, {
+          limit: 3,
+        });
+        
+        if (result.processed > 0 || result.errors.length > 0) {
+          log(`Campaign optimization for org ${org.id}: processed=${result.processed}, suggestions=${result.totalSuggestions}, errors=${result.errors.length}`, 'optimizer');
+        }
+      } catch (err) {
+        log(`Campaign optimization error for org ${org.id}: ${err}`, 'optimizer');
+      }
+    }
+  } catch (err) {
+    log(`Campaign optimization job error: ${err}`, 'optimizer');
+  }
+}
+
+function startCampaignOptimizationJob() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  
+  log('Starting campaign optimization background job (every hour)', 'optimizer');
+  
+  // Run after a short delay on startup
+  setTimeout(() => {
+    processCampaignOptimizations().catch(err => {
+      log(`Initial campaign optimization run failed: ${err}`, 'optimizer');
+    });
+  }, 60000); // Wait 1 minute after startup
+  
+  // Then run every hour
+  setInterval(() => {
+    processCampaignOptimizations().catch(err => {
+      log(`Scheduled campaign optimization run failed: ${err}`, 'optimizer');
+    });
+  }, ONE_HOUR);
+}
+
+// Finance agent background job for delinquency detection and payment reminders
+async function processFinanceAgent() {
+  try {
+    const { financeAgentService } = await import("./services/financeAgent");
+    
+    const result = await financeAgentService.runFinanceAgentJob();
+    
+    if (result.totalNotes > 0 || result.remindersSent > 0 || result.errors.length > 0) {
+      log(`Finance agent: orgs=${result.orgsProcessed}, notes=${result.totalNotes}, sent=${result.remindersSent}, scheduled=${result.remindersScheduled}, errors=${result.errors.length}`, 'finance');
+    }
+  } catch (err) {
+    log(`Finance agent job error: ${err}`, 'finance');
+  }
+}
+
+function startFinanceAgentJob() {
+  const THIRTY_MINUTES = 30 * 60 * 1000;
+  
+  log('Starting finance agent background job (every 30 minutes)', 'finance');
+  
+  // Run after a short delay on startup
+  setTimeout(() => {
+    processFinanceAgent().catch(err => {
+      log(`Initial finance agent run failed: ${err}`, 'finance');
+    });
+  }, 45000); // Wait 45 seconds after startup
+  
+  // Then run every 30 minutes
+  setInterval(() => {
+    processFinanceAgent().catch(err => {
+      log(`Scheduled finance agent run failed: ${err}`, 'finance');
+    });
+  }, THIRTY_MINUTES);
+}
+
+// API Queue background job
+async function processApiQueue() {
+  try {
+    const { apiQueueService } = await import('./services/apiQueue');
+    const result = await apiQueueService.processQueue();
+    
+    if (result.processed > 0 || result.failed > 0) {
+      log(`API queue: processed=${result.processed}, failed=${result.failed}`, 'queue');
+    }
+    
+    // Cleanup old completed jobs weekly
+    if (new Date().getDay() === 0) {
+      await apiQueueService.cleanupOldJobs(7);
+    }
+  } catch (err) {
+    log(`API queue job error: ${err}`, 'queue');
+  }
+}
+
+function startApiQueueJob() {
+  const TEN_SECONDS = 10 * 1000;
+  
+  log('Starting API queue background job (every 10 seconds)', 'queue');
+  
+  setInterval(() => {
+    processApiQueue().catch(err => {
+      log(`API queue run failed: ${err}`, 'queue');
+    });
+  }, TEN_SECONDS);
+}
+
+// Alerting background job
+async function processAlerts() {
+  try {
+    const { alertingService } = await import('./services/alerting');
+    const result = await alertingService.runDailyAlertCheck();
+    
+    if (result.alertsCreated > 0) {
+      log(`Alerting: checked=${result.checked}, created=${result.alertsCreated}`, 'alerting');
+    }
+  } catch (err) {
+    log(`Alerting job error: ${err}`, 'alerting');
+  }
+}
+
+function startAlertingJob() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  
+  log('Starting alerting background job (every hour)', 'alerting');
+  
+  // Run after startup delay
+  setTimeout(() => {
+    processAlerts().catch(err => {
+      log(`Initial alerting run failed: ${err}`, 'alerting');
+    });
+  }, 120000); // Wait 2 minutes after startup
+  
+  setInterval(() => {
+    processAlerts().catch(err => {
+      log(`Scheduled alerting run failed: ${err}`, 'alerting');
+    });
+  }, ONE_HOUR);
+}
+
+// Digest background job
+async function processDigests() {
+  try {
+    const { digestService } = await import('./services/digest');
+    const result = await digestService.processWeeklyDigests();
+    
+    if (result.sent > 0 || result.failed > 0) {
+      log(`Digests: sent=${result.sent}, failed=${result.failed}`, 'digest');
+    }
+  } catch (err) {
+    log(`Digest job error: ${err}`, 'digest');
+  }
+}
+
+function startDigestJob() {
+  const SIX_HOURS = 6 * 60 * 60 * 1000;
+  
+  log('Starting digest background job (every 6 hours)', 'digest');
+  
+  // Check every 6 hours (will only send on scheduled days)
+  setInterval(() => {
+    processDigests().catch(err => {
+      log(`Scheduled digest run failed: ${err}`, 'digest');
+    });
+  }, SIX_HOURS);
+}

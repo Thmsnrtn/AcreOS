@@ -2,7 +2,7 @@
 
 ## Overview
 
-AcreOS is a full-stack SaaS application designed for land investors to manage their operations. It provides CRM functionality for leads, property inventory tracking, financial note management, and AI-powered task automation. The platform is built as a multi-tenant system with organization-based data isolation and Stripe-powered subscription billing.
+AcreOS is a full-stack SaaS platform for land investors, offering CRM, property tracking, financial note management, and AI-powered automation. It supports multi-tenancy with organization-based data isolation and Stripe-powered subscription billing. The platform aims to streamline land investment operations, replacing tools like LgPass and GeekPay, and providing a comprehensive solution for managing leads, properties, deals, and finances with advanced AI capabilities.
 
 ## User Preferences
 
@@ -21,221 +21,47 @@ Preferred communication style: Simple, everyday language.
 
 ## System Architecture
 
-### Frontend Architecture
-- **Framework**: React 18 with TypeScript
-- **Routing**: Wouter (lightweight React router)
-- **State Management**: TanStack React Query for server state
-- **Styling**: Tailwind CSS with shadcn/ui component library (New York style)
-- **Charts**: Recharts for dashboard analytics
-- **Animations**: Framer Motion for page transitions
-- **Build Tool**: Vite with custom path aliases (@/, @shared/, @assets/)
+### Frontend
+- **Framework**: React 18 with TypeScript, Wouter for routing, TanStack React Query for state.
+- **Styling**: Tailwind CSS with shadcn/ui (New York style), Recharts for charts, Framer Motion for animations.
+- **Build**: Vite with custom path aliases.
+- **UI/UX**: macOS Tahoe-inspired design with specific color schemes (Sedona Desert for light/dark mode), glassmorphism effects, rounded corners, and system fonts.
+- **Multi-Platform Support**: PWA, Capacitor for iOS/Android mobile apps, and Tauri for desktop apps (macOS, Windows, Linux).
 
-The frontend follows a pages-based structure with protected routes requiring authentication. Components are organized into reusable UI primitives (shadcn/ui) and custom business components.
+### Backend
+- **Framework**: Express.js with TypeScript.
+- **Database**: PostgreSQL with Drizzle ORM.
+- **API**: RESTful endpoints with Zod validation.
+- **Architecture**: Three-layer (Routes, Storage, Schema) with esbuild for bundling.
+- **Multi-Tenancy**: Organization-based data isolation with automatic organization creation per user.
+- **Authentication**: Replit OAuth (OpenID Connect) with PostgreSQL-backed session management.
+- **Data Models**: Organizations, Team Members, Leads, Properties, Notes, Payments, Deals, Campaigns, Agent Tasks, Conversations/Messages.
 
-### Backend Architecture
-- **Framework**: Express.js with TypeScript
-- **Database ORM**: Drizzle ORM with PostgreSQL
-- **API Pattern**: RESTful endpoints with Zod validation
-- **Session Management**: express-session with PostgreSQL-backed store (connect-pg-simple)
-- **Build**: esbuild for production bundling with selective dependency bundling
-
-The server implements a three-layer architecture:
-1. Routes layer (server/routes.ts) - HTTP endpoint definitions
-2. Storage layer (server/storage.ts) - Database operations abstraction
-3. Schema layer (shared/schema.ts) - Drizzle table definitions and Zod validation schemas
-
-### Multi-Tenancy Model
-- Organizations serve as the primary tenant boundary
-- Each authenticated user gets an organization created automatically
-- Team members can be added to organizations with role-based permissions
-- All data queries are scoped by organizationId
-
-### Authentication System
-- Replit OAuth integration via OpenID Connect
-- Sessions stored in PostgreSQL with automatic expiration
-- User data synced from Replit profile on each login
-- Protected routes use isAuthenticated middleware
-
-### Data Models
-- **Organizations**: Tenant containers with subscription info
-- **Team Members**: Users within organizations with roles
-- **Leads**: CRM records for potential buyers/sellers
-- **Properties**: Land inventory with status tracking
-- **Notes**: Promissory notes with amortization schedules (GeekPay replacement)
-- **Payments**: Payment records with principal/interest split tracking
-- **Deals**: Transaction records linking leads and properties with pipeline stages
-- **Campaigns**: Marketing campaigns for direct mail, email, and SMS (LgPass replacement)
-- **Agent Tasks**: AI automation task queue
-- **Conversations/Messages**: Chat history for AI interactions
-
-### Key Features (LgPass/GeekPay Replacement)
-
-#### Finance Module (GeekPay Features)
-- Note/loan management with amortization schedules
-- Payment recording with automatic principal/interest split calculation
-- Borrower self-service portal (/portal/:accessToken)
-- Automatic balance updates and loan status transitions
-- Document generation for promissory notes
-
-#### Marketing Module (LgPass Features)
-- Direct mail campaign management
-- Email and SMS campaign support
-- Campaign metrics tracking (sent, delivered, opened, responded)
-- Budget tracking and spend monitoring
-
-#### Deal Pipeline
-- Kanban-style deal tracking board
-- Stages: Negotiating, Offer Sent, Countered, Accepted, In Escrow, Closed
-- Acquisition and disposition deal types
-- Property linking and closing details
-
-#### Document Generation
-- Promissory notes with borrower and property details
-- Warranty deeds with legal descriptions
-- Offer letters for lead outreach
+### Key Features
+- **Finance Module**: Note/loan management with amortization, payment recording, borrower portal.
+- **Marketing Module**: Direct mail, email, SMS campaign management with metrics and budget tracking.
+- **Deal Pipeline**: Kanban-style board for tracking acquisition and disposition deals.
+- **Document Generation**: Promissory notes, warranty deeds, offer letters.
+- **Usage Limits & Credits**: Tier-based feature usage limits, prepaid credit system for billable actions (email, SMS, AI, PDF, Comps, Direct Mail) with a usage dashboard and alerts.
+- **Data Import/Export**: CSV import/export for core data types.
+- **AI Agents (Autonomous Operations)**:
+    - **Lead Nurturing**: Scores leads, generates AI-powered follow-ups, segmentation.
+    - **Campaign Optimizer**: Analyzes campaign performance, provides AI-driven optimization suggestions.
+    - **Finance Agent**: 4-tier delinquency escalation and automated payment reminders.
+    - **API Queue System**: Manages rate-limited API calls with exponential backoff and retries.
+    - **Alerting Service**: Rule-based triggers for system issues and financial alerts.
+    - **Digest Service**: Weekly performance summaries for founders.
+    - **Communications Service**: Unified wrapper for email, SMS, and direct mail.
+    - **Onboarding Wizard**: AI-guided setup with business type templates.
+- **Founder Dashboard**: Analytics for revenue, system health, agent status, and alert management.
 
 ## External Dependencies
 
-### Database
-- **PostgreSQL**: Primary data store (requires DATABASE_URL environment variable)
-- **Drizzle Kit**: Database migrations via `db:push` command
-
-### Authentication
-- **Replit Auth**: OAuth provider using OpenID Connect
-- Requires ISSUER_URL, REPL_ID, and SESSION_SECRET environment variables
-
-### Payment Processing
-- **Stripe**: Subscription billing via Replit Stripe connector
-- Uses stripe-replit-sync for schema management
-- Products seeded with three tiers: Starter ($49/mo), Professional ($149/mo), Enterprise ($499/mo)
-- Webhook handling for subscription lifecycle events
-
-### AI Services
-- **OpenAI**: Via Replit AI Integrations (AI_INTEGRATIONS_OPENAI_API_KEY, AI_INTEGRATIONS_OPENAI_BASE_URL)
-- Chat completions for AI command center
-- Image generation using gpt-image-1 model
-- Batch processing utilities with rate limiting and retries
-
-### Development Tools
-- **Vite**: Development server with HMR
-- **Replit Plugins**: Runtime error overlay, cartographer, dev banner (dev only)
-
-## Multi-Platform Support
-
-### Progressive Web App (PWA)
-- Service worker for offline caching
-- Web app manifest for installation
-- iOS and Android home screen support
-- Push notification readiness
-
-### Mobile Apps (Capacitor)
-- **Configuration**: capacitor.config.ts
-- **Platforms**: iOS and Android
-- **Build**: See NATIVE_APPS.md for instructions
-- **Features**: Push notifications, haptic feedback, native keyboard handling
-
-### Desktop Apps (Tauri)
-- **Configuration**: src-tauri/tauri.conf.json
-- **Platforms**: macOS, Windows, Linux
-- **Build**: Requires Rust toolchain
-- Smaller and faster than Electron
-
-### Production Features
-- Error boundaries for graceful error handling
-- Offline indicator for connectivity status
-- Mobile bottom navigation for phone users
-- Safe area support for iOS notch devices
-- Responsive design for all screen sizes
-
-## Production Readiness Features (Implemented)
-
-### Usage Limit Enforcement
-- Tier-based limits: Free (10/5/5), Starter (100/50/25), Professional (1000/500/100), Enterprise (unlimited)
-- Enforced on leads, properties, notes, and AI requests
-- Visual usage display in Settings with progress bars
-- Upgrade prompts when at 80%+ capacity
-
-### Data Import/Export
-- CSV export for leads, properties, and notes
-- CSV import with preview, validation, and error reporting
-- Proper escaping and formatting for data integrity
-
-### Document Generation (jsPDF)
-- Promissory notes with amortization schedules
-- Warranty deeds with legal descriptions
-- Offer letters for seller outreach
-- AcreOS-branded headers on all documents
-
-### Borrower Payment Portal
-- Token-based access at /portal/:accessToken
-- Stripe one-time payments for loan payments
-- Payment verification and balance updates
-- Amortization schedule display
-
-### Due Diligence Checklists
-- Default templates with 16 land investment checks
-- Categories: Title Search, Physical, Legal, Financial
-- Progress tracking with completion badges
-- Notes field for each checklist item
-
-### Comps Analysis
-- Regrid API integration for nearby parcel lookup
-- Distance-weighted market value estimation
-- Caching to handle API rate limits
-- Visual display in property detail view
-
-### ROI Calculator
-- Deal analysis with all input parameters
-- Annualized ROI and cash-on-cash return
-- Available in Tools, Deal detail, and Property modal
-- Save analysis results to deal records
-
-### Usage Metering & Credits System (Pay-As-You-Go)
-- **Prepaid Credit Balance**: Organizations have a credit balance (in cents) for usage-based features
-- **Credit Purchases**: $10, $25, $50, $100 credit packs via Stripe one-time checkout
-- **Monthly Allowances**: Each subscription tier includes monthly credits (Free: $1, Starter: $10, Pro: $50, Scale: $250)
-- **Billable Actions** with per-action pricing:
-  - Email Sent: $0.01
-  - SMS Sent: $0.03
-  - AI Chat Request: $0.02
-  - AI Image Generation: $0.25
-  - PDF Document: $0.05
-  - Comps Analysis: $0.10
-  - Direct Mail Piece: $0.75
-- **Pre-action Credit Checks**: All billable endpoints verify sufficient credits before processing
-- **Usage Dashboard**: Visual breakdown of spending by category, transaction history, balance display
-- **Low Balance Alerts**: Warning banner when balance drops below $2.00
-- **Cost Confirmation Modals**: Pre-action confirmation for bulk operations showing estimated cost
-- **Atomic Balance Updates**: Race-condition-safe credit deductions using SQL atomic operations
-- **Database Tables**: usage_records (action tracking), credit_transactions (purchase/debit history), usage_rates (configurable pricing)
-
-### Pricing Transparency UI
-- **Pricing Guide Page**: Full breakdown of all billable action costs in Settings
-- **Cost Indicators**: Inline badges showing per-action costs throughout the app
-  - AI Command Center: "$0.02 per message" below chat input
-  - Finance/Notes: "$0.05" below PDF download buttons
-  - Comps Analysis: "$0.10 per query" below refresh button
-  - Campaign Creation: Cost summary showing email, SMS, and direct mail rates
-- **API Endpoints**:
-  - GET /api/pricing/rates - Returns all action costs and monthly allowances
-  - GET /api/campaigns/:id/estimate-cost - Estimates campaign cost with balance check
-
-### Direct Mail Integration (Lob API)
-- **Mail Types**: Postcards (4x6, 6x9, 6x11) and Letters (1-2 pages)
-- **Pricing**: $0.75-$1.45 per piece depending on type
-- **Credit Handling**: Upfront deduction with automatic refund for failed sends
-- **Usage Tracking**: Only successful sends are recorded in usage_records
-- **API Endpoint**: POST /api/campaigns/:id/send-direct-mail
-- **Requirements**: LOB_API_KEY secret (not yet configured)
-
-## Future Integrations (Not Yet Connected)
-
-### Email (SendGrid)
-- User dismissed the managed integration
-- To implement: Add SENDGRID_API_KEY secret manually
-- Or re-attempt integration setup via Replit connectors
-
-### SMS (Twilio)
-- Integration available but not yet set up
-- Use search_integrations("twilio") to configure
-- Required for campaign SMS sending
+- **Database**: PostgreSQL (main data store), Drizzle Kit (migrations).
+- **Authentication**: Replit Auth (OAuth/OpenID Connect).
+- **Payment Processing**: Stripe (subscription billing via Replit Stripe connector, one-time credit purchases).
+- **AI Services**: OpenAI (via Replit AI Integrations for chat completions and image generation).
+- **Mapping/Comps**: Regrid API (parcel lookup for comps analysis).
+- **Direct Mail**: Lob API (for sending direct mail pieces).
+- **Development Tools**: Vite, Replit Plugins.
+- **Future Integrations (configured but not fully connected)**: SendGrid (Email), Twilio (SMS).
