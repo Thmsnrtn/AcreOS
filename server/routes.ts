@@ -3741,7 +3741,10 @@ Seller Signature (if applicable)
     }
   });
   
-  // Verified Email Domains
+  // ============================================
+  // VERIFIED EMAIL DOMAINS (SendGrid Domain Authentication)
+  // ============================================
+  
   api.get("/api/email-domains", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = (req as any).organization;
@@ -3767,10 +3770,62 @@ Seller Signature (if applicable)
         return res.status(400).json({ message: "Domain already exists" });
       }
       
+      const integration = await storage.getOrganizationIntegration(org.id, 'sendgrid');
+      let dnsRecords: any[] = [];
+      let sendgridDomainId: string | undefined;
+      
+      if (integration?.credentials?.encrypted) {
+        const { decryptJsonCredentials } = await import('./services/encryption');
+        const credentials = decryptJsonCredentials<{ apiKey: string }>(
+          integration.credentials.encrypted,
+          org.id
+        );
+        
+        try {
+          const sgResponse = await fetch('https://api.sendgrid.com/v3/whitelabel/domains', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${credentials.apiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              domain: domain.toLowerCase(),
+              automatic_security: true,
+              custom_dkim_selector: 'sg',
+            }),
+          });
+          
+          if (sgResponse.ok) {
+            const sgData = await sgResponse.json();
+            sendgridDomainId = String(sgData.id);
+            dnsRecords = [];
+            
+            if (sgData.dns) {
+              for (const [key, record] of Object.entries(sgData.dns)) {
+                const rec = record as any;
+                dnsRecords.push({
+                  type: rec.type || 'CNAME',
+                  host: rec.host,
+                  data: rec.data,
+                  valid: rec.valid || false,
+                });
+              }
+            }
+          } else {
+            const errText = await sgResponse.text();
+            console.error('[SendGrid] Domain creation failed:', errText);
+          }
+        } catch (sgErr: any) {
+          console.error('[SendGrid] Domain API error:', sgErr.message);
+        }
+      }
+      
       const newDomain = await storage.createVerifiedEmailDomain({
         organizationId: org.id,
         domain: domain.toLowerCase(),
+        sendgridDomainId,
         status: 'pending',
+        dnsRecords: dnsRecords.length > 0 ? dnsRecords : null,
         fromEmail: fromEmail || `noreply@${domain.toLowerCase()}`,
         fromName: fromName || org.name,
         isDefault: false,
@@ -3783,20 +3838,367 @@ Seller Signature (if applicable)
     }
   });
   
+  api.post("/api/email-domains/:id/verify", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const domainId = Number(req.params.id);
+      
+      const domainRecord = await storage.getVerifiedEmailDomain(domainId);
+      if (!domainRecord || domainRecord.organizationId !== org.id) {
+        return res.status(404).json({ message: "Domain not found" });
+      }
+      
+      if (!domainRecord.sendgridDomainId) {
+        return res.status(400).json({ message: "Domain not registered with SendGrid" });
+      }
+      
+      const integration = await storage.getOrganizationIntegration(org.id, 'sendgrid');
+      if (!integration?.credentials?.encrypted) {
+        return res.status(400).json({ message: "SendGrid not configured" });
+      }
+      
+      const { decryptJsonCredentials } = await import('./services/encryption');
+      const credentials = decryptJsonCredentials<{ apiKey: string }>(
+        integration.credentials.encrypted,
+        org.id
+      );
+      
+      const validateResponse = await fetch(
+        `https://api.sendgrid.com/v3/whitelabel/domains/${domainRecord.sendgridDomainId}/validate`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${credentials.apiKey}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+      
+      if (!validateResponse.ok) {
+        const errText = await validateResponse.text();
+        console.error('[SendGrid] Domain validation request failed:', errText);
+        return res.status(400).json({ message: "Validation request failed" });
+      }
+      
+      const validateData = await validateResponse.json();
+      const isValid = validateData.valid === true;
+      
+      let updatedDnsRecords = domainRecord.dnsRecords || [];
+      if (validateData.validation_results) {
+        for (const [key, result] of Object.entries(validateData.validation_results)) {
+          const r = result as any;
+          const existingIdx = updatedDnsRecords.findIndex((d: any) => d.host?.includes(key));
+          if (existingIdx >= 0) {
+            updatedDnsRecords[existingIdx].valid = r.valid || false;
+          }
+        }
+      }
+      
+      const updatedDomain = await storage.updateVerifiedEmailDomain(domainId, {
+        status: isValid ? 'verified' : 'pending',
+        dnsRecords: updatedDnsRecords,
+        verifiedAt: isValid ? new Date() : null,
+      });
+      
+      res.json({
+        verified: isValid,
+        domain: updatedDomain,
+        validationResults: validateData.validation_results,
+      });
+    } catch (err: any) {
+      console.error("Verify email domain error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+  
+  api.patch("/api/email-domains/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const domainId = Number(req.params.id);
+      const { fromEmail, fromName, isDefault } = req.body;
+      
+      const domainRecord = await storage.getVerifiedEmailDomain(domainId);
+      if (!domainRecord || domainRecord.organizationId !== org.id) {
+        return res.status(404).json({ message: "Domain not found" });
+      }
+      
+      if (isDefault === true) {
+        const allDomains = await storage.getVerifiedEmailDomains(org.id);
+        for (const d of allDomains) {
+          if (d.id !== domainId && d.isDefault) {
+            await storage.updateVerifiedEmailDomain(d.id, { isDefault: false });
+          }
+        }
+      }
+      
+      const updatedDomain = await storage.updateVerifiedEmailDomain(domainId, {
+        fromEmail: fromEmail ?? domainRecord.fromEmail,
+        fromName: fromName ?? domainRecord.fromName,
+        isDefault: isDefault ?? domainRecord.isDefault,
+      });
+      
+      res.json(updatedDomain);
+    } catch (err: any) {
+      console.error("Update email domain error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+  
   api.delete("/api/email-domains/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = (req as any).organization;
       const domainId = Number(req.params.id);
       
-      const domain = await storage.getVerifiedEmailDomain(domainId);
-      if (!domain || domain.organizationId !== org.id) {
+      const domainRecord = await storage.getVerifiedEmailDomain(domainId);
+      if (!domainRecord || domainRecord.organizationId !== org.id) {
         return res.status(404).json({ message: "Domain not found" });
+      }
+      
+      if (domainRecord.sendgridDomainId) {
+        const integration = await storage.getOrganizationIntegration(org.id, 'sendgrid');
+        if (integration?.credentials?.encrypted) {
+          try {
+            const { decryptJsonCredentials } = await import('./services/encryption');
+            const credentials = decryptJsonCredentials<{ apiKey: string }>(
+              integration.credentials.encrypted,
+              org.id
+            );
+            
+            await fetch(
+              `https://api.sendgrid.com/v3/whitelabel/domains/${domainRecord.sendgridDomainId}`,
+              {
+                method: 'DELETE',
+                headers: {
+                  'Authorization': `Bearer ${credentials.apiKey}`,
+                },
+              }
+            );
+          } catch (sgErr: any) {
+            console.error('[SendGrid] Domain deletion failed:', sgErr.message);
+          }
+        }
       }
       
       await storage.deleteVerifiedEmailDomain(domainId);
       res.json({ success: true });
     } catch (err: any) {
       console.error("Delete email domain error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+  
+  // ============================================
+  // PROVISIONED PHONE NUMBERS (Twilio)
+  // ============================================
+  
+  api.get("/api/phone-numbers", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const phones = await storage.getProvisionedPhoneNumbers(org.id);
+      res.json(phones);
+    } catch (err: any) {
+      console.error("Get phone numbers error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+  
+  api.get("/api/phone-numbers/available", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { areaCode, contains, country } = req.query;
+      
+      const integration = await storage.getOrganizationIntegration(org.id, 'twilio');
+      if (!integration?.credentials?.encrypted) {
+        return res.status(400).json({ message: "Twilio not configured. Add your Twilio credentials in Settings." });
+      }
+      
+      const { decryptJsonCredentials } = await import('./services/encryption');
+      const credentials = decryptJsonCredentials<{ accountSid: string; authToken: string }>(
+        integration.credentials.encrypted,
+        org.id
+      );
+      
+      const countryCode = (country as string) || 'US';
+      const url = new URL(`https://api.twilio.com/2010-04-01/Accounts/${credentials.accountSid}/AvailablePhoneNumbers/${countryCode}/Local.json`);
+      if (areaCode) url.searchParams.set('AreaCode', areaCode as string);
+      if (contains) url.searchParams.set('Contains', contains as string);
+      url.searchParams.set('SmsEnabled', 'true');
+      url.searchParams.set('PageSize', '10');
+      
+      const auth = Buffer.from(`${credentials.accountSid}:${credentials.authToken}`).toString('base64');
+      
+      const response = await fetch(url.toString(), {
+        headers: {
+          'Authorization': `Basic ${auth}`,
+        },
+      });
+      
+      if (!response.ok) {
+        const errText = await response.text();
+        console.error('[Twilio] Available numbers search failed:', errText);
+        return res.status(400).json({ message: "Failed to search available numbers" });
+      }
+      
+      const data = await response.json();
+      const numbers = (data.available_phone_numbers || []).map((n: any) => ({
+        phoneNumber: n.phone_number,
+        friendlyName: n.friendly_name,
+        locality: n.locality,
+        region: n.region,
+        capabilities: {
+          sms: n.capabilities?.sms || false,
+          mms: n.capabilities?.mms || false,
+          voice: n.capabilities?.voice || false,
+        },
+      }));
+      
+      res.json(numbers);
+    } catch (err: any) {
+      console.error("Search available numbers error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+  
+  api.post("/api/phone-numbers", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { phoneNumber, friendlyName } = req.body;
+      
+      if (!phoneNumber) {
+        return res.status(400).json({ message: "Phone number is required" });
+      }
+      
+      const integration = await storage.getOrganizationIntegration(org.id, 'twilio');
+      if (!integration?.credentials?.encrypted) {
+        return res.status(400).json({ message: "Twilio not configured" });
+      }
+      
+      const { decryptJsonCredentials } = await import('./services/encryption');
+      const credentials = decryptJsonCredentials<{ accountSid: string; authToken: string }>(
+        integration.credentials.encrypted,
+        org.id
+      );
+      
+      const auth = Buffer.from(`${credentials.accountSid}:${credentials.authToken}`).toString('base64');
+      
+      const purchaseResponse = await fetch(
+        `https://api.twilio.com/2010-04-01/Accounts/${credentials.accountSid}/IncomingPhoneNumbers.json`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Basic ${auth}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: new URLSearchParams({
+            PhoneNumber: phoneNumber,
+            FriendlyName: friendlyName || `AcreOS - ${org.name}`,
+          }).toString(),
+        }
+      );
+      
+      if (!purchaseResponse.ok) {
+        const errText = await purchaseResponse.text();
+        console.error('[Twilio] Phone purchase failed:', errText);
+        return res.status(400).json({ message: "Failed to purchase phone number" });
+      }
+      
+      const purchaseData = await purchaseResponse.json();
+      
+      const newPhone = await storage.createProvisionedPhoneNumber({
+        organizationId: org.id,
+        phoneNumber: purchaseData.phone_number,
+        twilioSid: purchaseData.sid,
+        friendlyName: purchaseData.friendly_name,
+        capabilities: {
+          sms: purchaseData.capabilities?.sms || false,
+          mms: purchaseData.capabilities?.mms || false,
+          voice: purchaseData.capabilities?.voice || false,
+        },
+        status: 'active',
+        isDefault: false,
+        purchasedAt: new Date(),
+      });
+      
+      res.json(newPhone);
+    } catch (err: any) {
+      console.error("Purchase phone number error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+  
+  api.patch("/api/phone-numbers/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const phoneId = Number(req.params.id);
+      const { friendlyName, isDefault } = req.body;
+      
+      const phoneRecord = await storage.getProvisionedPhoneNumber(phoneId);
+      if (!phoneRecord || phoneRecord.organizationId !== org.id) {
+        return res.status(404).json({ message: "Phone number not found" });
+      }
+      
+      if (isDefault === true) {
+        const allPhones = await storage.getProvisionedPhoneNumbers(org.id);
+        for (const p of allPhones) {
+          if (p.id !== phoneId && p.isDefault) {
+            await storage.updateProvisionedPhoneNumber(p.id, { isDefault: false });
+          }
+        }
+      }
+      
+      const updatedPhone = await storage.updateProvisionedPhoneNumber(phoneId, {
+        friendlyName: friendlyName ?? phoneRecord.friendlyName,
+        isDefault: isDefault ?? phoneRecord.isDefault,
+      });
+      
+      res.json(updatedPhone);
+    } catch (err: any) {
+      console.error("Update phone number error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+  
+  api.delete("/api/phone-numbers/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const phoneId = Number(req.params.id);
+      
+      const phoneRecord = await storage.getProvisionedPhoneNumber(phoneId);
+      if (!phoneRecord || phoneRecord.organizationId !== org.id) {
+        return res.status(404).json({ message: "Phone number not found" });
+      }
+      
+      if (phoneRecord.twilioSid) {
+        const integration = await storage.getOrganizationIntegration(org.id, 'twilio');
+        if (integration?.credentials?.encrypted) {
+          try {
+            const { decryptJsonCredentials } = await import('./services/encryption');
+            const credentials = decryptJsonCredentials<{ accountSid: string; authToken: string }>(
+              integration.credentials.encrypted,
+              org.id
+            );
+            
+            const auth = Buffer.from(`${credentials.accountSid}:${credentials.authToken}`).toString('base64');
+            
+            await fetch(
+              `https://api.twilio.com/2010-04-01/Accounts/${credentials.accountSid}/IncomingPhoneNumbers/${phoneRecord.twilioSid}.json`,
+              {
+                method: 'DELETE',
+                headers: {
+                  'Authorization': `Basic ${auth}`,
+                },
+              }
+            );
+          } catch (twilioErr: any) {
+            console.error('[Twilio] Phone release failed:', twilioErr.message);
+          }
+        }
+      }
+      
+      await storage.deleteProvisionedPhoneNumber(phoneId);
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("Delete phone number error:", err);
       res.status(500).json({ message: err.message });
     }
   });
