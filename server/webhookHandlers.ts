@@ -1,5 +1,7 @@
 import { getStripeSync, getUncachableStripeClient, getStripeSecretKey } from './stripeClient';
 import { storage } from './storage';
+import { creditService } from './services/credits';
+import { CreditPackId } from '@shared/schema';
 import Stripe from 'stripe';
 
 export class WebhookHandlers {
@@ -30,10 +32,43 @@ export class WebhookHandlers {
         await WebhookHandlers.processBorrowerPortalPayment(session);
         return;
       }
+      
+      if (session.metadata?.type === 'credit_purchase') {
+        await WebhookHandlers.processCreditPurchase(session);
+        return;
+      }
     }
 
     const sync = await getStripeSync();
     await sync.processWebhook(payload, signature);
+  }
+
+  static async processCreditPurchase(session: Stripe.Checkout.Session): Promise<void> {
+    try {
+      const { organizationId, packId } = session.metadata || {};
+      
+      if (!organizationId || !packId) {
+        console.error('Missing organizationId or packId in credit purchase session metadata');
+        return;
+      }
+
+      const orgId = parseInt(organizationId);
+      const paymentIntentId = typeof session.payment_intent === 'string' 
+        ? session.payment_intent 
+        : session.payment_intent?.id;
+
+      const transaction = await creditService.applyCreditPackPurchase(
+        orgId,
+        packId as CreditPackId,
+        session.id,
+        paymentIntentId
+      );
+
+      console.log(`Credit purchase processed: Org ${orgId}, Pack ${packId}, Credits added: ${transaction.amountCents} cents`);
+    } catch (err) {
+      console.error('Error processing credit purchase:', err);
+      throw err;
+    }
   }
 
   static async processBorrowerPortalPayment(session: Stripe.Checkout.Session): Promise<void> {

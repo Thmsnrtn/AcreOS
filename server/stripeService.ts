@@ -31,6 +31,37 @@ export class StripeService {
     });
   }
 
+  async createCreditPurchaseCheckout(
+    customerId: string,
+    packId: string,
+    priceCents: number,
+    packName: string,
+    successUrl: string,
+    cancelUrl: string,
+    metadata: Record<string, string>
+  ) {
+    const stripe = await getUncachableStripeClient();
+    return await stripe.checkout.sessions.create({
+      customer: customerId,
+      payment_method_types: ['card'],
+      line_items: [{
+        price_data: {
+          currency: 'usd',
+          product_data: {
+            name: packName,
+            description: `Credit pack for usage-based features`,
+          },
+          unit_amount: priceCents,
+        },
+        quantity: 1,
+      }],
+      mode: 'payment',
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+      metadata,
+    });
+  }
+
   async createCustomerPortalSession(customerId: string, returnUrl: string) {
     const stripe = await getUncachableStripeClient();
     return await stripe.billingPortal.sessions.create({

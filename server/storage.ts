@@ -9,6 +9,7 @@ import {
   aiAgentProfiles, aiToolDefinitions, aiExecutionRuns, aiMemory,
   vaAgents, vaActions, vaBriefings, vaCalendarEvents, vaTemplates,
   dueDiligenceTemplates, dueDiligenceItems,
+  usageRecords, creditTransactions,
   type Organization, type InsertOrganization,
   type TeamMember, type InsertTeamMember,
   type Lead, type InsertLead,
@@ -32,6 +33,8 @@ import {
   type VaTemplate, type InsertVaTemplate,
   type DueDiligenceTemplate, type InsertDueDiligenceTemplate,
   type DueDiligenceItem, type InsertDueDiligenceItem,
+  type UsageRecord,
+  type CreditTransaction,
   DEFAULT_DUE_DILIGENCE_TEMPLATES,
 } from "@shared/schema";
 
@@ -255,6 +258,14 @@ export interface IStorage {
   updateDueDiligenceItem(id: number, updates: Partial<InsertDueDiligenceItem>): Promise<DueDiligenceItem>;
   deleteDueDiligenceItem(id: number): Promise<void>;
   applyTemplateToProperty(propertyId: number, templateId: number): Promise<DueDiligenceItem[]>;
+
+  // Usage Records
+  getUsageRecords(orgId: number, limit?: number): Promise<UsageRecord[]>;
+  getUsageSummaryByMonth(orgId: number, month: string): Promise<{ actionType: string; count: number; totalCost: number }[]>;
+
+  // Credit Transactions
+  getCreditTransactions(orgId: number, limit?: number): Promise<CreditTransaction[]>;
+  getCreditBalance(orgId: number): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1211,6 +1222,47 @@ export class DatabaseStorage implements IStorage {
       items.push(item);
     }
     return items;
+  }
+
+  // Usage Records
+  async getUsageRecords(orgId: number, limit: number = 50) {
+    return await db.select().from(usageRecords)
+      .where(eq(usageRecords.organizationId, orgId))
+      .orderBy(desc(usageRecords.createdAt))
+      .limit(limit);
+  }
+
+  async getUsageSummaryByMonth(orgId: number, month: string) {
+    const results = await db
+      .select({
+        actionType: usageRecords.actionType,
+        count: sql<number>`SUM(${usageRecords.quantity})::int`,
+        totalCost: sql<number>`SUM(${usageRecords.totalCostCents})::int`,
+      })
+      .from(usageRecords)
+      .where(
+        and(
+          eq(usageRecords.organizationId, orgId),
+          eq(usageRecords.billingMonth, month)
+        )
+      )
+      .groupBy(usageRecords.actionType);
+    
+    return results;
+  }
+
+  // Credit Transactions
+  async getCreditTransactions(orgId: number, limit: number = 50) {
+    return await db.select().from(creditTransactions)
+      .where(eq(creditTransactions.organizationId, orgId))
+      .orderBy(desc(creditTransactions.createdAt))
+      .limit(limit);
+  }
+
+  async getCreditBalance(orgId: number) {
+    const [org] = await db.select().from(organizations)
+      .where(eq(organizations.id, orgId));
+    return Number(org?.creditBalance || 0);
   }
 }
 

@@ -21,6 +21,7 @@ export const organizations = pgTable("organizations", {
   subscriptionStatus: text("subscription_status").notNull().default("active"),
   stripeCustomerId: text("stripe_customer_id"),
   stripeSubscriptionId: text("stripe_subscription_id"),
+  creditBalance: numeric("credit_balance").default("0"), // prepaid credit balance in cents
   settings: jsonb("settings").$type<{
     timezone?: string;
     currency?: string;
@@ -526,6 +527,56 @@ export const usageEvents = pgTable("usage_events", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Usage Records - tracks billable actions
+export const usageRecords = pgTable("usage_records", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  actionType: text("action_type").notNull(), // email_sent, sms_sent, ai_chat, ai_image, pdf_generated, comps_query, direct_mail
+  quantity: integer("quantity").notNull().default(1),
+  unitCostCents: integer("unit_cost_cents").notNull(), // cost per unit in cents
+  totalCostCents: integer("total_cost_cents").notNull(), // quantity * unitCostCents
+  metadata: jsonb("metadata").$type<{
+    campaignId?: number;
+    recipientEmail?: string;
+    recipientPhone?: string;
+    documentType?: string;
+    aiModel?: string;
+    propertyId?: number;
+    [key: string]: unknown;
+  }>(),
+  billingMonth: text("billing_month").notNull(), // Format: "2025-01"
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Credit Transactions - tracks credit purchases/debits
+export const creditTransactions = pgTable("credit_transactions", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  type: text("type").notNull(), // purchase, debit, refund, bonus, monthly_allowance
+  amountCents: integer("amount_cents").notNull(), // positive for credits, negative for debits
+  balanceAfterCents: integer("balance_after_cents").notNull(),
+  description: text("description").notNull(),
+  stripePaymentIntentId: text("stripe_payment_intent_id"), // for purchases
+  stripeCheckoutSessionId: text("stripe_checkout_session_id"),
+  metadata: jsonb("metadata").$type<{
+    creditPackId?: string;
+    usageRecordIds?: number[];
+    [key: string]: unknown;
+  }>(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Usage Rates - configurable pricing per action type
+export const usageRates = pgTable("usage_rates", {
+  id: serial("id").primaryKey(),
+  actionType: text("action_type").notNull().unique(), // email_sent, sms_sent, ai_chat, etc.
+  displayName: text("display_name").notNull(),
+  unitCostCents: integer("unit_cost_cents").notNull(), // cost per action in cents
+  description: text("description"),
+  isActive: boolean("is_active").notNull().default(true),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // ============================================
 // AI COMMAND CENTER
 // ============================================
@@ -911,6 +962,17 @@ export const insertMessageSchema = createInsertSchema(messages).omit({
   id: true, createdAt: true 
 });
 
+// Usage Metering & Credits
+export const insertUsageRecordSchema = createInsertSchema(usageRecords).omit({ 
+  id: true, createdAt: true 
+});
+export const insertCreditTransactionSchema = createInsertSchema(creditTransactions).omit({ 
+  id: true, createdAt: true 
+});
+export const insertUsageRateSchema = createInsertSchema(usageRates).omit({ 
+  id: true, updatedAt: true 
+});
+
 // AI Command Center
 export const insertAiAgentProfileSchema = createInsertSchema(aiAgentProfiles).omit({ id: true });
 export const insertAiToolDefinitionSchema = createInsertSchema(aiToolDefinitions).omit({ id: true });
@@ -994,6 +1056,18 @@ export type ActivityLogEntry = typeof activityLog.$inferSelect;
 
 // Usage Events
 export type UsageEvent = typeof usageEvents.$inferSelect;
+
+// Usage Records
+export type UsageRecord = typeof usageRecords.$inferSelect;
+export type InsertUsageRecord = z.infer<typeof insertUsageRecordSchema>;
+
+// Credit Transactions
+export type CreditTransaction = typeof creditTransactions.$inferSelect;
+export type InsertCreditTransaction = z.infer<typeof insertCreditTransactionSchema>;
+
+// Usage Rates
+export type UsageRate = typeof usageRates.$inferSelect;
+export type InsertUsageRate = z.infer<typeof insertUsageRateSchema>;
 
 // AI Agent Profiles
 export type AiAgentProfile = typeof aiAgentProfiles.$inferSelect;
@@ -1111,6 +1185,35 @@ export const DEFAULT_DUE_DILIGENCE_TEMPLATES = [
 ] as const;
 
 // ============================================
+// USAGE ACTION TYPES & PRICING
+// ============================================
+
+export const USAGE_ACTION_TYPES = {
+  email_sent: { name: "Email Sent", defaultCostCents: 1 }, // $0.01
+  sms_sent: { name: "SMS Sent", defaultCostCents: 3 }, // $0.03
+  ai_chat: { name: "AI Chat Request", defaultCostCents: 2 }, // $0.02
+  ai_image: { name: "AI Image Generation", defaultCostCents: 25 }, // $0.25
+  pdf_generated: { name: "PDF Document", defaultCostCents: 5 }, // $0.05
+  comps_query: { name: "Comps Analysis", defaultCostCents: 10 }, // $0.10
+  direct_mail: { name: "Direct Mail Piece", defaultCostCents: 75 }, // $0.75
+} as const;
+
+export type UsageActionType = keyof typeof USAGE_ACTION_TYPES;
+
+// ============================================
+// CREDIT PACKS
+// ============================================
+
+export const CREDIT_PACKS = {
+  pack_10: { name: "$10 Credit Pack", amountCents: 1000, priceCents: 1000 },
+  pack_25: { name: "$25 Credit Pack", amountCents: 2500, priceCents: 2500 },
+  pack_50: { name: "$50 Credit Pack", amountCents: 5000, priceCents: 5000 },
+  pack_100: { name: "$100 Credit Pack", amountCents: 10000, priceCents: 10000 },
+} as const;
+
+export type CreditPackId = keyof typeof CREDIT_PACKS;
+
+// ============================================
 // SUBSCRIPTION TIERS CONFIGURATION
 // ============================================
 
@@ -1125,6 +1228,7 @@ export const SUBSCRIPTION_TIERS = {
       teamMembers: 1,
       aiRequestsPerMonth: 100,
       campaigns: 1,
+      monthlyCredits: 100, // $1.00
     },
     features: ["basic_crm", "basic_inventory", "basic_notes"],
   },
@@ -1138,6 +1242,7 @@ export const SUBSCRIPTION_TIERS = {
       teamMembers: 2,
       aiRequestsPerMonth: 1000,
       campaigns: 10,
+      monthlyCredits: 1000, // $10.00
     },
     features: ["basic_crm", "basic_inventory", "basic_notes", "ai_due_diligence", "email_campaigns"],
   },
@@ -1151,6 +1256,7 @@ export const SUBSCRIPTION_TIERS = {
       teamMembers: 10,
       aiRequestsPerMonth: 10000,
       campaigns: 100,
+      monthlyCredits: 5000, // $50.00
     },
     features: [
       "advanced_crm", "advanced_inventory", "advanced_notes", 
@@ -1169,6 +1275,7 @@ export const SUBSCRIPTION_TIERS = {
       teamMembers: -1,
       aiRequestsPerMonth: -1,
       campaigns: -1,
+      monthlyCredits: 25000, // $250.00
     },
     features: [
       "advanced_crm", "advanced_inventory", "advanced_notes",

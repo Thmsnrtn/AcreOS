@@ -1515,6 +1515,151 @@ export async function registerRoutes(
   });
   
   // ============================================
+  // CREDITS AND USAGE METERING
+  // ============================================
+  
+  api.get("/api/credits/balance", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { creditService } = await import("./services/credits");
+      const org = (req as any).organization;
+      const balance = await creditService.getBalance(org.id);
+      res.json({ balance });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+  
+  api.get("/api/credits/transactions", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { creditService } = await import("./services/credits");
+      const org = (req as any).organization;
+      const limit = parseInt(req.query.limit as string) || 50;
+      const transactions = await creditService.getTransactionHistory(org.id, limit);
+      res.json(transactions);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+  
+  api.get("/api/usage/summary", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { usageMeteringService } = await import("./services/credits");
+      const org = (req as any).organization;
+      const month = req.query.month as string || new Date().toISOString().slice(0, 7);
+      const summary = await usageMeteringService.getUsageSummary(org.id, month);
+      res.json(summary);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+  
+  api.get("/api/usage/records", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { usageMeteringService } = await import("./services/credits");
+      const org = (req as any).organization;
+      const limit = parseInt(req.query.limit as string) || 50;
+      const records = await usageMeteringService.getRecentUsage(org.id, limit);
+      res.json(records);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+  
+  api.get("/api/usage/rates", isAuthenticated, async (req, res) => {
+    try {
+      const { usageMeteringService } = await import("./services/credits");
+      const { USAGE_ACTION_TYPES } = await import("@shared/schema");
+      const dbRates = await usageMeteringService.getAllRates();
+      
+      const rates = Object.entries(USAGE_ACTION_TYPES).map(([key, value]) => {
+        const dbRate = dbRates.find((r: any) => r.actionType === key);
+        return {
+          actionType: key,
+          displayName: value.name,
+          unitCostCents: dbRate?.unitCostCents || value.defaultCostCents,
+        };
+      });
+      
+      res.json(rates);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+  
+  api.post("/api/usage/estimate", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { usageMeteringService, creditService } = await import("./services/credits");
+      const { USAGE_ACTION_TYPES } = await import("@shared/schema");
+      const org = (req as any).organization;
+      const { actionType, quantity = 1 } = req.body;
+      
+      if (!actionType || !USAGE_ACTION_TYPES[actionType as keyof typeof USAGE_ACTION_TYPES]) {
+        return res.status(400).json({ message: "Invalid action type" });
+      }
+      
+      const cost = await usageMeteringService.calculateCost(actionType, quantity);
+      const balance = await creditService.getBalance(org.id);
+      
+      res.json({
+        actionType,
+        quantity,
+        unitCostCents: cost / quantity,
+        totalCostCents: cost,
+        currentBalance: balance,
+        insufficientCredits: balance < cost,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+  
+  api.post("/api/credits/purchase", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { stripeService } = await import("./stripeService");
+      const { CREDIT_PACKS } = await import("@shared/schema");
+      const org = (req as any).organization;
+      const { packId } = req.body;
+      
+      if (!packId || !CREDIT_PACKS[packId as keyof typeof CREDIT_PACKS]) {
+        return res.status(400).json({ message: "Invalid credit pack ID" });
+      }
+      
+      const pack = CREDIT_PACKS[packId as keyof typeof CREDIT_PACKS];
+      
+      let customerId = org.stripeCustomerId;
+      if (!customerId) {
+        const user = req.user as any;
+        const customer = await stripeService.createCustomer(
+          user.email || '',
+          user.id,
+          org.name
+        );
+        await storage.updateOrganization(org.id, { stripeCustomerId: customer.id });
+        customerId = customer.id;
+      }
+      
+      const session = await stripeService.createCreditPurchaseCheckout(
+        customerId,
+        packId,
+        pack.priceCents,
+        pack.name,
+        `${req.protocol}://${req.get('host')}/settings?credits=success`,
+        `${req.protocol}://${req.get('host')}/settings?credits=cancelled`,
+        { 
+          organizationId: String(org.id),
+          type: 'credit_purchase',
+          packId,
+          amountCents: String(pack.amountCents),
+        }
+      );
+      
+      res.json({ checkoutUrl: session.url });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ============================================
   // STRIPE SUBSCRIPTION
   // ============================================
   
