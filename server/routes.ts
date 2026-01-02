@@ -2563,7 +2563,8 @@ Seller Signature (if applicable)
   api.post("/api/support/cases", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = (req as any).organization;
-      const user = (req as any).user;
+      const user = req.user as any;
+      const userId = user.claims?.sub || user.id;
       const { subject, message } = req.body as { subject: string; message: string };
       
       if (!subject || !message) {
@@ -2573,7 +2574,7 @@ Seller Signature (if applicable)
       const { supportBrainService } = await import("./services/supportBrain");
       const { case: supportCase, classification } = await supportBrainService.createCase(
         org.id,
-        user.id,
+        userId,
         subject,
         message
       );
