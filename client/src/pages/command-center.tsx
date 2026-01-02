@@ -458,23 +458,26 @@ export default function CommandCenterPage() {
                   </ScrollArea>
 
                   <div className="p-3 border-t border-border bg-background/80 backdrop-blur-md">
-                    <div className="flex gap-2 items-end max-w-3xl mx-auto">
-                      <Textarea
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        onKeyDown={handleKeyDown}
-                        placeholder="Message..."
-                        className="flex-1 min-h-[44px] max-h-32 resize-none text-base bg-muted/50 border-0 focus-visible:ring-1"
-                        disabled={!currentConversationId || isStreaming}
-                      />
-                      <Button
-                        onClick={sendMessage}
-                        disabled={!input.trim() || !currentConversationId || isStreaming}
-                        size="icon"
-                        className="h-11 w-11 shrink-0 rounded-full shadow-lg active-elevate-2"
-                      >
-                        {isStreaming ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                      </Button>
+                    <div className="flex flex-col gap-1 max-w-3xl mx-auto">
+                      <div className="flex gap-2 items-end">
+                        <Textarea
+                          value={input}
+                          onChange={(e) => setInput(e.target.value)}
+                          onKeyDown={handleKeyDown}
+                          placeholder="Message..."
+                          className="flex-1 min-h-[44px] max-h-32 resize-none text-base bg-muted/50 border-0 focus-visible:ring-1"
+                          disabled={!currentConversationId || isStreaming}
+                        />
+                        <Button
+                          onClick={sendMessage}
+                          disabled={!input.trim() || !currentConversationId || isStreaming}
+                          size="icon"
+                          className="h-11 w-11 shrink-0 rounded-full shadow-lg active-elevate-2"
+                        >
+                          {isStreaming ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                        </Button>
+                      </div>
+                      <span className="text-xs text-muted-foreground text-center" data-testid="text-cost-ai-chat">$0.02 per message</span>
                     </div>
                   </div>
                 </div>
@@ -719,32 +722,35 @@ export default function CommandCenterPage() {
               </ScrollArea>
 
               <div className="p-4 border-t border-border glass-panel">
-                <div className="max-w-3xl mx-auto flex gap-3">
-                  <Textarea
-                    ref={textareaRef}
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    placeholder={
-                      currentConversationId
-                        ? "Type your message..."
-                        : "Start a new conversation first..."
-                    }
-                    className="flex-1 min-h-[48px] max-h-32 resize-none"
-                    disabled={!currentConversationId || isStreaming}
-                    data-testid="input-message"
-                  />
-                  <Button
-                    onClick={sendMessage}
-                    disabled={!input.trim() || !currentConversationId || isStreaming}
-                    data-testid="button-send-message"
-                  >
-                    {isStreaming ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Send className="w-4 h-4" />
-                    )}
-                  </Button>
+                <div className="max-w-3xl mx-auto flex flex-col gap-1">
+                  <div className="flex gap-3">
+                    <Textarea
+                      ref={textareaRef}
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      onKeyDown={handleKeyDown}
+                      placeholder={
+                        currentConversationId
+                          ? "Type your message..."
+                          : "Start a new conversation first..."
+                      }
+                      className="flex-1 min-h-[48px] max-h-32 resize-none"
+                      disabled={!currentConversationId || isStreaming}
+                      data-testid="input-message"
+                    />
+                    <Button
+                      onClick={sendMessage}
+                      disabled={!input.trim() || !currentConversationId || isStreaming}
+                      data-testid="button-send-message"
+                    >
+                      {isStreaming ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Send className="w-4 h-4" />
+                      )}
+                    </Button>
+                  </div>
+                  <span className="text-xs text-muted-foreground text-center" data-testid="text-cost-ai-chat-desktop">$0.02 per message</span>
                 </div>
               </div>
             </div>

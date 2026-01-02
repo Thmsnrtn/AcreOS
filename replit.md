@@ -209,6 +209,25 @@ The server implements a three-layer architecture:
 - **Atomic Balance Updates**: Race-condition-safe credit deductions using SQL atomic operations
 - **Database Tables**: usage_records (action tracking), credit_transactions (purchase/debit history), usage_rates (configurable pricing)
 
+### Pricing Transparency UI
+- **Pricing Guide Page**: Full breakdown of all billable action costs in Settings
+- **Cost Indicators**: Inline badges showing per-action costs throughout the app
+  - AI Command Center: "$0.02 per message" below chat input
+  - Finance/Notes: "$0.05" below PDF download buttons
+  - Comps Analysis: "$0.10 per query" below refresh button
+  - Campaign Creation: Cost summary showing email, SMS, and direct mail rates
+- **API Endpoints**:
+  - GET /api/pricing/rates - Returns all action costs and monthly allowances
+  - GET /api/campaigns/:id/estimate-cost - Estimates campaign cost with balance check
+
+### Direct Mail Integration (Lob API)
+- **Mail Types**: Postcards (4x6, 6x9, 6x11) and Letters (1-2 pages)
+- **Pricing**: $0.75-$1.45 per piece depending on type
+- **Credit Handling**: Upfront deduction with automatic refund for failed sends
+- **Usage Tracking**: Only successful sends are recorded in usage_records
+- **API Endpoint**: POST /api/campaigns/:id/send-direct-mail
+- **Requirements**: LOB_API_KEY secret (not yet configured)
+
 ## Future Integrations (Not Yet Connected)
 
 ### Email (SendGrid)

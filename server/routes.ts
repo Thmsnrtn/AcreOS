@@ -1139,6 +1139,219 @@ export async function registerRoutes(
     res.json(campaign);
   });
   
+  // Send direct mail campaign with credit pre-checks
+  api.post("/api/campaigns/:id/send-direct-mail", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const campaignId = parseInt(req.params.id);
+      const { pieceType, leadIds } = req.body as { 
+        pieceType: 'postcard_4x6' | 'postcard_6x9' | 'postcard_6x11' | 'letter_1_page';
+        leadIds: number[];
+      };
+
+      const { directMailService, DIRECT_MAIL_COSTS } = await import("./services/directMail");
+      if (!directMailService.isAvailable()) {
+        return res.status(503).json({ error: "Direct mail service not configured. Please add LOB_API_KEY." });
+      }
+
+      const campaign = await storage.getCampaign(org.id, campaignId);
+      if (!campaign || campaign.type !== 'direct_mail') {
+        return res.status(400).json({ error: "Invalid campaign or not a direct mail campaign" });
+      }
+
+      if (!leadIds || leadIds.length === 0) {
+        return res.status(400).json({ error: "No recipients specified" });
+      }
+
+      const costPerPiece = DIRECT_MAIL_COSTS[pieceType];
+      const totalCost = costPerPiece * leadIds.length;
+
+      const balance = await creditService.getBalance(org.id);
+      if (balance < totalCost) {
+        return res.status(402).json({
+          error: "Insufficient credits",
+          required: totalCost / 100,
+          balance: balance / 100,
+          perPiece: costPerPiece / 100,
+          recipientCount: leadIds.length,
+        });
+      }
+
+      const leadsData = await Promise.all(
+        leadIds.map(id => storage.getLead(org.id, id))
+      );
+      const validLeads = leadsData.filter(l => l && l.address && l.city && l.state && l.zip);
+
+      if (validLeads.length === 0) {
+        return res.status(400).json({ error: "No valid recipients with complete addresses" });
+      }
+
+      const deductResult = await creditService.deductCredits(
+        org.id,
+        costPerPiece * validLeads.length,
+        `Direct mail campaign: ${campaign.name} - ${validLeads.length} pieces`,
+        { campaignId, pieceType, recipientCount: validLeads.length }
+      );
+
+      if (!deductResult) {
+        return res.status(402).json({ error: "Insufficient credits" });
+      }
+
+      // Get organization info for sender address
+      const organization = await storage.getOrganization(org.id);
+      const senderAddress = {
+        name: organization?.name || 'AcreOS User',
+        addressLine1: '123 Main St', // Would need org address fields
+        city: 'Austin',
+        state: 'TX',
+        zip: '78701',
+      };
+
+      // Actually send the mail pieces via Lob
+      const sendResults: Array<{ leadId: number; success: boolean; lobId?: string; error?: string }> = [];
+      
+      for (const lead of validLeads) {
+        try {
+          if (pieceType.startsWith('postcard_')) {
+            const size = pieceType.replace('postcard_', '') as '4x6' | '6x9' | '6x11';
+            const result = await directMailService.sendPostcard({
+              size,
+              front: campaign.content || '<html><body><h1>Special Offer!</h1></body></html>',
+              back: `<html><body><p>Dear ${lead.firstName || 'Property Owner'},</p><p>${campaign.subject || 'We are interested in your property.'}</p></body></html>`,
+              to: {
+                name: `${lead.firstName || ''} ${lead.lastName || ''}`.trim() || 'Property Owner',
+                addressLine1: lead.address!,
+                city: lead.city!,
+                state: lead.state!,
+                zip: lead.zip!,
+              },
+              from: senderAddress,
+            });
+            sendResults.push({ leadId: lead.id, success: true, lobId: result.id });
+          } else {
+            const result = await directMailService.sendLetter({
+              file: campaign.content || '<html><body><p>Letter content</p></body></html>',
+              to: {
+                name: `${lead.firstName || ''} ${lead.lastName || ''}`.trim() || 'Property Owner',
+                addressLine1: lead.address!,
+                city: lead.city!,
+                state: lead.state!,
+                zip: lead.zip!,
+              },
+              from: senderAddress,
+            });
+            sendResults.push({ leadId: lead.id, success: true, lobId: result.id });
+          }
+        } catch (err: any) {
+          sendResults.push({ leadId: lead.id, success: false, error: err.message });
+        }
+      }
+
+      const successCount = sendResults.filter(r => r.success).length;
+      const failCount = sendResults.filter(r => !r.success).length;
+
+      // Record usage only for successful sends
+      if (successCount > 0) {
+        await usageMeteringService.recordUsage(
+          org.id,
+          'direct_mail',
+          successCount,
+          { campaignId, pieceType },
+          false // already deducted upfront
+        );
+      }
+
+      // Refund credits for failed sends
+      if (failCount > 0) {
+        const refundAmount = costPerPiece * failCount;
+        await creditService.addCredits(
+          org.id,
+          refundAmount,
+          'refund',
+          `Refund for ${failCount} failed direct mail pieces in campaign: ${campaign.name}`,
+          { campaignId, pieceType, failedCount: failCount }
+        );
+      }
+
+      await storage.updateCampaign(campaignId, {
+        totalSent: (campaign.totalSent || 0) + successCount,
+        status: 'active',
+      });
+
+      res.json({
+        success: true,
+        piecesQueued: successCount,
+        piecesFailed: failCount,
+        totalCost: (costPerPiece * successCount) / 100,
+        refunded: failCount > 0 ? (costPerPiece * failCount) / 100 : 0,
+        message: `${successCount} mail pieces sent${failCount > 0 ? `, ${failCount} failed (refunded)` : ''}`,
+        details: sendResults,
+      });
+    } catch (error: any) {
+      console.error("Direct mail send error:", error);
+      res.status(500).json({ error: error.message || "Failed to send direct mail" });
+    }
+  });
+
+  // Estimate cost for sending a campaign to selected recipients
+  api.get("/api/campaigns/:id/estimate-cost", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { pieceType, recipientCount } = req.query as { pieceType: string; recipientCount: string };
+      
+      const { DIRECT_MAIL_COSTS } = await import("./services/directMail");
+      
+      const costPerPiece = DIRECT_MAIL_COSTS[pieceType as keyof typeof DIRECT_MAIL_COSTS] || 75;
+      const count = parseInt(recipientCount) || 0;
+      const totalCost = costPerPiece * count;
+      const balance = await creditService.getBalance(org.id);
+      
+      res.json({
+        pieceType,
+        recipientCount: count,
+        costPerPiece: costPerPiece / 100,
+        totalCost: totalCost / 100,
+        currentBalance: balance / 100,
+        canAfford: balance >= totalCost,
+        creditsNeeded: balance < totalCost ? (totalCost - balance) / 100 : 0,
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+  
+  // ============================================
+  // PRICING RATES
+  // ============================================
+  
+  api.get("/api/pricing/rates", async (req, res) => {
+    const { DIRECT_MAIL_COSTS } = await import("./services/directMail");
+    
+    res.json({
+      actions: {
+        email_sent: { name: "Email", costCents: 1, description: "Per email sent" },
+        sms_sent: { name: "SMS Text", costCents: 3, description: "Per text message" },
+        ai_chat: { name: "AI Chat", costCents: 2, description: "Per AI conversation message" },
+        ai_image: { name: "AI Image", costCents: 25, description: "Per image generated" },
+        pdf_generated: { name: "Document PDF", costCents: 5, description: "Per document generated" },
+        comps_query: { name: "Comps Analysis", costCents: 10, description: "Per property analysis" },
+      },
+      directMail: {
+        postcard_4x6: { name: "Postcard 4x6", costCents: DIRECT_MAIL_COSTS.postcard_4x6, description: "Small postcard" },
+        postcard_6x9: { name: "Postcard 6x9", costCents: DIRECT_MAIL_COSTS.postcard_6x9, description: "Standard postcard" },
+        postcard_6x11: { name: "Postcard 6x11", costCents: DIRECT_MAIL_COSTS.postcard_6x11, description: "Large postcard" },
+        letter_1_page: { name: "Letter (1 page)", costCents: DIRECT_MAIL_COSTS.letter_1_page, description: "Single page letter" },
+        letter_2_page: { name: "Letter (2 pages)", costCents: DIRECT_MAIL_COSTS.letter_2_page, description: "Two page letter" },
+      },
+      monthlyAllowances: {
+        free: { credits: 100, value: "$1.00" },
+        starter: { credits: 1000, value: "$10.00" },
+        pro: { credits: 5000, value: "$50.00" },
+        scale: { credits: 25000, value: "$250.00" },
+      },
+    });
+  });
+  
   // ============================================
   // AI AGENTS
   // ============================================

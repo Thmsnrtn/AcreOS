@@ -73,10 +73,13 @@ export default function AgentsPage() {
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                   />
-                  <Button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700" disabled={isPending || !input.trim()}>
-                    {isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
-                    Deploy Agent
-                  </Button>
+                  <div className="flex flex-col gap-1">
+                    <Button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700" disabled={isPending || !input.trim()}>
+                      {isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Send className="w-4 h-4 mr-2" />}
+                      Deploy Agent
+                    </Button>
+                    <span className="text-xs text-muted-foreground text-center" data-testid="text-cost-agent-task">$0.02 per task</span>
+                  </div>
                 </form>
               </CardContent>
             </Card>

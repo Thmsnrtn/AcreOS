@@ -508,10 +508,14 @@ function CampaignForm({ onSuccess }: { onSuccess: () => void }) {
         />
       </div>
 
-      <div className="pt-2">
+      <div className="pt-2 space-y-2">
         <Button type="submit" className="w-full" disabled={isPending} data-testid="button-create-campaign-submit">
           {isPending ? "Creating..." : "Create Campaign"}
         </Button>
+        <div className="text-xs text-muted-foreground text-center space-y-1" data-testid="text-campaign-costs">
+          <p>Sending costs: Email $0.01/each, SMS $0.03/each</p>
+          <p>Direct mail: $0.75-$1.45 per piece (varies by type)</p>
+        </div>
       </div>
     </form>
   );

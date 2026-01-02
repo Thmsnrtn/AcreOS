@@ -384,15 +384,18 @@ function NoteDetailDrawer({ note, onClose, onDelete }: { note: NoteWithDetails; 
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <Button 
-                size="icon" 
-                variant="ghost" 
-                onClick={handleDownloadPdf} 
-                disabled={isDownloading}
-                data-testid="button-download-note-pdf"
-              >
-                {isDownloading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
-              </Button>
+              <div className="flex flex-col items-center gap-0.5">
+                <Button 
+                  size="icon" 
+                  variant="ghost" 
+                  onClick={handleDownloadPdf} 
+                  disabled={isDownloading}
+                  data-testid="button-download-note-pdf"
+                >
+                  {isDownloading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
+                </Button>
+                <span className="text-[10px] text-muted-foreground" data-testid="text-cost-pdf">$0.05</span>
+              </div>
               <Button size="icon" variant="ghost" onClick={onDelete} data-testid="button-delete-note">
                 <Trash2 className="w-5 h-5 text-destructive" />
               </Button>

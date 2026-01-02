@@ -175,16 +175,19 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
             <Search className="w-4 h-4 mr-1" />
             {showFilters ? "Hide Filters" : "Filters"}
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => refetch()}
-            disabled={isFetching}
-            data-testid="button-refresh-comps"
-          >
-            <RefreshCw className={`w-4 h-4 mr-1 ${isFetching ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
+          <div className="flex flex-col items-center gap-0.5">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => refetch()}
+              disabled={isFetching}
+              data-testid="button-refresh-comps"
+            >
+              <RefreshCw className={`w-4 h-4 mr-1 ${isFetching ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+            <span className="text-[10px] text-muted-foreground" data-testid="text-cost-comps">$0.10 per query</span>
+          </div>
         </div>
         {data?.message && (
           <Badge variant="outline" className="text-yellow-600">

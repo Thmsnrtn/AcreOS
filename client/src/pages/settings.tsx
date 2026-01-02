@@ -21,6 +21,7 @@ import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { UsageDashboard } from "@/components/usage-dashboard";
+import { PricingGuide } from "@/components/pricing-guide";
 import { useState } from "react";
 import { useEffect } from "react";
 import { useSearch } from "wouter";
@@ -365,6 +366,17 @@ export default function Settings() {
               </p>
             </div>
             <UsageDashboard />
+          </div>
+
+          {/* Pricing Guide */}
+          <div className="space-y-4" data-testid="section-pricing-guide">
+            <div>
+              <h2 className="text-xl font-semibold">Pricing Guide</h2>
+              <p className="text-muted-foreground text-sm">
+                View pricing details for all billable actions before you use them.
+              </p>
+            </div>
+            <PricingGuide />
           </div>
 
           {/* Onboarding & Help Settings */}
