@@ -138,9 +138,13 @@ export function EmailDomainsSettings() {
     },
   });
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    toast({ title: "Copied to clipboard" });
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast({ title: "Copied to clipboard" });
+    } catch {
+      toast({ title: "Failed to copy", variant: "destructive" });
+    }
   };
 
   const getStatusBadge = (status: string) => {
@@ -285,7 +289,7 @@ export function EmailDomainsSettings() {
                         </Button>
                       )}
                       <CollapsibleTrigger asChild>
-                        <Button size="sm" variant="ghost">
+                        <Button size="sm" variant="ghost" data-testid={`button-toggle-dns-${domain.id}`}>
                           {expandedDomain === domain.id ? "Hide DNS" : "Show DNS"}
                         </Button>
                       </CollapsibleTrigger>

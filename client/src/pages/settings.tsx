@@ -23,6 +23,8 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { UsageDashboard } from "@/components/usage-dashboard";
 import { PricingGuide } from "@/components/pricing-guide";
 import { IntegrationsSettings } from "@/components/integrations-settings";
+import { EmailDomainsSettings } from "@/components/email-domains-settings";
+import { PhoneNumbersSettings } from "@/components/phone-numbers-settings";
 import { useState } from "react";
 import { useEffect } from "react";
 import { useSearch } from "wouter";
@@ -389,6 +391,10 @@ export default function Settings() {
               </p>
             </div>
             <IntegrationsSettings />
+            
+            <EmailDomainsSettings />
+            
+            <PhoneNumbersSettings />
           </div>
 
           {/* Onboarding & Help Settings */}

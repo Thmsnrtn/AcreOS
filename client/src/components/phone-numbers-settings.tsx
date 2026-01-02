@@ -77,7 +77,9 @@ export function PhoneNumbersSettings() {
       const params = new URLSearchParams();
       if (areaCode) params.set("areaCode", areaCode);
       if (searchContains) params.set("contains", searchContains);
-      const response = await fetch(`/api/phone-numbers/available?${params.toString()}`);
+      const response = await fetch(`/api/phone-numbers/available?${params.toString()}`, {
+        credentials: "include",
+      });
       if (!response.ok) {
         const err = await response.json();
         throw new Error(err.message || "Failed to search numbers");
