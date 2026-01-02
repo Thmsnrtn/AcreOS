@@ -75,6 +75,67 @@ export const teamMembers = pgTable("team_members", {
 });
 
 // ============================================
+// VERIFIED SENDERS (Email & SMS)
+// ============================================
+
+// Verified email domains for SendGrid
+export const verifiedEmailDomains = pgTable("verified_email_domains", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  domain: text("domain").notNull(), // e.g., "mycompany.com"
+  sendgridDomainId: text("sendgrid_domain_id"), // SendGrid's domain ID
+  status: text("status").notNull().default("pending"), // pending, verified, failed
+  dnsRecords: jsonb("dns_records").$type<{
+    type: string; // CNAME, TXT, MX
+    host: string;
+    data: string;
+    valid: boolean;
+  }[]>(),
+  fromEmail: text("from_email"), // Default from email, e.g., "noreply@mycompany.com"
+  fromName: text("from_name"), // Default from name, e.g., "My Company"
+  isDefault: boolean("is_default").default(false),
+  verifiedAt: timestamp("verified_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Provisioned phone numbers for Twilio SMS
+export const provisionedPhoneNumbers = pgTable("provisioned_phone_numbers", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  phoneNumber: text("phone_number").notNull(), // E.164 format, e.g., "+15551234567"
+  twilioSid: text("twilio_sid"), // Twilio's phone number SID
+  friendlyName: text("friendly_name"), // Display name for the number
+  capabilities: jsonb("capabilities").$type<{
+    sms: boolean;
+    mms: boolean;
+    voice: boolean;
+  }>(),
+  status: text("status").notNull().default("active"), // active, released, pending
+  isDefault: boolean("is_default").default(false),
+  monthlyRentalCost: numeric("monthly_rental_cost"), // Cost in cents
+  purchasedAt: timestamp("purchased_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertVerifiedEmailDomainSchema = createInsertSchema(verifiedEmailDomains).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertVerifiedEmailDomain = z.infer<typeof insertVerifiedEmailDomainSchema>;
+export type VerifiedEmailDomain = typeof verifiedEmailDomains.$inferSelect;
+
+export const insertProvisionedPhoneNumberSchema = createInsertSchema(provisionedPhoneNumbers).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertProvisionedPhoneNumber = z.infer<typeof insertProvisionedPhoneNumberSchema>;
+export type ProvisionedPhoneNumber = typeof provisionedPhoneNumbers.$inferSelect;
+
+// ============================================
 // CRM: LEADS & CONTACTS
 // ============================================
 
