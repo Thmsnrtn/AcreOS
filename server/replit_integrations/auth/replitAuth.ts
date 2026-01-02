@@ -31,11 +31,11 @@ export function getSession() {
     secret: process.env.SESSION_SECRET!,
     store: sessionStore,
     resave: false,
-    saveUninitialized: false,
+    saveUninitialized: true, // Required for Safari - save session before OAuth redirect
     cookie: {
       httpOnly: true,
-      secure: true,
-      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production" || process.env.REPL_SLUG !== undefined,
+      sameSite: "none", // Required for Safari cross-site OIDC flow
       maxAge: sessionTtl,
     },
   });
