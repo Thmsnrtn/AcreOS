@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { Sidebar } from "@/components/layout-sidebar";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -29,7 +29,20 @@ import {
   Loader2,
   ChevronRight,
   Wrench,
+  Users,
+  Settings2,
+  Zap,
+  Clock,
+  CheckCircle,
+  AlertCircle,
+  DollarSign,
+  Mail,
+  Phone,
+  TrendingUp,
+  Brain,
+  Briefcase,
 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 
 interface Agent {
   name: string;
@@ -69,16 +82,407 @@ const agentIcons: Record<string, typeof Bot> = {
   Megaphone,
   Search,
   FileText,
+  Briefcase,
+  DollarSign,
 };
 
 function getAgentIcon(iconName: string) {
   return agentIcons[iconName] || Bot;
 }
 
+// Detailed AI Agent documentation for the AI Team panel
+const agentDocumentation: Record<string, {
+  fullName: string;
+  icon: typeof Bot;
+  category: string;
+  overview: string;
+  capabilities: string[];
+  howItWorks: string;
+  customization: string[];
+  triggers: string[];
+  outputs: string[];
+  bestPractices: string[];
+}> = {
+  executive: {
+    fullName: "Executive Assistant",
+    icon: Briefcase,
+    category: "Strategic",
+    overview: "Your high-level business strategist that oversees all operations, provides strategic insights, and helps with decision-making across your entire land investing business.",
+    capabilities: [
+      "Generate daily and weekly business briefings",
+      "Analyze overall portfolio performance",
+      "Identify trends and opportunities across deals",
+      "Provide strategic recommendations",
+      "Coordinate between other AI agents",
+    ],
+    howItWorks: "The Executive agent analyzes data from all areas of your business - leads, properties, notes, campaigns, and deals - to provide holistic insights and recommendations. It monitors KPIs and alerts you to important changes.",
+    customization: [
+      "Set preferred briefing schedule (daily, weekly)",
+      "Choose which metrics to prioritize",
+      "Adjust risk tolerance for recommendations",
+      "Configure notification preferences",
+    ],
+    triggers: [
+      "Scheduled briefings (configurable)",
+      "Significant changes in portfolio metrics",
+      "When you ask for strategic analysis",
+      "Deal milestones reached",
+    ],
+    outputs: [
+      "Business performance summaries",
+      "Strategic recommendations",
+      "Risk assessments",
+      "Opportunity identification",
+    ],
+    bestPractices: [
+      "Review daily briefings each morning",
+      "Use for high-level decision making",
+      "Ask specific questions about business direction",
+    ],
+  },
+  sales: {
+    fullName: "Sales & Buyer Relations",
+    icon: MessageSquare,
+    category: "Revenue",
+    overview: "Manages all buyer communications, follow-ups, and relationship nurturing to maximize your disposition sales and repeat buyers.",
+    capabilities: [
+      "Generate personalized follow-up messages",
+      "Track buyer engagement and interest levels",
+      "Create buyer profiles and preferences",
+      "Recommend properties to specific buyers",
+      "Draft and optimize sales communications",
+    ],
+    howItWorks: "The Sales agent monitors your buyer leads and their interactions. It identifies when follow-up is needed, drafts personalized communications, and helps match buyers to available properties based on their stated preferences and behavior.",
+    customization: [
+      "Set follow-up timing rules",
+      "Adjust communication tone (formal, casual)",
+      "Configure price negotiation parameters",
+      "Define buyer qualification criteria",
+    ],
+    triggers: [
+      "New buyer inquiry received",
+      "Time-based follow-up reminders",
+      "Property becomes available matching buyer criteria",
+      "Buyer engagement drops off",
+    ],
+    outputs: [
+      "Follow-up emails and messages",
+      "Property recommendations",
+      "Buyer interest reports",
+      "Negotiation suggestions",
+    ],
+    bestPractices: [
+      "Review proposed follow-ups before sending",
+      "Keep buyer preferences updated",
+      "Use for personalized outreach at scale",
+    ],
+  },
+  acquisitions: {
+    fullName: "Acquisitions & Seller Outreach",
+    icon: Target,
+    category: "Deal Flow",
+    overview: "Handles seller communications, offer generation, and deal negotiation to help you acquire more properties at better prices.",
+    capabilities: [
+      "Generate offers based on comps and market data",
+      "Draft offer letters and purchase agreements",
+      "Track seller responses and negotiations",
+      "Score and prioritize seller leads",
+      "Recommend counter-offer strategies",
+    ],
+    howItWorks: "The Acquisitions agent analyzes incoming seller leads, scores them based on motivation and property characteristics, and helps craft appropriate offers. It tracks negotiation history and suggests optimal counter-offer strategies.",
+    customization: [
+      "Set offer calculation formulas",
+      "Adjust negotiation aggressiveness",
+      "Configure due diligence requirements",
+      "Define deal criteria and limits",
+    ],
+    triggers: [
+      "New seller lead from campaigns",
+      "Seller responds to initial offer",
+      "Counter-offer received",
+      "Due diligence deadline approaching",
+    ],
+    outputs: [
+      "Offer letters and purchase agreements",
+      "Counter-offer recommendations",
+      "Lead scoring reports",
+      "Deal analysis summaries",
+    ],
+    bestPractices: [
+      "Always verify AI-generated offer amounts",
+      "Review due diligence findings",
+      "Use for consistent offer presentation",
+    ],
+  },
+  marketing: {
+    fullName: "Marketing & Campaigns",
+    icon: Megaphone,
+    category: "Lead Generation",
+    overview: "Creates and optimizes your marketing campaigns across direct mail, email, and SMS to generate quality seller leads.",
+    capabilities: [
+      "Generate campaign content and messaging",
+      "Optimize campaign timing and targeting",
+      "Analyze campaign performance metrics",
+      "A/B test recommendations",
+      "Create follow-up sequences",
+    ],
+    howItWorks: "The Marketing agent monitors your campaign performance, identifies what's working, and suggests improvements. It can generate new campaign content, recommend targeting adjustments, and help you get better response rates.",
+    customization: [
+      "Set campaign budget constraints",
+      "Define target demographics",
+      "Adjust messaging style and tone",
+      "Configure response tracking",
+    ],
+    triggers: [
+      "New campaign creation",
+      "Campaign performance drops",
+      "A/B test results available",
+      "Budget milestone reached",
+    ],
+    outputs: [
+      "Campaign content drafts",
+      "Performance analysis reports",
+      "Optimization recommendations",
+      "Audience segmentation suggestions",
+    ],
+    bestPractices: [
+      "Test AI content variations",
+      "Review targeting suggestions weekly",
+      "Use for creative ideation",
+    ],
+  },
+  collections: {
+    fullName: "Collections & Payment Management",
+    icon: DollarSign,
+    category: "Finance",
+    overview: "Manages payment reminders, delinquency escalation, and borrower communications for your seller-financed notes.",
+    capabilities: [
+      "Send automated payment reminders",
+      "Escalate delinquent accounts progressively",
+      "Track payment history and patterns",
+      "Generate late notices and demand letters",
+      "Recommend collection strategies",
+    ],
+    howItWorks: "The Collections agent monitors all your notes for payment activity. It follows a 4-tier escalation process: friendly reminders, formal notices, demand letters, and escalation alerts. It helps maintain cash flow while preserving borrower relationships.",
+    customization: [
+      "Set grace period duration",
+      "Adjust escalation timeline",
+      "Configure communication frequency",
+      "Define hardship case handling",
+    ],
+    triggers: [
+      "Payment due date approaching",
+      "Payment becomes past due",
+      "Escalation tier threshold reached",
+      "Borrower communication received",
+    ],
+    outputs: [
+      "Payment reminder emails/SMS",
+      "Late payment notices",
+      "Demand letters",
+      "Delinquency reports",
+    ],
+    bestPractices: [
+      "Review escalated cases personally",
+      "Keep communication templates updated",
+      "Balance firmness with relationships",
+    ],
+  },
+  research: {
+    fullName: "Research & Due Diligence",
+    icon: Search,
+    category: "Analysis",
+    overview: "Performs property research, due diligence verification, and market analysis to help you make informed acquisition decisions.",
+    capabilities: [
+      "Research property details and history",
+      "Verify title and lien status",
+      "Analyze comparable sales",
+      "Assess market conditions",
+      "Generate due diligence reports",
+    ],
+    howItWorks: "The Research agent gathers and analyzes property information from available sources. It checks for potential issues, researches market values, and compiles findings into actionable reports to support your acquisition decisions.",
+    customization: [
+      "Set research depth level",
+      "Define required due diligence items",
+      "Configure alert thresholds",
+      "Adjust valuation methodology",
+    ],
+    triggers: [
+      "New property added for review",
+      "Due diligence requested",
+      "Comparable sales analysis needed",
+      "Market report requested",
+    ],
+    outputs: [
+      "Property research summaries",
+      "Due diligence checklists",
+      "Comparable sales reports",
+      "Market analysis",
+    ],
+    bestPractices: [
+      "Verify critical findings independently",
+      "Use as starting point, not final word",
+      "Request specific research focus areas",
+    ],
+  },
+};
+
+// AI Team Panel Component - Shows detailed agent documentation
+function AITeamPanel() {
+  const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
+
+  return (
+    <div className="h-full flex flex-col overflow-hidden">
+      <div className="p-4 border-b border-border glass-panel">
+        <div className="flex items-center gap-3 mb-2">
+          <Users className="w-5 h-5 text-primary" />
+          <h2 className="text-lg font-semibold">AI Team Management</h2>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Your dedicated AI workforce. Each agent specializes in a key area of your land investing business.
+        </p>
+      </div>
+
+      <ScrollArea className="flex-1 p-4">
+        <div className="space-y-4 max-w-4xl mx-auto">
+          {Object.entries(agentDocumentation).map(([role, doc]) => {
+            const isExpanded = expandedAgent === role;
+            const IconComponent = doc.icon;
+            
+            return (
+              <Card
+                key={role}
+                className={`transition-all ${isExpanded ? "ring-2 ring-primary" : ""}`}
+                data-testid={`card-agent-doc-${role}`}
+              >
+                <div
+                  onClick={() => setExpandedAgent(isExpanded ? null : role)}
+                  className="cursor-pointer"
+                >
+                  <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-primary/10">
+                        <IconComponent className="w-5 h-5 text-primary" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-base">{doc.fullName}</CardTitle>
+                        <Badge variant="secondary" className="mt-1">{doc.category}</Badge>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-xs">
+                        <Zap className="w-3 h-3 mr-1" />
+                        Active
+                      </Badge>
+                      <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform ${isExpanded ? "rotate-90" : ""}`} />
+                    </div>
+                  </CardHeader>
+                  <CardContent className="pt-0">
+                    <p className="text-sm text-muted-foreground">{doc.overview}</p>
+                  </CardContent>
+                </div>
+
+                {isExpanded && (
+                  <CardContent className="pt-0 space-y-6">
+                    <div className="pt-4 border-t border-border">
+                      <div className="flex items-center gap-2 mb-3">
+                        <CheckCircle className="w-4 h-4 text-accent" />
+                        <h4 className="font-medium text-sm">Capabilities</h4>
+                      </div>
+                      <ul className="space-y-2">
+                        {doc.capabilities.map((cap, idx) => (
+                          <li key={idx} className="flex items-start gap-2 text-sm text-muted-foreground">
+                            <div className="w-1.5 h-1.5 rounded-full bg-primary mt-2 shrink-0" />
+                            {cap}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <div>
+                      <div className="flex items-center gap-2 mb-3">
+                        <Brain className="w-4 h-4 text-accent" />
+                        <h4 className="font-medium text-sm">How It Works</h4>
+                      </div>
+                      <p className="text-sm text-muted-foreground">{doc.howItWorks}</p>
+                    </div>
+
+                    <div className="grid md:grid-cols-2 gap-4">
+                      <div>
+                        <div className="flex items-center gap-2 mb-3">
+                          <Zap className="w-4 h-4 text-accent" />
+                          <h4 className="font-medium text-sm">Triggers</h4>
+                        </div>
+                        <ul className="space-y-1.5">
+                          {doc.triggers.map((trigger, idx) => (
+                            <li key={idx} className="text-sm text-muted-foreground flex items-start gap-2">
+                              <Clock className="w-3 h-3 mt-1 shrink-0" />
+                              {trigger}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      <div>
+                        <div className="flex items-center gap-2 mb-3">
+                          <FileText className="w-4 h-4 text-accent" />
+                          <h4 className="font-medium text-sm">Outputs</h4>
+                        </div>
+                        <ul className="space-y-1.5">
+                          {doc.outputs.map((output, idx) => (
+                            <li key={idx} className="text-sm text-muted-foreground flex items-start gap-2">
+                              <ChevronRight className="w-3 h-3 mt-1 shrink-0" />
+                              {output}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex items-center gap-2 mb-3">
+                        <Settings2 className="w-4 h-4 text-accent" />
+                        <h4 className="font-medium text-sm">Customization Options</h4>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {doc.customization.map((opt, idx) => (
+                          <Badge key={idx} variant="outline" className="text-xs">
+                            {opt}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="bg-muted/30 rounded-lg p-4">
+                      <div className="flex items-center gap-2 mb-3">
+                        <AlertCircle className="w-4 h-4 text-accent" />
+                        <h4 className="font-medium text-sm">Best Practices</h4>
+                      </div>
+                      <ul className="space-y-2">
+                        {doc.bestPractices.map((practice, idx) => (
+                          <li key={idx} className="text-sm text-muted-foreground flex items-start gap-2">
+                            <TrendingUp className="w-3 h-3 mt-1 shrink-0 text-primary" />
+                            {practice}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </CardContent>
+                )}
+              </Card>
+            );
+          })}
+        </div>
+      </ScrollArea>
+    </div>
+  );
+}
+
 export default function CommandCenterPage() {
   const queryClient = useQueryClient();
   const isMobile = useIsMobile();
   const [mobileTab, setMobileTab] = useState<string>("chat");
+  const [desktopView, setDesktopView] = useState<"chat" | "team">("chat");
   const [input, setInput] = useState("");
   const [selectedAgent, setSelectedAgent] = useState<string>("executive");
   const [currentConversationId, setCurrentConversationId] = useState<number | null>(null);
@@ -254,6 +658,7 @@ export default function CommandCenterPage() {
                   <TabsTrigger value="conversations" className="flex-1">History</TabsTrigger>
                   <TabsTrigger value="agents" className="flex-1">Agents</TabsTrigger>
                   <TabsTrigger value="chat" className="flex-1">Chat</TabsTrigger>
+                  <TabsTrigger value="team" className="flex-1">Team</TabsTrigger>
                 </TabsList>
               </Tabs>
             </div>
@@ -482,76 +887,113 @@ export default function CommandCenterPage() {
                   </div>
                 </div>
               )}
+
+              {mobileTab === "team" && (
+                <AITeamPanel />
+              )}
             </div>
           </div>
         ) : (
           <div className="flex flex-1 overflow-hidden">
             <div className="w-72 border-r border-border vibrancy-sidebar flex flex-col">
-              <div className="p-4 border-b border-border">
-                <Button
-                  onClick={handleNewConversation}
-                  className="w-full"
-                  disabled={createConversationMutation.isPending}
-                  data-testid="button-new-conversation"
-                >
-                  {createConversationMutation.isPending ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  ) : (
-                    <Plus className="w-4 h-4 mr-2" />
-                  )}
-                  New Conversation
-                </Button>
+              <div className="p-4 border-b border-border space-y-3">
+                <div className="flex gap-2">
+                  <Button
+                    variant={desktopView === "chat" ? "default" : "outline"}
+                    onClick={() => setDesktopView("chat")}
+                    className="flex-1"
+                    data-testid="button-desktop-chat-view"
+                  >
+                    <MessageSquare className="w-4 h-4 mr-2" />
+                    Chat
+                  </Button>
+                  <Button
+                    variant={desktopView === "team" ? "default" : "outline"}
+                    onClick={() => setDesktopView("team")}
+                    className="flex-1"
+                    data-testid="button-desktop-team-view"
+                  >
+                    <Users className="w-4 h-4 mr-2" />
+                    Team
+                  </Button>
+                </div>
+                {desktopView === "chat" && (
+                  <Button
+                    onClick={handleNewConversation}
+                    className="w-full"
+                    disabled={createConversationMutation.isPending}
+                    data-testid="button-new-conversation"
+                  >
+                    {createConversationMutation.isPending ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Plus className="w-4 h-4 mr-2" />
+                    )}
+                    New Conversation
+                  </Button>
+                )}
               </div>
 
-              <ScrollArea className="flex-1">
-                <div className="p-2 space-y-1" data-testid="list-conversations">
-                  {conversationsLoading ? (
-                    <div className="flex items-center justify-center py-8">
-                      <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-                    </div>
-                  ) : conversations.length === 0 ? (
-                    <div className="text-center py-8 text-sm text-muted-foreground">
-                      No conversations yet
-                    </div>
-                  ) : (
-                    conversations.map((conv) => (
-                      <div
-                        key={conv.id}
-                        onClick={() => handleSelectConversation(conv.id)}
-                        className={`flex items-center gap-2 p-3 rounded-lg cursor-pointer group transition-colors ${
-                          currentConversationId === conv.id
-                            ? "bg-primary/10 text-primary"
-                            : "hover-elevate"
-                        }`}
-                        data-testid={`conversation-item-${conv.id}`}
-                      >
-                        <MessageSquare className="w-4 h-4 shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{conv.title}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {new Date(conv.createdAt).toLocaleDateString()}
-                          </p>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="opacity-0 group-hover:opacity-100 shrink-0"
-                          onClick={(e) => handleDeleteConversation(e, conv.id)}
-                          data-testid={`button-delete-conversation-${conv.id}`}
-                        >
-                          <Trash2 className="w-4 h-4 text-destructive" />
-                        </Button>
+              {desktopView === "chat" ? (
+                <ScrollArea className="flex-1">
+                  <div className="p-2 space-y-1" data-testid="list-conversations">
+                    {conversationsLoading ? (
+                      <div className="flex items-center justify-center py-8">
+                        <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
                       </div>
-                    ))
-                  )}
+                    ) : conversations.length === 0 ? (
+                      <div className="text-center py-8 text-sm text-muted-foreground">
+                        No conversations yet
+                      </div>
+                    ) : (
+                      conversations.map((conv) => (
+                        <div
+                          key={conv.id}
+                          onClick={() => handleSelectConversation(conv.id)}
+                          className={`flex items-center gap-2 p-3 rounded-lg cursor-pointer group transition-colors ${
+                            currentConversationId === conv.id
+                              ? "bg-primary/10 text-primary"
+                              : "hover-elevate"
+                          }`}
+                          data-testid={`conversation-item-${conv.id}`}
+                        >
+                          <MessageSquare className="w-4 h-4 shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{conv.title}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {new Date(conv.createdAt).toLocaleDateString()}
+                            </p>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="opacity-0 group-hover:opacity-100 shrink-0"
+                            onClick={(e) => handleDeleteConversation(e, conv.id)}
+                            data-testid={`button-delete-conversation-${conv.id}`}
+                          >
+                            <Trash2 className="w-4 h-4 text-destructive" />
+                          </Button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </ScrollArea>
+              ) : (
+                <div className="flex-1 flex flex-col items-center justify-center p-4 text-center">
+                  <Users className="w-12 h-12 text-muted-foreground/30 mb-4" />
+                  <h3 className="font-medium mb-2">AI Team Documentation</h3>
+                  <p className="text-sm text-muted-foreground max-w-xs">
+                    View detailed documentation for each AI agent on your team.
+                  </p>
                 </div>
-              </ScrollArea>
+              )}
             </div>
 
-            <div className="flex-1 flex flex-col overflow-hidden">
-              <div className="p-4 border-b border-border glass-panel">
-                <h2 className="text-sm font-medium text-muted-foreground mb-3">Select Agent</h2>
-                <div className="flex gap-3 overflow-x-auto pb-2">
+            {desktopView === "chat" ? (
+              <div className="flex-1 flex flex-col overflow-hidden">
+                <div className="p-4 border-b border-border glass-panel">
+                  <h2 className="text-sm font-medium text-muted-foreground mb-3">Select Agent</h2>
+                  <div className="flex gap-3 overflow-x-auto pb-2">
                   {agentsLoading ? (
                     <div className="flex items-center gap-2">
                       <Loader2 className="w-4 h-4 animate-spin" />
@@ -754,6 +1196,11 @@ export default function CommandCenterPage() {
                 </div>
               </div>
             </div>
+            ) : (
+              <div className="flex-1 flex flex-col overflow-hidden">
+                <AITeamPanel />
+              </div>
+            )}
           </div>
         )}
       </main>

@@ -45,6 +45,153 @@ const pieceTypes = [
   { value: 'letter_1_page', label: 'Letter (1 page)', cost: 1.25 },
 ] as const;
 
+// Campaign templates organized by type and offer style
+const campaignTemplates = {
+  direct_mail: [
+    {
+      id: 'dm_neutral',
+      name: 'Neutral Offer',
+      description: 'Professional inquiry without stating a specific price',
+      subject: 'Interested in Your Property',
+      content: `Dear {{firstName}} {{lastName}},
+
+My name is [Your Name] and I am a land investor interested in purchasing property in {{county}} County, {{state}}.
+
+I recently came across your parcel (APN: {{apn}}) and wanted to reach out to see if you might be interested in selling.
+
+I purchase land for cash and can close quickly with no fees or commissions on your end. If you're open to discussing a sale, please give me a call or text at [Your Phone] or email me at [Your Email].
+
+I look forward to hearing from you.
+
+Best regards,
+[Your Name]
+[Your Company]`,
+    },
+    {
+      id: 'dm_blind',
+      name: 'Blind Offer',
+      description: 'Specific cash offer without revealing how you found them',
+      subject: 'Cash Offer for Your {{county}} County Land',
+      content: `Dear {{firstName}} {{lastName}},
+
+I am writing to make you a cash offer of \${{offerAmount}} for your property located in {{county}} County, {{state}} (APN: {{apn}}).
+
+This is a no-obligation offer. If you accept:
+- I pay all closing costs
+- No realtor commissions
+- Close in as little as 14 days
+- Payment by cashier's check or wire transfer
+
+If you're interested, simply sign the enclosed Purchase Agreement and return it in the prepaid envelope provided.
+
+Questions? Call me directly at [Your Phone].
+
+Sincerely,
+[Your Name]
+[Your Company]`,
+    },
+    {
+      id: 'dm_followup',
+      name: 'Follow-Up Mailer',
+      description: 'Second touch for non-responders',
+      subject: 'Second Notice: Offer for Your Land',
+      content: `Dear {{firstName}} {{lastName}},
+
+I recently sent you a letter expressing my interest in purchasing your property in {{county}} County, {{state}}.
+
+I wanted to follow up in case my first letter didn't reach you or got lost in the mail. My offer still stands, and I remain very interested in your parcel.
+
+If you've been thinking about selling, I'd love to chat. Even if you're not ready to sell right now, feel free to reach out - I'm always happy to answer questions.
+
+Call or text: [Your Phone]
+Email: [Your Email]
+
+Best regards,
+[Your Name]`,
+    },
+  ],
+  email: [
+    {
+      id: 'email_neutral',
+      name: 'Neutral Inquiry',
+      description: 'Professional email inquiry about selling',
+      subject: 'Quick Question About Your {{county}} County Property',
+      content: `Hi {{firstName}},
+
+I came across your property in {{county}} County and wanted to reach out to see if you might be interested in selling.
+
+I'm a land investor and I purchase properties for cash with quick, hassle-free closings.
+
+Would you be open to a brief conversation? I'd be happy to answer any questions you might have.
+
+Best,
+[Your Name]
+[Your Phone]`,
+    },
+    {
+      id: 'email_blind',
+      name: 'Blind Offer Email',
+      description: 'Direct cash offer via email',
+      subject: 'Cash Offer: $' + '{{offerAmount}} for Your Land',
+      content: `Hi {{firstName}},
+
+I'd like to make you a cash offer of \${{offerAmount}} for your property in {{county}} County, {{state}}.
+
+Here's what I offer:
+- All cash, no financing contingencies
+- I cover closing costs
+- Close in 2-3 weeks
+- No realtor fees
+
+If this interests you, just reply to this email or call me at [Your Phone].
+
+No pressure either way - just let me know!
+
+[Your Name]
+[Your Company]`,
+    },
+    {
+      id: 'email_nurture',
+      name: 'Nurture Sequence',
+      description: 'Relationship-building email for warm leads',
+      subject: 'Checking In - {{county}} County Property',
+      content: `Hi {{firstName}},
+
+I wanted to check in and see how things are going. I know selling land is a big decision, and I'm here whenever you're ready to talk.
+
+In the meantime, if you have any questions about the process, property values in your area, or anything else - feel free to reach out. I'm happy to help with no obligation.
+
+Have a great week!
+
+[Your Name]
+[Your Phone]`,
+    },
+  ],
+  sms: [
+    {
+      id: 'sms_neutral',
+      name: 'Neutral Text',
+      description: 'Simple inquiry text message',
+      subject: '',
+      content: `Hi {{firstName}}, this is [Your Name]. I'm interested in buying land in {{county}} County and came across your property. Would you consider selling? No pressure - just reply YES if you'd like to chat.`,
+    },
+    {
+      id: 'sms_blind',
+      name: 'Blind Offer Text',
+      description: 'Direct offer via text',
+      subject: '',
+      content: `Hi {{firstName}}, I'd like to offer \${{offerAmount}} cash for your {{county}} County property. I pay all closing costs & can close in 2 weeks. Interested? Reply YES or call [Your Phone].`,
+    },
+    {
+      id: 'sms_followup',
+      name: 'Follow-Up Text',
+      description: 'Quick follow-up for non-responders',
+      subject: '',
+      content: `Hi {{firstName}}, just following up on my offer for your {{county}} County land. Still interested in selling? Let me know - [Your Name]`,
+    },
+  ],
+} as const;
+
 function MailModeIndicator() {
   const { data: mailStatus, isLoading } = useDirectMailStatus();
   const updateModeMutation = useUpdateMailMode();
@@ -774,6 +921,7 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
 
 function CampaignForm({ onSuccess }: { onSuccess: () => void }) {
   const { mutate, isPending } = useCreateCampaign();
+  const [selectedTemplate, setSelectedTemplate] = useState<string>("");
   
   const form = useForm<z.infer<typeof campaignFormSchema>>({
     resolver: zodResolver(campaignFormSchema),
@@ -782,6 +930,18 @@ function CampaignForm({ onSuccess }: { onSuccess: () => void }) {
       type: "direct_mail",
     }
   });
+
+  const campaignType = form.watch("type") as keyof typeof campaignTemplates;
+  const availableTemplates = campaignTemplates[campaignType] || [];
+
+  const handleTemplateSelect = (templateId: string) => {
+    setSelectedTemplate(templateId);
+    const template = availableTemplates.find(t => t.id === templateId);
+    if (template) {
+      form.setValue("subject", template.subject);
+      form.setValue("content", template.content);
+    }
+  };
 
   const onSubmit = (data: z.infer<typeof campaignFormSchema>) => {
     mutate(data, { onSuccess });
@@ -803,7 +963,10 @@ function CampaignForm({ onSuccess }: { onSuccess: () => void }) {
           <label className="text-sm font-medium">Type</label>
           <Select 
             value={form.watch("type")} 
-            onValueChange={(val) => form.setValue("type", val)}
+            onValueChange={(val) => {
+              form.setValue("type", val);
+              setSelectedTemplate("");
+            }}
           >
             <SelectTrigger data-testid="select-campaign-type">
               <SelectValue />
@@ -832,13 +995,77 @@ function CampaignForm({ onSuccess }: { onSuccess: () => void }) {
       </div>
 
       <div className="space-y-2">
-        <label className="text-sm font-medium">Subject (for email/mail)</label>
-        <Input 
-          {...form.register("subject")} 
-          placeholder="We want to buy your land!" 
-          data-testid="input-subject"
-        />
+        <label className="text-sm font-medium">Template</label>
+        <div className="grid grid-cols-1 gap-2">
+          {availableTemplates.map((template) => (
+            <div
+              key={template.id}
+              onClick={() => handleTemplateSelect(template.id)}
+              className={`p-3 rounded-lg border cursor-pointer transition-colors hover-elevate ${
+                selectedTemplate === template.id
+                  ? "border-primary bg-primary/5"
+                  : "border-border"
+              }`}
+              data-testid={`template-${template.id}`}
+            >
+              <div className="flex items-start gap-3">
+                <div className={`mt-0.5 w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                  selectedTemplate === template.id ? "border-primary" : "border-muted-foreground"
+                }`}>
+                  {selectedTemplate === template.id && (
+                    <div className="w-2 h-2 rounded-full bg-primary" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-sm">{template.name}</p>
+                  <p className="text-xs text-muted-foreground">{template.description}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+          <div
+            onClick={() => {
+              setSelectedTemplate("custom");
+              form.setValue("subject", "");
+              form.setValue("content", "");
+            }}
+            className={`p-3 rounded-lg border cursor-pointer transition-colors hover-elevate ${
+              selectedTemplate === "custom"
+                ? "border-primary bg-primary/5"
+                : "border-border"
+            }`}
+            data-testid="template-custom"
+          >
+            <div className="flex items-start gap-3">
+              <div className={`mt-0.5 w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                selectedTemplate === "custom" ? "border-primary" : "border-muted-foreground"
+              }`}>
+                {selectedTemplate === "custom" && (
+                  <div className="w-2 h-2 rounded-full bg-primary" />
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-sm">Custom Message</p>
+                <p className="text-xs text-muted-foreground">Write your own content from scratch</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground mt-2">
+          {"Variables: {{firstName}}, {{lastName}}, {{county}}, {{state}}, {{apn}}, {{offerAmount}}"}
+        </p>
       </div>
+
+      {campaignType !== "sms" && (
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Subject (for email/mail)</label>
+          <Input 
+            {...form.register("subject")} 
+            placeholder="We want to buy your land!" 
+            data-testid="input-subject"
+          />
+        </div>
+      )}
 
       <div className="space-y-2">
         <label className="text-sm font-medium">Content</label>
