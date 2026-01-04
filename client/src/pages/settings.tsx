@@ -40,6 +40,207 @@ import { ComplianceSettings } from "@/components/compliance-settings";
 import { useState } from "react";
 import { useEffect } from "react";
 import { useSearch } from "wouter";
+import { useQuery } from "@tanstack/react-query";
+import { UserPlus } from "lucide-react";
+import { Input } from "@/components/ui/input";
+
+interface SeatInfo {
+  tier: string;
+  includedSeats: number;
+  additionalSeats: number;
+  totalSeats: number;
+  maxSeats: number | null;
+  usedSeats: number;
+  availableSeats: number;
+  canAddSeats: boolean;
+  seatPriceCents: number | null;
+  hasTeamMessaging: boolean;
+}
+
+interface SeatPricing {
+  canPurchaseSeats: boolean;
+  message?: string;
+  tier?: string;
+  monthly?: { id: string; amount: number; currency: string } | null;
+  yearly?: { id: string; amount: number; currency: string } | null;
+}
+
+function SeatManagement() {
+  const { toast } = useToast();
+  const [seatQuantity, setSeatQuantity] = useState(1);
+  const [billingPeriod, setBillingPeriod] = useState<"monthly" | "yearly">("monthly");
+  
+  const { data: seatInfo, isLoading: seatInfoLoading } = useQuery<SeatInfo>({
+    queryKey: ["/api/organization/seats"],
+  });
+  
+  const { data: seatPricing, isLoading: pricingLoading } = useQuery<SeatPricing>({
+    queryKey: ["/api/organization/seats/pricing"],
+  });
+  
+  const purchaseSeatsMutation = useMutation({
+    mutationFn: async ({ quantity, billingPeriod }: { quantity: number; billingPeriod: string }) => {
+      const res = await apiRequest("POST", "/api/organization/seats/purchase", { quantity, billingPeriod });
+      if (!res.ok) throw new Error("Failed to create checkout session");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      if (data.url) {
+        window.location.href = data.url;
+      }
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to purchase seats",
+        variant: "destructive",
+      });
+    },
+  });
+  
+  const handlePurchaseSeats = () => {
+    purchaseSeatsMutation.mutate({ quantity: seatQuantity, billingPeriod });
+  };
+  
+  const formatPrice = (amount: number | undefined, currency: string = "usd") => {
+    if (!amount) return "$0";
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: currency.toUpperCase(),
+      minimumFractionDigits: 0,
+    }).format(amount / 100);
+  };
+
+  if (seatInfoLoading || pricingLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Users className="w-5 h-5" />
+            Seat Management
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Skeleton className="h-24 w-full" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Users className="w-5 h-5" />
+          Seat Management
+        </CardTitle>
+        <CardDescription>Manage your team seat allocation</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="space-y-1">
+            <p className="text-sm text-muted-foreground">Included Seats</p>
+            <p className="text-2xl font-semibold" data-testid="text-included-seats">
+              {seatInfo?.includedSeats ?? 0}
+            </p>
+          </div>
+          <div className="space-y-1">
+            <p className="text-sm text-muted-foreground">Additional Seats</p>
+            <p className="text-2xl font-semibold" data-testid="text-additional-seats">
+              {seatInfo?.additionalSeats ?? 0}
+            </p>
+          </div>
+          <div className="space-y-1">
+            <p className="text-sm text-muted-foreground">Used</p>
+            <p className="text-2xl font-semibold" data-testid="text-used-seats">
+              {seatInfo?.usedSeats ?? 0} / {seatInfo?.totalSeats ?? 0}
+            </p>
+          </div>
+          <div className="space-y-1">
+            <p className="text-sm text-muted-foreground">Available</p>
+            <p className="text-2xl font-semibold text-green-600" data-testid="text-available-seats">
+              {seatInfo?.availableSeats ?? 0}
+            </p>
+          </div>
+        </div>
+        
+        {seatInfo && seatInfo.totalSeats > 0 && (
+          <Progress 
+            value={(seatInfo.usedSeats / seatInfo.totalSeats) * 100} 
+            className="h-2"
+          />
+        )}
+        
+        {seatInfo?.hasTeamMessaging && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Check className="w-4 h-4 text-green-500" />
+            Team messaging enabled (2+ seats)
+          </div>
+        )}
+        
+        {seatPricing?.canPurchaseSeats && seatInfo?.canAddSeats && (
+          <div className="pt-4 border-t space-y-4">
+            <h4 className="font-medium">Add More Seats</h4>
+            <div className="flex flex-wrap items-end gap-4">
+              <div className="space-y-1">
+                <Label htmlFor="seat-quantity">Quantity</Label>
+                <Input
+                  id="seat-quantity"
+                  type="number"
+                  min={1}
+                  max={seatInfo?.maxSeats ? seatInfo.maxSeats - seatInfo.totalSeats : 100}
+                  value={seatQuantity}
+                  onChange={(e) => setSeatQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                  className="w-20"
+                  data-testid="input-seat-quantity"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>Billing</Label>
+                <Select value={billingPeriod} onValueChange={(v) => setBillingPeriod(v as "monthly" | "yearly")}>
+                  <SelectTrigger className="w-28" data-testid="select-billing-period">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="monthly">Monthly</SelectItem>
+                    <SelectItem value="yearly">Yearly</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex-1 space-y-1">
+                <Label>Price</Label>
+                <p className="text-lg font-semibold" data-testid="text-seat-price">
+                  {billingPeriod === "monthly" 
+                    ? `${formatPrice((seatPricing.monthly?.amount ?? 0) * seatQuantity)}/mo`
+                    : `${formatPrice((seatPricing.yearly?.amount ?? 0) * seatQuantity)}/yr`
+                  }
+                </p>
+              </div>
+              <Button
+                onClick={handlePurchaseSeats}
+                disabled={purchaseSeatsMutation.isPending || !seatQuantity}
+                data-testid="button-purchase-seats"
+              >
+                {purchaseSeatsMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <UserPlus className="w-4 h-4 mr-2" />
+                )}
+                Add Seats
+              </Button>
+            </div>
+          </div>
+        )}
+        
+        {seatPricing && !seatPricing.canPurchaseSeats && (
+          <p className="text-sm text-muted-foreground pt-4 border-t">
+            {seatPricing.message}
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function Settings() {
   const { toast } = useToast();
@@ -383,6 +584,9 @@ export default function Settings() {
               )}
             </CardContent>
           </Card>
+
+          {/* Seat Management */}
+          <SeatManagement />
 
           {/* Usage Limits */}
           <Card>

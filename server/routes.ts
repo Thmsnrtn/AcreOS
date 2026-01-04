@@ -270,6 +270,123 @@ export async function registerRoutes(
     }
   });
   
+  // Get seat add-on pricing for the organization's tier
+  api.get("/api/organization/seats/pricing", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const tier = org.subscriptionTier || "free";
+      
+      if (tier === "free" || tier === "enterprise") {
+        return res.json({ 
+          canPurchaseSeats: false,
+          message: tier === "free" 
+            ? "Upgrade to Starter or higher to add team members" 
+            : "Contact sales for enterprise seat additions"
+        });
+      }
+      
+      const { getStripe } = await import("./stripeClient");
+      const stripe = await getStripe();
+      
+      const prices = await stripe.prices.search({
+        query: `metadata['type']:'seat_addon' AND metadata['tier']:'${tier}' AND active:'true'`,
+      });
+      
+      const monthlyPrice = prices.data.find(p => p.recurring?.interval === "month");
+      const yearlyPrice = prices.data.find(p => p.recurring?.interval === "year");
+      
+      res.json({
+        canPurchaseSeats: true,
+        tier,
+        monthly: monthlyPrice ? {
+          id: monthlyPrice.id,
+          amount: monthlyPrice.unit_amount,
+          currency: monthlyPrice.currency,
+        } : null,
+        yearly: yearlyPrice ? {
+          id: yearlyPrice.id,
+          amount: yearlyPrice.unit_amount,
+          currency: yearlyPrice.currency,
+        } : null,
+      });
+    } catch (error: any) {
+      console.error("Get seat pricing error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch seat pricing" });
+    }
+  });
+  
+  // Purchase additional seats
+  api.post("/api/organization/seats/purchase", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { quantity, billingPeriod } = req.body;
+      
+      if (!quantity || quantity < 1) {
+        return res.status(400).json({ message: "Quantity must be at least 1" });
+      }
+      
+      if (!billingPeriod || !["monthly", "yearly"].includes(billingPeriod)) {
+        return res.status(400).json({ message: "Billing period must be 'monthly' or 'yearly'" });
+      }
+      
+      const tier = org.subscriptionTier || "free";
+      if (tier === "free" || tier === "enterprise") {
+        return res.status(400).json({ 
+          message: tier === "free" 
+            ? "Upgrade to a paid plan first" 
+            : "Contact sales for enterprise seat additions"
+        });
+      }
+      
+      const { getStripe } = await import("./stripeClient");
+      const stripe = await getStripe();
+      
+      // Server-side lookup of the correct price for this tier - prevents cross-tier price manipulation
+      const interval = billingPeriod === "monthly" ? "month" : "year";
+      const prices = await stripe.prices.search({
+        query: `metadata['type']:'seat_addon' AND metadata['tier']:'${tier}' AND active:'true'`,
+      });
+      
+      const validPrice = prices.data.find(p => p.recurring?.interval === interval);
+      if (!validPrice) {
+        return res.status(400).json({ message: `Seat add-on pricing not available for ${tier} ${billingPeriod}` });
+      }
+      
+      let customerId = org.stripeCustomerId;
+      if (!customerId) {
+        const customer = await stripe.customers.create({
+          metadata: { organizationId: String(org.id) },
+        });
+        customerId = customer.id;
+        await storage.updateOrganization(org.id, { stripeCustomerId: customerId });
+      }
+      
+      const session = await stripe.checkout.sessions.create({
+        customer: customerId,
+        payment_method_types: ["card"],
+        line_items: [{
+          price: validPrice.id,
+          quantity: quantity,
+        }],
+        mode: "subscription",
+        success_url: `${req.protocol}://${req.get("host")}/settings?seats=success&quantity=${quantity}`,
+        cancel_url: `${req.protocol}://${req.get("host")}/settings?seats=cancelled`,
+        metadata: {
+          organizationId: String(org.id),
+          type: "seat_addon",
+          quantity: String(quantity),
+          tier: tier,
+        },
+      });
+      
+      console.log(`[seats] Org ${org.id} initiating seat purchase: ${quantity} seats, ${billingPeriod}, price ${validPrice.id}`);
+      res.json({ url: session.url });
+    } catch (error: any) {
+      console.error("Purchase seats error:", error);
+      res.status(500).json({ message: error.message || "Failed to create checkout session" });
+    }
+  });
+  
   // ============================================
   // ONBOARDING
   // ============================================

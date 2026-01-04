@@ -1,5 +1,38 @@
 import { getUncachableStripeClient } from './stripeClient';
 
+const SEAT_ADDON_PRODUCTS = [
+  {
+    name: 'Starter Seat Add-on',
+    description: 'Additional team member seat for Starter plan',
+    metadata: {
+      type: 'seat_addon',
+      tier: 'starter',
+    },
+    monthlyPrice: 2000, // $20/month per seat
+    yearlyPrice: 19200, // $192/year per seat (20% discount)
+  },
+  {
+    name: 'Pro Seat Add-on',
+    description: 'Additional team member seat for Pro plan',
+    metadata: {
+      type: 'seat_addon',
+      tier: 'pro',
+    },
+    monthlyPrice: 3000, // $30/month per seat
+    yearlyPrice: 28800, // $288/year per seat (20% discount)
+  },
+  {
+    name: 'Scale Seat Add-on',
+    description: 'Additional team member seat for Scale plan',
+    metadata: {
+      type: 'seat_addon',
+      tier: 'scale',
+    },
+    monthlyPrice: 4000, // $40/month per seat
+    yearlyPrice: 38400, // $384/year per seat (20% discount)
+  },
+];
+
 const SUBSCRIPTION_PRODUCTS = [
   {
     name: 'Starter',
@@ -103,6 +136,62 @@ async function seedProducts() {
     });
     
     console.log(`Created yearly price: ${yearlyPrice.id} ($${product.yearlyPrice / 100}/yr)`);
+  }
+  
+  console.log('Subscription products complete!');
+  
+  // Seed seat add-on products
+  for (const addon of SEAT_ADDON_PRODUCTS) {
+    console.log(`Creating seat add-on product: ${addon.name}`);
+    
+    // Check if product already exists
+    const existingProducts = await stripe.products.search({
+      query: `name:'${addon.name}'`,
+    });
+    
+    if (existingProducts.data.length > 0) {
+      console.log(`Product ${addon.name} already exists, skipping...`);
+      continue;
+    }
+    
+    // Create the product
+    const stripeProduct = await stripe.products.create({
+      name: addon.name,
+      description: addon.description,
+      metadata: addon.metadata,
+    });
+    
+    console.log(`Created seat add-on product: ${stripeProduct.id}`);
+    
+    // Create monthly price (per seat)
+    const monthlyPrice = await stripe.prices.create({
+      product: stripeProduct.id,
+      unit_amount: addon.monthlyPrice,
+      currency: 'usd',
+      recurring: { interval: 'month' },
+      metadata: { 
+        billingPeriod: 'monthly',
+        type: 'seat_addon',
+        tier: addon.metadata.tier,
+      },
+    });
+    
+    console.log(`Created monthly seat price: ${monthlyPrice.id} ($${addon.monthlyPrice / 100}/seat/mo)`);
+    
+    // Create yearly price (per seat)
+    const yearlyPrice = await stripe.prices.create({
+      product: stripeProduct.id,
+      unit_amount: addon.yearlyPrice,
+      currency: 'usd',
+      recurring: { interval: 'year' },
+      metadata: { 
+        billingPeriod: 'yearly',
+        type: 'seat_addon',
+        tier: addon.metadata.tier,
+      },
+    });
+    
+    console.log(`Created yearly seat price: ${yearlyPrice.id} ($${addon.yearlyPrice / 100}/seat/yr)`);
   }
   
   console.log('Product seed complete!');
