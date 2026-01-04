@@ -43,6 +43,14 @@ Preferred communication style: Simple, everyday language.
 - **Deal Pipeline**: Kanban-style board for tracking acquisition and disposition deals.
 - **Document Generation**: Promissory notes, warranty deeds, offer letters.
 - **Usage Limits & Credits**: Tier-based feature usage limits, prepaid credit system for billable actions (email, SMS, AI, PDF, Comps, Direct Mail) with a usage dashboard and alerts.
+- **Hybrid Per-Seat Pricing**: Base tier subscription + optional per-seat add-ons for team growth.
+  - Free: 1 seat (no add-ons)
+  - Starter: 2 included seats, +$20/mo per additional seat
+  - Pro: 5 included seats, +$30/mo per additional seat
+  - Scale: 10 included seats, +$40/mo per additional seat
+  - Enterprise: 25+ seats, negotiable pricing
+  - Team messaging unlocks at 2+ total seats (included + additional)
+  - Seat management UI in Settings page for purchasing additional seats via Stripe checkout
 - **Data Import/Export**: CSV import/export for core data types.
 - **Custom Fields System**: User-defined custom fields (text, number, date, select, checkbox) for leads, properties, and deals with field definitions and values stored separately.
 - **Saved Views**: Reusable filtered views with sorting, column visibility, and default view support per entity type.
