@@ -2,7 +2,7 @@ import { db } from "../storage";
 import { organizations, leads, properties, notes, usageEvents } from "@shared/schema";
 import { eq, and, gte, count, sum } from "drizzle-orm";
 
-export type SubscriptionTier = "free" | "starter" | "professional" | "enterprise";
+export type SubscriptionTier = "free" | "starter" | "pro" | "scale" | "enterprise";
 
 export type ResourceType = "leads" | "properties" | "notes" | "ai_requests";
 
@@ -11,6 +11,8 @@ export interface TierLimits {
   properties: number | null;
   notes: number | null;
   ai_requests: number | null;
+  teamMembers: number | null;
+  hasTeamMessaging: boolean;
 }
 
 export interface UsageLimitResult {
@@ -23,35 +25,50 @@ export interface UsageLimitResult {
 
 export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
   free: {
-    leads: 10,
-    properties: 5,
+    leads: 50,
+    properties: 10,
     notes: 5,
-    ai_requests: 10,
+    ai_requests: 100,
+    teamMembers: 1,
+    hasTeamMessaging: false,
   },
   starter: {
-    leads: 100,
-    properties: 50,
-    notes: 25,
-    ai_requests: 100,
+    leads: 500,
+    properties: 100,
+    notes: 50,
+    ai_requests: 1000,
+    teamMembers: 2,
+    hasTeamMessaging: false,
   },
-  professional: {
-    leads: 1000,
-    properties: 500,
-    notes: 100,
-    ai_requests: 500,
+  pro: {
+    leads: 5000,
+    properties: 1000,
+    notes: 500,
+    ai_requests: 10000,
+    teamMembers: 10,
+    hasTeamMessaging: false,
+  },
+  scale: {
+    leads: null,
+    properties: null,
+    notes: null,
+    ai_requests: null,
+    teamMembers: 25,
+    hasTeamMessaging: true,
   },
   enterprise: {
     leads: null,
     properties: null,
     notes: null,
     ai_requests: null,
+    teamMembers: null,
+    hasTeamMessaging: true,
   },
 };
 
 function normalizeTier(tier: string): SubscriptionTier {
   const normalized = tier.toLowerCase();
-  if (normalized === "pro") return "professional";
-  if (normalized === "scale") return "enterprise";
+  if (normalized === "professional") return "pro";
   if (normalized in TIER_LIMITS) return normalized as SubscriptionTier;
   return "free";
 }

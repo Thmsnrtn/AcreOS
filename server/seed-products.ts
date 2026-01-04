@@ -3,42 +3,55 @@ import { getUncachableStripeClient } from './stripeClient';
 const SUBSCRIPTION_PRODUCTS = [
   {
     name: 'Starter',
-    description: 'Perfect for solo land investors getting started. Up to 50 properties, 100 leads, basic AI assistance.',
+    description: 'Perfect for solo land investors getting started. Up to 100 properties, 500 leads, basic AI assistance.',
     metadata: {
       tier: 'starter',
-      propertyLimit: '50',
-      leadLimit: '100',
-      teamMembers: '1',
-      aiCredits: '100',
+      propertyLimit: '100',
+      leadLimit: '500',
+      teamMembers: '2',
+      aiCredits: '1000',
     },
     monthlyPrice: 4900, // $49/month
     yearlyPrice: 47000, // $470/year (20% discount)
   },
   {
-    name: 'Professional',
-    description: 'For growing land businesses. Up to 500 properties, 1000 leads, full AI suite, team collaboration.',
+    name: 'Pro',
+    description: 'For growing land businesses. Up to 1000 properties, 5000 leads, full AI suite, team collaboration.',
     metadata: {
-      tier: 'professional',
-      propertyLimit: '500',
-      leadLimit: '1000',
-      teamMembers: '5',
-      aiCredits: '500',
+      tier: 'pro',
+      propertyLimit: '1000',
+      leadLimit: '5000',
+      teamMembers: '10',
+      aiCredits: '5000',
     },
     monthlyPrice: 14900, // $149/month
     yearlyPrice: 143000, // $1430/year (20% discount)
   },
   {
+    name: 'Scale',
+    description: 'Unlimited leads and properties. Advanced reporting, API access, team messaging, priority support.',
+    metadata: {
+      tier: 'scale',
+      propertyLimit: 'unlimited',
+      leadLimit: 'unlimited',
+      teamMembers: '25',
+      aiCredits: '25000',
+    },
+    monthlyPrice: 39900, // $399/month
+    yearlyPrice: 383000, // $3830/year (20% discount)
+  },
+  {
     name: 'Enterprise',
-    description: 'Unlimited everything. White-label options, API access, dedicated support, custom integrations.',
+    description: 'Everything unlimited. White-label portal, dedicated support, compliance exports, custom integrations.',
     metadata: {
       tier: 'enterprise',
       propertyLimit: 'unlimited',
       leadLimit: 'unlimited',
       teamMembers: 'unlimited',
-      aiCredits: 'unlimited',
+      aiCredits: '50000',
     },
-    monthlyPrice: 49900, // $499/month
-    yearlyPrice: 479000, // $4790/year (20% discount)
+    monthlyPrice: 79900, // $799/month
+    yearlyPrice: 767000, // $7670/year (20% discount)
   },
 ];
 

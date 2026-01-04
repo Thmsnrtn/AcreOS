@@ -1656,7 +1656,7 @@ export const SUBSCRIPTION_TIERS = {
       leads: -1, // unlimited
       properties: -1,
       notes: -1,
-      teamMembers: -1,
+      teamMembers: 25,
       aiRequestsPerMonth: -1,
       campaigns: -1,
       monthlyCredits: 25000, // $250.00
@@ -1666,7 +1666,28 @@ export const SUBSCRIPTION_TIERS = {
       "ai_due_diligence", "ai_marketing", "ai_buyer_communication", "ai_custom_agents",
       "email_campaigns", "sms_campaigns", "direct_mail", "marketplace_syndication",
       "payment_processing", "advanced_reporting", "api_access", "webhooks",
-      "priority_support", "custom_branding"
+      "priority_support", "custom_branding", "team_messaging"
+    ],
+  },
+  enterprise: {
+    name: "Enterprise",
+    price: 799,
+    limits: {
+      leads: -1, // unlimited
+      properties: -1,
+      notes: -1,
+      teamMembers: -1, // unlimited seats
+      aiRequestsPerMonth: -1,
+      campaigns: -1,
+      monthlyCredits: 50000, // $500.00
+    },
+    features: [
+      "advanced_crm", "advanced_inventory", "advanced_notes",
+      "ai_due_diligence", "ai_marketing", "ai_buyer_communication", "ai_custom_agents",
+      "email_campaigns", "sms_campaigns", "direct_mail", "marketplace_syndication",
+      "payment_processing", "advanced_reporting", "api_access", "webhooks",
+      "priority_support", "custom_branding", "team_messaging",
+      "white_label_portal", "dedicated_support", "compliance_exports", "custom_integrations"
     ],
   },
 } as const;
@@ -2580,3 +2601,75 @@ export const AUDITABLE_ENTITIES = [
   "settings",
 ] as const;
 export type AuditableEntity = typeof AUDITABLE_ENTITIES[number];
+
+// ============================================
+// TEAM MESSAGING SYSTEM
+// ============================================
+
+// Team conversations (direct messages or group chats)
+export const teamConversations = pgTable("team_conversations", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  name: text("name"), // null for direct messages, set for group chats
+  isDirect: boolean("is_direct").notNull().default(true), // true for 1-on-1, false for group
+  createdBy: text("created_by").notNull(), // Replit user ID
+  participantIds: jsonb("participant_ids").$type<string[]>().notNull(), // Array of Replit user IDs
+  status: text("status").notNull().default("active"), // active, archived
+  lastMessageAt: timestamp("last_message_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertTeamConversationSchema = createInsertSchema(teamConversations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  lastMessageAt: true,
+});
+export type InsertTeamConversation = z.infer<typeof insertTeamConversationSchema>;
+export type TeamConversation = typeof teamConversations.$inferSelect;
+
+// Team messages within conversations
+export const teamMessages = pgTable("team_messages", {
+  id: serial("id").primaryKey(),
+  conversationId: integer("conversation_id").references(() => teamConversations.id).notNull(),
+  senderId: text("sender_id").notNull(), // Replit user ID
+  body: text("body").notNull(),
+  attachments: jsonb("attachments").$type<{
+    type: string;
+    url: string;
+    name: string;
+    size?: number;
+  }[]>(),
+  readBy: jsonb("read_by").$type<{ 
+    userId: string; 
+    readAt: string; 
+  }[]>().default([]),
+  isDeleted: boolean("is_deleted").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertTeamMessageSchema = createInsertSchema(teamMessages).omit({
+  id: true,
+  createdAt: true,
+  readBy: true,
+  isDeleted: true,
+});
+export type InsertTeamMessage = z.infer<typeof insertTeamMessageSchema>;
+export type TeamMessage = typeof teamMessages.$inferSelect;
+
+// Team member presence/status for online indicators
+export const teamMemberPresence = pgTable("team_member_presence", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  userId: text("user_id").notNull(), // Replit user ID
+  status: text("status").notNull().default("offline"), // online, away, offline
+  lastSeenAt: timestamp("last_seen_at").defaultNow(),
+  deviceInfo: text("device_info"), // desktop, mobile, etc.
+});
+
+export const insertTeamMemberPresenceSchema = createInsertSchema(teamMemberPresence).omit({
+  id: true,
+});
+export type InsertTeamMemberPresence = z.infer<typeof insertTeamMemberPresenceSchema>;
+export type TeamMemberPresence = typeof teamMemberPresence.$inferSelect;
