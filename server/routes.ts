@@ -690,7 +690,20 @@ export async function registerRoutes(
     
     res.json(leadsWithScores);
   });
-  
+
+  // Lead Nurturing Endpoints - Must be before /api/leads/:id to avoid route conflict
+  api.get("/api/leads/insights", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const insights = await leadNurturerService.getLeadInsights(org.id);
+    res.json(insights);
+  });
+
+  api.get("/api/leads/aging", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const agingLeads = await alertingService.getAgingLeads(org.id);
+    res.json(agingLeads);
+  });
+
   api.get("/api/leads/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = (req as any).organization;
     const leadId = Number(req.params.id);
@@ -800,19 +813,6 @@ export async function registerRoutes(
     res.status(204).send();
   });
   
-  // Lead Nurturing Endpoints
-  api.get("/api/leads/insights", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
-    const insights = await leadNurturerService.getLeadInsights(org.id);
-    res.json(insights);
-  });
-
-  api.get("/api/leads/aging", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
-    const agingLeads = await alertingService.getAgingLeads(org.id);
-    res.json(agingLeads);
-  });
-
   api.get("/api/leads/:id/activities", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const leadId = Number(req.params.id);
     const limit = req.query.limit ? Number(req.query.limit) : 50;

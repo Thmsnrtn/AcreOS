@@ -16,9 +16,7 @@ import PortfolioPage from "@/pages/portfolio";
 import CampaignsPage from "@/pages/campaigns";
 import DealsPage from "@/pages/deals";
 import ToolsPage from "@/pages/tools";
-import AgentsPage from "@/pages/agents";
 import CommandCenterPage from "@/pages/command-center";
-import AITeamPage from "@/pages/ai-team";
 import SupportPage from "@/pages/support";
 import SettingsPage from "@/pages/settings";
 import HelpPage from "@/pages/help";
@@ -97,14 +95,14 @@ function Router() {
       <Route path="/tools">
         {() => <ProtectedRoute component={ToolsPage} />}
       </Route>
-      <Route path="/agents">
-        {() => <ProtectedRoute component={AgentsPage} />}
-      </Route>
       <Route path="/command-center">
         {() => <ProtectedRoute component={CommandCenterPage} />}
       </Route>
+      <Route path="/agents">
+        {() => <Redirect to="/command-center" />}
+      </Route>
       <Route path="/ai-team">
-        {() => <ProtectedRoute component={AITeamPage} />}
+        {() => <Redirect to="/command-center" />}
       </Route>
       <Route path="/support">
         {() => <ProtectedRoute component={SupportPage} />}
