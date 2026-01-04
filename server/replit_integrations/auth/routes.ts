@@ -11,7 +11,8 @@ export function registerAuthRoutes(app: Express): void {
       const userId = req.user.claims.sub;
       const user = await authStorage.getUser(userId);
       const isFounder = isFounderEmail(user?.email);
-      res.json({ ...user, isFounder });
+      // Only include isFounder field for actual founders - hide the concept from regular users
+      res.json(isFounder ? { ...user, isFounder: true } : user);
     } catch (error) {
       console.error("Error fetching user:", error);
       res.status(500).json({ message: "Failed to fetch user" });
