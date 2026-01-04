@@ -26,13 +26,39 @@ export class CommunicationsService {
     };
   }
 
+  // TCPA Compliance check (20.2)
+  checkTcpaCompliance(lead: { tcpaConsent?: boolean | null; doNotContact?: boolean | null }): { 
+    allowed: boolean; 
+    reason?: string;
+  } {
+    if (lead.doNotContact) {
+      return { allowed: false, reason: 'Lead has opted out of all communications' };
+    }
+    if (!lead.tcpaConsent) {
+      return { allowed: false, reason: 'Lead has not provided TCPA consent for SMS/calls' };
+    }
+    return { allowed: true };
+  }
+
   async sendToLead(options: CommunicationOptions): Promise<CommunicationResult> {
     const lead = await storage.getLead(options.organizationId, options.leadId);
     if (!lead) {
       return { success: false, channel: 'none', error: 'Lead not found' };
     }
 
+    // TCPA Compliance: Block SMS/calls without consent (20.2)
     const channel = options.channel || this.determinePreferredChannel(lead);
+    
+    if (channel === 'sms' || channel === 'both') {
+      const tcpaCheck = this.checkTcpaCompliance(lead);
+      if (!tcpaCheck.allowed) {
+        console.log(`[Communications] TCPA blocked for lead ${options.leadId}: ${tcpaCheck.reason}`);
+        if (channel === 'sms') {
+          return { success: false, channel: 'sms', error: tcpaCheck.reason };
+        }
+        // If channel is 'both', fall back to email only
+      }
+    }
 
     if (channel === 'email' || channel === 'both') {
       if (lead.email) {

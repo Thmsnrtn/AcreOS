@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl, type InsertLead, type UpdateLeadRequest } from "@shared/routes";
+import { STALE_TIMES, CACHE_TIMES } from "@/lib/queryClient";
 
 export function useLeads() {
   return useQuery({
@@ -9,6 +10,8 @@ export function useLeads() {
       if (!res.ok) throw new Error("Failed to fetch leads");
       return api.leads.list.responses[200].parse(await res.json());
     },
+    staleTime: STALE_TIMES.short,
+    gcTime: CACHE_TIMES.medium,
   });
 }
 
@@ -83,6 +86,28 @@ export function useDeleteLead() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.leads.list.path] });
+    },
+  });
+}
+
+export interface AgingLead {
+  id: number;
+  firstName: string;
+  lastName: string;
+  nurturingStage: string;
+  score: number | null;
+  lastContactedAt: string | null;
+  daysSinceContact: number;
+  urgency: 'urgent' | 'warning' | 'info';
+}
+
+export function useAgingLeads() {
+  return useQuery<AgingLead[]>({
+    queryKey: ['/api/leads/aging'],
+    queryFn: async () => {
+      const res = await fetch('/api/leads/aging', { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch aging leads");
+      return res.json();
     },
   });
 }

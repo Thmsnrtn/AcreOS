@@ -5,10 +5,15 @@ import { z } from "zod";
 import { eq, sql } from "drizzle-orm";
 import { 
   insertLeadSchema, insertPropertySchema, insertNoteSchema, 
-  insertCampaignSchema, insertAgentTaskSchema, insertDealSchema,
+  insertCampaignSchema, insertCampaignResponseSchema, insertAgentTaskSchema, insertDealSchema,
   insertPaymentSchema, insertOrganizationSchema, insertAgentConfigSchema,
+  insertCampaignSequenceSchema, insertSequenceStepSchema, insertSequenceEnrollmentSchema,
+  insertAbTestSchema, insertAbTestVariantSchema, Z_SCORES,
+  insertCustomFieldDefinitionSchema, insertCustomFieldValueSchema, insertSavedViewSchema,
+  insertTaskSchema,
   SUBSCRIPTION_TIERS, payments, notes, deals, properties, leads, activityLog
 } from "@shared/schema";
+import { activityLogger } from "./services/activityLogger";
 
 // Auth imports
 import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
@@ -16,12 +21,22 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integra
 // AI imports
 import { processChat, processChatStream, agentProfiles, getOrCreateConversation } from "./ai/executive";
 
-// Export imports
-import { exportLeadsToCSV, exportPropertiesToCSV, exportNotesToCSV } from "./services/export";
-
-// Import imports
+// Import/Export imports
 import multer from "multer";
-import { parseCSV, importLeads, importProperties, getExpectedLeadColumns, getExpectedPropertyColumns } from "./services/import";
+import {
+  parseCSV,
+  previewImport,
+  importLeads,
+  importProperties,
+  importDeals,
+  exportLeadsToCSV,
+  exportPropertiesToCSV,
+  exportDealsToCSV,
+  exportNotesToCSV,
+  createBackupZip,
+  getExpectedColumns,
+  type ExportFilters,
+} from "./services/importExport";
 
 // Usage limits
 import { checkUsageLimit, getAllUsageLimits, UsageLimitError, TIER_LIMITS } from "./services/usageLimits";
@@ -32,11 +47,36 @@ import { usageMeteringService, creditService } from "./services/credits";
 // Lead nurturing
 import { leadNurturerService } from "./services/leadNurturer";
 
+// Alerting
+import { alertingService } from "./services/alerting";
+
 // Finance agent
 import { financeAgentService } from "./services/financeAgent";
 
 // Onboarding
 import { onboardingService, type BusinessType } from "./services/onboarding";
+
+// AI Offer Generation
+import { 
+  generateOfferSuggestions, 
+  generateOfferLetter, 
+  predictAcceptanceProbability,
+  type PropertyData,
+  type OfferLetterRequest,
+  type AcceptancePredictionRequest
+} from "./services/aiOfferService";
+
+// Permissions
+import { 
+  requirePermission, 
+  requireAdminOrAbove, 
+  requireOwner,
+  attachPermissionContext,
+  getUserPermissionContext,
+  getPermissionsForRole,
+  ROLES,
+  type UserPermissionContext
+} from "./utils/permissions";
 
 // ============================================
 // RATE LIMITER (In-memory for portal endpoints)
@@ -299,6 +339,26 @@ export async function registerRoutes(
     }
   });
   
+  api.post("/api/onboarding/sample-data", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const result = await onboardingService.generateSampleData(org.id);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+  
+  api.delete("/api/onboarding/sample-data", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const result = await onboardingService.clearSampleData(org.id);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+  
   api.get("/api/subscription/tiers", async (req, res) => {
     res.json(SUBSCRIPTION_TIERS);
   });
@@ -323,19 +383,354 @@ export async function registerRoutes(
     res.json(members);
   });
   
+  api.get("/api/me/permissions", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const context = await getUserPermissionContext(req.user, org);
+    if (!context) {
+      return res.status(403).json({ message: "You are not a member of this organization" });
+    }
+    res.json({
+      userId: context.userId,
+      teamMemberId: context.teamMemberId,
+      role: context.role,
+      permissions: context.permissions,
+      availableRoles: ROLES,
+    });
+  });
+  
+  api.patch("/api/team/:id/role", isAuthenticated, getOrCreateOrg, requireAdminOrAbove(), async (req, res) => {
+    const org = (req as any).organization;
+    const memberId = Number(req.params.id);
+    const { role } = req.body;
+    const context = (req as any).permissionContext as UserPermissionContext;
+    
+    if (!ROLES.includes(role)) {
+      return res.status(400).json({ message: `Invalid role. Must be one of: ${ROLES.join(", ")}` });
+    }
+    
+    const members = await storage.getTeamMembers(org.id);
+    const targetMember = members.find(m => m.id === memberId);
+    
+    if (!targetMember) {
+      return res.status(404).json({ message: "Team member not found" });
+    }
+    
+    if (targetMember.role === "owner" && context.role !== "owner") {
+      return res.status(403).json({ message: "Only the owner can change the owner's role" });
+    }
+    
+    if (role === "owner" && context.role !== "owner") {
+      return res.status(403).json({ message: "Only the owner can assign the owner role" });
+    }
+    
+    const owners = members.filter(m => m.role === "owner");
+    if (targetMember.role === "owner" && owners.length === 1 && role !== "owner") {
+      return res.status(400).json({ message: "Cannot remove the only owner. Transfer ownership first." });
+    }
+    
+    const updated = await storage.updateTeamMember(memberId, { role });
+    res.json(updated);
+  });
+  
+  // ============================================
+  // TEAM PERFORMANCE DASHBOARD (18.1-18.3)
+  // ============================================
+  
+  api.get("/api/team/performance", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const periodDays = parseInt(req.query.period as string) || 30;
+      
+      const teamMembers = await storage.getTeamMembers(org.id);
+      const allLeads = await storage.getLeads(org.id);
+      const allDeals = await storage.getDeals(org.id);
+      const allTasks = await storage.getTasks(org.id, {});
+      
+      const periodStart = new Date();
+      periodStart.setDate(periodStart.getDate() - periodDays);
+      
+      const memberPerformance = await Promise.all(teamMembers.map(async (member) => {
+        // Leads assigned to this member
+        const memberLeads = allLeads.filter(l => l.assignedTo === member.id);
+        const leadsContacted = memberLeads.filter(l => l.lastContactedAt !== null).length;
+        const leadsConverted = memberLeads.filter(l => 
+          l.status === 'closed' || l.status === 'accepted'
+        ).length;
+        
+        // Deals assigned to this member
+        const memberDeals = allDeals.filter(d => d.assignedTo === member.id);
+        const dealsClosed = memberDeals.filter(d => d.status === 'closed');
+        const revenue = dealsClosed.reduce((sum, d) => {
+          const amount = d.acceptedAmount || d.offerAmount || '0';
+          return sum + parseFloat(amount as string);
+        }, 0);
+        
+        // Tasks completed by this member
+        const memberTasks = allTasks.filter(t => t.assignedTo === member.id);
+        const tasksCompleted = memberTasks.filter(t => t.status === 'completed').length;
+        const tasksPending = memberTasks.filter(t => t.status === 'pending' || t.status === 'in_progress').length;
+        
+        // Lead activities for response time calculation
+        const leadActivitiesForMember = await Promise.all(
+          memberLeads.slice(0, 50).map(lead => storage.getLeadActivities(lead.id, 20))
+        );
+        const allActivities = leadActivitiesForMember.flat();
+        const responseTimes: number[] = [];
+        
+        // Calculate average response time from lead activities
+        allActivities.forEach(activity => {
+          if (activity.metadata && typeof activity.metadata === 'object') {
+            const meta = activity.metadata as { responseTimeHours?: number };
+            if (meta.responseTimeHours) {
+              responseTimes.push(meta.responseTimeHours);
+            }
+          }
+        });
+        
+        const avgResponseTime = responseTimes.length > 0 
+          ? responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length 
+          : null;
+        
+        // Conversion rate
+        const totalLeads = memberLeads.length;
+        const conversionRate = totalLeads > 0 
+          ? (leadsConverted / totalLeads) * 100 
+          : 0;
+        
+        // Average time to close deals
+        const dealsWithClosingData = dealsClosed.filter(d => d.closingDate && d.createdAt);
+        const avgDaysToClose = dealsWithClosingData.length > 0
+          ? dealsWithClosingData.reduce((sum, d) => {
+              const created = new Date(d.createdAt!);
+              const closed = new Date(d.closingDate!);
+              return sum + (closed.getTime() - created.getTime()) / (1000 * 60 * 60 * 24);
+            }, 0) / dealsWithClosingData.length
+          : null;
+        
+        // Activity trends (last 7 periods for charting)
+        const activityTrends: { period: string; activities: number; deals: number }[] = [];
+        const periodLength = Math.ceil(periodDays / 7);
+        
+        for (let i = 6; i >= 0; i--) {
+          const periodEnd = new Date();
+          periodEnd.setDate(periodEnd.getDate() - (i * periodLength));
+          const periodStart = new Date(periodEnd);
+          periodStart.setDate(periodStart.getDate() - periodLength);
+          
+          const periodActivities = allActivities.filter(a => {
+            const actDate = new Date(a.createdAt!);
+            return actDate >= periodStart && actDate < periodEnd;
+          }).length;
+          
+          const periodDeals = dealsClosed.filter(d => {
+            if (!d.closingDate) return false;
+            const closeDate = new Date(d.closingDate);
+            return closeDate >= periodStart && closeDate < periodEnd;
+          }).length;
+          
+          activityTrends.push({
+            period: periodStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+            activities: periodActivities,
+            deals: periodDeals
+          });
+        }
+        
+        return {
+          id: member.id,
+          userId: member.userId,
+          displayName: member.displayName || member.email || 'Team Member',
+          role: member.role,
+          metrics: {
+            leadsAssigned: totalLeads,
+            leadsContacted,
+            leadsConverted,
+            conversionRate: Math.round(conversionRate * 10) / 10,
+            dealsClosed: dealsClosed.length,
+            revenue,
+            tasksCompleted,
+            tasksPending,
+            avgResponseTimeHours: avgResponseTime ? Math.round(avgResponseTime * 10) / 10 : null,
+            avgDaysToClose: avgDaysToClose ? Math.round(avgDaysToClose * 10) / 10 : null,
+          },
+          activityTrends
+        };
+      }));
+      
+      // Calculate totals for the team
+      const teamTotals = {
+        totalLeads: allLeads.length,
+        totalDeals: allDeals.filter(d => d.status === 'closed').length,
+        totalRevenue: memberPerformance.reduce((sum, m) => sum + m.metrics.revenue, 0),
+        totalTasksCompleted: memberPerformance.reduce((sum, m) => sum + m.metrics.tasksCompleted, 0),
+        avgConversionRate: memberPerformance.length > 0
+          ? memberPerformance.reduce((sum, m) => sum + m.metrics.conversionRate, 0) / memberPerformance.length
+          : 0
+      };
+      
+      // Leaderboard sorted by revenue
+      const leaderboard = [...memberPerformance]
+        .sort((a, b) => b.metrics.revenue - a.metrics.revenue)
+        .map((member, index) => ({
+          rank: index + 1,
+          ...member
+        }));
+      
+      res.json({
+        periodDays,
+        teamTotals,
+        members: memberPerformance,
+        leaderboard
+      });
+    } catch (error: any) {
+      console.error("Team performance error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch team performance" });
+    }
+  });
+  
   // ============================================
   // LEADS (CRM)
   // ============================================
   
-  api.get("/api/leads", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.get("/api/leads", isAuthenticated, getOrCreateOrg, attachPermissionContext(), async (req, res) => {
     const org = (req as any).organization;
-    const leads = await storage.getLeads(org.id);
-    res.json(leads);
+    const context = (req as any).permissionContext as UserPermissionContext | undefined;
+    const stage = req.query.stage as string | undefined;
+    const assignedToFilter = req.query.assignedTo as string | undefined;
+    
+    let allLeads = await storage.getLeads(org.id);
+    
+    if (context?.permissions.viewOnlyAssignedLeads) {
+      allLeads = allLeads.filter(lead => lead.assignedTo === context.teamMemberId);
+    }
+    
+    if (assignedToFilter) {
+      const assignedToId = Number(assignedToFilter);
+      if (!isNaN(assignedToId)) {
+        allLeads = allLeads.filter(lead => lead.assignedTo === assignedToId);
+      } else if (assignedToFilter === "unassigned") {
+        allLeads = allLeads.filter(lead => !lead.assignedTo);
+      }
+    }
+    
+    const leadsWithScores = allLeads.map(lead => {
+      const { score, factors } = leadNurturerService.calculateLeadScore(lead);
+      const computedStage = leadNurturerService.segmentLead(score);
+      return {
+        ...lead,
+        score,
+        scoreFactors: factors,
+        nurturingStage: computedStage,
+      };
+    });
+    
+    let filteredLeads = leadsWithScores;
+    if (stage && ["hot", "warm", "cold", "dead"].includes(stage)) {
+      filteredLeads = leadsWithScores.filter(l => l.nurturingStage === stage);
+    }
+    
+    res.json(filteredLeads);
+  });
+  
+  // Paginated leads endpoint for infinite scroll
+  api.get("/api/leads/paginated", isAuthenticated, getOrCreateOrg, attachPermissionContext(), async (req, res) => {
+    const org = (req as any).organization;
+    const context = (req as any).permissionContext as UserPermissionContext | undefined;
+    const stage = req.query.stage as string | undefined;
+    const assignedToFilter = req.query.assignedTo as string | undefined;
+    const limit = Math.min(Number(req.query.limit) || 25, 100);
+    const cursor = req.query.cursor as string | undefined;
+    
+    let allLeads = await storage.getLeads(org.id);
+    
+    if (context?.permissions.viewOnlyAssignedLeads) {
+      allLeads = allLeads.filter(lead => lead.assignedTo === context.teamMemberId);
+    }
+    
+    if (assignedToFilter) {
+      const assignedToId = Number(assignedToFilter);
+      if (!isNaN(assignedToId)) {
+        allLeads = allLeads.filter(lead => lead.assignedTo === assignedToId);
+      } else if (assignedToFilter === "unassigned") {
+        allLeads = allLeads.filter(lead => !lead.assignedTo);
+      }
+    }
+    
+    const leadsWithScores = allLeads.map(lead => {
+      const { score, factors } = leadNurturerService.calculateLeadScore(lead);
+      const computedStage = leadNurturerService.segmentLead(score);
+      return {
+        ...lead,
+        score,
+        scoreFactors: factors,
+        nurturingStage: computedStage,
+      };
+    });
+    
+    let filteredLeads = leadsWithScores;
+    if (stage && ["hot", "warm", "cold", "dead"].includes(stage)) {
+      filteredLeads = leadsWithScores.filter(l => l.nurturingStage === stage);
+    }
+    
+    // Sort by ID for consistent cursor pagination
+    filteredLeads.sort((a, b) => b.id - a.id);
+    
+    const total = filteredLeads.length;
+    let startIndex = 0;
+    
+    if (cursor) {
+      const cursorId = Number(cursor);
+      startIndex = filteredLeads.findIndex(l => l.id < cursorId);
+      if (startIndex === -1) startIndex = filteredLeads.length;
+    }
+    
+    const paginatedLeads = filteredLeads.slice(startIndex, startIndex + limit);
+    const hasMore = startIndex + limit < total;
+    const nextCursor = hasMore ? String(paginatedLeads[paginatedLeads.length - 1]?.id) : null;
+    
+    res.json({
+      data: paginatedLeads,
+      nextCursor,
+      hasMore,
+      total,
+    });
+  });
+
+  // Focus List: Top 10 leads not contacted in last 24 hours
+  api.get("/api/leads/focus", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const allLeads = await storage.getLeads(org.id);
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    
+    // Score all leads and filter those not contacted in 24h
+    const leadsWithScores = allLeads
+      .map(lead => {
+        const { score, factors } = leadNurturerService.calculateLeadScore(lead);
+        const stage = leadNurturerService.segmentLead(score);
+        return {
+          ...lead,
+          score,
+          scoreFactors: factors,
+          nurturingStage: stage,
+        };
+      })
+      .filter(lead => {
+        // Exclude dead leads
+        if (lead.nurturingStage === "dead") return false;
+        // Include if never contacted or not contacted in last 24h
+        if (!lead.lastContactedAt) return true;
+        return new Date(lead.lastContactedAt) < twentyFourHoursAgo;
+      })
+      .sort((a, b) => (b.score || 0) - (a.score || 0))
+      .slice(0, 10);
+    
+    res.json(leadsWithScores);
   });
   
   api.get("/api/leads/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = (req as any).organization;
-    const lead = await storage.getLead(org.id, Number(req.params.id));
+    const leadId = Number(req.params.id);
+    if (isNaN(leadId)) return res.status(400).json({ message: "Invalid lead ID" });
+    const lead = await storage.getLead(org.id, leadId);
     if (!lead) return res.status(404).json({ message: "Lead not found" });
     res.json(lead);
   });
@@ -367,12 +762,29 @@ export async function registerRoutes(
   });
   
   api.put("/api/leads/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const lead = await storage.updateLead(Number(req.params.id), req.body);
+    const org = (req as any).organization;
+    const leadId = Number(req.params.id);
+    
+    // Update the lead
+    const lead = await storage.updateLead(leadId, req.body);
     if (!lead) return res.status(404).json({ message: "Lead not found" });
-    res.json(lead);
+    
+    // Recalculate score after update
+    const { score, factors } = leadNurturerService.calculateLeadScore(lead);
+    const nurturingStage = leadNurturerService.segmentLead(score);
+    
+    // Store the recalculated score
+    await storage.updateLeadScore(leadId, score, factors);
+    
+    res.json({
+      ...lead,
+      score,
+      scoreFactors: factors,
+      nurturingStage,
+    });
   });
   
-  api.delete("/api/leads/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.delete("/api/leads/:id", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteLeads"), async (req, res) => {
     await storage.deleteLead(Number(req.params.id));
     res.status(204).send();
   });
@@ -384,11 +796,42 @@ export async function registerRoutes(
     res.json(insights);
   });
 
+  api.get("/api/leads/aging", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const agingLeads = await alertingService.getAgingLeads(org.id);
+    res.json(agingLeads);
+  });
+
   api.get("/api/leads/:id/activities", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const leadId = Number(req.params.id);
     const limit = req.query.limit ? Number(req.query.limit) : 50;
     const activities = await storage.getLeadActivities(leadId, limit);
     res.json(activities);
+  });
+
+  // Timeline endpoints for communication history
+  api.get("/api/leads/:id/timeline", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const leadId = Number(req.params.id);
+    const eventTypes = req.query.eventTypes ? (req.query.eventTypes as string).split(",") : undefined;
+    const events = await storage.getActivityEvents(org.id, "lead", leadId, eventTypes);
+    res.json(events);
+  });
+
+  api.get("/api/properties/:id/timeline", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const propertyId = Number(req.params.id);
+    const eventTypes = req.query.eventTypes ? (req.query.eventTypes as string).split(",") : undefined;
+    const events = await storage.getActivityEvents(org.id, "property", propertyId, eventTypes);
+    res.json(events);
+  });
+
+  api.get("/api/deals/:id/timeline", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const dealId = Number(req.params.id);
+    const eventTypes = req.query.eventTypes ? (req.query.eventTypes as string).split(",") : undefined;
+    const events = await storage.getActivityEvents(org.id, "deal", dealId, eventTypes);
+    res.json(events);
   });
 
   api.post("/api/leads/:id/score", isAuthenticated, getOrCreateOrg, async (req, res) => {
@@ -456,7 +899,7 @@ export async function registerRoutes(
     });
   });
   
-  api.get("/api/leads/export", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.get("/api/leads/export", isAuthenticated, getOrCreateOrg, requirePermission("canExportData"), async (req, res) => {
     const org = (req as any).organization;
     const csv = await exportLeadsToCSV(org.id);
     const date = new Date().toISOString().split("T")[0];
@@ -742,7 +1185,18 @@ export async function registerRoutes(
       const subjectAcreage = property.sizeAcres ? parseFloat(String(property.sizeAcres)) : 0;
       
       const { getPropertyComps } = await import("./services/comps");
-      const result = await getPropertyComps(lat, lng, subjectAcreage, radiusMiles, filters);
+      
+      // Build property attributes for desirability scoring
+      const propertyAttributes = {
+        roadAccess: property.roadAccess,
+        utilities: property.utilities,
+        terrain: property.terrain,
+        zoning: property.zoning,
+        sizeAcres: subjectAcreage,
+        city: property.city,
+      };
+      
+      const result = await getPropertyComps(lat, lng, subjectAcreage, radiusMiles, filters, propertyAttributes);
       
       // Record usage after successful comps query
       await usageMeteringService.recordUsage(org.id, "comps_query", 1, {
@@ -1024,6 +1478,132 @@ export async function registerRoutes(
   });
   
   // ============================================
+  // DEAL CHECKLIST TEMPLATES
+  // ============================================
+  
+  api.get("/api/checklist-templates", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const templates = await storage.getChecklistTemplates(org.id);
+    if (templates.length === 0) {
+      const initialized = await storage.initializeDefaultChecklistTemplates(org.id);
+      return res.json(initialized);
+    }
+    res.json(templates);
+  });
+  
+  api.get("/api/checklist-templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const template = await storage.getChecklistTemplate(Number(req.params.id));
+    if (!template) return res.status(404).json({ message: "Template not found" });
+    res.json(template);
+  });
+  
+  api.post("/api/checklist-templates", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const template = await storage.createChecklistTemplate({
+        ...req.body,
+        organizationId: org.id,
+      });
+      res.status(201).json(template);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      throw err;
+    }
+  });
+  
+  api.put("/api/checklist-templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const template = await storage.updateChecklistTemplate(Number(req.params.id), req.body);
+    if (!template) return res.status(404).json({ message: "Template not found" });
+    res.json(template);
+  });
+  
+  api.delete("/api/checklist-templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    await storage.deleteChecklistTemplate(Number(req.params.id));
+    res.status(204).send();
+  });
+  
+  // ============================================
+  // DEAL CHECKLISTS
+  // ============================================
+  
+  api.get("/api/deals/:id/checklist", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const checklist = await storage.getDealChecklist(Number(req.params.id));
+    if (!checklist) {
+      return res.json(null);
+    }
+    const completed = checklist.items.filter(item => item.checkedAt).length;
+    res.json({
+      ...checklist,
+      completionStatus: {
+        completed,
+        total: checklist.items.length,
+        percentage: Math.round((completed / checklist.items.length) * 100),
+      },
+    });
+  });
+  
+  api.post("/api/deals/:id/checklist", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { templateId } = req.body;
+      if (!templateId) {
+        return res.status(400).json({ message: "templateId is required" });
+      }
+      const checklist = await storage.applyChecklistTemplateToDeal(Number(req.params.id), templateId);
+      res.status(201).json(checklist);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Failed to apply template" });
+    }
+  });
+  
+  api.patch("/api/deals/:id/checklist/items/:itemId", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user?.claims?.sub || user?.id;
+      const { checked, documentUrl } = req.body;
+      
+      const checklist = await storage.updateDealChecklistItem(
+        Number(req.params.id),
+        req.params.itemId,
+        { checked, documentUrl, checkedBy: userId }
+      );
+      res.json(checklist);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Failed to update checklist item" });
+    }
+  });
+  
+  api.get("/api/deals/:id/stage-gate", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const result = await storage.checkStageGate(Number(req.params.id));
+    res.json(result);
+  });
+  
+  // Enhanced deal stage update with stage gate check
+  api.patch("/api/deals/:id/stage", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { stage, force } = req.body;
+      const dealId = Number(req.params.id);
+      
+      if (!force) {
+        const stageGate = await storage.checkStageGate(dealId);
+        if (!stageGate.canAdvance) {
+          return res.status(400).json({
+            message: "Cannot advance stage: incomplete required checklist items",
+            incompleteItems: stageGate.incompleteItems,
+          });
+        }
+      }
+      
+      const deal = await storage.updateDeal(dealId, { stage });
+      if (!deal) return res.status(404).json({ message: "Deal not found" });
+      res.json(deal);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Failed to update stage" });
+    }
+  });
+  
+  // ============================================
   // NOTES (Seller Financing)
   // ============================================
   
@@ -1172,6 +1752,228 @@ export async function registerRoutes(
       res.status(500).json({ message: err.message || "Failed to process notes" });
     }
   });
+
+  // ============================================
+  // FINANCIAL DASHBOARD API (Portfolio Analytics)
+  // ============================================
+
+  api.get("/api/finance/portfolio-summary", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const allNotes = await storage.getNotes(org.id);
+      const allPayments = await storage.getPayments(org.id);
+
+      const activeNotes = allNotes.filter(n => n.status === 'active');
+      const paidOffNotes = allNotes.filter(n => n.status === 'paid_off');
+      const defaultedNotes = allNotes.filter(n => n.status === 'defaulted');
+      const pendingNotes = allNotes.filter(n => n.status === 'pending');
+
+      const totalPortfolioValue = activeNotes.reduce((sum, n) => sum + Number(n.currentBalance || 0), 0);
+      const totalMonthlyPayment = activeNotes.reduce((sum, n) => sum + Number(n.monthlyPayment || 0), 0);
+      const totalOriginalPrincipal = allNotes.reduce((sum, n) => sum + Number(n.originalPrincipal || 0), 0);
+
+      const avgInterestRate = activeNotes.length > 0
+        ? activeNotes.reduce((sum, n) => sum + Number(n.interestRate || 0), 0) / activeNotes.length
+        : 0;
+
+      const statusBreakdown = [
+        { status: 'active', count: activeNotes.length, value: activeNotes.reduce((s, n) => s + Number(n.currentBalance || 0), 0) },
+        { status: 'paid_off', count: paidOffNotes.length, value: 0 },
+        { status: 'defaulted', count: defaultedNotes.length, value: defaultedNotes.reduce((s, n) => s + Number(n.currentBalance || 0), 0) },
+        { status: 'pending', count: pendingNotes.length, value: pendingNotes.reduce((s, n) => s + Number(n.currentBalance || 0), 0) },
+      ];
+
+      res.json({
+        totalNotes: allNotes.length,
+        activeNotes: activeNotes.length,
+        totalPortfolioValue,
+        totalMonthlyPayment,
+        totalOriginalPrincipal,
+        averageInterestRate: avgInterestRate,
+        statusBreakdown,
+      });
+    } catch (err: any) {
+      console.error("Error getting portfolio summary:", err);
+      res.status(500).json({ message: err.message || "Failed to get portfolio summary" });
+    }
+  });
+
+  api.get("/api/finance/delinquency", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const allNotes = await storage.getNotes(org.id);
+      const activeNotes = allNotes.filter(n => n.status === 'active');
+
+      const now = new Date();
+
+      const agingBuckets = {
+        current: [] as typeof activeNotes,
+        days30: [] as typeof activeNotes,
+        days60: [] as typeof activeNotes,
+        days90Plus: [] as typeof activeNotes,
+      };
+
+      activeNotes.forEach(note => {
+        if (!note.nextPaymentDate) {
+          agingBuckets.current.push(note);
+          return;
+        }
+        const dueDate = new Date(note.nextPaymentDate);
+        const daysPastDue = Math.floor((now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
+
+        if (daysPastDue <= 0) {
+          agingBuckets.current.push(note);
+        } else if (daysPastDue <= 30) {
+          agingBuckets.days30.push(note);
+        } else if (daysPastDue <= 60) {
+          agingBuckets.days60.push(note);
+        } else {
+          agingBuckets.days90Plus.push(note);
+        }
+      });
+
+      const delinquentNotes = [...agingBuckets.days30, ...agingBuckets.days60, ...agingBuckets.days90Plus];
+      const delinquencyRate = activeNotes.length > 0 
+        ? (delinquentNotes.length / activeNotes.length) * 100 
+        : 0;
+
+      const atRiskAmount = delinquentNotes.reduce((sum, n) => sum + Number(n.currentBalance || 0), 0);
+
+      const allPayments = await storage.getPayments(org.id);
+      const completedPayments = allPayments.filter(p => p.status === 'completed');
+      const totalPrincipalCollected = completedPayments.reduce((sum, p) => sum + Number(p.principalAmount || 0), 0);
+      const totalInterestCollected = completedPayments.reduce((sum, p) => sum + Number(p.interestAmount || 0), 0);
+
+      const monthlyBreakdown: { month: string; principal: number; interest: number }[] = [];
+      const last12Months = Array.from({ length: 12 }, (_, i) => {
+        const d = new Date();
+        d.setMonth(d.getMonth() - (11 - i));
+        return { year: d.getFullYear(), month: d.getMonth() };
+      });
+
+      last12Months.forEach(({ year, month }) => {
+        const monthPayments = completedPayments.filter(p => {
+          const pd = new Date(p.paymentDate);
+          return pd.getFullYear() === year && pd.getMonth() === month;
+        });
+        const monthName = new Date(year, month).toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+        monthlyBreakdown.push({
+          month: monthName,
+          principal: monthPayments.reduce((s, p) => s + Number(p.principalAmount || 0), 0),
+          interest: monthPayments.reduce((s, p) => s + Number(p.interestAmount || 0), 0),
+        });
+      });
+
+      res.json({
+        delinquencyRate,
+        atRiskAmount,
+        totalDelinquentNotes: delinquentNotes.length,
+        agingBuckets: {
+          current: { count: agingBuckets.current.length, value: agingBuckets.current.reduce((s, n) => s + Number(n.currentBalance || 0), 0) },
+          days30: { count: agingBuckets.days30.length, value: agingBuckets.days30.reduce((s, n) => s + Number(n.currentBalance || 0), 0) },
+          days60: { count: agingBuckets.days60.length, value: agingBuckets.days60.reduce((s, n) => s + Number(n.currentBalance || 0), 0) },
+          days90Plus: { count: agingBuckets.days90Plus.length, value: agingBuckets.days90Plus.reduce((s, n) => s + Number(n.currentBalance || 0), 0) },
+        },
+        totalPrincipalCollected,
+        totalInterestCollected,
+        monthlyBreakdown,
+      });
+    } catch (err: any) {
+      console.error("Error getting delinquency metrics:", err);
+      res.status(500).json({ message: err.message || "Failed to get delinquency metrics" });
+    }
+  });
+
+  api.get("/api/finance/projections", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const allNotes = await storage.getNotes(org.id);
+      const allPayments = await storage.getPayments(org.id);
+
+      const activeNotes = allNotes.filter(n => n.status === 'active');
+      const completedPayments = allPayments.filter(p => p.status === 'completed');
+
+      const totalInvested = allNotes.reduce((sum, n) => sum + Number(n.originalPrincipal || 0), 0);
+      const totalCollected = completedPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+      const totalInterestEarned = completedPayments.reduce((sum, p) => sum + Number(p.interestAmount || 0), 0);
+
+      const firstPaymentDate = completedPayments.length > 0
+        ? new Date(Math.min(...completedPayments.map(p => new Date(p.paymentDate).getTime())))
+        : null;
+
+      let annualYield = 0;
+      let cashOnCashReturn = 0;
+
+      if (firstPaymentDate && totalInvested > 0) {
+        const yearsActive = Math.max(0.083, (Date.now() - firstPaymentDate.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+        annualYield = (totalInterestEarned / totalInvested / yearsActive) * 100;
+        cashOnCashReturn = (totalCollected / totalInvested) * 100;
+      }
+
+      const projectedIncome: { month: string; expectedPayments: number; principal: number; interest: number }[] = [];
+      const now = new Date();
+
+      for (let i = 0; i < 12; i++) {
+        const projMonth = new Date(now.getFullYear(), now.getMonth() + i + 1, 1);
+        const monthName = projMonth.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+
+        let monthlyPrincipal = 0;
+        let monthlyInterest = 0;
+        let activeForMonth = 0;
+
+        activeNotes.forEach(note => {
+          const maturityDate = note.maturityDate ? new Date(note.maturityDate) : null;
+          if (maturityDate && projMonth > maturityDate) return;
+
+          activeForMonth++;
+          const monthlyPayment = Number(note.monthlyPayment || 0);
+          const interestRate = Number(note.interestRate || 0) / 100 / 12;
+          const balance = Number(note.currentBalance || 0);
+
+          const monthInterest = balance * interestRate;
+          const monthPrincipal = monthlyPayment - monthInterest;
+
+          monthlyInterest += Math.max(0, monthInterest);
+          monthlyPrincipal += Math.max(0, monthPrincipal);
+        });
+
+        projectedIncome.push({
+          month: monthName,
+          expectedPayments: monthlyPrincipal + monthlyInterest,
+          principal: monthlyPrincipal,
+          interest: monthlyInterest,
+        });
+      }
+
+      const totalExpectedInterest = activeNotes.reduce((sum, note) => {
+        const schedule = note.amortizationSchedule || [];
+        const pendingPayments = schedule.filter((p: any) => p.status === 'pending' || p.status === 'late');
+        return sum + pendingPayments.reduce((s: number, p: any) => s + Number(p.interest || 0), 0);
+      }, 0);
+
+      const totalPaymentsRemaining = activeNotes.reduce((sum, note) => {
+        const schedule = note.amortizationSchedule || [];
+        return sum + schedule.filter((p: any) => p.status === 'pending' || p.status === 'late').length;
+      }, 0);
+
+      res.json({
+        totalInvested,
+        totalCollected,
+        totalInterestEarned,
+        annualYield,
+        cashOnCashReturn,
+        projectedIncome,
+        amortizationSummary: {
+          totalExpectedInterest,
+          totalPaymentsRemaining,
+          activeNotes: activeNotes.length,
+        },
+      });
+    } catch (err: any) {
+      console.error("Error getting projections:", err);
+      res.status(500).json({ message: err.message || "Failed to get projections" });
+    }
+  });
   
   // ============================================
   // DOCUMENT GENERATION
@@ -1300,6 +2102,182 @@ export async function registerRoutes(
     }
   });
   
+  // Generate settlement statement PDF (HUD-1 style)
+  api.post("/api/documents/generate/settlement-statement", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { generateSettlementStatement } = await import("./services/documents");
+      const org = (req as any).organization;
+      const { propertyId, purchasePrice, closingDate, buyerName, sellerName, earnestMoney, titleInsurance, recordingFees, escrowFees, transferTax, prorations, additionalCosts } = req.body;
+      
+      if (!propertyId) {
+        return res.status(400).json({ message: "propertyId is required" });
+      }
+      
+      // Credit pre-check for PDF generation (5 cents per document)
+      const pdfCost = await usageMeteringService.calculateCost("pdf_generated", 1);
+      const hasCredits = await creditService.hasEnoughCredits(org.id, pdfCost);
+      if (!hasCredits) {
+        const balance = await creditService.getBalance(org.id);
+        return res.status(402).json({
+          error: "Insufficient credits",
+          required: pdfCost / 100,
+          balance: balance / 100,
+        });
+      }
+      
+      const pdfBuffer = await generateSettlementStatement(
+        Number(propertyId),
+        org.id,
+        { purchasePrice, closingDate, buyerName, sellerName, earnestMoney, titleInsurance, recordingFees, escrowFees, transferTax, prorations, additionalCosts }
+      );
+      
+      // Record usage after successful PDF generation
+      await usageMeteringService.recordUsage(org.id, "pdf_generated", 1, {
+        documentType: "settlement_statement",
+        propertyId: Number(propertyId),
+      });
+      
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="settlement-statement-${propertyId}.pdf"`);
+      res.send(pdfBuffer);
+    } catch (err: any) {
+      console.error("PDF generation error:", err);
+      res.status(err.message === "Property not found" ? 404 : 500).json({ 
+        message: err.message || "Failed to generate PDF" 
+      });
+    }
+  });
+  
+  // Generate property flyer PDF (marketing material)
+  api.post("/api/documents/generate/property-flyer", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { generatePropertyFlyer } = await import("./services/documents");
+      const org = (req as any).organization;
+      const { propertyId, headline, price, priceLabel, highlights, contactName, contactPhone, contactEmail, qrCodePlaceholder } = req.body;
+      
+      if (!propertyId) {
+        return res.status(400).json({ message: "propertyId is required" });
+      }
+      
+      // Credit pre-check for PDF generation (5 cents per document)
+      const pdfCost = await usageMeteringService.calculateCost("pdf_generated", 1);
+      const hasCredits = await creditService.hasEnoughCredits(org.id, pdfCost);
+      if (!hasCredits) {
+        const balance = await creditService.getBalance(org.id);
+        return res.status(402).json({
+          error: "Insufficient credits",
+          required: pdfCost / 100,
+          balance: balance / 100,
+        });
+      }
+      
+      const pdfBuffer = await generatePropertyFlyer(
+        Number(propertyId),
+        org.id,
+        { headline, price, priceLabel, highlights, contactName, contactPhone, contactEmail, qrCodePlaceholder }
+      );
+      
+      // Record usage after successful PDF generation
+      await usageMeteringService.recordUsage(org.id, "pdf_generated", 1, {
+        documentType: "property_flyer",
+        propertyId: Number(propertyId),
+      });
+      
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="property-flyer-${propertyId}.pdf"`);
+      res.send(pdfBuffer);
+    } catch (err: any) {
+      console.error("PDF generation error:", err);
+      res.status(err.message === "Property not found" ? 404 : 500).json({ 
+        message: err.message || "Failed to generate PDF" 
+      });
+    }
+  });
+  
+  // Generate promissory note PDF
+  api.post("/api/documents/generate/promissory-note", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { generatePromissoryNote } = await import("./services/documents");
+      const org = (req as any).organization;
+      const { noteId } = req.body;
+      
+      if (!noteId) {
+        return res.status(400).json({ message: "noteId is required" });
+      }
+      
+      // Credit pre-check for PDF generation (5 cents per document)
+      const pdfCost = await usageMeteringService.calculateCost("pdf_generated", 1);
+      const hasCredits = await creditService.hasEnoughCredits(org.id, pdfCost);
+      if (!hasCredits) {
+        const balance = await creditService.getBalance(org.id);
+        return res.status(402).json({
+          error: "Insufficient credits",
+          required: pdfCost / 100,
+          balance: balance / 100,
+        });
+      }
+      
+      const pdfBuffer = await generatePromissoryNote(Number(noteId), org.id);
+      
+      // Record usage after successful PDF generation
+      await usageMeteringService.recordUsage(org.id, "pdf_generated", 1, {
+        documentType: "promissory_note",
+        noteId: Number(noteId),
+      });
+      
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="promissory-note-${noteId}.pdf"`);
+      res.send(pdfBuffer);
+    } catch (err: any) {
+      console.error("PDF generation error:", err);
+      res.status(err.message === "Note not found" ? 404 : 500).json({ 
+        message: err.message || "Failed to generate PDF" 
+      });
+    }
+  });
+  
+  // Generate warranty deed PDF
+  api.post("/api/documents/generate/warranty-deed", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { generateWarrantyDeed } = await import("./services/documents");
+      const org = (req as any).organization;
+      const { propertyId } = req.body;
+      
+      if (!propertyId) {
+        return res.status(400).json({ message: "propertyId is required" });
+      }
+      
+      // Credit pre-check for PDF generation (5 cents per document)
+      const pdfCost = await usageMeteringService.calculateCost("pdf_generated", 1);
+      const hasCredits = await creditService.hasEnoughCredits(org.id, pdfCost);
+      if (!hasCredits) {
+        const balance = await creditService.getBalance(org.id);
+        return res.status(402).json({
+          error: "Insufficient credits",
+          required: pdfCost / 100,
+          balance: balance / 100,
+        });
+      }
+      
+      const pdfBuffer = await generateWarrantyDeed(Number(propertyId), org.id);
+      
+      // Record usage after successful PDF generation
+      await usageMeteringService.recordUsage(org.id, "pdf_generated", 1, {
+        documentType: "warranty_deed",
+        propertyId: Number(propertyId),
+      });
+      
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="warranty-deed-${propertyId}.pdf"`);
+      res.send(pdfBuffer);
+    } catch (err: any) {
+      console.error("PDF generation error:", err);
+      res.status(err.message === "Property not found" ? 404 : 500).json({ 
+        message: err.message || "Failed to generate PDF" 
+      });
+    }
+  });
+  
   // ============================================
   // PAYMENTS
   // ============================================
@@ -1382,10 +2360,15 @@ export async function registerRoutes(
     res.json(campaign);
   });
   
-  api.post("/api/campaigns", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/campaigns", isAuthenticated, getOrCreateOrg, requirePermission("canCreateCampaign"), async (req, res) => {
     try {
       const org = (req as any).organization;
-      const input = insertCampaignSchema.parse({ ...req.body, organizationId: org.id });
+      const trackingCode = storage.generateTrackingCode();
+      const input = insertCampaignSchema.parse({ 
+        ...req.body, 
+        organizationId: org.id,
+        trackingCode 
+      });
       const campaign = await storage.createCampaign(input);
       res.status(201).json(campaign);
     } catch (err) {
@@ -1394,6 +2377,392 @@ export async function registerRoutes(
       }
       throw err;
     }
+  });
+
+  // Get responses for a specific campaign
+  api.get("/api/campaigns/:id/responses", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const campaignId = Number(req.params.id);
+    const campaign = await storage.getCampaign(org.id, campaignId);
+    if (!campaign) return res.status(404).json({ message: "Campaign not found" });
+    
+    const responses = await storage.getCampaignResponses(org.id, campaignId);
+    res.json(responses);
+  });
+
+  // Get campaign analytics with response data
+  api.get("/api/campaigns/:id/analytics", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const campaignId = Number(req.params.id);
+    const campaign = await storage.getCampaign(org.id, campaignId);
+    if (!campaign) return res.status(404).json({ message: "Campaign not found" });
+    
+    const responsesCount = await storage.getCampaignResponsesCount(campaignId);
+    const responses = await storage.getCampaignResponses(org.id, campaignId);
+    
+    const sent = campaign.totalSent || 0;
+    const delivered = campaign.totalDelivered || 0;
+    const opened = campaign.totalOpened || 0;
+    const clicked = campaign.totalClicked || 0;
+    const responded = campaign.totalResponded || 0;
+    const spent = Number(campaign.spent || 0);
+    
+    const responseRate = sent > 0 ? (responsesCount / sent) * 100 : 0;
+    const costPerResponse = responsesCount > 0 ? spent / responsesCount : 0;
+    
+    const dealsFromCampaign = await db.select({ count: sql<number>`count(*)::int` })
+      .from(deals)
+      .innerJoin(properties, eq(deals.propertyId, properties.id))
+      .innerJoin(leads, eq(properties.sellerId, leads.id))
+      .where(eq(leads.sourceCampaignId, campaignId));
+    
+    const dealCount = dealsFromCampaign[0]?.count || 0;
+    const costPerAcquisition = dealCount > 0 ? spent / dealCount : 0;
+    
+    res.json({
+      campaign,
+      metrics: {
+        sent,
+        delivered,
+        opened,
+        clicked,
+        responded,
+        responsesCount,
+        dealCount,
+        responseRate: responseRate.toFixed(2),
+        costPerResponse: costPerResponse.toFixed(2),
+        costPerAcquisition: costPerAcquisition.toFixed(2),
+        spent,
+      },
+      funnel: [
+        { stage: 'Sent', count: sent },
+        { stage: 'Delivered', count: delivered },
+        { stage: 'Opened', count: opened },
+        { stage: 'Clicked', count: clicked },
+        { stage: 'Responded', count: responsesCount },
+        { stage: 'Deal', count: dealCount },
+      ],
+      responses,
+    });
+  });
+
+  // ============================================
+  // CAMPAIGN RESPONSES (Inbound Response Tracking)
+  // ============================================
+
+  // Get all responses for the organization
+  api.get("/api/responses", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const responses = await storage.getCampaignResponses(org.id);
+    res.json(responses);
+  });
+
+  // Log a new response (auto-attributes to campaign if tracking code matches)
+  api.post("/api/responses", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { trackingCode, channel, content, leadId, contactName, contactEmail, contactPhone, metadata } = req.body;
+      
+      let campaignId: number | undefined;
+      let isAttributed = false;
+      
+      if (trackingCode) {
+        const campaign = await storage.getCampaignByTrackingCode(trackingCode);
+        if (campaign && campaign.organizationId === org.id) {
+          campaignId = campaign.id;
+          isAttributed = true;
+          
+          await storage.updateCampaign(campaign.id, {
+            totalResponded: (campaign.totalResponded || 0) + 1
+          });
+        }
+      }
+      
+      const input = insertCampaignResponseSchema.parse({
+        organizationId: org.id,
+        leadId: leadId || null,
+        campaignId: campaignId || null,
+        channel,
+        content,
+        trackingCode: trackingCode || null,
+        isAttributed,
+        contactName,
+        contactEmail,
+        contactPhone,
+        metadata,
+        responseDate: new Date(),
+      });
+      
+      const response = await storage.createCampaignResponse(input);
+      
+      if (leadId && campaignId) {
+        await storage.updateLead(leadId, {
+          sourceCampaignId: campaignId,
+          sourceTrackingCode: trackingCode,
+        });
+      }
+      
+      res.status(201).json(response);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      throw err;
+    }
+  });
+
+  // Get a specific response
+  api.get("/api/responses/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const response = await storage.getCampaignResponse(Number(req.params.id));
+    if (!response) return res.status(404).json({ message: "Response not found" });
+    res.json(response);
+  });
+
+  // Update a response
+  api.put("/api/responses/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const response = await storage.updateCampaignResponse(Number(req.params.id), req.body);
+    if (!response) return res.status(404).json({ message: "Response not found" });
+    res.json(response);
+  });
+
+  // Delete a response
+  api.delete("/api/responses/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    await storage.deleteCampaignResponse(Number(req.params.id));
+    res.status(204).send();
+  });
+
+  // ============================================
+  // CAMPAIGN SEQUENCES (Drip Campaign Automation)
+  // ============================================
+
+  // Get all sequences for the organization
+  api.get("/api/sequences", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const sequences = await storage.getSequences(org.id);
+    res.json(sequences);
+  });
+
+  // Get sequence stats (enrollment counts)
+  api.get("/api/sequences/stats", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const stats = await storage.getSequenceStats(org.id);
+    res.json(stats);
+  });
+
+  // Get a specific sequence with its steps
+  api.get("/api/sequences/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const sequence = await storage.getSequence(org.id, Number(req.params.id));
+    if (!sequence) return res.status(404).json({ message: "Sequence not found" });
+    
+    const steps = await storage.getSequenceSteps(sequence.id);
+    res.json({ ...sequence, steps });
+  });
+
+  // Create a new sequence
+  api.post("/api/sequences", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const input = insertCampaignSequenceSchema.parse({
+        ...req.body,
+        organizationId: org.id,
+      });
+      const sequence = await storage.createSequence(input);
+      res.status(201).json(sequence);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      throw err;
+    }
+  });
+
+  // Update a sequence
+  api.put("/api/sequences/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const sequence = await storage.getSequence(org.id, Number(req.params.id));
+    if (!sequence) return res.status(404).json({ message: "Sequence not found" });
+    
+    const updated = await storage.updateSequence(sequence.id, req.body);
+    res.json(updated);
+  });
+
+  // Delete a sequence
+  api.delete("/api/sequences/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const sequence = await storage.getSequence(org.id, Number(req.params.id));
+    if (!sequence) return res.status(404).json({ message: "Sequence not found" });
+    
+    await storage.deleteSequence(sequence.id);
+    res.status(204).send();
+  });
+
+  // ============================================
+  // SEQUENCE STEPS
+  // ============================================
+
+  // Get steps for a sequence
+  api.get("/api/sequences/:id/steps", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const sequence = await storage.getSequence(org.id, Number(req.params.id));
+    if (!sequence) return res.status(404).json({ message: "Sequence not found" });
+    
+    const steps = await storage.getSequenceSteps(sequence.id);
+    res.json(steps);
+  });
+
+  // Add a step to a sequence
+  api.post("/api/sequences/:id/steps", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const sequence = await storage.getSequence(org.id, Number(req.params.id));
+      if (!sequence) return res.status(404).json({ message: "Sequence not found" });
+      
+      const existingSteps = await storage.getSequenceSteps(sequence.id);
+      const nextStepNumber = existingSteps.length + 1;
+      
+      const input = insertSequenceStepSchema.parse({
+        ...req.body,
+        sequenceId: sequence.id,
+        stepNumber: nextStepNumber,
+      });
+      const step = await storage.createSequenceStep(input);
+      res.status(201).json(step);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      throw err;
+    }
+  });
+
+  // Update a step
+  api.put("/api/sequences/:id/steps/:stepId", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const sequence = await storage.getSequence(org.id, Number(req.params.id));
+    if (!sequence) return res.status(404).json({ message: "Sequence not found" });
+    
+    const step = await storage.updateSequenceStep(Number(req.params.stepId), req.body);
+    res.json(step);
+  });
+
+  // Delete a step
+  api.delete("/api/sequences/:id/steps/:stepId", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const sequence = await storage.getSequence(org.id, Number(req.params.id));
+    if (!sequence) return res.status(404).json({ message: "Sequence not found" });
+    
+    await storage.deleteSequenceStep(Number(req.params.stepId));
+    res.status(204).send();
+  });
+
+  // Reorder steps
+  api.put("/api/sequences/:id/steps/reorder", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const sequence = await storage.getSequence(org.id, Number(req.params.id));
+    if (!sequence) return res.status(404).json({ message: "Sequence not found" });
+    
+    const { stepIds } = req.body as { stepIds: number[] };
+    await storage.reorderSequenceSteps(sequence.id, stepIds);
+    
+    const steps = await storage.getSequenceSteps(sequence.id);
+    res.json(steps);
+  });
+
+  // ============================================
+  // SEQUENCE ENROLLMENTS
+  // ============================================
+
+  // Get enrollments for a sequence
+  api.get("/api/sequences/:id/enrollments", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const sequence = await storage.getSequence(org.id, Number(req.params.id));
+    if (!sequence) return res.status(404).json({ message: "Sequence not found" });
+    
+    const enrollments = await storage.getSequenceEnrollments(sequence.id);
+    res.json(enrollments);
+  });
+
+  // Get all active enrollments
+  api.get("/api/enrollments/active", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const enrollments = await storage.getActiveEnrollments(org.id);
+    res.json(enrollments);
+  });
+
+  // Enroll a lead in a sequence
+  api.post("/api/sequences/:id/enroll", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const sequence = await storage.getSequence(org.id, Number(req.params.id));
+      if (!sequence) return res.status(404).json({ message: "Sequence not found" });
+      
+      const { leadId } = req.body;
+      const lead = await storage.getLead(org.id, leadId);
+      if (!lead) return res.status(404).json({ message: "Lead not found" });
+      
+      // Check if lead is already enrolled in this sequence
+      const existingEnrollments = await storage.getLeadEnrollments(leadId);
+      const alreadyEnrolled = existingEnrollments.find(
+        e => e.sequenceId === sequence.id && e.status === "active"
+      );
+      if (alreadyEnrolled) {
+        return res.status(400).json({ message: "Lead is already enrolled in this sequence" });
+      }
+      
+      // Get first step delay to schedule
+      const steps = await storage.getSequenceSteps(sequence.id);
+      const firstStep = steps.find(s => s.stepNumber === 1);
+      const delayDays = firstStep?.delayDays || 0;
+      
+      const nextStepScheduledAt = new Date();
+      nextStepScheduledAt.setDate(nextStepScheduledAt.getDate() + delayDays);
+      
+      const input = insertSequenceEnrollmentSchema.parse({
+        sequenceId: sequence.id,
+        leadId,
+        status: "active",
+        currentStep: 0,
+        nextStepScheduledAt,
+      });
+      
+      const enrollment = await storage.createSequenceEnrollment(input);
+      res.status(201).json(enrollment);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      throw err;
+    }
+  });
+
+  // Pause an enrollment
+  api.post("/api/enrollments/:id/pause", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const { reason } = req.body;
+    const enrollment = await storage.pauseEnrollment(Number(req.params.id), reason || "Manually paused");
+    res.json(enrollment);
+  });
+
+  // Resume an enrollment
+  api.post("/api/enrollments/:id/resume", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const enrollment = await storage.resumeEnrollment(Number(req.params.id));
+    res.json(enrollment);
+  });
+
+  // Cancel an enrollment
+  api.post("/api/enrollments/:id/cancel", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const enrollment = await storage.cancelEnrollment(Number(req.params.id));
+    res.json(enrollment);
+  });
+
+  // Get lead's enrollments
+  api.get("/api/leads/:id/enrollments", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const lead = await storage.getLead(org.id, Number(req.params.id));
+    if (!lead) return res.status(404).json({ message: "Lead not found" });
+    
+    const enrollments = await storage.getLeadEnrollments(lead.id);
+    res.json(enrollments);
   });
   
   api.put("/api/campaigns/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
@@ -2871,6 +4240,227 @@ export async function registerRoutes(
     }
   });
   
+  // Toggle autopay for borrower portal
+  api.post("/api/portal/:accessToken/autopay", async (req, res) => {
+    try {
+      const { accessToken } = req.params;
+      const { enabled, email } = req.body;
+      
+      if (!accessToken) {
+        return res.status(400).json({ message: "Access token is required" });
+      }
+      
+      const note = await storage.getNoteByAccessToken(accessToken);
+      if (!note) {
+        return res.status(404).json({ message: "Loan not found" });
+      }
+      
+      // Verify borrower email for security
+      if (note.borrowerId) {
+        const borrower = await storage.getLead(note.organizationId, note.borrowerId);
+        if (!borrower || borrower.email?.toLowerCase() !== email?.toLowerCase()) {
+          return res.status(403).json({ message: "Unauthorized" });
+        }
+      } else {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+      
+      await storage.updateNote(note.id, {
+        autoPayEnabled: enabled === true,
+      });
+      
+      res.json({ 
+        success: true, 
+        autopayEnabled: enabled === true,
+        nextPaymentDate: note.nextPaymentDate,
+      });
+    } catch (err: any) {
+      console.error("Autopay toggle error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+  
+  // Get payoff quote for borrower portal
+  api.get("/api/borrower/payoff-quote", async (req, res) => {
+    try {
+      const { accessToken, email } = req.query;
+      
+      if (!accessToken || !email) {
+        return res.status(400).json({ message: "Access token and email are required" });
+      }
+      
+      const note = await storage.getNoteByAccessToken(accessToken as string);
+      if (!note) {
+        return res.status(404).json({ message: "Loan not found" });
+      }
+      
+      // Verify borrower email
+      if (note.borrowerId) {
+        const borrower = await storage.getLead(note.organizationId, note.borrowerId);
+        if (!borrower || borrower.email?.toLowerCase() !== (email as string).toLowerCase()) {
+          return res.status(403).json({ message: "Unauthorized" });
+        }
+      } else {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+      
+      // Calculate payoff amount
+      const currentBalance = Number(note.currentBalance || 0);
+      const interestRate = Number(note.interestRate || 0);
+      const dailyRate = interestRate / 100 / 365;
+      
+      // Calculate accrued interest since last payment
+      const lastPaymentDate = note.nextPaymentDate 
+        ? new Date(new Date(note.nextPaymentDate).getTime() - 30 * 24 * 60 * 60 * 1000) 
+        : new Date(note.startDate);
+      const daysSinceLastPayment = Math.max(0, Math.floor((Date.now() - lastPaymentDate.getTime()) / (24 * 60 * 60 * 1000)));
+      const accruedInterest = Number((currentBalance * dailyRate * daysSinceLastPayment).toFixed(2));
+      
+      // Any applicable fees (e.g., payoff processing fee)
+      const payoffFee = 0; // Can be configured per organization
+      
+      const totalPayoff = Number((currentBalance + accruedInterest + payoffFee).toFixed(2));
+      
+      // Expiration date: 30 days from now
+      const expirationDate = new Date();
+      expirationDate.setDate(expirationDate.getDate() + 30);
+      
+      res.json({
+        principalBalance: currentBalance,
+        accruedInterest,
+        payoffFee,
+        totalPayoff,
+        goodThroughDate: expirationDate.toISOString(),
+        quoteDate: new Date().toISOString(),
+        daysValid: 30,
+      });
+    } catch (err: any) {
+      console.error("Payoff quote error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+  
+  // Generate PDF statement for borrower portal
+  api.get("/api/borrower/statements/generate", async (req, res) => {
+    try {
+      const { accessToken, email, type, year, startDate, endDate } = req.query;
+      
+      if (!accessToken || !email) {
+        return res.status(400).json({ message: "Access token and email are required" });
+      }
+      
+      const note = await storage.getNoteByAccessToken(accessToken as string);
+      if (!note) {
+        return res.status(404).json({ message: "Loan not found" });
+      }
+      
+      // Verify borrower email
+      let borrower = null;
+      if (note.borrowerId) {
+        borrower = await storage.getLead(note.organizationId, note.borrowerId);
+        if (!borrower || borrower.email?.toLowerCase() !== (email as string).toLowerCase()) {
+          return res.status(403).json({ message: "Unauthorized" });
+        }
+      } else {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+      
+      // Get payments for this note
+      const allPayments = await storage.getPayments(note.organizationId, note.id);
+      
+      // Get organization info for company details
+      const org = await storage.getOrganization(note.organizationId);
+      
+      // Filter payments by date range if provided
+      let filteredPayments = allPayments.filter(p => p.status === 'completed');
+      if (startDate) {
+        const start = new Date(startDate as string);
+        filteredPayments = filteredPayments.filter(p => new Date(p.paymentDate) >= start);
+      }
+      if (endDate) {
+        const end = new Date(endDate as string);
+        filteredPayments = filteredPayments.filter(p => new Date(p.paymentDate) <= end);
+      }
+      
+      // Calculate totals
+      const totalPaid = filteredPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+      const totalPrincipal = filteredPayments.reduce((sum, p) => sum + Number(p.principalAmount || 0), 0);
+      const totalInterest = filteredPayments.reduce((sum, p) => sum + Number(p.interestAmount || 0), 0);
+      
+      // Generate statement data based on type
+      const statementType = type === '1098' ? '1098' : 'statement';
+      
+      if (statementType === '1098') {
+        // 1098 Interest Statement for tax year
+        const taxYear = year ? Number(year) : new Date().getFullYear() - 1;
+        const yearStart = new Date(taxYear, 0, 1);
+        const yearEnd = new Date(taxYear, 11, 31, 23, 59, 59);
+        
+        const yearPayments = allPayments.filter(p => {
+          const payDate = new Date(p.paymentDate);
+          return p.status === 'completed' && payDate >= yearStart && payDate <= yearEnd;
+        });
+        
+        const yearInterest = yearPayments.reduce((sum, p) => sum + Number(p.interestAmount || 0), 0);
+        
+        res.json({
+          type: '1098',
+          taxYear,
+          borrowerName: `${borrower.firstName} ${borrower.lastName}`,
+          borrowerAddress: borrower.address || '',
+          borrowerCity: borrower.city || '',
+          borrowerState: borrower.state || '',
+          borrowerZip: borrower.zip || '',
+          lenderName: org?.name || 'Lender',
+          lenderAddress: org?.settings?.companyAddress || '',
+          interestPaid: yearInterest,
+          principalBalance: Number(note.currentBalance),
+          originalPrincipal: Number(note.originalPrincipal),
+          loanOriginationDate: note.startDate,
+        });
+      } else {
+        // Regular account statement
+        res.json({
+          type: 'statement',
+          generatedDate: new Date().toISOString(),
+          borrowerName: `${borrower.firstName} ${borrower.lastName}`,
+          borrowerAddress: borrower.address || '',
+          borrowerEmail: borrower.email || '',
+          lenderName: org?.name || 'Lender',
+          lenderPhone: org?.settings?.companyPhone || '',
+          lenderEmail: org?.settings?.companyEmail || '',
+          noteId: note.id,
+          originalPrincipal: Number(note.originalPrincipal),
+          currentBalance: Number(note.currentBalance),
+          interestRate: Number(note.interestRate),
+          termMonths: note.termMonths,
+          monthlyPayment: Number(note.monthlyPayment),
+          startDate: note.startDate,
+          maturityDate: note.maturityDate,
+          nextPaymentDate: note.nextPaymentDate,
+          nextPaymentAmount: Number(note.monthlyPayment),
+          autopayEnabled: note.autoPayEnabled || false,
+          payments: filteredPayments.map(p => ({
+            date: p.paymentDate,
+            amount: Number(p.amount),
+            principal: Number(p.principalAmount),
+            interest: Number(p.interestAmount),
+            method: p.paymentMethod,
+          })),
+          summary: {
+            totalPaid,
+            totalPrincipal,
+            totalInterest,
+            paymentsCount: filteredPayments.length,
+          },
+        });
+      }
+    } catch (err: any) {
+      console.error("Statement generation error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+  
   // Generate borrower portal link
   api.post("/api/notes/:id/portal-link", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
@@ -4232,6 +5822,628 @@ Seller Signature (if applicable)
     }
   });
 
+  // ============================================
+  // A/B TESTING ROUTES
+  // ============================================
+
+  // Calculate statistical significance (z-score)
+  function calculateZScore(control: { sent: number; converted: number }, variant: { sent: number; converted: number }): number {
+    if (control.sent === 0 || variant.sent === 0) return 0;
+    
+    const p1 = control.converted / control.sent;
+    const p2 = variant.converted / variant.sent;
+    const p = (control.converted + variant.converted) / (control.sent + variant.sent);
+    
+    if (p === 0 || p === 1) return 0;
+    
+    const se = Math.sqrt(p * (1 - p) * (1 / control.sent + 1 / variant.sent));
+    if (se === 0) return 0;
+    
+    return (p2 - p1) / se;
+  }
+
+  // Get confidence level from z-score
+  function getConfidenceLevel(zScore: number): number {
+    const absZ = Math.abs(zScore);
+    if (absZ >= Z_SCORES[0.99]) return 0.99;
+    if (absZ >= Z_SCORES[0.95]) return 0.95;
+    if (absZ >= Z_SCORES[0.90]) return 0.90;
+    return 0;
+  }
+
+  // Recommend minimum sample size for statistical significance
+  function recommendMinSampleSize(baselineConversionRate: number, minimumDetectableEffect: number = 0.05): number {
+    const alpha = 0.05; // 95% confidence
+    const beta = 0.20; // 80% power
+    const zAlpha = 1.96;
+    const zBeta = 0.84;
+    
+    const p1 = baselineConversionRate;
+    const p2 = p1 + minimumDetectableEffect;
+    
+    const numerator = Math.pow(zAlpha + zBeta, 2) * (p1 * (1 - p1) + p2 * (1 - p2));
+    const denominator = Math.pow(p2 - p1, 2);
+    
+    if (denominator === 0) return 100;
+    
+    return Math.ceil(numerator / denominator);
+  }
+
+  // Get all A/B tests for organization
+  api.get("/api/ab-tests", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const tests = await storage.getAbTests(org.id);
+      
+      const testsWithVariants = await Promise.all(
+        tests.map(async (test) => {
+          const variants = await storage.getAbTestVariants(test.id);
+          return { ...test, variants };
+        })
+      );
+      
+      res.json(testsWithVariants);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Get single A/B test with variants
+  api.get("/api/ab-tests/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const testId = Number(req.params.id);
+      
+      const result = await storage.getAbTestWithVariants(org.id, testId);
+      if (!result) {
+        return res.status(404).json({ message: "A/B test not found" });
+      }
+      
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Create A/B test for campaign
+  api.post("/api/campaigns/:id/ab-test", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const campaignId = Number(req.params.id);
+      
+      const campaign = await storage.getCampaign(org.id, campaignId);
+      if (!campaign) {
+        return res.status(404).json({ message: "Campaign not found" });
+      }
+      
+      // Check if campaign already has an active test
+      const existingTest = await storage.getAbTestByCampaign(campaignId);
+      if (existingTest && existingTest.status !== "completed") {
+        return res.status(400).json({ message: "Campaign already has an active A/B test" });
+      }
+      
+      const input = insertAbTestSchema.parse({
+        organizationId: org.id,
+        campaignId,
+        name: req.body.name || `A/B Test for ${campaign.name}`,
+        testType: req.body.testType || "subject",
+        sampleSizePercent: req.body.sampleSizePercent || 20,
+        winningMetric: req.body.winningMetric || "response_rate",
+        minSampleSize: req.body.minSampleSize || 100,
+        autoCompleteOnSignificance: req.body.autoCompleteOnSignificance ?? true,
+      });
+      
+      const test = await storage.createAbTest(input);
+      
+      // Create default variants if provided
+      const variants = req.body.variants || [
+        { name: "Control", isControl: true, subject: campaign.subject, content: campaign.content },
+        { name: "Variant B", isControl: false, subject: req.body.variantSubject, content: req.body.variantContent }
+      ];
+      
+      const createdVariants = await Promise.all(
+        variants.map((v: any) => 
+          storage.createAbTestVariant({
+            testId: test.id,
+            name: v.name,
+            isControl: v.isControl || false,
+            subject: v.subject,
+            content: v.content,
+            offerAmount: v.offerAmount,
+          })
+        )
+      );
+      
+      res.status(201).json({ ...test, variants: createdVariants });
+    } catch (err: any) {
+      if (err.name === "ZodError") {
+        return res.status(400).json({ message: "Invalid input", errors: err.errors });
+      }
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Start A/B test (split recipients)
+  api.patch("/api/ab-tests/:id/start", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const testId = Number(req.params.id);
+      
+      const result = await storage.getAbTestWithVariants(org.id, testId);
+      if (!result) {
+        return res.status(404).json({ message: "A/B test not found" });
+      }
+      
+      if (result.test.status !== "draft") {
+        return res.status(400).json({ message: "Test is not in draft status" });
+      }
+      
+      if (result.variants.length < 2) {
+        return res.status(400).json({ message: "Test must have at least 2 variants" });
+      }
+      
+      // Update test status to running
+      const updatedTest = await storage.updateAbTest(testId, {
+        status: "running",
+        startedAt: new Date(),
+      });
+      
+      res.json({ ...updatedTest, variants: result.variants });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Complete A/B test and declare winner
+  api.patch("/api/ab-tests/:id/complete", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const testId = Number(req.params.id);
+      
+      const result = await storage.getAbTestWithVariants(org.id, testId);
+      if (!result) {
+        return res.status(404).json({ message: "A/B test not found" });
+      }
+      
+      if (result.test.status === "completed") {
+        return res.status(400).json({ message: "Test is already completed" });
+      }
+      
+      // Determine winner based on winning metric
+      let winnerId: number | null = null;
+      let winningValue = -Infinity;
+      
+      for (const variant of result.variants) {
+        let value = 0;
+        const sent = variant.sent || 0;
+        
+        switch (result.test.winningMetric) {
+          case "open_rate":
+            value = sent > 0 ? (variant.opened || 0) / sent : 0;
+            break;
+          case "click_rate":
+            value = sent > 0 ? (variant.clicked || 0) / sent : 0;
+            break;
+          case "response_rate":
+          default:
+            value = sent > 0 ? (variant.responded || 0) / sent : 0;
+            break;
+        }
+        
+        if (value > winningValue) {
+          winningValue = value;
+          winnerId = variant.id;
+        }
+      }
+      
+      // Calculate confidence levels for all variants against control
+      const control = result.variants.find(v => v.isControl);
+      if (control) {
+        for (const variant of result.variants) {
+          if (!variant.isControl) {
+            const zScore = calculateZScore(
+              { sent: control.sent || 0, converted: control.responded || 0 },
+              { sent: variant.sent || 0, converted: variant.responded || 0 }
+            );
+            const confidence = getConfidenceLevel(zScore);
+            
+            await storage.updateAbTestVariant(variant.id, {
+              responseRate: String(variant.sent ? ((variant.responded || 0) / variant.sent * 100).toFixed(2) : 0),
+              confidenceLevel: String(confidence * 100),
+            });
+          }
+        }
+      }
+      
+      // Update test as completed
+      const updatedTest = await storage.updateAbTest(testId, {
+        status: "completed",
+        completedAt: new Date(),
+        winnerId,
+      });
+      
+      // Get updated variants
+      const updatedVariants = await storage.getAbTestVariants(testId);
+      
+      res.json({ ...updatedTest, variants: updatedVariants });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Update variant metrics (for tracking)
+  api.patch("/api/ab-test-variants/:id/metrics", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const variantId = Number(req.params.id);
+      const { sent, delivered, opened, clicked, responded, converted } = req.body;
+      
+      const updates: any = {};
+      if (sent !== undefined) updates.sent = sent;
+      if (delivered !== undefined) updates.delivered = delivered;
+      if (opened !== undefined) updates.opened = opened;
+      if (clicked !== undefined) updates.clicked = clicked;
+      if (responded !== undefined) updates.responded = responded;
+      if (converted !== undefined) updates.converted = converted;
+      
+      // Calculate rates
+      const currentSent = sent || 0;
+      if (currentSent > 0) {
+        if (delivered !== undefined) updates.deliveryRate = String((delivered / currentSent * 100).toFixed(2));
+        if (opened !== undefined) updates.openRate = String((opened / currentSent * 100).toFixed(2));
+        if (clicked !== undefined) updates.clickRate = String((clicked / currentSent * 100).toFixed(2));
+        if (responded !== undefined) updates.responseRate = String((responded / currentSent * 100).toFixed(2));
+        if (converted !== undefined) updates.conversionRate = String((converted / currentSent * 100).toFixed(2));
+      }
+      
+      const updatedVariant = await storage.updateAbTestVariant(variantId, updates);
+      res.json(updatedVariant);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Get recommended sample size
+  api.get("/api/ab-tests/recommend-sample-size", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const baselineRate = parseFloat(req.query.baselineRate as string) || 0.05;
+      const minEffect = parseFloat(req.query.minEffect as string) || 0.05;
+      
+      const sampleSize = recommendMinSampleSize(baselineRate, minEffect);
+      
+      res.json({ 
+        recommendedSampleSize: sampleSize,
+        baselineRate,
+        minimumDetectableEffect: minEffect,
+        confidenceLevel: 0.95,
+        power: 0.80
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Add variant to existing test
+  api.post("/api/ab-tests/:id/variants", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const testId = Number(req.params.id);
+      
+      const result = await storage.getAbTestWithVariants(org.id, testId);
+      if (!result) {
+        return res.status(404).json({ message: "A/B test not found" });
+      }
+      
+      if (result.test.status !== "draft") {
+        return res.status(400).json({ message: "Cannot add variants to a running or completed test" });
+      }
+      
+      const input = insertAbTestVariantSchema.parse({
+        testId,
+        name: req.body.name,
+        isControl: req.body.isControl || false,
+        subject: req.body.subject,
+        content: req.body.content,
+        offerAmount: req.body.offerAmount,
+      });
+      
+      const variant = await storage.createAbTestVariant(input);
+      res.status(201).json(variant);
+    } catch (err: any) {
+      if (err.name === "ZodError") {
+        return res.status(400).json({ message: "Invalid input", errors: err.errors });
+      }
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Delete A/B test
+  api.delete("/api/ab-tests/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const testId = Number(req.params.id);
+      
+      const test = await storage.getAbTest(org.id, testId);
+      if (!test) {
+        return res.status(404).json({ message: "A/B test not found" });
+      }
+      
+      await storage.deleteAbTest(testId);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Apply winning variant to campaign
+  api.post("/api/ab-tests/:id/apply-winner", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const testId = Number(req.params.id);
+      
+      const result = await storage.getAbTestWithVariants(org.id, testId);
+      if (!result) {
+        return res.status(404).json({ message: "A/B test not found" });
+      }
+      
+      if (result.test.status !== "completed" || !result.test.winnerId) {
+        return res.status(400).json({ message: "Test is not completed or has no winner" });
+      }
+      
+      const winningVariant = result.variants.find(v => v.id === result.test.winnerId);
+      if (!winningVariant) {
+        return res.status(404).json({ message: "Winning variant not found" });
+      }
+      
+      // Update the campaign with the winning variant
+      const updates: any = {};
+      if (winningVariant.subject) updates.subject = winningVariant.subject;
+      if (winningVariant.content) updates.content = winningVariant.content;
+      
+      const campaign = await storage.updateCampaign(result.test.campaignId, updates);
+      
+      res.json({ 
+        success: true, 
+        campaign,
+        appliedVariant: winningVariant 
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // CUSTOM FIELDS SYSTEM
+  // ============================================
+
+  // Custom Field Definitions
+  api.get("/api/custom-fields/definitions", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const entityType = req.query.entityType as string | undefined;
+      const definitions = await storage.getCustomFieldDefinitions(org.id, entityType);
+      res.json(definitions);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.get("/api/custom-fields/definitions/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = Number(req.params.id);
+      const definition = await storage.getCustomFieldDefinition(org.id, id);
+      if (!definition) {
+        return res.status(404).json({ message: "Custom field definition not found" });
+      }
+      res.json(definition);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.post("/api/custom-fields/definitions", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const parsed = insertCustomFieldDefinitionSchema.parse({
+        ...req.body,
+        organizationId: org.id
+      });
+      const definition = await storage.createCustomFieldDefinition(parsed);
+      res.status(201).json(definition);
+    } catch (err: any) {
+      if (err.name === "ZodError") {
+        return res.status(400).json({ message: "Invalid data", errors: err.errors });
+      }
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.patch("/api/custom-fields/definitions/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = Number(req.params.id);
+      
+      const existing = await storage.getCustomFieldDefinition(org.id, id);
+      if (!existing) {
+        return res.status(404).json({ message: "Custom field definition not found" });
+      }
+      
+      const updated = await storage.updateCustomFieldDefinition(id, req.body);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.delete("/api/custom-fields/definitions/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = Number(req.params.id);
+      
+      const existing = await storage.getCustomFieldDefinition(org.id, id);
+      if (!existing) {
+        return res.status(404).json({ message: "Custom field definition not found" });
+      }
+      
+      await storage.deleteCustomFieldDefinition(id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Custom Field Values
+  api.get("/api/custom-fields/values/:entityType/:entityId", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const entityType = req.params.entityType;
+      const entityId = Number(req.params.entityId);
+      const values = await storage.getCustomFieldValues(entityType, entityId);
+      res.json(values);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.post("/api/custom-fields/values", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { definitionId, entityId, value } = req.body;
+      
+      const definition = await storage.getCustomFieldDefinition(org.id, definitionId);
+      if (!definition) {
+        return res.status(404).json({ message: "Custom field definition not found" });
+      }
+      
+      const fieldValue = await storage.setCustomFieldValue(definitionId, entityId, value);
+      res.json(fieldValue);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.post("/api/custom-fields/values/bulk", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { entityType, entityId, values } = req.body as {
+        entityType: string;
+        entityId: number;
+        values: { definitionId: number; value: string | null }[];
+      };
+      
+      const results = [];
+      for (const { definitionId, value } of values) {
+        const definition = await storage.getCustomFieldDefinition(org.id, definitionId);
+        if (definition) {
+          const result = await storage.setCustomFieldValue(definitionId, entityId, value);
+          results.push(result);
+        }
+      }
+      
+      res.json(results);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // SAVED VIEWS
+  // ============================================
+
+  api.get("/api/saved-views", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const entityType = req.query.entityType as string | undefined;
+      const views = await storage.getSavedViews(org.id, entityType);
+      res.json(views);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.get("/api/saved-views/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = Number(req.params.id);
+      const view = await storage.getSavedView(org.id, id);
+      if (!view) {
+        return res.status(404).json({ message: "Saved view not found" });
+      }
+      res.json(view);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.post("/api/saved-views", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = (req as any).user;
+      const parsed = insertSavedViewSchema.parse({
+        ...req.body,
+        organizationId: org.id,
+        createdBy: user?.id || null
+      });
+      const view = await storage.createSavedView(parsed);
+      res.status(201).json(view);
+    } catch (err: any) {
+      if (err.name === "ZodError") {
+        return res.status(400).json({ message: "Invalid data", errors: err.errors });
+      }
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.patch("/api/saved-views/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = Number(req.params.id);
+      
+      const existing = await storage.getSavedView(org.id, id);
+      if (!existing) {
+        return res.status(404).json({ message: "Saved view not found" });
+      }
+      
+      const updated = await storage.updateSavedView(id, req.body);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.delete("/api/saved-views/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = Number(req.params.id);
+      
+      const existing = await storage.getSavedView(org.id, id);
+      if (!existing) {
+        return res.status(404).json({ message: "Saved view not found" });
+      }
+      
+      await storage.deleteSavedView(id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.post("/api/saved-views/:id/set-default", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = Number(req.params.id);
+      
+      const existing = await storage.getSavedView(org.id, id);
+      if (!existing) {
+        return res.status(404).json({ message: "Saved view not found" });
+      }
+      
+      const updated = await storage.setDefaultView(org.id, existing.entityType, id);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   api.get("/api/system/health", async (req, res) => {
     try {
       const checks = {
@@ -4255,6 +6467,757 @@ Seller Signature (if applicable)
       });
     } catch (err: any) {
       res.status(500).json({ status: 'unhealthy', error: err.message });
+    }
+  });
+
+  // ============================================
+  // AI OFFER GENERATION
+  // ============================================
+  
+  api.post("/api/ai/generate-offer", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const propertyData: PropertyData = req.body;
+      
+      if (!propertyData.county || !propertyData.state || !propertyData.sizeAcres) {
+        return res.status(400).json({ 
+          message: "Missing required fields: county, state, and sizeAcres are required" 
+        });
+      }
+      
+      const result = await generateOfferSuggestions(propertyData);
+      
+      if (!result.success) {
+        return res.status(400).json({ message: result.error });
+      }
+      
+      res.json(result);
+    } catch (error: any) {
+      console.error("AI generate-offer error:", error);
+      res.status(500).json({ 
+        message: error.message || "Failed to generate offer suggestions" 
+      });
+    }
+  });
+  
+  api.post("/api/ai/generate-letter", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const request: OfferLetterRequest = req.body;
+      
+      if (!request.property || !request.offerAmount || !request.buyerName || !request.tone) {
+        return res.status(400).json({ 
+          message: "Missing required fields: property, offerAmount, buyerName, and tone are required" 
+        });
+      }
+      
+      if (!["professional", "friendly", "urgent"].includes(request.tone)) {
+        return res.status(400).json({ 
+          message: "Tone must be one of: professional, friendly, urgent" 
+        });
+      }
+      
+      const result = await generateOfferLetter(request);
+      
+      if (!result.success) {
+        return res.status(400).json({ message: result.error });
+      }
+      
+      res.json(result);
+    } catch (error: any) {
+      console.error("AI generate-letter error:", error);
+      res.status(500).json({ 
+        message: error.message || "Failed to generate offer letter" 
+      });
+    }
+  });
+  
+  api.post("/api/ai/predict-acceptance", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const request: AcceptancePredictionRequest = req.body;
+      
+      if (!request.property || !request.offerAmount || !request.estimatedMarketValue) {
+        return res.status(400).json({ 
+          message: "Missing required fields: property, offerAmount, and estimatedMarketValue are required" 
+        });
+      }
+      
+      const result = await predictAcceptanceProbability(request);
+      
+      if (!result.success) {
+        return res.status(400).json({ message: result.error });
+      }
+      
+      res.json(result);
+    } catch (error: any) {
+      console.error("AI predict-acceptance error:", error);
+      res.status(500).json({ 
+        message: error.message || "Failed to predict acceptance probability" 
+      });
+    }
+  });
+
+  // ============================================
+  // ACTIVITY FEED (15.1)
+  // ============================================
+  
+  api.get("/api/activity", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
+      const offset = parseInt(req.query.offset as string) || 0;
+      const eventTypes = req.query.eventTypes 
+        ? (req.query.eventTypes as string).split(",") 
+        : undefined;
+      const entityType = req.query.entityType as string | undefined;
+      
+      const orgId = req.organization!.id;
+      
+      let events = await storage.getRecentActivityEvents(orgId, limit + offset);
+      
+      if (eventTypes && eventTypes.length > 0) {
+        events = events.filter(e => eventTypes.includes(e.eventType));
+      }
+      
+      if (entityType) {
+        events = events.filter(e => e.entityType === entityType);
+      }
+      
+      const paginatedEvents = events.slice(offset, offset + limit);
+      
+      res.json({
+        events: paginatedEvents,
+        hasMore: events.length > offset + limit,
+        total: events.length,
+      });
+    } catch (error: any) {
+      console.error("Activity feed error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch activity feed" });
+    }
+  });
+
+  // ============================================
+  // NOTIFICATION PREFERENCES (15.2)
+  // ============================================
+  
+  api.get("/api/notification-preferences", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      const orgId = req.organization!.id;
+      
+      const preferences = await storage.getNotificationPreferences(userId, orgId);
+      res.json(preferences);
+    } catch (error: any) {
+      console.error("Get notification preferences error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch notification preferences" });
+    }
+  });
+
+  api.post("/api/notification-preferences", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      const orgId = req.organization!.id;
+      
+      const { eventType, emailEnabled, pushEnabled, inAppEnabled } = req.body;
+      
+      if (!eventType) {
+        return res.status(400).json({ message: "eventType is required" });
+      }
+      
+      const pref = await storage.upsertNotificationPreference({
+        userId,
+        organizationId: orgId,
+        eventType,
+        emailEnabled: emailEnabled ?? true,
+        pushEnabled: pushEnabled ?? false,
+        inAppEnabled: inAppEnabled ?? true,
+      });
+      
+      res.json(pref);
+    } catch (error: any) {
+      console.error("Create notification preference error:", error);
+      res.status(500).json({ message: error.message || "Failed to save notification preference" });
+    }
+  });
+
+  api.put("/api/notification-preferences/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { emailEnabled, pushEnabled, inAppEnabled } = req.body;
+      
+      const pref = await storage.updateNotificationPreference(id, {
+        emailEnabled,
+        pushEnabled,
+        inAppEnabled,
+      });
+      
+      res.json(pref);
+    } catch (error: any) {
+      console.error("Update notification preference error:", error);
+      res.status(500).json({ message: error.message || "Failed to update notification preference" });
+    }
+  });
+
+  // ============================================
+  // TASK MANAGEMENT (17.1, 17.2, 17.3)
+  // ============================================
+
+  api.get("/api/tasks", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const orgId = req.organization!.id;
+      const filters: { status?: string; priority?: string; assignedTo?: number; entityType?: string; entityId?: number } = {};
+      
+      if (req.query.status) filters.status = req.query.status as string;
+      if (req.query.priority) filters.priority = req.query.priority as string;
+      if (req.query.assignedTo) filters.assignedTo = parseInt(req.query.assignedTo as string);
+      if (req.query.entityType) filters.entityType = req.query.entityType as string;
+      if (req.query.entityId) filters.entityId = parseInt(req.query.entityId as string);
+      
+      const tasks = await storage.getTasks(orgId, Object.keys(filters).length > 0 ? filters : undefined);
+      res.json(tasks);
+    } catch (error: any) {
+      console.error("Get tasks error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch tasks" });
+    }
+  });
+
+  api.get("/api/tasks/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const orgId = req.organization!.id;
+      const id = parseInt(req.params.id);
+      
+      const task = await storage.getTask(orgId, id);
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      
+      res.json(task);
+    } catch (error: any) {
+      console.error("Get task error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch task" });
+    }
+  });
+
+  api.post("/api/tasks", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const orgId = req.organization!.id;
+      const userId = req.user!.id;
+      
+      const validated = insertTaskSchema.parse({
+        ...req.body,
+        organizationId: orgId,
+        createdBy: userId,
+        dueDate: req.body.dueDate ? new Date(req.body.dueDate) : null,
+        nextOccurrence: req.body.nextOccurrence ? new Date(req.body.nextOccurrence) : null,
+      });
+      
+      const task = await storage.createTask(validated);
+      
+      await activityLogger.logTaskCreated(
+        orgId,
+        task.id,
+        task.title,
+        task.entityType as any,
+        task.entityId ?? undefined,
+        userId
+      );
+      
+      res.status(201).json(task);
+    } catch (error: any) {
+      console.error("Create task error:", error);
+      res.status(500).json({ message: error.message || "Failed to create task" });
+    }
+  });
+
+  api.put("/api/tasks/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const orgId = req.organization!.id;
+      const userId = req.user!.id;
+      const id = parseInt(req.params.id);
+      
+      const existingTask = await storage.getTask(orgId, id);
+      if (!existingTask) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      
+      const updates: any = { ...req.body };
+      if (updates.dueDate) updates.dueDate = new Date(updates.dueDate);
+      if (updates.nextOccurrence) updates.nextOccurrence = new Date(updates.nextOccurrence);
+      
+      const task = await storage.updateTask(id, updates);
+      
+      const changes = Object.keys(updates).filter(k => k !== 'updatedAt').join(', ');
+      await activityLogger.logTaskUpdated(
+        orgId,
+        task.id,
+        task.title,
+        changes,
+        task.entityType as any,
+        task.entityId ?? undefined,
+        userId
+      );
+      
+      res.json(task);
+    } catch (error: any) {
+      console.error("Update task error:", error);
+      res.status(500).json({ message: error.message || "Failed to update task" });
+    }
+  });
+
+  api.delete("/api/tasks/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const orgId = req.organization!.id;
+      const id = parseInt(req.params.id);
+      
+      const task = await storage.getTask(orgId, id);
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      
+      await storage.deleteTask(id);
+      res.json({ message: "Task deleted" });
+    } catch (error: any) {
+      console.error("Delete task error:", error);
+      res.status(500).json({ message: error.message || "Failed to delete task" });
+    }
+  });
+
+  api.post("/api/tasks/:id/complete", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const orgId = req.organization!.id;
+      const userId = req.user!.id;
+      const id = parseInt(req.params.id);
+      
+      const existingTask = await storage.getTask(orgId, id);
+      if (!existingTask) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      
+      const completedTask = await storage.completeTask(id);
+      
+      await activityLogger.logTaskCompleted(
+        orgId,
+        completedTask.id,
+        completedTask.title,
+        completedTask.entityType as any,
+        completedTask.entityId ?? undefined,
+        userId
+      );
+      
+      if (completedTask.isRecurring && completedTask.recurrenceRule) {
+        const nextTask = await storage.createNextRecurringTask(completedTask);
+        return res.json({ completedTask, nextTask });
+      }
+      
+      res.json({ completedTask });
+    } catch (error: any) {
+      console.error("Complete task error:", error);
+      res.status(500).json({ message: error.message || "Failed to complete task" });
+    }
+  });
+
+  api.post("/api/tasks/process-recurring", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const recurringTasksDue = await storage.getRecurringTasksDue();
+      const createdTasks = [];
+      
+      for (const task of recurringTasksDue) {
+        const nextTask = await storage.createNextRecurringTask(task);
+        createdTasks.push(nextTask);
+      }
+      
+      res.json({ processed: recurringTasksDue.length, created: createdTasks });
+    } catch (error: any) {
+      console.error("Process recurring tasks error:", error);
+      res.status(500).json({ message: error.message || "Failed to process recurring tasks" });
+    }
+  });
+
+  // ============================================
+  // IMPORT / EXPORT
+  // ============================================
+
+  api.get("/api/import/:entityType/columns", isAuthenticated, async (req, res) => {
+    try {
+      const entityType = req.params.entityType as "leads" | "properties" | "deals";
+      if (!["leads", "properties", "deals"].includes(entityType)) {
+        return res.status(400).json({ message: "Invalid entity type. Must be leads, properties, or deals." });
+      }
+      const columns = getExpectedColumns(entityType);
+      res.json({ columns });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to get columns" });
+    }
+  });
+
+  api.post("/api/import/:entityType/preview", isAuthenticated, getOrCreateOrg, upload.single("file"), async (req, res) => {
+    try {
+      const entityType = req.params.entityType as "leads" | "properties" | "deals";
+      if (!["leads", "properties", "deals"].includes(entityType)) {
+        return res.status(400).json({ message: "Invalid entity type. Must be leads, properties, or deals." });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+
+      const csvString = req.file.buffer.toString("utf-8");
+      const data = parseCSV(csvString);
+
+      if (data.length > MAX_CSV_IMPORT_ROWS) {
+        return res.status(400).json({ 
+          message: `CSV file exceeds maximum of ${MAX_CSV_IMPORT_ROWS} rows. Please split into smaller files.` 
+        });
+      }
+
+      const preview = previewImport(data, entityType);
+      res.json(preview);
+    } catch (error: any) {
+      console.error("Import preview error:", error);
+      res.status(500).json({ message: error.message || "Failed to preview import" });
+    }
+  });
+
+  api.post("/api/import/:entityType", isAuthenticated, getOrCreateOrg, upload.single("file"), async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const entityType = req.params.entityType as "leads" | "properties" | "deals";
+
+      if (!["leads", "properties", "deals"].includes(entityType)) {
+        return res.status(400).json({ message: "Invalid entity type. Must be leads, properties, or deals." });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+
+      const csvString = req.file.buffer.toString("utf-8");
+      const data = parseCSV(csvString);
+
+      if (data.length > MAX_CSV_IMPORT_ROWS) {
+        return res.status(400).json({ 
+          message: `CSV file exceeds maximum of ${MAX_CSV_IMPORT_ROWS} rows. Please split into smaller files.` 
+        });
+      }
+
+      let result;
+      if (entityType === "leads") {
+        result = await importLeads(data, org.id);
+      } else if (entityType === "properties") {
+        result = await importProperties(data, org.id);
+      } else {
+        result = await importDeals(data, org.id);
+      }
+
+      res.json(result);
+    } catch (error: any) {
+      console.error("Import error:", error);
+      res.status(500).json({ message: error.message || "Failed to import data" });
+    }
+  });
+
+  api.get("/api/export/:entityType", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const entityType = req.params.entityType as "leads" | "properties" | "deals" | "notes";
+
+      if (!["leads", "properties", "deals", "notes"].includes(entityType)) {
+        return res.status(400).json({ message: "Invalid entity type. Must be leads, properties, deals, or notes." });
+      }
+
+      const filters: ExportFilters = {
+        status: req.query.status as string | undefined,
+        type: req.query.type as string | undefined,
+        startDate: req.query.startDate as string | undefined,
+        endDate: req.query.endDate as string | undefined,
+      };
+
+      let csv: string;
+      let filename: string;
+
+      if (entityType === "leads") {
+        csv = await exportLeadsToCSV(org.id, filters);
+        filename = `leads_export_${new Date().toISOString().split("T")[0]}.csv`;
+      } else if (entityType === "properties") {
+        csv = await exportPropertiesToCSV(org.id, filters);
+        filename = `properties_export_${new Date().toISOString().split("T")[0]}.csv`;
+      } else if (entityType === "deals") {
+        csv = await exportDealsToCSV(org.id, filters);
+        filename = `deals_export_${new Date().toISOString().split("T")[0]}.csv`;
+      } else {
+        csv = await exportNotesToCSV(org.id, filters);
+        filename = `notes_export_${new Date().toISOString().split("T")[0]}.csv`;
+      }
+
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      res.send(csv);
+    } catch (error: any) {
+      console.error("Export error:", error);
+      res.status(500).json({ message: error.message || "Failed to export data" });
+    }
+  });
+
+  api.get("/api/export/backup", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const backup = await createBackupZip(org.id);
+
+      const jsonResponse = {
+        metadata: {
+          organizationId: org.id,
+          organizationName: org.name,
+          exportedAt: new Date().toISOString(),
+        },
+        files: backup.files.map((f) => ({
+          name: f.name,
+          content: f.content,
+        })),
+      };
+
+      res.setHeader("Content-Type", "application/json");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="backup_${org.slug}_${new Date().toISOString().split("T")[0]}.json"`
+      );
+      res.send(JSON.stringify(jsonResponse, null, 2));
+    } catch (error: any) {
+      console.error("Backup error:", error);
+      res.status(500).json({ message: error.message || "Failed to create backup" });
+    }
+  });
+
+  // ============================================
+  // COMPLIANCE (20.1, 20.2, 20.3)
+  // ============================================
+
+  // Audit Log (20.1)
+  api.get("/api/audit-log", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const orgId = req.organization!.id;
+      
+      const filters: {
+        action?: string;
+        entityType?: string;
+        entityId?: number;
+        userId?: string;
+        startDate?: Date;
+        endDate?: Date;
+        limit?: number;
+        offset?: number;
+      } = {};
+      
+      if (req.query.action) filters.action = req.query.action as string;
+      if (req.query.entityType) filters.entityType = req.query.entityType as string;
+      if (req.query.entityId) filters.entityId = parseInt(req.query.entityId as string);
+      if (req.query.userId) filters.userId = req.query.userId as string;
+      if (req.query.startDate) filters.startDate = new Date(req.query.startDate as string);
+      if (req.query.endDate) filters.endDate = new Date(req.query.endDate as string);
+      if (req.query.limit) filters.limit = parseInt(req.query.limit as string);
+      if (req.query.offset) filters.offset = parseInt(req.query.offset as string);
+      
+      const [logs, count] = await Promise.all([
+        storage.getAuditLogs(orgId, filters),
+        storage.getAuditLogCount(orgId, filters)
+      ]);
+      
+      res.json({ logs, count });
+    } catch (error: any) {
+      console.error("Audit log error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch audit logs" });
+    }
+  });
+
+  // TCPA Compliance (20.2)
+  api.get("/api/compliance/tcpa/no-consent", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const orgId = req.organization!.id;
+      const leads = await storage.getLeadsWithoutConsent(orgId);
+      res.json(leads);
+    } catch (error: any) {
+      console.error("TCPA no-consent error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch leads without consent" });
+    }
+  });
+
+  api.get("/api/compliance/tcpa/opted-out", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const orgId = req.organization!.id;
+      const leads = await storage.getLeadsOptedOut(orgId);
+      res.json(leads);
+    } catch (error: any) {
+      console.error("TCPA opted-out error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch opted-out leads" });
+    }
+  });
+
+  api.patch("/api/leads/:id/consent", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const orgId = req.organization!.id;
+      const userId = req.user!.id;
+      const leadId = parseInt(req.params.id);
+      const { tcpaConsent, consentSource, optOutReason } = req.body;
+      
+      const existingLead = await storage.getLead(orgId, leadId);
+      if (!existingLead) {
+        return res.status(404).json({ message: "Lead not found" });
+      }
+      
+      const updated = await storage.updateLeadConsent(leadId, {
+        tcpaConsent,
+        consentSource,
+        optOutReason
+      });
+      
+      // Log consent change in audit log
+      await storage.createAuditLogEntry({
+        organizationId: orgId,
+        userId,
+        action: tcpaConsent ? "consent_granted" : "consent_revoked",
+        entityType: "lead",
+        entityId: leadId,
+        changes: {
+          before: { tcpaConsent: existingLead.tcpaConsent },
+          after: { tcpaConsent },
+          fields: ["tcpaConsent"]
+        },
+        ipAddress: req.ip || req.socket?.remoteAddress,
+        userAgent: req.headers["user-agent"],
+      });
+      
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Update consent error:", error);
+      res.status(500).json({ message: error.message || "Failed to update consent" });
+    }
+  });
+
+  // Data Retention (20.3)
+  api.get("/api/compliance/retention-policies", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization!;
+      const policies = org.settings?.retentionPolicies || {
+        leads: { enabled: false, retentionDays: 365 },
+        closedDeals: { enabled: false, retentionDays: 2555 }, // 7 years for tax purposes
+        auditLogs: { enabled: false, retentionDays: 2555 },
+        communications: { enabled: false, retentionDays: 365 }
+      };
+      res.json(policies);
+    } catch (error: any) {
+      console.error("Get retention policies error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch retention policies" });
+    }
+  });
+
+  api.patch("/api/compliance/retention-policies", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const orgId = req.organization!.id;
+      const userId = req.user!.id;
+      const org = req.organization!;
+      const newPolicies = req.body;
+      
+      const updatedSettings = {
+        ...org.settings,
+        retentionPolicies: newPolicies
+      };
+      
+      const updated = await storage.updateOrganization(orgId, { settings: updatedSettings });
+      
+      // Log policy change in audit log
+      await storage.createAuditLogEntry({
+        organizationId: orgId,
+        userId,
+        action: "update",
+        entityType: "settings",
+        entityId: orgId,
+        changes: {
+          before: { retentionPolicies: org.settings?.retentionPolicies },
+          after: { retentionPolicies: newPolicies },
+          fields: ["retentionPolicies"]
+        },
+        ipAddress: req.ip || req.socket?.remoteAddress,
+        userAgent: req.headers["user-agent"],
+      });
+      
+      res.json(updated.settings?.retentionPolicies);
+    } catch (error: any) {
+      console.error("Update retention policies error:", error);
+      res.status(500).json({ message: error.message || "Failed to update retention policies" });
+    }
+  });
+
+  api.post("/api/compliance/purge-data", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const orgId = req.organization!.id;
+      const userId = req.user!.id;
+      const { dataType, beforeDate } = req.body;
+      
+      if (!dataType || !beforeDate) {
+        return res.status(400).json({ message: "dataType and beforeDate are required" });
+      }
+      
+      const date = new Date(beforeDate);
+      let purgedCount = 0;
+      
+      switch (dataType) {
+        case "leads":
+          purgedCount = await storage.purgeOldLeads(orgId, date);
+          break;
+        case "closedDeals":
+          purgedCount = await storage.purgeOldDeals(orgId, date, "closed");
+          break;
+        case "auditLogs":
+          purgedCount = await storage.purgeOldAuditLogs(orgId, date);
+          break;
+        case "communications":
+          purgedCount = await storage.purgeOldCommunications(orgId, date);
+          break;
+        default:
+          return res.status(400).json({ message: "Invalid dataType" });
+      }
+      
+      // Log purge action in audit log
+      await storage.createAuditLogEntry({
+        organizationId: orgId,
+        userId,
+        action: "data_purge",
+        entityType: dataType,
+        entityId: null,
+        changes: null,
+        metadata: {
+          beforeDate: beforeDate,
+          purgedCount
+        },
+        ipAddress: req.ip || req.socket?.remoteAddress,
+        userAgent: req.headers["user-agent"],
+      });
+      
+      res.json({ purgedCount, dataType, beforeDate });
+    } catch (error: any) {
+      console.error("Purge data error:", error);
+      res.status(500).json({ message: error.message || "Failed to purge data" });
+    }
+  });
+
+  // TCPA stats endpoint
+  api.get("/api/compliance/tcpa/stats", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const orgId = req.organization!.id;
+      
+      const [noConsent, optedOut, allLeads] = await Promise.all([
+        storage.getLeadsWithoutConsent(orgId),
+        storage.getLeadsOptedOut(orgId),
+        storage.getLeads(orgId)
+      ]);
+      
+      const withConsent = allLeads.filter(l => l.tcpaConsent === true).length;
+      
+      res.json({
+        total: allLeads.length,
+        withConsent,
+        withoutConsent: noConsent.length,
+        optedOut: optedOut.length
+      });
+    } catch (error: any) {
+      console.error("TCPA stats error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch TCPA stats" });
     }
   });
 

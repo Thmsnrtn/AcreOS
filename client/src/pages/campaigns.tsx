@@ -6,6 +6,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertCampaignSchema, type Campaign } from "@shared/schema";
 import { z } from "zod";
+import { CampaignAnalytics } from "@/components/campaign-analytics";
+import { AbTestManager } from "@/components/ab-test-manager";
 
 // Client-side form schema that omits organizationId (added by server)
 const campaignFormSchema = insertCampaignSchema.omit({ organizationId: true });
@@ -913,6 +915,15 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
               </CardContent>
             </Card>
           )}
+
+          <div className="pt-4 border-t">
+            <AbTestManager campaign={campaign} />
+          </div>
+
+          <div className="pt-4 border-t">
+            <h3 className="text-lg font-semibold mb-4">Response Analytics</h3>
+            <CampaignAnalytics campaignId={campaign.id} />
+          </div>
         </div>
       </div>
     </div>

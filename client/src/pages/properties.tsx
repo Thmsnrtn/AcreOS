@@ -1,6 +1,7 @@
 import { Sidebar } from "@/components/layout-sidebar";
 import { useProperties, useCreateProperty, useDeleteProperty } from "@/hooks/use-properties";
 import { queryClient } from "@/lib/queryClient";
+import { ListSkeleton } from "@/components/list-skeleton";
 import { useFetchPropertyParcel } from "@/hooks/use-parcels";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -35,6 +36,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import { CompsAnalysis } from "@/components/comps-analysis";
+import { AIOfferGenerator } from "@/components/ai-offer-generator";
+import { CustomFieldValuesEditor } from "@/components/custom-fields";
 
 export default function PropertiesPage() {
   const { data: properties, isLoading } = useProperties();
@@ -206,10 +209,8 @@ export default function PropertiesPage() {
           </div>
 
           {isLoading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {[1,2,3].map(i => (
-                <div key={i} className="h-64 rounded-2xl bg-slate-200 dark:bg-slate-800 animate-pulse" />
-              ))}
+            <div data-testid="skeleton-properties-grid">
+              <ListSkeleton count={6} variant="card" />
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -669,7 +670,7 @@ function PropertyForm({ onSuccess }: { onSuccess: () => void }) {
               <FormItem>
                 <FormLabel>Purchase Price</FormLabel>
                 <FormControl>
-                  <Input {...field} placeholder="5000" type="number" data-testid="input-purchase-price" />
+                  <Input {...field} value={field.value ?? ""} placeholder="5000" type="number" data-testid="input-purchase-price" />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -682,7 +683,7 @@ function PropertyForm({ onSuccess }: { onSuccess: () => void }) {
               <FormItem>
                 <FormLabel>Market Value</FormLabel>
                 <FormControl>
-                  <Input {...field} placeholder="15000" type="number" data-testid="input-market-value" />
+                  <Input {...field} value={field.value ?? ""} placeholder="15000" type="number" data-testid="input-market-value" />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -697,7 +698,7 @@ function PropertyForm({ onSuccess }: { onSuccess: () => void }) {
             <FormItem>
               <FormLabel>Description</FormLabel>
               <FormControl>
-                <Input {...field} placeholder="Beautiful desert lot with road access..." data-testid="input-description" />
+                <Input {...field} value={field.value ?? ""} placeholder="Beautiful desert lot with road access..." data-testid="input-description" />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -740,11 +741,15 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
         </DialogHeader>
         
         <Tabs defaultValue="overview" className="mt-4">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="overview" data-testid="tab-overview">Overview</TabsTrigger>
             <TabsTrigger value="comps" data-testid="tab-comps">
               <BarChart2 className="w-3.5 h-3.5 mr-1" />
               Comps
+            </TabsTrigger>
+            <TabsTrigger value="ai-offer" data-testid="tab-ai-offer">
+              <Calculator className="w-3.5 h-3.5 mr-1" />
+              AI Offer
             </TabsTrigger>
             <TabsTrigger value="due-diligence" data-testid="tab-due-diligence">Due Diligence</TabsTrigger>
           </TabsList>
@@ -782,10 +787,18 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                 <p className="text-sm mt-1">{property.description}</p>
               </div>
             )}
+            
+            <div className="pt-4">
+              <CustomFieldValuesEditor entityType="property" entityId={property.id} />
+            </div>
           </TabsContent>
           
           <TabsContent value="comps" className="mt-4">
             <CompsAnalysis property={property} />
+          </TabsContent>
+          
+          <TabsContent value="ai-offer" className="mt-4">
+            <AIOfferGenerator property={property} />
           </TabsContent>
           
           <TabsContent value="due-diligence" className="mt-4">

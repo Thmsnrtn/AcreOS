@@ -6,7 +6,9 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, MapPin, TrendingUp, TrendingDown, BarChart3, AlertCircle, RefreshCw, Search, DollarSign } from "lucide-react";
+import { Loader2, MapPin, TrendingUp, TrendingDown, BarChart3, AlertCircle, RefreshCw, Search, DollarSign, Star, Target, Info } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Progress } from "@/components/ui/progress";
 import type { Property } from "@shared/schema";
 
 interface ComparableProperty {
@@ -41,10 +43,32 @@ interface MarketAnalysis {
   subjectAcreage: number | null;
 }
 
+interface OfferPrices {
+  conservative: { min: number; max: number; label: string };
+  standard: { min: number; max: number; label: string };
+  aggressive: { min: number; max: number; label: string };
+  estimatedMarketValue: number;
+}
+
+interface DesirabilityScoreFactor {
+  name: string;
+  score: number;
+  maxScore: number;
+  description: string;
+}
+
+interface DesirabilityScore {
+  totalScore: number;
+  grade: "A" | "B" | "C" | "D" | "F";
+  factors: DesirabilityScoreFactor[];
+}
+
 interface CompsResponse {
   success: boolean;
   comps: ComparableProperty[];
   marketAnalysis?: MarketAnalysis;
+  offerPrices?: OfferPrices;
+  desirabilityScore?: DesirabilityScore;
   error?: string;
   limitedData?: boolean;
   message?: string;
@@ -66,6 +90,7 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
   const [minAcreage, setMinAcreage] = useState("");
   const [maxAcreage, setMaxAcreage] = useState("");
   const [showFilters, setShowFilters] = useState(false);
+  const [showScoreBreakdown, setShowScoreBreakdown] = useState(false);
 
   const hasCoordinates = property.parcelCentroid || (property.latitude && property.longitude);
 
@@ -308,6 +333,109 @@ export function CompsAnalysis({ property }: CompsAnalysisProps) {
               </span>
             </div>
           </CardContent>
+        </Card>
+      )}
+
+      {data?.offerPrices && (
+        <Card data-testid="card-offer-suggestions">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Target className="w-4 h-4" />
+              Offer Suggestions
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="p-3 rounded-md bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
+                <div className="flex items-center gap-2 mb-1">
+                  <Badge variant="outline" className="bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 border-green-300 dark:border-green-700">
+                    Conservative
+                  </Badge>
+                </div>
+                <p className="text-lg font-bold text-green-700 dark:text-green-300" data-testid="text-offer-conservative">
+                  {formatCurrency(data.offerPrices.conservative.min)} - {formatCurrency(data.offerPrices.conservative.max)}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">40-50% of market value</p>
+              </div>
+              <div className="p-3 rounded-md bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+                <div className="flex items-center gap-2 mb-1">
+                  <Badge variant="outline" className="bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700">
+                    Standard
+                  </Badge>
+                </div>
+                <p className="text-lg font-bold text-blue-700 dark:text-blue-300" data-testid="text-offer-standard">
+                  {formatCurrency(data.offerPrices.standard.min)} - {formatCurrency(data.offerPrices.standard.max)}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">50-65% of market value</p>
+              </div>
+              <div className="p-3 rounded-md bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800">
+                <div className="flex items-center gap-2 mb-1">
+                  <Badge variant="outline" className="bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300 border-orange-300 dark:border-orange-700">
+                    Aggressive
+                  </Badge>
+                </div>
+                <p className="text-lg font-bold text-orange-700 dark:text-orange-300" data-testid="text-offer-aggressive">
+                  {formatCurrency(data.offerPrices.aggressive.min)} - {formatCurrency(data.offerPrices.aggressive.max)}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">65-80% of market value</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {data?.desirabilityScore && (
+        <Card data-testid="card-property-score">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Star className="w-4 h-4" />
+                Property Desirability Score
+              </div>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge
+                    data-testid="badge-desirability-score"
+                    className={`cursor-pointer text-base px-3 py-1 ${
+                      data.desirabilityScore.totalScore >= 70
+                        ? "bg-green-500 hover:bg-green-600 text-white"
+                        : data.desirabilityScore.totalScore >= 40
+                        ? "bg-yellow-500 hover:bg-yellow-600 text-white"
+                        : "bg-red-500 hover:bg-red-600 text-white"
+                    }`}
+                    onClick={() => setShowScoreBreakdown(!showScoreBreakdown)}
+                  >
+                    {data.desirabilityScore.totalScore}/100 ({data.desirabilityScore.grade})
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Click to {showScoreBreakdown ? "hide" : "show"} score breakdown</p>
+                </TooltipContent>
+              </Tooltip>
+            </CardTitle>
+          </CardHeader>
+          {showScoreBreakdown && (
+            <CardContent data-testid="score-breakdown">
+              <div className="space-y-3">
+                {data.desirabilityScore.factors.map((factor, idx) => (
+                  <div key={idx} className="space-y-1">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="font-medium">{factor.name}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground text-xs capitalize">{factor.description}</span>
+                        <span className="font-mono text-xs">{factor.score}/{factor.maxScore}</span>
+                      </div>
+                    </div>
+                    <Progress 
+                      value={(factor.score / factor.maxScore) * 100} 
+                      className="h-2"
+                      data-testid={`progress-${factor.name.toLowerCase().replace(/\s+/g, "-")}`}
+                    />
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          )}
         </Card>
       )}
 

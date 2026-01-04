@@ -1,7 +1,18 @@
 import { db } from '../db';
-import { systemAlerts, organizations } from '@shared/schema';
-import { eq, and, gte, sql, ne } from 'drizzle-orm';
+import { systemAlerts, organizations, leads, type Lead } from '@shared/schema';
+import { eq, and, gte, sql, ne, isNotNull } from 'drizzle-orm';
 import { storage } from '../storage';
+
+export interface AgingLead {
+  id: number;
+  firstName: string;
+  lastName: string;
+  nurturingStage: string;
+  score: number | null;
+  lastContactedAt: Date | null;
+  daysSinceContact: number;
+  urgency: 'urgent' | 'warning' | 'info';
+}
 
 export interface AlertRule {
   id: string;
@@ -185,6 +196,7 @@ export class AlertingService {
     }
 
     await db.insert(systemAlerts).values({
+      type: alert.alertType,
       alertType: alert.alertType,
       severity,
       organizationId,
@@ -257,6 +269,7 @@ export class AlertingService {
           .from(systemAlerts);
         
         await this.checkAlerts(org.id);
+        await this.checkLeadAging(org.id);
         
         const afterCount = await db
           .select({ count: sql<number>`count(*)` })
@@ -270,6 +283,144 @@ export class AlertingService {
     }
 
     return { checked, alertsCreated };
+  }
+
+  async checkLeadAging(organizationId: number): Promise<{ agingLeads: AgingLead[]; alertsCreated: number }> {
+    const allLeads = await storage.getLeads(organizationId);
+    const agingLeads: AgingLead[] = [];
+    let alertsCreated = 0;
+
+    const now = Date.now();
+
+    for (const lead of allLeads) {
+      if (lead.status === 'dead' || lead.status === 'closed' || lead.status === 'converted') {
+        continue;
+      }
+
+      const lastContact = lead.lastContactedAt || lead.createdAt;
+      const daysSinceContact = lastContact
+        ? Math.floor((now - new Date(lastContact).getTime()) / (1000 * 60 * 60 * 24))
+        : 999;
+
+      const stage = lead.nurturingStage || 'new';
+      let urgency: 'urgent' | 'warning' | 'info' | null = null;
+
+      if (stage === 'hot' && daysSinceContact >= 3) {
+        urgency = 'urgent';
+      } else if (stage === 'warm' && daysSinceContact >= 7) {
+        urgency = 'warning';
+      } else if (daysSinceContact >= 14) {
+        urgency = 'info';
+      }
+
+      if (urgency) {
+        agingLeads.push({
+          id: lead.id,
+          firstName: lead.firstName,
+          lastName: lead.lastName || '',
+          nurturingStage: stage,
+          score: lead.score,
+          lastContactedAt: lastContact ? new Date(lastContact) : null,
+          daysSinceContact,
+          urgency,
+        });
+
+        const alertType = `lead_aging_${lead.id}`;
+        const existingAlert = await this.getExistingLeadAgingAlert(organizationId, lead.id);
+        
+        if (!existingAlert) {
+          const severityMap = { urgent: 'critical', warning: 'warning', info: 'info' };
+          const titleMap = {
+            urgent: 'Hot Lead Going Cold',
+            warning: 'Warm Lead Needs Attention',
+            info: 'Lead Going Stale',
+          };
+
+          await this.createAlert(organizationId, severityMap[urgency], {
+            alertType,
+            title: titleMap[urgency],
+            message: `${lead.firstName} ${lead.lastName || ''} (${stage} lead) hasn't been contacted in ${daysSinceContact} days. Score: ${lead.score ?? 'N/A'}.`,
+            metadata: {
+              leadId: lead.id,
+              leadName: `${lead.firstName} ${lead.lastName || ''}`,
+              nurturingStage: stage,
+              score: lead.score,
+              daysSinceContact,
+              lastContactedAt: lastContact,
+              urgency,
+            },
+          });
+          alertsCreated++;
+        }
+      }
+    }
+
+    return { agingLeads, alertsCreated };
+  }
+
+  private async getExistingLeadAgingAlert(organizationId: number, leadId: number): Promise<boolean> {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const existing = await db
+      .select()
+      .from(systemAlerts)
+      .where(
+        and(
+          eq(systemAlerts.organizationId, organizationId),
+          eq(systemAlerts.alertType, `lead_aging_${leadId}`),
+          ne(systemAlerts.status, 'resolved'),
+          gte(systemAlerts.createdAt, today)
+        )
+      );
+
+    return existing.length > 0;
+  }
+
+  async getAgingLeads(organizationId: number): Promise<AgingLead[]> {
+    const allLeads = await storage.getLeads(organizationId);
+    const agingLeads: AgingLead[] = [];
+    const now = Date.now();
+
+    for (const lead of allLeads) {
+      if (lead.status === 'dead' || lead.status === 'closed' || lead.status === 'converted') {
+        continue;
+      }
+
+      const lastContact = lead.lastContactedAt || lead.createdAt;
+      const daysSinceContact = lastContact
+        ? Math.floor((now - new Date(lastContact).getTime()) / (1000 * 60 * 60 * 24))
+        : 999;
+
+      const stage = lead.nurturingStage || 'new';
+      let urgency: 'urgent' | 'warning' | 'info' | null = null;
+
+      if (stage === 'hot' && daysSinceContact >= 3) {
+        urgency = 'urgent';
+      } else if (stage === 'warm' && daysSinceContact >= 7) {
+        urgency = 'warning';
+      } else if (daysSinceContact >= 14) {
+        urgency = 'info';
+      }
+
+      if (urgency) {
+        agingLeads.push({
+          id: lead.id,
+          firstName: lead.firstName,
+          lastName: lead.lastName || '',
+          nurturingStage: stage,
+          score: lead.score,
+          lastContactedAt: lastContact ? new Date(lastContact) : null,
+          daysSinceContact,
+          urgency,
+        });
+      }
+    }
+
+    return agingLeads.sort((a, b) => {
+      const urgencyOrder = { urgent: 0, warning: 1, info: 2 };
+      return urgencyOrder[a.urgency] - urgencyOrder[b.urgency];
+    });
   }
 }
 

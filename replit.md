@@ -44,6 +44,8 @@ Preferred communication style: Simple, everyday language.
 - **Document Generation**: Promissory notes, warranty deeds, offer letters.
 - **Usage Limits & Credits**: Tier-based feature usage limits, prepaid credit system for billable actions (email, SMS, AI, PDF, Comps, Direct Mail) with a usage dashboard and alerts.
 - **Data Import/Export**: CSV import/export for core data types.
+- **Custom Fields System**: User-defined custom fields (text, number, date, select, checkbox) for leads, properties, and deals with field definitions and values stored separately.
+- **Saved Views**: Reusable filtered views with sorting, column visibility, and default view support per entity type.
 - **AI Agents (Autonomous Operations)**:
     - **Lead Nurturing**: Scores leads, generates AI-powered follow-ups, segmentation.
     - **Campaign Optimizer**: Analyzes campaign performance, provides AI-driven optimization suggestions.

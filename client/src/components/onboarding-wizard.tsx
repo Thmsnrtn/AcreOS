@@ -15,6 +15,8 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useOrganization } from "@/hooks/use-organization";
 import { 
@@ -23,16 +25,19 @@ import {
   ArrowLeft,
   Map, 
   FileText, 
-  Upload,
-  CreditCard,
+  Database,
+  Users,
   Mail,
+  MessageSquare,
+  Phone,
   CheckCircle2,
   PartyPopper,
   Lightbulb,
   Loader2,
   SkipForward,
   Building2,
-  X
+  X,
+  UserPlus
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -43,9 +48,13 @@ type OnboardingStatus = {
   currentStep: number;
   data: {
     businessType?: BusinessType;
+    organizationName?: string;
+    communicationChannels?: string[];
     dataImported?: boolean;
     stripeConnected?: boolean;
     campaignCreated?: boolean;
+    teamInvites?: string[];
+    sampleDataLoaded?: boolean;
     completedSteps?: number[];
     skippedSteps?: number[];
     aiTips?: string[];
@@ -56,31 +65,31 @@ type OnboardingStatus = {
 const WIZARD_STEPS = [
   {
     id: 0,
-    name: "welcome",
-    title: "Welcome to AcreOS",
-    description: "Let's set up your land investment business. First, tell us about your focus.",
-    icon: Sparkles,
+    name: "organization",
+    title: "Organization Setup",
+    description: "Let's set up your organization and business type.",
+    icon: Building2,
   },
   {
     id: 1,
-    name: "import",
-    title: "Import Your Data",
-    description: "Bring in your existing leads and properties to hit the ground running.",
-    icon: Upload,
+    name: "communication",
+    title: "Communication Preferences",
+    description: "Choose how you'll reach your leads and clients.",
+    icon: MessageSquare,
   },
   {
     id: 2,
-    name: "connect",
-    title: "Connect Services",
-    description: "Link payment processing for seller-financed notes.",
-    icon: CreditCard,
+    name: "campaign",
+    title: "Your First Campaign",
+    description: "Set up your first marketing campaign (optional).",
+    icon: Mail,
   },
   {
     id: 3,
-    name: "campaign",
-    title: "Your First Campaign",
-    description: "Review the campaign templates we've created based on your business type.",
-    icon: Mail,
+    name: "team",
+    title: "Invite Your Team",
+    description: "Add team members to collaborate (optional).",
+    icon: Users,
   },
   {
     id: 4,
@@ -91,12 +100,22 @@ const WIZARD_STEPS = [
   },
 ];
 
+const COMMUNICATION_CHANNELS = [
+  { id: "email", label: "Email", description: "Send personalized emails to leads", icon: Mail },
+  { id: "sms", label: "SMS", description: "Text message campaigns and reminders", icon: MessageSquare },
+  { id: "direct_mail", label: "Direct Mail", description: "Physical mail campaigns", icon: FileText },
+  { id: "phone", label: "Phone", description: "Track phone call interactions", icon: Phone },
+];
+
 export function OnboardingWizard() {
   const { data: organization, isLoading: orgLoading } = useOrganization();
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [businessType, setBusinessType] = useState<BusinessType>("land_flipper");
+  const [organizationName, setOrganizationName] = useState("");
+  const [communicationChannels, setCommunicationChannels] = useState<string[]>(["email", "direct_mail"]);
+  const [teamEmails, setTeamEmails] = useState("");
   const [tips, setTips] = useState<string[]>([]);
   const [showTips, setShowTips] = useState(false);
 
@@ -112,6 +131,14 @@ export function OnboardingWizard() {
         setCurrentStep(onboardingStatus.currentStep);
         if (onboardingStatus.data.businessType) {
           setBusinessType(onboardingStatus.data.businessType);
+        }
+        if (onboardingStatus.data.organizationName) {
+          setOrganizationName(onboardingStatus.data.organizationName);
+        } else if (organization.name) {
+          setOrganizationName(organization.name);
+        }
+        if (onboardingStatus.data.communicationChannels) {
+          setCommunicationChannels(onboardingStatus.data.communicationChannels);
         }
       }
     }
@@ -154,6 +181,39 @@ export function OnboardingWizard() {
     },
   });
 
+  const sampleDataMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/onboarding/sample-data", {});
+      if (!res.ok) throw new Error("Failed to load sample data");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Sample data loaded!",
+        description: `Added ${data.counts.leads} leads, ${data.counts.properties} properties, and ${data.counts.notes} notes.`,
+      });
+      queryClient.invalidateQueries();
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to load sample data",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateOrgMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const res = await apiRequest("PATCH", "/api/organization", { name });
+      if (!res.ok) throw new Error("Failed to update organization");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/organization"] });
+    },
+  });
+
   const completeMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/onboarding/complete", {});
@@ -173,10 +233,24 @@ export function OnboardingWizard() {
 
   const handleNext = async () => {
     if (currentStep === 0 && businessType) {
+      if (organizationName && organizationName !== organization?.name) {
+        await updateOrgMutation.mutateAsync(organizationName);
+      }
       await provisionMutation.mutateAsync(businessType);
       await updateStepMutation.mutateAsync({ 
         step: currentStep, 
-        data: { businessType } 
+        data: { businessType, organizationName } 
+      });
+    } else if (currentStep === 1) {
+      await updateStepMutation.mutateAsync({ 
+        step: currentStep, 
+        data: { communicationChannels } 
+      });
+    } else if (currentStep === 3 && teamEmails.trim()) {
+      const emails = teamEmails.split(",").map(e => e.trim()).filter(Boolean);
+      await updateStepMutation.mutateAsync({ 
+        step: currentStep, 
+        data: { teamInvites: emails } 
       });
     } else {
       await updateStepMutation.mutateAsync({ step: currentStep });
@@ -212,7 +286,19 @@ export function OnboardingWizard() {
     await completeMutation.mutateAsync();
   };
 
-  const isPending = updateStepMutation.isPending || provisionMutation.isPending || completeMutation.isPending;
+  const handleLoadSampleData = async () => {
+    await sampleDataMutation.mutateAsync();
+  };
+
+  const toggleChannel = (channelId: string) => {
+    setCommunicationChannels(prev => 
+      prev.includes(channelId) 
+        ? prev.filter(c => c !== channelId)
+        : [...prev, channelId]
+    );
+  };
+
+  const isPending = updateStepMutation.isPending || provisionMutation.isPending || completeMutation.isPending || sampleDataMutation.isPending || updateOrgMutation.isPending;
   const step = WIZARD_STEPS[currentStep];
   const StepIcon = step.icon;
   const isLastStep = currentStep === WIZARD_STEPS.length - 1;
@@ -223,9 +309,24 @@ export function OnboardingWizard() {
       case 0:
         return (
           <div className="space-y-4">
-            <p className="text-muted-foreground text-center">
-              What type of land investing are you focused on?
-            </p>
+            <div className="space-y-2">
+              <Label htmlFor="org-name">Organization Name</Label>
+              <Input
+                id="org-name"
+                value={organizationName}
+                onChange={(e) => setOrganizationName(e.target.value)}
+                placeholder="My Land Company"
+                data-testid="input-org-name"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Business Type</Label>
+              <p className="text-sm text-muted-foreground">
+                What type of land investing are you focused on?
+              </p>
+            </div>
+            
             <RadioGroup
               value={businessType}
               onValueChange={(value) => setBusinessType(value as BusinessType)}
@@ -233,9 +334,10 @@ export function OnboardingWizard() {
             >
               <Label
                 htmlFor="land_flipper"
-                className={`flex items-start gap-4 p-4 rounded-md border cursor-pointer hover-elevate transition-colors ${
+                className={`flex items-start gap-4 p-4 rounded-md border cursor-pointer transition-colors ${
                   businessType === "land_flipper" ? "border-primary bg-primary/5" : "border-border"
                 }`}
+                data-testid="option-land-flipper"
               >
                 <RadioGroupItem value="land_flipper" id="land_flipper" className="mt-1" />
                 <div className="flex-1">
@@ -244,16 +346,17 @@ export function OnboardingWizard() {
                     <span className="font-medium">Land Flipper</span>
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    Buy land at wholesale prices and resell for cash or with terms. Focus on acquisitions, due diligence, and marketing.
+                    Buy land at wholesale prices and resell for cash or with terms.
                   </p>
                 </div>
               </Label>
               
               <Label
                 htmlFor="note_investor"
-                className={`flex items-start gap-4 p-4 rounded-md border cursor-pointer hover-elevate transition-colors ${
+                className={`flex items-start gap-4 p-4 rounded-md border cursor-pointer transition-colors ${
                   businessType === "note_investor" ? "border-primary bg-primary/5" : "border-border"
                 }`}
+                data-testid="option-note-investor"
               >
                 <RadioGroupItem value="note_investor" id="note_investor" className="mt-1" />
                 <div className="flex-1">
@@ -262,16 +365,17 @@ export function OnboardingWizard() {
                     <span className="font-medium">Note Investor</span>
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    Seller-finance land sales and manage payment collection. Focus on notes, amortization, and borrower communication.
+                    Seller-finance land sales and manage payment collection.
                   </p>
                 </div>
               </Label>
               
               <Label
                 htmlFor="hybrid"
-                className={`flex items-start gap-4 p-4 rounded-md border cursor-pointer hover-elevate transition-colors ${
+                className={`flex items-start gap-4 p-4 rounded-md border cursor-pointer transition-colors ${
                   businessType === "hybrid" ? "border-primary bg-primary/5" : "border-border"
                 }`}
+                data-testid="option-hybrid"
               >
                 <RadioGroupItem value="hybrid" id="hybrid" className="mt-1" />
                 <div className="flex-1">
@@ -280,11 +384,31 @@ export function OnboardingWizard() {
                     <span className="font-medium">Hybrid</span>
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    Both cash flips and seller-financed deals. Get all the tools for complete land investment operations.
+                    Both cash flips and seller-financed deals.
                   </p>
                 </div>
               </Label>
             </RadioGroup>
+            
+            <div className="pt-4 border-t">
+              <Button
+                variant="outline"
+                onClick={handleLoadSampleData}
+                disabled={sampleDataMutation.isPending}
+                className="w-full"
+                data-testid="button-load-sample-data"
+              >
+                {sampleDataMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Database className="w-4 h-4 mr-2" />
+                )}
+                Load Sample Data
+              </Button>
+              <p className="text-xs text-center text-muted-foreground mt-2">
+                Get started quickly with sample leads, properties, and notes
+              </p>
+            </div>
           </div>
         );
 
@@ -292,37 +416,38 @@ export function OnboardingWizard() {
         return (
           <div className="space-y-4">
             <p className="text-muted-foreground text-center">
-              Have existing leads or properties? Import them now to get started faster.
+              Select the communication channels you plan to use.
             </p>
             <div className="grid gap-3">
-              <Card className="hover-elevate cursor-pointer" onClick={() => window.open("/leads?import=true", "_blank")}>
-                <CardContent className="p-4 flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-md bg-primary/10 flex items-center justify-center">
-                    <Upload className="w-5 h-5 text-primary" />
+              {COMMUNICATION_CHANNELS.map((channel) => {
+                const IconComponent = channel.icon;
+                const isSelected = communicationChannels.includes(channel.id);
+                return (
+                  <div
+                    key={channel.id}
+                    className={`flex items-center gap-4 p-4 rounded-md border cursor-pointer transition-colors ${
+                      isSelected ? "border-primary bg-primary/5" : "border-border"
+                    }`}
+                    onClick={() => toggleChannel(channel.id)}
+                    data-testid={`channel-${channel.id}`}
+                  >
+                    <Checkbox 
+                      checked={isSelected}
+                      onCheckedChange={() => toggleChannel(channel.id)}
+                    />
+                    <div className="w-10 h-10 rounded-md bg-primary/10 flex items-center justify-center">
+                      <IconComponent className="w-5 h-5 text-primary" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-medium">{channel.label}</p>
+                      <p className="text-sm text-muted-foreground">{channel.description}</p>
+                    </div>
                   </div>
-                  <div className="flex-1">
-                    <p className="font-medium">Import Leads</p>
-                    <p className="text-sm text-muted-foreground">Upload a CSV of your seller or buyer leads</p>
-                  </div>
-                  <ArrowRight className="w-4 h-4 text-muted-foreground" />
-                </CardContent>
-              </Card>
-              
-              <Card className="hover-elevate cursor-pointer" onClick={() => window.open("/properties?import=true", "_blank")}>
-                <CardContent className="p-4 flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-md bg-primary/10 flex items-center justify-center">
-                    <Map className="w-5 h-5 text-primary" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium">Import Properties</p>
-                    <p className="text-sm text-muted-foreground">Upload a CSV of your property inventory</p>
-                  </div>
-                  <ArrowRight className="w-4 h-4 text-muted-foreground" />
-                </CardContent>
-              </Card>
+                );
+              })}
             </div>
             <p className="text-xs text-center text-muted-foreground">
-              You can always import data later from the Leads or Properties pages.
+              You can configure these channels later in Settings.
             </p>
           </div>
         );
@@ -331,33 +456,9 @@ export function OnboardingWizard() {
         return (
           <div className="space-y-4">
             <p className="text-muted-foreground text-center">
-              Connect payment processing to collect payments on seller-financed notes.
-            </p>
-            <Card className="hover-elevate cursor-pointer" onClick={() => window.open("/settings#stripe", "_blank")}>
-              <CardContent className="p-4 flex items-center gap-4">
-                <div className="w-10 h-10 rounded-md bg-primary/10 flex items-center justify-center">
-                  <CreditCard className="w-5 h-5 text-primary" />
-                </div>
-                <div className="flex-1">
-                  <p className="font-medium">Connect Stripe</p>
-                  <p className="text-sm text-muted-foreground">Accept credit card and ACH payments</p>
-                </div>
-                <Badge variant="outline">Recommended</Badge>
-              </CardContent>
-            </Card>
-            <p className="text-xs text-center text-muted-foreground">
-              Skip this step if you only do cash flips. You can connect later from Settings.
-            </p>
-          </div>
-        );
-
-      case 3:
-        return (
-          <div className="space-y-4">
-            <p className="text-muted-foreground text-center">
               We've created campaign templates based on your business type. Review and customize them.
             </p>
-            <Card className="hover-elevate cursor-pointer" onClick={() => window.open("/campaigns", "_blank")}>
+            <Card className="cursor-pointer" onClick={() => window.open("/campaigns", "_blank")}>
               <CardContent className="p-4 flex items-center gap-4">
                 <div className="w-10 h-10 rounded-md bg-primary/10 flex items-center justify-center">
                   <Mail className="w-5 h-5 text-primary" />
@@ -381,6 +482,46 @@ export function OnboardingWizard() {
           </div>
         );
 
+      case 3:
+        return (
+          <div className="space-y-4">
+            <p className="text-muted-foreground text-center">
+              Invite team members to collaborate on your land deals.
+            </p>
+            <div className="space-y-2">
+              <Label htmlFor="team-emails">Email Addresses</Label>
+              <Input
+                id="team-emails"
+                value={teamEmails}
+                onChange={(e) => setTeamEmails(e.target.value)}
+                placeholder="john@example.com, jane@example.com"
+                data-testid="input-team-emails"
+              />
+              <p className="text-xs text-muted-foreground">
+                Enter email addresses separated by commas
+              </p>
+            </div>
+            <Card>
+              <CardContent className="p-4 flex items-center gap-4">
+                <div className="w-10 h-10 rounded-md bg-primary/10 flex items-center justify-center">
+                  <UserPlus className="w-5 h-5 text-primary" />
+                </div>
+                <div className="flex-1">
+                  <p className="font-medium">Team Benefits</p>
+                  <ul className="text-sm text-muted-foreground space-y-1 mt-1">
+                    <li>Assign leads to team members</li>
+                    <li>Track individual performance</li>
+                    <li>Collaborate on deals</li>
+                  </ul>
+                </div>
+              </CardContent>
+            </Card>
+            <p className="text-xs text-center text-muted-foreground">
+              You can invite team members later from Settings.
+            </p>
+          </div>
+        );
+
       case 4:
         return (
           <div className="space-y-6 text-center">
@@ -401,15 +542,19 @@ export function OnboardingWizard() {
             <div className="grid gap-2 text-left">
               <div className="flex items-center gap-2 text-sm">
                 <CheckCircle2 className="w-4 h-4 text-green-500" />
+                <span>Organization: <strong>{organizationName || organization?.name}</strong></span>
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <CheckCircle2 className="w-4 h-4 text-green-500" />
                 <span>Business type: <strong className="capitalize">{businessType?.replace("_", " ")}</strong></span>
               </div>
               <div className="flex items-center gap-2 text-sm">
                 <CheckCircle2 className="w-4 h-4 text-green-500" />
-                <span>Campaign templates created</span>
+                <span>Channels: <strong>{communicationChannels.join(", ")}</strong></span>
               </div>
               <div className="flex items-center gap-2 text-sm">
                 <CheckCircle2 className="w-4 h-4 text-green-500" />
-                <span>Default settings configured</span>
+                <span>Campaign templates created</span>
               </div>
             </div>
           </div>
@@ -429,7 +574,7 @@ export function OnboardingWizard() {
       <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto" data-testid="dialog-onboarding-wizard">
         <DialogHeader>
           <div className="flex items-center justify-between mb-2">
-            <Badge variant="outline" className="text-xs">
+            <Badge variant="outline" className="text-xs" data-testid="badge-step-indicator">
               Step {currentStep + 1} of {WIZARD_STEPS.length}
             </Badge>
             <Button
@@ -443,7 +588,7 @@ export function OnboardingWizard() {
             </Button>
           </div>
           
-          <Progress value={progress} className="h-1.5 mb-4" />
+          <Progress value={progress} className="h-1.5 mb-4" data-testid="progress-onboarding" />
           
           <div className="flex items-center justify-center mb-4">
             <AnimatePresence mode="wait">

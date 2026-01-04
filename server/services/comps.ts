@@ -76,6 +76,35 @@ export interface CompsFilters {
   maxResults?: number;
 }
 
+export interface OfferPrices {
+  conservative: { min: number; max: number; label: string };
+  standard: { min: number; max: number; label: string };
+  aggressive: { min: number; max: number; label: string };
+  estimatedMarketValue: number;
+}
+
+export interface DesirabilityScoreFactor {
+  name: string;
+  score: number;
+  maxScore: number;
+  description: string;
+}
+
+export interface DesirabilityScore {
+  totalScore: number;
+  grade: "A" | "B" | "C" | "D" | "F";
+  factors: DesirabilityScoreFactor[];
+}
+
+export interface PropertyAttributes {
+  roadAccess?: string | null;
+  utilities?: { electric?: boolean; water?: boolean; sewer?: boolean; gas?: boolean } | null;
+  terrain?: string | null;
+  zoning?: string | null;
+  sizeAcres?: number | null;
+  city?: string | null;
+}
+
 export interface CompsSearchResult {
   success: boolean;
   comps: ComparableProperty[];
@@ -88,6 +117,8 @@ export interface CompsSearchResult {
     estimatedValue: number | null;
     subjectAcreage: number | null;
   };
+  offerPrices?: OfferPrices;
+  desirabilityScore?: DesirabilityScore;
   error?: string;
   limitedData?: boolean;
   message?: string;
@@ -341,6 +372,155 @@ export function calculateMarketValue(
 }
 
 /**
+ * Calculate offer prices based on estimated market value
+ * Conservative: 40-50%, Standard: 50-65%, Aggressive: 65-80%
+ */
+export function calculateOfferPrices(estimatedValue: number): OfferPrices {
+  return {
+    conservative: {
+      min: Math.round(estimatedValue * 0.40),
+      max: Math.round(estimatedValue * 0.50),
+      label: "Conservative (40-50%)",
+    },
+    standard: {
+      min: Math.round(estimatedValue * 0.50),
+      max: Math.round(estimatedValue * 0.65),
+      label: "Standard (50-65%)",
+    },
+    aggressive: {
+      min: Math.round(estimatedValue * 0.65),
+      max: Math.round(estimatedValue * 0.80),
+      label: "Aggressive (65-80%)",
+    },
+    estimatedMarketValue: estimatedValue,
+  };
+}
+
+/**
+ * Calculate desirability score (0-100) based on property attributes
+ */
+export function calculateDesirabilityScore(attributes: PropertyAttributes): DesirabilityScore {
+  const factors: DesirabilityScoreFactor[] = [];
+
+  // Road Access (max 20 points)
+  let roadScore = 10;
+  const roadAccess = (attributes.roadAccess || "").toLowerCase();
+  if (roadAccess.includes("paved") || roadAccess.includes("asphalt") || roadAccess.includes("concrete")) {
+    roadScore = 20;
+  } else if (roadAccess.includes("gravel") || roadAccess.includes("improved")) {
+    roadScore = 15;
+  } else if (roadAccess.includes("dirt") || roadAccess.includes("unimproved")) {
+    roadScore = 8;
+  } else if (roadAccess.includes("none") || roadAccess.includes("no access") || roadAccess === "") {
+    roadScore = 2;
+  }
+  factors.push({
+    name: "Road Access",
+    score: roadScore,
+    maxScore: 20,
+    description: roadAccess || "Unknown",
+  });
+
+  // Utilities (max 25 points)
+  let utilitiesScore = 0;
+  const utils = attributes.utilities || {};
+  const utilDescParts: string[] = [];
+  if (utils.electric) { utilitiesScore += 8; utilDescParts.push("Electric"); }
+  if (utils.water) { utilitiesScore += 8; utilDescParts.push("Water"); }
+  if (utils.sewer) { utilitiesScore += 6; utilDescParts.push("Sewer"); }
+  if (utils.gas) { utilitiesScore += 3; utilDescParts.push("Gas"); }
+  if (utilitiesScore === 0) utilitiesScore = 3; // Base points for rural viability
+  factors.push({
+    name: "Utilities",
+    score: Math.min(utilitiesScore, 25),
+    maxScore: 25,
+    description: utilDescParts.length > 0 ? utilDescParts.join(", ") : "None/Unknown",
+  });
+
+  // Terrain (max 15 points)
+  let terrainScore = 8;
+  const terrain = (attributes.terrain || "").toLowerCase();
+  if (terrain.includes("flat") || terrain.includes("level")) {
+    terrainScore = 15;
+  } else if (terrain.includes("rolling") || terrain.includes("gentle")) {
+    terrainScore = 12;
+  } else if (terrain.includes("hilly") || terrain.includes("moderate")) {
+    terrainScore = 8;
+  } else if (terrain.includes("steep") || terrain.includes("mountain")) {
+    terrainScore = 4;
+  }
+  factors.push({
+    name: "Terrain",
+    score: terrainScore,
+    maxScore: 15,
+    description: terrain || "Unknown",
+  });
+
+  // Zoning Compatibility (max 20 points)
+  let zoningScore = 10;
+  const zoning = (attributes.zoning || "").toLowerCase();
+  if (zoning.includes("residential") || zoning.includes("r-1") || zoning.includes("r1")) {
+    zoningScore = 20;
+  } else if (zoning.includes("agricultural") || zoning.includes("ag") || zoning.includes("farm") || zoning.includes("rural")) {
+    zoningScore = 18;
+  } else if (zoning.includes("mixed") || zoning.includes("general")) {
+    zoningScore = 15;
+  } else if (zoning.includes("commercial") || zoning.includes("industrial")) {
+    zoningScore = 10;
+  } else if (zoning.includes("conservation") || zoning.includes("preserve")) {
+    zoningScore = 5;
+  }
+  factors.push({
+    name: "Zoning",
+    score: zoningScore,
+    maxScore: 20,
+    description: zoning || "Unknown",
+  });
+
+  // Acreage Size - Sweet spot between 1-20 acres (max 20 points)
+  let acreageScore = 10;
+  const acres = attributes.sizeAcres || 0;
+  if (acres >= 2 && acres <= 10) {
+    acreageScore = 20; // Sweet spot for most markets
+  } else if (acres > 10 && acres <= 20) {
+    acreageScore = 18;
+  } else if (acres > 0.5 && acres < 2) {
+    acreageScore = 15;
+  } else if (acres > 20 && acres <= 50) {
+    acreageScore = 14;
+  } else if (acres > 50 && acres <= 100) {
+    acreageScore = 12;
+  } else if (acres > 100) {
+    acreageScore = 8; // Harder to sell large parcels
+  } else if (acres <= 0.5) {
+    acreageScore = 10; // Small lots can be limiting
+  }
+  factors.push({
+    name: "Acreage Size",
+    score: acreageScore,
+    maxScore: 20,
+    description: acres > 0 ? `${acres.toFixed(2)} acres` : "Unknown",
+  });
+
+  // Calculate total score
+  const totalScore = factors.reduce((sum, f) => sum + f.score, 0);
+
+  // Determine grade
+  let grade: "A" | "B" | "C" | "D" | "F";
+  if (totalScore >= 80) grade = "A";
+  else if (totalScore >= 70) grade = "B";
+  else if (totalScore >= 55) grade = "C";
+  else if (totalScore >= 40) grade = "D";
+  else grade = "F";
+
+  return {
+    totalScore,
+    grade,
+    factors,
+  };
+}
+
+/**
  * Get comps for a property with market analysis
  */
 export async function getPropertyComps(
@@ -348,12 +528,24 @@ export async function getPropertyComps(
   lng: number,
   subjectAcreage: number,
   radiusMiles: number = 5,
-  filters: CompsFilters = {}
+  filters: CompsFilters = {},
+  propertyAttributes?: PropertyAttributes
 ): Promise<CompsSearchResult> {
   const result = await getComparableProperties(lat, lng, radiusMiles, filters);
   
   if (result.success && result.comps.length > 0) {
-    result.marketAnalysis = calculateMarketValue(subjectAcreage, result.comps);
+    const marketAnalysis = calculateMarketValue(subjectAcreage, result.comps)!;
+    result.marketAnalysis = marketAnalysis;
+    
+    // Calculate offer prices if we have estimated value
+    if (marketAnalysis.estimatedValue) {
+      result.offerPrices = calculateOfferPrices(marketAnalysis.estimatedValue);
+    }
+  }
+  
+  // Calculate desirability score if property attributes provided
+  if (propertyAttributes) {
+    result.desirabilityScore = calculateDesirabilityScore(propertyAttributes);
   }
   
   return result;

@@ -1,22 +1,47 @@
 import { Sidebar } from "@/components/layout-sidebar";
 import { StatCard } from "@/components/stat-card";
 import { useOrganization, useDashboardStats } from "@/hooks/use-organization";
-import { useLeads } from "@/hooks/use-leads";
+import { useLeads, useAgingLeads, type AgingLead } from "@/hooks/use-leads";
 import { useProperties } from "@/hooks/use-properties";
-import { Users, Map, Banknote, TrendingUp, Activity, Building2, Crown } from "lucide-react";
+import { Users, Map, Banknote, TrendingUp, Activity, Building2, Crown, AlertTriangle, Clock, Flame, Sun, Snowflake } from "lucide-react";
 import { motion } from "framer-motion";
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip } from "recharts";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { OnboardingWizard } from "@/components/onboarding-wizard";
 import { GettingStartedChecklist } from "@/components/getting-started-checklist";
+import { ActivityFeed } from "@/components/activity-feed";
+import { Link } from "wouter";
+
+function getUrgencyStyle(urgency: string) {
+  switch (urgency) {
+    case 'urgent':
+      return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300';
+    case 'warning':
+      return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300';
+    default:
+      return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300';
+  }
+}
+
+function getStageIcon(stage: string) {
+  switch (stage) {
+    case 'hot':
+      return <Flame className="w-3 h-3" />;
+    case 'warm':
+      return <Sun className="w-3 h-3" />;
+    default:
+      return <Snowflake className="w-3 h-3" />;
+  }
+}
 
 export default function Dashboard() {
   const { data: organization, isLoading: orgLoading } = useOrganization();
   const { data: stats, isLoading: statsLoading } = useDashboardStats();
   const { data: leads = [] } = useLeads();
   const { data: properties = [] } = useProperties();
+  const { data: agingLeads = [], isLoading: agingLoading } = useAgingLeads();
 
   const isLoading = orgLoading || statsLoading;
 
@@ -153,11 +178,79 @@ export default function Dashboard() {
 
           <GettingStartedChecklist />
 
+          {agingLeads.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.25 }}
+            >
+              <Card className="floating-window border-amber-200 dark:border-amber-800" data-testid="section-aging-leads">
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <AlertTriangle className="w-5 h-5 text-amber-500" />
+                    Aging Leads
+                    <Badge variant="outline" className="ml-2 text-xs" data-testid="badge-aging-count">
+                      {agingLeads.length}
+                    </Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {agingLeads.slice(0, 5).map((lead) => (
+                      <Link
+                        key={lead.id}
+                        href={`/leads?stage=${lead.nurturingStage}`}
+                        className="flex items-center justify-between p-3 rounded-md bg-muted/50 hover-elevate cursor-pointer"
+                        data-testid={`aging-lead-${lead.id}`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="flex flex-col">
+                            <span className="font-medium text-sm" data-testid={`text-aging-lead-name-${lead.id}`}>
+                              {lead.firstName} {lead.lastName}
+                            </span>
+                            <span className="text-xs text-muted-foreground flex items-center gap-1">
+                              {getStageIcon(lead.nurturingStage)}
+                              {lead.nurturingStage} lead
+                              {lead.score !== null && ` - Score: ${lead.score}`}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge
+                            variant="outline"
+                            className={`text-xs border-0 ${getUrgencyStyle(lead.urgency)}`}
+                            data-testid={`badge-aging-urgency-${lead.id}`}
+                          >
+                            <Clock className="w-3 h-3 mr-1" />
+                            {lead.daysSinceContact}d
+                          </Badge>
+                        </div>
+                      </Link>
+                    ))}
+                    {agingLeads.length > 5 && (
+                      <Link href="/leads" className="block text-center text-sm text-muted-foreground hover:text-foreground py-2">
+                        View all {agingLeads.length} aging leads
+                      </Link>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
+
+          <motion.div 
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+          >
+            <ActivityFeed maxHeight="350px" compact />
+          </motion.div>
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <motion.div 
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3 }}
+              transition={{ delay: 0.35 }}
             >
               <Card className="floating-window">
                 <CardContent className="p-6">

@@ -266,6 +266,7 @@ export async function importProperties(
 
       await storage.createProperty({
         ...parseResult.data,
+        sizeAcres: String(parseResult.data.sizeAcres),
         organizationId,
       });
 

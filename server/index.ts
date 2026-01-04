@@ -9,6 +9,7 @@ import { leadNurturerService } from "./services/leadNurturer";
 import { db } from "./db";
 import { eq, sql } from "drizzle-orm";
 import { organizations } from "@shared/schema";
+import { logger, requestLoggingMiddleware, errorLoggingMiddleware } from "./utils/logger";
 
 const app = express();
 const httpServer = createServer(app);
@@ -118,36 +119,14 @@ app.use(
 
 app.use(express.urlencoded({ extended: false }));
 
-app.use((req, res, next) => {
-  const start = Date.now();
-  const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
-
-  const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
-  };
-
-  res.on("finish", () => {
-    const duration = Date.now() - start;
-    if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
-
-      log(logLine);
-    }
-  });
-
-  next();
-});
+app.use(requestLoggingMiddleware);
 
 (async () => {
   await initStripe();
   
   await registerRoutes(httpServer, app);
+
+  app.use(errorLoggingMiddleware);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
@@ -191,6 +170,9 @@ app.use((req, res, next) => {
       
       // Start digest background job (every 6 hours)
       startDigestJob();
+      
+      // Start sequence processor background job (every 60 seconds)
+      startSequenceProcessorJob();
     },
   );
 })();
@@ -416,4 +398,15 @@ function startDigestJob() {
       log(`Scheduled digest run failed: ${err}`, 'digest');
     });
   }, SIX_HOURS);
+}
+
+// Sequence processor background job
+function startSequenceProcessorJob() {
+  log('Starting sequence processor background job (every 60 seconds)', 'sequences');
+  
+  import('./services/sequenceProcessor').then(({ sequenceProcessorService }) => {
+    sequenceProcessorService.start();
+  }).catch(err => {
+    log(`Failed to start sequence processor: ${err}`, 'sequences');
+  });
 }

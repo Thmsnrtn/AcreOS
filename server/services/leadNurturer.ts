@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { leads, type Lead, type NurturingStage, type InsertLeadActivity } from "@shared/schema";
 import { storage } from "../storage";
 import { usageMeteringService } from "./credits";
+import { alertingService } from "./alerting";
 import OpenAI from "openai";
 
 function getOpenAIClient(): OpenAI | null {
@@ -242,20 +243,22 @@ Respond in JSON format:
 
   async processLeadsForOrg(
     organizationId: number,
-    options: { scoringLimit?: number; generateFollowUps?: boolean } = {}
+    options: { scoringLimit?: number; generateFollowUps?: boolean; checkAging?: boolean } = {}
   ): Promise<{
     scored: number;
     followUpsScheduled: number;
     followUpsGenerated: number;
     creditsUsed: number;
+    agingAlertsCreated: number;
     errors: string[];
   }> {
-    const { scoringLimit = 50, generateFollowUps = true } = options;
+    const { scoringLimit = 50, generateFollowUps = true, checkAging = true } = options;
     const result = {
       scored: 0,
       followUpsScheduled: 0,
       followUpsGenerated: 0,
       creditsUsed: 0,
+      agingAlertsCreated: 0,
       errors: [] as string[],
     };
 
@@ -341,6 +344,15 @@ Respond in JSON format:
       }
     } catch (err) {
       result.errors.push(`Process error: ${err}`);
+    }
+
+    if (checkAging) {
+      try {
+        const agingResult = await alertingService.checkLeadAging(organizationId);
+        result.agingAlertsCreated = agingResult.alertsCreated;
+      } catch (err) {
+        result.errors.push(`Aging check error: ${err}`);
+      }
     }
 
     return result;

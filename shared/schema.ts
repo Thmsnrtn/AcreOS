@@ -55,6 +55,13 @@ export const organizations = pgTable("organizations", {
     checklistDismissed?: boolean;
     notificationsConfigured?: boolean;
     mailMode?: "test" | "live";
+    // Data Retention Policies (20.3)
+    retentionPolicies?: {
+      leads?: { enabled: boolean; retentionDays: number };
+      closedDeals?: { enabled: boolean; retentionDays: number };
+      auditLogs?: { enabled: boolean; retentionDays: number };
+      communications?: { enabled: boolean; retentionDays: number };
+    };
   }>(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -196,6 +203,10 @@ export const leads = pgTable("leads", {
   assignedTo: integer("assigned_to"), // team member ID
   lastContactedAt: timestamp("last_contacted_at"),
   
+  // Campaign attribution tracking
+  sourceTrackingCode: text("source_tracking_code"), // Links to campaign.trackingCode
+  sourceCampaignId: integer("source_campaign_id"), // Links to the campaign that generated this lead
+  
   // Lead Scoring & Nurturing
   score: integer("score"), // 0-100 lead score
   scoreFactors: jsonb("score_factors").$type<{
@@ -213,6 +224,14 @@ export const leads = pgTable("leads", {
   nurturingStage: text("nurturing_stage").default("new"), // hot, warm, cold, dead, new
   nextFollowUpAt: timestamp("next_follow_up_at"),
   lastAIMessageAt: timestamp("last_ai_message_at"),
+  
+  // TCPA Compliance (20.2)
+  tcpaConsent: boolean("tcpa_consent").default(false),
+  consentDate: timestamp("consent_date"),
+  consentSource: text("consent_source"), // website, phone, written, imported
+  optOutDate: timestamp("opt_out_date"),
+  optOutReason: text("opt_out_reason"),
+  doNotContact: boolean("do_not_contact").default(false),
   
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -515,6 +534,9 @@ export const campaigns = pgTable("campaigns", {
   type: text("type").notNull(), // direct_mail, email, sms, multi_channel
   status: text("status").notNull().default("draft"), // draft, scheduled, active, paused, completed
   
+  // Unique tracking code for attribution (e.g., "CAMP-ABC123")
+  trackingCode: text("tracking_code").unique(),
+  
   // Target audience
   targetCriteria: jsonb("target_criteria").$type<{
     states?: string[];
@@ -586,6 +608,43 @@ export const campaignOptimizations = pgTable("campaign_optimizations", {
 export const insertCampaignOptimizationSchema = createInsertSchema(campaignOptimizations).omit({ id: true, createdAt: true });
 export type InsertCampaignOptimization = z.infer<typeof insertCampaignOptimizationSchema>;
 export type CampaignOptimization = typeof campaignOptimizations.$inferSelect;
+
+// Campaign responses (inbound responses for attribution tracking)
+export const campaignResponses = pgTable("campaign_responses", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  leadId: integer("lead_id").references(() => leads.id),
+  campaignId: integer("campaign_id").references(() => campaigns.id),
+  
+  // Response details
+  channel: text("channel").notNull(), // call, text, email, webform
+  responseDate: timestamp("response_date").notNull().defaultNow(),
+  content: text("content"), // Message content or call notes
+  
+  // Attribution tracking
+  trackingCode: text("tracking_code"), // The tracking code provided by the responder
+  isAttributed: boolean("is_attributed").default(false), // Whether we successfully linked to a campaign
+  
+  // Contact info if no existing lead
+  contactName: text("contact_name"),
+  contactEmail: text("contact_email"),
+  contactPhone: text("contact_phone"),
+  
+  // Metadata
+  metadata: jsonb("metadata").$type<{
+    callDuration?: number;
+    sentiment?: string;
+    followUpRequired?: boolean;
+    notes?: string;
+  }>(),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertCampaignResponseSchema = createInsertSchema(campaignResponses).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertCampaignResponse = z.infer<typeof insertCampaignResponseSchema>;
+export type CampaignResponse = typeof campaignResponses.$inferSelect;
 
 // ============================================
 // AI AGENTS & AUTOMATION
@@ -1402,6 +1461,114 @@ export const DEFAULT_DUE_DILIGENCE_TEMPLATES = [
 ] as const;
 
 // ============================================
+// DEAL CHECKLISTS (Stage Gate Due Diligence)
+// ============================================
+
+// Type for checklist template items
+export type ChecklistTemplateItem = {
+  id: string;
+  title: string;
+  description?: string;
+  required: boolean;
+  documentRequired: boolean;
+};
+
+// Type for deal checklist items (includes completion state)
+export type DealChecklistItem = {
+  id: string;
+  title: string;
+  description?: string;
+  required: boolean;
+  documentRequired: boolean;
+  checkedAt?: string;
+  checkedBy?: string;
+  documentUrl?: string;
+};
+
+// Checklist templates table
+export const checklistTemplates = pgTable("checklist_templates", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  dealType: text("deal_type").notNull().default("all"), // cash, terms, wholesale, all
+  items: jsonb("items").$type<ChecklistTemplateItem[]>().notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Deal checklists table (applied to specific deals)
+export const dealChecklists = pgTable("deal_checklists", {
+  id: serial("id").primaryKey(),
+  dealId: integer("deal_id").references(() => deals.id).notNull(),
+  templateId: integer("template_id").references(() => checklistTemplates.id),
+  items: jsonb("items").$type<DealChecklistItem[]>().notNull(),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Insert schemas
+export const insertChecklistTemplateSchema = createInsertSchema(checklistTemplates).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertDealChecklistSchema = createInsertSchema(dealChecklists).omit({ id: true, createdAt: true, updatedAt: true });
+
+// Types
+export type ChecklistTemplate = typeof checklistTemplates.$inferSelect;
+export type InsertChecklistTemplate = z.infer<typeof insertChecklistTemplateSchema>;
+export type DealChecklist = typeof dealChecklists.$inferSelect;
+export type InsertDealChecklist = z.infer<typeof insertDealChecklistSchema>;
+
+// Default deal checklist templates
+export const DEFAULT_DEAL_CHECKLIST_TEMPLATES: Array<{
+  name: string;
+  description: string;
+  dealType: "cash" | "terms" | "wholesale" | "all";
+  items: ChecklistTemplateItem[];
+}> = [
+  {
+    name: "Cash Purchase Checklist",
+    description: "Standard checklist for cash land purchases",
+    dealType: "cash",
+    items: [
+      { id: "cash-1", title: "Title search completed", description: "Verify clear title with no liens or encumbrances", required: true, documentRequired: true },
+      { id: "cash-2", title: "Survey review", description: "Review or order property survey", required: false, documentRequired: false },
+      { id: "cash-3", title: "Property photos obtained", description: "Get current photos of the property", required: true, documentRequired: false },
+      { id: "cash-4", title: "Purchase agreement signed", description: "Both parties have signed the purchase agreement", required: true, documentRequired: true },
+      { id: "cash-5", title: "Funds verified", description: "Confirm buyer funds are available and verified", required: true, documentRequired: false },
+      { id: "cash-6", title: "Closing scheduled", description: "Closing date and location confirmed", required: true, documentRequired: false },
+    ],
+  },
+  {
+    name: "Seller Financing (Terms) Checklist",
+    description: "Checklist for seller-financed deals with payment terms",
+    dealType: "terms",
+    items: [
+      { id: "terms-1", title: "Title search completed", description: "Verify clear title with no liens or encumbrances", required: true, documentRequired: true },
+      { id: "terms-2", title: "Survey review", description: "Review or order property survey", required: false, documentRequired: false },
+      { id: "terms-3", title: "Property photos obtained", description: "Get current photos of the property", required: true, documentRequired: false },
+      { id: "terms-4", title: "Purchase agreement signed", description: "Both parties have signed the purchase agreement", required: true, documentRequired: true },
+      { id: "terms-5", title: "Promissory note drafted", description: "Create and review promissory note terms", required: true, documentRequired: true },
+      { id: "terms-6", title: "Down payment received", description: "Confirm down payment has been received", required: true, documentRequired: false },
+      { id: "terms-7", title: "Payment schedule confirmed", description: "Finalize monthly payment schedule with buyer", required: true, documentRequired: false },
+      { id: "terms-8", title: "Closing scheduled", description: "Closing date and location confirmed", required: true, documentRequired: false },
+    ],
+  },
+  {
+    name: "Wholesale Deal Checklist",
+    description: "Checklist for wholesale/assignment deals",
+    dealType: "wholesale",
+    items: [
+      { id: "ws-1", title: "Assignment contract prepared", description: "Create assignment of contract document", required: true, documentRequired: true },
+      { id: "ws-2", title: "End buyer verified", description: "Confirm end buyer identity and ability to close", required: true, documentRequired: false },
+      { id: "ws-3", title: "Earnest money deposited", description: "Earnest money received from end buyer", required: true, documentRequired: false },
+      { id: "ws-4", title: "Assignment fee confirmed", description: "Assignment fee amount agreed upon", required: true, documentRequired: false },
+      { id: "ws-5", title: "Original contract assignable", description: "Verify original purchase contract allows assignment", required: true, documentRequired: false },
+      { id: "ws-6", title: "Closing coordinated", description: "Coordinate closing with title company and all parties", required: true, documentRequired: false },
+    ],
+  },
+];
+
+// ============================================
 // USAGE ACTION TYPES & PRICING
 // ============================================
 
@@ -1837,8 +2004,9 @@ export const DUNNING_CONFIG = {
 export const systemAlerts = pgTable("system_alerts", {
   id: serial("id").primaryKey(),
   
-  // Alert classification
-  alertType: text("alert_type").notNull(), // revenue_at_risk, high_churn, system_error, escalation, milestone
+  // Alert classification (type is the legacy column, alertType is the newer one)
+  type: varchar("type", { length: 255 }).notNull(),
+  alertType: text("alert_type"), // revenue_at_risk, high_churn, system_error, escalation, milestone
   severity: text("severity").notNull().default("info"), // info, warning, critical
   
   // Content
@@ -1910,3 +2078,505 @@ export const digestSubscriptions = pgTable("digest_subscriptions", {
 export const insertDigestSubscriptionSchema = createInsertSchema(digestSubscriptions).omit({ id: true, createdAt: true });
 export type InsertDigestSubscription = z.infer<typeof insertDigestSubscriptionSchema>;
 export type DigestSubscription = typeof digestSubscriptions.$inferSelect;
+
+// ============================================
+// ACTIVITY EVENTS (Communication History Timeline)
+// ============================================
+
+// Event types for communication timeline
+export const ACTIVITY_EVENT_TYPES = {
+  email_sent: { name: "Email Sent", icon: "Mail", color: "blue" },
+  email_opened: { name: "Email Opened", icon: "MailOpen", color: "green" },
+  email_clicked: { name: "Email Clicked", icon: "MousePointer", color: "purple" },
+  sms_sent: { name: "SMS Sent", icon: "MessageSquare", color: "cyan" },
+  sms_delivered: { name: "SMS Delivered", icon: "MessageCircle", color: "green" },
+  mail_sent: { name: "Direct Mail Sent", icon: "FileText", color: "orange" },
+  mail_delivered: { name: "Direct Mail Delivered", icon: "Package", color: "green" },
+  call_made: { name: "Call Made", icon: "PhoneOutgoing", color: "blue" },
+  call_received: { name: "Call Received", icon: "PhoneIncoming", color: "green" },
+  note_added: { name: "Note Added", icon: "StickyNote", color: "yellow" },
+  stage_changed: { name: "Stage Changed", icon: "ArrowRightCircle", color: "purple" },
+  payment_received: { name: "Payment Received", icon: "DollarSign", color: "green" },
+  document_uploaded: { name: "Document Uploaded", icon: "Upload", color: "slate" },
+  task_created: { name: "Task Created", icon: "ListTodo", color: "blue" },
+  task_updated: { name: "Task Updated", icon: "ClipboardEdit", color: "amber" },
+  task_completed: { name: "Task Completed", icon: "CheckCircle2", color: "green" },
+} as const;
+
+export type ActivityEventType = keyof typeof ACTIVITY_EVENT_TYPES;
+
+// Activity Events table - unified timeline for leads, properties, and deals
+export const activityEvents = pgTable("activity_events", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  
+  // Entity reference (polymorphic)
+  entityType: text("entity_type").notNull(), // lead, property, deal
+  entityId: integer("entity_id").notNull(),
+  
+  // Event details
+  eventType: text("event_type").notNull(), // email_sent, sms_sent, mail_sent, call_made, note_added, stage_changed, payment_received, etc.
+  description: text("description").notNull(),
+  
+  // Metadata for event-specific details
+  metadata: jsonb("metadata").$type<{
+    subject?: string;
+    recipient?: string;
+    amount?: number;
+    previousStage?: string;
+    newStage?: string;
+    campaignName?: string;
+    paymentMethod?: string;
+    documentName?: string;
+    documentUrl?: string;
+    callDuration?: number;
+    templateUsed?: string;
+    [key: string]: unknown;
+  }>(),
+  
+  // Attribution
+  userId: text("user_id"), // User who triggered the event (null for automated)
+  campaignId: integer("campaign_id").references(() => campaigns.id),
+  
+  // Timestamp
+  eventDate: timestamp("event_date").notNull().defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertActivityEventSchema = createInsertSchema(activityEvents).omit({ id: true, createdAt: true });
+export type InsertActivityEvent = z.infer<typeof insertActivityEventSchema>;
+export type ActivityEvent = typeof activityEvents.$inferSelect;
+
+// ============================================
+// DRIP CAMPAIGN SEQUENCES (Multi-Touch Automation)
+// ============================================
+
+// Campaign Sequences - multi-touch drip campaigns
+export const campaignSequences = pgTable("campaign_sequences", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  isActive: boolean("is_active").default(true),
+  enrollmentTrigger: text("enrollment_trigger").notNull().default("manual"), // manual, new_lead, stage_change
+  enrollmentCriteria: jsonb("enrollment_criteria").$type<{
+    leadStatus?: string[];
+    leadSource?: string[];
+    leadTags?: string[];
+    triggerStage?: string;
+  }>(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Sequence Steps - individual touches in a sequence
+export const sequenceSteps = pgTable("sequence_steps", {
+  id: serial("id").primaryKey(),
+  sequenceId: integer("sequence_id").references(() => campaignSequences.id).notNull(),
+  stepNumber: integer("step_number").notNull(),
+  delayDays: integer("delay_days").notNull().default(0), // days to wait after previous step
+  channel: text("channel").notNull(), // direct_mail, email, sms
+  templateId: text("template_id"),
+  subject: text("subject"),
+  content: text("content").notNull(),
+  conditionType: text("condition_type").notNull().default("always"), // always, no_response, responded
+  conditionDays: integer("condition_days"), // days to check for response condition
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Sequence Enrollments - leads enrolled in sequences
+export const sequenceEnrollments = pgTable("sequence_enrollments", {
+  id: serial("id").primaryKey(),
+  sequenceId: integer("sequence_id").references(() => campaignSequences.id).notNull(),
+  leadId: integer("lead_id").references(() => leads.id).notNull(),
+  status: text("status").notNull().default("active"), // active, paused, completed, cancelled
+  currentStep: integer("current_step").notNull().default(0),
+  enrolledAt: timestamp("enrolled_at").defaultNow(),
+  lastStepSentAt: timestamp("last_step_sent_at"),
+  nextStepScheduledAt: timestamp("next_step_scheduled_at"),
+  pauseReason: text("pause_reason"),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Insert Schemas
+export const insertCampaignSequenceSchema = createInsertSchema(campaignSequences).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertSequenceStepSchema = createInsertSchema(sequenceSteps).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertSequenceEnrollmentSchema = createInsertSchema(sequenceEnrollments).omit({ id: true, createdAt: true, updatedAt: true });
+
+// Types
+export type CampaignSequence = typeof campaignSequences.$inferSelect;
+export type InsertCampaignSequence = z.infer<typeof insertCampaignSequenceSchema>;
+export type SequenceStep = typeof sequenceSteps.$inferSelect;
+export type InsertSequenceStep = z.infer<typeof insertSequenceStepSchema>;
+export type SequenceEnrollment = typeof sequenceEnrollments.$inferSelect;
+export type InsertSequenceEnrollment = z.infer<typeof insertSequenceEnrollmentSchema>;
+
+// Type aliases for sequence-related types
+export type EnrollmentTrigger = "manual" | "new_lead" | "stage_change";
+export type SequenceStepChannel = "direct_mail" | "email" | "sms";
+export type SequenceConditionType = "always" | "no_response" | "responded";
+export type SequenceEnrollmentStatus = "active" | "paused" | "completed" | "cancelled";
+
+// ============================================
+// A/B TESTING FRAMEWORK
+// ============================================
+
+// A/B Tests table - split testing for campaigns
+export const abTests = pgTable("ab_tests", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  campaignId: integer("campaign_id").references(() => campaigns.id).notNull(),
+  name: text("name").notNull(),
+  status: text("status").notNull().default("draft"), // draft, running, completed
+  testType: text("test_type").notNull(), // subject, content, offer
+  
+  // Test configuration
+  sampleSizePercent: integer("sample_size_percent").default(20), // Percent of total audience for testing
+  winningMetric: text("winning_metric").notNull().default("response_rate"), // open_rate, click_rate, response_rate
+  minSampleSize: integer("min_sample_size").default(100), // Minimum sample per variant
+  
+  // Timing
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  autoCompleteOnSignificance: boolean("auto_complete_on_significance").default(true),
+  
+  // Winner
+  winnerId: integer("winner_id"), // ID of winning variant
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// A/B Test Variants table - individual test variations
+export const abTestVariants = pgTable("ab_test_variants", {
+  id: serial("id").primaryKey(),
+  testId: integer("test_id").references(() => abTests.id).notNull(),
+  name: text("name").notNull(), // e.g., "Variant A", "Variant B"
+  isControl: boolean("is_control").default(false), // Is this the control group?
+  
+  // Content variations
+  subject: text("subject"),
+  content: text("content"),
+  offerAmount: numeric("offer_amount"),
+  
+  // Sample allocation
+  sampleSize: integer("sample_size").default(0), // Number of recipients allocated
+  
+  // Performance metrics
+  sent: integer("sent").default(0),
+  delivered: integer("delivered").default(0),
+  opened: integer("opened").default(0),
+  clicked: integer("clicked").default(0),
+  responded: integer("responded").default(0),
+  converted: integer("converted").default(0),
+  
+  // Calculated metrics
+  deliveryRate: numeric("delivery_rate"),
+  openRate: numeric("open_rate"),
+  clickRate: numeric("click_rate"),
+  responseRate: numeric("response_rate"),
+  conversionRate: numeric("conversion_rate"),
+  confidenceLevel: numeric("confidence_level"), // Statistical significance level
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Insert Schemas
+export const insertAbTestSchema = createInsertSchema(abTests).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertAbTestVariantSchema = createInsertSchema(abTestVariants).omit({ id: true, createdAt: true, updatedAt: true });
+
+// Types
+export type AbTest = typeof abTests.$inferSelect;
+export type InsertAbTest = z.infer<typeof insertAbTestSchema>;
+export type AbTestVariant = typeof abTestVariants.$inferSelect;
+export type InsertAbTestVariant = z.infer<typeof insertAbTestVariantSchema>;
+
+// Type aliases for A/B testing
+export type AbTestStatus = "draft" | "running" | "completed";
+export type AbTestType = "subject" | "content" | "offer";
+export type AbTestWinningMetric = "open_rate" | "click_rate" | "response_rate";
+
+// Statistical significance thresholds
+export const CONFIDENCE_THRESHOLDS = {
+  low: 0.90,    // 90% confidence
+  medium: 0.95, // 95% confidence
+  high: 0.99,   // 99% confidence
+} as const;
+
+// Z-scores for confidence levels
+export const Z_SCORES = {
+  0.90: 1.645,
+  0.95: 1.96,
+  0.99: 2.576,
+} as const;
+
+// ============================================
+// CUSTOM FIELDS SYSTEM (10.1)
+// ============================================
+
+// Field types for custom fields
+export const CUSTOM_FIELD_TYPES = ["text", "number", "date", "select", "checkbox"] as const;
+export type CustomFieldType = typeof CUSTOM_FIELD_TYPES[number];
+
+// Entity types that support custom fields
+export const CUSTOM_FIELD_ENTITY_TYPES = ["lead", "property", "deal"] as const;
+export type CustomFieldEntityType = typeof CUSTOM_FIELD_ENTITY_TYPES[number];
+
+// Custom Field Definitions - defines the schema of custom fields
+export const customFieldDefinitions = pgTable("custom_field_definitions", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  entityType: text("entity_type").notNull(), // lead, property, deal
+  fieldName: text("field_name").notNull(), // internal name (snake_case)
+  fieldLabel: text("field_label").notNull(), // display label
+  fieldType: text("field_type").notNull(), // text, number, date, select, checkbox
+  options: jsonb("options").$type<string[]>(), // for select type - array of option values
+  isRequired: boolean("is_required").default(false),
+  displayOrder: integer("display_order").default(0),
+  placeholder: text("placeholder"), // placeholder text for input
+  helpText: text("help_text"), // helper text displayed under the field
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Custom Field Values - stores actual values for entities
+export const customFieldValues = pgTable("custom_field_values", {
+  id: serial("id").primaryKey(),
+  definitionId: integer("definition_id").references(() => customFieldDefinitions.id).notNull(),
+  entityId: integer("entity_id").notNull(), // ID of the lead/property/deal
+  value: text("value"), // stored as text, parsed based on field type
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Insert Schemas
+export const insertCustomFieldDefinitionSchema = createInsertSchema(customFieldDefinitions).omit({ 
+  id: true, 
+  createdAt: true, 
+  updatedAt: true 
+});
+export const insertCustomFieldValueSchema = createInsertSchema(customFieldValues).omit({ 
+  id: true, 
+  createdAt: true, 
+  updatedAt: true 
+});
+
+// Types
+export type CustomFieldDefinition = typeof customFieldDefinitions.$inferSelect;
+export type InsertCustomFieldDefinition = z.infer<typeof insertCustomFieldDefinitionSchema>;
+export type CustomFieldValue = typeof customFieldValues.$inferSelect;
+export type InsertCustomFieldValue = z.infer<typeof insertCustomFieldValueSchema>;
+
+// ============================================
+// SAVED VIEWS / FILTERS (10.2)
+// ============================================
+
+// Saved Views - stores user-defined table views and filter presets
+export const savedViews = pgTable("saved_views", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  entityType: text("entity_type").notNull(), // lead, property, deal
+  name: text("name").notNull(),
+  filters: jsonb("filters").$type<{
+    field: string;
+    operator: string; // equals, contains, gt, lt, gte, lte, in, not_in
+    value: string | number | boolean | string[];
+  }[]>(),
+  sortBy: text("sort_by"),
+  sortOrder: text("sort_order").default("desc"), // asc, desc
+  columns: jsonb("columns").$type<string[]>(), // visible column names
+  isDefault: boolean("is_default").default(false),
+  isShared: boolean("is_shared").default(false), // shared with team
+  createdBy: text("created_by"), // user ID who created the view
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Insert Schema
+export const insertSavedViewSchema = createInsertSchema(savedViews).omit({ 
+  id: true, 
+  createdAt: true, 
+  updatedAt: true 
+});
+
+// Types
+export type SavedView = typeof savedViews.$inferSelect;
+export type InsertSavedView = z.infer<typeof insertSavedViewSchema>;
+
+// Type aliases for saved views
+export type SavedViewFilter = NonNullable<SavedView["filters"]>[number];
+export type FilterOperator = "equals" | "not_equals" | "contains" | "gt" | "lt" | "gte" | "lte" | "in" | "not_in" | "is_empty" | "is_not_empty";
+
+// ============================================
+// NOTIFICATION PREFERENCES (15.2)
+// ============================================
+
+export const NOTIFICATION_EVENT_TYPES = [
+  "lead_created",
+  "lead_updated", 
+  "lead_stage_changed",
+  "property_created",
+  "property_updated",
+  "deal_created",
+  "deal_updated",
+  "deal_stage_changed",
+  "payment_received",
+  "payment_overdue",
+  "campaign_started",
+  "campaign_completed",
+  "email_sent",
+  "sms_sent",
+  "mail_sent",
+] as const;
+
+export type NotificationEventType = typeof NOTIFICATION_EVENT_TYPES[number];
+
+export const notificationPreferences = pgTable("notification_preferences", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  eventType: text("event_type").notNull(), // One of NOTIFICATION_EVENT_TYPES
+  emailEnabled: boolean("email_enabled").default(true),
+  pushEnabled: boolean("push_enabled").default(false),
+  inAppEnabled: boolean("in_app_enabled").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertNotificationPreferenceSchema = createInsertSchema(notificationPreferences).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type NotificationPreference = typeof notificationPreferences.$inferSelect;
+export type InsertNotificationPreference = z.infer<typeof insertNotificationPreferenceSchema>;
+
+// ============================================
+// TASK MANAGEMENT SYSTEM (17.1, 17.2)
+// ============================================
+
+// Priority levels for tasks
+export const TASK_PRIORITIES = ["low", "medium", "high", "urgent"] as const;
+export type TaskPriority = typeof TASK_PRIORITIES[number];
+
+// Status values for tasks
+export const TASK_STATUSES = ["pending", "in_progress", "completed", "cancelled"] as const;
+export type TaskStatus = typeof TASK_STATUSES[number];
+
+// Entity types that tasks can be linked to
+export const TASK_ENTITY_TYPES = ["lead", "property", "deal", "none"] as const;
+export type TaskEntityType = typeof TASK_ENTITY_TYPES[number];
+
+// Recurrence rules for recurring tasks
+export const TASK_RECURRENCE_RULES = ["daily", "weekly", "monthly", "yearly"] as const;
+export type TaskRecurrenceRule = typeof TASK_RECURRENCE_RULES[number];
+
+// Tasks table
+export const tasks = pgTable("tasks", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  
+  // Core task fields
+  title: text("title").notNull(),
+  description: text("description"),
+  dueDate: timestamp("due_date"),
+  priority: text("priority").notNull().default("medium"), // low, medium, high, urgent
+  status: text("status").notNull().default("pending"), // pending, in_progress, completed, cancelled
+  
+  // Assignment
+  assignedTo: integer("assigned_to").references(() => teamMembers.id),
+  createdBy: text("created_by").notNull(), // User ID who created the task
+  
+  // Entity linking (optional)
+  entityType: text("entity_type").notNull().default("none"), // lead, property, deal, none
+  entityId: integer("entity_id"), // ID of the linked entity
+  
+  // Recurring task fields (17.2)
+  isRecurring: boolean("is_recurring").default(false),
+  recurrenceRule: text("recurrence_rule"), // daily, weekly, monthly, yearly
+  nextOccurrence: timestamp("next_occurrence"),
+  parentTaskId: integer("parent_task_id"), // Reference to the original recurring task
+  
+  // Timestamps
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Insert schema
+export const insertTaskSchema = createInsertSchema(tasks).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  completedAt: true,
+});
+
+// Types
+export type Task = typeof tasks.$inferSelect;
+export type InsertTask = z.infer<typeof insertTaskSchema>;
+
+// ============================================
+// COMPLIANCE: AUDIT LOG (20.1)
+// ============================================
+
+export const auditLog = pgTable("audit_log", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  userId: text("user_id"), // Replit user ID or null for system actions
+  action: text("action").notNull(), // create, update, delete, login, export, import, etc.
+  entityType: text("entity_type").notNull(), // lead, property, deal, note, campaign, etc.
+  entityId: integer("entity_id"), // ID of the affected entity
+  changes: jsonb("changes").$type<{
+    before?: Record<string, any>;
+    after?: Record<string, any>;
+    fields?: string[];
+  }>(),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  metadata: jsonb("metadata").$type<Record<string, any>>(), // Additional context
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Insert schema
+export const insertAuditLogSchema = createInsertSchema(auditLog).omit({
+  id: true,
+  createdAt: true,
+});
+
+// Types
+export type AuditLogEntry = typeof auditLog.$inferSelect;
+export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
+
+// Audit action types
+export const AUDIT_ACTIONS = [
+  "create",
+  "update",
+  "delete",
+  "login",
+  "logout",
+  "export",
+  "import",
+  "consent_granted",
+  "consent_revoked",
+  "data_purge",
+] as const;
+export type AuditAction = typeof AUDIT_ACTIONS[number];
+
+// Entity types that can be audited
+export const AUDITABLE_ENTITIES = [
+  "lead",
+  "property", 
+  "deal",
+  "note",
+  "payment",
+  "campaign",
+  "user",
+  "organization",
+  "settings",
+] as const;
+export type AuditableEntity = typeof AUDITABLE_ENTITIES[number];

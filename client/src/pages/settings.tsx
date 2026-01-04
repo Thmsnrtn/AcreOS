@@ -6,7 +6,13 @@ import {
   useCreateCheckoutSession,
   useCreatePortalSession,
   useUpdateOrganization,
-  useUsageLimits
+  useUsageLimits,
+  useTeamMembers,
+  useUpdateTeamMemberRole,
+  useUserPermissions,
+  getRoleLabel,
+  getRoleBadgeStyle,
+  type Role
 } from "@/hooks/use-organization";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,7 +21,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, Crown, Check, ExternalLink, CreditCard, Loader2, Lightbulb, RotateCcw, Database, Trash2, BarChart3, Users, Home, FileText, Sparkles, TrendingUp, Coins } from "lucide-react";
+import { Building2, Crown, Check, ExternalLink, CreditCard, Loader2, Lightbulb, RotateCcw, Database, Trash2, BarChart3, Users, Home, FileText, Sparkles, TrendingUp, Coins, Shield } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Progress } from "@/components/ui/progress";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -25,6 +33,10 @@ import { PricingGuide } from "@/components/pricing-guide";
 import { IntegrationsSettings } from "@/components/integrations-settings";
 import { EmailDomainsSettings } from "@/components/email-domains-settings";
 import { PhoneNumbersSettings } from "@/components/phone-numbers-settings";
+import { CustomFieldsManager } from "@/components/custom-fields";
+import { NotificationPreferences } from "@/components/notification-preferences";
+import { ImportExportManager } from "@/components/import-export";
+import { ComplianceSettings } from "@/components/compliance-settings";
 import { useState } from "react";
 import { useEffect } from "react";
 import { useSearch } from "wouter";
@@ -39,10 +51,13 @@ export default function Settings() {
   const { data: products, isLoading: productsLoading } = useStripeProducts();
   const { data: subscriptionData, isLoading: subLoading } = useStripeSubscription();
   const { data: usageData, isLoading: usageLoading } = useUsageLimits();
+  const { data: teamMembers, isLoading: teamLoading } = useTeamMembers();
+  const { data: userPermissions } = useUserPermissions();
   
   const checkoutMutation = useCreateCheckoutSession();
   const portalMutation = useCreatePortalSession();
   const updateOrgMutation = useUpdateOrganization();
+  const updateRoleMutation = useUpdateTeamMemberRole();
   
   const seedDataMutation = useMutation({
     mutationFn: async () => {
@@ -248,6 +263,123 @@ export default function Settings() {
                     </p>
                   )}
                 </>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Team Management */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="w-5 h-5" />
+                Team Members
+              </CardTitle>
+              <CardDescription>Manage team roles and permissions</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {teamLoading ? (
+                <div className="space-y-3">
+                  {[1, 2].map((i) => (
+                    <div key={i} className="flex items-center gap-4">
+                      <Skeleton className="h-10 w-10 rounded-full" />
+                      <Skeleton className="h-4 w-32" />
+                      <Skeleton className="h-6 w-16" />
+                    </div>
+                  ))}
+                </div>
+              ) : teamMembers && teamMembers.length > 0 ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Member</TableHead>
+                      <TableHead>Role</TableHead>
+                      {userPermissions?.permissions.canManageTeam && (
+                        <TableHead className="w-32">Actions</TableHead>
+                      )}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {teamMembers.map((member) => (
+                      <TableRow key={member.id} data-testid={`row-team-member-${member.id}`}>
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                              <Users className="w-4 h-4 text-primary" />
+                            </div>
+                            <div>
+                              <p className="font-medium" data-testid={`text-member-name-${member.id}`}>
+                                {member.displayName || member.email || member.userId}
+                              </p>
+                              {member.email && member.displayName && (
+                                <p className="text-xs text-muted-foreground">{member.email}</p>
+                              )}
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge 
+                            variant="outline"
+                            className={`border-0 ${getRoleBadgeStyle(member.role)}`}
+                            data-testid={`badge-role-${member.id}`}
+                          >
+                            {member.role === "owner" && <Crown className="w-3 h-3 mr-1" />}
+                            {member.role === "admin" && <Shield className="w-3 h-3 mr-1" />}
+                            {getRoleLabel(member.role)}
+                          </Badge>
+                        </TableCell>
+                        {userPermissions?.permissions.canManageTeam && (
+                          <TableCell>
+                            {member.role !== "owner" || userPermissions.role === "owner" ? (
+                              <Select
+                                value={member.role}
+                                onValueChange={(newRole: Role) => {
+                                  updateRoleMutation.mutate(
+                                    { memberId: member.id, role: newRole },
+                                    {
+                                      onSuccess: () => {
+                                        toast({
+                                          title: "Role updated",
+                                          description: `${member.displayName || member.userId}'s role has been changed to ${getRoleLabel(newRole)}.`,
+                                        });
+                                      },
+                                      onError: (error) => {
+                                        toast({
+                                          title: "Error",
+                                          description: error.message || "Failed to update role",
+                                          variant: "destructive",
+                                        });
+                                      },
+                                    }
+                                  );
+                                }}
+                                disabled={updateRoleMutation.isPending}
+                              >
+                                <SelectTrigger 
+                                  className="w-28"
+                                  data-testid={`select-role-${member.id}`}
+                                >
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {userPermissions.role === "owner" && (
+                                    <SelectItem value="owner">Owner</SelectItem>
+                                  )}
+                                  <SelectItem value="admin">Admin</SelectItem>
+                                  <SelectItem value="member">Member</SelectItem>
+                                  <SelectItem value="viewer">Viewer</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <span className="text-sm text-muted-foreground">-</span>
+                            )}
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
+                <p className="text-muted-foreground text-sm">No team members found.</p>
               )}
             </CardContent>
           </Card>
@@ -590,6 +722,36 @@ export default function Settings() {
             )}
           </div>
           
+          {/* Notification Preferences */}
+          <div className="space-y-4">
+            <NotificationPreferences />
+          </div>
+
+          {/* Custom Fields */}
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-xl font-semibold flex items-center gap-2">
+                <FileText className="w-5 h-5" />
+                Custom Fields
+              </h2>
+              <p className="text-muted-foreground text-sm">
+                Define custom fields for leads, properties, and deals.
+              </p>
+            </div>
+            
+            <CustomFieldsManager />
+          </div>
+
+          {/* Import / Export */}
+          <div className="space-y-4">
+            <ImportExportManager />
+          </div>
+
+          {/* Compliance & Data Governance */}
+          <div className="space-y-4">
+            <ComplianceSettings />
+          </div>
+
           {/* Developer Tools */}
           <div className="space-y-4">
             <div>

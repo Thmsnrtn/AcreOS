@@ -1,10 +1,12 @@
 import { Sidebar } from "@/components/layout-sidebar";
 import { useDeals, useCreateDeal, useUpdateDeal, useDeleteDeal, useSaveDealAnalysis } from "@/hooks/use-deals";
 import { useProperties } from "@/hooks/use-properties";
+import { ListSkeleton } from "@/components/list-skeleton";
+import { useDealChecklist, useChecklistTemplates, useApplyChecklistTemplate, useUpdateChecklistItem, useStageGate } from "@/hooks/use-checklists";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertDealSchema, type Deal, type Property } from "@shared/schema";
+import { insertDealSchema, type Deal, type Property, type DealChecklistItem } from "@shared/schema";
 import { z } from "zod";
 import { DealCalculator, type AnalysisResults } from "@/components/deal-calculator";
 import { useToast } from "@/hooks/use-toast";
@@ -15,13 +17,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, MapPin, DollarSign, Calendar, Building, TrendingUp, CheckCircle, X, GripVertical, FileText, Trash2, Loader2, Briefcase, Calculator } from "lucide-react";
+import { Plus, MapPin, DollarSign, Calendar, Building, TrendingUp, CheckCircle, X, GripVertical, FileText, Trash2, Loader2, Briefcase, Calculator, ClipboardCheck, Upload, AlertTriangle, CheckSquare, Square, Clock } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Progress } from "@/components/ui/progress";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ActivityTimeline } from "@/components/activity-timeline";
+import { CustomFieldValuesEditor } from "@/components/custom-fields";
 
 type DealWithProperty = Deal & { property?: Property };
 
@@ -199,8 +205,8 @@ export default function DealsPage() {
                       </div>
                       <div className="bg-muted/30 rounded-b-xl p-2 min-h-[400px] space-y-2">
                         {isLoading ? (
-                          <div className="text-center py-8 text-muted-foreground text-sm">
-                            Loading...
+                          <div data-testid={`skeleton-deals-${stage.value}`}>
+                            <ListSkeleton count={2} variant="compact" />
                           </div>
                         ) : stageDeals.length === 0 ? (
                           <div className="text-center py-8 text-muted-foreground text-sm">
@@ -296,9 +302,22 @@ function DealCard({ deal, onSelect }: { deal: DealWithProperty; onSelect: () => 
 function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty; onClose: () => void; onDelete: () => void }) {
   const { mutate: updateDeal, isPending } = useUpdateDeal();
   const { mutate: saveAnalysis, isPending: isSavingAnalysis } = useSaveDealAnalysis();
+  const { data: checklist, isLoading: isChecklistLoading } = useDealChecklist(deal.id);
+  const { data: templates } = useChecklistTemplates();
+  const { mutate: applyTemplate, isPending: isApplyingTemplate } = useApplyChecklistTemplate(deal.id);
+  const { mutate: updateChecklistItem, isPending: isUpdatingItem } = useUpdateChecklistItem(deal.id);
+  const { data: stageGate } = useStageGate(deal.id);
   const { toast } = useToast();
 
   const handleStatusChange = (newStatus: string) => {
+    if (stageGate && !stageGate.canAdvance && stageGate.incompleteItems.length > 0) {
+      toast({
+        title: "Cannot Advance Stage",
+        description: `Complete ${stageGate.incompleteItems.length} required checklist item(s) first.`,
+        variant: "destructive",
+      });
+      return;
+    }
     updateDeal({ id: deal.id, status: newStatus });
   };
 
@@ -357,10 +376,18 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
 
         <div className="p-6">
           <Tabs defaultValue="details" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-2">
+            <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="details" data-testid="tab-deal-details">
                 <FileText className="w-4 h-4 mr-2" />
                 Details
+              </TabsTrigger>
+              <TabsTrigger value="timeline" data-testid="tab-deal-timeline">
+                <Clock className="w-4 h-4 mr-2" />
+                Timeline
+              </TabsTrigger>
+              <TabsTrigger value="checklist" data-testid="tab-deal-checklist">
+                <ClipboardCheck className="w-4 h-4 mr-2" />
+                Checklist
               </TabsTrigger>
               <TabsTrigger value="analysis" data-testid="tab-deal-analysis">
                 <Calculator className="w-4 h-4 mr-2" />
@@ -517,6 +544,12 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                 </Card>
               )}
 
+              <Card className="glass-panel">
+                <CardContent className="pt-6">
+                  <CustomFieldValuesEditor entityType="deal" entityId={deal.id} />
+                </CardContent>
+              </Card>
+
               <div className="flex gap-2">
                 <Button variant="outline" className="flex-1">
                   Generate Documents
@@ -525,6 +558,172 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                   View Property
                 </Button>
               </div>
+            </TabsContent>
+
+            <TabsContent value="timeline" className="space-y-6">
+              <ActivityTimeline entityType="deal" entityId={deal.id} />
+            </TabsContent>
+
+            <TabsContent value="checklist" className="space-y-6">
+              {stageGate && !stageGate.canAdvance && (
+                <Card className="border-amber-500/50 bg-amber-500/10">
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <AlertTriangle className="w-5 h-5 text-amber-500" />
+                    <div>
+                      <p className="font-medium text-amber-700 dark:text-amber-400" data-testid="text-stage-gate-warning">
+                        Stage Advancement Blocked
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        Complete {stageGate.incompleteItems.length} required item(s) before advancing to the next stage.
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {isChecklistLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-6 h-6 animate-spin" />
+                </div>
+              ) : !checklist ? (
+                <Card className="glass-panel">
+                  <CardContent className="p-6 text-center space-y-4">
+                    <ClipboardCheck className="w-12 h-12 mx-auto text-muted-foreground" />
+                    <div>
+                      <h3 className="font-medium">No Checklist Applied</h3>
+                      <p className="text-sm text-muted-foreground">Select a template to start tracking due diligence items.</p>
+                    </div>
+                    <Select
+                      onValueChange={(templateId) => applyTemplate(Number(templateId))}
+                      disabled={isApplyingTemplate}
+                    >
+                      <SelectTrigger className="max-w-xs mx-auto" data-testid="select-checklist-template">
+                        <SelectValue placeholder="Select template..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {templates?.map((t) => (
+                          <SelectItem key={t.id} value={String(t.id)}>
+                            {t.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {isApplyingTemplate && (
+                      <p className="text-sm text-muted-foreground flex items-center justify-center gap-2">
+                        <Loader2 className="w-3 h-3 animate-spin" /> Applying template...
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+              ) : (
+                <>
+                  <Card className="glass-panel">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-base flex items-center justify-between gap-2">
+                        <span className="flex items-center gap-2">
+                          <ClipboardCheck className="w-4 h-4" /> Progress
+                        </span>
+                        <Badge variant="secondary" data-testid="badge-checklist-progress">
+                          {checklist.completionStatus.completed} / {checklist.completionStatus.total}
+                        </Badge>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <Progress 
+                        value={checklist.completionStatus.percentage} 
+                        className="h-2"
+                        data-testid="progress-checklist"
+                      />
+                      <p className="text-sm text-muted-foreground mt-2">
+                        {checklist.completionStatus.percentage}% complete
+                      </p>
+                    </CardContent>
+                  </Card>
+
+                  <div className="space-y-2">
+                    {checklist.items.map((item: DealChecklistItem) => (
+                      <Card 
+                        key={item.id} 
+                        className={`glass-panel transition-colors ${item.checkedAt ? 'bg-emerald-500/5' : ''}`}
+                        data-testid={`checklist-item-${item.id}`}
+                      >
+                        <CardContent className="p-4">
+                          <div className="flex items-start gap-3">
+                            <button
+                              onClick={() => updateChecklistItem({ 
+                                itemId: item.id, 
+                                checked: !item.checkedAt 
+                              })}
+                              disabled={isUpdatingItem}
+                              className="mt-0.5 shrink-0"
+                              data-testid={`checkbox-item-${item.id}`}
+                            >
+                              {item.checkedAt ? (
+                                <CheckSquare className="w-5 h-5 text-emerald-500" />
+                              ) : (
+                                <Square className="w-5 h-5 text-muted-foreground" />
+                              )}
+                            </button>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className={`font-medium ${item.checkedAt ? 'line-through text-muted-foreground' : ''}`}>
+                                  {item.title}
+                                </span>
+                                {item.required && (
+                                  <Badge variant="outline" className="text-xs">Required</Badge>
+                                )}
+                                {item.documentRequired && (
+                                  <Badge variant="outline" className="text-xs">Doc Required</Badge>
+                                )}
+                              </div>
+                              {item.description && (
+                                <p className="text-sm text-muted-foreground mt-1">{item.description}</p>
+                              )}
+                              {item.checkedAt && item.checkedBy && (
+                                <p className="text-xs text-muted-foreground mt-2">
+                                  Completed {format(new Date(item.checkedAt), 'MMM d, yyyy')}
+                                </p>
+                              )}
+                            </div>
+                            {item.documentRequired && (
+                              <Button 
+                                size="icon" 
+                                variant="ghost"
+                                disabled={isUpdatingItem}
+                                data-testid={`button-upload-doc-${item.id}`}
+                              >
+                                <Upload className="w-4 h-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+
+                  <div className="pt-4 border-t">
+                    <Select
+                      onValueChange={(templateId) => {
+                        if (confirm('This will replace the current checklist. Continue?')) {
+                          applyTemplate(Number(templateId));
+                        }
+                      }}
+                      disabled={isApplyingTemplate}
+                    >
+                      <SelectTrigger className="max-w-xs" data-testid="select-change-template">
+                        <SelectValue placeholder="Change template..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {templates?.map((t) => (
+                          <SelectItem key={t.id} value={String(t.id)}>
+                            {t.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </>
+              )}
             </TabsContent>
 
             <TabsContent value="analysis">

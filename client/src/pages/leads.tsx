@@ -1,12 +1,17 @@
 import { Sidebar } from "@/components/layout-sidebar";
 import { useLeads, useCreateLead, useUpdateLead, useDeleteLead } from "@/hooks/use-leads";
 import { useProperties } from "@/hooks/use-properties";
-import { queryClient } from "@/lib/queryClient";
-import { useState } from "react";
+import { useTeamMembers, useUserPermissions, getRoleBadgeStyle, getRoleLabel } from "@/hooks/use-organization";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useMutation } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
+import { ListSkeleton, TableRowSkeleton } from "@/components/list-skeleton";
+import { useState, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertLeadSchema, type Lead } from "@shared/schema";
 import { z } from "zod";
+import { useLocation, useSearch } from "wouter";
 
 // Client-side form schema that omits organizationId (added by server)
 const leadFormSchema = insertLeadSchema.omit({ organizationId: true });
@@ -15,24 +20,286 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, Mail, Phone, Trash2, Edit, Loader2, Users, FileText, Download, Upload, CheckCircle, XCircle, AlertCircle } from "lucide-react";
+import { Plus, Search, Mail, Phone, Trash2, Edit, Loader2, Users, FileText, Download, Upload, CheckCircle, XCircle, AlertCircle, Flame, Sun, Snowflake, Skull, ArrowUpDown, ArrowUp, ArrowDown, X, Clock, Eye, User, Calendar, MapPin, StickyNote, PhoneOff, Shield } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { FocusList } from "@/components/focus-list";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ActivityTimeline } from "@/components/activity-timeline";
+import { SavedViewsSelector } from "@/components/saved-views-selector";
+import { CustomFieldValuesEditor } from "@/components/custom-fields";
+import { format } from "date-fns";
+import type { SavedView } from "@shared/schema";
+
+type LeadWithScore = Lead & {
+  score: number;
+  nurturingStage: string;
+  scoreFactors?: Record<string, number>;
+};
+
+function getStageIcon(stage: string) {
+  switch (stage) {
+    case "hot":
+      return <Flame className="w-3 h-3" />;
+    case "warm":
+      return <Sun className="w-3 h-3" />;
+    case "cold":
+      return <Snowflake className="w-3 h-3" />;
+    default:
+      return <Skull className="w-3 h-3" />;
+  }
+}
+
+function getStageStyle(stage: string) {
+  switch (stage) {
+    case "hot":
+      return "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300";
+    case "warm":
+      return "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300";
+    case "cold":
+      return "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300";
+    default:
+      return "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300";
+  }
+}
+
+function LeadScoreBadge({ lead }: { lead: LeadWithScore }) {
+  const stage = lead.nurturingStage || "new";
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Badge
+          variant="outline"
+          className={`text-xs border-0 flex items-center gap-1 cursor-default ${getStageStyle(stage)}`}
+          data-testid={`badge-score-${lead.id}`}
+        >
+          {getStageIcon(stage)}
+          {stage}
+        </Badge>
+      </TooltipTrigger>
+      <TooltipContent>
+        <span data-testid={`tooltip-score-${lead.id}`}>Score: {lead.score ?? 0}/100</span>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+function getDaysSinceContact(lead: Lead): number {
+  const lastContact = lead.lastContactedAt || lead.createdAt;
+  if (!lastContact) return 999;
+  return Math.floor((Date.now() - new Date(lastContact).getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function getContactAgeStyle(days: number): string {
+  if (days <= 3) return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300";
+  if (days <= 7) return "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300";
+  return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300";
+}
+
+function ContactAgeBadge({ lead }: { lead: Lead }) {
+  const days = getDaysSinceContact(lead);
+  const lastContactDate = lead.lastContactedAt || lead.createdAt;
+  
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Badge
+          variant="outline"
+          className={`text-xs border-0 flex items-center gap-1 cursor-default ${getContactAgeStyle(days)}`}
+          data-testid={`badge-contact-age-${lead.id}`}
+        >
+          {days}d
+        </Badge>
+      </TooltipTrigger>
+      <TooltipContent>
+        <span data-testid={`tooltip-contact-age-${lead.id}`}>
+          {days === 0 ? 'Contacted today' : `${days} days since last contact`}
+          {lastContactDate && ` (${new Date(lastContactDate).toLocaleDateString()})`}
+        </span>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+function TcpaConsentToggle({ lead }: { lead: Lead }) {
+  const { toast } = useToast();
+  
+  const consentMutation = useMutation({
+    mutationFn: async ({ tcpaConsent, consentSource, optOutReason }: { 
+      tcpaConsent: boolean; 
+      consentSource?: string;
+      optOutReason?: string;
+    }) => {
+      const res = await apiRequest("PATCH", `/api/leads/${lead.id}/consent`, {
+        tcpaConsent,
+        consentSource,
+        optOutReason
+      });
+      if (!res.ok) throw new Error("Failed to update consent");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
+      toast({
+        title: "Consent updated",
+        description: "TCPA consent status has been updated.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to update consent status.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const hasConsent = lead.tcpaConsent === true;
+  const isOptedOut = lead.doNotContact === true;
+
+  if (isOptedOut) {
+    return (
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={() => consentMutation.mutate({ tcpaConsent: true, consentSource: "manual_restoration" })}
+        disabled={consentMutation.isPending}
+        data-testid={`button-restore-consent-${lead.id}`}
+      >
+        {consentMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <CheckCircle className="w-3 h-3 mr-1" />}
+        Restore Consent
+      </Button>
+    );
+  }
+
+  if (hasConsent) {
+    return (
+      <Button
+        size="sm"
+        variant="outline"
+        className="text-destructive"
+        onClick={() => consentMutation.mutate({ tcpaConsent: false, optOutReason: "manual_opt_out" })}
+        disabled={consentMutation.isPending}
+        data-testid={`button-revoke-consent-${lead.id}`}
+      >
+        {consentMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <PhoneOff className="w-3 h-3 mr-1" />}
+        Opt Out
+      </Button>
+    );
+  }
+
+  return (
+    <Button
+      size="sm"
+      onClick={() => consentMutation.mutate({ tcpaConsent: true, consentSource: "manual" })}
+      disabled={consentMutation.isPending}
+      data-testid={`button-grant-consent-${lead.id}`}
+    >
+      {consentMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Shield className="w-3 h-3 mr-1" />}
+      Grant Consent
+    </Button>
+  );
+}
+
+function TcpaConsentBadge({ lead }: { lead: Lead }) {
+  const hasConsent = lead.tcpaConsent === true;
+  const isOptedOut = lead.doNotContact === true;
+  
+  if (isOptedOut) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Badge
+            variant="outline"
+            className="text-xs border-0 flex items-center gap-1 cursor-default bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
+            data-testid={`badge-tcpa-${lead.id}`}
+          >
+            <PhoneOff className="w-3 h-3" />
+            DNC
+          </Badge>
+        </TooltipTrigger>
+        <TooltipContent>
+          <span data-testid={`tooltip-tcpa-${lead.id}`}>
+            Do Not Contact - Opted out
+            {lead.optOutDate && ` on ${new Date(lead.optOutDate).toLocaleDateString()}`}
+          </span>
+        </TooltipContent>
+      </Tooltip>
+    );
+  }
+  
+  if (hasConsent) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Badge
+            variant="outline"
+            className="text-xs border-0 flex items-center gap-1 cursor-default bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300"
+            data-testid={`badge-tcpa-${lead.id}`}
+          >
+            <Shield className="w-3 h-3" />
+            TCPA
+          </Badge>
+        </TooltipTrigger>
+        <TooltipContent>
+          <span data-testid={`tooltip-tcpa-${lead.id}`}>
+            TCPA consent on file
+            {lead.consentDate && ` since ${new Date(lead.consentDate).toLocaleDateString()}`}
+            {lead.consentSource && ` (${lead.consentSource})`}
+          </span>
+        </TooltipContent>
+      </Tooltip>
+    );
+  }
+  
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Badge
+          variant="outline"
+          className="text-xs border-0 flex items-center gap-1 cursor-default bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300"
+          data-testid={`badge-tcpa-${lead.id}`}
+        >
+          <AlertCircle className="w-3 h-3" />
+          No Consent
+        </Badge>
+      </TooltipTrigger>
+      <TooltipContent>
+        <span data-testid={`tooltip-tcpa-${lead.id}`}>
+          No TCPA consent - SMS/calls blocked
+        </span>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
 
 export default function LeadsPage() {
   const { data: leads, isLoading } = useLeads();
   const { data: properties } = useProperties();
+  const [, setLocation] = useLocation();
+  const searchString = useSearch();
+  const urlParams = new URLSearchParams(searchString);
+  const stageFromUrl = urlParams.get("stage") || "all";
+  
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [deletingLead, setDeletingLead] = useState<Lead | null>(null);
+  const [viewingLead, setViewingLead] = useState<Lead | null>(null);
   const [offerLetterLead, setOfferLetterLead] = useState<Lead | null>(null);
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>("");
   const [offerAmount, setOfferAmount] = useState<string>("");
   const [isGeneratingOffer, setIsGeneratingOffer] = useState(false);
   const [search, setSearch] = useState("");
+  const [stageFilter, setStageFilter] = useState(stageFromUrl);
+  const [assigneeFilter, setAssigneeFilter] = useState<string>("all");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc" | null>(null);
+  const { data: teamMembers } = useTeamMembers();
+  const { data: userPermissions } = useUserPermissions();
   const [isExporting, setIsExporting] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
@@ -51,6 +318,31 @@ export default function LeadsPage() {
     errors: Array<{ row: number; data: Record<string, string>; error: string }>;
   } | null>(null);
   const { mutate: deleteLead, isPending: isDeleting } = useDeleteLead();
+
+  const handleStageFilterChange = (value: string) => {
+    setStageFilter(value);
+    if (value === "all") {
+      setLocation("/leads");
+    } else {
+      setLocation(`/leads?stage=${value}`);
+    }
+  };
+
+  const handleSortByScore = () => {
+    if (sortOrder === null) {
+      setSortOrder("desc");
+    } else if (sortOrder === "desc") {
+      setSortOrder("asc");
+    } else {
+      setSortOrder(null);
+    }
+  };
+
+  const getSortIcon = () => {
+    if (sortOrder === "desc") return <ArrowDown className="w-3 h-3 ml-1" />;
+    if (sortOrder === "asc") return <ArrowUp className="w-3 h-3 ml-1" />;
+    return <ArrowUpDown className="w-3 h-3 ml-1" />;
+  };
 
   const handleExport = async () => {
     setIsExporting(true);
@@ -179,10 +471,46 @@ export default function LeadsPage() {
     }
   };
 
-  const filteredLeads = leads?.filter(l => 
-    l.lastName.toLowerCase().includes(search.toLowerCase()) || 
-    l.email?.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredLeads = useMemo(() => {
+    if (!leads) return [];
+    
+    let result = leads as LeadWithScore[];
+    
+    // Apply search filter
+    if (search) {
+      const searchLower = search.toLowerCase();
+      result = result.filter(l => 
+        l.lastName.toLowerCase().includes(searchLower) || 
+        l.firstName.toLowerCase().includes(searchLower) ||
+        l.email?.toLowerCase().includes(searchLower)
+      );
+    }
+    
+    // Apply stage filter
+    if (stageFilter && stageFilter !== "all") {
+      result = result.filter(l => l.nurturingStage === stageFilter);
+    }
+    
+    // Apply assignee filter (client-side, for admins who can see all leads)
+    if (assigneeFilter && assigneeFilter !== "all") {
+      if (assigneeFilter === "unassigned") {
+        result = result.filter(l => !l.assignedTo);
+      } else {
+        result = result.filter(l => l.assignedTo === assigneeFilter);
+      }
+    }
+    
+    // Apply score sorting
+    if (sortOrder) {
+      result = [...result].sort((a, b) => {
+        const scoreA = a.score ?? 0;
+        const scoreB = b.score ?? 0;
+        return sortOrder === "desc" ? scoreB - scoreA : scoreA - scoreB;
+      });
+    }
+    
+    return result;
+  }, [leads, search, stageFilter, assigneeFilter, sortOrder]);
 
   const handleDelete = () => {
     if (deletingLead) {
@@ -237,110 +565,220 @@ export default function LeadsPage() {
             </div>
           </div>
 
-          <div className="bg-white dark:bg-card rounded-2xl shadow-sm border overflow-hidden">
-            <div className="p-4 border-b flex flex-wrap items-center gap-3">
-              <div className="relative flex-1 max-w-sm">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input 
-                  placeholder="Search leads..." 
-                  className="pl-9 bg-slate-50 dark:bg-slate-900 border-none"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  data-testid="input-search-leads"
-                />
+          <div className="flex flex-col lg:flex-row gap-6">
+            <div className="flex-1 min-w-0">
+              <div className="bg-white dark:bg-card rounded-2xl shadow-sm border overflow-hidden">
+                <div className="p-4 border-b flex flex-wrap items-center gap-3">
+                  <SavedViewsSelector
+                    entityType="lead"
+                    currentFilters={{ stage: stageFilter }}
+                    currentSort={sortOrder ? { field: "score", order: sortOrder } : undefined}
+                    onApplyView={(view: SavedView) => {
+                      if (view.filters && Array.isArray(view.filters)) {
+                        const stageFilterDef = view.filters.find((f: any) => f.field === "stage");
+                        if (stageFilterDef) {
+                          setStageFilter(String(stageFilterDef.value));
+                        } else {
+                          setStageFilter("all");
+                        }
+                      } else {
+                        setStageFilter("all");
+                      }
+                      if (view.sortBy === "score" && view.sortOrder) {
+                        setSortOrder(view.sortOrder as "asc" | "desc");
+                      } else {
+                        setSortOrder(null);
+                      }
+                    }}
+                  />
+                  <div className="relative flex-1 max-w-sm">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input 
+                      placeholder="Search leads..." 
+                      className="pl-9 bg-slate-50 dark:bg-slate-900 border-none"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      data-testid="input-search-leads"
+                    />
+                  </div>
+                  <Select value={stageFilter} onValueChange={handleStageFilterChange}>
+                    <SelectTrigger className="w-[160px]" data-testid="select-stage-filter">
+                      <SelectValue placeholder="Filter by stage" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Leads</SelectItem>
+                      <SelectItem value="hot">
+                        <span className="flex items-center gap-2">
+                          <Flame className="w-3 h-3 text-orange-500" /> Hot Leads
+                        </span>
+                      </SelectItem>
+                      <SelectItem value="warm">
+                        <span className="flex items-center gap-2">
+                          <Sun className="w-3 h-3 text-yellow-500" /> Warm Leads
+                        </span>
+                      </SelectItem>
+                      <SelectItem value="cold">
+                        <span className="flex items-center gap-2">
+                          <Snowflake className="w-3 h-3 text-blue-500" /> Cold Leads
+                        </span>
+                      </SelectItem>
+                      <SelectItem value="dead">
+                        <span className="flex items-center gap-2">
+                          <Skull className="w-3 h-3 text-slate-500" /> Dead Leads
+                        </span>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {/* Assignee Filter - only show for admins+ who can see all leads */}
+                  {userPermissions && !userPermissions.permissions.viewOnlyAssignedLeads && teamMembers && teamMembers.length > 0 && (
+                    <Select value={assigneeFilter} onValueChange={setAssigneeFilter}>
+                      <SelectTrigger className="w-[180px]" data-testid="select-assignee-filter">
+                        <SelectValue placeholder="Filter by assignee" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Assignees</SelectItem>
+                        <SelectItem value="unassigned">Unassigned</SelectItem>
+                        {teamMembers.map((member) => (
+                          <SelectItem key={member.userId} value={member.userId}>
+                            {member.displayName || member.email || member.userId}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+
+                {isLoading ? (
+                  <div className="p-4" data-testid="skeleton-leads-table">
+                    <ListSkeleton count={8} variant="table" />
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-slate-50/50 dark:bg-slate-900/50">
+                          <TableHead className="min-w-[120px]">Name</TableHead>
+                          <TableHead className="min-w-[100px]">
+                            <button
+                              type="button"
+                              onClick={handleSortByScore}
+                              className="flex items-center hover-elevate rounded px-1 -ml-1"
+                              data-testid="button-sort-score"
+                            >
+                              Score
+                              {getSortIcon()}
+                            </button>
+                          </TableHead>
+                          <TableHead className="min-w-[180px]">Contact</TableHead>
+                          <TableHead className="min-w-[100px]">Status</TableHead>
+                          <TableHead className="text-right min-w-[80px]">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredLeads?.length === 0 && leads?.length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={5} className="p-0">
+                              <EmptyState
+                                icon={Users}
+                                title="No leads yet"
+                                description="Leads are your potential sellers and buyers. Import from CSV or add manually to start building your pipeline."
+                                secondaryDescription="A strong lead database is the foundation of your land investing business."
+                                tips={[
+                                  "Import leads in bulk from county records or data providers",
+                                  "Add leads manually as you find motivated sellers",
+                                  "Track lead status from cold to hot to closed"
+                                ]}
+                                actionLabel="Add Your First Lead"
+                                onAction={() => setIsCreateOpen(true)}
+                              />
+                            </TableCell>
+                          </TableRow>
+                        )}
+                        {filteredLeads?.length === 0 && leads && leads.length > 0 && (
+                          <TableRow>
+                            <TableCell colSpan={5} className="text-center h-32 text-muted-foreground">
+                              No leads found matching your search or filter.
+                            </TableCell>
+                          </TableRow>
+                        )}
+                        {filteredLeads?.map((lead) => (
+                          <TableRow key={lead.id} className="group" data-testid={`row-lead-${lead.id}`}>
+                            <TableCell className="font-medium">
+                              {lead.firstName} {lead.lastName}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <LeadScoreBadge lead={lead} />
+                                <ContactAgeBadge lead={lead} />
+                                <TcpaConsentBadge lead={lead} />
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-col gap-1 text-sm text-muted-foreground">
+                                {lead.email && <div className="flex items-center gap-2"><Mail className="w-3 h-3" /> {lead.email}</div>}
+                                {lead.phone && <div className="flex items-center gap-2"><Phone className="w-3 h-3" /> {lead.phone}</div>}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <LeadStatusBadge status={lead.status} />
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="sm" data-testid={`button-actions-lead-${lead.id}`}>
+                                    Actions
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onClick={() => setViewingLead(lead)} data-testid={`button-view-lead-${lead.id}`}>
+                                    <Eye className="w-4 h-4 mr-2" />
+                                    View Details
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => setEditingLead(lead)} data-testid={`button-edit-lead-${lead.id}`}>
+                                    <Edit className="w-4 h-4 mr-2" />
+                                    Edit
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => setOfferLetterLead(lead)} data-testid={`button-offer-letter-${lead.id}`}>
+                                    <FileText className="w-4 h-4 mr-2" />
+                                    Generate Offer Letter
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem 
+                                    onClick={() => setDeletingLead(lead)} 
+                                    className="text-destructive"
+                                    data-testid={`button-delete-lead-${lead.id}`}
+                                  >
+                                    <Trash2 className="w-4 h-4 mr-2" />
+                                    Delete
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
               </div>
             </div>
-
-            {isLoading ? (
-              <div className="p-8 text-center text-muted-foreground">Loading leads...</div>
-            ) : (
-              <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-slate-50/50 dark:bg-slate-900/50">
-                      <TableHead className="min-w-[120px]">Name</TableHead>
-                      <TableHead className="min-w-[180px]">Contact</TableHead>
-                      <TableHead className="min-w-[100px]">Status</TableHead>
-                      <TableHead className="text-right min-w-[80px]">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                  {filteredLeads?.length === 0 && leads?.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={4} className="p-0">
-                        <EmptyState
-                          icon={Users}
-                          title="No leads yet"
-                          description="Leads are your potential sellers and buyers. Import from CSV or add manually to start building your pipeline."
-                          secondaryDescription="A strong lead database is the foundation of your land investing business."
-                          tips={[
-                            "Import leads in bulk from county records or data providers",
-                            "Add leads manually as you find motivated sellers",
-                            "Track lead status from cold to hot to closed"
-                          ]}
-                          actionLabel="Add Your First Lead"
-                          onAction={() => setIsCreateOpen(true)}
-                        />
-                      </TableCell>
-                    </TableRow>
-                  )}
-                  {filteredLeads?.length === 0 && leads && leads.length > 0 && (
-                    <TableRow>
-                      <TableCell colSpan={4} className="text-center h-32 text-muted-foreground">
-                        No leads found matching your search.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                  {filteredLeads?.map((lead) => (
-                    <TableRow key={lead.id} className="group" data-testid={`row-lead-${lead.id}`}>
-                      <TableCell className="font-medium">
-                        {lead.firstName} {lead.lastName}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col gap-1 text-sm text-muted-foreground">
-                          {lead.email && <div className="flex items-center gap-2"><Mail className="w-3 h-3" /> {lead.email}</div>}
-                          {lead.phone && <div className="flex items-center gap-2"><Phone className="w-3 h-3" /> {lead.phone}</div>}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <LeadStatusBadge status={lead.status} />
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm" data-testid={`button-actions-lead-${lead.id}`}>
-                              Actions
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => setEditingLead(lead)} data-testid={`button-edit-lead-${lead.id}`}>
-                              <Edit className="w-4 h-4 mr-2" />
-                              Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setOfferLetterLead(lead)} data-testid={`button-offer-letter-${lead.id}`}>
-                              <FileText className="w-4 h-4 mr-2" />
-                              Generate Offer Letter
-                            </DropdownMenuItem>
-                            <DropdownMenuItem 
-                              onClick={() => setDeletingLead(lead)} 
-                              className="text-destructive"
-                              data-testid={`button-delete-lead-${lead.id}`}
-                            >
-                              <Trash2 className="w-4 h-4 mr-2" />
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
+            
+            <div className="lg:w-80 flex-shrink-0">
+              <FocusList />
+            </div>
           </div>
         </div>
       </main>
+
+      {viewingLead && (
+        <LeadDetailDrawer 
+          lead={viewingLead} 
+          onClose={() => setViewingLead(null)} 
+          onEdit={() => {
+            setEditingLead(viewingLead);
+            setViewingLead(null);
+          }}
+        />
+      )}
 
       <Dialog open={!!editingLead} onOpenChange={(open) => !open && setEditingLead(null)}>
         <DialogContent className="sm:max-w-[425px]">
@@ -718,5 +1156,295 @@ function LeadForm({ lead, onSuccess }: { lead?: Lead; onSuccess: () => void }) {
         </div>
       </form>
     </Form>
+  );
+}
+
+function LeadDetailDrawer({ lead, onClose, onEdit }: { lead: Lead; onClose: () => void; onEdit: () => void }) {
+  const { data: teamMembers } = useTeamMembers();
+  const { data: userPermissions } = useUserPermissions();
+  const { mutate: updateLead } = useUpdateLead();
+  const [isAssigning, setIsAssigning] = useState(false);
+
+  const handleAssignmentChange = (userId: string) => {
+    setIsAssigning(true);
+    updateLead(
+      { id: lead.id, data: { assignedTo: userId === "unassigned" ? null : userId } },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: ['/api/leads'] });
+          setIsAssigning(false);
+        },
+        onError: () => {
+          setIsAssigning(false);
+        },
+      }
+    );
+  };
+
+  const getAssigneeName = (userId: string | null | undefined) => {
+    if (!userId) return "Unassigned";
+    const member = teamMembers?.find(m => m.userId === userId);
+    return member?.displayName || member?.email || userId;
+  };
+
+  const statusColors: Record<string, string> = {
+    new: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
+    contacting: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400',
+    negotiation: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400',
+    closed: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',
+    dead: 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-200',
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" onClick={onClose}>
+      <div 
+        className="fixed right-0 top-0 h-full w-full max-w-2xl bg-background shadow-2xl overflow-y-auto"
+        onClick={e => e.stopPropagation()}
+        data-testid="drawer-lead-detail"
+      >
+        <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b p-6">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge className={statusColors[lead.status] || statusColors.new}>
+                  {lead.status}
+                </Badge>
+              </div>
+              <h2 className="text-xl font-bold mt-2" data-testid="text-lead-name">
+                {lead.firstName} {lead.lastName}
+              </h2>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button size="icon" variant="ghost" onClick={onEdit} data-testid="button-edit-lead-drawer">
+                <Edit className="w-5 h-5" />
+              </Button>
+              <Button size="icon" variant="ghost" onClick={onClose} data-testid="button-close-lead-drawer">
+                <X className="w-5 h-5" />
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-6">
+          <Tabs defaultValue="details" className="space-y-6">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="details" data-testid="tab-lead-details">
+                <User className="w-4 h-4 mr-2" />
+                Details
+              </TabsTrigger>
+              <TabsTrigger value="timeline" data-testid="tab-lead-timeline">
+                <Clock className="w-4 h-4 mr-2" />
+                Timeline
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="details" className="space-y-6">
+              <Card className="glass-panel">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <User className="w-4 h-4" /> Contact Information
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <p className="text-muted-foreground">Name</p>
+                      <p className="font-medium">{lead.firstName} {lead.lastName}</p>
+                    </div>
+                    {lead.email && (
+                      <div>
+                        <p className="text-muted-foreground">Email</p>
+                        <p className="font-medium flex items-center gap-2">
+                          <Mail className="w-3 h-3" /> {lead.email}
+                        </p>
+                      </div>
+                    )}
+                    {lead.phone && (
+                      <div>
+                        <p className="text-muted-foreground">Phone</p>
+                        <p className="font-medium flex items-center gap-2">
+                          <Phone className="w-3 h-3" /> {lead.phone}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {(lead.address || lead.city || lead.state || lead.zip) && (
+                <Card className="glass-panel">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <MapPin className="w-4 h-4" /> Address
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-sm">
+                      {lead.address && <p className="font-medium">{lead.address}</p>}
+                      <p className="text-muted-foreground">
+                        {[lead.city, lead.state, lead.zip].filter(Boolean).join(', ')}
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              <Card className="glass-panel">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Calendar className="w-4 h-4" /> Activity
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Created</span>
+                      <span>{lead.createdAt ? format(new Date(lead.createdAt), 'MMM d, yyyy') : 'N/A'}</span>
+                    </div>
+                    {lead.lastContactedAt && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Last Contacted</span>
+                        <span>{format(new Date(lead.lastContactedAt), 'MMM d, yyyy')}</span>
+                      </div>
+                    )}
+                    {lead.source && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Source</span>
+                        <span className="capitalize">{lead.source}</span>
+                      </div>
+                    )}
+                    {lead.type && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Type</span>
+                        <span className="capitalize">{lead.type}</span>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* TCPA Compliance Card */}
+              <Card className="glass-panel">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Shield className="w-4 h-4" /> TCPA Compliance
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3 text-sm">
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground">Status</span>
+                      <TcpaConsentBadge lead={lead} />
+                    </div>
+                    {lead.consentDate && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Consent Date</span>
+                        <span>{format(new Date(lead.consentDate), 'MMM d, yyyy')}</span>
+                      </div>
+                    )}
+                    {lead.consentSource && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Consent Source</span>
+                        <span className="capitalize">{lead.consentSource}</span>
+                      </div>
+                    )}
+                    {lead.optOutDate && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Opt-out Date</span>
+                        <span>{format(new Date(lead.optOutDate), 'MMM d, yyyy')}</span>
+                      </div>
+                    )}
+                    {lead.optOutReason && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Opt-out Reason</span>
+                        <span>{lead.optOutReason}</span>
+                      </div>
+                    )}
+                    <div className="pt-2 border-t flex gap-2">
+                      <TcpaConsentToggle lead={lead} />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Assignment Card */}
+              <Card className="glass-panel">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Users className="w-4 h-4" /> Assignment
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-sm text-muted-foreground">Assigned to</span>
+                      {userPermissions?.permissions.canManageTeam ? (
+                        <Select
+                          value={lead.assignedTo || "unassigned"}
+                          onValueChange={handleAssignmentChange}
+                          disabled={isAssigning}
+                        >
+                          <SelectTrigger 
+                            className="w-[180px]"
+                            data-testid="select-lead-assignee"
+                          >
+                            <SelectValue placeholder="Select assignee" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="unassigned">Unassigned</SelectItem>
+                            {teamMembers?.map((member) => (
+                              <SelectItem key={member.userId} value={member.userId}>
+                                {member.displayName || member.email || member.userId}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <span 
+                          className="text-sm font-medium"
+                          data-testid="text-lead-assignee"
+                        >
+                          {getAssigneeName(lead.assignedTo)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {lead.notes && (
+                <Card className="glass-panel">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <StickyNote className="w-4 h-4" /> Notes
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm whitespace-pre-wrap">{lead.notes}</p>
+                  </CardContent>
+                </Card>
+              )}
+
+              <Card className="glass-panel">
+                <CardContent className="pt-6">
+                  <CustomFieldValuesEditor entityType="lead" entityId={lead.id} />
+                </CardContent>
+              </Card>
+
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={onEdit}>
+                  <Edit className="w-4 h-4 mr-2" />
+                  Edit Lead
+                </Button>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="timeline" className="space-y-6">
+              <ActivityTimeline entityType="lead" entityId={lead.id} />
+            </TabsContent>
+          </Tabs>
+        </div>
+      </div>
+    </div>
   );
 }

@@ -1,10 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, STALE_TIMES, CACHE_TIMES } from "@/lib/queryClient";
 import type { Deal, InsertDeal } from "@shared/schema";
 
 export function useDeals() {
   return useQuery<Deal[]>({
     queryKey: ['/api/deals'],
+    staleTime: STALE_TIMES.short,
+    gcTime: CACHE_TIMES.medium,
   });
 }
 

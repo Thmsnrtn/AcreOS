@@ -111,18 +111,18 @@ export default function AgentsPage() {
                             <div className="flex items-center gap-2 mb-2">
                               <Badge variant="outline" className="capitalize">{task.agentType}</Badge>
                               <span className="text-xs text-muted-foreground">
-                                {new Date(task.createdAt).toLocaleTimeString()}
+                                {task.createdAt ? new Date(task.createdAt).toLocaleTimeString() : 'Just now'}
                               </span>
                               {task.status === 'completed' && <CheckCircle2 className="w-4 h-4 text-emerald-500" />}
                               {task.status === 'processing' && <Loader2 className="w-4 h-4 animate-spin text-indigo-500" />}
                             </div>
                             <div className="bg-slate-50 dark:bg-slate-900 rounded-lg p-4 mb-3 border">
-                              <p className="text-sm font-medium text-slate-700 dark:text-slate-300">{task.input}</p>
+                              <p className="text-sm font-medium text-slate-700 dark:text-slate-300">{String(task.input ?? '')}</p>
                             </div>
                             {task.output && (
                               <div className="bg-emerald-50/50 dark:bg-emerald-900/10 rounded-lg p-4 border border-emerald-100 dark:border-emerald-900/50">
                                 <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">
-                                  {task.output}
+                                  {String(task.output ?? '')}
                                 </p>
                               </div>
                             )}

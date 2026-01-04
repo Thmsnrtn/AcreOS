@@ -337,6 +337,332 @@ Generate 3 helpful tips for this step.`,
       },
     });
   }
+
+  async generateSampleData(orgId: number): Promise<{
+    success: boolean;
+    counts: {
+      leads: number;
+      properties: number;
+      notes: number;
+      deals: number;
+    };
+  }> {
+    const org = await storage.getOrganization(orgId);
+    if (!org) {
+      throw new Error("Organization not found");
+    }
+
+    let leadsCreated = 0;
+    let propertiesCreated = 0;
+    let notesCreated = 0;
+    let dealsCreated = 0;
+
+    // Sample leads data
+    const sampleLeads = [
+      {
+        organizationId: orgId,
+        type: "seller" as const,
+        firstName: "John",
+        lastName: "Anderson",
+        email: "john.anderson@example.com",
+        phone: "(555) 123-4567",
+        address: "123 Oak Street",
+        city: "Austin",
+        state: "TX",
+        zip: "78701",
+        status: "new",
+        source: "sample_data",
+        tags: ["sample", "hot lead"],
+      },
+      {
+        organizationId: orgId,
+        type: "seller" as const,
+        firstName: "Maria",
+        lastName: "Garcia",
+        email: "maria.garcia@example.com",
+        phone: "(555) 234-5678",
+        address: "456 Pine Avenue",
+        city: "Phoenix",
+        state: "AZ",
+        zip: "85001",
+        status: "contacted",
+        source: "sample_data",
+        tags: ["sample", "motivated seller"],
+      },
+      {
+        organizationId: orgId,
+        type: "buyer" as const,
+        firstName: "Robert",
+        lastName: "Smith",
+        email: "robert.smith@example.com",
+        phone: "(555) 345-6789",
+        address: "789 Maple Drive",
+        city: "Denver",
+        state: "CO",
+        zip: "80202",
+        status: "qualified",
+        source: "sample_data",
+        tags: ["sample", "cash buyer"],
+      },
+      {
+        organizationId: orgId,
+        type: "seller" as const,
+        firstName: "Linda",
+        lastName: "Williams",
+        email: "linda.williams@example.com",
+        phone: "(555) 456-7890",
+        address: "321 Cedar Lane",
+        city: "Tampa",
+        state: "FL",
+        zip: "33601",
+        status: "negotiating",
+        source: "sample_data",
+        tags: ["sample", "inherited property"],
+      },
+      {
+        organizationId: orgId,
+        type: "buyer" as const,
+        firstName: "Michael",
+        lastName: "Johnson",
+        email: "michael.johnson@example.com",
+        phone: "(555) 567-8901",
+        address: "654 Birch Road",
+        city: "Nashville",
+        state: "TN",
+        zip: "37201",
+        status: "new",
+        source: "sample_data",
+        tags: ["sample", "terms buyer"],
+      },
+    ];
+
+    // Create leads
+    const createdLeads: any[] = [];
+    for (const leadData of sampleLeads) {
+      const lead = await storage.createLead(leadData);
+      createdLeads.push(lead);
+      leadsCreated++;
+    }
+
+    // Sample properties data
+    const sampleProperties = [
+      {
+        organizationId: orgId,
+        apn: "SAMPLE-001-234",
+        legalDescription: "Lot 5, Block A, Sunset Acres",
+        county: "Travis",
+        state: "TX",
+        address: "Tract 5 FM 2222",
+        city: "Austin",
+        zip: "78730",
+        sizeAcres: "5.25",
+        zoning: "Agricultural",
+        terrain: "rolling",
+        roadAccess: "paved",
+        status: "owned",
+        assessedValue: "15000",
+        marketValue: "25000",
+        purchasePrice: "12000",
+        listPrice: "29900",
+        sellerId: createdLeads[0]?.id,
+        description: "Beautiful 5+ acre parcel with mature trees and rolling terrain. Great for homesite or recreational use.",
+        highlights: ["Road frontage", "Mature trees", "Electric available"],
+      },
+      {
+        organizationId: orgId,
+        apn: "SAMPLE-002-567",
+        legalDescription: "Lot 12, Desert Vista Estates",
+        county: "Maricopa",
+        state: "AZ",
+        address: "N Desert Vista Road",
+        city: "Surprise",
+        zip: "85374",
+        sizeAcres: "2.5",
+        zoning: "Residential",
+        terrain: "flat",
+        roadAccess: "gravel",
+        status: "listed",
+        assessedValue: "8000",
+        marketValue: "18000",
+        purchasePrice: "6500",
+        listPrice: "19900",
+        sellerId: createdLeads[1]?.id,
+        description: "Level 2.5 acre lot perfect for manufactured or stick-built home. Mountain views!",
+        highlights: ["Mountain views", "Level lot", "Near town"],
+      },
+      {
+        organizationId: orgId,
+        apn: "SAMPLE-003-890",
+        legalDescription: "Parcel B, Mountain Creek Ranch",
+        county: "El Paso",
+        state: "CO",
+        address: "County Road 47",
+        city: "Peyton",
+        zip: "80831",
+        sizeAcres: "10.0",
+        zoning: "Agricultural",
+        terrain: "mountainous",
+        roadAccess: "dirt",
+        status: "under_contract",
+        assessedValue: "22000",
+        marketValue: "45000",
+        purchasePrice: "18000",
+        listPrice: "49900",
+        description: "Stunning 10 acre mountain property with Pikes Peak views. Perfect for off-grid living.",
+        highlights: ["Pikes Peak views", "Creek frontage", "Wildlife"],
+      },
+    ];
+
+    // Create properties
+    const createdProperties: any[] = [];
+    for (const propData of sampleProperties) {
+      const property = await storage.createProperty(propData as any);
+      createdProperties.push(property);
+      propertiesCreated++;
+    }
+
+    // Create sample deals
+    if (createdProperties.length > 0) {
+      const sampleDeals = [
+        {
+          organizationId: orgId,
+          propertyId: createdProperties[0]?.id,
+          type: "acquisition",
+          status: "closed",
+          offerAmount: "10000",
+          acceptedAmount: "12000",
+          notes: "Sample acquisition deal - good margin on this one",
+        },
+        {
+          organizationId: orgId,
+          propertyId: createdProperties[2]?.id,
+          type: "disposition",
+          status: "in_escrow",
+          offerAmount: "45000",
+          notes: "Sample disposition - cash buyer, closing next week",
+        },
+      ];
+
+      for (const dealData of sampleDeals) {
+        await storage.createDeal(dealData as any);
+        dealsCreated++;
+      }
+    }
+
+    // Create sample notes (seller finance)
+    if (createdProperties.length > 1 && createdLeads.length > 2) {
+      const today = new Date();
+      const nextMonth = new Date(today);
+      nextMonth.setMonth(nextMonth.getMonth() + 1);
+      const maturityDate = new Date(today);
+      maturityDate.setFullYear(maturityDate.getFullYear() + 5);
+
+      const sampleNote = {
+        organizationId: orgId,
+        propertyId: createdProperties[1]?.id,
+        borrowerId: createdLeads[2]?.id,
+        originalPrincipal: "19900",
+        currentBalance: "18500",
+        interestRate: "9.9",
+        termMonths: 60,
+        monthlyPayment: "419.52",
+        serviceFee: "0",
+        lateFee: "25",
+        gracePeriodDays: 10,
+        startDate: today,
+        firstPaymentDate: nextMonth,
+        nextPaymentDate: nextMonth,
+        maturityDate: maturityDate,
+        status: "active",
+        downPayment: "1990",
+        downPaymentReceived: true,
+        notes_text: "Sample seller-financed note. Buyer is paying on time.",
+      };
+
+      await storage.createNote(sampleNote as any);
+      notesCreated++;
+    }
+
+    // Update onboarding data to mark sample data loaded
+    const currentData = (org.onboardingData as OnboardingData) || {};
+    await storage.updateOrganization(orgId, {
+      onboardingData: {
+        ...currentData,
+        sampleDataLoaded: true,
+      } as any,
+    });
+
+    return {
+      success: true,
+      counts: {
+        leads: leadsCreated,
+        properties: propertiesCreated,
+        notes: notesCreated,
+        deals: dealsCreated,
+      },
+    };
+  }
+
+  async clearSampleData(orgId: number): Promise<{
+    success: boolean;
+    counts: {
+      leads: number;
+      properties: number;
+      notes: number;
+      deals: number;
+    };
+  }> {
+    const org = await storage.getOrganization(orgId);
+    if (!org) {
+      throw new Error("Organization not found");
+    }
+
+    // Get all sample leads (by source)
+    const allLeads = await storage.getLeads(orgId);
+    const sampleLeads = allLeads.filter(l => l.source === "sample_data");
+    
+    // Get properties and notes to clean up
+    const allProperties = await storage.getProperties(orgId);
+    const sampleProperties = allProperties.filter(p => 
+      p.apn?.startsWith("SAMPLE-")
+    );
+    
+    let leadsDeleted = 0;
+    let propertiesDeleted = 0;
+    let notesDeleted = 0;
+    let dealsDeleted = 0;
+
+    // Delete sample leads
+    for (const lead of sampleLeads) {
+      await storage.deleteLead(lead.id);
+      leadsDeleted++;
+    }
+
+    // Delete sample properties (cascade should handle deals and notes)
+    for (const prop of sampleProperties) {
+      await storage.deleteProperty(prop.id);
+      propertiesDeleted++;
+    }
+
+    // Update onboarding data
+    const currentData = (org.onboardingData as OnboardingData) || {};
+    await storage.updateOrganization(orgId, {
+      onboardingData: {
+        ...currentData,
+        sampleDataLoaded: false,
+      } as any,
+    });
+
+    return {
+      success: true,
+      counts: {
+        leads: leadsDeleted,
+        properties: propertiesDeleted,
+        notes: notesDeleted,
+        deals: dealsDeleted,
+      },
+    };
+  }
 }
 
 export const onboardingService = new OnboardingService();

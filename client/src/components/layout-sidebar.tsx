@@ -16,21 +16,38 @@ import {
   Calculator,
   Headphones,
   Crown,
-  HelpCircle
+  HelpCircle,
+  Workflow,
+  PieChart,
+  ListTodo,
+  BarChart3
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
+import { prefetchRoute } from "@/lib/queryClient";
+
+const routePrefetchMap: Record<string, string> = {
+  "/leads": "/api/leads",
+  "/properties": "/api/properties",
+  "/deals": "/api/deals",
+  "/finance": "/api/notes",
+  "/campaigns": "/api/campaigns",
+};
 
 const navItems = [
   { label: "Dashboard", icon: LayoutDashboard, href: "/" },
   { label: "Leads (CRM)", icon: Users, href: "/leads" },
   { label: "Inventory", icon: Map, href: "/properties" },
   { label: "Deal Pipeline", icon: GitBranch, href: "/deals" },
+  { label: "Tasks", icon: ListTodo, href: "/tasks" },
+  { label: "Team Dashboard", icon: BarChart3, href: "/team-dashboard" },
   { label: "Finance", icon: Banknote, href: "/finance" },
+  { label: "Portfolio", icon: PieChart, href: "/portfolio" },
   { label: "Campaigns", icon: Mail, href: "/campaigns" },
+  { label: "Sequences", icon: Workflow, href: "/sequences" },
   { label: "Tools", icon: Calculator, href: "/tools" },
   { label: "AI Agents", icon: Bot, href: "/agents" },
   { label: "AI Command Center", icon: MessageSquare, href: "/command-center" },
@@ -50,6 +67,13 @@ export function Sidebar() {
     retry: false,
     staleTime: 5 * 60 * 1000,
   });
+
+  const handlePrefetch = useCallback((href: string) => {
+    const apiRoute = routePrefetchMap[href];
+    if (apiRoute) {
+      prefetchRoute(apiRoute);
+    }
+  }, []);
 
   const NavContent = () => (
     <div className="flex flex-col h-full vibrancy-sidebar">
@@ -78,12 +102,17 @@ export function Sidebar() {
         {navItems.map((item) => {
           const isActive = location === item.href;
           return (
-            <Link key={item.href} href={item.href} className={cn(
-              "flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all duration-150 group",
-              isActive 
-                ? "bg-primary text-primary-foreground shadow-md" 
-                : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-            )}>
+            <Link 
+              key={item.href} 
+              href={item.href} 
+              className={cn(
+                "flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all duration-150 group",
+                isActive 
+                  ? "bg-primary text-primary-foreground shadow-md" 
+                  : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+              )}
+              onMouseEnter={() => handlePrefetch(item.href)}
+            >
               <item.icon className={cn(
                 "w-5 h-5 transition-colors", 
                 isActive ? "text-primary-foreground" : "text-muted-foreground group-hover:text-sidebar-foreground"

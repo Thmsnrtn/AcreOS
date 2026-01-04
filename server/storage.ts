@@ -4,15 +4,21 @@ import { eq, and, desc, sql, count, sum, arrayContains, gte, lte, or } from "dri
 import { aiConversations, aiMessages } from "@shared/schema";
 import {
   organizations, teamMembers, leads, leadActivities, properties, deals,
-  notes, payments, paymentReminders, campaigns, campaignOptimizations, agentConfigs, agentTasks, conversations,
+  notes, payments, paymentReminders, campaigns, campaignOptimizations, campaignResponses, agentConfigs, agentTasks, conversations,
   messages, activityLog, usageEvents,
   aiAgentProfiles, aiToolDefinitions, aiExecutionRuns, aiMemory,
   vaAgents, vaActions, vaBriefings, vaCalendarEvents, vaTemplates,
   dueDiligenceTemplates, dueDiligenceItems,
+  checklistTemplates, dealChecklists,
   usageRecords, creditTransactions,
   supportCases, supportMessages, supportActions, supportPlaybooks,
   dunningEvents, systemAlerts,
   verifiedEmailDomains, provisionedPhoneNumbers, organizationIntegrations,
+  activityEvents,
+  campaignSequences, sequenceSteps, sequenceEnrollments,
+  abTests, abTestVariants,
+  customFieldDefinitions, customFieldValues, savedViews, notificationPreferences, tasks,
+  auditLog,
   type Organization, type InsertOrganization,
   type TeamMember, type InsertTeamMember,
   type Lead, type InsertLead,
@@ -24,6 +30,7 @@ import {
   type PaymentReminder, type InsertPaymentReminder,
   type Campaign, type InsertCampaign,
   type CampaignOptimization, type InsertCampaignOptimization,
+  type CampaignResponse, type InsertCampaignResponse,
   type AgentConfig, type InsertAgentConfig,
   type AgentTask, type InsertAgentTask,
   type Conversation, type InsertConversation,
@@ -39,6 +46,9 @@ import {
   type VaTemplate, type InsertVaTemplate,
   type DueDiligenceTemplate, type InsertDueDiligenceTemplate,
   type DueDiligenceItem, type InsertDueDiligenceItem,
+  type ChecklistTemplate, type InsertChecklistTemplate,
+  type DealChecklist, type InsertDealChecklist,
+  type DealChecklistItem,
   type UsageRecord,
   type CreditTransaction,
   type InsertSupportCase, type SupportCase,
@@ -50,7 +60,20 @@ import {
   type VerifiedEmailDomain, type InsertVerifiedEmailDomain,
   type ProvisionedPhoneNumber, type InsertProvisionedPhoneNumber,
   type OrganizationIntegration, type InsertOrganizationIntegration,
+  type ActivityEvent, type InsertActivityEvent,
+  type CampaignSequence, type InsertCampaignSequence,
+  type SequenceStep, type InsertSequenceStep,
+  type SequenceEnrollment, type InsertSequenceEnrollment,
+  type AbTest, type InsertAbTest,
+  type AbTestVariant, type InsertAbTestVariant,
+  type CustomFieldDefinition, type InsertCustomFieldDefinition,
+  type CustomFieldValue, type InsertCustomFieldValue,
+  type SavedView, type InsertSavedView,
+  type NotificationPreference, type InsertNotificationPreference,
+  type Task, type InsertTask,
+  type AuditLogEntry, type InsertAuditLog,
   DEFAULT_DUE_DILIGENCE_TEMPLATES,
+  DEFAULT_DEAL_CHECKLIST_TEMPLATES,
 } from "@shared/schema";
 
 // Helper to calculate amortization schedule
@@ -288,6 +311,22 @@ export interface IStorage {
   deleteDueDiligenceItem(id: number): Promise<void>;
   applyTemplateToProperty(propertyId: number, templateId: number): Promise<DueDiligenceItem[]>;
 
+  // Deal Checklist Templates
+  getChecklistTemplates(orgId: number): Promise<ChecklistTemplate[]>;
+  getChecklistTemplate(id: number): Promise<ChecklistTemplate | undefined>;
+  createChecklistTemplate(template: InsertChecklistTemplate): Promise<ChecklistTemplate>;
+  updateChecklistTemplate(id: number, updates: Partial<InsertChecklistTemplate>): Promise<ChecklistTemplate>;
+  deleteChecklistTemplate(id: number): Promise<void>;
+  initializeDefaultChecklistTemplates(orgId: number): Promise<ChecklistTemplate[]>;
+
+  // Deal Checklists
+  getDealChecklist(dealId: number): Promise<DealChecklist | undefined>;
+  createDealChecklist(checklist: InsertDealChecklist): Promise<DealChecklist>;
+  updateDealChecklist(id: number, updates: Partial<InsertDealChecklist>): Promise<DealChecklist>;
+  applyChecklistTemplateToDeal(dealId: number, templateId: number): Promise<DealChecklist>;
+  updateDealChecklistItem(dealId: number, itemId: string, updates: { checked?: boolean; documentUrl?: string; checkedBy?: string }): Promise<DealChecklist>;
+  checkStageGate(dealId: number): Promise<{ canAdvance: boolean; incompleteItems: DealChecklistItem[] }>;
+
   // Usage Records
   getUsageRecords(orgId: number, limit?: number): Promise<UsageRecord[]>;
   getUsageSummaryByMonth(orgId: number, month: string): Promise<{ actionType: string; count: number; totalCost: number }[]>;
@@ -349,6 +388,117 @@ export interface IStorage {
     remindersSentThisMonth: number;
     collectionsThisMonth: number;
   }>;
+
+  // Campaign Sequences
+  getSequences(orgId: number): Promise<CampaignSequence[]>;
+  getSequence(orgId: number, id: number): Promise<CampaignSequence | undefined>;
+  createSequence(sequence: InsertCampaignSequence): Promise<CampaignSequence>;
+  updateSequence(id: number, updates: Partial<InsertCampaignSequence>): Promise<CampaignSequence>;
+  deleteSequence(id: number): Promise<void>;
+
+  // Sequence Steps
+  getSequenceSteps(sequenceId: number): Promise<SequenceStep[]>;
+  createSequenceStep(step: InsertSequenceStep): Promise<SequenceStep>;
+  updateSequenceStep(id: number, updates: Partial<InsertSequenceStep>): Promise<SequenceStep>;
+  deleteSequenceStep(id: number): Promise<void>;
+  reorderSequenceSteps(sequenceId: number, stepIds: number[]): Promise<void>;
+
+  // Sequence Enrollments
+  getSequenceEnrollments(sequenceId: number): Promise<SequenceEnrollment[]>;
+  getLeadEnrollments(leadId: number): Promise<SequenceEnrollment[]>;
+  getActiveEnrollments(orgId: number): Promise<(SequenceEnrollment & { sequence: CampaignSequence; lead: Lead })[]>;
+  getEnrollmentsDueForProcessing(): Promise<(SequenceEnrollment & { sequence: CampaignSequence; lead: Lead })[]>;
+  createSequenceEnrollment(enrollment: InsertSequenceEnrollment): Promise<SequenceEnrollment>;
+  updateSequenceEnrollment(id: number, updates: Partial<InsertSequenceEnrollment>): Promise<SequenceEnrollment>;
+  pauseEnrollment(id: number, reason: string): Promise<SequenceEnrollment>;
+  resumeEnrollment(id: number): Promise<SequenceEnrollment>;
+  cancelEnrollment(id: number): Promise<SequenceEnrollment>;
+  completeEnrollment(id: number): Promise<SequenceEnrollment>;
+  getSequenceStats(orgId: number): Promise<{ sequenceId: number; name: string; totalEnrollments: number; activeEnrollments: number; completedEnrollments: number }[]>;
+
+  // A/B Tests
+  getAbTests(orgId: number): Promise<AbTest[]>;
+  getAbTest(orgId: number, id: number): Promise<AbTest | undefined>;
+  getAbTestByCampaign(campaignId: number): Promise<AbTest | undefined>;
+  createAbTest(test: InsertAbTest): Promise<AbTest>;
+  updateAbTest(id: number, updates: Partial<InsertAbTest>): Promise<AbTest>;
+  deleteAbTest(id: number): Promise<void>;
+
+  // A/B Test Variants
+  getAbTestVariants(testId: number): Promise<AbTestVariant[]>;
+  createAbTestVariant(variant: InsertAbTestVariant): Promise<AbTestVariant>;
+  updateAbTestVariant(id: number, updates: Partial<InsertAbTestVariant>): Promise<AbTestVariant>;
+  deleteAbTestVariant(id: number): Promise<void>;
+  getAbTestWithVariants(orgId: number, testId: number): Promise<{ test: AbTest; variants: AbTestVariant[] } | undefined>;
+
+  // Custom Field Definitions
+  getCustomFieldDefinitions(orgId: number, entityType?: string): Promise<CustomFieldDefinition[]>;
+  getCustomFieldDefinition(orgId: number, id: number): Promise<CustomFieldDefinition | undefined>;
+  createCustomFieldDefinition(definition: InsertCustomFieldDefinition): Promise<CustomFieldDefinition>;
+  updateCustomFieldDefinition(id: number, updates: Partial<InsertCustomFieldDefinition>): Promise<CustomFieldDefinition>;
+  deleteCustomFieldDefinition(id: number): Promise<void>;
+
+  // Custom Field Values
+  getCustomFieldValues(entityType: string, entityId: number): Promise<(CustomFieldValue & { definition: CustomFieldDefinition })[]>;
+  setCustomFieldValue(definitionId: number, entityId: number, value: string | null): Promise<CustomFieldValue>;
+  deleteCustomFieldValuesForEntity(entityType: string, entityId: number): Promise<void>;
+
+  // Saved Views
+  getSavedViews(orgId: number, entityType?: string): Promise<SavedView[]>;
+  getSavedView(orgId: number, id: number): Promise<SavedView | undefined>;
+  createSavedView(view: InsertSavedView): Promise<SavedView>;
+  updateSavedView(id: number, updates: Partial<InsertSavedView>): Promise<SavedView>;
+  deleteSavedView(id: number): Promise<void>;
+  setDefaultView(orgId: number, entityType: string, viewId: number): Promise<SavedView>;
+
+  // Notification Preferences
+  getNotificationPreferences(userId: string, orgId: number): Promise<NotificationPreference[]>;
+  upsertNotificationPreference(pref: InsertNotificationPreference): Promise<NotificationPreference>;
+  updateNotificationPreference(id: number, updates: Partial<InsertNotificationPreference>): Promise<NotificationPreference>;
+
+  // Tasks (17.1, 17.2)
+  getTasks(orgId: number, filters?: { status?: string; priority?: string; assignedTo?: number; entityType?: string; entityId?: number }): Promise<Task[]>;
+  getTask(orgId: number, id: number): Promise<Task | undefined>;
+  createTask(task: InsertTask): Promise<Task>;
+  updateTask(id: number, updates: Partial<InsertTask>): Promise<Task>;
+  deleteTask(id: number): Promise<void>;
+  completeTask(id: number): Promise<Task>;
+  getRecurringTasksDue(): Promise<Task[]>;
+  createNextRecurringTask(parentTask: Task): Promise<Task>;
+
+  // Audit Log (20.1)
+  createAuditLogEntry(entry: InsertAuditLog): Promise<AuditLogEntry>;
+  getAuditLogs(orgId: number, filters?: { 
+    action?: string; 
+    entityType?: string; 
+    entityId?: number;
+    userId?: string;
+    startDate?: Date;
+    endDate?: Date;
+    limit?: number;
+    offset?: number;
+  }): Promise<AuditLogEntry[]>;
+  getAuditLogCount(orgId: number, filters?: { 
+    action?: string; 
+    entityType?: string;
+    startDate?: Date;
+    endDate?: Date;
+  }): Promise<number>;
+
+  // Data Retention (20.3)
+  purgeOldLeads(orgId: number, beforeDate: Date): Promise<number>;
+  purgeOldDeals(orgId: number, beforeDate: Date, status: string): Promise<number>;
+  purgeOldAuditLogs(orgId: number, beforeDate: Date): Promise<number>;
+  purgeOldCommunications(orgId: number, beforeDate: Date): Promise<number>;
+
+  // TCPA Compliance (20.2)
+  getLeadsWithoutConsent(orgId: number): Promise<Lead[]>;
+  getLeadsOptedOut(orgId: number): Promise<Lead[]>;
+  updateLeadConsent(leadId: number, consent: { 
+    tcpaConsent: boolean; 
+    consentSource?: string;
+    optOutReason?: string;
+  }): Promise<Lead>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1406,6 +1556,155 @@ export class DatabaseStorage implements IStorage {
     return items;
   }
 
+  // Deal Checklist Templates
+  async getChecklistTemplates(orgId: number) {
+    return await db.select().from(checklistTemplates)
+      .where(eq(checklistTemplates.organizationId, orgId))
+      .orderBy(checklistTemplates.name);
+  }
+
+  async getChecklistTemplate(id: number) {
+    const [template] = await db.select().from(checklistTemplates)
+      .where(eq(checklistTemplates.id, id));
+    return template;
+  }
+
+  async createChecklistTemplate(template: InsertChecklistTemplate) {
+    const [newTemplate] = await db.insert(checklistTemplates).values(template).returning();
+    return newTemplate;
+  }
+
+  async updateChecklistTemplate(id: number, updates: Partial<InsertChecklistTemplate>) {
+    const [updated] = await db.update(checklistTemplates)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(checklistTemplates.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteChecklistTemplate(id: number) {
+    await db.delete(checklistTemplates).where(eq(checklistTemplates.id, id));
+  }
+
+  async initializeDefaultChecklistTemplates(orgId: number) {
+    const existing = await this.getChecklistTemplates(orgId);
+    if (existing.length > 0) {
+      return existing;
+    }
+
+    const templates: ChecklistTemplate[] = [];
+    for (const templateData of DEFAULT_DEAL_CHECKLIST_TEMPLATES) {
+      const template = await this.createChecklistTemplate({
+        organizationId: orgId,
+        name: templateData.name,
+        description: templateData.description,
+        dealType: templateData.dealType,
+        items: templateData.items,
+      });
+      templates.push(template);
+    }
+    return templates;
+  }
+
+  // Deal Checklists
+  async getDealChecklist(dealId: number) {
+    const [checklist] = await db.select().from(dealChecklists)
+      .where(eq(dealChecklists.dealId, dealId));
+    return checklist;
+  }
+
+  async createDealChecklist(checklist: InsertDealChecklist) {
+    const [newChecklist] = await db.insert(dealChecklists).values(checklist).returning();
+    return newChecklist;
+  }
+
+  async updateDealChecklist(id: number, updates: Partial<InsertDealChecklist>) {
+    const [updated] = await db.update(dealChecklists)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(dealChecklists.id, id))
+      .returning();
+    return updated;
+  }
+
+  async applyChecklistTemplateToDeal(dealId: number, templateId: number) {
+    const template = await this.getChecklistTemplate(templateId);
+    if (!template) {
+      throw new Error("Template not found");
+    }
+
+    await db.delete(dealChecklists).where(eq(dealChecklists.dealId, dealId));
+
+    const items: DealChecklistItem[] = template.items.map(item => ({
+      id: item.id,
+      title: item.title,
+      description: item.description,
+      required: item.required,
+      documentRequired: item.documentRequired,
+    }));
+
+    const checklist = await this.createDealChecklist({
+      dealId,
+      templateId,
+      items,
+    });
+    return checklist;
+  }
+
+  async updateDealChecklistItem(
+    dealId: number, 
+    itemId: string, 
+    updates: { checked?: boolean; documentUrl?: string; checkedBy?: string }
+  ) {
+    const checklist = await this.getDealChecklist(dealId);
+    if (!checklist) {
+      throw new Error("Checklist not found for this deal");
+    }
+
+    const updatedItems = checklist.items.map(item => {
+      if (item.id === itemId) {
+        const updatedItem = { ...item };
+        if (updates.checked !== undefined) {
+          if (updates.checked) {
+            updatedItem.checkedAt = new Date().toISOString();
+            updatedItem.checkedBy = updates.checkedBy;
+          } else {
+            updatedItem.checkedAt = undefined;
+            updatedItem.checkedBy = undefined;
+          }
+        }
+        if (updates.documentUrl !== undefined) {
+          updatedItem.documentUrl = updates.documentUrl;
+        }
+        return updatedItem;
+      }
+      return item;
+    });
+
+    const allComplete = updatedItems.every(item => item.checkedAt);
+    const completedAt = allComplete ? new Date() : null;
+
+    return await this.updateDealChecklist(checklist.id, {
+      items: updatedItems,
+      completedAt,
+    });
+  }
+
+  async checkStageGate(dealId: number): Promise<{ canAdvance: boolean; incompleteItems: DealChecklistItem[] }> {
+    const checklist = await this.getDealChecklist(dealId);
+    if (!checklist) {
+      return { canAdvance: true, incompleteItems: [] };
+    }
+
+    const incompleteItems = checklist.items.filter(item => 
+      item.required && !item.checkedAt
+    );
+
+    return {
+      canAdvance: incompleteItems.length === 0,
+      incompleteItems,
+    };
+  }
+
   // Usage Records
   async getUsageRecords(orgId: number, limit: number = 50) {
     return await db.select().from(usageRecords)
@@ -2028,6 +2327,844 @@ export class DatabaseStorage implements IStorage {
 
   async deleteProvisionedPhoneNumber(id: number): Promise<void> {
     await db.delete(provisionedPhoneNumbers).where(eq(provisionedPhoneNumbers.id, id));
+  }
+
+  // Campaign Responses CRUD
+  async getCampaignResponses(orgId: number, campaignId?: number): Promise<CampaignResponse[]> {
+    const conditions = [eq(campaignResponses.organizationId, orgId)];
+    if (campaignId) {
+      conditions.push(eq(campaignResponses.campaignId, campaignId));
+    }
+    return await db.select().from(campaignResponses)
+      .where(and(...conditions))
+      .orderBy(desc(campaignResponses.responseDate));
+  }
+
+  async getCampaignResponse(id: number): Promise<CampaignResponse | undefined> {
+    const [response] = await db.select().from(campaignResponses)
+      .where(eq(campaignResponses.id, id));
+    return response;
+  }
+
+  async createCampaignResponse(data: InsertCampaignResponse): Promise<CampaignResponse> {
+    const [response] = await db.insert(campaignResponses).values(data).returning();
+    return response;
+  }
+
+  async updateCampaignResponse(id: number, data: Partial<InsertCampaignResponse>): Promise<CampaignResponse> {
+    const [response] = await db.update(campaignResponses)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(campaignResponses.id, id))
+      .returning();
+    return response;
+  }
+
+  async deleteCampaignResponse(id: number): Promise<void> {
+    await db.delete(campaignResponses).where(eq(campaignResponses.id, id));
+  }
+
+  async getCampaignByTrackingCode(trackingCode: string): Promise<Campaign | undefined> {
+    const [campaign] = await db.select().from(campaigns)
+      .where(eq(campaigns.trackingCode, trackingCode));
+    return campaign;
+  }
+
+  async getCampaignResponsesCount(campaignId: number): Promise<number> {
+    const [result] = await db.select({ count: count() }).from(campaignResponses)
+      .where(eq(campaignResponses.campaignId, campaignId));
+    return result?.count || 0;
+  }
+
+  async getResponsesCountByOrg(orgId: number): Promise<number> {
+    const [result] = await db.select({ count: count() }).from(campaignResponses)
+      .where(eq(campaignResponses.organizationId, orgId));
+    return result?.count || 0;
+  }
+
+  generateTrackingCode(): string {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let code = 'CAMP-';
+    for (let i = 0; i < 6; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
+  }
+
+  // Activity Events CRUD (Communication Timeline)
+  async getActivityEvents(
+    orgId: number, 
+    entityType: string, 
+    entityId: number,
+    eventTypes?: string[]
+  ): Promise<ActivityEvent[]> {
+    const conditions = [
+      eq(activityEvents.organizationId, orgId),
+      eq(activityEvents.entityType, entityType),
+      eq(activityEvents.entityId, entityId),
+    ];
+    
+    let query = db.select().from(activityEvents)
+      .where(and(...conditions))
+      .orderBy(desc(activityEvents.eventDate));
+    
+    const results = await query;
+    
+    if (eventTypes && eventTypes.length > 0) {
+      return results.filter(e => eventTypes.includes(e.eventType));
+    }
+    
+    return results;
+  }
+
+  async createActivityEvent(data: InsertActivityEvent): Promise<ActivityEvent> {
+    const [event] = await db.insert(activityEvents).values(data).returning();
+    return event;
+  }
+
+  async getActivityEventsByEntity(
+    orgId: number, 
+    entityType: string, 
+    entityId: number, 
+    limit?: number
+  ): Promise<ActivityEvent[]> {
+    let query = db.select().from(activityEvents)
+      .where(and(
+        eq(activityEvents.organizationId, orgId),
+        eq(activityEvents.entityType, entityType),
+        eq(activityEvents.entityId, entityId)
+      ))
+      .orderBy(desc(activityEvents.eventDate));
+    
+    if (limit) {
+      return await query.limit(limit);
+    }
+    
+    return await query;
+  }
+
+  async getRecentActivityEvents(orgId: number, limit: number = 50): Promise<ActivityEvent[]> {
+    return await db.select().from(activityEvents)
+      .where(eq(activityEvents.organizationId, orgId))
+      .orderBy(desc(activityEvents.eventDate))
+      .limit(limit);
+  }
+
+  // Campaign Sequences
+  async getSequences(orgId: number): Promise<CampaignSequence[]> {
+    return await db.select().from(campaignSequences)
+      .where(eq(campaignSequences.organizationId, orgId))
+      .orderBy(desc(campaignSequences.createdAt));
+  }
+
+  async getSequence(orgId: number, id: number): Promise<CampaignSequence | undefined> {
+    const [sequence] = await db.select().from(campaignSequences)
+      .where(and(eq(campaignSequences.organizationId, orgId), eq(campaignSequences.id, id)));
+    return sequence;
+  }
+
+  async createSequence(sequence: InsertCampaignSequence): Promise<CampaignSequence> {
+    const [newSequence] = await db.insert(campaignSequences).values(sequence).returning();
+    return newSequence;
+  }
+
+  async updateSequence(id: number, updates: Partial<InsertCampaignSequence>): Promise<CampaignSequence> {
+    const [updated] = await db.update(campaignSequences)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(campaignSequences.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteSequence(id: number): Promise<void> {
+    await db.delete(sequenceEnrollments).where(eq(sequenceEnrollments.sequenceId, id));
+    await db.delete(sequenceSteps).where(eq(sequenceSteps.sequenceId, id));
+    await db.delete(campaignSequences).where(eq(campaignSequences.id, id));
+  }
+
+  // Sequence Steps
+  async getSequenceSteps(sequenceId: number): Promise<SequenceStep[]> {
+    return await db.select().from(sequenceSteps)
+      .where(eq(sequenceSteps.sequenceId, sequenceId))
+      .orderBy(sequenceSteps.stepNumber);
+  }
+
+  async createSequenceStep(step: InsertSequenceStep): Promise<SequenceStep> {
+    const [newStep] = await db.insert(sequenceSteps).values(step).returning();
+    return newStep;
+  }
+
+  async updateSequenceStep(id: number, updates: Partial<InsertSequenceStep>): Promise<SequenceStep> {
+    const [updated] = await db.update(sequenceSteps)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(sequenceSteps.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteSequenceStep(id: number): Promise<void> {
+    await db.delete(sequenceSteps).where(eq(sequenceSteps.id, id));
+  }
+
+  async reorderSequenceSteps(sequenceId: number, stepIds: number[]): Promise<void> {
+    for (let i = 0; i < stepIds.length; i++) {
+      await db.update(sequenceSteps)
+        .set({ stepNumber: i + 1, updatedAt: new Date() })
+        .where(and(eq(sequenceSteps.id, stepIds[i]), eq(sequenceSteps.sequenceId, sequenceId)));
+    }
+  }
+
+  // Sequence Enrollments
+  async getSequenceEnrollments(sequenceId: number): Promise<SequenceEnrollment[]> {
+    return await db.select().from(sequenceEnrollments)
+      .where(eq(sequenceEnrollments.sequenceId, sequenceId))
+      .orderBy(desc(sequenceEnrollments.enrolledAt));
+  }
+
+  async getLeadEnrollments(leadId: number): Promise<SequenceEnrollment[]> {
+    return await db.select().from(sequenceEnrollments)
+      .where(eq(sequenceEnrollments.leadId, leadId))
+      .orderBy(desc(sequenceEnrollments.enrolledAt));
+  }
+
+  async getActiveEnrollments(orgId: number): Promise<(SequenceEnrollment & { sequence: CampaignSequence; lead: Lead })[]> {
+    const results = await db.select({
+      enrollment: sequenceEnrollments,
+      sequence: campaignSequences,
+      lead: leads,
+    })
+      .from(sequenceEnrollments)
+      .innerJoin(campaignSequences, eq(sequenceEnrollments.sequenceId, campaignSequences.id))
+      .innerJoin(leads, eq(sequenceEnrollments.leadId, leads.id))
+      .where(and(
+        eq(campaignSequences.organizationId, orgId),
+        eq(sequenceEnrollments.status, "active")
+      ))
+      .orderBy(desc(sequenceEnrollments.enrolledAt));
+
+    return results.map(r => ({ ...r.enrollment, sequence: r.sequence, lead: r.lead }));
+  }
+
+  async getEnrollmentsDueForProcessing(): Promise<(SequenceEnrollment & { sequence: CampaignSequence; lead: Lead })[]> {
+    const now = new Date();
+    const results = await db.select({
+      enrollment: sequenceEnrollments,
+      sequence: campaignSequences,
+      lead: leads,
+    })
+      .from(sequenceEnrollments)
+      .innerJoin(campaignSequences, eq(sequenceEnrollments.sequenceId, campaignSequences.id))
+      .innerJoin(leads, eq(sequenceEnrollments.leadId, leads.id))
+      .where(and(
+        eq(sequenceEnrollments.status, "active"),
+        eq(campaignSequences.isActive, true),
+        lte(sequenceEnrollments.nextStepScheduledAt, now)
+      ))
+      .orderBy(sequenceEnrollments.nextStepScheduledAt);
+
+    return results.map(r => ({ ...r.enrollment, sequence: r.sequence, lead: r.lead }));
+  }
+
+  async createSequenceEnrollment(enrollment: InsertSequenceEnrollment): Promise<SequenceEnrollment> {
+    const [newEnrollment] = await db.insert(sequenceEnrollments).values(enrollment).returning();
+    return newEnrollment;
+  }
+
+  async updateSequenceEnrollment(id: number, updates: Partial<InsertSequenceEnrollment>): Promise<SequenceEnrollment> {
+    const [updated] = await db.update(sequenceEnrollments)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(sequenceEnrollments.id, id))
+      .returning();
+    return updated;
+  }
+
+  async pauseEnrollment(id: number, reason: string): Promise<SequenceEnrollment> {
+    return this.updateSequenceEnrollment(id, { status: "paused", pauseReason: reason });
+  }
+
+  async resumeEnrollment(id: number): Promise<SequenceEnrollment> {
+    return this.updateSequenceEnrollment(id, { status: "active", pauseReason: null });
+  }
+
+  async cancelEnrollment(id: number): Promise<SequenceEnrollment> {
+    return this.updateSequenceEnrollment(id, { status: "cancelled" });
+  }
+
+  async completeEnrollment(id: number): Promise<SequenceEnrollment> {
+    return this.updateSequenceEnrollment(id, { status: "completed", completedAt: new Date() });
+  }
+
+  async getSequenceStats(orgId: number): Promise<{ sequenceId: number; name: string; totalEnrollments: number; activeEnrollments: number; completedEnrollments: number }[]> {
+    const sequences = await this.getSequences(orgId);
+    const stats = [];
+
+    for (const seq of sequences) {
+      const enrollments = await this.getSequenceEnrollments(seq.id);
+      stats.push({
+        sequenceId: seq.id,
+        name: seq.name,
+        totalEnrollments: enrollments.length,
+        activeEnrollments: enrollments.filter(e => e.status === "active").length,
+        completedEnrollments: enrollments.filter(e => e.status === "completed").length,
+      });
+    }
+
+    return stats;
+  }
+
+  // A/B Tests
+  async getAbTests(orgId: number): Promise<AbTest[]> {
+    return await db.select().from(abTests)
+      .where(eq(abTests.organizationId, orgId))
+      .orderBy(desc(abTests.createdAt));
+  }
+
+  async getAbTest(orgId: number, id: number): Promise<AbTest | undefined> {
+    const [test] = await db.select().from(abTests)
+      .where(and(eq(abTests.organizationId, orgId), eq(abTests.id, id)));
+    return test;
+  }
+
+  async getAbTestByCampaign(campaignId: number): Promise<AbTest | undefined> {
+    const [test] = await db.select().from(abTests)
+      .where(eq(abTests.campaignId, campaignId));
+    return test;
+  }
+
+  async createAbTest(test: InsertAbTest): Promise<AbTest> {
+    const [newTest] = await db.insert(abTests).values(test).returning();
+    return newTest;
+  }
+
+  async updateAbTest(id: number, updates: Partial<InsertAbTest>): Promise<AbTest> {
+    const [updated] = await db.update(abTests)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(abTests.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteAbTest(id: number): Promise<void> {
+    await db.delete(abTestVariants).where(eq(abTestVariants.testId, id));
+    await db.delete(abTests).where(eq(abTests.id, id));
+  }
+
+  // A/B Test Variants
+  async getAbTestVariants(testId: number): Promise<AbTestVariant[]> {
+    return await db.select().from(abTestVariants)
+      .where(eq(abTestVariants.testId, testId))
+      .orderBy(abTestVariants.id);
+  }
+
+  async createAbTestVariant(variant: InsertAbTestVariant): Promise<AbTestVariant> {
+    const [newVariant] = await db.insert(abTestVariants).values(variant).returning();
+    return newVariant;
+  }
+
+  async updateAbTestVariant(id: number, updates: Partial<InsertAbTestVariant>): Promise<AbTestVariant> {
+    const [updated] = await db.update(abTestVariants)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(abTestVariants.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteAbTestVariant(id: number): Promise<void> {
+    await db.delete(abTestVariants).where(eq(abTestVariants.id, id));
+  }
+
+  async getAbTestWithVariants(orgId: number, testId: number): Promise<{ test: AbTest; variants: AbTestVariant[] } | undefined> {
+    const test = await this.getAbTest(orgId, testId);
+    if (!test) return undefined;
+    const variants = await this.getAbTestVariants(testId);
+    return { test, variants };
+  }
+
+  // Custom Field Definitions
+  async getCustomFieldDefinitions(orgId: number, entityType?: string): Promise<CustomFieldDefinition[]> {
+    if (entityType) {
+      return await db.select().from(customFieldDefinitions)
+        .where(and(
+          eq(customFieldDefinitions.organizationId, orgId),
+          eq(customFieldDefinitions.entityType, entityType)
+        ))
+        .orderBy(customFieldDefinitions.displayOrder, customFieldDefinitions.id);
+    }
+    return await db.select().from(customFieldDefinitions)
+      .where(eq(customFieldDefinitions.organizationId, orgId))
+      .orderBy(customFieldDefinitions.displayOrder, customFieldDefinitions.id);
+  }
+
+  async getCustomFieldDefinition(orgId: number, id: number): Promise<CustomFieldDefinition | undefined> {
+    const [definition] = await db.select().from(customFieldDefinitions)
+      .where(and(eq(customFieldDefinitions.organizationId, orgId), eq(customFieldDefinitions.id, id)));
+    return definition;
+  }
+
+  async createCustomFieldDefinition(definition: InsertCustomFieldDefinition): Promise<CustomFieldDefinition> {
+    const [newDefinition] = await db.insert(customFieldDefinitions).values(definition).returning();
+    return newDefinition;
+  }
+
+  async updateCustomFieldDefinition(id: number, updates: Partial<InsertCustomFieldDefinition>): Promise<CustomFieldDefinition> {
+    const [updated] = await db.update(customFieldDefinitions)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(customFieldDefinitions.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteCustomFieldDefinition(id: number): Promise<void> {
+    await db.delete(customFieldValues).where(eq(customFieldValues.definitionId, id));
+    await db.delete(customFieldDefinitions).where(eq(customFieldDefinitions.id, id));
+  }
+
+  // Custom Field Values
+  async getCustomFieldValues(entityType: string, entityId: number): Promise<(CustomFieldValue & { definition: CustomFieldDefinition })[]> {
+    const results = await db.select({
+      value: customFieldValues,
+      definition: customFieldDefinitions,
+    })
+      .from(customFieldValues)
+      .innerJoin(customFieldDefinitions, eq(customFieldValues.definitionId, customFieldDefinitions.id))
+      .where(and(
+        eq(customFieldDefinitions.entityType, entityType),
+        eq(customFieldValues.entityId, entityId)
+      ))
+      .orderBy(customFieldDefinitions.displayOrder, customFieldDefinitions.id);
+
+    return results.map(r => ({ ...r.value, definition: r.definition }));
+  }
+
+  async setCustomFieldValue(definitionId: number, entityId: number, value: string | null): Promise<CustomFieldValue> {
+    const [existing] = await db.select().from(customFieldValues)
+      .where(and(
+        eq(customFieldValues.definitionId, definitionId),
+        eq(customFieldValues.entityId, entityId)
+      ));
+
+    if (existing) {
+      const [updated] = await db.update(customFieldValues)
+        .set({ value, updatedAt: new Date() })
+        .where(eq(customFieldValues.id, existing.id))
+        .returning();
+      return updated;
+    } else {
+      const [created] = await db.insert(customFieldValues)
+        .values({ definitionId, entityId, value })
+        .returning();
+      return created;
+    }
+  }
+
+  async deleteCustomFieldValuesForEntity(entityType: string, entityId: number): Promise<void> {
+    const definitions = await this.getCustomFieldDefinitions(0, entityType);
+    const definitionIds = definitions.map(d => d.id);
+    if (definitionIds.length > 0) {
+      await db.delete(customFieldValues)
+        .where(and(
+          eq(customFieldValues.entityId, entityId),
+          sql`${customFieldValues.definitionId} = ANY(${definitionIds})`
+        ));
+    }
+  }
+
+  // Saved Views
+  async getSavedViews(orgId: number, entityType?: string): Promise<SavedView[]> {
+    if (entityType) {
+      return await db.select().from(savedViews)
+        .where(and(
+          eq(savedViews.organizationId, orgId),
+          eq(savedViews.entityType, entityType)
+        ))
+        .orderBy(desc(savedViews.isDefault), savedViews.name);
+    }
+    return await db.select().from(savedViews)
+      .where(eq(savedViews.organizationId, orgId))
+      .orderBy(desc(savedViews.isDefault), savedViews.name);
+  }
+
+  async getSavedView(orgId: number, id: number): Promise<SavedView | undefined> {
+    const [view] = await db.select().from(savedViews)
+      .where(and(eq(savedViews.organizationId, orgId), eq(savedViews.id, id)));
+    return view;
+  }
+
+  async createSavedView(view: InsertSavedView): Promise<SavedView> {
+    const [newView] = await db.insert(savedViews).values(view).returning();
+    return newView;
+  }
+
+  async updateSavedView(id: number, updates: Partial<InsertSavedView>): Promise<SavedView> {
+    const [updated] = await db.update(savedViews)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(savedViews.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteSavedView(id: number): Promise<void> {
+    await db.delete(savedViews).where(eq(savedViews.id, id));
+  }
+
+  async setDefaultView(orgId: number, entityType: string, viewId: number): Promise<SavedView> {
+    await db.update(savedViews)
+      .set({ isDefault: false, updatedAt: new Date() })
+      .where(and(
+        eq(savedViews.organizationId, orgId),
+        eq(savedViews.entityType, entityType)
+      ));
+    
+    const [updated] = await db.update(savedViews)
+      .set({ isDefault: true, updatedAt: new Date() })
+      .where(eq(savedViews.id, viewId))
+      .returning();
+    return updated;
+  }
+
+  // Notification Preferences
+  async getNotificationPreferences(userId: string, orgId: number): Promise<NotificationPreference[]> {
+    return await db.select().from(notificationPreferences)
+      .where(and(
+        eq(notificationPreferences.userId, userId),
+        eq(notificationPreferences.organizationId, orgId)
+      ));
+  }
+
+  async upsertNotificationPreference(pref: InsertNotificationPreference): Promise<NotificationPreference> {
+    const existing = await db.select().from(notificationPreferences)
+      .where(and(
+        eq(notificationPreferences.userId, pref.userId),
+        eq(notificationPreferences.organizationId, pref.organizationId),
+        eq(notificationPreferences.eventType, pref.eventType)
+      ))
+      .limit(1);
+    
+    if (existing.length > 0) {
+      const [updated] = await db.update(notificationPreferences)
+        .set({ ...pref, updatedAt: new Date() })
+        .where(eq(notificationPreferences.id, existing[0].id))
+        .returning();
+      return updated;
+    }
+    
+    const [created] = await db.insert(notificationPreferences).values(pref).returning();
+    return created;
+  }
+
+  async updateNotificationPreference(id: number, updates: Partial<InsertNotificationPreference>): Promise<NotificationPreference> {
+    const [updated] = await db.update(notificationPreferences)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(notificationPreferences.id, id))
+      .returning();
+    return updated;
+  }
+
+  // Tasks (17.1, 17.2)
+  async getTasks(orgId: number, filters?: { status?: string; priority?: string; assignedTo?: number; entityType?: string; entityId?: number }): Promise<Task[]> {
+    let conditions = [eq(tasks.organizationId, orgId)];
+    
+    if (filters?.status) {
+      conditions.push(eq(tasks.status, filters.status));
+    }
+    if (filters?.priority) {
+      conditions.push(eq(tasks.priority, filters.priority));
+    }
+    if (filters?.assignedTo !== undefined) {
+      conditions.push(eq(tasks.assignedTo, filters.assignedTo));
+    }
+    if (filters?.entityType) {
+      conditions.push(eq(tasks.entityType, filters.entityType));
+    }
+    if (filters?.entityId !== undefined) {
+      conditions.push(eq(tasks.entityId, filters.entityId));
+    }
+    
+    return await db.select().from(tasks)
+      .where(and(...conditions))
+      .orderBy(desc(tasks.dueDate), desc(tasks.priority));
+  }
+
+  async getTask(orgId: number, id: number): Promise<Task | undefined> {
+    const [task] = await db.select().from(tasks)
+      .where(and(eq(tasks.organizationId, orgId), eq(tasks.id, id)));
+    return task;
+  }
+
+  async createTask(task: InsertTask): Promise<Task> {
+    const [newTask] = await db.insert(tasks).values(task).returning();
+    await this.logActivity({
+      organizationId: task.organizationId,
+      action: "created",
+      entityType: "task",
+      entityId: newTask.id,
+      description: `Task "${newTask.title}" created`,
+    });
+    return newTask;
+  }
+
+  async updateTask(id: number, updates: Partial<InsertTask>): Promise<Task> {
+    const [updated] = await db.update(tasks)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(tasks.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteTask(id: number): Promise<void> {
+    await db.delete(tasks).where(eq(tasks.id, id));
+  }
+
+  async completeTask(id: number): Promise<Task> {
+    const [completed] = await db.update(tasks)
+      .set({ 
+        status: "completed", 
+        completedAt: new Date(),
+        updatedAt: new Date() 
+      })
+      .where(eq(tasks.id, id))
+      .returning();
+    
+    await this.logActivity({
+      organizationId: completed.organizationId,
+      action: "completed",
+      entityType: "task",
+      entityId: completed.id,
+      description: `Task "${completed.title}" completed`,
+    });
+    
+    return completed;
+  }
+
+  async getRecurringTasksDue(): Promise<Task[]> {
+    return await db.select().from(tasks)
+      .where(and(
+        eq(tasks.isRecurring, true),
+        eq(tasks.status, "completed"),
+        lte(tasks.nextOccurrence, new Date())
+      ));
+  }
+
+  async createNextRecurringTask(parentTask: Task): Promise<Task> {
+    const nextDueDate = this.calculateNextOccurrence(parentTask.dueDate, parentTask.recurrenceRule as string);
+    const nextNextOccurrence = this.calculateNextOccurrence(nextDueDate, parentTask.recurrenceRule as string);
+    
+    const newTask: InsertTask = {
+      organizationId: parentTask.organizationId,
+      title: parentTask.title,
+      description: parentTask.description,
+      dueDate: nextDueDate,
+      priority: parentTask.priority as "low" | "medium" | "high" | "urgent",
+      status: "pending",
+      assignedTo: parentTask.assignedTo,
+      createdBy: parentTask.createdBy,
+      entityType: parentTask.entityType as "lead" | "property" | "deal" | "none",
+      entityId: parentTask.entityId,
+      isRecurring: true,
+      recurrenceRule: parentTask.recurrenceRule,
+      nextOccurrence: nextNextOccurrence,
+      parentTaskId: parentTask.id,
+    };
+    
+    const [created] = await db.insert(tasks).values(newTask).returning();
+    
+    await db.update(tasks)
+      .set({ nextOccurrence: null })
+      .where(eq(tasks.id, parentTask.id));
+    
+    return created;
+  }
+
+  private calculateNextOccurrence(date: Date | null, rule: string): Date {
+    const baseDate = date ? new Date(date) : new Date();
+    const nextDate = new Date(baseDate);
+    
+    switch (rule) {
+      case "daily":
+        nextDate.setDate(nextDate.getDate() + 1);
+        break;
+      case "weekly":
+        nextDate.setDate(nextDate.getDate() + 7);
+        break;
+      case "monthly":
+        nextDate.setMonth(nextDate.getMonth() + 1);
+        break;
+      case "yearly":
+        nextDate.setFullYear(nextDate.getFullYear() + 1);
+        break;
+    }
+    
+    return nextDate;
+  }
+
+  // Audit Log (20.1)
+  async createAuditLogEntry(entry: InsertAuditLog): Promise<AuditLogEntry> {
+    const [created] = await db.insert(auditLog).values(entry).returning();
+    return created;
+  }
+
+  async getAuditLogs(orgId: number, filters?: { 
+    action?: string; 
+    entityType?: string; 
+    entityId?: number;
+    userId?: string;
+    startDate?: Date;
+    endDate?: Date;
+    limit?: number;
+    offset?: number;
+  }): Promise<AuditLogEntry[]> {
+    let conditions = [eq(auditLog.organizationId, orgId)];
+    
+    if (filters?.action) {
+      conditions.push(eq(auditLog.action, filters.action));
+    }
+    if (filters?.entityType) {
+      conditions.push(eq(auditLog.entityType, filters.entityType));
+    }
+    if (filters?.entityId !== undefined) {
+      conditions.push(eq(auditLog.entityId, filters.entityId));
+    }
+    if (filters?.userId) {
+      conditions.push(eq(auditLog.userId, filters.userId));
+    }
+    if (filters?.startDate) {
+      conditions.push(gte(auditLog.createdAt, filters.startDate));
+    }
+    if (filters?.endDate) {
+      conditions.push(lte(auditLog.createdAt, filters.endDate));
+    }
+    
+    const limit = filters?.limit || 100;
+    const offset = filters?.offset || 0;
+    
+    return await db.select().from(auditLog)
+      .where(and(...conditions))
+      .orderBy(desc(auditLog.createdAt))
+      .limit(limit)
+      .offset(offset);
+  }
+
+  async getAuditLogCount(orgId: number, filters?: { 
+    action?: string; 
+    entityType?: string;
+    startDate?: Date;
+    endDate?: Date;
+  }): Promise<number> {
+    let conditions = [eq(auditLog.organizationId, orgId)];
+    
+    if (filters?.action) {
+      conditions.push(eq(auditLog.action, filters.action));
+    }
+    if (filters?.entityType) {
+      conditions.push(eq(auditLog.entityType, filters.entityType));
+    }
+    if (filters?.startDate) {
+      conditions.push(gte(auditLog.createdAt, filters.startDate));
+    }
+    if (filters?.endDate) {
+      conditions.push(lte(auditLog.createdAt, filters.endDate));
+    }
+    
+    const [result] = await db.select({ count: count() }).from(auditLog)
+      .where(and(...conditions));
+    return result?.count || 0;
+  }
+
+  // Data Retention (20.3)
+  async purgeOldLeads(orgId: number, beforeDate: Date): Promise<number> {
+    const result = await db.delete(leads)
+      .where(and(
+        eq(leads.organizationId, orgId),
+        lte(leads.createdAt, beforeDate),
+        eq(leads.status, "dead")
+      ))
+      .returning({ id: leads.id });
+    return result.length;
+  }
+
+  async purgeOldDeals(orgId: number, beforeDate: Date, status: string): Promise<number> {
+    const result = await db.delete(deals)
+      .where(and(
+        eq(deals.organizationId, orgId),
+        lte(deals.createdAt, beforeDate),
+        eq(deals.status, status)
+      ))
+      .returning({ id: deals.id });
+    return result.length;
+  }
+
+  async purgeOldAuditLogs(orgId: number, beforeDate: Date): Promise<number> {
+    const result = await db.delete(auditLog)
+      .where(and(
+        eq(auditLog.organizationId, orgId),
+        lte(auditLog.createdAt, beforeDate)
+      ))
+      .returning({ id: auditLog.id });
+    return result.length;
+  }
+
+  async purgeOldCommunications(orgId: number, beforeDate: Date): Promise<number> {
+    const result = await db.delete(leadActivities)
+      .where(and(
+        eq(leadActivities.organizationId, orgId),
+        lte(leadActivities.createdAt, beforeDate),
+        or(
+          eq(leadActivities.type, "communication_email"),
+          eq(leadActivities.type, "communication_sms")
+        )
+      ))
+      .returning({ id: leadActivities.id });
+    return result.length;
+  }
+
+  // TCPA Compliance (20.2)
+  async getLeadsWithoutConsent(orgId: number): Promise<Lead[]> {
+    return await db.select().from(leads)
+      .where(and(
+        eq(leads.organizationId, orgId),
+        or(
+          eq(leads.tcpaConsent, false),
+          sql`${leads.tcpaConsent} IS NULL`
+        )
+      ))
+      .orderBy(desc(leads.createdAt));
+  }
+
+  async getLeadsOptedOut(orgId: number): Promise<Lead[]> {
+    return await db.select().from(leads)
+      .where(and(
+        eq(leads.organizationId, orgId),
+        eq(leads.doNotContact, true)
+      ))
+      .orderBy(desc(leads.optOutDate));
+  }
+
+  async updateLeadConsent(leadId: number, consent: { 
+    tcpaConsent: boolean; 
+    consentSource?: string;
+    optOutReason?: string;
+  }): Promise<Lead> {
+    const updates: Partial<Lead> = {
+      tcpaConsent: consent.tcpaConsent,
+      updatedAt: new Date(),
+    };
+    
+    if (consent.tcpaConsent) {
+      updates.consentDate = new Date();
+      updates.consentSource = consent.consentSource || "manual";
+      updates.optOutDate = null;
+      updates.optOutReason = null;
+      updates.doNotContact = false;
+    } else {
+      updates.optOutDate = new Date();
+      updates.optOutReason = consent.optOutReason;
+      updates.doNotContact = true;
+    }
+    
+    const [updated] = await db.update(leads)
+      .set(updates)
+      .where(eq(leads.id, leadId))
+      .returning();
+    return updated;
   }
 }
 

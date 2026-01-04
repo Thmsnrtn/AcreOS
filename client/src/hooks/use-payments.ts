@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, STALE_TIMES, CACHE_TIMES } from "@/lib/queryClient";
 import type { Payment, InsertPayment } from "@shared/schema";
 
 export function usePayments(noteId?: number) {
@@ -12,6 +12,8 @@ export function usePayments(noteId?: number) {
       return res.json();
     },
     enabled: noteId !== undefined,
+    staleTime: STALE_TIMES.short,
+    gcTime: CACHE_TIMES.medium,
   });
 }
 

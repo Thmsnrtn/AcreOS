@@ -7,10 +7,12 @@ import { useAuth } from "@/hooks/use-auth";
 import { Loader2 } from "lucide-react";
 
 import { LowBalanceAlert } from "@/components/low-balance-alert";
+import { HintsProvider } from "@/components/feature-hints";
 import Dashboard from "@/pages/dashboard";
 import LeadsPage from "@/pages/leads";
 import PropertiesPage from "@/pages/properties";
 import FinancePage from "@/pages/finance";
+import PortfolioPage from "@/pages/portfolio";
 import CampaignsPage from "@/pages/campaigns";
 import DealsPage from "@/pages/deals";
 import ToolsPage from "@/pages/tools";
@@ -22,6 +24,9 @@ import SettingsPage from "@/pages/settings";
 import HelpPage from "@/pages/help";
 import AdminSupportPage from "@/pages/admin-support";
 import FounderDashboard from "@/pages/founder-dashboard";
+import SequencesPage from "@/pages/sequences";
+import TasksPage from "@/pages/tasks";
+import TeamDashboardPage from "@/pages/team-dashboard";
 import AuthPage from "@/pages/auth-page";
 import BorrowerPortal from "@/pages/borrower-portal";
 import NotFound from "@/pages/not-found";
@@ -71,11 +76,23 @@ function Router() {
       <Route path="/deals">
         {() => <ProtectedRoute component={DealsPage} />}
       </Route>
+      <Route path="/tasks">
+        {() => <ProtectedRoute component={TasksPage} />}
+      </Route>
+      <Route path="/team-dashboard">
+        {() => <ProtectedRoute component={TeamDashboardPage} />}
+      </Route>
       <Route path="/finance">
         {() => <ProtectedRoute component={FinancePage} />}
       </Route>
+      <Route path="/portfolio">
+        {() => <ProtectedRoute component={PortfolioPage} />}
+      </Route>
       <Route path="/campaigns">
         {() => <ProtectedRoute component={CampaignsPage} />}
+      </Route>
+      <Route path="/sequences">
+        {() => <ProtectedRoute component={SequencesPage} />}
       </Route>
       <Route path="/tools">
         {() => <ProtectedRoute component={ToolsPage} />}
@@ -128,9 +145,11 @@ function App() {
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
-          <OfflineIndicator />
-          <Toaster />
-          <AppContent />
+          <HintsProvider>
+            <OfflineIndicator />
+            <Toaster />
+            <AppContent />
+          </HintsProvider>
         </TooltipProvider>
       </QueryClientProvider>
     </ErrorBoundary>
