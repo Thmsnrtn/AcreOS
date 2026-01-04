@@ -30,6 +30,7 @@ import BorrowerPortal from "@/pages/borrower-portal";
 import NotFound from "@/pages/not-found";
 import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
 import { MobileBottomNav } from "@/components/mobile-bottom-nav";
+import { ConversationTray } from "@/components/conversation-tray";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { OfflineIndicator } from "@/components/offline-indicator";
 
@@ -133,6 +134,7 @@ function AppContent() {
       {user && <LowBalanceAlert />}
       <Router />
       {user && <MobileBottomNav />}
+      {user && <ConversationTray />}
       <PWAInstallPrompt />
     </>
   );
