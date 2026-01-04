@@ -1,5 +1,6 @@
 import { storage } from "../storage";
 import type { SequenceEnrollment, SequenceStep, CampaignSequence, Lead } from "@shared/schema";
+import { checkTcpaConsentFromLead, canSendViaChannel } from "./tcpaCompliance";
 
 type EnrollmentWithDetails = SequenceEnrollment & { sequence: CampaignSequence; lead: Lead };
 
@@ -44,6 +45,13 @@ export class SequenceProcessorService {
 
   async processEnrollment(enrollment: EnrollmentWithDetails) {
     try {
+      const tcpaCheck = checkTcpaConsentFromLead(enrollment.lead);
+      if (tcpaCheck.blocked) {
+        await storage.pauseEnrollment(enrollment.id, `TCPA blocked: ${tcpaCheck.reason}`);
+        console.log(`[sequence-processor] Pausing enrollment ${enrollment.id}: ${tcpaCheck.reason}`);
+        return;
+      }
+
       const steps = await storage.getSequenceSteps(enrollment.sequenceId);
       const nextStepNumber = enrollment.currentStep + 1;
       const nextStep = steps.find(s => s.stepNumber === nextStepNumber);
@@ -51,6 +59,25 @@ export class SequenceProcessorService {
       if (!nextStep) {
         await storage.completeEnrollment(enrollment.id);
         console.log(`[sequence-processor] Enrollment ${enrollment.id} completed (no more steps)`);
+        return;
+      }
+
+      const channelCheck = canSendViaChannel(enrollment.lead, nextStep.channel as 'email' | 'sms' | 'direct_mail');
+      if (!channelCheck.allowed) {
+        console.log(`[sequence-processor] Skipping step ${nextStep.stepNumber} for enrollment ${enrollment.id}: ${channelCheck.reason}`);
+        
+        const furtherStep = steps.find(s => s.stepNumber === nextStepNumber + 1);
+        if (furtherStep) {
+          const nextScheduledAt = new Date();
+          nextScheduledAt.setDate(nextScheduledAt.getDate() + furtherStep.delayDays);
+          
+          await storage.updateSequenceEnrollment(enrollment.id, {
+            currentStep: nextStepNumber,
+            nextStepScheduledAt: nextScheduledAt,
+          });
+        } else {
+          await storage.completeEnrollment(enrollment.id);
+        }
         return;
       }
 
@@ -146,6 +173,12 @@ export class SequenceProcessorService {
   async sendStep(enrollment: EnrollmentWithDetails, step: SequenceStep) {
     const lead = enrollment.lead;
     
+    const channelCheck = canSendViaChannel(lead, step.channel as 'email' | 'sms' | 'direct_mail');
+    if (!channelCheck.allowed) {
+      console.warn(`[sequence-processor] TCPA blocked ${step.channel} to lead ${lead.id}: ${channelCheck.reason}`);
+      return;
+    }
+    
     const personalizedContent = this.personalizeContent(step.content, lead);
     const personalizedSubject = step.subject ? this.personalizeContent(step.subject, lead) : undefined;
 
@@ -188,9 +221,15 @@ export class SequenceProcessorService {
       return;
     }
 
+    const channelCheck = canSendViaChannel(lead, 'email');
+    if (!channelCheck.allowed) {
+      console.warn(`[sequence-processor] Email blocked for lead ${lead.id}: ${channelCheck.reason}`);
+      return;
+    }
+
     try {
-      const { emailService } = await import("./email");
-      if (emailService.isAvailable()) {
+      const { emailService } = await import("./emailService");
+      if (emailService.isConfigured()) {
         await emailService.sendEmail({
           to: lead.email,
           subject,
@@ -211,12 +250,24 @@ export class SequenceProcessorService {
       return;
     }
 
+    const channelCheck = canSendViaChannel(lead, 'sms');
+    if (!channelCheck.allowed) {
+      console.warn(`[sequence-processor] SMS blocked for lead ${lead.id}: ${channelCheck.reason}`);
+      return;
+    }
+
     console.log(`[sequence-processor] SMS to ${lead.phone}: ${content.substring(0, 50)}...`);
   }
 
   async sendDirectMail(lead: Lead, subject: string, content: string) {
     if (!lead.address || !lead.city || !lead.state || !lead.zip) {
       console.warn(`[sequence-processor] Lead ${lead.id} has incomplete address for direct mail`);
+      return;
+    }
+
+    const channelCheck = canSendViaChannel(lead, 'direct_mail');
+    if (!channelCheck.allowed) {
+      console.warn(`[sequence-processor] Direct mail blocked for lead ${lead.id}: ${channelCheck.reason}`);
       return;
     }
 

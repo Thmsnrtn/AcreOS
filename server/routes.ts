@@ -436,69 +436,61 @@ export async function registerRoutes(
   // TEAM PERFORMANCE DASHBOARD (18.1-18.3)
   // ============================================
   
+  const teamPerformanceCache = new Map<string, { data: any; timestamp: number }>();
+  const CACHE_TTL_MS = 5 * 60 * 1000;
+  
   api.get("/api/team/performance", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = (req as any).organization;
-      const periodDays = parseInt(req.query.period as string) || 30;
+      const periodDays = Math.min(parseInt(req.query.period as string) || 30, 90);
+      const cacheKey = `${org.id}-${periodDays}`;
       
-      const teamMembers = await storage.getTeamMembers(org.id);
-      const allLeads = await storage.getLeads(org.id);
-      const allDeals = await storage.getDeals(org.id);
-      const allTasks = await storage.getTasks(org.id, {});
+      const cached = teamPerformanceCache.get(cacheKey);
+      if (cached && (Date.now() - cached.timestamp) < CACHE_TTL_MS) {
+        return res.json(cached.data);
+      }
       
       const periodStart = new Date();
       periodStart.setDate(periodStart.getDate() - periodDays);
       
-      const memberPerformance = await Promise.all(teamMembers.map(async (member) => {
-        // Leads assigned to this member
+      const teamMembers = await storage.getTeamMembers(org.id);
+      
+      const allLeads = (await storage.getLeads(org.id)).slice(0, 5000);
+      const allDeals = (await storage.getDeals(org.id)).slice(0, 2000);
+      const allTasks = (await storage.getTasks(org.id, {})).slice(0, 5000);
+      
+      const memberPerformance = teamMembers.map((member) => {
         const memberLeads = allLeads.filter(l => l.assignedTo === member.id);
         const leadsContacted = memberLeads.filter(l => l.lastContactedAt !== null).length;
         const leadsConverted = memberLeads.filter(l => 
           l.status === 'closed' || l.status === 'accepted'
         ).length;
         
-        // Deals assigned to this member
         const memberDeals = allDeals.filter(d => d.assignedTo === member.id);
         const dealsClosed = memberDeals.filter(d => d.status === 'closed');
-        const revenue = dealsClosed.reduce((sum, d) => {
+        const dealsClosedInPeriod = dealsClosed.filter(d => {
+          if (!d.closingDate) return false;
+          return new Date(d.closingDate) >= periodStart;
+        });
+        
+        const revenue = dealsClosedInPeriod.reduce((sum, d) => {
           const amount = d.acceptedAmount || d.offerAmount || '0';
           return sum + parseFloat(amount as string);
         }, 0);
         
-        // Tasks completed by this member
         const memberTasks = allTasks.filter(t => t.assignedTo === member.id);
-        const tasksCompleted = memberTasks.filter(t => t.status === 'completed').length;
+        const tasksCompletedInPeriod = memberTasks.filter(t => {
+          if (t.status !== 'completed' || !t.completedAt) return false;
+          return new Date(t.completedAt) >= periodStart;
+        });
         const tasksPending = memberTasks.filter(t => t.status === 'pending' || t.status === 'in_progress').length;
         
-        // Lead activities for response time calculation
-        const leadActivitiesForMember = await Promise.all(
-          memberLeads.slice(0, 50).map(lead => storage.getLeadActivities(lead.id, 20))
-        );
-        const allActivities = leadActivitiesForMember.flat();
-        const responseTimes: number[] = [];
-        
-        // Calculate average response time from lead activities
-        allActivities.forEach(activity => {
-          if (activity.metadata && typeof activity.metadata === 'object') {
-            const meta = activity.metadata as { responseTimeHours?: number };
-            if (meta.responseTimeHours) {
-              responseTimes.push(meta.responseTimeHours);
-            }
-          }
-        });
-        
-        const avgResponseTime = responseTimes.length > 0 
-          ? responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length 
-          : null;
-        
-        // Conversion rate
         const totalLeads = memberLeads.length;
         const conversionRate = totalLeads > 0 
           ? (leadsConverted / totalLeads) * 100 
           : 0;
         
-        // Average time to close deals
-        const dealsWithClosingData = dealsClosed.filter(d => d.closingDate && d.createdAt);
+        const dealsWithClosingData = dealsClosedInPeriod.filter(d => d.closingDate && d.createdAt);
         const avgDaysToClose = dealsWithClosingData.length > 0
           ? dealsWithClosingData.reduce((sum, d) => {
               const created = new Date(d.createdAt!);
@@ -507,30 +499,43 @@ export async function registerRoutes(
             }, 0) / dealsWithClosingData.length
           : null;
         
-        // Activity trends (last 7 periods for charting)
-        const activityTrends: { period: string; activities: number; deals: number }[] = [];
+        const leadsContactedInPeriod = memberLeads.filter(l => {
+          if (!l.lastContactedAt) return false;
+          return new Date(l.lastContactedAt) >= periodStart;
+        });
+        const avgResponseTime = leadsContactedInPeriod.length > 0
+          ? leadsContactedInPeriod.reduce((sum, l) => {
+              if (!l.createdAt || !l.lastContactedAt) return sum;
+              const created = new Date(l.createdAt);
+              const contacted = new Date(l.lastContactedAt);
+              return sum + (contacted.getTime() - created.getTime()) / (1000 * 60 * 60);
+            }, 0) / leadsContactedInPeriod.length
+          : null;
+        
         const periodLength = Math.ceil(periodDays / 7);
+        const activityTrends: { period: string; activities: number; deals: number }[] = [];
         
         for (let i = 6; i >= 0; i--) {
-          const periodEnd = new Date();
-          periodEnd.setDate(periodEnd.getDate() - (i * periodLength));
-          const periodStart = new Date(periodEnd);
-          periodStart.setDate(periodStart.getDate() - periodLength);
+          const trendEnd = new Date();
+          trendEnd.setDate(trendEnd.getDate() - (i * periodLength));
+          const trendStart = new Date(trendEnd);
+          trendStart.setDate(trendStart.getDate() - periodLength);
           
-          const periodActivities = allActivities.filter(a => {
-            const actDate = new Date(a.createdAt!);
-            return actDate >= periodStart && actDate < periodEnd;
+          const periodLeadsContacted = memberLeads.filter(l => {
+            if (!l.lastContactedAt) return false;
+            const contactDate = new Date(l.lastContactedAt);
+            return contactDate >= trendStart && contactDate < trendEnd;
           }).length;
           
           const periodDeals = dealsClosed.filter(d => {
             if (!d.closingDate) return false;
             const closeDate = new Date(d.closingDate);
-            return closeDate >= periodStart && closeDate < periodEnd;
+            return closeDate >= trendStart && closeDate < trendEnd;
           }).length;
           
           activityTrends.push({
-            period: periodStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-            activities: periodActivities,
+            period: trendStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+            activities: periodLeadsContacted,
             deals: periodDeals
           });
         }
@@ -545,21 +550,23 @@ export async function registerRoutes(
             leadsContacted,
             leadsConverted,
             conversionRate: Math.round(conversionRate * 10) / 10,
-            dealsClosed: dealsClosed.length,
+            dealsClosed: dealsClosedInPeriod.length,
             revenue,
-            tasksCompleted,
+            tasksCompleted: tasksCompletedInPeriod.length,
             tasksPending,
             avgResponseTimeHours: avgResponseTime ? Math.round(avgResponseTime * 10) / 10 : null,
             avgDaysToClose: avgDaysToClose ? Math.round(avgDaysToClose * 10) / 10 : null,
           },
           activityTrends
         };
-      }));
+      });
       
-      // Calculate totals for the team
       const teamTotals = {
         totalLeads: allLeads.length,
-        totalDeals: allDeals.filter(d => d.status === 'closed').length,
+        totalDeals: allDeals.filter(d => {
+          if (d.status !== 'closed' || !d.closingDate) return false;
+          return new Date(d.closingDate) >= periodStart;
+        }).length,
         totalRevenue: memberPerformance.reduce((sum, m) => sum + m.metrics.revenue, 0),
         totalTasksCompleted: memberPerformance.reduce((sum, m) => sum + m.metrics.tasksCompleted, 0),
         avgConversionRate: memberPerformance.length > 0
@@ -567,7 +574,6 @@ export async function registerRoutes(
           : 0
       };
       
-      // Leaderboard sorted by revenue
       const leaderboard = [...memberPerformance]
         .sort((a, b) => b.metrics.revenue - a.metrics.revenue)
         .map((member, index) => ({
@@ -575,12 +581,16 @@ export async function registerRoutes(
           ...member
         }));
       
-      res.json({
+      const responseData = {
         periodDays,
         teamTotals,
         members: memberPerformance,
         leaderboard
-      });
+      };
+      
+      teamPerformanceCache.set(cacheKey, { data: responseData, timestamp: Date.now() });
+      
+      res.json(responseData);
     } catch (error: any) {
       console.error("Team performance error:", error);
       res.status(500).json({ message: error.message || "Failed to fetch team performance" });
@@ -752,6 +762,20 @@ export async function registerRoutes(
       
       const input = insertLeadSchema.parse({ ...req.body, organizationId: org.id });
       const lead = await storage.createLead(input);
+      
+      const user = req.user as any;
+      const userId = user?.claims?.sub || user?.id;
+      await storage.createAuditLogEntry({
+        organizationId: org.id,
+        userId,
+        action: "create",
+        entityType: "lead",
+        entityId: lead.id,
+        changes: { after: input, fields: Object.keys(input) },
+        ipAddress: req.ip || req.socket?.remoteAddress,
+        userAgent: req.headers["user-agent"],
+      });
+      
       res.status(201).json(lead);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -765,15 +789,27 @@ export async function registerRoutes(
     const org = (req as any).organization;
     const leadId = Number(req.params.id);
     
-    // Update the lead
-    const lead = await storage.updateLead(leadId, req.body);
-    if (!lead) return res.status(404).json({ message: "Lead not found" });
+    const existingLead = await storage.getLead(org.id, leadId);
+    if (!existingLead) return res.status(404).json({ message: "Lead not found" });
     
-    // Recalculate score after update
-    const { score, factors } = leadNurturerService.calculateLeadScore(lead);
+    const lead = await storage.updateLead(leadId, req.body);
+    
+    const user = req.user as any;
+    const userId = user?.claims?.sub || user?.id;
+    await storage.createAuditLogEntry({
+      organizationId: org.id,
+      userId,
+      action: "update",
+      entityType: "lead",
+      entityId: leadId,
+      changes: { before: existingLead, after: lead, fields: Object.keys(req.body) },
+      ipAddress: req.ip || req.socket?.remoteAddress,
+      userAgent: req.headers["user-agent"],
+    });
+    
+    const { score, factors } = leadNurturerService.calculateLeadScore(lead!);
     const nurturingStage = leadNurturerService.segmentLead(score);
     
-    // Store the recalculated score
     await storage.updateLeadScore(leadId, score, factors);
     
     res.json({
@@ -785,7 +821,27 @@ export async function registerRoutes(
   });
   
   api.delete("/api/leads/:id", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteLeads"), async (req, res) => {
-    await storage.deleteLead(Number(req.params.id));
+    const org = (req as any).organization;
+    const leadId = Number(req.params.id);
+    const existingLead = await storage.getLead(org.id, leadId);
+    
+    await storage.deleteLead(leadId);
+    
+    if (existingLead) {
+      const user = req.user as any;
+      const userId = user?.claims?.sub || user?.id;
+      await storage.createAuditLogEntry({
+        organizationId: org.id,
+        userId,
+        action: "delete",
+        entityType: "lead",
+        entityId: leadId,
+        changes: { before: existingLead, fields: ["deleted"] },
+        ipAddress: req.ip || req.socket?.remoteAddress,
+        userAgent: req.headers["user-agent"],
+      });
+    }
+    
     res.status(204).send();
   });
   
@@ -1025,6 +1081,20 @@ export async function registerRoutes(
       
       const input = insertPropertySchema.parse({ ...req.body, organizationId: org.id });
       const property = await storage.createProperty(input);
+      
+      const user = req.user as any;
+      const userId = user?.claims?.sub || user?.id;
+      await storage.createAuditLogEntry({
+        organizationId: org.id,
+        userId,
+        action: "create",
+        entityType: "property",
+        entityId: property.id,
+        changes: { after: input, fields: Object.keys(input) },
+        ipAddress: req.ip || req.socket?.remoteAddress,
+        userAgent: req.headers["user-agent"],
+      });
+      
       res.status(201).json(property);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -1035,13 +1105,51 @@ export async function registerRoutes(
   });
   
   api.put("/api/properties/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const property = await storage.updateProperty(Number(req.params.id), req.body);
-    if (!property) return res.status(404).json({ message: "Property not found" });
+    const org = (req as any).organization;
+    const propertyId = Number(req.params.id);
+    const existingProperty = await storage.getProperty(org.id, propertyId);
+    if (!existingProperty) return res.status(404).json({ message: "Property not found" });
+    
+    const property = await storage.updateProperty(propertyId, req.body);
+    
+    const user = req.user as any;
+    const userId = user?.claims?.sub || user?.id;
+    await storage.createAuditLogEntry({
+      organizationId: org.id,
+      userId,
+      action: "update",
+      entityType: "property",
+      entityId: propertyId,
+      changes: { before: existingProperty, after: property, fields: Object.keys(req.body) },
+      ipAddress: req.ip || req.socket?.remoteAddress,
+      userAgent: req.headers["user-agent"],
+    });
+    
     res.json(property);
   });
   
   api.delete("/api/properties/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    await storage.deleteProperty(Number(req.params.id));
+    const org = (req as any).organization;
+    const propertyId = Number(req.params.id);
+    const existingProperty = await storage.getProperty(org.id, propertyId);
+    
+    await storage.deleteProperty(propertyId);
+    
+    if (existingProperty) {
+      const user = req.user as any;
+      const userId = user?.claims?.sub || user?.id;
+      await storage.createAuditLogEntry({
+        organizationId: org.id,
+        userId,
+        action: "delete",
+        entityType: "property",
+        entityId: propertyId,
+        changes: { before: existingProperty, fields: ["deleted"] },
+        ipAddress: req.ip || req.socket?.remoteAddress,
+        userAgent: req.headers["user-agent"],
+      });
+    }
+    
     res.status(204).send();
   });
   
@@ -1365,6 +1473,20 @@ export async function registerRoutes(
       const org = (req as any).organization;
       const input = insertDealSchema.parse({ ...req.body, organizationId: org.id });
       const deal = await storage.createDeal(input);
+      
+      const user = req.user as any;
+      const userId = user?.claims?.sub || user?.id;
+      await storage.createAuditLogEntry({
+        organizationId: org.id,
+        userId,
+        action: "create",
+        entityType: "deal",
+        entityId: deal.id,
+        changes: { after: input, fields: Object.keys(input) },
+        ipAddress: req.ip || req.socket?.remoteAddress,
+        userAgent: req.headers["user-agent"],
+      });
+      
       res.status(201).json(deal);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -1375,8 +1497,26 @@ export async function registerRoutes(
   });
   
   api.put("/api/deals/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const deal = await storage.updateDeal(Number(req.params.id), req.body);
-    if (!deal) return res.status(404).json({ message: "Deal not found" });
+    const org = (req as any).organization;
+    const dealId = Number(req.params.id);
+    const existingDeal = await storage.getDeal(org.id, dealId);
+    if (!existingDeal) return res.status(404).json({ message: "Deal not found" });
+    
+    const deal = await storage.updateDeal(dealId, req.body);
+    
+    const user = req.user as any;
+    const userId = user?.claims?.sub || user?.id;
+    await storage.createAuditLogEntry({
+      organizationId: org.id,
+      userId,
+      action: "update",
+      entityType: "deal",
+      entityId: dealId,
+      changes: { before: existingDeal, after: deal, fields: Object.keys(req.body) },
+      ipAddress: req.ip || req.socket?.remoteAddress,
+      userAgent: req.headers["user-agent"],
+    });
+    
     res.json(deal);
   });
   
@@ -1652,6 +1792,20 @@ export async function registerRoutes(
         currentBalance: req.body.originalPrincipal,
       });
       const note = await storage.createNote(input);
+      
+      const user = req.user as any;
+      const userId = user?.claims?.sub || user?.id;
+      await storage.createAuditLogEntry({
+        organizationId: org.id,
+        userId,
+        action: "create",
+        entityType: "note",
+        entityId: note.id,
+        changes: { after: input, fields: Object.keys(input) },
+        ipAddress: req.ip || req.socket?.remoteAddress,
+        userAgent: req.headers["user-agent"],
+      });
+      
       res.status(201).json(note);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -1662,13 +1816,51 @@ export async function registerRoutes(
   });
   
   api.put("/api/notes/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const note = await storage.updateNote(Number(req.params.id), req.body);
-    if (!note) return res.status(404).json({ message: "Note not found" });
+    const org = (req as any).organization;
+    const noteId = Number(req.params.id);
+    const existingNote = await storage.getNote(org.id, noteId);
+    if (!existingNote) return res.status(404).json({ message: "Note not found" });
+    
+    const note = await storage.updateNote(noteId, req.body);
+    
+    const user = req.user as any;
+    const userId = user?.claims?.sub || user?.id;
+    await storage.createAuditLogEntry({
+      organizationId: org.id,
+      userId,
+      action: "update",
+      entityType: "note",
+      entityId: noteId,
+      changes: { before: existingNote, after: note, fields: Object.keys(req.body) },
+      ipAddress: req.ip || req.socket?.remoteAddress,
+      userAgent: req.headers["user-agent"],
+    });
+    
     res.json(note);
   });
   
   api.delete("/api/notes/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    await storage.deleteNote(Number(req.params.id));
+    const org = (req as any).organization;
+    const noteId = Number(req.params.id);
+    const existingNote = await storage.getNote(org.id, noteId);
+    
+    await storage.deleteNote(noteId);
+    
+    if (existingNote) {
+      const user = req.user as any;
+      const userId = user?.claims?.sub || user?.id;
+      await storage.createAuditLogEntry({
+        organizationId: org.id,
+        userId,
+        action: "delete",
+        entityType: "note",
+        entityId: noteId,
+        changes: { before: existingNote, fields: ["deleted"] },
+        ipAddress: req.ip || req.socket?.remoteAddress,
+        userAgent: req.headers["user-agent"],
+      });
+    }
+    
     res.status(204).send();
   });
   
@@ -2370,6 +2562,20 @@ export async function registerRoutes(
         trackingCode 
       });
       const campaign = await storage.createCampaign(input);
+      
+      const user = req.user as any;
+      const userId = user?.claims?.sub || user?.id;
+      await storage.createAuditLogEntry({
+        organizationId: org.id,
+        userId,
+        action: "create",
+        entityType: "campaign",
+        entityId: campaign.id,
+        changes: { after: input, fields: Object.keys(input) },
+        ipAddress: req.ip || req.socket?.remoteAddress,
+        userAgent: req.headers["user-agent"],
+      });
+      
       res.status(201).json(campaign);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -6719,6 +6925,17 @@ Seller Signature (if applicable)
         userId
       );
       
+      await storage.createAuditLogEntry({
+        organizationId: orgId,
+        userId,
+        action: "create",
+        entityType: "task",
+        entityId: task.id,
+        changes: { after: validated, fields: Object.keys(validated) },
+        ipAddress: req.ip || req.socket?.remoteAddress,
+        userAgent: req.headers["user-agent"],
+      });
+      
       res.status(201).json(task);
     } catch (error: any) {
       console.error("Create task error:", error);
@@ -6754,6 +6971,17 @@ Seller Signature (if applicable)
         userId
       );
       
+      await storage.createAuditLogEntry({
+        organizationId: orgId,
+        userId,
+        action: "update",
+        entityType: "task",
+        entityId: task.id,
+        changes: { before: existingTask, after: task, fields: Object.keys(updates) },
+        ipAddress: req.ip || req.socket?.remoteAddress,
+        userAgent: req.headers["user-agent"],
+      });
+      
       res.json(task);
     } catch (error: any) {
       console.error("Update task error:", error);
@@ -6771,7 +6999,22 @@ Seller Signature (if applicable)
         return res.status(404).json({ message: "Task not found" });
       }
       
+      const user = req.user as any;
+      const userId = user?.claims?.sub || user?.id;
+      
       await storage.deleteTask(id);
+      
+      await storage.createAuditLogEntry({
+        organizationId: orgId,
+        userId,
+        action: "delete",
+        entityType: "task",
+        entityId: id,
+        changes: { before: task, fields: ["deleted"] },
+        ipAddress: req.ip || req.socket?.remoteAddress,
+        userAgent: req.headers["user-agent"],
+      });
+      
       res.json({ message: "Task deleted" });
     } catch (error: any) {
       console.error("Delete task error:", error);
@@ -6905,6 +7148,25 @@ Seller Signature (if applicable)
       } else {
         result = await importDeals(data, org.id);
       }
+
+      const user = req.user as any;
+      const userId = user?.claims?.sub || user?.id;
+      await storage.createAuditLogEntry({
+        organizationId: org.id,
+        userId,
+        action: "import",
+        entityType: entityType,
+        entityId: 0,
+        changes: { 
+          summary: `Imported ${result.imported || 0} ${entityType}`,
+          totalRows: data.length,
+          imported: result.imported,
+          skipped: result.skipped,
+          errors: result.errors?.length || 0,
+        },
+        ipAddress: req.ip || req.socket?.remoteAddress,
+        userAgent: req.headers["user-agent"],
+      });
 
       res.json(result);
     } catch (error: any) {
