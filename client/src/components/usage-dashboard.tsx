@@ -58,7 +58,7 @@ export function UsageDashboard() {
   });
 
   const { data: transactions, isLoading: transactionsLoading } = useQuery<CreditTransaction[]>({
-    queryKey: ["/api/credits/transactions", { limit: 20 }],
+    queryKey: ["/api/credits/transactions?limit=20"],
   });
 
   const chartData = usageSummary?.map((item) => ({
