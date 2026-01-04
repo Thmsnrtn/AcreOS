@@ -24,7 +24,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useState, useCallback } from "react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { useQuery } from "@tanstack/react-query";
+import { Badge } from "@/components/ui/badge";
 import { prefetchRoute } from "@/lib/queryClient";
 
 const routePrefetchMap: Record<string, string> = {
@@ -55,14 +55,8 @@ const navItems = [
 
 export function Sidebar() {
   const [location] = useLocation();
-  const { logout } = useAuth();
+  const { logout, isFounder } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
-
-  const { data: isAdmin } = useQuery<{ isAdmin: boolean }>({
-    queryKey: ['/api/admin/check'],
-    retry: false,
-    staleTime: 5 * 60 * 1000,
-  });
 
   const handlePrefetch = useCallback((href: string) => {
     const apiRoute = routePrefetchMap[href];
@@ -74,20 +68,32 @@ export function Sidebar() {
   const NavContent = () => (
     <div className="flex flex-col h-full vibrancy-sidebar">
       <div className="p-6 border-b border-sidebar-border">
-        <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-          AcreOS
-        </h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+            AcreOS
+          </h1>
+          {isFounder && (
+            <Badge 
+              variant="outline" 
+              className="bg-amber-500/10 text-amber-600 border-amber-500/30 text-xs"
+              data-testid="badge-founder"
+            >
+              <Crown className="w-3 h-3 mr-1" />
+              Founder
+            </Badge>
+          )}
+        </div>
         <p className="text-xs text-muted-foreground mt-1">Land Investment Platform</p>
       </div>
 
       <nav className="flex-1 px-3 py-4 space-y-1">
-        {isAdmin?.isAdmin && (
+        {isFounder && (
           <Link href="/founder" className={cn(
             "flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all duration-150 group mb-2",
             location === "/founder" 
               ? "bg-amber-500 text-white shadow-md" 
               : "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20"
-          )}>
+          )} data-testid="link-founder-dashboard">
             <Crown className={cn(
               "w-5 h-5 transition-colors", 
               location === "/founder" ? "text-white" : "text-amber-500"

@@ -53,6 +53,30 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
   return <Component />;
 }
 
+// Founder-only Route Wrapper (shows 404 for non-founders)
+function FounderProtectedRoute({ component: Component }: { component: React.ComponentType }) {
+  const { user, isLoading, isFounder } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Redirect to="/auth" />;
+  }
+
+  // Non-founders see 404 (route doesn't exist for them)
+  if (!isFounder) {
+    return <NotFound />;
+  }
+
+  return <Component />;
+}
+
 function Router() {
   return (
     <Switch>
@@ -118,7 +142,7 @@ function Router() {
         {() => <ProtectedRoute component={AdminSupportPage} />}
       </Route>
       <Route path="/founder">
-        {() => <ProtectedRoute component={FounderDashboard} />}
+        {() => <FounderProtectedRoute component={FounderDashboard} />}
       </Route>
 
       <Route component={NotFound} />
