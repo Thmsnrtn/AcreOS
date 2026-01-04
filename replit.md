@@ -56,6 +56,7 @@ Preferred communication style: Simple, everyday language.
     - **Communications Service**: Unified wrapper for email, SMS, and direct mail.
     - **Onboarding Wizard**: AI-guided setup with business type templates.
 - **Founder Dashboard**: Analytics for revenue, system health, agent status, and alert management.
+- **Team Performance Dashboard**: SQL-based aggregation for scalability (handles 10k+ records), includes lead metrics, deal metrics, task metrics, activity trends (from leadActivities table), and response times with 5-minute caching.
 
 ## External Dependencies
 

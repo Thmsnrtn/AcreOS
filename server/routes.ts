@@ -455,88 +455,43 @@ export async function registerRoutes(
       
       const teamMembers = await storage.getTeamMembers(org.id);
       
-      const allLeads = (await storage.getLeads(org.id)).slice(0, 5000);
-      const allDeals = (await storage.getDeals(org.id)).slice(0, 2000);
-      const allTasks = (await storage.getTasks(org.id, {})).slice(0, 5000);
+      const [leadMetrics, dealMetrics, taskMetrics, activityTrends, responseTimes] = await Promise.all([
+        storage.getTeamLeadMetrics(org.id, periodStart),
+        storage.getTeamDealMetrics(org.id, periodStart),
+        storage.getTeamTaskMetrics(org.id, periodStart),
+        storage.getTeamActivityTrends(org.id, periodStart, 7),
+        storage.getTeamLeadResponseTimes(org.id, periodStart)
+      ]);
+      
+      const leadMetricsMap = new Map(leadMetrics.map(m => [m.assignedTo, m]));
+      const dealMetricsMap = new Map(dealMetrics.map(m => [m.assignedTo, m]));
+      const taskMetricsMap = new Map(taskMetrics.map(m => [m.assignedTo, m]));
+      const trendsMap = new Map(activityTrends.map(t => [t.assignedTo, t.periods]));
+      const responseTimeMap = new Map(responseTimes.map(r => [r.assignedTo, r.avgResponseTimeHours]));
       
       const memberPerformance = teamMembers.map((member) => {
-        const memberLeads = allLeads.filter(l => l.assignedTo === member.id);
-        const leadsContacted = memberLeads.filter(l => l.lastContactedAt !== null).length;
-        const leadsConverted = memberLeads.filter(l => 
-          l.status === 'closed' || l.status === 'accepted'
-        ).length;
+        const memberId = member.id;
+        const lm = leadMetricsMap.get(memberId) || { leadsAssigned: 0, leadsContacted: 0, leadsConverted: 0 };
+        const dm = dealMetricsMap.get(memberId) || { dealsClosed: 0, revenue: 0, avgDaysToClose: 0 };
+        const tm = taskMetricsMap.get(memberId) || { tasksCompleted: 0, tasksPending: 0 };
+        const trends = trendsMap.get(memberId) || [];
+        const avgResponseTimeHours = responseTimeMap.get(memberId) ?? null;
         
-        const memberDeals = allDeals.filter(d => d.assignedTo === member.id);
-        const dealsClosed = memberDeals.filter(d => d.status === 'closed');
-        const dealsClosedInPeriod = dealsClosed.filter(d => {
-          if (!d.closingDate) return false;
-          return new Date(d.closingDate) >= periodStart;
-        });
-        
-        const revenue = dealsClosedInPeriod.reduce((sum, d) => {
-          const amount = d.acceptedAmount || d.offerAmount || '0';
-          return sum + parseFloat(amount as string);
-        }, 0);
-        
-        const memberTasks = allTasks.filter(t => t.assignedTo === member.id);
-        const tasksCompletedInPeriod = memberTasks.filter(t => {
-          if (t.status !== 'completed' || !t.completedAt) return false;
-          return new Date(t.completedAt) >= periodStart;
-        });
-        const tasksPending = memberTasks.filter(t => t.status === 'pending' || t.status === 'in_progress').length;
-        
-        const totalLeads = memberLeads.length;
-        const conversionRate = totalLeads > 0 
-          ? (leadsConverted / totalLeads) * 100 
+        const conversionRate = lm.leadsAssigned > 0 
+          ? (lm.leadsConverted / lm.leadsAssigned) * 100 
           : 0;
         
-        const dealsWithClosingData = dealsClosedInPeriod.filter(d => d.closingDate && d.createdAt);
-        const avgDaysToClose = dealsWithClosingData.length > 0
-          ? dealsWithClosingData.reduce((sum, d) => {
-              const created = new Date(d.createdAt!);
-              const closed = new Date(d.closingDate!);
-              return sum + (closed.getTime() - created.getTime()) / (1000 * 60 * 60 * 24);
-            }, 0) / dealsWithClosingData.length
-          : null;
-        
-        const leadsContactedInPeriod = memberLeads.filter(l => {
-          if (!l.lastContactedAt) return false;
-          return new Date(l.lastContactedAt) >= periodStart;
-        });
-        const avgResponseTime = leadsContactedInPeriod.length > 0
-          ? leadsContactedInPeriod.reduce((sum, l) => {
-              if (!l.createdAt || !l.lastContactedAt) return sum;
-              const created = new Date(l.createdAt);
-              const contacted = new Date(l.lastContactedAt);
-              return sum + (contacted.getTime() - created.getTime()) / (1000 * 60 * 60);
-            }, 0) / leadsContactedInPeriod.length
-          : null;
-        
         const periodLength = Math.ceil(periodDays / 7);
-        const activityTrends: { period: string; activities: number; deals: number }[] = [];
+        const activityTrendsList: { period: string; activities: number; deals: number }[] = [];
         
-        for (let i = 6; i >= 0; i--) {
-          const trendEnd = new Date();
-          trendEnd.setDate(trendEnd.getDate() - (i * periodLength));
-          const trendStart = new Date(trendEnd);
-          trendStart.setDate(trendStart.getDate() - periodLength);
+        for (let i = 0; i < 7; i++) {
+          const trendStart = new Date(periodStart.getTime() + (i * periodLength * 24 * 60 * 60 * 1000));
+          const trendData = trends[i] || { leads: 0, deals: 0 };
           
-          const periodLeadsContacted = memberLeads.filter(l => {
-            if (!l.lastContactedAt) return false;
-            const contactDate = new Date(l.lastContactedAt);
-            return contactDate >= trendStart && contactDate < trendEnd;
-          }).length;
-          
-          const periodDeals = dealsClosed.filter(d => {
-            if (!d.closingDate) return false;
-            const closeDate = new Date(d.closingDate);
-            return closeDate >= trendStart && closeDate < trendEnd;
-          }).length;
-          
-          activityTrends.push({
+          activityTrendsList.push({
             period: trendStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-            activities: periodLeadsContacted,
-            deals: periodDeals
+            activities: trendData.leads,
+            deals: trendData.deals
           });
         }
         
@@ -546,27 +501,27 @@ export async function registerRoutes(
           displayName: member.displayName || member.email || 'Team Member',
           role: member.role,
           metrics: {
-            leadsAssigned: totalLeads,
-            leadsContacted,
-            leadsConverted,
+            leadsAssigned: lm.leadsAssigned,
+            leadsContacted: lm.leadsContacted,
+            leadsConverted: lm.leadsConverted,
             conversionRate: Math.round(conversionRate * 10) / 10,
-            dealsClosed: dealsClosedInPeriod.length,
-            revenue,
-            tasksCompleted: tasksCompletedInPeriod.length,
-            tasksPending,
-            avgResponseTimeHours: avgResponseTime ? Math.round(avgResponseTime * 10) / 10 : null,
-            avgDaysToClose: avgDaysToClose ? Math.round(avgDaysToClose * 10) / 10 : null,
+            dealsClosed: dm.dealsClosed,
+            revenue: dm.revenue,
+            tasksCompleted: tm.tasksCompleted,
+            tasksPending: tm.tasksPending,
+            avgResponseTimeHours,
+            avgDaysToClose: dm.avgDaysToClose > 0 ? Math.round(dm.avgDaysToClose * 10) / 10 : null,
           },
-          activityTrends
+          activityTrends: activityTrendsList
         };
       });
       
+      const totalLeads = leadMetrics.reduce((sum, m) => sum + m.leadsAssigned, 0);
+      const totalDeals = dealMetrics.reduce((sum, m) => sum + m.dealsClosed, 0);
+      
       const teamTotals = {
-        totalLeads: allLeads.length,
-        totalDeals: allDeals.filter(d => {
-          if (d.status !== 'closed' || !d.closingDate) return false;
-          return new Date(d.closingDate) >= periodStart;
-        }).length,
+        totalLeads,
+        totalDeals,
         totalRevenue: memberPerformance.reduce((sum, m) => sum + m.metrics.revenue, 0),
         totalTasksCompleted: memberPerformance.reduce((sum, m) => sum + m.metrics.tasksCompleted, 0),
         avgConversionRate: memberPerformance.length > 0

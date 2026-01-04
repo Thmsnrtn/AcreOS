@@ -3166,6 +3166,173 @@ export class DatabaseStorage implements IStorage {
       .returning();
     return updated;
   }
+
+  // Team Performance Aggregation (SQL-based)
+  async getTeamLeadMetrics(orgId: number, _periodStart: Date): Promise<Array<{
+    assignedTo: number | null;
+    leadsAssigned: number;
+    leadsContacted: number;
+    leadsConverted: number;
+  }>> {
+    const result = await db.select({
+      assignedTo: leads.assignedTo,
+      leadsAssigned: count(),
+      leadsContacted: sql<number>`COUNT(CASE WHEN ${leads.lastContactedAt} IS NOT NULL THEN 1 END)`,
+      leadsConverted: sql<number>`COUNT(CASE WHEN ${leads.status} IN ('closed', 'accepted') THEN 1 END)`,
+    })
+    .from(leads)
+    .where(eq(leads.organizationId, orgId))
+    .groupBy(leads.assignedTo);
+    
+    return result.map(r => ({
+      assignedTo: r.assignedTo,
+      leadsAssigned: Number(r.leadsAssigned) || 0,
+      leadsContacted: Number(r.leadsContacted) || 0,
+      leadsConverted: Number(r.leadsConverted) || 0,
+    }));
+  }
+
+  async getTeamDealMetrics(orgId: number, periodStart: Date): Promise<Array<{
+    assignedTo: number | null;
+    dealsClosed: number;
+    revenue: number;
+    avgDaysToClose: number;
+  }>> {
+    const result = await db.select({
+      assignedTo: deals.assignedTo,
+      dealsClosed: sql<number>`COUNT(CASE WHEN ${deals.status} = 'closed' AND ${deals.closingDate} IS NOT NULL AND ${deals.closingDate} >= ${periodStart} THEN 1 END)`,
+      revenue: sql<number>`COALESCE(SUM(CASE WHEN ${deals.status} = 'closed' AND ${deals.closingDate} IS NOT NULL AND ${deals.closingDate} >= ${periodStart} THEN CAST(COALESCE(${deals.acceptedAmount}, ${deals.offerAmount}, '0') AS NUMERIC) END), 0)`,
+      avgDaysToClose: sql<number>`COALESCE(AVG(CASE WHEN ${deals.status} = 'closed' AND ${deals.closingDate} IS NOT NULL AND ${deals.closingDate} >= ${periodStart} AND ${deals.createdAt} IS NOT NULL THEN EXTRACT(EPOCH FROM (${deals.closingDate} - ${deals.createdAt})) / 86400 END), 0)`,
+    })
+    .from(deals)
+    .where(eq(deals.organizationId, orgId))
+    .groupBy(deals.assignedTo);
+    
+    return result.map(r => ({
+      assignedTo: r.assignedTo,
+      dealsClosed: Number(r.dealsClosed) || 0,
+      revenue: Number(r.revenue) || 0,
+      avgDaysToClose: Number(r.avgDaysToClose) || 0,
+    }));
+  }
+
+  async getTeamTaskMetrics(orgId: number, periodStart: Date): Promise<Array<{
+    assignedTo: number | null;
+    tasksCompleted: number;
+    tasksPending: number;
+  }>> {
+    const result = await db.select({
+      assignedTo: tasks.assignedTo,
+      tasksCompleted: sql<number>`COUNT(CASE WHEN ${tasks.status} = 'completed' AND ${tasks.completedAt} >= ${periodStart} THEN 1 END)`,
+      tasksPending: sql<number>`COUNT(CASE WHEN ${tasks.status} IN ('pending', 'in_progress') THEN 1 END)`,
+    })
+    .from(tasks)
+    .where(eq(tasks.organizationId, orgId))
+    .groupBy(tasks.assignedTo);
+    
+    return result.map(r => ({
+      assignedTo: r.assignedTo,
+      tasksCompleted: Number(r.tasksCompleted) || 0,
+      tasksPending: Number(r.tasksPending) || 0,
+    }));
+  }
+
+  async getTeamActivityTrends(orgId: number, periodStart: Date, periodCount: number = 7): Promise<Array<{
+    assignedTo: number | null;
+    periods: Array<{ leads: number; deals: number }>;
+  }>> {
+    const now = new Date();
+    const periodLengthMs = Math.floor((now.getTime() - periodStart.getTime()) / periodCount);
+    
+    const activityResults = await db.select({
+      performedBy: leadActivities.performedBy,
+      createdAt: leadActivities.createdAt,
+    })
+    .from(leadActivities)
+    .where(and(
+      eq(leadActivities.organizationId, orgId),
+      sql`${leadActivities.createdAt} IS NOT NULL`,
+      gte(leadActivities.createdAt, periodStart)
+    ));
+    
+    const dealResults = await db.select({
+      assignedTo: deals.assignedTo,
+      closingDate: deals.closingDate,
+    })
+    .from(deals)
+    .where(and(
+      eq(deals.organizationId, orgId),
+      eq(deals.status, 'closed'),
+      sql`${deals.closingDate} IS NOT NULL`,
+      gte(deals.closingDate, periodStart)
+    ));
+    
+    const memberTrends = new Map<number | null, Array<{ leads: number; deals: number }>>();
+    
+    for (const activity of activityResults) {
+      if (!activity.createdAt) continue;
+      const periodIndex = Math.min(
+        Math.floor((new Date(activity.createdAt).getTime() - periodStart.getTime()) / periodLengthMs),
+        periodCount - 1
+      );
+      if (periodIndex < 0) continue;
+      
+      if (!memberTrends.has(activity.performedBy)) {
+        memberTrends.set(activity.performedBy, Array(periodCount).fill(null).map(() => ({ leads: 0, deals: 0 })));
+      }
+      memberTrends.get(activity.performedBy)![periodIndex].leads++;
+    }
+    
+    for (const deal of dealResults) {
+      if (!deal.closingDate) continue;
+      const periodIndex = Math.min(
+        Math.floor((new Date(deal.closingDate).getTime() - periodStart.getTime()) / periodLengthMs),
+        periodCount - 1
+      );
+      if (periodIndex < 0) continue;
+      
+      if (!memberTrends.has(deal.assignedTo)) {
+        memberTrends.set(deal.assignedTo, Array(periodCount).fill(null).map(() => ({ leads: 0, deals: 0 })));
+      }
+      memberTrends.get(deal.assignedTo)![periodIndex].deals++;
+    }
+    
+    return Array.from(memberTrends.entries()).map(([assignedTo, periods]) => ({
+      assignedTo,
+      periods,
+    }));
+  }
+  
+  async getTeamLeadResponseTimes(orgId: number, periodStart: Date, limitPerMember: number = 5000): Promise<Array<{
+    assignedTo: number | null;
+    avgResponseTimeHours: number | null;
+  }>> {
+    const result = await db.execute(sql`
+      WITH ranked_leads AS (
+        SELECT 
+          assigned_to,
+          last_contacted_at,
+          created_at,
+          ROW_NUMBER() OVER (PARTITION BY assigned_to ORDER BY created_at DESC) as rn
+        FROM leads
+        WHERE organization_id = ${orgId}
+          AND last_contacted_at IS NOT NULL
+          AND created_at IS NOT NULL
+          AND last_contacted_at >= ${periodStart}
+      )
+      SELECT 
+        assigned_to as "assignedTo",
+        AVG(EXTRACT(EPOCH FROM (last_contacted_at - created_at)) / 3600) as "avgResponseTime"
+      FROM ranked_leads
+      WHERE rn <= ${limitPerMember}
+      GROUP BY assigned_to
+    `);
+    
+    return (result.rows as any[]).map(r => ({
+      assignedTo: r.assignedTo as number | null,
+      avgResponseTimeHours: r.avgResponseTime ? Math.round(Number(r.avgResponseTime) * 10) / 10 : null,
+    }));
+  }
 }
 
 export const storage = new DatabaseStorage();
