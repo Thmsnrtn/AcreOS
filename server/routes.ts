@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
 import { storage, calculateMonthlyPayment, db } from "./storage";
 import { z } from "zod";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, and, desc, lt, inArray } from "drizzle-orm";
 import { 
   insertLeadSchema, insertPropertySchema, insertNoteSchema, 
   insertCampaignSchema, insertCampaignResponseSchema, insertAgentTaskSchema, insertDealSchema,
@@ -11,7 +11,9 @@ import {
   insertAbTestSchema, insertAbTestVariantSchema, Z_SCORES,
   insertCustomFieldDefinitionSchema, insertCustomFieldValueSchema, insertSavedViewSchema,
   insertTaskSchema,
-  SUBSCRIPTION_TIERS, payments, notes, deals, properties, leads, activityLog
+  SUBSCRIPTION_TIERS, payments, notes, deals, properties, leads, activityLog,
+  teamConversations, teamMessages, teamMemberPresence,
+  insertTeamConversationSchema, insertTeamMessageSchema, insertTeamMemberPresenceSchema,
 } from "@shared/schema";
 import { activityLogger } from "./services/activityLogger";
 
@@ -7435,6 +7437,431 @@ Seller Signature (if applicable)
     } catch (error: any) {
       console.error("TCPA stats error:", error);
       res.status(500).json({ message: error.message || "Failed to fetch TCPA stats" });
+    }
+  });
+
+  // ============================================
+  // TEAM MESSAGING API
+  // ============================================
+  
+  // Tier gating middleware for team messaging (scale or enterprise only)
+  const requireMessagingTier = (req: Request, res: Response, next: NextFunction) => {
+    const org = (req as any).organization;
+    if (!org) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+    const tier = org.subscriptionTier;
+    if (tier !== "scale" && tier !== "enterprise") {
+      return res.status(403).json({ 
+        message: "Team messaging requires Scale or Enterprise subscription. Please upgrade to access this feature.",
+        requiredTier: "scale"
+      });
+    }
+    next();
+  };
+
+  // GET /api/team-messaging/conversations - List all conversations for the current user
+  api.get("/api/team-messaging/conversations", isAuthenticated, getOrCreateOrg, requireMessagingTier, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = req.user as any;
+      const userId = user.claims?.sub || user.id;
+      
+      const conversations = await db
+        .select()
+        .from(teamConversations)
+        .where(eq(teamConversations.organizationId, org.id))
+        .orderBy(desc(teamConversations.lastMessageAt));
+      
+      // Filter to only conversations where user is a participant
+      const userConversations = conversations.filter(conv => 
+        conv.participantIds?.includes(userId)
+      );
+      
+      res.json(userConversations);
+    } catch (error: any) {
+      console.error("Get team conversations error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch conversations" });
+    }
+  });
+
+  // POST /api/team-messaging/conversations - Create a new conversation
+  api.post("/api/team-messaging/conversations", isAuthenticated, getOrCreateOrg, requireMessagingTier, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = req.user as any;
+      const userId = user.claims?.sub || user.id;
+      
+      const createSchema = z.object({
+        name: z.string().optional(),
+        isDirect: z.boolean().default(true),
+        participantIds: z.array(z.string()).min(1),
+      });
+      
+      const parsed = createSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request body", errors: parsed.error.errors });
+      }
+      
+      const { name, isDirect, participantIds } = parsed.data;
+      
+      // Ensure creator is in participants
+      const allParticipants = Array.from(new Set([userId, ...participantIds]));
+      
+      // For direct messages, check if a conversation already exists
+      if (isDirect && allParticipants.length === 2) {
+        const existing = await db
+          .select()
+          .from(teamConversations)
+          .where(and(
+            eq(teamConversations.organizationId, org.id),
+            eq(teamConversations.isDirect, true)
+          ));
+        
+        const existingConv = existing.find(conv => {
+          const pIds = conv.participantIds || [];
+          return pIds.length === 2 && 
+            pIds.includes(allParticipants[0]) && 
+            pIds.includes(allParticipants[1]);
+        });
+        
+        if (existingConv) {
+          return res.json(existingConv);
+        }
+      }
+      
+      const [conversation] = await db
+        .insert(teamConversations)
+        .values({
+          organizationId: org.id,
+          name: isDirect ? null : name,
+          isDirect,
+          createdBy: userId,
+          participantIds: allParticipants,
+          status: "active",
+        })
+        .returning();
+      
+      res.status(201).json(conversation);
+    } catch (error: any) {
+      console.error("Create team conversation error:", error);
+      res.status(500).json({ message: error.message || "Failed to create conversation" });
+    }
+  });
+
+  // GET /api/team-messaging/conversations/:id/messages - Get messages (cursor-based pagination)
+  api.get("/api/team-messaging/conversations/:id/messages", isAuthenticated, getOrCreateOrg, requireMessagingTier, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = req.user as any;
+      const userId = user.claims?.sub || user.id;
+      const conversationId = parseInt(req.params.id, 10);
+      
+      if (isNaN(conversationId)) {
+        return res.status(400).json({ message: "Invalid conversation ID" });
+      }
+      
+      // Verify conversation exists and user is a participant
+      const [conversation] = await db
+        .select()
+        .from(teamConversations)
+        .where(and(
+          eq(teamConversations.id, conversationId),
+          eq(teamConversations.organizationId, org.id)
+        ));
+      
+      if (!conversation) {
+        return res.status(404).json({ message: "Conversation not found" });
+      }
+      
+      if (!conversation.participantIds?.includes(userId)) {
+        return res.status(403).json({ message: "Not a participant of this conversation" });
+      }
+      
+      // Parse pagination params
+      const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
+      const cursor = req.query.cursor ? parseInt(req.query.cursor as string, 10) : undefined;
+      
+      // Build query
+      let query = db
+        .select()
+        .from(teamMessages)
+        .where(
+          cursor
+            ? and(
+                eq(teamMessages.conversationId, conversationId),
+                eq(teamMessages.isDeleted, false),
+                lt(teamMessages.id, cursor)
+              )
+            : and(
+                eq(teamMessages.conversationId, conversationId),
+                eq(teamMessages.isDeleted, false)
+              )
+        )
+        .orderBy(desc(teamMessages.id))
+        .limit(limit + 1);
+      
+      const messages = await query;
+      
+      // Check if there are more results
+      const hasMore = messages.length > limit;
+      if (hasMore) {
+        messages.pop();
+      }
+      
+      const nextCursor = hasMore && messages.length > 0 ? messages[messages.length - 1].id : null;
+      
+      res.json({
+        messages,
+        nextCursor,
+        hasMore,
+      });
+    } catch (error: any) {
+      console.error("Get team messages error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch messages" });
+    }
+  });
+
+  // POST /api/team-messaging/conversations/:id/messages - Send a message
+  api.post("/api/team-messaging/conversations/:id/messages", isAuthenticated, getOrCreateOrg, requireMessagingTier, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = req.user as any;
+      const userId = user.claims?.sub || user.id;
+      const conversationId = parseInt(req.params.id, 10);
+      
+      if (isNaN(conversationId)) {
+        return res.status(400).json({ message: "Invalid conversation ID" });
+      }
+      
+      // Verify conversation exists and user is a participant
+      const [conversation] = await db
+        .select()
+        .from(teamConversations)
+        .where(and(
+          eq(teamConversations.id, conversationId),
+          eq(teamConversations.organizationId, org.id)
+        ));
+      
+      if (!conversation) {
+        return res.status(404).json({ message: "Conversation not found" });
+      }
+      
+      if (!conversation.participantIds?.includes(userId)) {
+        return res.status(403).json({ message: "Not a participant of this conversation" });
+      }
+      
+      const messageSchema = z.object({
+        body: z.string().min(1).max(10000),
+        attachments: z.array(z.object({
+          type: z.string(),
+          url: z.string(),
+          name: z.string(),
+          size: z.number().optional(),
+        })).optional(),
+      });
+      
+      const parsed = messageSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request body", errors: parsed.error.errors });
+      }
+      
+      const { body, attachments } = parsed.data;
+      
+      // Insert the message
+      const [message] = await db
+        .insert(teamMessages)
+        .values({
+          conversationId,
+          senderId: userId,
+          body,
+          attachments: attachments || null,
+        })
+        .returning();
+      
+      // Update conversation's lastMessageAt
+      await db
+        .update(teamConversations)
+        .set({ 
+          lastMessageAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(teamConversations.id, conversationId));
+      
+      res.status(201).json(message);
+    } catch (error: any) {
+      console.error("Send team message error:", error);
+      res.status(500).json({ message: error.message || "Failed to send message" });
+    }
+  });
+
+  // PATCH /api/team-messaging/conversations/:id/read - Mark messages as read
+  api.patch("/api/team-messaging/conversations/:id/read", isAuthenticated, getOrCreateOrg, requireMessagingTier, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = req.user as any;
+      const userId = user.claims?.sub || user.id;
+      const conversationId = parseInt(req.params.id, 10);
+      
+      if (isNaN(conversationId)) {
+        return res.status(400).json({ message: "Invalid conversation ID" });
+      }
+      
+      // Verify conversation exists and user is a participant
+      const [conversation] = await db
+        .select()
+        .from(teamConversations)
+        .where(and(
+          eq(teamConversations.id, conversationId),
+          eq(teamConversations.organizationId, org.id)
+        ));
+      
+      if (!conversation) {
+        return res.status(404).json({ message: "Conversation not found" });
+      }
+      
+      if (!conversation.participantIds?.includes(userId)) {
+        return res.status(403).json({ message: "Not a participant of this conversation" });
+      }
+      
+      const readSchema = z.object({
+        messageIds: z.array(z.number()).optional(),
+        upToMessageId: z.number().optional(),
+      });
+      
+      const parsed = readSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request body", errors: parsed.error.errors });
+      }
+      
+      const { messageIds, upToMessageId } = parsed.data;
+      const now = new Date().toISOString();
+      
+      // Get messages to update
+      let messagesToUpdate: typeof teamMessages.$inferSelect[] = [];
+      
+      if (messageIds && messageIds.length > 0) {
+        messagesToUpdate = await db
+          .select()
+          .from(teamMessages)
+          .where(and(
+            eq(teamMessages.conversationId, conversationId),
+            inArray(teamMessages.id, messageIds)
+          ));
+      } else if (upToMessageId) {
+        messagesToUpdate = await db
+          .select()
+          .from(teamMessages)
+          .where(and(
+            eq(teamMessages.conversationId, conversationId),
+            lt(teamMessages.id, upToMessageId + 1)
+          ));
+      } else {
+        // Mark all messages in conversation as read
+        messagesToUpdate = await db
+          .select()
+          .from(teamMessages)
+          .where(eq(teamMessages.conversationId, conversationId));
+      }
+      
+      // Update readBy for each message
+      let updatedCount = 0;
+      for (const msg of messagesToUpdate) {
+        const currentReadBy = (msg.readBy as { userId: string; readAt: string; }[]) || [];
+        const alreadyRead = currentReadBy.some(r => r.userId === userId);
+        
+        if (!alreadyRead) {
+          const newReadBy = [...currentReadBy, { userId, readAt: now }];
+          await db
+            .update(teamMessages)
+            .set({ readBy: newReadBy })
+            .where(eq(teamMessages.id, msg.id));
+          updatedCount++;
+        }
+      }
+      
+      res.json({ success: true, updatedCount });
+    } catch (error: any) {
+      console.error("Mark messages read error:", error);
+      res.status(500).json({ message: error.message || "Failed to mark messages as read" });
+    }
+  });
+
+  // GET /api/team-messaging/presence - Get team member presence statuses
+  api.get("/api/team-messaging/presence", isAuthenticated, getOrCreateOrg, requireMessagingTier, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      
+      const presenceStatuses = await db
+        .select()
+        .from(teamMemberPresence)
+        .where(eq(teamMemberPresence.organizationId, org.id));
+      
+      res.json(presenceStatuses);
+    } catch (error: any) {
+      console.error("Get presence error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch presence statuses" });
+    }
+  });
+
+  // PATCH /api/team-messaging/presence - Update current user's presence status
+  api.patch("/api/team-messaging/presence", isAuthenticated, getOrCreateOrg, requireMessagingTier, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = req.user as any;
+      const userId = user.claims?.sub || user.id;
+      
+      const presenceSchema = z.object({
+        status: z.enum(["online", "away", "offline"]),
+        deviceInfo: z.string().optional(),
+      });
+      
+      const parsed = presenceSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request body", errors: parsed.error.errors });
+      }
+      
+      const { status, deviceInfo } = parsed.data;
+      
+      // Check if presence record exists
+      const [existing] = await db
+        .select()
+        .from(teamMemberPresence)
+        .where(and(
+          eq(teamMemberPresence.organizationId, org.id),
+          eq(teamMemberPresence.userId, userId)
+        ));
+      
+      let presence;
+      if (existing) {
+        // Update existing
+        [presence] = await db
+          .update(teamMemberPresence)
+          .set({
+            status,
+            lastSeenAt: new Date(),
+            deviceInfo: deviceInfo || existing.deviceInfo,
+          })
+          .where(eq(teamMemberPresence.id, existing.id))
+          .returning();
+      } else {
+        // Insert new
+        [presence] = await db
+          .insert(teamMemberPresence)
+          .values({
+            organizationId: org.id,
+            userId,
+            status,
+            lastSeenAt: new Date(),
+            deviceInfo: deviceInfo || null,
+          })
+          .returning();
+      }
+      
+      res.json(presence);
+    } catch (error: any) {
+      console.error("Update presence error:", error);
+      res.status(500).json({ message: error.message || "Failed to update presence status" });
     }
   });
 
