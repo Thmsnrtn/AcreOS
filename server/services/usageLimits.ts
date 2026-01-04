@@ -72,6 +72,17 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
   },
 };
 
+// Founder tier has unlimited everything
+export const FOUNDER_TIER_LIMITS: TierLimits = {
+  leads: null,
+  properties: null,
+  notes: null,
+  ai_requests: null,
+  includedSeats: 1000, // Effectively unlimited
+  maxSeats: null,
+  seatPriceCents: null, // Founders don't pay for seats
+};
+
 function normalizeTier(tier: string): SubscriptionTier {
   const normalized = tier.toLowerCase();
   if (normalized === "professional") return "pro";
@@ -131,12 +142,19 @@ async function getDailyAiRequestCount(organizationId: number): Promise<number> {
   return Number(result?.total ?? 0);
 }
 
+export interface UsageLimitOptions {
+  isFounder?: boolean;
+}
+
 export async function checkUsageLimit(
   organizationId: number,
-  resourceType: ResourceType
+  resourceType: ResourceType,
+  options: UsageLimitOptions = {}
 ): Promise<UsageLimitResult> {
   const tier = await getOrganizationTier(organizationId);
-  const limits = TIER_LIMITS[tier];
+  
+  // Founders have unlimited access
+  const limits = options.isFounder ? FOUNDER_TIER_LIMITS : TIER_LIMITS[tier];
   const limit = limits[resourceType];
   
   let current: number;
@@ -158,23 +176,28 @@ export async function checkUsageLimit(
       current = 0;
   }
   
-  const allowed = limit === null || current < limit;
+  // Founders are always allowed
+  const allowed = options.isFounder || limit === null || current < limit;
   
   return {
     allowed,
     current,
     limit,
     resourceType,
-    tier,
+    tier: options.isFounder ? "enterprise" : tier, // Show enterprise tier for founders
   };
 }
 
-export async function getAllUsageLimits(organizationId: number): Promise<{
+export async function getAllUsageLimits(
+  organizationId: number,
+  options: UsageLimitOptions = {}
+): Promise<{
   tier: SubscriptionTier;
   usage: Record<ResourceType, { current: number; limit: number | null; percentage: number | null }>;
+  isFounder?: boolean;
 }> {
   const tier = await getOrganizationTier(organizationId);
-  const limits = TIER_LIMITS[tier];
+  const limits = options.isFounder ? FOUNDER_TIER_LIMITS : TIER_LIMITS[tier];
   
   const [leadCount, propertyCount, noteCount, aiRequestCount] = await Promise.all([
     getLeadCount(organizationId),
@@ -189,7 +212,8 @@ export async function getAllUsageLimits(organizationId: number): Promise<{
   };
   
   return {
-    tier,
+    tier: options.isFounder ? "enterprise" : tier,
+    isFounder: options.isFounder,
     usage: {
       leads: {
         current: leadCount,
@@ -284,7 +308,28 @@ async function getTeamMemberCount(organizationId: number): Promise<number> {
   return result?.count ?? 0;
 }
 
-export async function getSeatInfo(organizationId: number): Promise<SeatInfo> {
+export async function getSeatInfo(
+  organizationId: number,
+  options: UsageLimitOptions = {}
+): Promise<SeatInfo & { isFounder?: boolean }> {
+  // Founders have unlimited access
+  if (options.isFounder) {
+    const usedSeats = await getTeamMemberCount(organizationId);
+    return {
+      tier: "enterprise",
+      includedSeats: 1000,
+      additionalSeats: 0,
+      totalSeats: 1000,
+      maxSeats: null,
+      usedSeats,
+      availableSeats: 1000 - usedSeats,
+      canAddSeats: false, // Founders don't need to add seats
+      seatPriceCents: null,
+      hasTeamMessaging: true,
+      isFounder: true,
+    };
+  }
+  
   const { tier, additionalSeats } = await getOrganizationSeatData(organizationId);
   const limits = TIER_LIMITS[tier];
   const usedSeats = await getTeamMemberCount(organizationId);
@@ -312,7 +357,13 @@ export async function getSeatInfo(organizationId: number): Promise<SeatInfo> {
   };
 }
 
-export async function checkTeamMessagingAccess(organizationId: number): Promise<boolean> {
+export async function checkTeamMessagingAccess(
+  organizationId: number,
+  options: UsageLimitOptions = {}
+): Promise<boolean> {
+  // Founders always have team messaging access
+  if (options.isFounder) return true;
+  
   const seatInfo = await getSeatInfo(organizationId);
   return seatInfo.hasTeamMessaging;
 }
