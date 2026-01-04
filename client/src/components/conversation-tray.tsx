@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
-import { useOrganization, useTeamMembers } from "@/hooks/use-organization";
+import { useTeamMembers } from "@/hooks/use-organization";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -33,6 +33,19 @@ interface MessagesResponse {
   hasMore: boolean;
 }
 
+interface SeatInfo {
+  tier: string;
+  includedSeats: number;
+  additionalSeats: number;
+  totalSeats: number;
+  maxSeats: number | null;
+  usedSeats: number;
+  availableSeats: number;
+  canAddSeats: boolean;
+  seatPriceCents: number | null;
+  hasTeamMessaging: boolean;
+}
+
 function TierGatingPrompt() {
   return (
     <div className="flex flex-col items-center justify-center h-full p-6 text-center">
@@ -44,7 +57,7 @@ function TierGatingPrompt() {
         className="text-muted-foreground mb-4 max-w-[280px]"
         data-testid="text-tier-upgrade-prompt"
       >
-        Team messaging is available on Scale and Enterprise plans. Upgrade to collaborate with your team in real-time.
+        Team messaging is available on plans with 2 or more seats. Upgrade to Starter or higher to collaborate with your team in real-time.
       </p>
       <Button asChild>
         <a href="/settings">
@@ -400,7 +413,6 @@ function ChatView({
 
 function ConversationTrayContent({ onClose }: { onClose?: () => void }) {
   const { user } = useAuth();
-  const { data: organization, isLoading: isOrgLoading } = useOrganization();
   const { data: teamMembers = [] } = useTeamMembers();
   const queryClient = useQueryClient();
   
@@ -409,8 +421,12 @@ function ConversationTrayContent({ onClose }: { onClose?: () => void }) {
   
   const currentUserId = (user as any)?.claims?.sub || (user as any)?.id || "";
   
-  const isScaleOrEnterprise = organization?.subscriptionTier === "scale" || 
-                               organization?.subscriptionTier === "enterprise";
+  const { data: seatInfo, isLoading: isSeatInfoLoading } = useQuery<SeatInfo>({
+    queryKey: ["/api/organization/seats"],
+    staleTime: 60000,
+  });
+  
+  const hasMessagingAccess = seatInfo?.hasTeamMessaging ?? false;
   
   const { data: conversations = [], isLoading: isConversationsLoading } = useQuery<ConversationWithDetails[]>({
     queryKey: ["/api/team-messaging/conversations"],
@@ -422,7 +438,7 @@ function ConversationTrayContent({ onClose }: { onClose?: () => void }) {
       if (!res.ok) throw new Error("Failed to fetch conversations");
       return res.json();
     },
-    enabled: isScaleOrEnterprise,
+    enabled: hasMessagingAccess,
     refetchInterval: 10000,
   });
 
@@ -470,7 +486,7 @@ function ConversationTrayContent({ onClose }: { onClose?: () => void }) {
     }
   };
 
-  if (isOrgLoading) {
+  if (isSeatInfoLoading) {
     return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
@@ -478,7 +494,7 @@ function ConversationTrayContent({ onClose }: { onClose?: () => void }) {
     );
   }
 
-  if (!isScaleOrEnterprise) {
+  if (!hasMessagingAccess) {
     return <TierGatingPrompt />;
   }
 

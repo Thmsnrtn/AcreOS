@@ -11,8 +11,9 @@ export interface TierLimits {
   properties: number | null;
   notes: number | null;
   ai_requests: number | null;
-  teamMembers: number | null;
-  hasTeamMessaging: boolean;
+  includedSeats: number; // Seats included in the tier
+  maxSeats: number | null; // Maximum seats allowed (null = unlimited)
+  seatPriceCents: number | null; // Price per additional seat in cents (null = cannot purchase)
 }
 
 export interface UsageLimitResult {
@@ -29,40 +30,45 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     properties: 10,
     notes: 5,
     ai_requests: 100,
-    teamMembers: 1,
-    hasTeamMessaging: false,
+    includedSeats: 1,
+    maxSeats: 1, // Cannot add seats on free tier
+    seatPriceCents: null,
   },
   starter: {
     leads: 500,
     properties: 100,
     notes: 50,
     ai_requests: 1000,
-    teamMembers: 2,
-    hasTeamMessaging: false,
+    includedSeats: 2,
+    maxSeats: 5,
+    seatPriceCents: 2000, // $20/seat
   },
   pro: {
     leads: 5000,
     properties: 1000,
     notes: 500,
     ai_requests: 10000,
-    teamMembers: 10,
-    hasTeamMessaging: false,
+    includedSeats: 5,
+    maxSeats: 20,
+    seatPriceCents: 3000, // $30/seat
   },
   scale: {
     leads: null,
     properties: null,
     notes: null,
     ai_requests: null,
-    teamMembers: 25,
-    hasTeamMessaging: true,
+    includedSeats: 10,
+    maxSeats: 100,
+    seatPriceCents: 4000, // $40/seat
   },
   enterprise: {
     leads: null,
     properties: null,
     notes: null,
     ai_requests: null,
-    teamMembers: null,
-    hasTeamMessaging: true,
+    includedSeats: 25,
+    maxSeats: null, // Unlimited
+    seatPriceCents: 5000, // $50/seat (negotiable)
   },
 };
 
@@ -231,4 +237,115 @@ export class UsageLimitError extends Error {
     this.resourceType = result.resourceType;
     this.tier = result.tier;
   }
+}
+
+// ============================================
+// SEAT MANAGEMENT
+// ============================================
+
+export interface SeatInfo {
+  tier: SubscriptionTier;
+  includedSeats: number;
+  additionalSeats: number;
+  totalSeats: number;
+  maxSeats: number | null;
+  usedSeats: number;
+  availableSeats: number;
+  canAddSeats: boolean;
+  seatPriceCents: number | null;
+  hasTeamMessaging: boolean;
+}
+
+async function getOrganizationSeatData(organizationId: number): Promise<{
+  tier: SubscriptionTier;
+  additionalSeats: number;
+}> {
+  const [org] = await db
+    .select({ 
+      subscriptionTier: organizations.subscriptionTier,
+      additionalSeats: organizations.additionalSeats 
+    })
+    .from(organizations)
+    .where(eq(organizations.id, organizationId));
+  
+  if (!org) return { tier: "free", additionalSeats: 0 };
+  return {
+    tier: normalizeTier(org.subscriptionTier),
+    additionalSeats: org.additionalSeats || 0,
+  };
+}
+
+async function getTeamMemberCount(organizationId: number): Promise<number> {
+  const { teamMembers } = await import("@shared/schema");
+  const [result] = await db
+    .select({ count: count() })
+    .from(teamMembers)
+    .where(eq(teamMembers.organizationId, organizationId));
+  return result?.count ?? 0;
+}
+
+export async function getSeatInfo(organizationId: number): Promise<SeatInfo> {
+  const { tier, additionalSeats } = await getOrganizationSeatData(organizationId);
+  const limits = TIER_LIMITS[tier];
+  const usedSeats = await getTeamMemberCount(organizationId);
+  
+  const includedSeats = limits.includedSeats;
+  const totalSeats = includedSeats + additionalSeats;
+  const maxSeats = limits.maxSeats;
+  const availableSeats = totalSeats - usedSeats;
+  const canAddSeats = limits.seatPriceCents !== null && (maxSeats === null || totalSeats < maxSeats);
+  
+  // Team messaging is available if the org has 2+ total seats
+  const hasTeamMessaging = totalSeats >= 2;
+  
+  return {
+    tier,
+    includedSeats,
+    additionalSeats,
+    totalSeats,
+    maxSeats,
+    usedSeats,
+    availableSeats,
+    canAddSeats,
+    seatPriceCents: limits.seatPriceCents,
+    hasTeamMessaging,
+  };
+}
+
+export async function checkTeamMessagingAccess(organizationId: number): Promise<boolean> {
+  const seatInfo = await getSeatInfo(organizationId);
+  return seatInfo.hasTeamMessaging;
+}
+
+export async function canAddMoreSeats(organizationId: number, seatsToAdd: number = 1): Promise<{
+  allowed: boolean;
+  reason?: string;
+  currentTotal: number;
+  maxSeats: number | null;
+}> {
+  const seatInfo = await getSeatInfo(organizationId);
+  
+  if (seatInfo.seatPriceCents === null) {
+    return {
+      allowed: false,
+      reason: "Your plan does not support additional seats. Please upgrade.",
+      currentTotal: seatInfo.totalSeats,
+      maxSeats: seatInfo.maxSeats,
+    };
+  }
+  
+  if (seatInfo.maxSeats !== null && seatInfo.totalSeats + seatsToAdd > seatInfo.maxSeats) {
+    return {
+      allowed: false,
+      reason: `Adding ${seatsToAdd} seat(s) would exceed your plan's maximum of ${seatInfo.maxSeats} seats.`,
+      currentTotal: seatInfo.totalSeats,
+      maxSeats: seatInfo.maxSeats,
+    };
+  }
+  
+  return {
+    allowed: true,
+    currentTotal: seatInfo.totalSeats,
+    maxSeats: seatInfo.maxSeats,
+  };
 }

@@ -257,6 +257,19 @@ export async function registerRoutes(
     res.json(updated);
   });
   
+  // Get seat information for the organization
+  api.get("/api/organization/seats", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { getSeatInfo } = await import("./services/usageLimits");
+      const seatInfo = await getSeatInfo(org.id);
+      res.json(seatInfo);
+    } catch (error: any) {
+      console.error("Get seat info error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch seat info" });
+    }
+  });
+  
   // ============================================
   // ONBOARDING
   // ============================================
@@ -7444,17 +7457,21 @@ Seller Signature (if applicable)
   // TEAM MESSAGING API
   // ============================================
   
-  // Tier gating middleware for team messaging (scale or enterprise only)
-  const requireMessagingTier = (req: Request, res: Response, next: NextFunction) => {
+  // Tier gating middleware for team messaging (requires 2+ seats)
+  const requireMessagingTier = async (req: Request, res: Response, next: NextFunction) => {
     const org = (req as any).organization;
     if (!org) {
       return res.status(401).json({ message: "Unauthorized" });
     }
-    const tier = org.subscriptionTier;
-    if (tier !== "scale" && tier !== "enterprise") {
+    
+    const { checkTeamMessagingAccess } = await import("./services/usageLimits");
+    const hasAccess = await checkTeamMessagingAccess(org.id);
+    
+    if (!hasAccess) {
       return res.status(403).json({ 
-        message: "Team messaging requires Scale or Enterprise subscription. Please upgrade to access this feature.",
-        requiredTier: "scale"
+        message: "Team messaging requires a plan with 2 or more seats. Upgrade to Starter or higher to access this feature.",
+        tier_gating: true,
+        minSeats: 2
       });
     }
     next();

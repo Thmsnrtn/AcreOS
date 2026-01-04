@@ -30,6 +30,8 @@ export const organizations = pgTable("organizations", {
   autoTopUpEnabled: boolean("auto_top_up_enabled").default(false),
   autoTopUpThresholdCents: integer("auto_top_up_threshold_cents").default(200), // Trigger when below $2
   autoTopUpAmountCents: integer("auto_top_up_amount_cents").default(2500), // Add $25
+  // Seat management
+  additionalSeats: integer("additional_seats").default(0), // Extra seats purchased beyond tier limit
   // Onboarding wizard state
   onboardingCompleted: boolean("onboarding_completed").default(false),
   onboardingStep: integer("onboarding_step").default(0),
