@@ -156,12 +156,12 @@ function AuditLogViewer() {
         <div className="flex flex-wrap gap-3 items-end">
           <div className="space-y-1">
             <Label>Action</Label>
-            <Select value={filters.action} onValueChange={(v) => setFilters(f => ({ ...f, action: v, offset: 0 }))}>
+            <Select value={filters.action || "all"} onValueChange={(v) => setFilters(f => ({ ...f, action: v === "all" ? "" : v, offset: 0 }))}>
               <SelectTrigger className="w-[180px]" data-testid="select-audit-action">
                 <SelectValue placeholder="All actions" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All actions</SelectItem>
+                <SelectItem value="all">All actions</SelectItem>
                 <SelectItem value="create">Create</SelectItem>
                 <SelectItem value="update">Update</SelectItem>
                 <SelectItem value="delete">Delete</SelectItem>
@@ -174,12 +174,12 @@ function AuditLogViewer() {
           
           <div className="space-y-1">
             <Label>Entity Type</Label>
-            <Select value={filters.entityType} onValueChange={(v) => setFilters(f => ({ ...f, entityType: v, offset: 0 }))}>
+            <Select value={filters.entityType || "all"} onValueChange={(v) => setFilters(f => ({ ...f, entityType: v === "all" ? "" : v, offset: 0 }))}>
               <SelectTrigger className="w-[180px]" data-testid="select-audit-entity">
                 <SelectValue placeholder="All entities" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All entities</SelectItem>
+                <SelectItem value="all">All entities</SelectItem>
                 <SelectItem value="lead">Lead</SelectItem>
                 <SelectItem value="property">Property</SelectItem>
                 <SelectItem value="deal">Deal</SelectItem>

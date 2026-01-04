@@ -329,8 +329,8 @@ export default function TasksPage() {
             <FormItem>
               <FormLabel>Assign to</FormLabel>
               <Select 
-                onValueChange={(v) => field.onChange(v ? parseInt(v) : null)} 
-                defaultValue={field.value?.toString()}
+                onValueChange={(v) => field.onChange(v && v !== "unassigned" ? parseInt(v) : null)} 
+                defaultValue={field.value?.toString() || "unassigned"}
               >
                 <FormControl>
                   <SelectTrigger data-testid="select-task-assignee">
@@ -338,7 +338,7 @@ export default function TasksPage() {
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  <SelectItem value="">Unassigned</SelectItem>
+                  <SelectItem value="unassigned">Unassigned</SelectItem>
                   {teamMembers?.map((member) => (
                     <SelectItem key={member.id} value={member.id.toString()}>
                       {member.name || member.userId}
