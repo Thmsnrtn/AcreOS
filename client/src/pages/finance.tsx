@@ -19,7 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
-import { Plus, DollarSign, Calendar, TrendingUp, AlertTriangle, CheckCircle, Clock, User, MapPin, FileText, CreditCard, X, Eye, Receipt, Calculator, Trash2, Loader2, Download } from "lucide-react";
+import { Plus, DollarSign, Calendar, TrendingUp, AlertTriangle, CheckCircle, Clock, User, MapPin, FileText, CreditCard, X, Eye, Receipt, Calculator, Trash2, Loader2, Download, RefreshCw, Send, ArrowUpRight, Phone, Mail } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format, addMonths } from "date-fns";
@@ -334,6 +334,61 @@ function NoteDetailDrawer({ note, onClose, onDelete }: { note: NoteWithDetails; 
   const { data: payments, isLoading: paymentsLoading } = usePayments(note.id);
   const [showRecordPayment, setShowRecordPayment] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isRegenerating, setIsRegenerating] = useState(false);
+  const [dunningData, setDunningData] = useState<any>(null);
+  const [isDunningLoading, setIsDunningLoading] = useState(false);
+  const [isSendingReminder, setIsSendingReminder] = useState(false);
+
+  const fetchDunningData = async () => {
+    setIsDunningLoading(true);
+    try {
+      const res = await fetch(`/api/notes/${note.id}/dunning`, { credentials: 'include' });
+      if (res.ok) {
+        const data = await res.json();
+        setDunningData(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch dunning data:', err);
+    } finally {
+      setIsDunningLoading(false);
+    }
+  };
+
+  const handleRegenerateSchedule = async () => {
+    setIsRegenerating(true);
+    try {
+      const res = await fetch(`/api/notes/${note.id}/schedule/generate`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (res.ok) {
+        window.location.reload();
+      }
+    } catch (err) {
+      console.error('Failed to regenerate schedule:', err);
+    } finally {
+      setIsRegenerating(false);
+    }
+  };
+
+  const handleSendReminder = async (type: string) => {
+    setIsSendingReminder(true);
+    try {
+      const res = await fetch(`/api/notes/${note.id}/dunning`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ action: 'send_reminder', stage: type }),
+      });
+      if (res.ok) {
+        fetchDunningData();
+      }
+    } catch (err) {
+      console.error('Failed to send reminder:', err);
+    } finally {
+      setIsSendingReminder(false);
+    }
+  };
 
   const handleDownloadPdf = async () => {
     setIsDownloading(true);
@@ -461,10 +516,11 @@ function NoteDetailDrawer({ note, onClose, onDelete }: { note: NoteWithDetails; 
             </Button>
           </div>
 
-          <Tabs defaultValue="payments">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="payments" data-testid="tab-payments">Payment History</TabsTrigger>
-              <TabsTrigger value="schedule" data-testid="tab-schedule">Amortization</TabsTrigger>
+          <Tabs defaultValue="payments" onValueChange={(v) => v === 'dunning' && !dunningData && fetchDunningData()}>
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="payments" data-testid="tab-payments">Payments</TabsTrigger>
+              <TabsTrigger value="schedule" data-testid="tab-schedule">Schedule</TabsTrigger>
+              <TabsTrigger value="dunning" data-testid="tab-dunning">Dunning</TabsTrigger>
             </TabsList>
 
             <TabsContent value="payments" className="mt-4">
@@ -527,9 +583,44 @@ function NoteDetailDrawer({ note, onClose, onDelete }: { note: NoteWithDetails; 
               </Card>
             </TabsContent>
 
-            <TabsContent value="schedule" className="mt-4">
+            <TabsContent value="schedule" className="mt-4 space-y-4">
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-muted/50 rounded-lg p-3 text-center">
+                  <p className="text-xs text-muted-foreground">Total Interest</p>
+                  <p className="font-bold font-mono text-amber-600" data-testid="text-total-interest">
+                    ${schedule.reduce((sum, s) => sum + (s.interest || 0), 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                  </p>
+                </div>
+                <div className="bg-muted/50 rounded-lg p-3 text-center">
+                  <p className="text-xs text-muted-foreground">Payoff Date</p>
+                  <p className="font-bold" data-testid="text-payoff-date">
+                    {schedule.length > 0 ? format(new Date(schedule[schedule.length - 1].dueDate), 'MMM yyyy') : 'N/A'}
+                  </p>
+                </div>
+                <div className="bg-muted/50 rounded-lg p-3 text-center">
+                  <p className="text-xs text-muted-foreground">Remaining</p>
+                  <p className="font-bold" data-testid="text-remaining-payments">
+                    {schedule.filter(s => s.status !== 'paid').length} payments
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleRegenerateSchedule}
+                  disabled={isRegenerating}
+                  data-testid="button-regenerate-schedule"
+                >
+                  {isRegenerating ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-1" />}
+                  Regenerate
+                </Button>
+                <Button variant="outline" size="sm" data-testid="button-export-schedule">
+                  <Download className="w-4 h-4 mr-1" /> Export PDF
+                </Button>
+              </div>
               <Card>
-                <CardContent className="p-0 max-h-80 overflow-y-auto">
+                <CardContent className="p-0 max-h-64 overflow-y-auto">
                   <div className="overflow-x-auto">
                     <Table>
                       <TableHeader className="sticky top-0 bg-card">
@@ -580,6 +671,124 @@ function NoteDetailDrawer({ note, onClose, onDelete }: { note: NoteWithDetails; 
                   </div>
                 </CardContent>
               </Card>
+            </TabsContent>
+
+            <TabsContent value="dunning" className="mt-4 space-y-4">
+              {isDunningLoading ? (
+                <div className="flex items-center justify-center h-32">
+                  <Loader2 className="w-6 h-6 animate-spin" />
+                </div>
+              ) : dunningData ? (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Card className="glass-panel">
+                      <CardContent className="p-4">
+                        <p className="text-xs text-muted-foreground mb-1">Delinquency Status</p>
+                        <div className="flex items-center gap-2">
+                          {dunningData.daysDelinquent > 0 ? (
+                            <AlertTriangle className="w-5 h-5 text-red-500" />
+                          ) : (
+                            <CheckCircle className="w-5 h-5 text-emerald-500" />
+                          )}
+                          <span className="font-bold" data-testid="text-dunning-status">
+                            {dunningData.daysDelinquent > 0 ? `${dunningData.daysDelinquent} days past due` : 'Current'}
+                          </span>
+                        </div>
+                      </CardContent>
+                    </Card>
+                    <Card className="glass-panel">
+                      <CardContent className="p-4">
+                        <p className="text-xs text-muted-foreground mb-1">Dunning Stage</p>
+                        <Badge 
+                          className={
+                            dunningData.dunningStage === 'current' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400' :
+                            dunningData.dunningStage === 'friendly_reminder' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400' :
+                            dunningData.dunningStage === 'formal_notice' ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400' :
+                            dunningData.dunningStage === 'final_warning' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400' :
+                            'bg-red-200 text-red-900 dark:bg-red-900/50 dark:text-red-300'
+                          }
+                          data-testid="badge-dunning-stage"
+                        >
+                          {dunningData.dunningStage.replace(/_/g, ' ')}
+                        </Badge>
+                      </CardContent>
+                    </Card>
+                    <Card className="glass-panel">
+                      <CardContent className="p-4">
+                        <p className="text-xs text-muted-foreground mb-1">Past Due Amount</p>
+                        <p className="font-bold font-mono text-red-600" data-testid="text-past-due-amount">
+                          ${dunningData.pastDueAmount?.toLocaleString() || '0'}
+                        </p>
+                      </CardContent>
+                    </Card>
+                    <Card className="glass-panel">
+                      <CardContent className="p-4">
+                        <p className="text-xs text-muted-foreground mb-1">Missed Payments</p>
+                        <p className="font-bold" data-testid="text-missed-payments">
+                          {dunningData.missedPayments || 0}
+                        </p>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <Button 
+                      size="sm" 
+                      onClick={() => handleSendReminder('due')} 
+                      disabled={isSendingReminder}
+                      data-testid="button-send-reminder"
+                    >
+                      {isSendingReminder ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Send className="w-4 h-4 mr-1" />}
+                      Send Reminder
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => handleSendReminder('final_warning')} disabled={isSendingReminder} data-testid="button-escalate">
+                      <ArrowUpRight className="w-4 h-4 mr-1" /> Escalate
+                    </Button>
+                    <Button size="sm" variant="ghost" data-testid="button-record-contact">
+                      <Phone className="w-4 h-4 mr-1" /> Log Call
+                    </Button>
+                  </div>
+
+                  <Card>
+                    <CardHeader className="py-3 px-4">
+                      <CardTitle className="text-sm">Dunning History</CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-0 max-h-48 overflow-y-auto">
+                      {dunningData.history?.length > 0 ? (
+                        <div className="divide-y">
+                          {dunningData.history.map((h: any, idx: number) => (
+                            <div key={h.id || idx} className="px-4 py-3 flex items-start gap-3" data-testid={`row-dunning-${h.id || idx}`}>
+                              <div className="p-1.5 rounded-full bg-muted">
+                                {h.channel === 'email' ? <Mail className="w-3 h-3" /> : 
+                                 h.channel === 'sms' ? <Phone className="w-3 h-3" /> : 
+                                 <Send className="w-3 h-3" />}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium capitalize">{h.type?.replace(/_/g, ' ') || 'Action'}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {h.date ? format(new Date(h.date), 'MMM d, yyyy h:mm a') : 'Unknown date'}
+                                </p>
+                              </div>
+                              <Badge variant="outline" className="text-xs">
+                                {h.status}
+                              </Badge>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="p-4 text-sm text-muted-foreground text-center">No dunning history yet</p>
+                      )}
+                    </CardContent>
+                  </Card>
+                </>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <p>Click to load dunning information</p>
+                  <Button variant="outline" size="sm" className="mt-2" onClick={fetchDunningData}>
+                    Load Dunning Data
+                  </Button>
+                </div>
+              )}
             </TabsContent>
           </Tabs>
 

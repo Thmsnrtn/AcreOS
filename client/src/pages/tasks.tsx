@@ -16,6 +16,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   ListTodo, 
   Plus, 
@@ -29,7 +30,9 @@ import {
   Trash2,
   Edit,
   Filter,
-  RefreshCw
+  RefreshCw,
+  CalendarDays,
+  UserCircle2
 } from "lucide-react";
 import { format } from "date-fns";
 import type { Task } from "@shared/schema";
@@ -63,20 +66,26 @@ const statusIcons = {
   cancelled: AlertCircle,
 };
 
+type FilterTab = "all" | "my" | "overdue" | "today" | "week";
+
 export default function TasksPage() {
   const { toast } = useToast();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [activeTab, setActiveTab] = useState<FilterTab>("all");
   const [filters, setFilters] = useState<{ status?: string; priority?: string }>({});
 
   const queryParams = new URLSearchParams();
   if (filters.status) queryParams.set("status", filters.status);
   if (filters.priority) queryParams.set("priority", filters.priority);
+  if (activeTab === "overdue") queryParams.set("overdue", "true");
+  if (activeTab === "today") queryParams.set("due_date", "today");
+  if (activeTab === "week") queryParams.set("due_date", "week");
   const queryString = queryParams.toString();
 
   const { data: tasks, isLoading } = useQuery<Task[]>({
-    queryKey: ["/api/tasks", queryString],
+    queryKey: activeTab === "my" ? ["/api/tasks/my"] : ["/api/tasks", queryString],
   });
 
   const { data: teamMembers } = useQuery<{ id: number; userId: string; name: string }[]>({
@@ -442,6 +451,33 @@ export default function TasksPage() {
             </Dialog>
           </div>
 
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as FilterTab)} className="w-full">
+            <div className="flex items-center justify-between gap-4 flex-wrap mb-4">
+              <TabsList>
+                <TabsTrigger value="all" data-testid="tab-all-tasks">
+                  <ListTodo className="w-4 h-4 mr-2" />
+                  All Tasks
+                </TabsTrigger>
+                <TabsTrigger value="my" data-testid="tab-my-tasks">
+                  <UserCircle2 className="w-4 h-4 mr-2" />
+                  My Tasks
+                </TabsTrigger>
+                <TabsTrigger value="overdue" data-testid="tab-overdue-tasks">
+                  <AlertCircle className="w-4 h-4 mr-2" />
+                  Overdue
+                </TabsTrigger>
+                <TabsTrigger value="today" data-testid="tab-today-tasks">
+                  <Calendar className="w-4 h-4 mr-2" />
+                  Today
+                </TabsTrigger>
+                <TabsTrigger value="week" data-testid="tab-week-tasks">
+                  <CalendarDays className="w-4 h-4 mr-2" />
+                  This Week
+                </TabsTrigger>
+              </TabsList>
+            </div>
+          </Tabs>
+
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-4 flex-wrap border-b">
               <CardTitle className="flex items-center gap-2">
@@ -484,7 +520,7 @@ export default function TasksPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setFilters({})}
+                  onClick={() => { setFilters({}); setActiveTab("all"); }}
                   data-testid="button-clear-filters"
                 >
                   Clear Filters

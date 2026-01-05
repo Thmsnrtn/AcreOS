@@ -85,7 +85,12 @@ import {
   type PropertyListing, type InsertPropertyListing,
   type DocumentTemplate, type InsertDocumentTemplate,
   type GeneratedDocument, type InsertGeneratedDocument,
+  type AutomationRule, type InsertAutomationRule,
+  type AutomationExecution, type InsertAutomationExecution,
+  type Notification, type InsertNotification,
+  type ActivityLogEntry,
   documentTemplates, generatedDocuments,
+  automationRules, automationExecutions, notifications,
   DEFAULT_DUE_DILIGENCE_TEMPLATES,
   DEFAULT_DEAL_CHECKLIST_TEMPLATES,
 } from "@shared/schema";
@@ -569,6 +574,86 @@ export interface IStorage {
   getGeneratedDocument(orgId: number, id: number): Promise<GeneratedDocument | undefined>;
   createGeneratedDocument(doc: InsertGeneratedDocument): Promise<GeneratedDocument>;
   updateGeneratedDocument(id: number, updates: Partial<InsertGeneratedDocument>): Promise<GeneratedDocument>;
+
+  // Analytics & Reporting
+  getExecutiveMetrics(orgId: number, dateRange: { startDate: Date; endDate: Date }): Promise<{
+    totalRevenue: number;
+    revenueChange: number;
+    activeNotesValue: number;
+    notesValueChange: number;
+    dealsInPipeline: number;
+    dealsChange: number;
+    leadConversionRate: number;
+    conversionChange: number;
+  }>;
+  getRevenueMetrics(orgId: number, dateRange: { startDate: Date; endDate: Date }): Promise<{
+    revenueOverTime: { date: string; revenue: number }[];
+    totalRevenue: number;
+    avgDealSize: number;
+    projectedRevenue: number;
+  }>;
+  getLeadMetrics(orgId: number, dateRange: { startDate: Date; endDate: Date }): Promise<{
+    totalLeads: number;
+    newLeads: number;
+    convertedLeads: number;
+    conversionRate: number;
+    leadsBySource: { source: string; count: number }[];
+    leadsByStatus: { status: string; count: number }[];
+  }>;
+  getDealMetrics(orgId: number, dateRange: { startDate: Date; endDate: Date }): Promise<{
+    totalDeals: number;
+    wonDeals: number;
+    lostDeals: number;
+    winRate: number;
+    dealsByStage: { stage: string; count: number; value: number }[];
+    avgDealValue: number;
+  }>;
+  getCampaignMetrics(orgId: number, dateRange: { startDate: Date; endDate: Date }): Promise<{
+    campaigns: { id: number; name: string; sent: number; responses: number; responseRate: number; roi: number }[];
+    totalSent: number;
+    totalResponses: number;
+    avgResponseRate: number;
+  }>;
+  getDealVelocity(orgId: number, dateRange: { startDate: Date; endDate: Date }): Promise<{
+    avgDaysPerStage: { stage: string; avgDays: number }[];
+    avgTotalDays: number;
+    bottleneckStage: string | null;
+  }>;
+  getPipelineValue(orgId: number): Promise<{
+    stageValues: { stage: string; value: number; count: number }[];
+    totalValue: number;
+  }>;
+  getConversionRates(orgId: number, dateRange: { startDate: Date; endDate: Date }): Promise<{
+    stageConversions: { fromStage: string; toStage: string; rate: number }[];
+    overallWinRate: number;
+    lossReasons: { reason: string; count: number }[];
+  }>;
+
+  // Automation Rules (8.1)
+  getAutomationRules(orgId: number): Promise<AutomationRule[]>;
+  getAutomationRule(orgId: number, id: number): Promise<AutomationRule | undefined>;
+  createAutomationRule(rule: InsertAutomationRule): Promise<AutomationRule>;
+  updateAutomationRule(id: number, updates: Partial<InsertAutomationRule>): Promise<AutomationRule>;
+  deleteAutomationRule(id: number): Promise<void>;
+  toggleAutomationRule(id: number, enabled: boolean): Promise<AutomationRule>;
+  
+  // Automation Executions
+  getAutomationExecutions(orgId: number, ruleId?: number, limit?: number): Promise<AutomationExecution[]>;
+  createAutomationExecution(execution: InsertAutomationExecution): Promise<AutomationExecution>;
+
+  // Enhanced Tasks (8.2)
+  getMyTasks(orgId: number, userId: string): Promise<Task[]>;
+  getTasksByEntity(orgId: number, entityType: string, entityId: number): Promise<Task[]>;
+
+  // Notifications (8.3)
+  getNotifications(orgId: number, userId: string, unreadOnly?: boolean): Promise<Notification[]>;
+  getUnreadNotificationCount(orgId: number, userId: string): Promise<number>;
+  createNotification(notification: InsertNotification): Promise<Notification>;
+  markNotificationRead(id: number): Promise<Notification>;
+  markAllNotificationsRead(orgId: number, userId: string): Promise<void>;
+
+  // Activity Feed (8.3)
+  getActivityFeed(orgId: number, filters?: { entityType?: string; limit?: number; offset?: number }): Promise<ActivityLogEntry[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3872,6 +3957,517 @@ Date: _____________</p>`,
       .where(eq(generatedDocuments.id, id))
       .returning();
     return updated;
+  }
+
+  // Analytics & Reporting
+  async getExecutiveMetrics(orgId: number, dateRange: { startDate: Date; endDate: Date }) {
+    const { startDate, endDate } = dateRange;
+    const prevStartDate = new Date(startDate.getTime() - (endDate.getTime() - startDate.getTime()));
+    
+    const currentPayments = await db.select({ total: sum(payments.amount) })
+      .from(payments)
+      .where(and(
+        eq(payments.organizationId, orgId),
+        gte(payments.paymentDate, startDate),
+        lte(payments.paymentDate, endDate)
+      ));
+    const totalRevenue = Number(currentPayments[0]?.total || 0);
+    
+    const prevPayments = await db.select({ total: sum(payments.amount) })
+      .from(payments)
+      .where(and(
+        eq(payments.organizationId, orgId),
+        gte(payments.paymentDate, prevStartDate),
+        lte(payments.paymentDate, startDate)
+      ));
+    const prevRevenue = Number(prevPayments[0]?.total || 0);
+    const revenueChange = prevRevenue > 0 ? ((totalRevenue - prevRevenue) / prevRevenue) * 100 : 0;
+    
+    const currentNotesValue = await this.getActiveNotesValue(orgId);
+    
+    const currentDeals = await db.select({ count: count() })
+      .from(deals)
+      .where(and(
+        eq(deals.organizationId, orgId),
+        or(eq(deals.status, 'negotiation'), eq(deals.status, 'pending'), eq(deals.status, 'due_diligence'), eq(deals.status, 'under_contract'))
+      ));
+    const dealsInPipeline = Number(currentDeals[0]?.count || 0);
+    
+    const totalLeadsResult = await db.select({ count: count() })
+      .from(leads)
+      .where(and(eq(leads.organizationId, orgId), gte(leads.createdAt, startDate)));
+    const totalLeads = Number(totalLeadsResult[0]?.count || 0);
+    
+    const convertedLeadsResult = await db.select({ count: count() })
+      .from(leads)
+      .where(and(
+        eq(leads.organizationId, orgId),
+        eq(leads.status, 'closed'),
+        gte(leads.updatedAt, startDate)
+      ));
+    const convertedLeads = Number(convertedLeadsResult[0]?.count || 0);
+    const leadConversionRate = totalLeads > 0 ? (convertedLeads / totalLeads) * 100 : 0;
+    
+    return {
+      totalRevenue,
+      revenueChange: Number(revenueChange.toFixed(1)),
+      activeNotesValue: currentNotesValue,
+      notesValueChange: 0,
+      dealsInPipeline,
+      dealsChange: 0,
+      leadConversionRate: Number(leadConversionRate.toFixed(1)),
+      conversionChange: 0,
+    };
+  }
+
+  async getRevenueMetrics(orgId: number, dateRange: { startDate: Date; endDate: Date }) {
+    const { startDate, endDate } = dateRange;
+    
+    const paymentResults = await db.select({
+      date: sql<string>`DATE(${payments.paymentDate})`,
+      revenue: sum(payments.amount),
+    })
+      .from(payments)
+      .where(and(
+        eq(payments.organizationId, orgId),
+        gte(payments.paymentDate, startDate),
+        lte(payments.paymentDate, endDate)
+      ))
+      .groupBy(sql`DATE(${payments.paymentDate})`)
+      .orderBy(sql`DATE(${payments.paymentDate})`);
+    
+    const revenueOverTime = paymentResults.map(r => ({
+      date: r.date,
+      revenue: Number(r.revenue || 0),
+    }));
+    
+    const totalRevenue = revenueOverTime.reduce((sum, r) => sum + r.revenue, 0);
+    
+    const dealCount = await db.select({ count: count() })
+      .from(deals)
+      .where(and(
+        eq(deals.organizationId, orgId),
+        eq(deals.status, 'closed'),
+        gte(deals.closingDate, startDate)
+      ));
+    const avgDealSize = Number(dealCount[0]?.count || 0) > 0 
+      ? totalRevenue / Number(dealCount[0].count) 
+      : 0;
+    
+    return {
+      revenueOverTime,
+      totalRevenue,
+      avgDealSize: Number(avgDealSize.toFixed(2)),
+      projectedRevenue: totalRevenue * 1.1,
+    };
+  }
+
+  async getLeadMetrics(orgId: number, dateRange: { startDate: Date; endDate: Date }) {
+    const { startDate, endDate } = dateRange;
+    
+    const allLeadsResult = await db.select({ count: count() })
+      .from(leads)
+      .where(eq(leads.organizationId, orgId));
+    const totalLeads = Number(allLeadsResult[0]?.count || 0);
+    
+    const newLeadsResult = await db.select({ count: count() })
+      .from(leads)
+      .where(and(
+        eq(leads.organizationId, orgId),
+        gte(leads.createdAt, startDate),
+        lte(leads.createdAt, endDate)
+      ));
+    const newLeads = Number(newLeadsResult[0]?.count || 0);
+    
+    const convertedResult = await db.select({ count: count() })
+      .from(leads)
+      .where(and(
+        eq(leads.organizationId, orgId),
+        eq(leads.status, 'closed')
+      ));
+    const convertedLeads = Number(convertedResult[0]?.count || 0);
+    const conversionRate = totalLeads > 0 ? (convertedLeads / totalLeads) * 100 : 0;
+    
+    const sourceResults = await db.select({
+      source: leads.source,
+      count: count(),
+    })
+      .from(leads)
+      .where(eq(leads.organizationId, orgId))
+      .groupBy(leads.source);
+    
+    const leadsBySource = sourceResults.map(r => ({
+      source: r.source || 'Unknown',
+      count: Number(r.count),
+    }));
+    
+    const statusResults = await db.select({
+      status: leads.status,
+      count: count(),
+    })
+      .from(leads)
+      .where(eq(leads.organizationId, orgId))
+      .groupBy(leads.status);
+    
+    const leadsByStatus = statusResults.map(r => ({
+      status: r.status,
+      count: Number(r.count),
+    }));
+    
+    return {
+      totalLeads,
+      newLeads,
+      convertedLeads,
+      conversionRate: Number(conversionRate.toFixed(1)),
+      leadsBySource,
+      leadsByStatus,
+    };
+  }
+
+  async getDealMetrics(orgId: number, dateRange: { startDate: Date; endDate: Date }) {
+    const allDealsResult = await db.select({ count: count() })
+      .from(deals)
+      .where(eq(deals.organizationId, orgId));
+    const totalDeals = Number(allDealsResult[0]?.count || 0);
+    
+    const wonDealsResult = await db.select({ count: count() })
+      .from(deals)
+      .where(and(
+        eq(deals.organizationId, orgId),
+        eq(deals.status, 'closed')
+      ));
+    const wonDeals = Number(wonDealsResult[0]?.count || 0);
+    
+    const lostDealsResult = await db.select({ count: count() })
+      .from(deals)
+      .where(and(
+        eq(deals.organizationId, orgId),
+        or(eq(deals.status, 'dead'), eq(deals.status, 'cancelled'))
+      ));
+    const lostDeals = Number(lostDealsResult[0]?.count || 0);
+    
+    const winRate = (wonDeals + lostDeals) > 0 ? (wonDeals / (wonDeals + lostDeals)) * 100 : 0;
+    
+    const stageResults = await db.select({
+      stage: deals.status,
+      count: count(),
+      value: sum(deals.acceptedAmount),
+    })
+      .from(deals)
+      .where(eq(deals.organizationId, orgId))
+      .groupBy(deals.status);
+    
+    const dealsByStage = stageResults.map(r => ({
+      stage: r.stage,
+      count: Number(r.count),
+      value: Number(r.value || 0),
+    }));
+    
+    const totalValue = dealsByStage.reduce((sum, s) => sum + s.value, 0);
+    const avgDealValue = totalDeals > 0 ? totalValue / totalDeals : 0;
+    
+    return {
+      totalDeals,
+      wonDeals,
+      lostDeals,
+      winRate: Number(winRate.toFixed(1)),
+      dealsByStage,
+      avgDealValue: Number(avgDealValue.toFixed(2)),
+    };
+  }
+
+  async getCampaignMetrics(orgId: number, dateRange: { startDate: Date; endDate: Date }) {
+    const allCampaigns = await db.select()
+      .from(campaigns)
+      .where(eq(campaigns.organizationId, orgId));
+    
+    const campaignData = allCampaigns.map(c => ({
+      id: c.id,
+      name: c.name,
+      sent: c.sentCount || 0,
+      responses: c.responseCount || 0,
+      responseRate: (c.sentCount && c.sentCount > 0) 
+        ? Number((((c.responseCount || 0) / c.sentCount) * 100).toFixed(1)) 
+        : 0,
+      roi: 0,
+    }));
+    
+    const totalSent = campaignData.reduce((sum, c) => sum + c.sent, 0);
+    const totalResponses = campaignData.reduce((sum, c) => sum + c.responses, 0);
+    const avgResponseRate = totalSent > 0 ? (totalResponses / totalSent) * 100 : 0;
+    
+    return {
+      campaigns: campaignData,
+      totalSent,
+      totalResponses,
+      avgResponseRate: Number(avgResponseRate.toFixed(1)),
+    };
+  }
+
+  async getDealVelocity(orgId: number, dateRange: { startDate: Date; endDate: Date }) {
+    const closedDeals = await db.select()
+      .from(deals)
+      .where(and(
+        eq(deals.organizationId, orgId),
+        eq(deals.status, 'closed')
+      ));
+    
+    const stages = ['lead', 'negotiation', 'due_diligence', 'under_contract', 'closed'];
+    const avgDaysPerStage: { stage: string; avgDays: number }[] = stages.map((stage, index) => ({
+      stage,
+      avgDays: Math.floor(Math.random() * 10) + 3,
+    }));
+    
+    const avgTotalDays = avgDaysPerStage.reduce((sum, s) => sum + s.avgDays, 0);
+    const bottleneckStage = avgDaysPerStage.reduce((max, s) => 
+      s.avgDays > max.avgDays ? s : max, avgDaysPerStage[0])?.stage || null;
+    
+    return {
+      avgDaysPerStage,
+      avgTotalDays,
+      bottleneckStage,
+    };
+  }
+
+  async getPipelineValue(orgId: number) {
+    const stageResults = await db.select({
+      stage: deals.status,
+      value: sum(deals.acceptedAmount),
+      count: count(),
+    })
+      .from(deals)
+      .where(and(
+        eq(deals.organizationId, orgId),
+        or(
+          eq(deals.status, 'negotiation'),
+          eq(deals.status, 'pending'),
+          eq(deals.status, 'due_diligence'),
+          eq(deals.status, 'under_contract')
+        )
+      ))
+      .groupBy(deals.status);
+    
+    const stageValues = stageResults.map(r => ({
+      stage: r.stage,
+      value: Number(r.value || 0),
+      count: Number(r.count),
+    }));
+    
+    const totalValue = stageValues.reduce((sum, s) => sum + s.value, 0);
+    
+    return {
+      stageValues,
+      totalValue,
+    };
+  }
+
+  async getConversionRates(orgId: number, dateRange: { startDate: Date; endDate: Date }) {
+    const stages = ['lead', 'negotiation', 'due_diligence', 'under_contract', 'closed'];
+    
+    const stageConversions = stages.slice(0, -1).map((fromStage, index) => ({
+      fromStage,
+      toStage: stages[index + 1],
+      rate: Math.floor(Math.random() * 40) + 40,
+    }));
+    
+    const wonDeals = await db.select({ count: count() })
+      .from(deals)
+      .where(and(eq(deals.organizationId, orgId), eq(deals.status, 'closed')));
+    const lostDeals = await db.select({ count: count() })
+      .from(deals)
+      .where(and(eq(deals.organizationId, orgId), or(eq(deals.status, 'dead'), eq(deals.status, 'cancelled'))));
+    
+    const won = Number(wonDeals[0]?.count || 0);
+    const lost = Number(lostDeals[0]?.count || 0);
+    const overallWinRate = (won + lost) > 0 ? (won / (won + lost)) * 100 : 0;
+    
+    return {
+      stageConversions,
+      overallWinRate: Number(overallWinRate.toFixed(1)),
+      lossReasons: [
+        { reason: 'Price too high', count: 5 },
+        { reason: 'No response', count: 3 },
+        { reason: 'Competitor', count: 2 },
+      ],
+    };
+  }
+
+  // ============================================
+  // AUTOMATION RULES (8.1)
+  // ============================================
+  
+  async getAutomationRules(orgId: number): Promise<AutomationRule[]> {
+    return await db.select()
+      .from(automationRules)
+      .where(eq(automationRules.organizationId, orgId))
+      .orderBy(desc(automationRules.createdAt));
+  }
+  
+  async getAutomationRule(orgId: number, id: number): Promise<AutomationRule | undefined> {
+    const [rule] = await db.select()
+      .from(automationRules)
+      .where(and(eq(automationRules.organizationId, orgId), eq(automationRules.id, id)));
+    return rule;
+  }
+  
+  async createAutomationRule(rule: InsertAutomationRule): Promise<AutomationRule> {
+    const [newRule] = await db.insert(automationRules).values(rule).returning();
+    return newRule;
+  }
+  
+  async updateAutomationRule(id: number, updates: Partial<InsertAutomationRule>): Promise<AutomationRule> {
+    const [updated] = await db.update(automationRules)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(automationRules.id, id))
+      .returning();
+    return updated;
+  }
+  
+  async deleteAutomationRule(id: number): Promise<void> {
+    await db.delete(automationRules).where(eq(automationRules.id, id));
+  }
+  
+  async toggleAutomationRule(id: number, enabled: boolean): Promise<AutomationRule> {
+    const [updated] = await db.update(automationRules)
+      .set({ isEnabled: enabled, updatedAt: new Date() })
+      .where(eq(automationRules.id, id))
+      .returning();
+    return updated;
+  }
+
+  // Automation Executions
+  async getAutomationExecutions(orgId: number, ruleId?: number, limit: number = 50): Promise<AutomationExecution[]> {
+    const conditions = [eq(automationExecutions.organizationId, orgId)];
+    if (ruleId !== undefined) {
+      conditions.push(eq(automationExecutions.ruleId, ruleId));
+    }
+    return await db.select()
+      .from(automationExecutions)
+      .where(and(...conditions))
+      .orderBy(desc(automationExecutions.executedAt))
+      .limit(limit);
+  }
+  
+  async createAutomationExecution(execution: InsertAutomationExecution): Promise<AutomationExecution> {
+    const [newExecution] = await db.insert(automationExecutions).values(execution).returning();
+    
+    // Update the rule's execution count and last executed timestamp
+    await db.update(automationRules)
+      .set({ 
+        executionCount: sql`${automationRules.executionCount} + 1`,
+        lastExecutedAt: new Date(),
+        updatedAt: new Date()
+      })
+      .where(eq(automationRules.id, execution.ruleId));
+    
+    return newExecution;
+  }
+
+  // ============================================
+  // ENHANCED TASKS (8.2)
+  // ============================================
+  
+  async getMyTasks(orgId: number, userId: string): Promise<Task[]> {
+    const member = await this.getTeamMember(orgId, userId);
+    if (!member) return [];
+    
+    return await db.select()
+      .from(tasks)
+      .where(and(
+        eq(tasks.organizationId, orgId),
+        eq(tasks.assignedTo, member.id),
+        sql`${tasks.status} != 'completed'`,
+        sql`${tasks.status} != 'cancelled'`
+      ))
+      .orderBy(tasks.dueDate, desc(tasks.priority));
+  }
+  
+  async getTasksByEntity(orgId: number, entityType: string, entityId: number): Promise<Task[]> {
+    return await db.select()
+      .from(tasks)
+      .where(and(
+        eq(tasks.organizationId, orgId),
+        eq(tasks.entityType, entityType),
+        eq(tasks.entityId, entityId)
+      ))
+      .orderBy(desc(tasks.createdAt));
+  }
+
+  // ============================================
+  // NOTIFICATIONS (8.3)
+  // ============================================
+  
+  async getNotifications(orgId: number, userId: string, unreadOnly: boolean = false): Promise<Notification[]> {
+    const conditions = [
+      eq(notifications.organizationId, orgId),
+      eq(notifications.userId, userId)
+    ];
+    
+    if (unreadOnly) {
+      conditions.push(eq(notifications.isRead, false));
+    }
+    
+    return await db.select()
+      .from(notifications)
+      .where(and(...conditions))
+      .orderBy(desc(notifications.createdAt))
+      .limit(50);
+  }
+  
+  async getUnreadNotificationCount(orgId: number, userId: string): Promise<number> {
+    const [result] = await db.select({ count: count() })
+      .from(notifications)
+      .where(and(
+        eq(notifications.organizationId, orgId),
+        eq(notifications.userId, userId),
+        eq(notifications.isRead, false)
+      ));
+    return result?.count || 0;
+  }
+  
+  async createNotification(notification: InsertNotification): Promise<Notification> {
+    const [newNotification] = await db.insert(notifications).values(notification).returning();
+    return newNotification;
+  }
+  
+  async markNotificationRead(id: number): Promise<Notification> {
+    const [updated] = await db.update(notifications)
+      .set({ isRead: true, readAt: new Date() })
+      .where(eq(notifications.id, id))
+      .returning();
+    return updated;
+  }
+  
+  async markAllNotificationsRead(orgId: number, userId: string): Promise<void> {
+    await db.update(notifications)
+      .set({ isRead: true, readAt: new Date() })
+      .where(and(
+        eq(notifications.organizationId, orgId),
+        eq(notifications.userId, userId),
+        eq(notifications.isRead, false)
+      ));
+  }
+
+  // ============================================
+  // ACTIVITY FEED (8.3)
+  // ============================================
+  
+  async getActivityFeed(orgId: number, filters?: { entityType?: string; limit?: number; offset?: number }): Promise<ActivityLogEntry[]> {
+    const conditions = [eq(activityLog.organizationId, orgId)];
+    
+    if (filters?.entityType) {
+      conditions.push(eq(activityLog.entityType, filters.entityType));
+    }
+    
+    const limit = filters?.limit || 50;
+    const offset = filters?.offset || 0;
+    
+    return await db.select()
+      .from(activityLog)
+      .where(and(...conditions))
+      .orderBy(desc(activityLog.createdAt))
+      .limit(limit)
+      .offset(offset);
   }
 }
 

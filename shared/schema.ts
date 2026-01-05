@@ -3061,3 +3061,172 @@ export const insertGeneratedDocumentSchema = createInsertSchema(generatedDocumen
 });
 export type InsertGeneratedDocument = z.infer<typeof insertGeneratedDocumentSchema>;
 export type GeneratedDocument = typeof generatedDocuments.$inferSelect;
+
+// ============================================
+// AUTOMATION RULES ENGINE (8.1)
+// ============================================
+
+export const AUTOMATION_TRIGGERS = [
+  "lead_created",
+  "lead_status_changed",
+  "deal_stage_changed",
+  "payment_received",
+  "payment_missed",
+  "task_completed",
+  "note_created",
+  "property_added",
+] as const;
+export type AutomationTrigger = typeof AUTOMATION_TRIGGERS[number];
+
+export const AUTOMATION_CONDITIONS = [
+  "equals",
+  "not_equals",
+  "contains",
+  "not_contains",
+  "greater_than",
+  "less_than",
+  "is_empty",
+  "is_not_empty",
+] as const;
+export type AutomationCondition = typeof AUTOMATION_CONDITIONS[number];
+
+export const AUTOMATION_ACTIONS = [
+  "send_email",
+  "send_sms",
+  "create_task",
+  "add_tag",
+  "remove_tag",
+  "change_lead_status",
+  "change_deal_stage",
+  "notify_team",
+  "assign_to",
+  "add_note",
+] as const;
+export type AutomationAction = typeof AUTOMATION_ACTIONS[number];
+
+export const automationRules = pgTable("automation_rules", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  
+  name: text("name").notNull(),
+  description: text("description"),
+  
+  trigger: text("trigger").notNull(), // One of AUTOMATION_TRIGGERS
+  
+  conditions: jsonb("conditions").$type<{
+    field: string;
+    operator: string; // One of AUTOMATION_CONDITIONS
+    value: string;
+    logicalOperator?: "and" | "or";
+  }[]>(),
+  
+  actions: jsonb("actions").$type<{
+    type: string; // One of AUTOMATION_ACTIONS
+    config: Record<string, any>;
+  }[]>().notNull(),
+  
+  isEnabled: boolean("is_enabled").default(true),
+  
+  executionCount: integer("execution_count").default(0),
+  lastExecutedAt: timestamp("last_executed_at"),
+  
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertAutomationRuleSchema = createInsertSchema(automationRules).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  executionCount: true,
+  lastExecutedAt: true,
+});
+export type InsertAutomationRule = z.infer<typeof insertAutomationRuleSchema>;
+export type AutomationRule = typeof automationRules.$inferSelect;
+
+// Automation rule execution log
+export const automationExecutions = pgTable("automation_executions", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  ruleId: integer("rule_id").references(() => automationRules.id).notNull(),
+  
+  trigger: text("trigger").notNull(),
+  triggerData: jsonb("trigger_data").$type<Record<string, any>>(),
+  
+  conditionsMet: boolean("conditions_met").default(true),
+  conditionsResult: jsonb("conditions_result").$type<{
+    field: string;
+    passed: boolean;
+    actual: any;
+    expected: any;
+  }[]>(),
+  
+  actionsExecuted: jsonb("actions_executed").$type<{
+    type: string;
+    success: boolean;
+    result?: any;
+    error?: string;
+  }[]>(),
+  
+  status: text("status").notNull().default("completed"), // pending, running, completed, failed
+  error: text("error"),
+  
+  executedAt: timestamp("executed_at").defaultNow(),
+});
+
+export const insertAutomationExecutionSchema = createInsertSchema(automationExecutions).omit({
+  id: true,
+  executedAt: true,
+});
+export type InsertAutomationExecution = z.infer<typeof insertAutomationExecutionSchema>;
+export type AutomationExecution = typeof automationExecutions.$inferSelect;
+
+// ============================================
+// NOTIFICATIONS SYSTEM (8.3)
+// ============================================
+
+export const NOTIFICATION_TYPES = [
+  "task_assigned",
+  "task_due",
+  "task_overdue",
+  "deal_update",
+  "deal_stage_changed",
+  "payment_received",
+  "payment_missed",
+  "lead_response",
+  "lead_assigned",
+  "team_mention",
+  "automation_triggered",
+  "system_alert",
+] as const;
+export type NotificationType = typeof NOTIFICATION_TYPES[number];
+
+export const notifications = pgTable("notifications", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  userId: text("user_id").notNull(), // Recipient user ID
+  
+  type: text("type").notNull(), // One of NOTIFICATION_TYPES
+  title: text("title").notNull(),
+  message: text("message"),
+  
+  entityType: text("entity_type"), // lead, property, deal, task, payment
+  entityId: integer("entity_id"),
+  
+  isRead: boolean("is_read").default(false),
+  readAt: timestamp("read_at"),
+  
+  metadata: jsonb("metadata").$type<Record<string, any>>(),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertNotificationSchema = createInsertSchema(notifications).omit({
+  id: true,
+  createdAt: true,
+  isRead: true,
+  readAt: true,
+});
+export type InsertNotification = z.infer<typeof insertNotificationSchema>;
+export type Notification = typeof notifications.$inferSelect;

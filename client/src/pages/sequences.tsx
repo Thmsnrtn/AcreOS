@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { Sidebar } from "@/components/layout-sidebar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -202,14 +203,22 @@ export default function SequencesPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <Loader2 className="w-8 h-8 animate-spin" />
+      <div className="flex min-h-screen bg-background desert-gradient">
+        <Sidebar />
+        <main className="flex-1 md:ml-[17rem] p-4 pt-16 md:pt-8 md:p-8 pb-24 md:pb-8 overflow-x-hidden">
+          <div className="flex items-center justify-center h-96">
+            <Loader2 className="w-8 h-8 animate-spin" />
+          </div>
+        </main>
       </div>
     );
   }
 
   return (
-    <div className="p-6 space-y-6" data-testid="page-sequences">
+    <div className="flex min-h-screen bg-background desert-gradient">
+      <Sidebar />
+      <main className="flex-1 md:ml-[17rem] p-4 pt-16 md:pt-8 md:p-8 pb-24 md:pb-8 overflow-x-hidden">
+        <div className="max-w-7xl mx-auto space-y-6" data-testid="page-sequences">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold" data-testid="text-page-title">Drip Campaign Sequences</h1>
@@ -501,6 +510,8 @@ export default function SequencesPage() {
           </div>
         </DialogContent>
       </Dialog>
+        </div>
+      </main>
     </div>
   );
 }

@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, MapPin, DollarSign, Calendar, Building, TrendingUp, CheckCircle, X, GripVertical, FileText, Trash2, Loader2, Briefcase, Calculator, ClipboardCheck, Upload, AlertTriangle, CheckSquare, Square, Clock } from "lucide-react";
+import { Plus, MapPin, DollarSign, Calendar, Building, TrendingUp, CheckCircle, X, GripVertical, FileText, Trash2, Loader2, Briefcase, Calculator, ClipboardCheck, Upload, AlertTriangle, CheckSquare, Square, Clock, Download } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
@@ -57,6 +57,29 @@ export default function DealsPage() {
   const [selectedDeal, setSelectedDeal] = useState<DealWithProperty | null>(null);
   const [deletingDeal, setDeletingDeal] = useState<DealWithProperty | null>(null);
   const { mutate: deleteDeal, isPending: isDeleting } = useDeleteDeal();
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExport = async () => {
+    setIsExporting(true);
+    try {
+      const response = await fetch('/api/export/deals?format=csv', { credentials: 'include' });
+      if (!response.ok) throw new Error('Failed to export');
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const filename = response.headers.get('Content-Disposition')?.split('filename=')[1]?.replace(/"/g, '') || 'deals.csv';
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Export error:', error);
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   const enrichedDeals: DealWithProperty[] = (deals || []).map(deal => ({
     ...deal,
@@ -96,12 +119,22 @@ export default function DealsPage() {
               <h1 className="text-3xl font-bold" data-testid="text-page-title">Deal Pipeline</h1>
               <p className="text-muted-foreground">Track acquisitions and dispositions through your pipeline.</p>
             </div>
-            <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-              <DialogTrigger asChild>
-                <Button data-testid="button-create-deal">
-                  <Plus className="w-4 h-4 mr-2" /> New Deal
-                </Button>
-              </DialogTrigger>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button 
+                variant="outline" 
+                onClick={handleExport} 
+                disabled={isExporting}
+                data-testid="button-export-deals"
+              >
+                {isExporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
+                Export CSV
+              </Button>
+              <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+                <DialogTrigger asChild>
+                  <Button data-testid="button-create-deal">
+                    <Plus className="w-4 h-4 mr-2" /> New Deal
+                  </Button>
+                </DialogTrigger>
               <DialogContent className="sm:max-w-[500px] floating-window">
                 <DialogHeader>
                   <DialogTitle>Create Deal</DialogTitle>
@@ -109,7 +142,8 @@ export default function DealsPage() {
                 </DialogHeader>
                 <DealForm onSuccess={() => setIsCreateOpen(false)} />
               </DialogContent>
-            </Dialog>
+              </Dialog>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

@@ -23,12 +23,16 @@ import HelpPage from "@/pages/help";
 import AdminSupportPage from "@/pages/admin-support";
 import FounderDashboard from "@/pages/founder-dashboard";
 import SequencesPage from "@/pages/sequences";
+import AbTestsPage from "@/pages/ab-tests";
 import TasksPage from "@/pages/tasks";
 import TeamDashboardPage from "@/pages/team-dashboard";
+import AutomationPage from "@/pages/automation";
+import ActivityPage from "@/pages/activity";
 import CountiesPage from "@/pages/counties";
 import OffersPage from "@/pages/offers";
 import ListingsPage from "@/pages/listings";
 import DocumentsPage from "@/pages/documents";
+import AnalyticsPage from "@/pages/analytics";
 import AuthPage from "@/pages/auth-page";
 import BorrowerPortal from "@/pages/borrower-portal";
 import NotFound from "@/pages/not-found";
@@ -109,6 +113,15 @@ function Router() {
       <Route path="/team-dashboard">
         {() => <ProtectedRoute component={TeamDashboardPage} />}
       </Route>
+      <Route path="/automation">
+        {() => <ProtectedRoute component={AutomationPage} />}
+      </Route>
+      <Route path="/activity">
+        {() => <ProtectedRoute component={ActivityPage} />}
+      </Route>
+      <Route path="/analytics">
+        {() => <ProtectedRoute component={AnalyticsPage} />}
+      </Route>
       <Route path="/finance">
         {() => <ProtectedRoute component={FinancePage} />}
       </Route>
@@ -117,6 +130,9 @@ function Router() {
       </Route>
       <Route path="/campaigns">
         {() => <ProtectedRoute component={CampaignsPage} />}
+      </Route>
+      <Route path="/ab-tests">
+        {() => <ProtectedRoute component={AbTestsPage} />}
       </Route>
       <Route path="/sequences">
         {() => <ProtectedRoute component={SequencesPage} />}
