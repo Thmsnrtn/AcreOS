@@ -33,6 +33,8 @@ import OffersPage from "@/pages/offers";
 import ListingsPage from "@/pages/listings";
 import DocumentsPage from "@/pages/documents";
 import AnalyticsPage from "@/pages/analytics";
+import EmailSettingsPage from "@/pages/email-settings";
+import InboxPage from "@/pages/inbox";
 import AuthPage from "@/pages/auth-page";
 import BorrowerPortal from "@/pages/borrower-portal";
 import NotFound from "@/pages/not-found";
@@ -166,6 +168,12 @@ function Router() {
       </Route>
       <Route path="/settings">
         {() => <ProtectedRoute component={SettingsPage} />}
+      </Route>
+      <Route path="/settings/email">
+        {() => <ProtectedRoute component={EmailSettingsPage} />}
+      </Route>
+      <Route path="/inbox">
+        {() => <ProtectedRoute component={InboxPage} />}
       </Route>
       <Route path="/help">
         {() => <ProtectedRoute component={HelpPage} />}

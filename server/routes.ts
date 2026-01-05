@@ -9770,6 +9770,264 @@ Seller Signature (if applicable)
   });
 
   // ============================================
+  // EMAIL SENDER IDENTITIES
+  // ============================================
+
+  // GET /api/email-identities - Get all email sender identities for org
+  api.get("/api/email-identities", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const identities = await storage.getEmailSenderIdentities(org.id);
+      res.json(identities);
+    } catch (error: any) {
+      console.error("Get email identities error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch email identities" });
+    }
+  });
+
+  // POST /api/email-identities - Create new email sender identity
+  api.post("/api/email-identities", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = req.user as any;
+      const teamMember = await storage.getTeamMember(org.id, user.claims?.sub || user.id);
+      
+      const { type, fromEmail, fromName, replyToEmail, replyRoutingMode } = req.body;
+      
+      // For platform_alias type, auto-generate email if not provided
+      let finalFromEmail = fromEmail;
+      if (type === 'platform_alias' && !fromEmail && teamMember) {
+        const firstName = (teamMember.name?.split(' ')[0] || 'user').toLowerCase().replace(/[^a-z]/g, '');
+        const lastName = (teamMember.name?.split(' ').slice(1).join('') || '').toLowerCase().replace(/[^a-z]/g, '');
+        finalFromEmail = lastName ? `${firstName}.${lastName}@acreage.pro` : `${firstName}@acreage.pro`;
+      }
+      
+      const identity = await storage.createEmailSenderIdentity({
+        organizationId: org.id,
+        teamMemberId: teamMember?.id,
+        type,
+        fromEmail: finalFromEmail,
+        fromName: fromName || teamMember?.name || 'Acreage Land Co.',
+        replyToEmail,
+        replyRoutingMode: replyRoutingMode || 'in_app',
+        status: type === 'platform_alias' ? 'verified' : 'pending',
+        isDefault: false,
+        isActive: true,
+      });
+      
+      // If this is the first identity, make it default
+      const allIdentities = await storage.getEmailSenderIdentities(org.id);
+      if (allIdentities.length === 1) {
+        await storage.setDefaultEmailSenderIdentity(org.id, identity.id);
+      }
+      
+      res.status(201).json(identity);
+    } catch (error: any) {
+      console.error("Create email identity error:", error);
+      res.status(500).json({ message: error.message || "Failed to create email identity" });
+    }
+  });
+
+  // GET /api/email-identities/:id - Get single email sender identity
+  api.get("/api/email-identities/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const identity = await storage.getEmailSenderIdentity(id);
+      if (!identity) {
+        return res.status(404).json({ message: "Email identity not found" });
+      }
+      res.json(identity);
+    } catch (error: any) {
+      console.error("Get email identity error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch email identity" });
+    }
+  });
+
+  // PATCH /api/email-identities/:id - Update email sender identity
+  api.patch("/api/email-identities/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { fromName, replyToEmail, replyRoutingMode, isActive } = req.body;
+      
+      const identity = await storage.updateEmailSenderIdentity(id, {
+        fromName,
+        replyToEmail,
+        replyRoutingMode,
+        isActive,
+      });
+      res.json(identity);
+    } catch (error: any) {
+      console.error("Update email identity error:", error);
+      res.status(500).json({ message: error.message || "Failed to update email identity" });
+    }
+  });
+
+  // POST /api/email-identities/:id/set-default - Set identity as default
+  api.post("/api/email-identities/:id/set-default", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      await storage.setDefaultEmailSenderIdentity(org.id, id);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Set default email identity error:", error);
+      res.status(500).json({ message: error.message || "Failed to set default email identity" });
+    }
+  });
+
+  // DELETE /api/email-identities/:id - Delete email sender identity
+  api.delete("/api/email-identities/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteEmailSenderIdentity(id);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Delete email identity error:", error);
+      res.status(500).json({ message: error.message || "Failed to delete email identity" });
+    }
+  });
+
+  // ============================================
+  // INBOX MESSAGES
+  // ============================================
+
+  // GET /api/inbox - Get inbox messages
+  api.get("/api/inbox", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const isRead = req.query.isRead !== undefined ? req.query.isRead === 'true' : undefined;
+      const isArchived = req.query.isArchived !== undefined ? req.query.isArchived === 'true' : undefined;
+      const isStarred = req.query.isStarred !== undefined ? req.query.isStarred === 'true' : undefined;
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+      const offset = req.query.offset ? parseInt(req.query.offset as string) : 0;
+      
+      let messages = await storage.getInboxMessages(org.id, { isRead, isArchived, limit, offset });
+      
+      // Filter by starred if specified
+      if (isStarred !== undefined) {
+        messages = messages.filter(m => m.isStarred === isStarred);
+      }
+      
+      res.json(messages);
+    } catch (error: any) {
+      console.error("Get inbox messages error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch inbox messages" });
+    }
+  });
+
+  // GET /api/inbox/unread-count - Get unread count
+  api.get("/api/inbox/unread-count", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const count = await storage.getUnreadInboxCount(org.id);
+      res.json({ count });
+    } catch (error: any) {
+      console.error("Get unread count error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch unread count" });
+    }
+  });
+
+  // GET /api/inbox/:id - Get single inbox message
+  api.get("/api/inbox/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const message = await storage.getInboxMessage(id);
+      if (!message) {
+        return res.status(404).json({ message: "Message not found" });
+      }
+      res.json(message);
+    } catch (error: any) {
+      console.error("Get inbox message error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch message" });
+    }
+  });
+
+  // POST /api/inbox/:id/read - Mark message as read
+  api.post("/api/inbox/:id/read", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const user = req.user as any;
+      const userId = user.claims?.sub || user.id;
+      const message = await storage.markInboxMessageRead(id, userId);
+      res.json(message);
+    } catch (error: any) {
+      console.error("Mark message read error:", error);
+      res.status(500).json({ message: error.message || "Failed to mark message as read" });
+    }
+  });
+
+  // POST /api/inbox/:id/unread - Mark message as unread
+  api.post("/api/inbox/:id/unread", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const message = await storage.markInboxMessageUnread(id);
+      res.json(message);
+    } catch (error: any) {
+      console.error("Mark message unread error:", error);
+      res.status(500).json({ message: error.message || "Failed to mark message as unread" });
+    }
+  });
+
+  // POST /api/inbox/:id/star - Toggle star
+  api.post("/api/inbox/:id/star", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const currentMessage = await storage.getInboxMessage(id);
+      if (!currentMessage) {
+        return res.status(404).json({ message: "Message not found" });
+      }
+      const message = await storage.starInboxMessage(id, !currentMessage.isStarred);
+      res.json(message);
+    } catch (error: any) {
+      console.error("Toggle star error:", error);
+      res.status(500).json({ message: error.message || "Failed to toggle star" });
+    }
+  });
+
+  // POST /api/inbox/:id/archive - Archive message
+  api.post("/api/inbox/:id/archive", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const message = await storage.archiveInboxMessage(id);
+      res.json(message);
+    } catch (error: any) {
+      console.error("Archive message error:", error);
+      res.status(500).json({ message: error.message || "Failed to archive message" });
+    }
+  });
+
+  // POST /api/send-email - Send email reply
+  api.post("/api/send-email", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { to, subject, html, text, replyTo, inReplyToMessageId } = req.body;
+      
+      if (!to || !subject || (!html && !text)) {
+        return res.status(400).json({ message: "Missing required fields: to, subject, and html or text" });
+      }
+      
+      const { emailService } = await import("./services/emailService");
+      const result = await emailService.sendEmail({
+        to,
+        subject,
+        html: html || `<p>${text}</p>`,
+        text,
+        replyTo,
+        organizationId: org.id,
+      });
+      
+      if (result.success) {
+        res.json({ success: true, messageId: result.messageId });
+      } else {
+        res.status(500).json({ success: false, error: result.error });
+      }
+    } catch (error: any) {
+      console.error("Send email error:", error);
+      res.status(500).json({ message: error.message || "Failed to send email" });
+    }
+  });
+
+  // ============================================
   // ACTIVITY FEED (Phase 8.3)
   // ============================================
 

@@ -10,6 +10,7 @@ import {
   LogOut,
   Menu,
   Mail,
+  Inbox,
   GitBranch,
   Calculator,
   Headphones,
@@ -27,6 +28,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useState, useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -39,12 +41,14 @@ const routePrefetchMap: Record<string, string> = {
   "/deals": "/api/deals",
   "/finance": "/api/notes",
   "/campaigns": "/api/campaigns",
+  "/inbox": "/api/inbox",
 };
 
 import { TrendingUp } from "lucide-react";
 
 const navItems = [
   { label: "Dashboard", icon: LayoutDashboard, href: "/" },
+  { label: "Inbox", icon: Inbox, href: "/inbox", showUnreadBadge: true },
   { label: "Leads (CRM)", icon: Users, href: "/leads" },
   { label: "Inventory", icon: Map, href: "/properties" },
   { label: "Deal Pipeline", icon: GitBranch, href: "/deals" },
@@ -71,6 +75,12 @@ export function Sidebar() {
   const [location] = useLocation();
   const { logout, isFounder } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
+
+  const { data: unreadCountData } = useQuery<{ count: number }>({
+    queryKey: ["/api/inbox/unread-count"],
+    refetchInterval: 60000,
+  });
+  const inboxUnreadCount = unreadCountData?.count ?? 0;
 
   const handlePrefetch = useCallback((href: string) => {
     const apiRoute = routePrefetchMap[href];
@@ -125,6 +135,7 @@ export function Sidebar() {
         )}
         {navItems.map((item) => {
           const isActive = location === item.href;
+          const showBadge = (item as any).showUnreadBadge && inboxUnreadCount > 0;
           return (
             <Link 
               key={item.href} 
@@ -137,12 +148,22 @@ export function Sidebar() {
                   : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
               )}
               onMouseEnter={() => handlePrefetch(item.href)}
+              data-testid={`link-nav-${item.href.replace("/", "") || "dashboard"}`}
             >
               <item.icon className={cn(
                 "w-5 h-5 transition-colors", 
                 isActive ? "text-primary-foreground" : "text-muted-foreground group-hover:text-sidebar-foreground"
               )} />
-              <span className="font-medium text-sm">{item.label}</span>
+              <span className="font-medium text-sm flex-1">{item.label}</span>
+              {showBadge && (
+                <Badge 
+                  variant="secondary" 
+                  className="text-xs"
+                  data-testid="badge-inbox-unread"
+                >
+                  {inboxUnreadCount > 99 ? "99+" : inboxUnreadCount}
+                </Badge>
+              )}
             </Link>
           );
         })}
