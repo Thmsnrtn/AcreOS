@@ -1,6 +1,69 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import type { DueDiligenceTemplate, DueDiligenceItem, InsertDueDiligenceTemplate, InsertDueDiligenceItem } from "@shared/schema";
+import type { DueDiligenceTemplate, DueDiligenceItem, InsertDueDiligenceTemplate, InsertDueDiligenceItem, DueDiligenceChecklist } from "@shared/schema";
+
+// Enhanced Due Diligence Checklist hooks
+export function useDueDiligenceChecklist(propertyId: number) {
+  return useQuery<DueDiligenceChecklist>({
+    queryKey: ["/api/due-diligence", propertyId],
+    queryFn: async () => {
+      const res = await fetch(`/api/due-diligence/${propertyId}`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to fetch due diligence checklist");
+      return res.json();
+    },
+    enabled: !!propertyId,
+  });
+}
+
+export function useUpdateDueDiligenceChecklist() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      propertyId,
+      updates,
+    }: {
+      propertyId: number;
+      updates: Partial<DueDiligenceChecklist>;
+    }) => {
+      const res = await apiRequest("PUT", `/api/due-diligence/${propertyId}`, updates);
+      return res.json();
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ["/api/due-diligence", variables.propertyId],
+      });
+    },
+  });
+}
+
+export function useLookupFloodZone() {
+  return useMutation({
+    mutationFn: async (propertyId: number) => {
+      const res = await apiRequest("POST", `/api/due-diligence/${propertyId}/lookup/flood-zone`);
+      return res.json();
+    },
+  });
+}
+
+export function useLookupWetlands() {
+  return useMutation({
+    mutationFn: async (propertyId: number) => {
+      const res = await apiRequest("POST", `/api/due-diligence/${propertyId}/lookup/wetlands`);
+      return res.json();
+    },
+  });
+}
+
+export function useLookupTax() {
+  return useMutation({
+    mutationFn: async (propertyId: number) => {
+      const res = await apiRequest("POST", `/api/due-diligence/${propertyId}/lookup/tax`);
+      return res.json();
+    },
+  });
+}
 
 export function useDueDiligenceTemplates() {
   return useQuery<DueDiligenceTemplate[]>({

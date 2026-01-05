@@ -2675,3 +2675,389 @@ export const insertTeamMemberPresenceSchema = createInsertSchema(teamMemberPrese
 });
 export type InsertTeamMemberPresence = z.infer<typeof insertTeamMemberPresenceSchema>;
 export type TeamMemberPresence = typeof teamMemberPresence.$inferSelect;
+
+// ============================================
+// ACQUISITION: TARGET COUNTIES & DATA SOURCES
+// ============================================
+
+export const targetCounties = pgTable("target_counties", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  name: text("name").notNull(),
+  state: text("state").notNull(),
+  fipsCode: text("fips_code"),
+  population: integer("population"),
+  medianHomeValue: numeric("median_home_value"),
+  averageLotPrice: numeric("average_lot_price"),
+  status: text("status").notNull().default("researching"), // researching, active, paused, exhausted
+  priority: integer("priority").default(1), // 1-5, 1 being highest
+  notes: text("notes"),
+  dataSources: jsonb("data_sources").$type<{
+    name: string;
+    type: string; // tax_delinquent, probate, vacant, absentee
+    lastPulled?: string;
+    recordCount?: number;
+    cost?: number;
+    url?: string;
+  }[]>(),
+  metrics: jsonb("metrics").$type<{
+    leadsGenerated?: number;
+    dealsCompleted?: number;
+    responseRate?: number;
+    averageProfit?: number;
+  }>(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertTargetCountySchema = createInsertSchema(targetCounties).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertTargetCounty = z.infer<typeof insertTargetCountySchema>;
+export type TargetCounty = typeof targetCounties.$inferSelect;
+
+// ============================================
+// ACQUISITION: OFFER LETTERS & BLIND OFFERS
+// ============================================
+
+export const offerLetters = pgTable("offer_letters", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  leadId: integer("lead_id").references(() => leads.id),
+  propertyId: integer("property_id").references(() => properties.id),
+  
+  offerAmount: numeric("offer_amount").notNull(),
+  offerPercent: numeric("offer_percent"), // Percentage of assessed value
+  assessedValue: numeric("assessed_value"),
+  
+  expirationDays: integer("expiration_days").default(30),
+  expirationDate: timestamp("expiration_date"),
+  
+  templateId: text("template_id"),
+  letterContent: text("letter_content"),
+  
+  status: text("status").notNull().default("draft"), // draft, queued, sent, delivered, responded, accepted, rejected, expired
+  
+  deliveryMethod: text("delivery_method").default("direct_mail"), // direct_mail, email, both
+  lobMailingId: text("lob_mailing_id"),
+  trackingNumber: text("tracking_number"),
+  
+  sentAt: timestamp("sent_at"),
+  deliveredAt: timestamp("delivered_at"),
+  respondedAt: timestamp("responded_at"),
+  responseNotes: text("response_notes"),
+  
+  batchId: text("batch_id"), // Groups offers sent together
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertOfferLetterSchema = createInsertSchema(offerLetters).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertOfferLetter = z.infer<typeof insertOfferLetterSchema>;
+export type OfferLetter = typeof offerLetters.$inferSelect;
+
+// Offer letter templates
+export const offerTemplates = pgTable("offer_templates", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  name: text("name").notNull(),
+  type: text("type").notNull().default("blind_offer"), // blind_offer, follow_up, final_offer
+  subject: text("subject"),
+  content: text("content").notNull(),
+  isDefault: boolean("is_default").default(false),
+  variables: jsonb("variables").$type<string[]>(), // Available merge fields
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertOfferTemplateSchema = createInsertSchema(offerTemplates).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertOfferTemplate = z.infer<typeof insertOfferTemplateSchema>;
+export type OfferTemplate = typeof offerTemplates.$inferSelect;
+
+// ============================================
+// ACQUISITION: SKIP TRACING
+// ============================================
+
+export const skipTraces = pgTable("skip_traces", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  leadId: integer("lead_id").references(() => leads.id),
+  
+  inputData: jsonb("input_data").$type<{
+    name?: string;
+    address?: string;
+    apn?: string;
+    mailingAddress?: string;
+  }>(),
+  
+  results: jsonb("results").$type<{
+    phones?: { number: string; type: string; verified: boolean }[];
+    emails?: { email: string; verified: boolean }[];
+    addresses?: { address: string; type: string; current: boolean }[];
+    relatives?: { name: string; relationship?: string }[];
+    employer?: { name: string; address?: string };
+    ageRange?: string;
+  }>(),
+  
+  provider: text("provider"), // realskip, tloxp, batchskip
+  status: text("status").notNull().default("pending"), // pending, processing, completed, failed, no_results
+  
+  costCents: integer("cost_cents"),
+  requestedAt: timestamp("requested_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertSkipTraceSchema = createInsertSchema(skipTraces).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertSkipTrace = z.infer<typeof insertSkipTraceSchema>;
+export type SkipTrace = typeof skipTraces.$inferSelect;
+
+// ============================================
+// DUE DILIGENCE: CHECKLISTS & RESEARCH
+// ============================================
+
+export const dueDiligenceChecklists = pgTable("due_diligence_checklists", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  propertyId: integer("property_id").references(() => properties.id).notNull(),
+  
+  status: text("status").notNull().default("in_progress"), // in_progress, completed, failed
+  completedPercent: integer("completed_percent").default(0),
+  
+  items: jsonb("items").$type<{
+    id: string;
+    category: string; // title, environmental, zoning, access, utilities, taxes
+    name: string;
+    status: string; // pending, passed, failed, warning, skipped
+    notes?: string;
+    dataSource?: string;
+    verifiedAt?: string;
+    verifiedBy?: string;
+    autoVerified?: boolean;
+    requiresManualReview?: boolean;
+  }[]>(),
+  
+  floodZone: jsonb("flood_zone").$type<{
+    zone?: string; // A, AE, X, etc.
+    inFloodplain?: boolean;
+    panelNumber?: string;
+    effectiveDate?: string;
+    source?: string;
+  }>(),
+  
+  wetlands: jsonb("wetlands").$type<{
+    hasWetlands?: boolean;
+    wetlandType?: string;
+    acresAffected?: number;
+    source?: string;
+    verified?: boolean;
+  }>(),
+  
+  taxInfo: jsonb("tax_info").$type<{
+    annualTaxAmount?: number;
+    backTaxesOwed?: number;
+    taxSaleScheduled?: boolean;
+    taxSaleDate?: string;
+    assessedValue?: number;
+    taxRate?: number;
+    paymentHistory?: { year: number; amount: number; status: string }[];
+  }>(),
+  
+  hoaInfo: jsonb("hoa_info").$type<{
+    hasHOA?: boolean;
+    hoaName?: string;
+    monthlyDues?: number;
+    specialAssessments?: number;
+    restrictions?: string[];
+    contactInfo?: string;
+  }>(),
+  
+  deedRestrictions: jsonb("deed_restrictions").$type<{
+    hasRestrictions?: boolean;
+    restrictions?: string[];
+    easements?: string[];
+    rightOfWay?: string;
+  }>(),
+  
+  accessInfo: jsonb("access_info").$type<{
+    hasLegalAccess?: boolean;
+    accessType?: string; // paved, dirt, easement, none
+    roadName?: string;
+    maintenanceResponsibility?: string;
+  }>(),
+  
+  utilitiesInfo: jsonb("utilities_info").$type<{
+    electric?: { available: boolean; provider?: string; distanceFeet?: number };
+    water?: { available: boolean; type?: string; provider?: string };
+    sewer?: { available: boolean; type?: string };
+    gas?: { available: boolean; provider?: string };
+    internet?: { available: boolean; providers?: string[] };
+  }>(),
+  
+  assignedTo: integer("assigned_to"),
+  startedAt: timestamp("started_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertDueDiligenceChecklistSchema = createInsertSchema(dueDiligenceChecklists).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertDueDiligenceChecklist = z.infer<typeof insertDueDiligenceChecklistSchema>;
+export type DueDiligenceChecklist = typeof dueDiligenceChecklists.$inferSelect;
+
+// ============================================
+// DISPOSITION: LISTINGS & SYNDICATION
+// ============================================
+
+export const propertyListings = pgTable("property_listings", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  propertyId: integer("property_id").references(() => properties.id).notNull(),
+  
+  title: text("title").notNull(),
+  description: text("description"),
+  askingPrice: numeric("asking_price").notNull(),
+  minimumPrice: numeric("minimum_price"),
+  
+  sellerFinancingAvailable: boolean("seller_financing_available").default(true),
+  downPaymentMin: numeric("down_payment_min"),
+  monthlyPaymentMin: numeric("monthly_payment_min"),
+  interestRate: numeric("interest_rate"),
+  termMonths: integer("term_months"),
+  
+  photos: jsonb("photos").$type<{
+    url: string;
+    caption?: string;
+    isPrimary?: boolean;
+    order?: number;
+  }[]>(),
+  
+  status: text("status").notNull().default("draft"), // draft, active, pending, sold, withdrawn
+  
+  syndicationTargets: jsonb("syndication_targets").$type<{
+    platform: string; // landwatch, landandfarm, lands_of_america, facebook_marketplace, craigslist
+    listingId?: string;
+    listingUrl?: string;
+    status: string; // pending, active, failed, removed
+    postedAt?: string;
+    expiresAt?: string;
+    error?: string;
+  }[]>(),
+  
+  viewCount: integer("view_count").default(0),
+  inquiryCount: integer("inquiry_count").default(0),
+  
+  publishedAt: timestamp("published_at"),
+  expiresAt: timestamp("expires_at"),
+  soldAt: timestamp("sold_at"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertPropertyListingSchema = createInsertSchema(propertyListings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertPropertyListing = z.infer<typeof insertPropertyListingSchema>;
+export type PropertyListing = typeof propertyListings.$inferSelect;
+
+// ============================================
+// DOCUMENTS: TEMPLATES & E-SIGNATURES
+// ============================================
+
+export const documentTemplates = pgTable("document_templates", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id),
+  name: text("name").notNull(),
+  type: text("type").notNull(), // purchase_agreement, quit_claim_deed, warranty_deed, assignment_contract, promissory_note, offer_letter
+  category: text("category").notNull().default("closing"), // acquisition, closing, financing
+  content: text("content").notNull(), // HTML/Markdown template with merge fields
+  variables: jsonb("variables").$type<{
+    name: string;
+    description: string;
+    type: string; // text, number, date, currency
+    required: boolean;
+    defaultValue?: string;
+  }[]>(),
+  isSystemTemplate: boolean("is_system_template").default(false),
+  isActive: boolean("is_active").default(true),
+  version: integer("version").default(1),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertDocumentTemplateSchema = createInsertSchema(documentTemplates).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertDocumentTemplate = z.infer<typeof insertDocumentTemplateSchema>;
+export type DocumentTemplate = typeof documentTemplates.$inferSelect;
+
+export const generatedDocuments = pgTable("generated_documents", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  templateId: integer("template_id").references(() => documentTemplates.id),
+  dealId: integer("deal_id").references(() => deals.id),
+  propertyId: integer("property_id").references(() => properties.id),
+  
+  name: text("name").notNull(),
+  type: text("type").notNull(),
+  content: text("content"), // Generated content
+  pdfUrl: text("pdf_url"),
+  
+  variables: jsonb("variables").$type<Record<string, string | number>>(),
+  
+  status: text("status").notNull().default("draft"), // draft, pending_signature, partially_signed, signed, cancelled
+  
+  signers: jsonb("signers").$type<{
+    id: string;
+    name: string;
+    email: string;
+    role: string; // buyer, seller, witness, notary
+    signedAt?: string;
+    signatureUrl?: string;
+    order?: number;
+  }[]>(),
+  
+  esignProvider: text("esign_provider"), // docusign, hellosign, none
+  esignEnvelopeId: text("esign_envelope_id"),
+  esignStatus: text("esign_status"),
+  
+  sentAt: timestamp("sent_at"),
+  completedAt: timestamp("completed_at"),
+  expiresAt: timestamp("expires_at"),
+  
+  createdBy: integer("created_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertGeneratedDocumentSchema = createInsertSchema(generatedDocuments).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertGeneratedDocument = z.infer<typeof insertGeneratedDocumentSchema>;
+export type GeneratedDocument = typeof generatedDocuments.$inferSelect;

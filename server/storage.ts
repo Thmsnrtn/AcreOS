@@ -8,7 +8,7 @@ import {
   messages, activityLog, usageEvents,
   aiAgentProfiles, aiToolDefinitions, aiExecutionRuns, aiMemory,
   vaAgents, vaActions, vaBriefings, vaCalendarEvents, vaTemplates,
-  dueDiligenceTemplates, dueDiligenceItems,
+  dueDiligenceTemplates, dueDiligenceItems, dueDiligenceChecklists,
   checklistTemplates, dealChecklists,
   usageRecords, creditTransactions,
   supportCases, supportMessages, supportActions, supportPlaybooks,
@@ -19,6 +19,9 @@ import {
   abTests, abTestVariants,
   customFieldDefinitions, customFieldValues, savedViews, notificationPreferences, tasks,
   auditLog,
+  targetCounties,
+  offerLetters,
+  offerTemplates,
   type Organization, type InsertOrganization,
   type TeamMember, type InsertTeamMember,
   type Lead, type InsertLead,
@@ -72,6 +75,10 @@ import {
   type NotificationPreference, type InsertNotificationPreference,
   type Task, type InsertTask,
   type AuditLogEntry, type InsertAuditLog,
+  type TargetCounty, type InsertTargetCounty,
+  type OfferLetter, type InsertOfferLetter,
+  type OfferTemplate, type InsertOfferTemplate,
+  type DueDiligenceChecklist, type InsertDueDiligenceChecklist,
   DEFAULT_DUE_DILIGENCE_TEMPLATES,
   DEFAULT_DEAL_CHECKLIST_TEMPLATES,
 } from "@shared/schema";
@@ -499,6 +506,33 @@ export interface IStorage {
     consentSource?: string;
     optOutReason?: string;
   }): Promise<Lead>;
+
+  // Target Counties
+  getTargetCounties(orgId: number): Promise<TargetCounty[]>;
+  getTargetCounty(orgId: number, id: number): Promise<TargetCounty | undefined>;
+  createTargetCounty(county: InsertTargetCounty): Promise<TargetCounty>;
+  updateTargetCounty(id: number, updates: Partial<InsertTargetCounty>): Promise<TargetCounty>;
+  deleteTargetCounty(id: number): Promise<void>;
+
+  // Offer Letters
+  getOfferLetters(orgId: number, filters?: { status?: string; batchId?: string }): Promise<OfferLetter[]>;
+  getOfferLetter(orgId: number, id: number): Promise<OfferLetter | undefined>;
+  createOfferLetter(letter: InsertOfferLetter): Promise<OfferLetter>;
+  createOfferLettersBatch(letters: InsertOfferLetter[]): Promise<OfferLetter[]>;
+  updateOfferLetter(id: number, updates: Partial<InsertOfferLetter>): Promise<OfferLetter>;
+  deleteOfferLetter(id: number): Promise<void>;
+
+  // Offer Templates
+  getOfferTemplates(orgId: number): Promise<OfferTemplate[]>;
+  getOfferTemplate(orgId: number, id: number): Promise<OfferTemplate | undefined>;
+  createOfferTemplate(template: InsertOfferTemplate): Promise<OfferTemplate>;
+  updateOfferTemplate(id: number, updates: Partial<InsertOfferTemplate>): Promise<OfferTemplate>;
+  deleteOfferTemplate(id: number): Promise<void>;
+
+  // Due Diligence Checklists (Enhanced)
+  getDueDiligenceChecklist(propertyId: number): Promise<DueDiligenceChecklist | undefined>;
+  getOrCreateDueDiligenceChecklist(orgId: number, propertyId: number): Promise<DueDiligenceChecklist>;
+  updateDueDiligenceChecklist(id: number, updates: Partial<InsertDueDiligenceChecklist>): Promise<DueDiligenceChecklist>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3332,6 +3366,159 @@ export class DatabaseStorage implements IStorage {
       assignedTo: r.assignedTo as number | null,
       avgResponseTimeHours: r.avgResponseTime ? Math.round(Number(r.avgResponseTime) * 10) / 10 : null,
     }));
+  }
+
+  // Target Counties
+  async getTargetCounties(orgId: number) {
+    return db.select().from(targetCounties).where(eq(targetCounties.organizationId, orgId)).orderBy(targetCounties.priority, targetCounties.name);
+  }
+
+  async getTargetCounty(orgId: number, id: number) {
+    const [county] = await db.select().from(targetCounties).where(and(eq(targetCounties.id, id), eq(targetCounties.organizationId, orgId)));
+    return county;
+  }
+
+  async createTargetCounty(county: InsertTargetCounty) {
+    const [created] = await db.insert(targetCounties).values(county).returning();
+    return created;
+  }
+
+  async updateTargetCounty(id: number, updates: Partial<InsertTargetCounty>) {
+    const [updated] = await db.update(targetCounties).set({ ...updates, updatedAt: new Date() }).where(eq(targetCounties.id, id)).returning();
+    return updated;
+  }
+
+  async deleteTargetCounty(id: number) {
+    await db.delete(targetCounties).where(eq(targetCounties.id, id));
+  }
+
+  // Offer Letters
+  async getOfferLetters(orgId: number, filters?: { status?: string; batchId?: string }) {
+    let query = db.select().from(offerLetters).where(eq(offerLetters.organizationId, orgId));
+    
+    if (filters?.status) {
+      query = query.where(and(eq(offerLetters.organizationId, orgId), eq(offerLetters.status, filters.status))) as any;
+    }
+    if (filters?.batchId) {
+      query = query.where(and(eq(offerLetters.organizationId, orgId), eq(offerLetters.batchId, filters.batchId))) as any;
+    }
+    
+    return query.orderBy(desc(offerLetters.createdAt));
+  }
+
+  async getOfferLetter(orgId: number, id: number) {
+    const [letter] = await db.select().from(offerLetters)
+      .where(and(eq(offerLetters.id, id), eq(offerLetters.organizationId, orgId)));
+    return letter;
+  }
+
+  async createOfferLetter(letter: InsertOfferLetter) {
+    const [created] = await db.insert(offerLetters).values(letter).returning();
+    return created;
+  }
+
+  async createOfferLettersBatch(letters: InsertOfferLetter[]) {
+    if (letters.length === 0) return [];
+    const created = await db.insert(offerLetters).values(letters).returning();
+    return created;
+  }
+
+  async updateOfferLetter(id: number, updates: Partial<InsertOfferLetter>) {
+    const [updated] = await db.update(offerLetters)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(offerLetters.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteOfferLetter(id: number) {
+    await db.delete(offerLetters).where(eq(offerLetters.id, id));
+  }
+
+  // Offer Templates
+  async getOfferTemplates(orgId: number) {
+    return db.select().from(offerTemplates)
+      .where(eq(offerTemplates.organizationId, orgId))
+      .orderBy(desc(offerTemplates.isDefault), offerTemplates.name);
+  }
+
+  async getOfferTemplate(orgId: number, id: number) {
+    const [template] = await db.select().from(offerTemplates)
+      .where(and(eq(offerTemplates.id, id), eq(offerTemplates.organizationId, orgId)));
+    return template;
+  }
+
+  async createOfferTemplate(template: InsertOfferTemplate) {
+    const [created] = await db.insert(offerTemplates).values(template).returning();
+    return created;
+  }
+
+  async updateOfferTemplate(id: number, updates: Partial<InsertOfferTemplate>) {
+    const [updated] = await db.update(offerTemplates)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(offerTemplates.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteOfferTemplate(id: number) {
+    await db.delete(offerTemplates).where(eq(offerTemplates.id, id));
+  }
+
+  // Due Diligence Checklists (Enhanced)
+  async getDueDiligenceChecklist(propertyId: number) {
+    const [checklist] = await db.select().from(dueDiligenceChecklists)
+      .where(eq(dueDiligenceChecklists.propertyId, propertyId));
+    return checklist;
+  }
+
+  async getOrCreateDueDiligenceChecklist(orgId: number, propertyId: number) {
+    const existing = await this.getDueDiligenceChecklist(propertyId);
+    if (existing) return existing;
+
+    const defaultItems = [
+      { id: "env-flood", category: "environmental", name: "Flood Zone Check", status: "pending", dataSource: "FEMA" },
+      { id: "env-wetlands", category: "environmental", name: "Wetlands Assessment", status: "pending", dataSource: "NWI" },
+      { id: "tax-history", category: "taxes", name: "Tax History Review", status: "pending", dataSource: "County Records" },
+      { id: "tax-back", category: "taxes", name: "Back Taxes Check", status: "pending", dataSource: "County Treasurer" },
+      { id: "tax-sale", category: "taxes", name: "Tax Sale Status", status: "pending", dataSource: "County Records" },
+      { id: "legal-hoa", category: "legal", name: "HOA/POA Check", status: "pending", dataSource: "Title Search" },
+      { id: "legal-deed", category: "legal", name: "Deed Restrictions", status: "pending", dataSource: "County Recorder" },
+      { id: "legal-easements", category: "legal", name: "Easements Review", status: "pending", dataSource: "Title Search" },
+      { id: "access-legal", category: "access", name: "Legal Access Verification", status: "pending", dataSource: "Survey/Plat" },
+      { id: "access-road", category: "access", name: "Road Type Assessment", status: "pending", dataSource: "Site Visit" },
+      { id: "access-maintenance", category: "access", name: "Road Maintenance Responsibility", status: "pending", dataSource: "County/HOA" },
+      { id: "util-electric", category: "utilities", name: "Electric Availability", status: "pending", dataSource: "Utility Provider" },
+      { id: "util-water", category: "utilities", name: "Water Access", status: "pending", dataSource: "Utility/Well Records" },
+      { id: "util-sewer", category: "utilities", name: "Sewer/Septic Status", status: "pending", dataSource: "Health Dept" },
+      { id: "util-internet", category: "utilities", name: "Internet Availability", status: "pending", dataSource: "ISP Check" },
+    ];
+
+    const [checklist] = await db.insert(dueDiligenceChecklists).values({
+      organizationId: orgId,
+      propertyId,
+      status: "in_progress",
+      completedPercent: 0,
+      items: defaultItems,
+    }).returning();
+    return checklist;
+  }
+
+  async updateDueDiligenceChecklist(id: number, updates: Partial<InsertDueDiligenceChecklist>) {
+    if (updates.items) {
+      const items = updates.items as any[];
+      const completedCount = items.filter(i => i.status === "passed" || i.status === "failed" || i.status === "skipped").length;
+      updates.completedPercent = Math.round((completedCount / items.length) * 100);
+      if (updates.completedPercent === 100) {
+        updates.status = "completed";
+        updates.completedAt = new Date();
+      }
+    }
+    const [updated] = await db.update(dueDiligenceChecklists)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(dueDiligenceChecklists.id, id))
+      .returning();
+    return updated;
   }
 }
 

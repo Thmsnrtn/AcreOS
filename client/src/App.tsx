@@ -25,6 +25,8 @@ import FounderDashboard from "@/pages/founder-dashboard";
 import SequencesPage from "@/pages/sequences";
 import TasksPage from "@/pages/tasks";
 import TeamDashboardPage from "@/pages/team-dashboard";
+import CountiesPage from "@/pages/counties";
+import OffersPage from "@/pages/offers";
 import AuthPage from "@/pages/auth-page";
 import BorrowerPortal from "@/pages/borrower-portal";
 import NotFound from "@/pages/not-found";
@@ -116,6 +118,12 @@ function Router() {
       </Route>
       <Route path="/sequences">
         {() => <ProtectedRoute component={SequencesPage} />}
+      </Route>
+      <Route path="/counties">
+        {() => <ProtectedRoute component={CountiesPage} />}
+      </Route>
+      <Route path="/offers">
+        {() => <ProtectedRoute component={OffersPage} />}
       </Route>
       <Route path="/tools">
         {() => <ProtectedRoute component={ToolsPage} />}

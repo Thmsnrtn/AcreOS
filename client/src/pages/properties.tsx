@@ -38,6 +38,7 @@ import { Progress } from "@/components/ui/progress";
 import { CompsAnalysis } from "@/components/comps-analysis";
 import { AIOfferGenerator } from "@/components/ai-offer-generator";
 import { CustomFieldValuesEditor } from "@/components/custom-fields";
+import { DueDiligencePanel } from "@/components/due-diligence-panel";
 
 export default function PropertiesPage() {
   const { data: properties, isLoading } = useProperties();
@@ -802,7 +803,7 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
           </TabsContent>
           
           <TabsContent value="due-diligence" className="mt-4">
-            <DueDiligenceTab propertyId={property.id} />
+            <DueDiligencePanel propertyId={property.id} />
           </TabsContent>
         </Tabs>
       </DialogContent>
