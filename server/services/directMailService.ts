@@ -19,6 +19,7 @@ interface SendPostcardOptions {
   frontHtml: string;
   backHtml: string;
   size?: '4x6' | '6x9' | '6x11';
+  skipCredits?: boolean;
 }
 
 interface SendLetterOptions {
@@ -29,6 +30,7 @@ interface SendLetterOptions {
   htmlContent: string;
   color?: boolean;
   doubleSided?: boolean;
+  skipCredits?: boolean;
 }
 
 interface SendResult {
@@ -123,13 +125,15 @@ async function recordUsage(organizationId: number, metadata: Record<string, any>
 }
 
 export async function sendPostcard(options: SendPostcardOptions): Promise<SendResult> {
-  const { organizationId, senderIdentity, recipientName, recipientAddress, frontHtml, backHtml, size = '4x6' } = options;
+  const { organizationId, senderIdentity, recipientName, recipientAddress, frontHtml, backHtml, size = '4x6', skipCredits = false } = options;
   
   console.log(`[DirectMailService] Sending postcard for org ${organizationId} to ${recipientName}`);
   
-  const creditCheck = await checkCreditsAndRecord(organizationId, { type: 'postcard', recipient: recipientName });
-  if (!creditCheck.hasCredits) {
-    throw new Error(creditCheck.errorMessage);
+  if (!skipCredits) {
+    const creditCheck = await checkCreditsAndRecord(organizationId, { type: 'postcard', recipient: recipientName });
+    if (!creditCheck.hasCredits) {
+      throw new Error(creditCheck.errorMessage);
+    }
   }
   
   try {
@@ -145,7 +149,9 @@ export async function sendPostcard(options: SendPostcardOptions): Promise<SendRe
     
     console.log(`[DirectMailService] Postcard sent successfully: ${result.id}`);
     
-    await recordUsage(organizationId, { type: 'postcard', lobId: result.id, recipient: recipientName });
+    if (!skipCredits) {
+      await recordUsage(organizationId, { type: 'postcard', lobId: result.id, recipient: recipientName });
+    }
     
     return {
       lobId: result.id,
@@ -159,13 +165,15 @@ export async function sendPostcard(options: SendPostcardOptions): Promise<SendRe
 }
 
 export async function sendLetter(options: SendLetterOptions): Promise<SendResult> {
-  const { organizationId, senderIdentity, recipientName, recipientAddress, htmlContent, color = false, doubleSided = false } = options;
+  const { organizationId, senderIdentity, recipientName, recipientAddress, htmlContent, color = false, doubleSided = false, skipCredits = false } = options;
   
   console.log(`[DirectMailService] Sending letter for org ${organizationId} to ${recipientName}`);
   
-  const creditCheck = await checkCreditsAndRecord(organizationId, { type: 'letter', recipient: recipientName });
-  if (!creditCheck.hasCredits) {
-    throw new Error(creditCheck.errorMessage);
+  if (!skipCredits) {
+    const creditCheck = await checkCreditsAndRecord(organizationId, { type: 'letter', recipient: recipientName });
+    if (!creditCheck.hasCredits) {
+      throw new Error(creditCheck.errorMessage);
+    }
   }
   
   try {
@@ -181,7 +189,9 @@ export async function sendLetter(options: SendLetterOptions): Promise<SendResult
     
     console.log(`[DirectMailService] Letter sent successfully: ${result.id}`);
     
-    await recordUsage(organizationId, { type: 'letter', lobId: result.id, recipient: recipientName });
+    if (!skipCredits) {
+      await recordUsage(organizationId, { type: 'letter', lobId: result.id, recipient: recipientName });
+    }
     
     return {
       lobId: result.id,

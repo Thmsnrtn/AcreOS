@@ -3685,6 +3685,20 @@ export async function registerRoutes(
         return res.status(400).json({ error: "No recipients specified" });
       }
 
+      // Get the organization's default mail sender identity
+      const mailSenderIdentity = await storage.getDefaultMailSenderIdentity(org.id);
+      if (!mailSenderIdentity) {
+        return res.status(400).json({ 
+          error: "No return address configured. Please set up a mail sender identity in Mail Settings." 
+        });
+      }
+
+      // Warn if identity is not verified but allow sending
+      let identityWarning: string | undefined;
+      if (mailSenderIdentity.status !== 'verified') {
+        identityWarning = `Warning: Return address "${mailSenderIdentity.name}" is not verified. Mail may be delayed or returned.`;
+      }
+
       const costPerPiece = DIRECT_MAIL_COSTS[pieceType];
       const totalCost = costPerPiece * leadIds.length;
 
@@ -3719,14 +3733,48 @@ export async function registerRoutes(
         return res.status(402).json({ error: "Insufficient credits" });
       }
 
-      // Get organization info for sender address
-      const organization = await storage.getOrganization(org.id);
+      // Create return address snapshot from mail sender identity
+      const returnAddressSnapshot = {
+        companyName: mailSenderIdentity.companyName,
+        addressLine1: mailSenderIdentity.addressLine1,
+        addressLine2: mailSenderIdentity.addressLine2 || undefined,
+        city: mailSenderIdentity.city,
+        state: mailSenderIdentity.state,
+        zipCode: mailSenderIdentity.zipCode,
+        country: mailSenderIdentity.country,
+      };
+
+      // Determine mail type from pieceType
+      const mailType = pieceType.startsWith('postcard_') ? 'postcard' : 'letter';
+
+      // Create mailing order record with pending status
+      const mailingOrder = await storage.createMailingOrder({
+        organizationId: org.id,
+        campaignId,
+        mailSenderIdentityId: mailSenderIdentity.id,
+        returnAddressSnapshot,
+        mailType,
+        totalPieces: validLeads.length,
+        costPerPiece,
+        totalCost: costPerPiece * validLeads.length,
+        creditsUsed: costPerPiece * validLeads.length,
+        status: 'pending',
+      });
+
+      // Update order status to in_progress when sending starts
+      await storage.updateMailingOrder(mailingOrder.id, {
+        status: 'sending',
+        startedAt: new Date(),
+      });
+
+      // Build sender address for Lob
       const senderAddress = {
-        name: organization?.name || 'Acreage Land Co.',
-        addressLine1: organization?.settings?.companyAddress || '123 Main St',
-        city: 'Austin',
-        state: 'TX',
-        zip: '78701',
+        name: mailSenderIdentity.companyName,
+        addressLine1: mailSenderIdentity.addressLine1,
+        addressLine2: mailSenderIdentity.addressLine2 || undefined,
+        city: mailSenderIdentity.city,
+        state: mailSenderIdentity.state,
+        zip: mailSenderIdentity.zipCode,
       };
 
       // Get current mail mode from organization settings
@@ -3734,18 +3782,22 @@ export async function registerRoutes(
       const isTestMode = mailMode === 'test';
 
       // Actually send the mail pieces via Lob
-      const sendResults: Array<{ leadId: number; success: boolean; lobId?: string; error?: string; isTest?: boolean }> = [];
+      const sendResults: Array<{ leadId: number; success: boolean; lobId?: string; expectedDeliveryDate?: Date; error?: string; isTest?: boolean }> = [];
+      const lobJobIds: string[] = [];
       
       for (const lead of validLeads) {
+        const recipientName = `${lead.firstName || ''} ${lead.lastName || ''}`.trim() || 'Property Owner';
+        
         try {
+          let result: any;
           if (pieceType.startsWith('postcard_')) {
             const size = pieceType.replace('postcard_', '') as '4x6' | '6x9' | '6x11';
-            const result = await directMailService.sendPostcard({
+            result = await directMailService.sendPostcard({
               size,
               front: campaign.content || '<html><body><h1>Special Offer!</h1></body></html>',
               back: `<html><body><p>Dear ${lead.firstName || 'Property Owner'},</p><p>${campaign.subject || 'We are interested in your property.'}</p></body></html>`,
               to: {
-                name: `${lead.firstName || ''} ${lead.lastName || ''}`.trim() || 'Property Owner',
+                name: recipientName,
                 addressLine1: lead.address!,
                 city: lead.city!,
                 state: lead.state!,
@@ -3753,12 +3805,11 @@ export async function registerRoutes(
               },
               from: senderAddress,
             }, mailMode);
-            sendResults.push({ leadId: lead.id, success: true, lobId: result.id, isTest: isTestMode });
           } else {
-            const result = await directMailService.sendLetter({
+            result = await directMailService.sendLetter({
               file: campaign.content || '<html><body><p>Letter content</p></body></html>',
               to: {
-                name: `${lead.firstName || ''} ${lead.lastName || ''}`.trim() || 'Property Owner',
+                name: recipientName,
                 addressLine1: lead.address!,
                 city: lead.city!,
                 state: lead.state!,
@@ -3766,15 +3817,55 @@ export async function registerRoutes(
               },
               from: senderAddress,
             }, mailMode);
-            sendResults.push({ leadId: lead.id, success: true, lobId: result.id, isTest: isTestMode });
           }
+
+          const expectedDeliveryDate = result.expected_delivery_date ? new Date(result.expected_delivery_date) : undefined;
+          sendResults.push({ leadId: lead.id, success: true, lobId: result.id, expectedDeliveryDate, isTest: isTestMode });
+          lobJobIds.push(result.id);
+
+          // Create mailing order piece record for successful send
+          await storage.createMailingOrderPiece({
+            mailingOrderId: mailingOrder.id,
+            leadId: lead.id,
+            recipientName,
+            recipientAddressLine1: lead.address!,
+            recipientCity: lead.city!,
+            recipientState: lead.state!,
+            recipientZipCode: lead.zip!,
+            lobMailId: result.id,
+            lobUrl: result.url,
+            status: 'sent',
+            expectedDeliveryDate,
+          });
         } catch (err: any) {
           sendResults.push({ leadId: lead.id, success: false, error: err.message });
+
+          // Create mailing order piece record for failed send
+          await storage.createMailingOrderPiece({
+            mailingOrderId: mailingOrder.id,
+            leadId: lead.id,
+            recipientName,
+            recipientAddressLine1: lead.address!,
+            recipientCity: lead.city!,
+            recipientState: lead.state!,
+            recipientZipCode: lead.zip!,
+            status: 'failed',
+            errorMessage: err.message,
+          });
         }
       }
 
       const successCount = sendResults.filter(r => r.success).length;
       const failCount = sendResults.filter(r => !r.success).length;
+
+      // Update mailing order to completed with final counts
+      await storage.updateMailingOrder(mailingOrder.id, {
+        status: 'completed',
+        sentPieces: successCount,
+        failedPieces: failCount,
+        lobJobIds,
+        completedAt: new Date(),
+      });
 
       // Record usage only for successful sends
       if (successCount > 0) {
@@ -3782,7 +3873,7 @@ export async function registerRoutes(
           org.id,
           'direct_mail',
           successCount,
-          { campaignId, pieceType },
+          { campaignId, pieceType, mailingOrderId: mailingOrder.id },
           false // already deducted upfront
         );
       }
@@ -3795,7 +3886,7 @@ export async function registerRoutes(
           refundAmount,
           'refund',
           `Refund for ${failCount} failed direct mail pieces in campaign: ${campaign.name}`,
-          { campaignId, pieceType, failedCount: failCount }
+          { campaignId, pieceType, failedCount: failCount, mailingOrderId: mailingOrder.id }
         );
       }
 
@@ -3807,6 +3898,7 @@ export async function registerRoutes(
       res.json({
         success: true,
         isTestMode,
+        mailingOrderId: mailingOrder.id,
         piecesQueued: successCount,
         piecesFailed: failCount,
         totalCost: (costPerPiece * successCount) / 100,
@@ -3814,6 +3906,7 @@ export async function registerRoutes(
         message: isTestMode 
           ? `${successCount} test mail pieces queued (no actual mail sent)${failCount > 0 ? `, ${failCount} failed` : ''}`
           : `${successCount} mail pieces sent${failCount > 0 ? `, ${failCount} failed (refunded)` : ''}`,
+        warning: identityWarning,
         details: sendResults,
       });
     } catch (error: any) {
