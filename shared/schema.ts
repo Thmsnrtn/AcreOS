@@ -3253,3 +3253,101 @@ export const insertJobCursorSchema = createInsertSchema(jobCursors).omit({
 });
 export type InsertJobCursor = z.infer<typeof insertJobCursorSchema>;
 export type JobCursor = typeof jobCursors.$inferSelect;
+
+// ============================================
+// EMAIL SENDER IDENTITIES
+// ============================================
+
+export const emailSenderIdentities = pgTable("email_sender_identities", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  teamMemberId: integer("team_member_id").references(() => teamMembers.id),
+  
+  type: text("type").notNull(), // platform_alias, custom_domain
+  fromEmail: text("from_email").notNull(),
+  fromName: text("from_name").notNull(),
+  replyToEmail: text("reply_to_email"), // Where replies should go if forwarding
+  
+  replyRoutingMode: text("reply_routing_mode").notNull().default("in_app"), // in_app, forward, both
+  
+  status: text("status").notNull().default("pending"), // pending, verified, failed
+  verificationToken: text("verification_token"),
+  verifiedAt: timestamp("verified_at"),
+  
+  isDefault: boolean("is_default").default(false),
+  isActive: boolean("is_active").default(true),
+  
+  dnsRecords: jsonb("dns_records").$type<{
+    dkim?: Array<{ name: string; type: string; value: string; verified: boolean }>;
+    spf?: { name: string; type: string; value: string; verified: boolean };
+    dmarc?: { name: string; type: string; value: string; verified: boolean };
+  }>(),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertEmailSenderIdentitySchema = createInsertSchema(emailSenderIdentities).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  verifiedAt: true,
+});
+export type InsertEmailSenderIdentity = z.infer<typeof insertEmailSenderIdentitySchema>;
+export type EmailSenderIdentity = typeof emailSenderIdentities.$inferSelect;
+
+// ============================================
+// INBOX MESSAGES (Inbound Email Replies)
+// ============================================
+
+export const inboxMessages = pgTable("inbox_messages", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  
+  senderEmail: text("sender_email").notNull(),
+  senderName: text("sender_name"),
+  recipientEmail: text("recipient_email").notNull(), // The @acreage.pro or custom domain address
+  
+  subject: text("subject"),
+  bodyText: text("body_text"),
+  bodyHtml: text("body_html"),
+  
+  leadId: integer("lead_id").references(() => leads.id),
+  conversationId: integer("conversation_id").references(() => conversations.id),
+  
+  inReplyToMessageId: text("in_reply_to_message_id"), // Email Message-ID header for threading
+  messageId: text("message_id"), // This email's Message-ID header
+  
+  isRead: boolean("is_read").default(false),
+  readAt: timestamp("read_at"),
+  readBy: text("read_by"), // User ID who marked as read
+  
+  isArchived: boolean("is_archived").default(false),
+  isStarred: boolean("is_starred").default(false),
+  
+  forwardedToEmail: text("forwarded_to_email"),
+  forwardedAt: timestamp("forwarded_at"),
+  
+  rawHeaders: jsonb("raw_headers").$type<Record<string, string>>(),
+  attachments: jsonb("attachments").$type<Array<{
+    filename: string;
+    contentType: string;
+    size: number;
+    storageKey?: string;
+  }>>(),
+  
+  receivedAt: timestamp("received_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertInboxMessageSchema = createInsertSchema(inboxMessages).omit({
+  id: true,
+  createdAt: true,
+  isRead: true,
+  readAt: true,
+  readBy: true,
+  isArchived: true,
+  isStarred: true,
+});
+export type InsertInboxMessage = z.infer<typeof insertInboxMessageSchema>;
+export type InboxMessage = typeof inboxMessages.$inferSelect;

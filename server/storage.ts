@@ -93,6 +93,10 @@ import {
   automationRules, automationExecutions, notifications,
   jobCursors,
   type JobCursor, type InsertJobCursor,
+  emailSenderIdentities,
+  type EmailSenderIdentity, type InsertEmailSenderIdentity,
+  inboxMessages,
+  type InboxMessage, type InsertInboxMessage,
   DEFAULT_DUE_DILIGENCE_TEMPLATES,
   DEFAULT_DEAL_CHECKLIST_TEMPLATES,
 } from "@shared/schema";
@@ -4538,6 +4542,170 @@ Date: _____________</p>`,
         .returning();
       return created;
     }
+  }
+
+  // ============================================
+  // EMAIL SENDER IDENTITIES
+  // ============================================
+
+  async createEmailSenderIdentity(identity: InsertEmailSenderIdentity): Promise<EmailSenderIdentity> {
+    const [created] = await db.insert(emailSenderIdentities).values(identity).returning();
+    return created;
+  }
+
+  async getEmailSenderIdentities(orgId: number): Promise<EmailSenderIdentity[]> {
+    return await db.select()
+      .from(emailSenderIdentities)
+      .where(eq(emailSenderIdentities.organizationId, orgId))
+      .orderBy(desc(emailSenderIdentities.isDefault), desc(emailSenderIdentities.createdAt));
+  }
+
+  async getEmailSenderIdentity(id: number): Promise<EmailSenderIdentity | undefined> {
+    const [identity] = await db.select()
+      .from(emailSenderIdentities)
+      .where(eq(emailSenderIdentities.id, id));
+    return identity;
+  }
+
+  async getDefaultEmailSenderIdentity(orgId: number): Promise<EmailSenderIdentity | undefined> {
+    const [identity] = await db.select()
+      .from(emailSenderIdentities)
+      .where(and(
+        eq(emailSenderIdentities.organizationId, orgId),
+        eq(emailSenderIdentities.isDefault, true),
+        eq(emailSenderIdentities.isActive, true)
+      ));
+    return identity;
+  }
+
+  async getEmailSenderIdentityByEmail(fromEmail: string): Promise<EmailSenderIdentity | undefined> {
+    const [identity] = await db.select()
+      .from(emailSenderIdentities)
+      .where(eq(emailSenderIdentities.fromEmail, fromEmail));
+    return identity;
+  }
+
+  async updateEmailSenderIdentity(id: number, updates: Partial<InsertEmailSenderIdentity>): Promise<EmailSenderIdentity> {
+    const [updated] = await db.update(emailSenderIdentities)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(emailSenderIdentities.id, id))
+      .returning();
+    return updated;
+  }
+
+  async setDefaultEmailSenderIdentity(orgId: number, identityId: number): Promise<void> {
+    await db.update(emailSenderIdentities)
+      .set({ isDefault: false, updatedAt: new Date() })
+      .where(eq(emailSenderIdentities.organizationId, orgId));
+    
+    await db.update(emailSenderIdentities)
+      .set({ isDefault: true, updatedAt: new Date() })
+      .where(eq(emailSenderIdentities.id, identityId));
+  }
+
+  async deleteEmailSenderIdentity(id: number): Promise<void> {
+    await db.delete(emailSenderIdentities).where(eq(emailSenderIdentities.id, id));
+  }
+
+  // ============================================
+  // INBOX MESSAGES
+  // ============================================
+
+  async createInboxMessage(message: InsertInboxMessage): Promise<InboxMessage> {
+    const [created] = await db.insert(inboxMessages).values(message).returning();
+    return created;
+  }
+
+  async getInboxMessages(orgId: number, options?: { 
+    isRead?: boolean; 
+    isArchived?: boolean;
+    leadId?: number;
+    limit?: number;
+    offset?: number;
+  }): Promise<InboxMessage[]> {
+    const conditions = [eq(inboxMessages.organizationId, orgId)];
+    
+    if (options?.isRead !== undefined) {
+      conditions.push(eq(inboxMessages.isRead, options.isRead));
+    }
+    if (options?.isArchived !== undefined) {
+      conditions.push(eq(inboxMessages.isArchived, options.isArchived));
+    }
+    if (options?.leadId !== undefined) {
+      conditions.push(eq(inboxMessages.leadId, options.leadId));
+    }
+
+    let query = db.select()
+      .from(inboxMessages)
+      .where(and(...conditions))
+      .orderBy(desc(inboxMessages.receivedAt));
+    
+    if (options?.limit) {
+      query = query.limit(options.limit) as typeof query;
+    }
+    if (options?.offset) {
+      query = query.offset(options.offset) as typeof query;
+    }
+
+    return await query;
+  }
+
+  async getInboxMessage(id: number): Promise<InboxMessage | undefined> {
+    const [message] = await db.select()
+      .from(inboxMessages)
+      .where(eq(inboxMessages.id, id));
+    return message;
+  }
+
+  async getUnreadInboxCount(orgId: number): Promise<number> {
+    const result = await db.select({ count: count() })
+      .from(inboxMessages)
+      .where(and(
+        eq(inboxMessages.organizationId, orgId),
+        eq(inboxMessages.isRead, false),
+        eq(inboxMessages.isArchived, false)
+      ));
+    return result[0]?.count || 0;
+  }
+
+  async markInboxMessageRead(id: number, userId: string): Promise<InboxMessage> {
+    const [updated] = await db.update(inboxMessages)
+      .set({ isRead: true, readAt: new Date(), readBy: userId })
+      .where(eq(inboxMessages.id, id))
+      .returning();
+    return updated;
+  }
+
+  async markInboxMessageUnread(id: number): Promise<InboxMessage> {
+    const [updated] = await db.update(inboxMessages)
+      .set({ isRead: false, readAt: null, readBy: null })
+      .where(eq(inboxMessages.id, id))
+      .returning();
+    return updated;
+  }
+
+  async archiveInboxMessage(id: number): Promise<InboxMessage> {
+    const [updated] = await db.update(inboxMessages)
+      .set({ isArchived: true })
+      .where(eq(inboxMessages.id, id))
+      .returning();
+    return updated;
+  }
+
+  async starInboxMessage(id: number, starred: boolean): Promise<InboxMessage> {
+    const [updated] = await db.update(inboxMessages)
+      .set({ isStarred: starred })
+      .where(eq(inboxMessages.id, id))
+      .returning();
+    return updated;
+  }
+
+  async updateInboxMessage(id: number, updates: Partial<InsertInboxMessage>): Promise<InboxMessage> {
+    const [updated] = await db.update(inboxMessages)
+      .set(updates)
+      .where(eq(inboxMessages.id, id))
+      .returning();
+    return updated;
   }
 }
 
