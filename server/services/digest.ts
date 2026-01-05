@@ -1,5 +1,5 @@
 import { db } from '../db';
-import { digestSubscriptions, organizations, leads, campaigns, notes, payments } from '@shared/schema';
+import { digestSubscriptions, organizations, leads, campaigns, notes, payments, teamMembers } from '@shared/schema';
 import { eq, and, gte, lte, sql, isNull, or, lt } from 'drizzle-orm';
 import { storage } from '../storage';
 
@@ -283,13 +283,22 @@ export class DigestService {
         if (org) {
           const { emailService } = await import('./emailService');
           
-          const user = await storage.getUser(sub.userId);
-          const email = user?.email;
+          // Get user email from team members table using userId
+          const [teamMember] = await db
+            .select()
+            .from(teamMembers)
+            .where(
+              and(
+                eq(teamMembers.userId, sub.userId),
+                eq(teamMembers.organizationId, sub.organizationId)
+              )
+            );
+          const email = teamMember?.email;
           
           if (email) {
             const result = await emailService.sendEmail({
               to: email,
-              subject: `Your AcreOS Weekly Digest - ${digest.period.start.toLocaleDateString()}`,
+              subject: `Your Weekly Digest - ${digest.period.start.toLocaleDateString()}`,
               html,
             });
             

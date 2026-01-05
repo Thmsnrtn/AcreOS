@@ -30,7 +30,7 @@ function getPlatformCredentials(): AWSCredentials {
     secretAccessKey,
     region,
     fromEmail,
-    fromName: process.env.AWS_SES_FROM_NAME || 'AcreOS',
+    fromName: process.env.AWS_SES_FROM_NAME || 'Acreage Land Co.',
     source: 'platform',
   };
 }
@@ -160,7 +160,7 @@ export class EmailService {
         await getSESClient(options.organizationId);
       
       const fromAddress = options.from || defaultFromEmail;
-      const fromNameFinal = options.fromName || defaultFromName || 'AcreOS';
+      const fromNameFinal = options.fromName || defaultFromName || 'Acreage Land Co.';
       const fromFormatted = `${fromNameFinal} <${fromAddress}>`;
 
       const command = new SendEmailCommand({

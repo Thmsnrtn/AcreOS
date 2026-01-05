@@ -3721,7 +3721,7 @@ export async function registerRoutes(
       // Get organization info for sender address
       const organization = await storage.getOrganization(org.id);
       const senderAddress = {
-        name: organization?.name || 'AcreOS User',
+        name: organization?.name || 'Acreage Land Co.',
         addressLine1: organization?.settings?.companyAddress || '123 Main St',
         city: 'Austin',
         state: 'TX',
@@ -6599,7 +6599,7 @@ Seller Signature (if applicable)
           },
           body: new URLSearchParams({
             PhoneNumber: phoneNumber,
-            FriendlyName: friendlyName || `AcreOS - ${org.name}`,
+            FriendlyName: friendlyName || `Acreage - ${org.name}`,
           }).toString(),
         }
       );

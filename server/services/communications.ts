@@ -86,7 +86,7 @@ export class CommunicationsService {
       if (emailCheck.allowed && lead.email) {
         const result = await emailService.sendEmail({
           to: lead.email,
-          subject: options.subject || 'Message from AcreOS',
+          subject: options.subject || 'Message from Acreage Land Co.',
           html: `<p>${options.message}</p>`,
         });
 
@@ -300,7 +300,7 @@ export class CommunicationsService {
     const mailMode = org?.settings?.mailMode === 'live' ? 'live' : 'test';
 
     const fromAddress = {
-      name: org?.name || 'AcreOS',
+      name: org?.name || 'Acreage Land Co.',
       addressLine1: org?.settings?.companyAddress || '123 Main St',
       city: 'Austin',
       state: 'TX',
