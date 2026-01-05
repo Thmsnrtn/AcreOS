@@ -1,62 +1,57 @@
-import sgMail from '@sendgrid/mail';
+import { SESClient, SendEmailCommand, GetSendQuotaCommand } from '@aws-sdk/client-ses';
 import { storage } from '../storage';
 import { decryptJsonCredentials } from './encryption';
 
-let connectionSettings: any;
-
-interface SendGridCredentials {
-  apiKey: string;
+interface AWSCredentials {
+  accessKeyId: string;
+  secretAccessKey: string;
+  region: string;
   fromEmail: string;
   fromName?: string;
   source: 'organization' | 'platform';
 }
 
-async function getPlatformCredentials(): Promise<SendGridCredentials> {
-  const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
-  const xReplitToken = process.env.REPL_IDENTITY 
-    ? 'repl ' + process.env.REPL_IDENTITY 
-    : process.env.WEB_REPL_RENEWAL 
-    ? 'depl ' + process.env.WEB_REPL_RENEWAL 
-    : null;
+function getPlatformCredentials(): AWSCredentials {
+  const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
+  const region = process.env.AWS_SES_REGION || process.env.AWS_REGION || 'us-east-1';
+  const fromEmail = process.env.AWS_SES_FROM_EMAIL;
 
-  if (!xReplitToken) {
-    throw new Error('X_REPLIT_TOKEN not found for repl/depl');
+  if (!accessKeyId || !secretAccessKey) {
+    throw new Error('AWS credentials not configured (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)');
   }
 
-  connectionSettings = await fetch(
-    'https://' + hostname + '/api/v2/connection?include_secrets=true&connector_names=sendgrid',
-    {
-      headers: {
-        'Accept': 'application/json',
-        'X_REPLIT_TOKEN': xReplitToken
-      }
-    }
-  ).then(res => res.json()).then(data => data.items?.[0]);
-
-  if (!connectionSettings || (!connectionSettings.settings.api_key || !connectionSettings.settings.from_email)) {
-    throw new Error('SendGrid not connected');
+  if (!fromEmail) {
+    throw new Error('AWS SES from email not configured (AWS_SES_FROM_EMAIL)');
   }
-  return { 
-    apiKey: connectionSettings.settings.api_key, 
-    fromEmail: connectionSettings.settings.from_email,
-    source: 'platform'
+
+  return {
+    accessKeyId,
+    secretAccessKey,
+    region,
+    fromEmail,
+    fromName: process.env.AWS_SES_FROM_NAME || 'AcreOS',
+    source: 'platform',
   };
 }
 
-async function getOrgCredentials(orgId: number): Promise<SendGridCredentials | null> {
+async function getOrgCredentials(orgId: number): Promise<AWSCredentials | null> {
   try {
-    const integration = await storage.getOrganizationIntegration(orgId, 'sendgrid');
+    const integration = await storage.getOrganizationIntegration(orgId, 'aws_ses');
     
     if (!integration || !integration.isEnabled || !integration.credentials?.encrypted) {
       return null;
     }
     
-    const decrypted = decryptJsonCredentials<{ apiKey: string; fromEmail?: string; fromName?: string }>(
-      integration.credentials.encrypted,
-      orgId
-    );
+    const decrypted = decryptJsonCredentials<{
+      accessKeyId: string;
+      secretAccessKey: string;
+      region?: string;
+      fromEmail?: string;
+      fromName?: string;
+    }>(integration.credentials.encrypted, orgId);
     
-    if (!decrypted.apiKey) {
+    if (!decrypted.accessKeyId || !decrypted.secretAccessKey) {
       return null;
     }
     
@@ -69,9 +64,9 @@ async function getOrgCredentials(orgId: number): Promise<SendGridCredentials | n
     
     if (!fromEmail) {
       try {
-        const platformCreds = await getPlatformCredentials();
+        const platformCreds = getPlatformCredentials();
         fromEmail = platformCreds.fromEmail;
-        console.log('[EmailService] Using platform from-email for org-specific API key');
+        console.log('[EmailService] Using platform from-email for org-specific AWS credentials');
       } catch {
         console.warn('[EmailService] Org credentials have no verified sender and platform fallback unavailable');
         return null;
@@ -79,7 +74,9 @@ async function getOrgCredentials(orgId: number): Promise<SendGridCredentials | n
     }
     
     return {
-      apiKey: decrypted.apiKey,
+      accessKeyId: decrypted.accessKeyId,
+      secretAccessKey: decrypted.secretAccessKey,
+      region: decrypted.region || 'us-east-1',
       fromEmail,
       fromName: fromName || undefined,
       source: 'organization',
@@ -90,7 +87,7 @@ async function getOrgCredentials(orgId: number): Promise<SendGridCredentials | n
   }
 }
 
-async function getCredentials(orgId?: number): Promise<SendGridCredentials> {
+async function getCredentials(orgId?: number): Promise<AWSCredentials> {
   if (orgId) {
     const orgCreds = await getOrgCredentials(orgId);
     if (orgCreds) {
@@ -100,14 +97,24 @@ async function getCredentials(orgId?: number): Promise<SendGridCredentials> {
   return getPlatformCredentials();
 }
 
-export async function getUncachableSendGridClient(orgId?: number) {
+function createSESClient(creds: AWSCredentials): SESClient {
+  return new SESClient({
+    region: creds.region,
+    credentials: {
+      accessKeyId: creds.accessKeyId,
+      secretAccessKey: creds.secretAccessKey,
+    },
+  });
+}
+
+export async function getSESClient(orgId?: number) {
   const creds = await getCredentials(orgId);
-  sgMail.setApiKey(creds.apiKey);
   return {
-    client: sgMail,
+    client: createSESClient(creds),
     fromEmail: creds.fromEmail,
     fromName: creds.fromName,
     source: creds.source,
+    region: creds.region,
   };
 }
 
@@ -150,28 +157,54 @@ export class EmailService {
   async sendEmail(options: EmailOptions): Promise<EmailResult> {
     try {
       const { client, fromEmail: defaultFromEmail, fromName: defaultFromName, source } = 
-        await getUncachableSendGridClient(options.organizationId);
+        await getSESClient(options.organizationId);
       
-      const msg = {
-        to: options.to,
-        from: {
-          email: options.from || defaultFromEmail,
-          name: options.fromName || defaultFromName || 'AcreOS',
-        },
-        subject: options.subject,
-        text: options.text || options.html.replace(/<[^>]*>/g, ''),
-        html: options.html,
-        replyTo: options.replyTo,
-      };
+      const fromAddress = options.from || defaultFromEmail;
+      const fromNameFinal = options.fromName || defaultFromName || 'AcreOS';
+      const fromFormatted = `${fromNameFinal} <${fromAddress}>`;
 
-      const [response] = await client.send(msg);
-      const messageId = response.headers['x-message-id'] || `sg-${Date.now()}`;
+      const command = new SendEmailCommand({
+        Source: fromFormatted,
+        Destination: {
+          ToAddresses: [options.to],
+        },
+        Message: {
+          Subject: {
+            Data: options.subject,
+            Charset: 'UTF-8',
+          },
+          Body: {
+            Html: {
+              Data: options.html,
+              Charset: 'UTF-8',
+            },
+            Text: {
+              Data: options.text || options.html.replace(/<[^>]*>/g, ''),
+              Charset: 'UTF-8',
+            },
+          },
+        },
+        ReplyToAddresses: options.replyTo ? [options.replyTo] : undefined,
+      });
+
+      const response = await client.send(command);
+      const messageId = response.MessageId || `ses-${Date.now()}`;
       
-      console.log(`[EmailService] Email sent via ${source} credentials to ${options.to}`);
+      console.log(`[EmailService] Email sent via AWS SES (${source}) to ${options.to}, MessageId: ${messageId}`);
       return { success: true, messageId };
     } catch (error: any) {
       console.error('[EmailService] Failed to send email:', error);
-      return { success: false, error: error.message || 'Failed to send email' };
+      
+      let errorMessage = error.message || 'Failed to send email';
+      if (error.name === 'MessageRejected') {
+        errorMessage = 'Email rejected - check sender verification in AWS SES';
+      } else if (error.name === 'MailFromDomainNotVerifiedException') {
+        errorMessage = 'From domain not verified in AWS SES';
+      } else if (error.name === 'ConfigurationSetDoesNotExistException') {
+        errorMessage = 'Configuration set not found';
+      }
+      
+      return { success: false, error: errorMessage };
     }
   }
 
@@ -180,7 +213,7 @@ export class EmailService {
     for (const email of emails) {
       const result = await this.sendEmail({ ...email, organizationId: orgId });
       results.push(result);
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 50));
     }
     return results;
   }
@@ -197,6 +230,22 @@ export class EmailService {
       return null;
     }
   }
+
+  async getSendQuota(orgId?: number): Promise<{ max24HourSend: number; maxSendRate: number; sentLast24Hours: number } | null> {
+    try {
+      const { client } = await getSESClient(orgId);
+      const command = new GetSendQuotaCommand({});
+      const response = await client.send(command);
+      return {
+        max24HourSend: response.Max24HourSend || 0,
+        maxSendRate: response.MaxSendRate || 0,
+        sentLast24Hours: response.SentLast24Hours || 0,
+      };
+    } catch (error) {
+      console.error('[EmailService] Failed to get send quota:', error);
+      return null;
+    }
+  }
 }
 
 export const emailService = new EmailService();
@@ -204,194 +253,69 @@ export const emailService = new EmailService();
 export async function getEmailServiceStatus(): Promise<{
   isConfigured: boolean;
   defaultFromEmail?: string;
+  provider: string;
   error?: string;
 }> {
   try {
-    const { fromEmail } = await getUncachableSendGridClient();
+    const { fromEmail, region } = await getSESClient();
     return {
       isConfigured: true,
       defaultFromEmail: fromEmail,
+      provider: `AWS SES (${region})`,
     };
   } catch (error: any) {
     return {
       isConfigured: false,
+      provider: 'AWS SES',
       error: error.message,
     };
   }
 }
 
-export class SendGridDomainService {
-  private async getApiKey(): Promise<string> {
-    const { apiKey } = await getCredentials();
-    return apiKey;
+export class AWSSESDomainService {
+  async verifyEmailIdentity(email: string, orgId?: number): Promise<{ success: boolean; error?: string }> {
+    try {
+      const { client } = await getSESClient(orgId);
+      const { VerifyEmailIdentityCommand } = await import('@aws-sdk/client-ses');
+      const command = new VerifyEmailIdentityCommand({ EmailAddress: email });
+      await client.send(command);
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
   }
 
-  async addDomain(domain: string): Promise<{
-    id: string;
-    domain: string;
-    dnsRecords: Array<{
-      type: string;
-      host: string;
-      data: string;
-      valid: boolean;
-    }>;
+  async verifyDomainIdentity(domain: string, orgId?: number): Promise<{ 
+    success: boolean; 
+    verificationToken?: string; 
+    error?: string 
   }> {
-    const apiKey = await this.getApiKey();
-    
-    const response = await fetch('https://api.sendgrid.com/v3/whitelabel/domains', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        domain,
-        automatic_security: true,
-      }),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.errors?.[0]?.message || 'Failed to add domain');
+    try {
+      const { client } = await getSESClient(orgId);
+      const { VerifyDomainIdentityCommand } = await import('@aws-sdk/client-ses');
+      const command = new VerifyDomainIdentityCommand({ Domain: domain });
+      const response = await client.send(command);
+      return { 
+        success: true, 
+        verificationToken: response.VerificationToken 
+      };
+    } catch (error: any) {
+      return { success: false, error: error.message };
     }
-
-    const data = await response.json();
-    
-    const dnsRecords: Array<{ type: string; host: string; data: string; valid: boolean }> = [];
-    
-    if (data.dns) {
-      for (const [key, record] of Object.entries(data.dns) as [string, any][]) {
-        if (record && record.host && record.data) {
-          dnsRecords.push({
-            type: record.type || 'CNAME',
-            host: record.host,
-            data: record.data,
-            valid: record.valid || false,
-          });
-        }
-      }
-    }
-
-    return {
-      id: String(data.id),
-      domain: data.domain,
-      dnsRecords,
-    };
   }
 
-  async verifyDomain(domainId: string): Promise<{
-    valid: boolean;
-    dnsRecords: Array<{
-      type: string;
-      host: string;
-      data: string;
-      valid: boolean;
-    }>;
-  }> {
-    const apiKey = await this.getApiKey();
-    
-    const response = await fetch(`https://api.sendgrid.com/v3/whitelabel/domains/${domainId}/validate`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.errors?.[0]?.message || 'Failed to verify domain');
-    }
-
-    const data = await response.json();
-    
-    const dnsRecords: Array<{ type: string; host: string; data: string; valid: boolean }> = [];
-    
-    if (data.validation_results) {
-      for (const [key, result] of Object.entries(data.validation_results) as [string, any][]) {
-        if (result) {
-          dnsRecords.push({
-            type: result.type || 'CNAME',
-            host: key,
-            data: result.expected || '',
-            valid: result.valid || false,
-          });
-        }
-      }
-    }
-
-    return {
-      valid: data.valid || false,
-      dnsRecords,
-    };
-  }
-
-  async getDomain(domainId: string): Promise<{
-    id: string;
-    domain: string;
-    valid: boolean;
-    dnsRecords: Array<{
-      type: string;
-      host: string;
-      data: string;
-      valid: boolean;
-    }>;
-  }> {
-    const apiKey = await this.getApiKey();
-    
-    const response = await fetch(`https://api.sendgrid.com/v3/whitelabel/domains/${domainId}`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.errors?.[0]?.message || 'Failed to get domain');
-    }
-
-    const data = await response.json();
-    
-    const dnsRecords: Array<{ type: string; host: string; data: string; valid: boolean }> = [];
-    
-    if (data.dns) {
-      for (const [key, record] of Object.entries(data.dns) as [string, any][]) {
-        if (record && record.host && record.data) {
-          dnsRecords.push({
-            type: record.type || 'CNAME',
-            host: record.host,
-            data: record.data,
-            valid: record.valid || false,
-          });
-        }
-      }
-    }
-
-    return {
-      id: String(data.id),
-      domain: data.domain,
-      valid: data.valid || false,
-      dnsRecords,
-    };
-  }
-
-  async deleteDomain(domainId: string): Promise<void> {
-    const apiKey = await this.getApiKey();
-    
-    const response = await fetch(`https://api.sendgrid.com/v3/whitelabel/domains/${domainId}`, {
-      method: 'DELETE',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-      },
-    });
-
-    if (!response.ok && response.status !== 204) {
-      const error = await response.json();
-      throw new Error(error.errors?.[0]?.message || 'Failed to delete domain');
+  async listIdentities(orgId?: number): Promise<string[]> {
+    try {
+      const { client } = await getSESClient(orgId);
+      const { ListIdentitiesCommand } = await import('@aws-sdk/client-ses');
+      const command = new ListIdentitiesCommand({ IdentityType: 'EmailAddress' });
+      const response = await client.send(command);
+      return response.Identities || [];
+    } catch (error) {
+      console.error('[AWSSESDomainService] Failed to list identities:', error);
+      return [];
     }
   }
 }
 
-export const sendGridDomainService = new SendGridDomainService();
+export const awsSesDomainService = new AWSSESDomainService();

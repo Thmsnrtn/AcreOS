@@ -11,6 +11,7 @@
     "db:push": "drizzle-kit push"
   },
   "dependencies": {
+    "@aws-sdk/client-ses": "^3.962.0",
     "@capacitor/app": "^8.0.0",
     "@capacitor/cli": "^7.4.4",
     "@capacitor/core": "^8.0.0",
