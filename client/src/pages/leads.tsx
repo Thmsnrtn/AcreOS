@@ -33,6 +33,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ActivityTimeline } from "@/components/activity-timeline";
 import { SavedViewsSelector } from "@/components/saved-views-selector";
 import { CustomFieldValuesEditor } from "@/components/custom-fields";
+import { SkipTracePanel } from "@/components/skip-trace-panel";
+import { TaxDelinquentImporter } from "@/components/tax-delinquent-importer";
 import { format } from "date-fns";
 import type { SavedView } from "@shared/schema";
 
@@ -302,6 +304,7 @@ export default function LeadsPage() {
   const { data: userPermissions } = useUserPermissions();
   const [isExporting, setIsExporting] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
+  const [isTaxDelinquentImportOpen, setIsTaxDelinquentImportOpen] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importPreview, setImportPreview] = useState<{
     totalRows: number;
@@ -548,6 +551,14 @@ export default function LeadsPage() {
               >
                 <Upload className="w-4 h-4 mr-2" />
                 Import CSV
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={() => setIsTaxDelinquentImportOpen(true)}
+                data-testid="button-import-tax-delinquent"
+              >
+                <FileText className="w-4 h-4 mr-2" />
+                Import Tax List
               </Button>
               <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
                 <DialogTrigger asChild>
@@ -1009,6 +1020,11 @@ export default function LeadsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <TaxDelinquentImporter 
+        open={isTaxDelinquentImportOpen} 
+        onOpenChange={setIsTaxDelinquentImportOpen} 
+      />
     </div>
   );
 }
@@ -1288,6 +1304,8 @@ function LeadDetailDrawer({ lead, onClose, onEdit }: { lead: Lead; onClose: () =
                   </CardContent>
                 </Card>
               )}
+
+              <SkipTracePanel lead={lead} />
 
               <Card className="glass-panel">
                 <CardHeader className="pb-2">

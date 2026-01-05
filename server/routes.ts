@@ -11,6 +11,7 @@ import {
   insertAbTestSchema, insertAbTestVariantSchema, Z_SCORES,
   insertCustomFieldDefinitionSchema, insertCustomFieldValueSchema, insertSavedViewSchema,
   insertTaskSchema, insertOfferLetterSchema, insertOfferTemplateSchema,
+  insertPropertyListingSchema,
   SUBSCRIPTION_TIERS, payments, notes, deals, properties, leads, activityLog,
   teamConversations, teamMessages, teamMemberPresence,
   insertTeamConversationSchema, insertTeamMessageSchema, insertTeamMemberPresenceSchema,
@@ -1130,6 +1131,204 @@ export async function registerRoutes(
       console.error("Lead import preview error:", err);
       res.status(400).json({ 
         message: err instanceof Error ? err.message : "Failed to parse CSV" 
+      });
+    }
+  });
+
+  // Tax Delinquent List Import (Phase 2.5)
+  api.post("/api/leads/import/tax-delinquent", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { mappedData, columnMapping } = req.body;
+
+      if (!mappedData || !Array.isArray(mappedData)) {
+        return res.status(400).json({ message: "No mapped data provided" });
+      }
+
+      if (mappedData.length === 0) {
+        return res.status(400).json({ message: "No records to import" });
+      }
+
+      if (mappedData.length > MAX_CSV_IMPORT_ROWS) {
+        return res.status(400).json({
+          message: `Import exceeds maximum of ${MAX_CSV_IMPORT_ROWS} rows. Please split into smaller batches.`,
+          rowCount: mappedData.length,
+          maxRows: MAX_CSV_IMPORT_ROWS,
+        });
+      }
+
+      // Check usage limits
+      const usageCheck = await checkUsageLimit(org.id, "leads");
+      if (usageCheck.limit !== null) {
+        const wouldExceed = usageCheck.current + mappedData.length > usageCheck.limit;
+        if (wouldExceed) {
+          return res.status(429).json({
+            message: `Import would exceed your plan limit of ${usageCheck.limit} leads`,
+            current: usageCheck.current,
+            importing: mappedData.length,
+            limit: usageCheck.limit,
+          });
+        }
+      }
+
+      const results = { successCount: 0, errorCount: 0, errors: [] as any[] };
+
+      for (let i = 0; i < mappedData.length; i++) {
+        try {
+          const row = mappedData[i];
+          
+          // Parse name into first and last name
+          let firstName = "Unknown";
+          let lastName = "Owner";
+          if (row.owner_name) {
+            const nameParts = row.owner_name.trim().split(/\s+/);
+            firstName = nameParts[0] || "Unknown";
+            lastName = nameParts.slice(1).join(" ") || "Owner";
+          }
+
+          const leadData = {
+            organizationId: org.id,
+            type: "seller" as const,
+            firstName,
+            lastName,
+            address: row.property_address || row.mailing_address || "",
+            city: "",
+            state: row.state || "",
+            zip: "",
+            source: "tax_delinquent",
+            status: "new" as const,
+            notes: [
+              row.parcel_id ? `Parcel ID: ${row.parcel_id}` : "",
+              row.assessed_value ? `Assessed Value: $${row.assessed_value}` : "",
+              row.taxes_owed ? `Taxes Owed: $${row.taxes_owed}` : "",
+              row.tax_year ? `Tax Year: ${row.tax_year}` : "",
+              row.county ? `County: ${row.county}` : "",
+            ].filter(Boolean).join("\n"),
+            tags: ["tax_delinquent", row.county || "unknown"].filter(Boolean) as string[],
+          };
+
+          await storage.createLead(leadData);
+          results.successCount++;
+        } catch (err) {
+          results.errorCount++;
+          results.errors.push({
+            row: i + 1,
+            error: err instanceof Error ? err.message : "Unknown error",
+          });
+        }
+      }
+
+      res.json({
+        totalRows: mappedData.length,
+        ...results,
+      });
+    } catch (err) {
+      console.error("Tax delinquent import error:", err);
+      res.status(400).json({
+        message: err instanceof Error ? err.message : "Failed to import tax delinquent list",
+      });
+    }
+  });
+
+  // ============================================
+  // SKIP TRACES (Phase 2.4)
+  // ============================================
+
+  api.get("/api/skip-traces", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const traces = await storage.getSkipTraces(org.id);
+    res.json(traces);
+  });
+
+  api.get("/api/skip-traces/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const trace = await storage.getSkipTrace(org.id, Number(req.params.id));
+    if (!trace) return res.status(404).json({ message: "Skip trace not found" });
+    res.json(trace);
+  });
+
+  api.get("/api/skip-traces/lead/:leadId", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const trace = await storage.getSkipTraceByLead(org.id, Number(req.params.leadId));
+    res.json(trace || null);
+  });
+
+  api.post("/api/skip-traces", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { leadId, inputData } = req.body;
+
+      if (!leadId) {
+        return res.status(400).json({ message: "Lead ID is required" });
+      }
+
+      // Check if lead exists
+      const lead = await storage.getLead(org.id, leadId);
+      if (!lead) {
+        return res.status(404).json({ message: "Lead not found" });
+      }
+
+      // Create pending skip trace
+      const skipTrace = await storage.createSkipTrace({
+        organizationId: org.id,
+        leadId,
+        inputData: inputData || {
+          name: `${lead.firstName} ${lead.lastName}`,
+          address: lead.address || "",
+        },
+        status: "processing",
+        costCents: 50,
+        requestedAt: new Date(),
+      });
+
+      // Simulate async processing with mock data after 1 second
+      setTimeout(async () => {
+        try {
+          const mockResults = {
+            phones: [
+              { number: `+1${Math.floor(Math.random() * 9000000000 + 1000000000)}`, type: "mobile", verified: true },
+              { number: `+1${Math.floor(Math.random() * 9000000000 + 1000000000)}`, type: "landline", verified: false },
+            ],
+            emails: [
+              { email: `${lead.firstName.toLowerCase()}.${lead.lastName.toLowerCase()}@email.com`, verified: true },
+            ],
+            addresses: [
+              { 
+                address: lead.address || "123 Current St, Anytown, ST 12345", 
+                type: "current", 
+                current: true 
+              },
+              { 
+                address: "456 Previous Ave, Oldtown, ST 54321", 
+                type: "previous", 
+                current: false 
+              },
+            ],
+            relatives: [
+              { name: "Jane Doe", relationship: "spouse" },
+              { name: "John Doe Jr", relationship: "child" },
+            ],
+            ageRange: "45-55",
+          };
+
+          await storage.updateSkipTrace(skipTrace.id, {
+            status: "completed",
+            results: mockResults,
+            completedAt: new Date(),
+          });
+        } catch (err) {
+          console.error("Error updating skip trace:", err);
+          await storage.updateSkipTrace(skipTrace.id, {
+            status: "failed",
+          });
+        }
+      }, 1000);
+
+      res.json(skipTrace);
+    } catch (err) {
+      console.error("Skip trace error:", err);
+      res.status(500).json({
+        message: err instanceof Error ? err.message : "Failed to create skip trace",
       });
     }
   });
@@ -8432,6 +8631,513 @@ Seller Signature (if applicable)
     } catch (error: any) {
       console.error("Delete offer template error:", error);
       res.status(500).json({ message: error.message || "Failed to delete template" });
+    }
+  });
+
+  // ============================================
+  // PROPERTY LISTINGS (Phase 4.1)
+  // ============================================
+
+  // GET /api/listings - List all listings with optional status filter
+  api.get("/api/listings", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const status = req.query.status as string | undefined;
+      const listings = await storage.getPropertyListings(org.id, status ? { status } : undefined);
+      res.json(listings);
+    } catch (error: any) {
+      console.error("Get listings error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch listings" });
+    }
+  });
+
+  // GET /api/listings/:id - Get listing by ID
+  api.get("/api/listings/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid listing ID" });
+      }
+      
+      const listing = await storage.getPropertyListing(org.id, id);
+      if (!listing) {
+        return res.status(404).json({ message: "Listing not found" });
+      }
+      
+      res.json(listing);
+    } catch (error: any) {
+      console.error("Get listing error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch listing" });
+    }
+  });
+
+  // POST /api/listings - Create new listing
+  api.post("/api/listings", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const parsed = insertPropertyListingSchema.omit({ organizationId: true }).safeParse(req.body);
+      
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid listing data", errors: parsed.error.errors });
+      }
+      
+      // Verify property belongs to this org
+      const property = await storage.getProperty(org.id, parsed.data.propertyId);
+      if (!property) {
+        return res.status(400).json({ message: "Property not found or doesn't belong to your organization" });
+      }
+      
+      // Check if listing already exists for this property
+      const existing = await storage.getPropertyListingByPropertyId(org.id, parsed.data.propertyId);
+      if (existing) {
+        return res.status(400).json({ message: "A listing already exists for this property" });
+      }
+      
+      const listing = await storage.createPropertyListing({
+        ...parsed.data,
+        organizationId: org.id,
+      });
+      
+      res.status(201).json(listing);
+    } catch (error: any) {
+      console.error("Create listing error:", error);
+      res.status(500).json({ message: error.message || "Failed to create listing" });
+    }
+  });
+
+  // PUT /api/listings/:id - Update listing
+  api.put("/api/listings/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid listing ID" });
+      }
+      
+      const existing = await storage.getPropertyListing(org.id, id);
+      if (!existing) {
+        return res.status(404).json({ message: "Listing not found" });
+      }
+      
+      const parsed = insertPropertyListingSchema.partial().safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid update data", errors: parsed.error.errors });
+      }
+      
+      const updated = await storage.updatePropertyListing(id, parsed.data);
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Update listing error:", error);
+      res.status(500).json({ message: error.message || "Failed to update listing" });
+    }
+  });
+
+  // DELETE /api/listings/:id - Delete listing
+  api.delete("/api/listings/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid listing ID" });
+      }
+      
+      const existing = await storage.getPropertyListing(org.id, id);
+      if (!existing) {
+        return res.status(404).json({ message: "Listing not found" });
+      }
+      
+      await storage.deletePropertyListing(id);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Delete listing error:", error);
+      res.status(500).json({ message: error.message || "Failed to delete listing" });
+    }
+  });
+
+  // POST /api/listings/:id/publish - Publish to syndication targets (stub)
+  api.post("/api/listings/:id/publish", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid listing ID" });
+      }
+      
+      const listing = await storage.getPropertyListing(org.id, id);
+      if (!listing) {
+        return res.status(404).json({ message: "Listing not found" });
+      }
+      
+      const { targets } = req.body; // Array of target platforms
+      if (!targets || !Array.isArray(targets) || targets.length === 0) {
+        return res.status(400).json({ message: "Please specify syndication targets" });
+      }
+      
+      // Create syndication targets with pending status
+      const syndicationTargets = targets.map((platform: string) => ({
+        platform,
+        status: "pending",
+        postedAt: new Date().toISOString(),
+      }));
+      
+      const updated = await storage.updatePropertyListing(id, {
+        status: "active",
+        syndicationTargets,
+        publishedAt: new Date(),
+      });
+      
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Publish listing error:", error);
+      res.status(500).json({ message: error.message || "Failed to publish listing" });
+    }
+  });
+
+  // POST /api/listings/:id/unpublish - Remove from syndication
+  api.post("/api/listings/:id/unpublish", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid listing ID" });
+      }
+      
+      const listing = await storage.getPropertyListing(org.id, id);
+      if (!listing) {
+        return res.status(404).json({ message: "Listing not found" });
+      }
+      
+      // Mark all syndication targets as removed
+      const syndicationTargets = listing.syndicationTargets?.map((target: any) => ({
+        ...target,
+        status: "removed",
+      })) || [];
+      
+      const updated = await storage.updatePropertyListing(id, {
+        status: "withdrawn",
+        syndicationTargets,
+      });
+      
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Unpublish listing error:", error);
+      res.status(500).json({ message: error.message || "Failed to unpublish listing" });
+    }
+  });
+
+  // ============================================
+  // DOCUMENT TEMPLATES (Phase 4.3-4.5)
+  // ============================================
+
+  // GET /api/document-templates - List all templates (system + org-specific)
+  api.get("/api/document-templates", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      
+      // Seed system templates if none exist
+      await storage.seedSystemTemplates();
+      
+      const templates = await storage.getDocumentTemplates(org.id);
+      res.json(templates);
+    } catch (error: any) {
+      console.error("Get document templates error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch templates" });
+    }
+  });
+
+  // GET /api/document-templates/:id - Get template by ID
+  api.get("/api/document-templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid template ID" });
+      }
+      
+      const template = await storage.getDocumentTemplate(id);
+      if (!template) {
+        return res.status(404).json({ message: "Template not found" });
+      }
+      
+      res.json(template);
+    } catch (error: any) {
+      console.error("Get document template error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch template" });
+    }
+  });
+
+  // POST /api/document-templates - Create new custom template
+  api.post("/api/document-templates", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { name, type, category, content, variables } = req.body;
+      
+      if (!name || !type || !content) {
+        return res.status(400).json({ message: "Name, type, and content are required" });
+      }
+      
+      const template = await storage.createDocumentTemplate({
+        organizationId: org.id,
+        name,
+        type,
+        category: category || "closing",
+        content,
+        variables: variables || [],
+        isSystemTemplate: false,
+        isActive: true,
+      });
+      
+      res.status(201).json(template);
+    } catch (error: any) {
+      console.error("Create document template error:", error);
+      res.status(500).json({ message: error.message || "Failed to create template" });
+    }
+  });
+
+  // PUT /api/document-templates/:id - Update template
+  api.put("/api/document-templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid template ID" });
+      }
+      
+      const existing = await storage.getDocumentTemplate(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Template not found" });
+      }
+      
+      // Only allow editing org-specific templates, not system templates
+      if (existing.isSystemTemplate) {
+        return res.status(403).json({ message: "Cannot edit system templates" });
+      }
+      
+      // Verify template belongs to this org
+      if (existing.organizationId !== org.id) {
+        return res.status(403).json({ message: "Not authorized to edit this template" });
+      }
+      
+      const { name, type, category, content, variables, isActive } = req.body;
+      
+      const updated = await storage.updateDocumentTemplate(id, {
+        ...(name && { name }),
+        ...(type && { type }),
+        ...(category && { category }),
+        ...(content && { content }),
+        ...(variables && { variables }),
+        ...(isActive !== undefined && { isActive }),
+      });
+      
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Update document template error:", error);
+      res.status(500).json({ message: error.message || "Failed to update template" });
+    }
+  });
+
+  // DELETE /api/document-templates/:id - Delete template
+  api.delete("/api/document-templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid template ID" });
+      }
+      
+      const existing = await storage.getDocumentTemplate(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Template not found" });
+      }
+      
+      // Cannot delete system templates
+      if (existing.isSystemTemplate) {
+        return res.status(403).json({ message: "Cannot delete system templates" });
+      }
+      
+      // Verify template belongs to this org
+      if (existing.organizationId !== org.id) {
+        return res.status(403).json({ message: "Not authorized to delete this template" });
+      }
+      
+      await storage.deleteDocumentTemplate(id);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Delete document template error:", error);
+      res.status(500).json({ message: error.message || "Failed to delete template" });
+    }
+  });
+
+  // ============================================
+  // GENERATED DOCUMENTS (Phase 4.3-4.5)
+  // ============================================
+
+  // GET /api/generated-documents - List generated documents
+  api.get("/api/generated-documents", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const dealId = req.query.dealId ? parseInt(req.query.dealId as string) : undefined;
+      const propertyId = req.query.propertyId ? parseInt(req.query.propertyId as string) : undefined;
+      const status = req.query.status as string | undefined;
+      
+      const documents = await storage.getGeneratedDocuments(org.id, { dealId, propertyId, status });
+      res.json(documents);
+    } catch (error: any) {
+      console.error("Get generated documents error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch documents" });
+    }
+  });
+
+  // GET /api/generated-documents/:id - Get document by ID
+  api.get("/api/generated-documents/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid document ID" });
+      }
+      
+      const document = await storage.getGeneratedDocument(org.id, id);
+      if (!document) {
+        return res.status(404).json({ message: "Document not found" });
+      }
+      
+      res.json(document);
+    } catch (error: any) {
+      console.error("Get generated document error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch document" });
+    }
+  });
+
+  // POST /api/generated-documents - Generate document from template
+  api.post("/api/generated-documents", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = (req as any).user;
+      const { templateId, dealId, propertyId, name, variables } = req.body;
+      
+      if (!templateId) {
+        return res.status(400).json({ message: "Template ID is required" });
+      }
+      
+      const template = await storage.getDocumentTemplate(templateId);
+      if (!template) {
+        return res.status(404).json({ message: "Template not found" });
+      }
+      
+      // Generate content by replacing variables
+      let generatedContent = template.content;
+      if (variables && typeof variables === 'object') {
+        for (const [key, value] of Object.entries(variables)) {
+          const regex = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
+          generatedContent = generatedContent.replace(regex, String(value));
+        }
+      }
+      
+      const document = await storage.createGeneratedDocument({
+        organizationId: org.id,
+        templateId,
+        dealId: dealId || null,
+        propertyId: propertyId || null,
+        name: name || `${template.name} - ${new Date().toLocaleDateString()}`,
+        type: template.type,
+        content: generatedContent,
+        variables: variables || {},
+        status: "draft",
+        createdBy: user?.id ? parseInt(user.id) : undefined,
+      });
+      
+      res.status(201).json(document);
+    } catch (error: any) {
+      console.error("Create generated document error:", error);
+      res.status(500).json({ message: error.message || "Failed to generate document" });
+    }
+  });
+
+  // PUT /api/generated-documents/:id - Update document
+  api.put("/api/generated-documents/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid document ID" });
+      }
+      
+      const existing = await storage.getGeneratedDocument(org.id, id);
+      if (!existing) {
+        return res.status(404).json({ message: "Document not found" });
+      }
+      
+      const { name, content, status, signers } = req.body;
+      
+      const updated = await storage.updateGeneratedDocument(id, {
+        ...(name && { name }),
+        ...(content && { content }),
+        ...(status && { status }),
+        ...(signers && { signers }),
+      });
+      
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Update generated document error:", error);
+      res.status(500).json({ message: error.message || "Failed to update document" });
+    }
+  });
+
+  // ============================================
+  // E-SIGNATURE INTEGRATION (Phase 4.6 - Placeholder)
+  // ============================================
+
+  // POST /api/generated-documents/:id/send-for-signature - Send document for e-signature
+  api.post("/api/generated-documents/:id/send-for-signature", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid document ID" });
+      }
+      
+      const document = await storage.getGeneratedDocument(org.id, id);
+      if (!document) {
+        return res.status(404).json({ message: "Document not found" });
+      }
+      
+      if (document.status !== "draft") {
+        return res.status(400).json({ message: "Document has already been sent or signed" });
+      }
+      
+      const { signers } = req.body;
+      
+      // Update document with e-signature info (placeholder integration)
+      const updated = await storage.updateGeneratedDocument(id, {
+        status: "pending_signature",
+        esignProvider: "docusign",
+        esignEnvelopeId: `placeholder-${Date.now()}`, // Would be real DocuSign envelope ID
+        esignStatus: "sent",
+        signers: signers || [],
+        sentAt: new Date(),
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days expiration
+      });
+      
+      res.json({
+        success: true,
+        message: "Document sent for signature (placeholder - DocuSign integration pending)",
+        document: updated,
+      });
+    } catch (error: any) {
+      console.error("Send for signature error:", error);
+      res.status(500).json({ message: error.message || "Failed to send for signature" });
     }
   });
 

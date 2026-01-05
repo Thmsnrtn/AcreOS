@@ -18,7 +18,9 @@ import {
   Workflow,
   PieChart,
   ListTodo,
-  BarChart3
+  BarChart3,
+  Store,
+  FileText
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useState, useCallback } from "react";
@@ -44,6 +46,8 @@ const navItems = [
   { label: "Team Dashboard", icon: BarChart3, href: "/team-dashboard" },
   { label: "Finance", icon: Banknote, href: "/finance" },
   { label: "Portfolio", icon: PieChart, href: "/portfolio" },
+  { label: "Listings", icon: Store, href: "/listings" },
+  { label: "Documents", icon: FileText, href: "/documents" },
   { label: "Campaigns", icon: Mail, href: "/campaigns" },
   { label: "Sequences", icon: Workflow, href: "/sequences" },
   { label: "Tools", icon: Calculator, href: "/tools" },

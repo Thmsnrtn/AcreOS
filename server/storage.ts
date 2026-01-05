@@ -22,6 +22,8 @@ import {
   targetCounties,
   offerLetters,
   offerTemplates,
+  skipTraces,
+  propertyListings,
   type Organization, type InsertOrganization,
   type TeamMember, type InsertTeamMember,
   type Lead, type InsertLead,
@@ -79,6 +81,11 @@ import {
   type OfferLetter, type InsertOfferLetter,
   type OfferTemplate, type InsertOfferTemplate,
   type DueDiligenceChecklist, type InsertDueDiligenceChecklist,
+  type SkipTrace, type InsertSkipTrace,
+  type PropertyListing, type InsertPropertyListing,
+  type DocumentTemplate, type InsertDocumentTemplate,
+  type GeneratedDocument, type InsertGeneratedDocument,
+  documentTemplates, generatedDocuments,
   DEFAULT_DUE_DILIGENCE_TEMPLATES,
   DEFAULT_DEAL_CHECKLIST_TEMPLATES,
 } from "@shared/schema";
@@ -533,6 +540,35 @@ export interface IStorage {
   getDueDiligenceChecklist(propertyId: number): Promise<DueDiligenceChecklist | undefined>;
   getOrCreateDueDiligenceChecklist(orgId: number, propertyId: number): Promise<DueDiligenceChecklist>;
   updateDueDiligenceChecklist(id: number, updates: Partial<InsertDueDiligenceChecklist>): Promise<DueDiligenceChecklist>;
+
+  // Skip Traces
+  getSkipTraces(orgId: number): Promise<SkipTrace[]>;
+  getSkipTrace(orgId: number, id: number): Promise<SkipTrace | undefined>;
+  getSkipTraceByLead(orgId: number, leadId: number): Promise<SkipTrace | undefined>;
+  createSkipTrace(skipTrace: InsertSkipTrace): Promise<SkipTrace>;
+  updateSkipTrace(id: number, updates: Partial<InsertSkipTrace>): Promise<SkipTrace>;
+
+  // Property Listings
+  getPropertyListings(orgId: number, filters?: { status?: string }): Promise<PropertyListing[]>;
+  getPropertyListing(orgId: number, id: number): Promise<PropertyListing | undefined>;
+  getPropertyListingByPropertyId(orgId: number, propertyId: number): Promise<PropertyListing | undefined>;
+  createPropertyListing(listing: InsertPropertyListing): Promise<PropertyListing>;
+  updatePropertyListing(id: number, updates: Partial<InsertPropertyListing>): Promise<PropertyListing>;
+  deletePropertyListing(id: number): Promise<void>;
+
+  // Document Templates
+  getDocumentTemplates(orgId: number): Promise<DocumentTemplate[]>;
+  getDocumentTemplate(id: number): Promise<DocumentTemplate | undefined>;
+  createDocumentTemplate(template: InsertDocumentTemplate): Promise<DocumentTemplate>;
+  updateDocumentTemplate(id: number, updates: Partial<InsertDocumentTemplate>): Promise<DocumentTemplate>;
+  deleteDocumentTemplate(id: number): Promise<void>;
+  seedSystemTemplates(): Promise<void>;
+
+  // Generated Documents
+  getGeneratedDocuments(orgId: number, filters?: { dealId?: number; propertyId?: number; status?: string }): Promise<GeneratedDocument[]>;
+  getGeneratedDocument(orgId: number, id: number): Promise<GeneratedDocument | undefined>;
+  createGeneratedDocument(doc: InsertGeneratedDocument): Promise<GeneratedDocument>;
+  updateGeneratedDocument(id: number, updates: Partial<InsertGeneratedDocument>): Promise<GeneratedDocument>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3517,6 +3553,323 @@ export class DatabaseStorage implements IStorage {
     const [updated] = await db.update(dueDiligenceChecklists)
       .set({ ...updates, updatedAt: new Date() })
       .where(eq(dueDiligenceChecklists.id, id))
+      .returning();
+    return updated;
+  }
+
+  // Skip Traces
+  async getSkipTraces(orgId: number) {
+    return db.select().from(skipTraces)
+      .where(eq(skipTraces.organizationId, orgId))
+      .orderBy(desc(skipTraces.createdAt));
+  }
+
+  async getSkipTrace(orgId: number, id: number) {
+    const [trace] = await db.select().from(skipTraces)
+      .where(and(eq(skipTraces.id, id), eq(skipTraces.organizationId, orgId)));
+    return trace;
+  }
+
+  async getSkipTraceByLead(orgId: number, leadId: number) {
+    const [trace] = await db.select().from(skipTraces)
+      .where(and(eq(skipTraces.organizationId, orgId), eq(skipTraces.leadId, leadId)))
+      .orderBy(desc(skipTraces.createdAt));
+    return trace;
+  }
+
+  async createSkipTrace(skipTrace: InsertSkipTrace) {
+    const [created] = await db.insert(skipTraces).values(skipTrace).returning();
+    return created;
+  }
+
+  async updateSkipTrace(id: number, updates: Partial<InsertSkipTrace>) {
+    const [updated] = await db.update(skipTraces)
+      .set(updates)
+      .where(eq(skipTraces.id, id))
+      .returning();
+    return updated;
+  }
+
+  // Property Listings
+  async getPropertyListings(orgId: number, filters?: { status?: string }) {
+    if (filters?.status) {
+      return db.select().from(propertyListings)
+        .where(and(eq(propertyListings.organizationId, orgId), eq(propertyListings.status, filters.status)))
+        .orderBy(desc(propertyListings.createdAt));
+    }
+    return db.select().from(propertyListings)
+      .where(eq(propertyListings.organizationId, orgId))
+      .orderBy(desc(propertyListings.createdAt));
+  }
+
+  async getPropertyListing(orgId: number, id: number) {
+    const [listing] = await db.select().from(propertyListings)
+      .where(and(eq(propertyListings.id, id), eq(propertyListings.organizationId, orgId)));
+    return listing;
+  }
+
+  async getPropertyListingByPropertyId(orgId: number, propertyId: number) {
+    const [listing] = await db.select().from(propertyListings)
+      .where(and(eq(propertyListings.propertyId, propertyId), eq(propertyListings.organizationId, orgId)));
+    return listing;
+  }
+
+  async createPropertyListing(listing: InsertPropertyListing) {
+    const [created] = await db.insert(propertyListings).values(listing).returning();
+    return created;
+  }
+
+  async updatePropertyListing(id: number, updates: Partial<InsertPropertyListing>) {
+    const [updated] = await db.update(propertyListings)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(propertyListings.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deletePropertyListing(id: number) {
+    await db.delete(propertyListings).where(eq(propertyListings.id, id));
+  }
+
+  // Document Templates
+  async getDocumentTemplates(orgId: number) {
+    return db.select().from(documentTemplates)
+      .where(or(
+        eq(documentTemplates.organizationId, orgId),
+        sql`${documentTemplates.organizationId} IS NULL`
+      ))
+      .orderBy(documentTemplates.isSystemTemplate, documentTemplates.name);
+  }
+
+  async getDocumentTemplate(id: number) {
+    const [template] = await db.select().from(documentTemplates)
+      .where(eq(documentTemplates.id, id));
+    return template;
+  }
+
+  async createDocumentTemplate(template: InsertDocumentTemplate) {
+    const [created] = await db.insert(documentTemplates).values(template).returning();
+    return created;
+  }
+
+  async updateDocumentTemplate(id: number, updates: Partial<InsertDocumentTemplate>) {
+    const [updated] = await db.update(documentTemplates)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(documentTemplates.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteDocumentTemplate(id: number) {
+    await db.delete(documentTemplates).where(eq(documentTemplates.id, id));
+  }
+
+  async seedSystemTemplates() {
+    const existing = await db.select().from(documentTemplates)
+      .where(eq(documentTemplates.isSystemTemplate, true));
+    
+    if (existing.length > 0) return;
+
+    const systemTemplates: InsertDocumentTemplate[] = [
+      {
+        name: "Purchase Agreement",
+        type: "purchase_agreement",
+        category: "closing",
+        isSystemTemplate: true,
+        isActive: true,
+        content: `<h1>REAL ESTATE PURCHASE AGREEMENT</h1>
+
+<p>This Purchase Agreement ("Agreement") is entered into as of <strong>{{closing_date}}</strong>, by and between:</p>
+
+<p><strong>SELLER:</strong> {{seller_name}}<br/>
+<strong>BUYER:</strong> {{buyer_name}}</p>
+
+<h2>1. PROPERTY DESCRIPTION</h2>
+<p>The Seller agrees to sell, and the Buyer agrees to purchase, the following described real property:</p>
+<p><strong>Property Address:</strong> {{property_address}}<br/>
+<strong>Parcel Number:</strong> {{parcel_number}}<br/>
+<strong>County:</strong> {{county}}, <strong>State:</strong> {{state}}</p>
+
+<h2>2. PURCHASE PRICE</h2>
+<p>The total purchase price for the Property shall be <strong>{{purchase_price}}</strong> ("Purchase Price"), payable as follows:</p>
+<ul>
+<li>Down Payment: {{down_payment}}</li>
+<li>Balance due at closing or per financing terms</li>
+</ul>
+
+<h2>3. CLOSING</h2>
+<p>The closing of this transaction shall take place on or before <strong>{{closing_date}}</strong>.</p>
+
+<h2>4. SIGNATURES</h2>
+<p>IN WITNESS WHEREOF, the parties have executed this Agreement as of the date first written above.</p>
+
+<p>____________________________<br/>
+Seller: {{seller_name}}<br/>
+Date: _____________</p>
+
+<p>____________________________<br/>
+Buyer: {{buyer_name}}<br/>
+Date: _____________</p>`,
+        variables: [
+          { name: "buyer_name", description: "Full legal name of the buyer", type: "text", required: true },
+          { name: "seller_name", description: "Full legal name of the seller", type: "text", required: true },
+          { name: "property_address", description: "Full street address of the property", type: "text", required: true },
+          { name: "parcel_number", description: "APN/Parcel number", type: "text", required: true },
+          { name: "county", description: "County where property is located", type: "text", required: true },
+          { name: "state", description: "State where property is located", type: "text", required: true },
+          { name: "purchase_price", description: "Total purchase price", type: "currency", required: true },
+          { name: "down_payment", description: "Down payment amount", type: "currency", required: false, defaultValue: "$0" },
+          { name: "closing_date", description: "Expected closing date", type: "date", required: true },
+        ],
+      },
+      {
+        name: "Quit Claim Deed",
+        type: "quit_claim_deed",
+        category: "closing",
+        isSystemTemplate: true,
+        isActive: true,
+        content: `<h1>QUIT CLAIM DEED</h1>
+
+<p><strong>Recording Requested By:</strong><br/>
+{{buyer_name}}</p>
+
+<p><strong>When Recorded Mail To:</strong><br/>
+{{buyer_name}}<br/>
+{{buyer_address}}</p>
+
+<hr/>
+
+<p>FOR VALUABLE CONSIDERATION, the receipt of which is hereby acknowledged,</p>
+
+<p><strong>{{seller_name}}</strong> ("Grantor")</p>
+
+<p>does hereby REMISE, RELEASE, and QUIT CLAIM to</p>
+
+<p><strong>{{buyer_name}}</strong> ("Grantee")</p>
+
+<p>the following described real property situated in <strong>{{county}}</strong> County, State of <strong>{{state}}</strong>:</p>
+
+<p><strong>Property Address:</strong> {{property_address}}<br/>
+<strong>Parcel Number:</strong> {{parcel_number}}</p>
+
+<p><strong>Legal Description:</strong><br/>
+{{legal_description}}</p>
+
+<p>Dated: {{closing_date}}</p>
+
+<p>____________________________<br/>
+{{seller_name}}, Grantor</p>
+
+<p><strong>STATE OF {{state}}</strong><br/>
+<strong>COUNTY OF {{county}}</strong></p>
+
+<p>On {{closing_date}}, before me, a Notary Public, personally appeared {{seller_name}}, who proved to me on the basis of satisfactory evidence to be the person(s) whose name(s) is/are subscribed to the within instrument and acknowledged to me that he/she/they executed the same in his/her/their authorized capacity(ies), and that by his/her/their signature(s) on the instrument the person(s), or the entity upon behalf of which the person(s) acted, executed the instrument.</p>
+
+<p>____________________________<br/>
+Notary Public</p>`,
+        variables: [
+          { name: "buyer_name", description: "Full legal name of the grantee (buyer)", type: "text", required: true },
+          { name: "buyer_address", description: "Mailing address of the grantee", type: "text", required: true },
+          { name: "seller_name", description: "Full legal name of the grantor (seller)", type: "text", required: true },
+          { name: "property_address", description: "Full street address of the property", type: "text", required: true },
+          { name: "parcel_number", description: "APN/Parcel number", type: "text", required: true },
+          { name: "legal_description", description: "Full legal description from deed", type: "text", required: true },
+          { name: "county", description: "County where property is located", type: "text", required: true },
+          { name: "state", description: "State where property is located", type: "text", required: true },
+          { name: "closing_date", description: "Date of execution", type: "date", required: true },
+        ],
+      },
+      {
+        name: "Assignment Contract",
+        type: "assignment",
+        category: "closing",
+        isSystemTemplate: true,
+        isActive: true,
+        content: `<h1>ASSIGNMENT OF REAL ESTATE CONTRACT</h1>
+
+<p>This Assignment of Real Estate Contract ("Assignment") is made and entered into as of <strong>{{closing_date}}</strong>, by and between:</p>
+
+<p><strong>ASSIGNOR:</strong> {{seller_name}}<br/>
+<strong>ASSIGNEE:</strong> {{buyer_name}}</p>
+
+<h2>RECITALS</h2>
+
+<p>WHEREAS, Assignor entered into a Real Estate Purchase Agreement dated {{original_contract_date}} ("Original Contract") for the purchase of real property located at:</p>
+
+<p><strong>Property Address:</strong> {{property_address}}<br/>
+<strong>Parcel Number:</strong> {{parcel_number}}<br/>
+<strong>County:</strong> {{county}}, <strong>State:</strong> {{state}}</p>
+
+<p>WHEREAS, Assignor desires to assign all of Assignor's right, title, and interest in the Original Contract to Assignee;</p>
+
+<h2>ASSIGNMENT</h2>
+
+<p>NOW, THEREFORE, in consideration of the sum of <strong>{{assignment_fee}}</strong> ("Assignment Fee") and other good and valuable consideration, the receipt and sufficiency of which is hereby acknowledged, Assignor hereby assigns, transfers, and conveys to Assignee all of Assignor's right, title, and interest in and to the Original Contract.</p>
+
+<h2>PURCHASE PRICE</h2>
+<p>The original purchase price under the Contract is <strong>{{purchase_price}}</strong>.</p>
+
+<h2>SIGNATURES</h2>
+
+<p>____________________________<br/>
+Assignor: {{seller_name}}<br/>
+Date: _____________</p>
+
+<p>____________________________<br/>
+Assignee: {{buyer_name}}<br/>
+Date: _____________</p>`,
+        variables: [
+          { name: "buyer_name", description: "Full legal name of the assignee", type: "text", required: true },
+          { name: "seller_name", description: "Full legal name of the assignor", type: "text", required: true },
+          { name: "property_address", description: "Full street address of the property", type: "text", required: true },
+          { name: "parcel_number", description: "APN/Parcel number", type: "text", required: true },
+          { name: "county", description: "County where property is located", type: "text", required: true },
+          { name: "state", description: "State where property is located", type: "text", required: true },
+          { name: "purchase_price", description: "Original purchase price", type: "currency", required: true },
+          { name: "assignment_fee", description: "Assignment fee amount", type: "currency", required: true },
+          { name: "closing_date", description: "Date of assignment", type: "date", required: true },
+          { name: "original_contract_date", description: "Date of original purchase contract", type: "date", required: true },
+        ],
+      },
+    ];
+
+    await db.insert(documentTemplates).values(systemTemplates);
+  }
+
+  // Generated Documents
+  async getGeneratedDocuments(orgId: number, filters?: { dealId?: number; propertyId?: number; status?: string }) {
+    let conditions = [eq(generatedDocuments.organizationId, orgId)];
+    
+    if (filters?.dealId) {
+      conditions.push(eq(generatedDocuments.dealId, filters.dealId));
+    }
+    if (filters?.propertyId) {
+      conditions.push(eq(generatedDocuments.propertyId, filters.propertyId));
+    }
+    if (filters?.status) {
+      conditions.push(eq(generatedDocuments.status, filters.status));
+    }
+    
+    return db.select().from(generatedDocuments)
+      .where(and(...conditions))
+      .orderBy(desc(generatedDocuments.createdAt));
+  }
+
+  async getGeneratedDocument(orgId: number, id: number) {
+    const [doc] = await db.select().from(generatedDocuments)
+      .where(and(eq(generatedDocuments.id, id), eq(generatedDocuments.organizationId, orgId)));
+    return doc;
+  }
+
+  async createGeneratedDocument(doc: InsertGeneratedDocument) {
+    const [created] = await db.insert(generatedDocuments).values(doc).returning();
+    return created;
+  }
+
+  async updateGeneratedDocument(id: number, updates: Partial<InsertGeneratedDocument>) {
+    const [updated] = await db.update(generatedDocuments)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(generatedDocuments.id, id))
       .returning();
     return updated;
   }

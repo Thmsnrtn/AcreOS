@@ -27,6 +27,8 @@ import TasksPage from "@/pages/tasks";
 import TeamDashboardPage from "@/pages/team-dashboard";
 import CountiesPage from "@/pages/counties";
 import OffersPage from "@/pages/offers";
+import ListingsPage from "@/pages/listings";
+import DocumentsPage from "@/pages/documents";
 import AuthPage from "@/pages/auth-page";
 import BorrowerPortal from "@/pages/borrower-portal";
 import NotFound from "@/pages/not-found";
@@ -124,6 +126,12 @@ function Router() {
       </Route>
       <Route path="/offers">
         {() => <ProtectedRoute component={OffersPage} />}
+      </Route>
+      <Route path="/listings">
+        {() => <ProtectedRoute component={ListingsPage} />}
+      </Route>
+      <Route path="/documents">
+        {() => <ProtectedRoute component={DocumentsPage} />}
       </Route>
       <Route path="/tools">
         {() => <ProtectedRoute component={ToolsPage} />}
