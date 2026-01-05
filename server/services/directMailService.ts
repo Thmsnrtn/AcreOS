@@ -1,5 +1,7 @@
 import Lob from 'lob';
 import type { MailSenderIdentity } from '@shared/schema';
+import { creditService, usageMeteringService } from './credits';
+import { storage } from '../storage';
 
 interface RecipientAddress {
   line1: string;
@@ -100,10 +102,35 @@ function parseExpectedDeliveryDate(dateString: string): Date {
   return isNaN(parsed.getTime()) ? new Date() : parsed;
 }
 
+async function checkCreditsAndRecord(organizationId: number, metadata?: Record<string, any>): Promise<{ hasCredits: boolean; costCents: number; errorMessage?: string }> {
+  const costCents = await usageMeteringService.calculateCost('direct_mail', 1);
+  const hasCredits = await creditService.hasEnoughCredits(organizationId, costCents);
+  
+  if (!hasCredits) {
+    const balance = await creditService.getBalance(organizationId);
+    return {
+      hasCredits: false,
+      costCents,
+      errorMessage: `Insufficient credits. Required: $${(costCents / 100).toFixed(2)}, Balance: $${(balance / 100).toFixed(2)}`,
+    };
+  }
+  
+  return { hasCredits: true, costCents };
+}
+
+async function recordUsage(organizationId: number, metadata: Record<string, any>): Promise<void> {
+  await usageMeteringService.recordUsage(organizationId, 'direct_mail', 1, metadata);
+}
+
 export async function sendPostcard(options: SendPostcardOptions): Promise<SendResult> {
   const { organizationId, senderIdentity, recipientName, recipientAddress, frontHtml, backHtml, size = '4x6' } = options;
   
   console.log(`[DirectMailService] Sending postcard for org ${organizationId} to ${recipientName}`);
+  
+  const creditCheck = await checkCreditsAndRecord(organizationId, { type: 'postcard', recipient: recipientName });
+  if (!creditCheck.hasCredits) {
+    throw new Error(creditCheck.errorMessage);
+  }
   
   try {
     const client = getLobClient();
@@ -117,6 +144,8 @@ export async function sendPostcard(options: SendPostcardOptions): Promise<SendRe
     });
     
     console.log(`[DirectMailService] Postcard sent successfully: ${result.id}`);
+    
+    await recordUsage(organizationId, { type: 'postcard', lobId: result.id, recipient: recipientName });
     
     return {
       lobId: result.id,
@@ -134,6 +163,11 @@ export async function sendLetter(options: SendLetterOptions): Promise<SendResult
   
   console.log(`[DirectMailService] Sending letter for org ${organizationId} to ${recipientName}`);
   
+  const creditCheck = await checkCreditsAndRecord(organizationId, { type: 'letter', recipient: recipientName });
+  if (!creditCheck.hasCredits) {
+    throw new Error(creditCheck.errorMessage);
+  }
+  
   try {
     const client = getLobClient();
     
@@ -146,6 +180,8 @@ export async function sendLetter(options: SendLetterOptions): Promise<SendResult
     });
     
     console.log(`[DirectMailService] Letter sent successfully: ${result.id}`);
+    
+    await recordUsage(organizationId, { type: 'letter', lobId: result.id, recipient: recipientName });
     
     return {
       lobId: result.id,
