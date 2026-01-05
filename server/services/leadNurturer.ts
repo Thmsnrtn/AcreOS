@@ -252,6 +252,7 @@ Respond in JSON format:
     agingAlertsCreated: number;
     errors: string[];
   }> {
+    const JOB_TYPE = `lead_nurturing_${organizationId}`;
     const { scoringLimit = 50, generateFollowUps = true, checkAging = true } = options;
     const result = {
       scored: 0,
@@ -263,9 +264,16 @@ Respond in JSON format:
     };
 
     try {
-      const leadsNeedingScoring = await storage.getLeadsNeedingScoring(organizationId, scoringLimit);
+      await storage.setJobStatus(JOB_TYPE, 'running');
       
-      for (const lead of leadsNeedingScoring) {
+      const cursor = await storage.getJobCursor(JOB_TYPE);
+      const lastProcessedId = cursor?.lastProcessedId || 0;
+      
+      const leadsNeedingScoring = await storage.getLeadsNeedingScoring(organizationId, scoringLimit);
+      const unprocessedLeads = leadsNeedingScoring.filter(l => l.id > lastProcessedId);
+      
+      let maxProcessedId = lastProcessedId;
+      for (const lead of unprocessedLeads) {
         try {
           const scoredLead = await this.scoreLead(lead);
           result.scored++;
@@ -286,6 +294,8 @@ Respond in JSON format:
               stage: scoredLead.nurturingStage,
             },
           });
+          maxProcessedId = Math.max(maxProcessedId, lead.id);
+          await storage.updateJobCursor(JOB_TYPE, maxProcessedId, 'running');
         } catch (err) {
           result.errors.push(`Failed to score lead ${lead.id}: ${err}`);
         }
@@ -342,8 +352,11 @@ Respond in JSON format:
           }
         }
       }
+      
+      await storage.setJobStatus(JOB_TYPE, 'idle');
     } catch (err) {
       result.errors.push(`Process error: ${err}`);
+      await storage.setJobStatus(JOB_TYPE, 'failed');
     }
 
     if (checkAging) {

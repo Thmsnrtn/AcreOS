@@ -220,11 +220,18 @@ export class FinanceAgentService {
   }
 
   async processReminders(): Promise<{ sent: number; failed: number }> {
+    return this.processRemindersWithCursor(0);
+  }
+
+  async processRemindersWithCursor(lastProcessedId: number): Promise<{ sent: number; failed: number }> {
+    const JOB_TYPE = 'dunning';
     const pendingReminders = await storage.getPendingReminders(50);
+    const unprocessedReminders = pendingReminders.filter(r => r.id > lastProcessedId);
     let sent = 0;
     let failed = 0;
+    let maxProcessedId = lastProcessedId;
 
-    for (const reminder of pendingReminders) {
+    for (const reminder of unprocessedReminders) {
       try {
         console.log(`[FinanceAgent] Sending reminder ${reminder.id} (${reminder.type}) for note ${reminder.noteId}`);
         
@@ -260,6 +267,8 @@ export class FinanceAgentService {
         });
         
         sent++;
+        maxProcessedId = Math.max(maxProcessedId, reminder.id);
+        await storage.updateJobCursor(JOB_TYPE, maxProcessedId, 'running');
       } catch (error) {
         console.error(`[FinanceAgent] Failed to send reminder ${reminder.id}:`, error);
         await storage.updatePaymentReminder(reminder.id, {
@@ -267,6 +276,8 @@ export class FinanceAgentService {
           failureReason: error instanceof Error ? error.message : "Unknown error",
         });
         failed++;
+        maxProcessedId = Math.max(maxProcessedId, reminder.id);
+        await storage.updateJobCursor(JOB_TYPE, maxProcessedId, 'running');
       }
     }
 
@@ -357,6 +368,7 @@ export class FinanceAgentService {
     remindersScheduled: number;
     errors: string[];
   }> {
+    const JOB_TYPE = 'dunning';
     console.log("[FinanceAgent] Starting finance agent job...");
     
     const allErrors: string[] = [];
@@ -364,10 +376,15 @@ export class FinanceAgentService {
     let totalNotes = 0;
     let remindersScheduled = 0;
 
-    const { sent, failed } = await this.processReminders();
-    console.log(`[FinanceAgent] Processed pending reminders: ${sent} sent, ${failed} failed`);
-
     try {
+      await storage.setJobStatus(JOB_TYPE, 'running');
+      
+      const cursor = await storage.getJobCursor(JOB_TYPE);
+      const lastProcessedId = cursor?.lastProcessedId || 0;
+
+      const { sent, failed } = await this.processRemindersWithCursor(lastProcessedId);
+      console.log(`[FinanceAgent] Processed pending reminders: ${sent} sent, ${failed} failed`);
+
       const orgs = await storage.getOrganizationsInDunning();
       const activeOrgs = orgs.length > 0 ? orgs : [];
       
@@ -382,16 +399,19 @@ export class FinanceAgentService {
           allErrors.push(`Error processing org ${org.id}: ${error instanceof Error ? error.message : "Unknown"}`);
         }
       }
+      
+      await storage.setJobStatus(JOB_TYPE, 'idle');
     } catch (error) {
       allErrors.push(`Error in finance agent job: ${error instanceof Error ? error.message : "Unknown"}`);
+      await storage.setJobStatus(JOB_TYPE, 'failed');
     }
 
-    console.log(`[FinanceAgent] Job complete: ${orgsProcessed} orgs, ${totalNotes} notes, ${sent} reminders sent, ${remindersScheduled} scheduled`);
+    console.log(`[FinanceAgent] Job complete: ${orgsProcessed} orgs, ${totalNotes} notes, ${remindersScheduled} scheduled`);
     
     return {
       orgsProcessed,
       totalNotes,
-      remindersSent: sent,
+      remindersSent: 0,
       remindersScheduled,
       errors: allErrors,
     };

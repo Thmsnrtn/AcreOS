@@ -16,7 +16,6 @@ import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useOrganization } from "@/hooks/use-organization";
 import { 
@@ -37,9 +36,18 @@ import {
   SkipForward,
   Building2,
   X,
-  UserPlus
+  Upload,
+  Home,
+  Plus,
+  Settings,
+  Link2,
+  Megaphone,
+  Check,
+  Circle,
+  ExternalLink
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { Link } from "wouter";
 
 type BusinessType = "land_flipper" | "note_investor" | "hybrid";
 
@@ -51,61 +59,108 @@ type OnboardingStatus = {
     organizationName?: string;
     communicationChannels?: string[];
     dataImported?: boolean;
-    stripeConnected?: boolean;
+    propertyAdded?: boolean;
+    integrationsConnected?: boolean;
     campaignCreated?: boolean;
-    teamInvites?: string[];
-    sampleDataLoaded?: boolean;
     completedSteps?: number[];
     skippedSteps?: number[];
-    aiTips?: string[];
   };
   totalSteps: number;
 };
 
+const STORAGE_KEY = "acreos_onboarding";
+
 const WIZARD_STEPS = [
   {
     id: 0,
-    name: "organization",
-    title: "Organization Setup",
-    description: "Let's set up your organization and business type.",
-    icon: Building2,
+    name: "welcome",
+    title: "Welcome",
+    description: "Tell us about your business so we can customize your experience.",
+    icon: Sparkles,
   },
   {
     id: 1,
-    name: "communication",
-    title: "Communication Preferences",
-    description: "Choose how you'll reach your leads and clients.",
-    icon: MessageSquare,
+    name: "import_leads",
+    title: "Import Leads",
+    description: "Bring in your existing leads or start fresh.",
+    icon: Upload,
   },
   {
     id: 2,
-    name: "campaign",
-    title: "Your First Campaign",
-    description: "Set up your first marketing campaign (optional).",
-    icon: Mail,
+    name: "add_property",
+    title: "Add Property",
+    description: "Add your first property to track.",
+    icon: Home,
   },
   {
     id: 3,
-    name: "team",
-    title: "Invite Your Team",
-    description: "Add team members to collaborate (optional).",
-    icon: Users,
+    name: "connect_integrations",
+    title: "Connect Integrations",
+    description: "Set up your communication channels.",
+    icon: Link2,
   },
   {
     id: 4,
-    name: "review",
-    title: "You're All Set!",
-    description: "Review your setup and launch your land investment business.",
-    icon: CheckCircle2,
+    name: "create_campaign",
+    title: "Create Campaign",
+    description: "Set up your first marketing campaign.",
+    icon: Megaphone,
+  },
+  {
+    id: 5,
+    name: "complete",
+    title: "Complete",
+    description: "You're all set to start growing your land business!",
+    icon: PartyPopper,
   },
 ];
 
-const COMMUNICATION_CHANNELS = [
-  { id: "email", label: "Email", description: "Send personalized emails to leads", icon: Mail },
-  { id: "sms", label: "SMS", description: "Text message campaigns and reminders", icon: MessageSquare },
-  { id: "direct_mail", label: "Direct Mail", description: "Physical mail campaigns", icon: FileText },
-  { id: "phone", label: "Phone", description: "Track phone call interactions", icon: Phone },
+const INTEGRATION_CHANNELS = [
+  { 
+    id: "email", 
+    label: "Email", 
+    description: "Send personalized emails to leads", 
+    icon: Mail,
+    settingsPath: "/settings?tab=email",
+    status: "not_configured"
+  },
+  { 
+    id: "sms", 
+    label: "SMS", 
+    description: "Text message campaigns and reminders", 
+    icon: MessageSquare,
+    settingsPath: "/settings?tab=phone",
+    status: "not_configured"
+  },
+  { 
+    id: "direct_mail", 
+    label: "Direct Mail", 
+    description: "Physical mail campaigns via Lob", 
+    icon: FileText,
+    settingsPath: "/settings?tab=integrations",
+    status: "not_configured"
+  },
 ];
+
+function getLocalState() {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (error) {
+    console.error("Error reading onboarding state:", error);
+  }
+  return null;
+}
+
+function setLocalState(state: any) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch (error) {
+    console.error("Error saving onboarding state:", error);
+  }
+}
 
 export function OnboardingWizard() {
   const { data: organization, isLoading: orgLoading } = useOrganization();
@@ -114,10 +169,10 @@ export function OnboardingWizard() {
   const [currentStep, setCurrentStep] = useState(0);
   const [businessType, setBusinessType] = useState<BusinessType>("land_flipper");
   const [organizationName, setOrganizationName] = useState("");
-  const [communicationChannels, setCommunicationChannels] = useState<string[]>(["email", "direct_mail"]);
-  const [teamEmails, setTeamEmails] = useState("");
-  const [tips, setTips] = useState<string[]>([]);
-  const [showTips, setShowTips] = useState(false);
+  const [propertyAddress, setPropertyAddress] = useState("");
+  const [propertyAcres, setPropertyAcres] = useState("");
+  const [propertyCounty, setPropertyCounty] = useState("");
+  const [propertyState, setPropertyState] = useState("");
 
   const { data: onboardingStatus, refetch: refetchStatus } = useQuery<OnboardingStatus>({
     queryKey: ["/api/onboarding/status"],
@@ -126,9 +181,16 @@ export function OnboardingWizard() {
 
   useEffect(() => {
     if (!orgLoading && organization && onboardingStatus) {
+      const localState = getLocalState();
+      
       if (!onboardingStatus.completed) {
+        if (localState?.dismissed && localState?.dontShowAgain) {
+          return;
+        }
+        
         setOpen(true);
-        setCurrentStep(onboardingStatus.currentStep);
+        setCurrentStep(localState?.currentStep ?? onboardingStatus.currentStep);
+        
         if (onboardingStatus.data.businessType) {
           setBusinessType(onboardingStatus.data.businessType);
         }
@@ -137,23 +199,15 @@ export function OnboardingWizard() {
         } else if (organization.name) {
           setOrganizationName(organization.name);
         }
-        if (onboardingStatus.data.communicationChannels) {
-          setCommunicationChannels(onboardingStatus.data.communicationChannels);
-        }
       }
     }
   }, [organization, orgLoading, onboardingStatus]);
 
-  const tipsMutation = useMutation({
-    mutationFn: async (step: number) => {
-      const res = await apiRequest("POST", "/api/onboarding/tips", { step });
-      if (!res.ok) throw new Error("Failed to get tips");
-      return res.json();
-    },
-    onSuccess: (data) => {
-      setTips(data.tips || []);
-    },
-  });
+  useEffect(() => {
+    if (open) {
+      setLocalState({ currentStep, dismissed: false });
+    }
+  }, [currentStep, open]);
 
   const updateStepMutation = useMutation({
     mutationFn: async ({ step, data, skipped }: { step: number; data?: any; skipped?: boolean }) => {
@@ -175,31 +229,30 @@ export function OnboardingWizard() {
     onSuccess: (data) => {
       toast({
         title: "Templates created!",
-        description: `Created ${data.provisioned.campaigns} campaign templates and default tags.`,
+        description: `Created ${data.provisioned.campaigns} campaign templates based on your business type.`,
       });
       queryClient.invalidateQueries({ queryKey: ["/api/campaigns"] });
     },
   });
 
-  const sampleDataMutation = useMutation({
+  const createPropertyMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/onboarding/sample-data", {});
-      if (!res.ok) throw new Error("Failed to load sample data");
+      const res = await apiRequest("POST", "/api/properties", {
+        address: propertyAddress,
+        sizeAcres: propertyAcres,
+        county: propertyCounty,
+        state: propertyState,
+        status: "prospect",
+      });
+      if (!res.ok) throw new Error("Failed to create property");
       return res.json();
     },
-    onSuccess: (data) => {
+    onSuccess: () => {
       toast({
-        title: "Sample data loaded!",
-        description: `Added ${data.counts.leads} leads, ${data.counts.properties} properties, and ${data.counts.notes} notes.`,
+        title: "Property added!",
+        description: "Your first property has been created.",
       });
-      queryClient.invalidateQueries();
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to load sample data",
-        variant: "destructive",
-      });
+      queryClient.invalidateQueries({ queryKey: ["/api/properties"] });
     },
   });
 
@@ -222,6 +275,7 @@ export function OnboardingWizard() {
     },
     onSuccess: () => {
       setOpen(false);
+      setLocalState({ dismissed: true, dontShowAgain: true });
       queryClient.invalidateQueries({ queryKey: ["/api/organization"] });
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding/status"] });
       toast({
@@ -241,16 +295,11 @@ export function OnboardingWizard() {
         step: currentStep, 
         data: { businessType, organizationName } 
       });
-    } else if (currentStep === 1) {
+    } else if (currentStep === 2 && propertyAddress) {
+      await createPropertyMutation.mutateAsync();
       await updateStepMutation.mutateAsync({ 
         step: currentStep, 
-        data: { communicationChannels } 
-      });
-    } else if (currentStep === 3 && teamEmails.trim()) {
-      const emails = teamEmails.split(",").map(e => e.trim()).filter(Boolean);
-      await updateStepMutation.mutateAsync({ 
-        step: currentStep, 
-        data: { teamInvites: emails } 
+        data: { propertyAdded: true } 
       });
     } else {
       await updateStepMutation.mutateAsync({ step: currentStep });
@@ -258,7 +307,6 @@ export function OnboardingWizard() {
     
     if (currentStep < WIZARD_STEPS.length - 1) {
       setCurrentStep(currentStep + 1);
-      tipsMutation.mutate(currentStep + 1);
     } else {
       await completeMutation.mutateAsync();
     }
@@ -269,7 +317,6 @@ export function OnboardingWizard() {
     
     if (currentStep < WIZARD_STEPS.length - 1) {
       setCurrentStep(currentStep + 1);
-      tipsMutation.mutate(currentStep + 1);
     } else {
       await completeMutation.mutateAsync();
     }
@@ -278,31 +325,39 @@ export function OnboardingWizard() {
   const handleBack = () => {
     if (currentStep > 0) {
       setCurrentStep(currentStep - 1);
-      tipsMutation.mutate(currentStep - 1);
     }
   };
 
-  const handleDismiss = async () => {
+  const handleDismiss = (dontShowAgain: boolean = false) => {
+    setOpen(false);
+    setLocalState({ dismissed: true, dontShowAgain });
+    
+    if (dontShowAgain) {
+      completeMutation.mutate();
+    }
+  };
+
+  const handleGoToDashboard = async () => {
     await completeMutation.mutateAsync();
   };
 
-  const handleLoadSampleData = async () => {
-    await sampleDataMutation.mutateAsync();
-  };
-
-  const toggleChannel = (channelId: string) => {
-    setCommunicationChannels(prev => 
-      prev.includes(channelId) 
-        ? prev.filter(c => c !== channelId)
-        : [...prev, channelId]
-    );
-  };
-
-  const isPending = updateStepMutation.isPending || provisionMutation.isPending || completeMutation.isPending || sampleDataMutation.isPending || updateOrgMutation.isPending;
+  const isPending = updateStepMutation.isPending || provisionMutation.isPending || 
+    completeMutation.isPending || createPropertyMutation.isPending || updateOrgMutation.isPending;
   const step = WIZARD_STEPS[currentStep];
   const StepIcon = step.icon;
   const isLastStep = currentStep === WIZARD_STEPS.length - 1;
   const progress = ((currentStep + 1) / WIZARD_STEPS.length) * 100;
+
+  const canContinue = () => {
+    switch (currentStep) {
+      case 0:
+        return !!businessType;
+      case 2:
+        return true;
+      default:
+        return true;
+    }
+  };
 
   const renderStepContent = () => {
     switch (currentStep) {
@@ -321,10 +376,7 @@ export function OnboardingWizard() {
             </div>
             
             <div className="space-y-2">
-              <Label>Business Type</Label>
-              <p className="text-sm text-muted-foreground">
-                What type of land investing are you focused on?
-              </p>
+              <Label>What type of investing do you do?</Label>
             </div>
             
             <RadioGroup
@@ -346,7 +398,7 @@ export function OnboardingWizard() {
                     <span className="font-medium">Land Flipper</span>
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    Buy land at wholesale prices and resell for cash or with terms.
+                    Buy land at wholesale and resell for profit.
                   </p>
                 </div>
               </Label>
@@ -365,7 +417,7 @@ export function OnboardingWizard() {
                     <span className="font-medium">Note Investor</span>
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    Seller-finance land sales and manage payment collection.
+                    Seller-finance land sales and collect payments.
                   </p>
                 </div>
               </Label>
@@ -381,34 +433,14 @@ export function OnboardingWizard() {
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
                     <Building2 className="w-4 h-4 text-primary" />
-                    <span className="font-medium">Hybrid</span>
+                    <span className="font-medium">Both</span>
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    Both cash flips and seller-financed deals.
+                    Cash flips and seller-financed deals.
                   </p>
                 </div>
               </Label>
             </RadioGroup>
-            
-            <div className="pt-4 border-t">
-              <Button
-                variant="outline"
-                onClick={handleLoadSampleData}
-                disabled={sampleDataMutation.isPending}
-                className="w-full"
-                data-testid="button-load-sample-data"
-              >
-                {sampleDataMutation.isPending ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <Database className="w-4 h-4 mr-2" />
-                )}
-                Load Sample Data
-              </Button>
-              <p className="text-xs text-center text-muted-foreground mt-2">
-                Get started quickly with sample leads, properties, and notes
-              </p>
-            </div>
           </div>
         );
 
@@ -416,39 +448,41 @@ export function OnboardingWizard() {
         return (
           <div className="space-y-4">
             <p className="text-muted-foreground text-center">
-              Select the communication channels you plan to use.
+              Import your existing leads from a CSV file to get started quickly.
             </p>
-            <div className="grid gap-3">
-              {COMMUNICATION_CHANNELS.map((channel) => {
-                const IconComponent = channel.icon;
-                const isSelected = communicationChannels.includes(channel.id);
-                return (
-                  <div
-                    key={channel.id}
-                    className={`flex items-center gap-4 p-4 rounded-md border cursor-pointer transition-colors ${
-                      isSelected ? "border-primary bg-primary/5" : "border-border"
-                    }`}
-                    onClick={() => toggleChannel(channel.id)}
-                    data-testid={`channel-${channel.id}`}
-                  >
-                    <Checkbox 
-                      checked={isSelected}
-                      onCheckedChange={() => toggleChannel(channel.id)}
-                    />
-                    <div className="w-10 h-10 rounded-md bg-primary/10 flex items-center justify-center">
-                      <IconComponent className="w-5 h-5 text-primary" />
-                    </div>
-                    <div className="flex-1">
-                      <p className="font-medium">{channel.label}</p>
-                      <p className="text-sm text-muted-foreground">{channel.description}</p>
-                    </div>
-                  </div>
-                );
-              })}
+            
+            <Card 
+              className="cursor-pointer"
+              onClick={() => window.open("/leads?action=import", "_blank")}
+              data-testid="card-import-csv"
+            >
+              <CardContent className="p-4 flex items-center gap-4">
+                <div className="w-12 h-12 rounded-md bg-primary/10 flex items-center justify-center">
+                  <Upload className="w-6 h-6 text-primary" />
+                </div>
+                <div className="flex-1">
+                  <p className="font-medium">Import CSV File</p>
+                  <p className="text-sm text-muted-foreground">
+                    Upload leads from a spreadsheet
+                  </p>
+                </div>
+                <ExternalLink className="w-4 h-4 text-muted-foreground" />
+              </CardContent>
+            </Card>
+
+            <div className="text-center text-sm text-muted-foreground">
+              or
             </div>
-            <p className="text-xs text-center text-muted-foreground">
-              You can configure these channels later in Settings.
-            </p>
+
+            <Button 
+              variant="outline" 
+              className="w-full"
+              onClick={handleSkip}
+              data-testid="button-add-manually-later"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Add Leads Manually Later
+            </Button>
           </div>
         );
 
@@ -456,28 +490,69 @@ export function OnboardingWizard() {
         return (
           <div className="space-y-4">
             <p className="text-muted-foreground text-center">
-              We've created campaign templates based on your business type. Review and customize them.
+              Add your first property to start tracking your deals.
             </p>
-            <Card className="cursor-pointer" onClick={() => window.open("/campaigns", "_blank")}>
-              <CardContent className="p-4 flex items-center gap-4">
-                <div className="w-10 h-10 rounded-md bg-primary/10 flex items-center justify-center">
-                  <Mail className="w-5 h-5 text-primary" />
+            
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label htmlFor="property-address">Property Address</Label>
+                <Input
+                  id="property-address"
+                  value={propertyAddress}
+                  onChange={(e) => setPropertyAddress(e.target.value)}
+                  placeholder="123 Main St or Tract 5 FM 2222"
+                  data-testid="input-property-address"
+                />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="property-county">County</Label>
+                  <Input
+                    id="property-county"
+                    value={propertyCounty}
+                    onChange={(e) => setPropertyCounty(e.target.value)}
+                    placeholder="Travis"
+                    data-testid="input-property-county"
+                  />
                 </div>
-                <div className="flex-1">
-                  <p className="font-medium">View Campaigns</p>
-                  <p className="text-sm text-muted-foreground">
-                    {businessType === "land_flipper" && "Acquisition mailer and follow-up sequence ready"}
-                    {businessType === "note_investor" && "Payment reminder templates configured"}
-                    {businessType === "hybrid" && "Full campaign suite created for you"}
-                  </p>
+                <div className="space-y-2">
+                  <Label htmlFor="property-state">State</Label>
+                  <Input
+                    id="property-state"
+                    value={propertyState}
+                    onChange={(e) => setPropertyState(e.target.value)}
+                    placeholder="TX"
+                    maxLength={2}
+                    data-testid="input-property-state"
+                  />
                 </div>
-                <ArrowRight className="w-4 h-4 text-muted-foreground" />
-              </CardContent>
-            </Card>
-            <div className="flex flex-wrap gap-2 justify-center">
-              <Badge variant="secondary">Direct Mail</Badge>
-              <Badge variant="secondary">Email Sequences</Badge>
-              <Badge variant="secondary">Follow-ups</Badge>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="property-acres">Acres</Label>
+                <Input
+                  id="property-acres"
+                  type="number"
+                  step="0.01"
+                  value={propertyAcres}
+                  onChange={(e) => setPropertyAcres(e.target.value)}
+                  placeholder="5.25"
+                  data-testid="input-property-acres"
+                />
+              </div>
+            </div>
+
+            <div className="pt-2">
+              <Button 
+                variant="ghost" 
+                className="w-full text-muted-foreground"
+                onClick={handleSkip}
+                data-testid="button-skip-property"
+              >
+                <SkipForward className="w-4 h-4 mr-2" />
+                Skip for now
+              </Button>
             </div>
           </div>
         );
@@ -486,77 +561,137 @@ export function OnboardingWizard() {
         return (
           <div className="space-y-4">
             <p className="text-muted-foreground text-center">
-              Invite team members to collaborate on your land deals.
+              Connect your communication channels to reach leads effectively.
             </p>
-            <div className="space-y-2">
-              <Label htmlFor="team-emails">Email Addresses</Label>
-              <Input
-                id="team-emails"
-                value={teamEmails}
-                onChange={(e) => setTeamEmails(e.target.value)}
-                placeholder="john@example.com, jane@example.com"
-                data-testid="input-team-emails"
-              />
-              <p className="text-xs text-muted-foreground">
-                Enter email addresses separated by commas
-              </p>
+            
+            <div className="space-y-3">
+              {INTEGRATION_CHANNELS.map((channel) => {
+                const IconComponent = channel.icon;
+                return (
+                  <Card
+                    key={channel.id}
+                    className="cursor-pointer"
+                    onClick={() => window.open(channel.settingsPath, "_blank")}
+                    data-testid={`integration-${channel.id}`}
+                  >
+                    <CardContent className="p-4 flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-md bg-muted flex items-center justify-center">
+                        <IconComponent className="w-5 h-5 text-muted-foreground" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-medium">{channel.label}</p>
+                        <p className="text-sm text-muted-foreground">{channel.description}</p>
+                      </div>
+                      <Badge variant="outline" className="text-xs">
+                        Set up
+                      </Badge>
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
-            <Card>
-              <CardContent className="p-4 flex items-center gap-4">
-                <div className="w-10 h-10 rounded-md bg-primary/10 flex items-center justify-center">
-                  <UserPlus className="w-5 h-5 text-primary" />
-                </div>
-                <div className="flex-1">
-                  <p className="font-medium">Team Benefits</p>
-                  <ul className="text-sm text-muted-foreground space-y-1 mt-1">
-                    <li>Assign leads to team members</li>
-                    <li>Track individual performance</li>
-                    <li>Collaborate on deals</li>
-                  </ul>
-                </div>
-              </CardContent>
-            </Card>
+            
             <p className="text-xs text-center text-muted-foreground">
-              You can invite team members later from Settings.
+              You can configure these later in Settings.
             </p>
           </div>
         );
 
       case 4:
         return (
+          <div className="space-y-4">
+            <p className="text-muted-foreground text-center">
+              We've created campaign templates based on your business type.
+            </p>
+            
+            <Card 
+              className="cursor-pointer"
+              onClick={() => window.open("/campaigns", "_blank")}
+              data-testid="card-view-campaigns"
+            >
+              <CardContent className="p-4 flex items-center gap-4">
+                <div className="w-12 h-12 rounded-md bg-primary/10 flex items-center justify-center">
+                  <Megaphone className="w-6 h-6 text-primary" />
+                </div>
+                <div className="flex-1">
+                  <p className="font-medium">View Campaigns</p>
+                  <p className="text-sm text-muted-foreground">
+                    {businessType === "land_flipper" && "Acquisition mailer templates ready"}
+                    {businessType === "note_investor" && "Payment reminder templates ready"}
+                    {businessType === "hybrid" && "Full campaign suite created"}
+                  </p>
+                </div>
+                <ExternalLink className="w-4 h-4 text-muted-foreground" />
+              </CardContent>
+            </Card>
+
+            <Card 
+              className="cursor-pointer"
+              onClick={() => window.open("/sequences", "_blank")}
+              data-testid="card-view-sequences"
+            >
+              <CardContent className="p-4 flex items-center gap-4">
+                <div className="w-10 h-10 rounded-md bg-muted flex items-center justify-center">
+                  <Mail className="w-5 h-5 text-muted-foreground" />
+                </div>
+                <div className="flex-1">
+                  <p className="font-medium">Create Sequence</p>
+                  <p className="text-sm text-muted-foreground">
+                    Set up automated follow-up sequences
+                  </p>
+                </div>
+                <ExternalLink className="w-4 h-4 text-muted-foreground" />
+              </CardContent>
+            </Card>
+          </div>
+        );
+
+      case 5:
+        return (
           <div className="space-y-6 text-center">
             <motion.div
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
               transition={{ type: "spring", stiffness: 200, damping: 15 }}
-              className="w-20 h-20 mx-auto rounded-full bg-primary/10 flex items-center justify-center"
+              className="w-20 h-20 mx-auto rounded-full bg-green-500/10 flex items-center justify-center"
             >
-              <PartyPopper className="w-10 h-10 text-primary" />
+              <PartyPopper className="w-10 h-10 text-green-500" />
             </motion.div>
+            
             <div>
-              <h3 className="text-xl font-semibold mb-2">Congratulations!</h3>
+              <h3 className="text-xl font-semibold mb-2">You're All Set!</h3>
               <p className="text-muted-foreground">
-                Your AcreOS account is configured and ready for action.
+                Your AcreOS account is ready. Start finding and closing deals.
               </p>
             </div>
-            <div className="grid gap-2 text-left">
-              <div className="flex items-center gap-2 text-sm">
-                <CheckCircle2 className="w-4 h-4 text-green-500" />
+            
+            <div className="grid gap-2 text-left max-w-xs mx-auto">
+              <div className="flex items-center gap-3 text-sm">
+                <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
                 <span>Organization: <strong>{organizationName || organization?.name}</strong></span>
               </div>
-              <div className="flex items-center gap-2 text-sm">
-                <CheckCircle2 className="w-4 h-4 text-green-500" />
+              <div className="flex items-center gap-3 text-sm">
+                <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
                 <span>Business type: <strong className="capitalize">{businessType?.replace("_", " ")}</strong></span>
               </div>
-              <div className="flex items-center gap-2 text-sm">
-                <CheckCircle2 className="w-4 h-4 text-green-500" />
-                <span>Channels: <strong>{communicationChannels.join(", ")}</strong></span>
-              </div>
-              <div className="flex items-center gap-2 text-sm">
-                <CheckCircle2 className="w-4 h-4 text-green-500" />
+              <div className="flex items-center gap-3 text-sm">
+                <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
                 <span>Campaign templates created</span>
               </div>
             </div>
+            
+            <Button 
+              size="lg" 
+              onClick={handleGoToDashboard}
+              disabled={isPending}
+              className="w-full"
+              data-testid="button-go-to-dashboard"
+            >
+              {isPending ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : null}
+              Go to Dashboard
+            </Button>
           </div>
         );
 
@@ -565,12 +700,43 @@ export function OnboardingWizard() {
     }
   };
 
+  const renderStepIndicators = () => {
+    return (
+      <div className="flex items-center justify-center gap-1 mb-4">
+        {WIZARD_STEPS.map((s, index) => {
+          const isCompleted = index < currentStep;
+          const isCurrent = index === currentStep;
+          
+          return (
+            <button
+              key={s.id}
+              onClick={() => index <= currentStep && setCurrentStep(index)}
+              disabled={index > currentStep}
+              className={`w-2 h-2 rounded-full transition-all ${
+                isCompleted 
+                  ? "bg-primary" 
+                  : isCurrent 
+                    ? "bg-primary w-6" 
+                    : "bg-muted"
+              }`}
+              data-testid={`step-indicator-${index}`}
+            />
+          );
+        })}
+      </div>
+    );
+  };
+
   if (orgLoading || !organization) {
     return null;
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={(isOpen) => {
+      if (!isOpen) {
+        handleDismiss(false);
+      }
+    }}>
       <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto" data-testid="dialog-onboarding-wizard">
         <DialogHeader>
           <div className="flex items-center justify-between mb-2">
@@ -579,16 +745,18 @@ export function OnboardingWizard() {
             </Badge>
             <Button
               variant="ghost"
-              size="icon"
-              onClick={() => setShowTips(!showTips)}
-              className="toggle-elevate"
-              data-testid="button-toggle-tips"
+              size="sm"
+              onClick={() => handleDismiss(true)}
+              className="text-xs text-muted-foreground"
+              data-testid="button-dont-show-again"
             >
-              <Lightbulb className={`w-4 h-4 ${showTips ? "text-yellow-500" : "text-muted-foreground"}`} />
+              Don't show again
             </Button>
           </div>
           
           <Progress value={progress} className="h-1.5 mb-4" data-testid="progress-onboarding" />
+          
+          {renderStepIndicators()}
           
           <div className="flex items-center justify-center mb-4">
             <AnimatePresence mode="wait">
@@ -605,108 +773,69 @@ export function OnboardingWizard() {
             </AnimatePresence>
           </div>
           
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={currentStep}
-              initial={{ y: 10, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: -10, opacity: 0 }}
-              transition={{ duration: 0.2 }}
-            >
-              <DialogTitle className="text-center text-xl" data-testid="text-wizard-title">
-                {step.title}
-              </DialogTitle>
-              <DialogDescription className="text-center mt-1">
-                {step.description}
-              </DialogDescription>
-            </motion.div>
-          </AnimatePresence>
+          <DialogTitle className="text-center text-xl" data-testid="text-step-title">
+            {step.title}
+          </DialogTitle>
+          <DialogDescription className="text-center" data-testid="text-step-description">
+            {step.description}
+          </DialogDescription>
         </DialogHeader>
-
-        <AnimatePresence mode="wait">
-          {showTips && tips.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              className="bg-yellow-500/10 border border-yellow-500/20 rounded-md p-3 mb-4"
-            >
-              <div className="flex items-start gap-2">
-                <Sparkles className="w-4 h-4 text-yellow-600 mt-0.5 flex-shrink-0" />
-                <div className="space-y-1.5">
-                  {tips.map((tip, i) => (
-                    <p key={i} className="text-sm text-muted-foreground">{tip}</p>
-                  ))}
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
 
         <AnimatePresence mode="wait">
           <motion.div
             key={currentStep}
-            initial={{ y: 10, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: -10, opacity: 0 }}
-            transition={{ duration: 0.2, delay: 0.1 }}
-            className="py-2"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.2 }}
+            className="py-4"
           >
             {renderStepContent()}
           </motion.div>
         </AnimatePresence>
 
-        <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:justify-between mt-4 pb-4 sm:pb-0">
-          <div className="flex gap-2">
+        {!isLastStep && (
+          <DialogFooter className="flex flex-col-reverse sm:flex-row gap-2 sm:gap-0">
             {currentStep > 0 && (
               <Button
-                variant="outline"
+                variant="ghost"
                 onClick={handleBack}
                 disabled={isPending}
+                className="sm:mr-auto"
                 data-testid="button-back"
               >
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 Back
               </Button>
             )}
-            {currentStep > 0 && currentStep < WIZARD_STEPS.length - 1 && (
+            
+            <div className="flex gap-2 flex-wrap justify-end">
+              {currentStep > 0 && currentStep < WIZARD_STEPS.length - 1 && (
+                <Button
+                  variant="ghost"
+                  onClick={handleSkip}
+                  disabled={isPending}
+                  data-testid="button-skip"
+                >
+                  <SkipForward className="w-4 h-4 mr-2" />
+                  Skip
+                </Button>
+              )}
+              
               <Button
-                variant="ghost"
-                onClick={handleSkip}
-                disabled={isPending}
-                data-testid="button-skip"
+                onClick={handleNext}
+                disabled={isPending || !canContinue()}
+                data-testid="button-next"
               >
-                <SkipForward className="w-4 h-4 mr-2" />
-                Skip
+                {isPending ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : null}
+                {currentStep === WIZARD_STEPS.length - 2 ? "Finish" : "Continue"}
+                <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
-            )}
-          </div>
-          
-          <div className="flex gap-2">
-            {currentStep === 0 && (
-              <Button
-                variant="ghost"
-                onClick={handleDismiss}
-                disabled={isPending}
-                data-testid="button-dismiss"
-              >
-                <X className="w-4 h-4 mr-2" />
-                Skip Setup
-              </Button>
-            )}
-            <Button
-              onClick={handleNext}
-              disabled={isPending || (currentStep === 0 && !businessType)}
-              data-testid="button-next"
-            >
-              {isPending ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : null}
-              {isLastStep ? "Launch Dashboard" : "Continue"}
-              {!isLastStep && <ArrowRight className="w-4 h-4 ml-2" />}
-            </Button>
-          </div>
-        </DialogFooter>
+            </div>
+          </DialogFooter>
+        )}
       </DialogContent>
     </Dialog>
   );

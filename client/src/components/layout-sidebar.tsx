@@ -79,12 +79,12 @@ export function Sidebar() {
     }
   }, []);
 
-  const NavContent = () => (
+  const NavContent = ({ onNavClick }: { onNavClick?: () => void }) => (
     <div className="flex flex-col h-full vibrancy-sidebar">
-      <div className="p-6 border-b border-sidebar-border">
+      <div className="p-4 md:p-6 border-b border-sidebar-border">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+            <h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
               AcreOS
             </h1>
             {isFounder && (
@@ -103,14 +103,19 @@ export function Sidebar() {
         <p className="text-xs text-muted-foreground mt-1">Land Investment Platform</p>
       </div>
 
-      <nav className="flex-1 px-3 py-4 space-y-1">
+      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
         {isFounder && (
-          <Link href="/founder" className={cn(
-            "flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all duration-150 group mb-2",
-            location === "/founder" 
-              ? "bg-amber-500 text-white shadow-md" 
-              : "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20"
-          )} data-testid="link-founder-dashboard">
+          <Link 
+            href="/founder" 
+            onClick={onNavClick}
+            className={cn(
+              "flex items-center gap-3 px-4 py-3 md:py-2.5 rounded-lg transition-all duration-150 group mb-2 min-h-[44px]",
+              location === "/founder" 
+                ? "bg-amber-500 text-white shadow-md" 
+                : "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20"
+            )} 
+            data-testid="link-founder-dashboard"
+          >
             <Crown className={cn(
               "w-5 h-5 transition-colors", 
               location === "/founder" ? "text-white" : "text-amber-500"
@@ -123,9 +128,10 @@ export function Sidebar() {
           return (
             <Link 
               key={item.href} 
-              href={item.href} 
+              href={item.href}
+              onClick={onNavClick}
               className={cn(
-                "flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all duration-150 group",
+                "flex items-center gap-3 px-4 py-3 md:py-2.5 rounded-lg transition-all duration-150 group min-h-[44px]",
                 isActive 
                   ? "bg-primary text-primary-foreground shadow-md" 
                   : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
@@ -142,11 +148,11 @@ export function Sidebar() {
         })}
       </nav>
 
-      <div className="p-4 border-t border-sidebar-border">
+      <div className="p-4 border-t border-sidebar-border safe-area-bottom">
         <button 
           onClick={() => logout()}
           data-testid="button-logout"
-          className="flex items-center gap-3 px-4 py-2.5 w-full rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+          className="flex items-center gap-3 px-4 py-3 md:py-2.5 w-full rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors min-h-[44px]"
         >
           <LogOut className="w-5 h-5" />
           <span className="font-medium text-sm">Sign Out</span>
@@ -158,15 +164,15 @@ export function Sidebar() {
   return (
     <>
       {/* Mobile Trigger */}
-      <div className="md:hidden fixed top-4 left-4 z-50">
+      <div className="md:hidden fixed top-4 left-4 z-50 safe-area-top">
         <Sheet open={isOpen} onOpenChange={setIsOpen}>
           <SheetTrigger asChild>
-            <Button variant="outline" size="icon" className="shadow-lg glass-panel" data-testid="button-mobile-menu">
+            <Button variant="outline" size="icon" className="shadow-lg glass-panel min-h-[44px] min-w-[44px]" data-testid="button-mobile-menu">
               <Menu className="w-5 h-5" />
             </Button>
           </SheetTrigger>
-          <SheetContent side="left" className="p-0 w-72 border-r-sidebar-border">
-            <NavContent />
+          <SheetContent side="left" className="p-0 w-[85vw] max-w-[320px] border-r-sidebar-border">
+            <NavContent onNavClick={() => setIsOpen(false)} />
           </SheetContent>
         </Sheet>
       </div>

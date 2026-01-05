@@ -203,7 +203,7 @@ export class OnboardingService {
       success: true,
       provisioned: {
         campaigns: campaignsCreated,
-        tags: [...new Set(allTags)],
+        tags: Array.from(new Set(allTags)),
       },
     };
   }

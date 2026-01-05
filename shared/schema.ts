@@ -3230,3 +3230,26 @@ export const insertNotificationSchema = createInsertSchema(notifications).omit({
 });
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;
 export type Notification = typeof notifications.$inferSelect;
+
+// ============================================
+// JOB CURSORS (Prevent duplicate processing on restart)
+// ============================================
+
+export const jobCursors = pgTable("job_cursors", {
+  id: serial("id").primaryKey(),
+  jobType: text("job_type").notNull().unique(),
+  lastProcessedId: integer("last_processed_id"),
+  lastRunAt: timestamp("last_run_at"),
+  status: text("status").default('idle'),
+  metadata: jsonb("metadata").$type<Record<string, any>>(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertJobCursorSchema = createInsertSchema(jobCursors).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertJobCursor = z.infer<typeof insertJobCursorSchema>;
+export type JobCursor = typeof jobCursors.$inferSelect;

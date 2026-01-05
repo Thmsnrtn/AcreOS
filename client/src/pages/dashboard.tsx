@@ -134,7 +134,7 @@ export default function Dashboard() {
             variants={container}
             initial="hidden"
             animate="show"
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5"
+            className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-5"
           >
             <motion.div variants={item}>
               <StatCard 
@@ -246,7 +246,7 @@ export default function Dashboard() {
             <ActivityFeed maxHeight="350px" compact />
           </motion.div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
             <motion.div 
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}

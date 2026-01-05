@@ -91,6 +91,8 @@ import {
   type ActivityLogEntry,
   documentTemplates, generatedDocuments,
   automationRules, automationExecutions, notifications,
+  jobCursors,
+  type JobCursor, type InsertJobCursor,
   DEFAULT_DUE_DILIGENCE_TEMPLATES,
   DEFAULT_DEAL_CHECKLIST_TEMPLATES,
 } from "@shared/schema";
@@ -654,6 +656,11 @@ export interface IStorage {
 
   // Activity Feed (8.3)
   getActivityFeed(orgId: number, filters?: { entityType?: string; limit?: number; offset?: number }): Promise<ActivityLogEntry[]>;
+
+  // Job Cursors (prevent duplicate processing on restart)
+  getJobCursor(jobType: string): Promise<JobCursor | undefined>;
+  updateJobCursor(jobType: string, lastProcessedId: number | null, status: string): Promise<JobCursor>;
+  setJobStatus(jobType: string, status: string): Promise<JobCursor>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -4468,6 +4475,69 @@ Date: _____________</p>`,
       .orderBy(desc(activityLog.createdAt))
       .limit(limit)
       .offset(offset);
+  }
+
+  // ============================================
+  // JOB CURSORS (Prevent duplicate processing)
+  // ============================================
+
+  async getJobCursor(jobType: string): Promise<JobCursor | undefined> {
+    const [cursor] = await db.select()
+      .from(jobCursors)
+      .where(eq(jobCursors.jobType, jobType));
+    return cursor;
+  }
+
+  async updateJobCursor(jobType: string, lastProcessedId: number | null, status: string): Promise<JobCursor> {
+    const existing = await this.getJobCursor(jobType);
+    
+    if (existing) {
+      const [updated] = await db.update(jobCursors)
+        .set({
+          lastProcessedId,
+          status,
+          lastRunAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(jobCursors.jobType, jobType))
+        .returning();
+      return updated;
+    } else {
+      const [created] = await db.insert(jobCursors)
+        .values({
+          jobType,
+          lastProcessedId,
+          status,
+          lastRunAt: new Date(),
+        })
+        .returning();
+      return created;
+    }
+  }
+
+  async setJobStatus(jobType: string, status: string): Promise<JobCursor> {
+    const existing = await this.getJobCursor(jobType);
+    
+    if (existing) {
+      const [updated] = await db.update(jobCursors)
+        .set({
+          status,
+          lastRunAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(jobCursors.jobType, jobType))
+        .returning();
+      return updated;
+    } else {
+      const [created] = await db.insert(jobCursors)
+        .values({
+          jobType,
+          status,
+          lastRunAt: new Date(),
+        })
+        .returning();
+      return created;
+    }
   }
 }
 

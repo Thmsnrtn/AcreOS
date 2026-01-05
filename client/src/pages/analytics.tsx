@@ -197,18 +197,18 @@ export default function AnalyticsPage() {
   };
 
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="flex min-h-screen bg-background desert-gradient">
       <Sidebar />
-      <main className="flex-1 p-8 overflow-auto">
-        <div className="max-w-7xl mx-auto space-y-8">
+      <main className="flex-1 md:ml-[17rem] p-4 pt-16 md:pt-8 md:p-8 pb-24 md:pb-8 overflow-x-hidden">
+        <div className="max-w-7xl mx-auto space-y-6 md:space-y-8">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-bold" data-testid="text-analytics-title">Analytics</h1>
-              <p className="text-muted-foreground">Track your business performance and insights</p>
+              <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-analytics-title">Analytics</h1>
+              <p className="text-muted-foreground text-sm md:text-base">Track your business performance and insights</p>
             </div>
-            <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2 md:gap-3 flex-wrap">
               <Select value={dateRange} onValueChange={setDateRange} data-testid="select-date-range">
-                <SelectTrigger className="w-32">
+                <SelectTrigger className="w-28 md:w-32 min-h-[44px]">
                   <SelectValue placeholder="Date Range" />
                 </SelectTrigger>
                 <SelectContent>
@@ -218,14 +218,15 @@ export default function AnalyticsPage() {
                   <SelectItem value="1y">Last year</SelectItem>
                 </SelectContent>
               </Select>
-              <Button variant="outline" onClick={handleExportReport} data-testid="button-export-report">
+              <Button variant="outline" onClick={handleExportReport} data-testid="button-export-report" className="min-h-[44px]">
                 <Download className="h-4 w-4 mr-2" />
-                Export Report
+                <span className="hidden sm:inline">Export Report</span>
+                <span className="sm:hidden">Export</span>
               </Button>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
             <KPICard
               title="Total Revenue"
               value={formatCurrency(executive?.totalRevenue || 0)}
@@ -256,7 +257,7 @@ export default function AnalyticsPage() {
             />
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -398,7 +399,7 @@ export default function AnalyticsPage() {
             </Card>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
             <Card className="lg:col-span-2">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -538,7 +539,7 @@ export default function AnalyticsPage() {
               <CardTitle>Quick Stats</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
                 <div className="text-center p-4 bg-muted/50 rounded-lg">
                   <div className="text-2xl font-bold">{leads?.totalLeads || 0}</div>
                   <p className="text-sm text-muted-foreground">Total Leads</p>

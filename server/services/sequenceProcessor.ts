@@ -28,18 +28,36 @@ export class SequenceProcessorService {
   }
 
   async processEnrollments() {
+    const JOB_TYPE = 'sequence_processor';
+    
     try {
+      await storage.setJobStatus(JOB_TYPE, 'running');
+      
+      const cursor = await storage.getJobCursor(JOB_TYPE);
+      const lastProcessedId = cursor?.lastProcessedId || 0;
+      
       const enrollmentsDue = await storage.getEnrollmentsDueForProcessing();
       
-      if (enrollmentsDue.length === 0) return;
-
-      console.log(`[sequence-processor] Processing ${enrollmentsDue.length} enrollments due`);
-
-      for (const enrollment of enrollmentsDue) {
-        await this.processEnrollment(enrollment);
+      const unprocessedEnrollments = enrollmentsDue.filter(e => e.id > lastProcessedId);
+      
+      if (unprocessedEnrollments.length === 0) {
+        await storage.setJobStatus(JOB_TYPE, 'idle');
+        return;
       }
+
+      console.log(`[sequence-processor] Processing ${unprocessedEnrollments.length} enrollments due (skipped ${enrollmentsDue.length - unprocessedEnrollments.length} already processed)`);
+
+      let maxProcessedId = lastProcessedId;
+      for (const enrollment of unprocessedEnrollments) {
+        await this.processEnrollment(enrollment);
+        maxProcessedId = Math.max(maxProcessedId, enrollment.id);
+        await storage.updateJobCursor(JOB_TYPE, maxProcessedId, 'running');
+      }
+      
+      await storage.setJobStatus(JOB_TYPE, 'idle');
     } catch (error) {
       console.error("[sequence-processor] Error processing enrollments:", error);
+      await storage.setJobStatus(JOB_TYPE, 'failed');
     }
   }
 

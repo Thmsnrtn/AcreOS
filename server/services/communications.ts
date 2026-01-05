@@ -2,6 +2,8 @@ import { emailService } from './emailService';
 import { smsService } from './smsService';
 import { storage } from '../storage';
 import { checkTcpaConsentFromLead, canSendViaChannel, checkTcpaConsent } from './tcpaCompliance';
+import { lobService, LobErrorType } from './lobService';
+import { apiQueueService } from './apiQueue';
 
 export interface CommunicationOptions {
   leadId: number;
@@ -15,16 +17,29 @@ export interface CommunicationResult {
   success: boolean;
   channel: string;
   messageId?: string;
+  lobMailingId?: string;
+  expectedDeliveryDate?: string;
   error?: string;
+  errorType?: LobErrorType;
   tcpaBlocked?: boolean;
+  retriesExhausted?: boolean;
 }
 
+export interface DirectMailContent {
+  subject: string;
+  body: string;
+  htmlContent?: string;
+}
+
+const RETRY_DELAYS = [1000, 2000, 4000];
+const MAX_RETRIES = 3;
+
 export class CommunicationsService {
-  getChannelStatus(): { email: boolean; sms: boolean; directMail: boolean } {
+  async getChannelStatus(): Promise<{ email: boolean; sms: boolean; directMail: boolean }> {
     return {
-      email: emailService.isConfigured(),
+      email: await emailService.isConfigured(),
       sms: smsService.isConfigured(),
-      directMail: !!process.env.LOB_API_KEY,
+      directMail: !!process.env.LOB_API_KEY || !!process.env.LOB_TEST_API_KEY || !!process.env.LOB_LIVE_API_KEY,
     };
   }
 
@@ -148,10 +163,10 @@ export class CommunicationsService {
   }
 
   private determinePreferredChannel(lead: { email?: string | null; phone?: string | null; tcpaConsent?: boolean | null }): 'email' | 'sms' {
-    if (lead.email && emailService.isConfigured()) return 'email';
-    if (lead.phone && smsService.isConfigured() && lead.tcpaConsent) return 'sms';
+    // Prefer email if available, SMS as fallback for TCPA-consented leads
     if (lead.email) return 'email';
-    return 'sms';
+    if (lead.phone && smsService.isConfigured() && lead.tcpaConsent) return 'sms';
+    return 'email';
   }
 
   async recordCommunication(
@@ -228,7 +243,7 @@ export class CommunicationsService {
   async sendDirectMailToLead(
     leadId: number,
     organizationId: number,
-    content: { subject: string; body: string }
+    content: DirectMailContent
   ): Promise<CommunicationResult> {
     const lead = await storage.getLead(organizationId, leadId);
     if (!lead) {
@@ -254,14 +269,177 @@ export class CommunicationsService {
       };
     }
 
-    console.log(`[Communications] Direct mail to ${lead.firstName} ${lead.lastName} at ${lead.address}`);
-    
-    await this.recordCommunication(leadId, organizationId, 'direct_mail', {
-      subject: content.subject,
+    if (!lobService.isConfigured()) {
+      console.error('[Communications] Lob service not configured - LOB_TEST_API_KEY or LOB_LIVE_API_KEY required');
+      return {
+        success: false,
+        channel: 'direct_mail',
+        error: 'Direct mail service not configured',
+      };
+    }
+
+    const result = await this.sendDirectMailWithRetry(leadId, organizationId, {
+      firstName: lead.firstName,
+      lastName: lead.lastName,
+      address: lead.address,
+      city: lead.city,
+      state: lead.state,
+      zip: lead.zip,
+    }, content);
+    return result;
+  }
+
+  async sendDirectMailWithRetry(
+    leadId: number,
+    organizationId: number,
+    lead: { firstName: string; lastName: string; address: string; city: string; state: string; zip: string },
+    content: DirectMailContent,
+    attempt: number = 0
+  ): Promise<CommunicationResult> {
+    const org = await storage.getOrganization(organizationId);
+    const mailMode = org?.settings?.mailMode === 'live' ? 'live' : 'test';
+
+    const fromAddress = {
+      name: org?.name || 'AcreOS',
+      addressLine1: org?.settings?.companyAddress || '123 Main St',
+      city: 'Austin',
+      state: 'TX',
+      zip: '78701',
+    };
+
+    const toAddress = {
+      name: `${lead.firstName} ${lead.lastName}`,
+      addressLine1: lead.address,
+      city: lead.city,
+      state: lead.state,
+      zip: lead.zip,
+    };
+
+    console.log(`[Communications] Sending direct mail to ${toAddress.name} at ${toAddress.addressLine1} (attempt ${attempt + 1}/${MAX_RETRIES})`);
+
+    const letterHtml = content.htmlContent || `
+      <html>
+        <body>
+          <h1>${content.subject}</h1>
+          <p>${content.body}</p>
+        </body>
+      </html>
+    `;
+
+    const lobResult = await lobService.sendLetter(
+      {
+        to: toAddress,
+        from: fromAddress,
+        file: letterHtml,
+        color: false,
+        doubleSided: false,
+      },
+      mailMode
+    );
+
+    if (lobResult.success) {
+      console.log(`[Communications] Direct mail sent successfully to lead ${leadId}, lob_mailing_id: ${lobResult.lobMailingId}`);
+      
+      await this.recordCommunication(leadId, organizationId, 'direct_mail', {
+        subject: content.subject,
+        address: lead.address,
+        lob_mailing_id: lobResult.lobMailingId,
+        expected_delivery_date: lobResult.expectedDeliveryDate,
+        is_test_mode: lobResult.isTestMode,
+      });
+
+      return {
+        success: true,
+        channel: 'direct_mail',
+        lobMailingId: lobResult.lobMailingId,
+        expectedDeliveryDate: lobResult.expectedDeliveryDate,
+      };
+    }
+
+    console.error(`[Communications] Direct mail failed for lead ${leadId}:`, {
+      attempt: attempt + 1,
+      errorType: lobResult.errorType,
+      error: lobResult.error,
+    });
+
+    if (lobResult.errorType && lobService.isRetryableError(lobResult.errorType) && attempt < MAX_RETRIES - 1) {
+      const delay = RETRY_DELAYS[attempt];
+      console.log(`[Communications] Retrying direct mail for lead ${leadId} in ${delay}ms (attempt ${attempt + 2}/${MAX_RETRIES})`);
+      
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return this.sendDirectMailWithRetry(leadId, organizationId, lead, content, attempt + 1);
+    }
+
+    if (attempt >= MAX_RETRIES - 1 || (lobResult.errorType && !lobService.isRetryableError(lobResult.errorType))) {
+      await this.handleDirectMailFailure(leadId, organizationId, lead, content, lobResult.errorType, lobResult.error);
+    }
+
+    return {
+      success: false,
+      channel: 'direct_mail',
+      error: lobResult.error,
+      errorType: lobResult.errorType,
+      retriesExhausted: attempt >= MAX_RETRIES - 1,
+    };
+  }
+
+  private async handleDirectMailFailure(
+    leadId: number,
+    organizationId: number,
+    lead: { firstName: string; lastName: string; address: string },
+    content: DirectMailContent,
+    errorType?: LobErrorType,
+    errorMessage?: string
+  ): Promise<void> {
+    console.error(`[Communications] Direct mail retries exhausted for lead ${leadId}:`, {
+      errorType,
+      errorMessage,
+      recipient: `${lead.firstName} ${lead.lastName}`,
       address: lead.address,
     });
 
-    return { success: true, channel: 'direct_mail' };
+    await apiQueueService.enqueue(
+      'lob',
+      'sendLetter',
+      {
+        leadId,
+        organizationId,
+        toName: `${lead.firstName} ${lead.lastName}`,
+        toAddress: lead.address,
+        subject: content.subject,
+        body: content.body,
+        failureReason: errorMessage,
+        failureType: errorType,
+      },
+      organizationId,
+      2
+    );
+
+    try {
+      await storage.createSystemAlert({
+        type: 'direct_mail_failure',
+        alertType: 'system_error',
+        severity: errorType === 'insufficient_funds' ? 'critical' : 'warning',
+        title: 'Direct Mail Send Failed',
+        message: `Failed to send direct mail to ${lead.firstName} ${lead.lastName} after ${MAX_RETRIES} retries. Error: ${errorMessage || 'Unknown error'}`,
+        organizationId,
+        relatedEntityType: 'lead',
+        relatedEntityId: leadId,
+        status: 'new',
+        metadata: {
+          leadId,
+          recipientName: `${lead.firstName} ${lead.lastName}`,
+          recipientAddress: lead.address,
+          errorType,
+          errorMessage,
+          subject: content.subject,
+          retriesAttempted: MAX_RETRIES,
+        },
+      });
+      console.log(`[Communications] System alert created for direct mail failure to lead ${leadId}`);
+    } catch (alertError) {
+      console.error('[Communications] Failed to create system alert:', alertError);
+    }
   }
 }
 
