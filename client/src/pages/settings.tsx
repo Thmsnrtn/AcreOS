@@ -33,6 +33,8 @@ import { PricingGuide } from "@/components/pricing-guide";
 import { IntegrationsSettings } from "@/components/integrations-settings";
 import { EmailDomainsSettings } from "@/components/email-domains-settings";
 import { PhoneNumbersSettings } from "@/components/phone-numbers-settings";
+import { EmailSettingsContent } from "@/components/email-settings-content";
+import { MailSettingsContent } from "@/components/mail-settings-content";
 import { CustomFieldsManager } from "@/components/custom-fields";
 import { NotificationPreferences } from "@/components/notification-preferences";
 import { ImportExportManager } from "@/components/import-export";
@@ -967,50 +969,44 @@ export default function Settings() {
             </TabsContent>
 
             <TabsContent value="communications" className="space-y-8 mt-6" data-testid="tab-content-communications">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
+              <div className="space-y-4" data-testid="section-email-settings">
+                <div>
+                  <h2 className="text-xl font-semibold flex items-center gap-2">
                     <Mail className="w-5 h-5" />
                     Email Settings
-                  </CardTitle>
-                  <CardDescription>Configure email sender identities and routing</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-muted-foreground" data-testid="text-email-settings-placeholder">
-                    Email Settings - Coming soon. Configure your email sender identities and reply routing preferences here.
+                  </h2>
+                  <p className="text-muted-foreground text-sm">
+                    Configure email sender identities and reply routing.
                   </p>
-                </CardContent>
-              </Card>
+                </div>
+                <EmailSettingsContent />
+              </div>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
+              <div className="space-y-4" data-testid="section-mail-settings">
+                <div>
+                  <h2 className="text-xl font-semibold flex items-center gap-2">
                     <Mail className="w-5 h-5" />
                     Mail Settings
-                  </CardTitle>
-                  <CardDescription>Configure direct mail return addresses</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-muted-foreground" data-testid="text-mail-settings-placeholder">
-                    Mail Settings - Coming soon. Manage your physical mail return addresses and sender identities here.
+                  </h2>
+                  <p className="text-muted-foreground text-sm">
+                    Configure return addresses for direct mail campaigns.
                   </p>
-                </CardContent>
-              </Card>
+                </div>
+                <MailSettingsContent />
+              </div>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
+              <div className="space-y-4" data-testid="section-phone-settings">
+                <div>
+                  <h2 className="text-xl font-semibold flex items-center gap-2">
                     <Phone className="w-5 h-5" />
-                    Phone Numbers Settings
-                  </CardTitle>
-                  <CardDescription>Configure phone numbers for SMS and calling</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-muted-foreground" data-testid="text-phone-settings-placeholder">
-                    Phone Numbers Settings - Coming soon. Manage your phone numbers for SMS campaigns and voice calls here.
+                    Phone Numbers
+                  </h2>
+                  <p className="text-muted-foreground text-sm">
+                    Configure phone numbers for SMS and calling.
                   </p>
-                </CardContent>
-              </Card>
+                </div>
+                <PhoneNumbersSettings />
+              </div>
 
               <div className="space-y-4" data-testid="section-integrations">
                 <div>
@@ -1021,7 +1017,6 @@ export default function Settings() {
                 </div>
                 <IntegrationsSettings />
                 <EmailDomainsSettings />
-                <PhoneNumbersSettings />
               </div>
             </TabsContent>
 
