@@ -12,6 +12,7 @@ import {
   insertCustomFieldDefinitionSchema, insertCustomFieldValueSchema, insertSavedViewSchema,
   insertTaskSchema, insertOfferLetterSchema, insertOfferTemplateSchema,
   insertPropertyListingSchema,
+  insertMailSenderIdentitySchema, insertMailingOrderSchema,
   SUBSCRIPTION_TIERS, payments, notes, deals, properties, leads, activityLog,
   teamConversations, teamMessages, teamMemberPresence,
   insertTeamConversationSchema, insertTeamMessageSchema, insertTeamMemberPresenceSchema,
@@ -9796,9 +9797,10 @@ Seller Signature (if applicable)
       
       // For platform_alias type, auto-generate email if not provided
       let finalFromEmail = fromEmail;
+      const memberName = teamMember?.displayName || 'User';
       if (type === 'platform_alias' && !fromEmail && teamMember) {
-        const firstName = (teamMember.name?.split(' ')[0] || 'user').toLowerCase().replace(/[^a-z]/g, '');
-        const lastName = (teamMember.name?.split(' ').slice(1).join('') || '').toLowerCase().replace(/[^a-z]/g, '');
+        const firstName = (memberName.split(' ')[0] || 'user').toLowerCase().replace(/[^a-z]/g, '');
+        const lastName = (memberName.split(' ').slice(1).join('') || '').toLowerCase().replace(/[^a-z]/g, '');
         finalFromEmail = lastName ? `${firstName}.${lastName}@acreage.pro` : `${firstName}@acreage.pro`;
       }
       
@@ -9807,7 +9809,7 @@ Seller Signature (if applicable)
         teamMemberId: teamMember?.id,
         type,
         fromEmail: finalFromEmail,
-        fromName: fromName || teamMember?.name || 'Acreage Land Co.',
+        fromName: fromName || memberName || 'Acreage Land Co.',
         replyToEmail,
         replyRoutingMode: replyRoutingMode || 'in_app',
         status: type === 'platform_alias' ? 'verified' : 'pending',
@@ -9884,6 +9886,187 @@ Seller Signature (if applicable)
     } catch (error: any) {
       console.error("Delete email identity error:", error);
       res.status(500).json({ message: error.message || "Failed to delete email identity" });
+    }
+  });
+
+  // ============================================
+  // MAIL SENDER IDENTITIES (Direct Mail)
+  // ============================================
+
+  // GET /api/mail-identities - Get all mail sender identities for org
+  api.get("/api/mail-identities", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const identities = await storage.getMailSenderIdentities(org.id);
+      res.json(identities);
+    } catch (error: any) {
+      console.error("Get mail identities error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch mail identities" });
+    }
+  });
+
+  // POST /api/mail-identities - Create new mail sender identity
+  api.post("/api/mail-identities", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const parsed = insertMailSenderIdentitySchema.parse({
+        ...req.body,
+        organizationId: org.id,
+      });
+      const identity = await storage.createMailSenderIdentity(parsed);
+      res.status(201).json(identity);
+    } catch (error: any) {
+      console.error("Create mail identity error:", error);
+      res.status(500).json({ message: error.message || "Failed to create mail identity" });
+    }
+  });
+
+  // GET /api/mail-identities/:id - Get single identity
+  api.get("/api/mail-identities/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const identity = await storage.getMailSenderIdentity(id);
+      if (!identity) {
+        return res.status(404).json({ message: "Mail identity not found" });
+      }
+      res.json(identity);
+    } catch (error: any) {
+      console.error("Get mail identity error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch mail identity" });
+    }
+  });
+
+  // PATCH /api/mail-identities/:id - Update identity
+  api.patch("/api/mail-identities/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const identity = await storage.updateMailSenderIdentity(id, req.body);
+      res.json(identity);
+    } catch (error: any) {
+      console.error("Update mail identity error:", error);
+      res.status(500).json({ message: error.message || "Failed to update mail identity" });
+    }
+  });
+
+  // POST /api/mail-identities/:id/set-default - Set as default
+  api.post("/api/mail-identities/:id/set-default", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      await storage.setDefaultMailSenderIdentity(org.id, id);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Set default mail identity error:", error);
+      res.status(500).json({ message: error.message || "Failed to set default mail identity" });
+    }
+  });
+
+  // DELETE /api/mail-identities/:id - Delete identity
+  api.delete("/api/mail-identities/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteMailSenderIdentity(id);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Delete mail identity error:", error);
+      res.status(500).json({ message: error.message || "Failed to delete mail identity" });
+    }
+  });
+
+  // POST /api/mail-identities/:id/verify - Trigger Lob address verification
+  api.post("/api/mail-identities/:id/verify", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const identity = await storage.getMailSenderIdentity(id);
+      if (!identity) {
+        return res.status(404).json({ message: "Mail identity not found" });
+      }
+      // Set status to pending_verification for now - actual Lob integration can be added later
+      const updated = await storage.updateMailSenderIdentity(id, {
+        status: "pending_verification",
+      });
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Verify mail identity error:", error);
+      res.status(500).json({ message: error.message || "Failed to trigger verification" });
+    }
+  });
+
+  // ============================================
+  // MAILING ORDERS (Direct Mail)
+  // ============================================
+
+  // GET /api/mailing-orders - Get all mailing orders for org
+  api.get("/api/mailing-orders", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const filters: { campaignId?: number; status?: string } = {};
+      if (req.query.campaignId) {
+        filters.campaignId = parseInt(req.query.campaignId as string);
+      }
+      if (req.query.status) {
+        filters.status = req.query.status as string;
+      }
+      const orders = await storage.getMailingOrders(org.id, filters);
+      res.json(orders);
+    } catch (error: any) {
+      console.error("Get mailing orders error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch mailing orders" });
+    }
+  });
+
+  // GET /api/mailing-orders/:id - Get single order with pieces
+  api.get("/api/mailing-orders/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const order = await storage.getMailingOrder(id);
+      if (!order) {
+        return res.status(404).json({ message: "Mailing order not found" });
+      }
+      res.json(order);
+    } catch (error: any) {
+      console.error("Get mailing order error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch mailing order" });
+    }
+  });
+
+  // POST /api/mailing-orders - Create new mailing order
+  api.post("/api/mailing-orders", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const parsed = insertMailingOrderSchema.parse({
+        ...req.body,
+        organizationId: org.id,
+      });
+      const order = await storage.createMailingOrder(parsed);
+      res.status(201).json(order);
+    } catch (error: any) {
+      console.error("Create mailing order error:", error);
+      res.status(500).json({ message: error.message || "Failed to create mailing order" });
+    }
+  });
+
+  // PATCH /api/mailing-orders/:id - Update order
+  api.patch("/api/mailing-orders/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const order = await storage.updateMailingOrder(id, req.body);
+      res.json(order);
+    } catch (error: any) {
+      console.error("Update mailing order error:", error);
+      res.status(500).json({ message: error.message || "Failed to update mailing order" });
+    }
+  });
+
+  // GET /api/mailing-orders/:id/pieces - Get all pieces for an order
+  api.get("/api/mailing-orders/:id/pieces", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const orderId = parseInt(req.params.id);
+      const pieces = await storage.getMailingOrderPieces(orderId);
+      res.json(pieces);
+    } catch (error: any) {
+      console.error("Get mailing order pieces error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch mailing order pieces" });
     }
   });
 

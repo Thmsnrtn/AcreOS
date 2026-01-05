@@ -97,6 +97,12 @@ import {
   type EmailSenderIdentity, type InsertEmailSenderIdentity,
   inboxMessages,
   type InboxMessage, type InsertInboxMessage,
+  mailSenderIdentities,
+  type MailSenderIdentity, type InsertMailSenderIdentity,
+  mailingOrders,
+  type MailingOrder, type InsertMailingOrder,
+  mailingOrderPieces,
+  type MailingOrderPiece, type InsertMailingOrderPiece,
   DEFAULT_DUE_DILIGENCE_TEMPLATES,
   DEFAULT_DEAL_CHECKLIST_TEMPLATES,
 } from "@shared/schema";
@@ -665,6 +671,27 @@ export interface IStorage {
   getJobCursor(jobType: string): Promise<JobCursor | undefined>;
   updateJobCursor(jobType: string, lastProcessedId: number | null, status: string): Promise<JobCursor>;
   setJobStatus(jobType: string, status: string): Promise<JobCursor>;
+
+  // Mail Sender Identities
+  getMailSenderIdentities(orgId: number): Promise<MailSenderIdentity[]>;
+  getMailSenderIdentity(id: number): Promise<MailSenderIdentity | undefined>;
+  getDefaultMailSenderIdentity(orgId: number): Promise<MailSenderIdentity | undefined>;
+  createMailSenderIdentity(data: InsertMailSenderIdentity): Promise<MailSenderIdentity>;
+  updateMailSenderIdentity(id: number, data: Partial<MailSenderIdentity>): Promise<MailSenderIdentity>;
+  setDefaultMailSenderIdentity(orgId: number, id: number): Promise<void>;
+  deleteMailSenderIdentity(id: number): Promise<void>;
+
+  // Mailing Orders
+  getMailingOrders(orgId: number, filters?: { campaignId?: number; status?: string }): Promise<MailingOrder[]>;
+  getMailingOrder(id: number): Promise<MailingOrder | undefined>;
+  createMailingOrder(data: InsertMailingOrder): Promise<MailingOrder>;
+  updateMailingOrder(id: number, data: Partial<MailingOrder>): Promise<MailingOrder>;
+  incrementMailingOrderPieces(id: number, type: 'sent' | 'failed'): Promise<void>;
+
+  // Mailing Order Pieces
+  getMailingOrderPieces(orderId: number): Promise<MailingOrderPiece[]>;
+  createMailingOrderPiece(data: InsertMailingOrderPiece): Promise<MailingOrderPiece>;
+  updateMailingOrderPiece(id: number, data: Partial<MailingOrderPiece>): Promise<MailingOrderPiece>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -4704,6 +4731,141 @@ Date: _____________</p>`,
     const [updated] = await db.update(inboxMessages)
       .set(updates)
       .where(eq(inboxMessages.id, id))
+      .returning();
+    return updated;
+  }
+
+  // Mail Sender Identities
+  async getMailSenderIdentities(orgId: number): Promise<MailSenderIdentity[]> {
+    return await db.select()
+      .from(mailSenderIdentities)
+      .where(eq(mailSenderIdentities.organizationId, orgId))
+      .orderBy(desc(mailSenderIdentities.createdAt));
+  }
+
+  async getMailSenderIdentity(id: number): Promise<MailSenderIdentity | undefined> {
+    const [identity] = await db.select()
+      .from(mailSenderIdentities)
+      .where(eq(mailSenderIdentities.id, id));
+    return identity;
+  }
+
+  async getDefaultMailSenderIdentity(orgId: number): Promise<MailSenderIdentity | undefined> {
+    const [identity] = await db.select()
+      .from(mailSenderIdentities)
+      .where(and(
+        eq(mailSenderIdentities.organizationId, orgId),
+        eq(mailSenderIdentities.isDefault, true)
+      ));
+    return identity;
+  }
+
+  async createMailSenderIdentity(data: InsertMailSenderIdentity): Promise<MailSenderIdentity> {
+    const [identity] = await db.insert(mailSenderIdentities)
+      .values(data)
+      .returning();
+    return identity;
+  }
+
+  async updateMailSenderIdentity(id: number, data: Partial<MailSenderIdentity>): Promise<MailSenderIdentity> {
+    const [updated] = await db.update(mailSenderIdentities)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(mailSenderIdentities.id, id))
+      .returning();
+    return updated;
+  }
+
+  async setDefaultMailSenderIdentity(orgId: number, id: number): Promise<void> {
+    await db.update(mailSenderIdentities)
+      .set({ isDefault: false, updatedAt: new Date() })
+      .where(eq(mailSenderIdentities.organizationId, orgId));
+    
+    await db.update(mailSenderIdentities)
+      .set({ isDefault: true, updatedAt: new Date() })
+      .where(eq(mailSenderIdentities.id, id));
+  }
+
+  async deleteMailSenderIdentity(id: number): Promise<void> {
+    await db.delete(mailSenderIdentities)
+      .where(eq(mailSenderIdentities.id, id));
+  }
+
+  // Mailing Orders
+  async getMailingOrders(orgId: number, filters?: { campaignId?: number; status?: string }): Promise<MailingOrder[]> {
+    const conditions = [eq(mailingOrders.organizationId, orgId)];
+    
+    if (filters?.campaignId !== undefined) {
+      conditions.push(eq(mailingOrders.campaignId, filters.campaignId));
+    }
+    if (filters?.status !== undefined) {
+      conditions.push(eq(mailingOrders.status, filters.status));
+    }
+    
+    return await db.select()
+      .from(mailingOrders)
+      .where(and(...conditions))
+      .orderBy(desc(mailingOrders.createdAt));
+  }
+
+  async getMailingOrder(id: number): Promise<MailingOrder | undefined> {
+    const [order] = await db.select()
+      .from(mailingOrders)
+      .where(eq(mailingOrders.id, id));
+    return order;
+  }
+
+  async createMailingOrder(data: InsertMailingOrder): Promise<MailingOrder> {
+    const [order] = await db.insert(mailingOrders)
+      .values(data)
+      .returning();
+    return order;
+  }
+
+  async updateMailingOrder(id: number, data: Partial<MailingOrder>): Promise<MailingOrder> {
+    const [updated] = await db.update(mailingOrders)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(mailingOrders.id, id))
+      .returning();
+    return updated;
+  }
+
+  async incrementMailingOrderPieces(id: number, type: 'sent' | 'failed'): Promise<void> {
+    if (type === 'sent') {
+      await db.update(mailingOrders)
+        .set({ 
+          sentPieces: sql`${mailingOrders.sentPieces} + 1`,
+          updatedAt: new Date()
+        })
+        .where(eq(mailingOrders.id, id));
+    } else {
+      await db.update(mailingOrders)
+        .set({ 
+          failedPieces: sql`${mailingOrders.failedPieces} + 1`,
+          updatedAt: new Date()
+        })
+        .where(eq(mailingOrders.id, id));
+    }
+  }
+
+  // Mailing Order Pieces
+  async getMailingOrderPieces(orderId: number): Promise<MailingOrderPiece[]> {
+    return await db.select()
+      .from(mailingOrderPieces)
+      .where(eq(mailingOrderPieces.mailingOrderId, orderId))
+      .orderBy(desc(mailingOrderPieces.createdAt));
+  }
+
+  async createMailingOrderPiece(data: InsertMailingOrderPiece): Promise<MailingOrderPiece> {
+    const [piece] = await db.insert(mailingOrderPieces)
+      .values(data)
+      .returning();
+    return piece;
+  }
+
+  async updateMailingOrderPiece(id: number, data: Partial<MailingOrderPiece>): Promise<MailingOrderPiece> {
+    const [updated] = await db.update(mailingOrderPieces)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(mailingOrderPieces.id, id))
       .returning();
     return updated;
   }

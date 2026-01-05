@@ -3351,3 +3351,168 @@ export const insertInboxMessageSchema = createInsertSchema(inboxMessages).omit({
 });
 export type InsertInboxMessage = z.infer<typeof insertInboxMessageSchema>;
 export type InboxMessage = typeof inboxMessages.$inferSelect;
+
+// ============================================
+// MAIL SENDER IDENTITIES (Direct Mail Return Addresses)
+// ============================================
+
+export const mailSenderIdentities = pgTable("mail_sender_identities", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  
+  name: text("name").notNull(), // Display name e.g. "Main Office", "Marketing HQ"
+  companyName: text("company_name").notNull(),
+  addressLine1: text("address_line_1").notNull(),
+  addressLine2: text("address_line_2"),
+  city: text("city").notNull(),
+  state: text("state").notNull(),
+  zipCode: text("zip_code").notNull(),
+  country: text("country").notNull().default("US"),
+  
+  lobAddressId: text("lob_address_id"), // Lob's address object ID after verification
+  
+  status: text("status").notNull().default("draft"), // draft, pending_verification, verified, failed
+  verificationDetails: jsonb("verification_details").$type<{
+    deliverability?: string;
+    deliverabilityAnalysis?: {
+      dpvConfirmation?: string;
+      dpvCmra?: string;
+      dpvVacant?: string;
+      dpvFootnotes?: string[];
+    };
+    components?: {
+      primaryNumber?: string;
+      streetPredirection?: string;
+      streetName?: string;
+      streetSuffix?: string;
+      city?: string;
+      state?: string;
+      zipCode?: string;
+      zipCodePlus4?: string;
+    };
+    errorMessage?: string;
+  }>(),
+  verifiedAt: timestamp("verified_at"),
+  
+  isDefault: boolean("is_default").default(false),
+  isActive: boolean("is_active").default(true),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertMailSenderIdentitySchema = createInsertSchema(mailSenderIdentities).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  verifiedAt: true,
+  lobAddressId: true,
+  verificationDetails: true,
+});
+export type InsertMailSenderIdentity = z.infer<typeof insertMailSenderIdentitySchema>;
+export type MailSenderIdentity = typeof mailSenderIdentities.$inferSelect;
+
+// ============================================
+// MAILING ORDERS (Direct Mail Campaign Orders)
+// ============================================
+
+export const mailingOrders = pgTable("mailing_orders", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  campaignId: integer("campaign_id").references(() => campaigns.id),
+  
+  mailSenderIdentityId: integer("mail_sender_identity_id").references(() => mailSenderIdentities.id),
+  
+  returnAddressSnapshot: jsonb("return_address_snapshot").$type<{
+    companyName: string;
+    addressLine1: string;
+    addressLine2?: string;
+    city: string;
+    state: string;
+    zipCode: string;
+    country: string;
+  }>(),
+  
+  mailType: text("mail_type").notNull(), // letter, postcard, check
+  templateId: text("template_id"), // Lob template ID if using templates
+  
+  totalPieces: integer("total_pieces").notNull().default(0),
+  sentPieces: integer("sent_pieces").notNull().default(0),
+  failedPieces: integer("failed_pieces").notNull().default(0),
+  
+  costPerPiece: integer("cost_per_piece").notNull().default(0), // In cents
+  totalCost: integer("total_cost").notNull().default(0), // In cents
+  creditsUsed: integer("credits_used").notNull().default(0),
+  
+  status: text("status").notNull().default("draft"), // draft, processing, sending, completed, failed, cancelled
+  
+  lobJobIds: jsonb("lob_job_ids").$type<string[]>(),
+  
+  errorMessage: text("error_message"),
+  
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertMailingOrderSchema = createInsertSchema(mailingOrders).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  sentPieces: true,
+  failedPieces: true,
+  startedAt: true,
+  completedAt: true,
+  lobJobIds: true,
+});
+export type InsertMailingOrder = z.infer<typeof insertMailingOrderSchema>;
+export type MailingOrder = typeof mailingOrders.$inferSelect;
+
+// ============================================
+// MAILING ORDER PIECES (Individual Mail Pieces)
+// ============================================
+
+export const mailingOrderPieces = pgTable("mailing_order_pieces", {
+  id: serial("id").primaryKey(),
+  mailingOrderId: integer("mailing_order_id").references(() => mailingOrders.id).notNull(),
+  leadId: integer("lead_id").references(() => leads.id),
+  
+  recipientName: text("recipient_name").notNull(),
+  recipientAddressLine1: text("recipient_address_line_1").notNull(),
+  recipientAddressLine2: text("recipient_address_line_2"),
+  recipientCity: text("recipient_city").notNull(),
+  recipientState: text("recipient_state").notNull(),
+  recipientZipCode: text("recipient_zip_code").notNull(),
+  
+  lobMailId: text("lob_mail_id"), // Lob's letter/postcard ID
+  lobUrl: text("lob_url"), // Preview URL from Lob
+  
+  status: text("status").notNull().default("pending"), // pending, processing, mailed, in_transit, delivered, returned, failed
+  
+  trackingEvents: jsonb("tracking_events").$type<Array<{
+    type: string;
+    name: string;
+    location?: string;
+    timestamp: string;
+  }>>(),
+  
+  expectedDeliveryDate: timestamp("expected_delivery_date"),
+  
+  errorMessage: text("error_message"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertMailingOrderPieceSchema = createInsertSchema(mailingOrderPieces).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  lobMailId: true,
+  lobUrl: true,
+  trackingEvents: true,
+  expectedDeliveryDate: true,
+});
+export type InsertMailingOrderPiece = z.infer<typeof insertMailingOrderPieceSchema>;
+export type MailingOrderPiece = typeof mailingOrderPieces.$inferSelect;
