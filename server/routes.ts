@@ -9981,10 +9981,46 @@ Seller Signature (if applicable)
       if (!identity) {
         return res.status(404).json({ message: "Mail identity not found" });
       }
-      // Set status to pending_verification for now - actual Lob integration can be added later
-      const updated = await storage.updateMailSenderIdentity(id, {
+      
+      // Set status to pending_verification
+      await storage.updateMailSenderIdentity(id, {
         status: "pending_verification",
       });
+      
+      // Call Lob address verification
+      const { verifyAddress } = await import("./services/directMailService");
+      const verificationResult = await verifyAddress({
+        line1: identity.addressLine1,
+        line2: identity.addressLine2 || undefined,
+        city: identity.city,
+        state: identity.state,
+        zip: identity.zipCode,
+      });
+      
+      let updated;
+      if (verificationResult.isValid) {
+        updated = await storage.updateMailSenderIdentity(id, {
+          status: "verified",
+          verifiedAt: new Date(),
+          lobAddressId: verificationResult.details.lobAddressId || null,
+          verificationDetails: {
+            deliverability: verificationResult.deliverability,
+            deliverabilityAnalysis: verificationResult.details.deliverabilityAnalysis,
+            components: verificationResult.details.components,
+          },
+        });
+      } else {
+        updated = await storage.updateMailSenderIdentity(id, {
+          status: "failed",
+          verificationDetails: {
+            deliverability: verificationResult.deliverability,
+            deliverabilityAnalysis: verificationResult.details.deliverabilityAnalysis,
+            components: verificationResult.details.components,
+            errorMessage: verificationResult.errorMessage || "Address verification failed",
+          },
+        });
+      }
+      
       res.json(updated);
     } catch (error: any) {
       console.error("Verify mail identity error:", error);

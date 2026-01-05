@@ -27,6 +27,7 @@ declare module 'lob' {
   interface LobResult {
     id: string;
     expected_delivery_date: string;
+    url?: string;
   }
 
   interface Postcards {
@@ -37,9 +38,47 @@ declare module 'lob' {
     create(params: LetterCreateParams): Promise<LobResult>;
   }
 
+  interface USVerificationParams {
+    primary_line: string;
+    secondary_line?: string;
+    city: string;
+    state: string;
+    zip_code: string;
+  }
+
+  interface USVerificationComponents {
+    primary_number?: string;
+    street_predirection?: string;
+    street_name?: string;
+    street_suffix?: string;
+    city?: string;
+    state?: string;
+    zip_code?: string;
+    zip_code_plus_4?: string;
+  }
+
+  interface USVerificationDeliverabilityAnalysis {
+    dpv_confirmation?: string;
+    dpv_cmra?: string;
+    dpv_vacant?: string;
+    dpv_footnotes?: string[];
+  }
+
+  interface USVerificationResult {
+    id: string;
+    deliverability: string;
+    components?: USVerificationComponents;
+    deliverability_analysis?: USVerificationDeliverabilityAnalysis;
+  }
+
+  interface USVerifications {
+    verify(params: USVerificationParams): Promise<USVerificationResult>;
+  }
+
   interface LobInstance {
     postcards: Postcards;
     letters: Letters;
+    usVerifications: USVerifications;
   }
 
   interface LobOptions {
@@ -50,6 +89,7 @@ declare module 'lob' {
     constructor(options: LobOptions);
     postcards: Postcards;
     letters: Letters;
+    usVerifications: USVerifications;
   }
 
   export = Lob;
