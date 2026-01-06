@@ -37,6 +37,7 @@ import {
   Wrench,
   Users,
   Settings2,
+  Settings,
   Zap,
   Clock,
   CheckCircle,
@@ -57,6 +58,7 @@ import {
   Activity,
   Headphones,
 } from "lucide-react";
+import { AISettings } from "@/components/ai-settings";
 import { formatDistanceToNow } from "date-fns";
 import { DisclaimerBanner } from "@/components/disclaimer-banner";
 
@@ -1173,26 +1175,47 @@ export default function CommandCenterPage() {
             </div>
           </div>
           <DisclaimerBanner type="ai" className="mb-4" />
-          <Tabs value={mainTab} onValueChange={setMainTab} className="w-full">
-            <TabsList className={isMobile ? "w-full" : ""}>
-              <TabsTrigger value="chat" className={isMobile ? "flex-1" : ""} data-testid="tab-chat">
-                <MessageSquare className="w-4 h-4 mr-2" />
-                Chat
-              </TabsTrigger>
-              <TabsTrigger value="team" className={isMobile ? "flex-1" : ""} data-testid="tab-team">
-                <Users className="w-4 h-4 mr-2" />
-                Team
-              </TabsTrigger>
-              <TabsTrigger value="tasks" className={isMobile ? "flex-1" : ""} data-testid="tab-tasks">
-                <ListTodo className="w-4 h-4 mr-2" />
-                Tasks
-              </TabsTrigger>
-              <TabsTrigger value="agents" className={isMobile ? "flex-1" : ""} data-testid="tab-agents">
-                <Bot className="w-4 h-4 mr-2" />
-                Agents
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
+          <div className="flex items-center gap-2">
+            <Tabs value={mainTab} onValueChange={setMainTab} className="flex-1">
+              <TabsList className={isMobile ? "w-full" : ""}>
+                <TabsTrigger value="chat" className={isMobile ? "flex-1" : ""} data-testid="tab-chat">
+                  <MessageSquare className="w-4 h-4 mr-2" />
+                  Chat
+                </TabsTrigger>
+                <TabsTrigger value="team" className={isMobile ? "flex-1" : ""} data-testid="tab-team">
+                  <Users className="w-4 h-4 mr-2" />
+                  Team
+                </TabsTrigger>
+                <TabsTrigger value="tasks" className={isMobile ? "flex-1" : ""} data-testid="tab-tasks">
+                  <ListTodo className="w-4 h-4 mr-2" />
+                  Tasks
+                </TabsTrigger>
+                <TabsTrigger value="agents" className={isMobile ? "flex-1" : ""} data-testid="tab-agents">
+                  <Bot className="w-4 h-4 mr-2" />
+                  Agents
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button variant="ghost" size="icon" data-testid="button-ai-settings">
+                  <Settings className="w-4 h-4" />
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <Sparkles className="w-5 h-5" />
+                    AI Settings
+                  </DialogTitle>
+                  <DialogDescription>
+                    Configure AI behavior preferences
+                  </DialogDescription>
+                </DialogHeader>
+                <AISettings compact={true} />
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
 
         <div className="flex-1 overflow-hidden">

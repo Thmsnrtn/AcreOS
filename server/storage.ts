@@ -159,6 +159,12 @@ export interface IStorage {
   getOrganizationByStripeCustomerId(customerId: string): Promise<Organization | undefined>;
   createOrganization(org: InsertOrganization): Promise<Organization>;
   updateOrganization(id: number, updates: Partial<InsertOrganization>): Promise<Organization>;
+  updateOrganizationAISettings(orgId: number, aiSettings: {
+    responseStyle?: "concise" | "detailed" | "balanced";
+    defaultAgent?: string;
+    autoSuggestions?: boolean;
+    rememberContext?: boolean;
+  }): Promise<void>;
   
   // Team Members
   getTeamMembers(orgId: number): Promise<TeamMember[]>;
@@ -735,6 +741,29 @@ export class DatabaseStorage implements IStorage {
       .where(eq(organizations.id, id))
       .returning();
     return updated;
+  }
+  
+  async updateOrganizationAISettings(orgId: number, aiSettings: {
+    responseStyle?: "concise" | "detailed" | "balanced";
+    defaultAgent?: string;
+    autoSuggestions?: boolean;
+    rememberContext?: boolean;
+  }) {
+    const org = await this.getOrganization(orgId);
+    if (!org) throw new Error("Organization not found");
+    
+    const currentSettings = org.settings || {};
+    const updatedSettings = {
+      ...currentSettings,
+      aiSettings: {
+        ...currentSettings.aiSettings,
+        ...aiSettings,
+      },
+    };
+    
+    await db.update(organizations)
+      .set({ settings: updatedSettings, updatedAt: new Date() })
+      .where(eq(organizations.id, orgId));
   }
   
   // Team Members

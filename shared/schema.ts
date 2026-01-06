@@ -64,6 +64,13 @@ export const organizations = pgTable("organizations", {
       auditLogs?: { enabled: boolean; retentionDays: number };
       communications?: { enabled: boolean; retentionDays: number };
     };
+    // AI Settings
+    aiSettings?: {
+      responseStyle?: "concise" | "detailed" | "balanced";
+      defaultAgent?: string;
+      autoSuggestions?: boolean;
+      rememberContext?: boolean;
+    };
   }>(),
   // Free trial tracking
   trialStartedAt: timestamp("trial_started_at"), // When trial began

@@ -39,6 +39,7 @@ import { CustomFieldsManager } from "@/components/custom-fields";
 import { NotificationPreferences } from "@/components/notification-preferences";
 import { ImportExportManager } from "@/components/import-export";
 import { ComplianceSettings } from "@/components/compliance-settings";
+import { AISettings } from "@/components/ai-settings";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
@@ -68,7 +69,7 @@ interface SeatPricing {
   yearly?: { id: string; amount: number; currency: string } | null;
 }
 
-const VALID_TABS = ["general", "team", "communications", "notifications", "data", "developer"] as const;
+const VALID_TABS = ["general", "team", "communications", "notifications", "ai", "data", "developer"] as const;
 type TabValue = typeof VALID_TABS[number];
 
 function SeatManagement() {
@@ -442,6 +443,10 @@ export default function Settings() {
                 <TabsTrigger value="notifications" data-testid="tab-notifications" className="gap-1">
                   <Bell className="w-4 h-4 hidden sm:inline" />
                   Notifications
+                </TabsTrigger>
+                <TabsTrigger value="ai" data-testid="tab-ai" className="gap-1">
+                  <Sparkles className="w-4 h-4 hidden sm:inline" />
+                  AI
                 </TabsTrigger>
                 <TabsTrigger value="data" data-testid="tab-data" className="gap-1">
                   <FileText className="w-4 h-4 hidden sm:inline" />
@@ -1039,6 +1044,10 @@ export default function Settings() {
 
             <TabsContent value="notifications" className="space-y-8 mt-6" data-testid="tab-content-notifications">
               <NotificationPreferences />
+            </TabsContent>
+
+            <TabsContent value="ai" className="space-y-8 mt-6" data-testid="tab-content-ai">
+              <AISettings />
             </TabsContent>
 
             <TabsContent value="data" className="space-y-8 mt-6" data-testid="tab-content-data">

@@ -265,6 +265,29 @@ export async function registerRoutes(
     res.json(updated);
   });
   
+  // Update AI settings for the organization
+  api.patch("/api/organization/ai-settings", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const aiSettings = req.body;
+      
+      const aiSettingsSchema = z.object({
+        responseStyle: z.enum(["concise", "detailed", "balanced"]).optional(),
+        defaultAgent: z.string().optional(),
+        autoSuggestions: z.boolean().optional(),
+        rememberContext: z.boolean().optional(),
+      });
+      
+      const validatedSettings = aiSettingsSchema.parse(aiSettings);
+      await storage.updateOrganizationAISettings(org.id, validatedSettings);
+      
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Update AI settings error:", error);
+      res.status(400).json({ message: error.message || "Failed to update AI settings" });
+    }
+  });
+  
   // Get seat information for the organization
   api.get("/api/organization/seats", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
