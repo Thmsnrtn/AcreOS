@@ -3596,3 +3596,27 @@ export const apiUsageLogs = pgTable("api_usage_logs", {
 export const insertApiUsageLogSchema = createInsertSchema(apiUsageLogs).omit({ id: true, createdAt: true });
 export type InsertApiUsageLog = z.infer<typeof insertApiUsageLogSchema>;
 export type ApiUsageLog = typeof apiUsageLogs.$inferSelect;
+
+// ============================================
+// BORROWER SESSIONS (Session-based auth for borrower portal)
+// ============================================
+
+export const borrowerSessions = pgTable("borrower_sessions", {
+  id: serial("id").primaryKey(),
+  noteId: integer("note_id").references(() => notes.id).notNull(),
+  sessionToken: text("session_token").notNull().unique(),
+  email: text("email").notNull(),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at").defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(),
+  lastAccessedAt: timestamp("last_accessed_at").defaultNow(),
+});
+
+export const insertBorrowerSessionSchema = createInsertSchema(borrowerSessions).omit({ 
+  id: true, 
+  createdAt: true, 
+  lastAccessedAt: true 
+});
+export type InsertBorrowerSession = z.infer<typeof insertBorrowerSessionSchema>;
+export type BorrowerSession = typeof borrowerSessions.$inferSelect;

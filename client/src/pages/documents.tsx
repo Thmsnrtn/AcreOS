@@ -72,7 +72,10 @@ type GenerateDocFormValues = z.infer<typeof generateDocFormSchema>;
 export default function DocumentsPage() {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("templates");
+  const [templateFilter, setTemplateFilter] = useState<"all" | "my" | "system">("all");
   const [isCreateTemplateOpen, setIsCreateTemplateOpen] = useState(false);
+  const [isEditTemplateOpen, setIsEditTemplateOpen] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<DocumentTemplate | null>(null);
   const [isGenerateOpen, setIsGenerateOpen] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [previewTemplate, setPreviewTemplate] = useState<DocumentTemplate | null>(null);
@@ -112,6 +115,26 @@ export default function DocumentsPage() {
     },
     onError: (error: any) => {
       toast({ title: "Failed to create template", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const updateTemplateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: TemplateFormValues }) => {
+      const variables = extractVariables(data.content);
+      return apiRequest("PATCH", `/api/document-templates/${id}`, {
+        ...data,
+        variables,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/document-templates"] });
+      setIsEditTemplateOpen(false);
+      setEditingTemplate(null);
+      editTemplateForm.reset();
+      toast({ title: "Template updated successfully" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to update template", description: error.message, variant: "destructive" });
     },
   });
 
@@ -173,6 +196,16 @@ export default function DocumentsPage() {
     defaultValues: {},
   });
 
+  const editTemplateForm = useForm<TemplateFormValues>({
+    resolver: zodResolver(templateFormSchema),
+    defaultValues: {
+      name: "",
+      type: "custom",
+      category: "closing",
+      content: "",
+    },
+  });
+
   function extractVariables(content: string): Array<{ name: string; description: string; type: string; required: boolean }> {
     const regex = /\{\{(\w+)\}\}/g;
     const foundVars: string[] = [];
@@ -193,6 +226,22 @@ export default function DocumentsPage() {
 
   const onSubmitTemplate = (values: TemplateFormValues) => {
     createTemplateMutation.mutate(values);
+  };
+
+  const onSubmitEditTemplate = (values: TemplateFormValues) => {
+    if (!editingTemplate) return;
+    updateTemplateMutation.mutate({ id: editingTemplate.id, data: values });
+  };
+
+  const handleEditTemplate = (template: DocumentTemplate) => {
+    setEditingTemplate(template);
+    editTemplateForm.reset({
+      name: template.name,
+      type: template.type,
+      category: template.category,
+      content: template.content,
+    });
+    setIsEditTemplateOpen(true);
   };
 
   const handleOpenGenerate = (template: DocumentTemplate) => {
@@ -246,110 +295,133 @@ export default function DocumentsPage() {
 
     const systemTemplates = templates.filter(t => t.isSystemTemplate);
     const customTemplates = templates.filter(t => !t.isSystemTemplate);
+    
+    const filteredTemplates = templateFilter === "all" 
+      ? templates 
+      : templateFilter === "my" 
+        ? customTemplates 
+        : systemTemplates;
+
+    const renderTemplateCard = (template: DocumentTemplate) => {
+      const isSystem = template.isSystemTemplate;
+      return (
+        <Card key={template.id} data-testid={`card-template-${template.id}`}>
+          <CardHeader className="pb-2">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <CardTitle className="text-base truncate">{template.name}</CardTitle>
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                  <Badge variant={isSystem ? "secondary" : "outline"} className="text-xs">
+                    {template.type.replace(/_/g, " ")}
+                  </Badge>
+                  <Badge variant="outline" className="text-xs">
+                    {template.category}
+                  </Badge>
+                  {isSystem && (
+                    <Badge variant="secondary" className="text-xs">
+                      <Shield className="w-3 h-3 mr-1" />
+                      System
+                    </Badge>
+                  )}
+                </div>
+              </div>
+              <span className="text-xs text-muted-foreground" data-testid={`text-template-version-${template.id}`}>
+                v{template.version || 1}
+              </span>
+            </div>
+          </CardHeader>
+          <CardContent className="pb-2">
+            <p className="text-sm text-muted-foreground line-clamp-2">
+              {template.variables && Array.isArray(template.variables) 
+                ? `${template.variables.length} variables: ${template.variables.slice(0, 3).map((v: any) => v.name).join(", ")}${template.variables.length > 3 ? "..." : ""}`
+                : "No variables"}
+            </p>
+          </CardContent>
+          <CardFooter className="flex gap-2 flex-wrap">
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => handlePreviewTemplate(template)}
+              data-testid={`button-preview-template-${template.id}`}
+            >
+              <Eye className="w-3 h-3 mr-1" />
+              Preview
+            </Button>
+            <Button 
+              size="sm"
+              onClick={() => handleOpenGenerate(template)}
+              data-testid={`button-generate-from-template-${template.id}`}
+            >
+              <Plus className="w-3 h-3 mr-1" />
+              Generate
+            </Button>
+            {!isSystem && (
+              <>
+                <Button 
+                  variant="outline" 
+                  size="icon"
+                  onClick={() => handleEditTemplate(template)}
+                  data-testid={`button-edit-template-${template.id}`}
+                >
+                  <Edit className="w-4 h-4" />
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  size="icon"
+                  onClick={() => deleteTemplateMutation.mutate(template.id)}
+                  disabled={deleteTemplateMutation.isPending}
+                  data-testid={`button-delete-template-${template.id}`}
+                >
+                  <Trash2 className="w-4 h-4 text-destructive" />
+                </Button>
+              </>
+            )}
+          </CardFooter>
+        </Card>
+      );
+    };
 
     return (
-      <div className="space-y-6">
-        {systemTemplates.length > 0 && (
-          <div>
-            <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
-              <Shield className="w-4 h-4" />
-              System Templates
-            </h3>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {systemTemplates.map(template => (
-                <Card key={template.id} data-testid={`card-template-${template.id}`}>
-                  <CardHeader className="pb-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <CardTitle className="text-base">{template.name}</CardTitle>
-                      <Badge variant="secondary" className="text-xs">
-                        {template.type.replace(/_/g, " ")}
-                      </Badge>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="pb-2">
-                    <p className="text-sm text-muted-foreground line-clamp-2">
-                      {template.variables && Array.isArray(template.variables) 
-                        ? `${template.variables.length} variables available`
-                        : "No variables"}
-                    </p>
-                  </CardContent>
-                  <CardFooter className="flex gap-2">
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={() => handlePreviewTemplate(template)}
-                      data-testid={`button-preview-template-${template.id}`}
-                    >
-                      <Eye className="w-3 h-3 mr-1" />
-                      Preview
-                    </Button>
-                    <Button 
-                      size="sm"
-                      onClick={() => handleOpenGenerate(template)}
-                      data-testid={`button-generate-from-template-${template.id}`}
-                    >
-                      <Plus className="w-3 h-3 mr-1" />
-                      Generate
-                    </Button>
-                  </CardFooter>
-                </Card>
-              ))}
-            </div>
-          </div>
-        )}
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Button 
+            variant={templateFilter === "all" ? "default" : "outline"} 
+            size="sm"
+            onClick={() => setTemplateFilter("all")}
+            data-testid="button-filter-all"
+          >
+            All Templates ({templates.length})
+          </Button>
+          <Button 
+            variant={templateFilter === "my" ? "default" : "outline"} 
+            size="sm"
+            onClick={() => setTemplateFilter("my")}
+            data-testid="button-filter-my"
+          >
+            My Templates ({customTemplates.length})
+          </Button>
+          <Button 
+            variant={templateFilter === "system" ? "default" : "outline"} 
+            size="sm"
+            onClick={() => setTemplateFilter("system")}
+            data-testid="button-filter-system"
+          >
+            <Shield className="w-3 h-3 mr-1" />
+            System ({systemTemplates.length})
+          </Button>
+        </div>
 
-        {customTemplates.length > 0 && (
-          <div>
-            <h3 className="text-sm font-medium text-muted-foreground mb-3">Custom Templates</h3>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {customTemplates.map(template => (
-                <Card key={template.id} data-testid={`card-template-${template.id}`}>
-                  <CardHeader className="pb-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <CardTitle className="text-base">{template.name}</CardTitle>
-                      <Badge variant="outline" className="text-xs">
-                        {template.type.replace(/_/g, " ")}
-                      </Badge>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="pb-2">
-                    <p className="text-sm text-muted-foreground line-clamp-2">
-                      {template.variables && Array.isArray(template.variables) 
-                        ? `${template.variables.length} variables available`
-                        : "No variables"}
-                    </p>
-                  </CardContent>
-                  <CardFooter className="flex gap-2">
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={() => handlePreviewTemplate(template)}
-                      data-testid={`button-preview-template-${template.id}`}
-                    >
-                      <Eye className="w-3 h-3 mr-1" />
-                      Preview
-                    </Button>
-                    <Button 
-                      size="sm"
-                      onClick={() => handleOpenGenerate(template)}
-                      data-testid={`button-generate-from-template-${template.id}`}
-                    >
-                      <Plus className="w-3 h-3 mr-1" />
-                      Generate
-                    </Button>
-                    <Button 
-                      variant="ghost" 
-                      size="icon"
-                      onClick={() => deleteTemplateMutation.mutate(template.id)}
-                      disabled={deleteTemplateMutation.isPending}
-                      data-testid={`button-delete-template-${template.id}`}
-                    >
-                      <Trash2 className="w-4 h-4 text-destructive" />
-                    </Button>
-                  </CardFooter>
-                </Card>
-              ))}
-            </div>
+        {filteredTemplates.length === 0 ? (
+          <EmptyState
+            icon={FileText}
+            title={templateFilter === "my" ? "No custom templates" : "No templates found"}
+            description={templateFilter === "my" ? "Create your own custom template" : "No templates match the current filter"}
+            actionLabel={templateFilter === "my" ? "Create Template" : undefined}
+            onAction={templateFilter === "my" ? () => setIsCreateTemplateOpen(true) : undefined}
+          />
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {filteredTemplates.map(renderTemplateCard)}
           </div>
         )}
       </div>
@@ -604,6 +676,132 @@ export default function DocumentsPage() {
                 <Button type="submit" disabled={createTemplateMutation.isPending} data-testid="button-submit-template">
                   {createTemplateMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                   Create Template
+                </Button>
+              </div>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isEditTemplateOpen} onOpenChange={(open) => {
+        setIsEditTemplateOpen(open);
+        if (!open) setEditingTemplate(null);
+      }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Edit Template</DialogTitle>
+            <DialogDescription>
+              Update your document template. Version will increment automatically.
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...editTemplateForm}>
+            <form onSubmit={editTemplateForm.handleSubmit(onSubmitEditTemplate)} className="space-y-4">
+              <FormField
+                control={editTemplateForm.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Template Name</FormLabel>
+                    <FormControl>
+                      <Input placeholder="e.g., Custom Purchase Agreement" {...field} data-testid="input-edit-template-name" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={editTemplateForm.control}
+                  name="type"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Document Type</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-edit-template-type">
+                            <SelectValue placeholder="Select type" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {DOCUMENT_TYPES.map(type => (
+                            <SelectItem key={type.value} value={type.value}>
+                              {type.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={editTemplateForm.control}
+                  name="category"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Category</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-edit-template-category">
+                            <SelectValue placeholder="Select category" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {DOCUMENT_CATEGORIES.map(cat => (
+                            <SelectItem key={cat.value} value={cat.value}>
+                              {cat.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <FormField
+                control={editTemplateForm.control}
+                name="content"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Template Content</FormLabel>
+                    <FormControl>
+                      <Textarea 
+                        placeholder="Enter your document template here. Use {{variable_name}} for merge fields."
+                        className="min-h-[200px] font-mono text-sm"
+                        {...field}
+                        data-testid="textarea-edit-template-content"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <div className="bg-muted/50 p-3 rounded-lg">
+                <p className="text-sm font-medium mb-2">Variables detected in content:</p>
+                <div className="flex flex-wrap gap-2">
+                  {extractVariables(editTemplateForm.watch("content") || "").map(v => (
+                    <Badge key={v.name} variant="outline" className="text-xs font-mono">
+                      {`{{${v.name}}}`}
+                    </Badge>
+                  ))}
+                  {extractVariables(editTemplateForm.watch("content") || "").length === 0 && (
+                    <span className="text-xs text-muted-foreground">No variables found. Use {"{{variable_name}}"} syntax.</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => setIsEditTemplateOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={updateTemplateMutation.isPending} data-testid="button-update-template">
+                  {updateTemplateMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                  Update Template
                 </Button>
               </div>
             </form>

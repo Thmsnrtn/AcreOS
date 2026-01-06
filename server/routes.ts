@@ -1,5 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
+import crypto from "crypto";
 import { storage, calculateMonthlyPayment, db } from "./storage";
 import { z } from "zod";
 import { eq, sql, and, desc, lt, inArray } from "drizzle-orm";
@@ -137,6 +138,53 @@ setInterval(() => {
     }
   }
 }, 5 * 60 * 1000);
+
+// Clean expired borrower sessions every hour
+setInterval(async () => {
+  try {
+    const cleaned = await storage.cleanExpiredBorrowerSessions();
+    if (cleaned > 0) {
+      console.log(`Cleaned ${cleaned} expired borrower sessions`);
+    }
+  } catch (err) {
+    console.error("Error cleaning expired borrower sessions:", err);
+  }
+}, 60 * 60 * 1000);
+
+// Middleware to validate borrower session from cookie or header
+async function validateBorrowerSession(req: Request, res: Response, next: NextFunction) {
+  try {
+    const sessionToken = req.cookies?.borrower_session || req.headers['x-borrower-session'] as string;
+    
+    if (!sessionToken) {
+      return res.status(401).json({ message: "Session required" });
+    }
+    
+    const session = await storage.getBorrowerSession(sessionToken);
+    
+    if (!session) {
+      res.clearCookie('borrower_session');
+      return res.status(401).json({ message: "Invalid or expired session" });
+    }
+    
+    // Check if session has expired
+    if (new Date(session.expiresAt) < new Date()) {
+      await storage.deleteBorrowerSession(sessionToken);
+      res.clearCookie('borrower_session');
+      return res.status(401).json({ message: "Session expired" });
+    }
+    
+    // Update last accessed time with sliding expiration
+    await storage.updateBorrowerSessionAccess(sessionToken);
+    
+    // Attach session to request
+    (req as any).borrowerSession = session;
+    next();
+  } catch (err) {
+    console.error("Borrower session validation error:", err);
+    return res.status(500).json({ message: "Session validation failed" });
+  }
+}
 
 // Maximum rows allowed per CSV import
 const MAX_CSV_IMPORT_ROWS = 500;
@@ -5258,6 +5306,29 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Loan not found or credentials invalid" });
       }
       
+      // Create a session for the borrower
+      const sessionToken = crypto.randomBytes(32).toString('hex');
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000); // 24 hours
+      
+      await storage.createBorrowerSession({
+        noteId: note.id,
+        sessionToken,
+        email: email.toLowerCase(),
+        ipAddress: req.ip || req.socket.remoteAddress || null,
+        userAgent: req.headers['user-agent'] || null,
+        expiresAt,
+      });
+      
+      // Set session cookie (httpOnly for security)
+      res.cookie('borrower_session', sessionToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 24 * 60 * 60 * 1000, // 24 hours
+        path: '/',
+      });
+      
       // Get payments for this note
       const notePayments = await storage.getPayments(note.organizationId, note.id);
       
@@ -5277,14 +5348,175 @@ export async function registerRoutes(
         note: { ...note, property },
         payments: notePayments,
         borrower: borrower ? { firstName: borrower.firstName, lastName: borrower.lastName } : null,
+        sessionToken, // Also return in response for clients that prefer header-based auth
       });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
   });
   
+  // Check borrower session status
+  api.get("/api/borrower/session", validateBorrowerSession, async (req, res) => {
+    try {
+      const session = (req as any).borrowerSession;
+      
+      // Get the note associated with the session
+      const note = await storage.getNoteByAccessToken(session.noteId.toString());
+      if (!note) {
+        // Also try getting note by ID directly
+        const noteById = await db.select().from(notes).where(eq(notes.id, session.noteId));
+        if (noteById.length === 0) {
+          return res.status(404).json({ message: "Loan not found" });
+        }
+        
+        const foundNote = noteById[0];
+        
+        // Get payments for this note
+        const notePayments = await storage.getPayments(foundNote.organizationId, foundNote.id);
+        
+        // Get property info if linked
+        let property = null;
+        if (foundNote.propertyId) {
+          property = await storage.getProperty(foundNote.organizationId, foundNote.propertyId);
+        }
+        
+        // Get borrower info
+        let borrower = null;
+        if (foundNote.borrowerId) {
+          borrower = await storage.getLead(foundNote.organizationId, foundNote.borrowerId);
+        }
+        
+        return res.json({
+          note: { ...foundNote, property },
+          payments: notePayments,
+          borrower: borrower ? { firstName: borrower.firstName, lastName: borrower.lastName } : null,
+          session: {
+            email: session.email,
+            createdAt: session.createdAt,
+            expiresAt: session.expiresAt,
+          },
+        });
+      }
+      
+      // Get payments for this note
+      const notePayments = await storage.getPayments(note.organizationId, note.id);
+      
+      // Get property info if linked
+      let property = null;
+      if (note.propertyId) {
+        property = await storage.getProperty(note.organizationId, note.propertyId);
+      }
+      
+      // Get borrower info
+      let borrower = null;
+      if (note.borrowerId) {
+        borrower = await storage.getLead(note.organizationId, note.borrowerId);
+      }
+      
+      res.json({
+        note: { ...note, property },
+        payments: notePayments,
+        borrower: borrower ? { firstName: borrower.firstName, lastName: borrower.lastName } : null,
+        session: {
+          email: session.email,
+          createdAt: session.createdAt,
+          expiresAt: session.expiresAt,
+        },
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+  
+  // Borrower logout
+  api.post("/api/borrower/logout", async (req, res) => {
+    try {
+      const sessionToken = req.cookies?.borrower_session || req.headers['x-borrower-session'] as string;
+      
+      if (sessionToken) {
+        await storage.deleteBorrowerSession(sessionToken);
+      }
+      
+      res.clearCookie('borrower_session', { path: '/' });
+      res.json({ message: "Logged out successfully" });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+  
+  // Session-based payment endpoint (preferred for security)
+  api.post("/api/borrower/payment", validateBorrowerSession, portalPaymentRateLimiter, async (req, res) => {
+    try {
+      const session = (req as any).borrowerSession;
+      const { amount } = req.body;
+      
+      // Get note by session's noteId
+      const noteResults = await db.select().from(notes).where(eq(notes.id, session.noteId));
+      if (noteResults.length === 0) {
+        return res.status(404).json({ message: "Loan not found" });
+      }
+      const note = noteResults[0];
+      
+      const paymentAmount = amount ? Number(amount) : Number(note.monthlyPayment || 0);
+      if (paymentAmount <= 0) {
+        return res.status(400).json({ message: "Invalid payment amount" });
+      }
+      
+      // Get Stripe client
+      const { getUncachableStripeClient } = await import("./stripeClient");
+      const stripe = await getUncachableStripeClient();
+      
+      // Get borrower info for customer description
+      let borrowerName = "Borrower";
+      let borrowerEmail = session.email;
+      if (note.borrowerId) {
+        const borrower = await storage.getLead(note.organizationId, note.borrowerId);
+        if (borrower) {
+          borrowerName = `${borrower.firstName} ${borrower.lastName}`;
+          borrowerEmail = borrower.email || session.email;
+        }
+      }
+      
+      // Create checkout session for one-time payment
+      const baseUrl = `${req.protocol}://${req.get('host')}`;
+      const stripeSession = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        line_items: [{
+          price_data: {
+            currency: 'usd',
+            product_data: {
+              name: `Loan Payment - Note #${note.id}`,
+              description: `Payment for ${borrowerName}`,
+            },
+            unit_amount: Math.round(paymentAmount * 100),
+          },
+          quantity: 1,
+        }],
+        mode: 'payment',
+        success_url: `${baseUrl}/portal/${note.accessToken}?payment=success&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${baseUrl}/portal/${note.accessToken}?payment=cancelled`,
+        customer_email: borrowerEmail,
+        metadata: {
+          noteId: note.id.toString(),
+          accessToken: note.accessToken || '',
+          paymentAmount: paymentAmount.toString(),
+          type: 'borrower_portal_payment',
+        },
+      });
+      
+      // Store the checkout session ID on the note for webhook verification
+      await storage.updateNote(note.id, { pendingCheckoutSessionId: stripeSession.id });
+      
+      res.json({ url: stripeSession.url, sessionId: stripeSession.id });
+    } catch (err: any) {
+      console.error("Session-based portal payment error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+  
   // Create Stripe checkout session for borrower portal payment
   // Rate limited: 5 requests per minute per IP
+  // Supports both access token (legacy) and session-based auth
   api.post("/api/portal/:accessToken/payment", portalPaymentRateLimiter, async (req, res) => {
     try {
       const { accessToken } = req.params;
@@ -9658,6 +9890,49 @@ Seller Signature (if applicable)
     }
   });
 
+  // PATCH /api/document-templates/:id - Update template (alias for PUT)
+  api.patch("/api/document-templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid template ID" });
+      }
+      
+      const existing = await storage.getDocumentTemplate(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Template not found" });
+      }
+      
+      // Only allow editing org-specific templates, not system templates
+      if (existing.isSystemTemplate) {
+        return res.status(403).json({ message: "Cannot edit system templates" });
+      }
+      
+      // Verify template belongs to this org
+      if (existing.organizationId !== org.id) {
+        return res.status(403).json({ message: "Not authorized to edit this template" });
+      }
+      
+      const { name, type, category, content, variables, isActive } = req.body;
+      
+      const updated = await storage.updateDocumentTemplate(id, {
+        ...(name && { name }),
+        ...(type && { type }),
+        ...(category && { category }),
+        ...(content && { content }),
+        ...(variables && { variables }),
+        ...(isActive !== undefined && { isActive }),
+      });
+      
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Update document template error:", error);
+      res.status(500).json({ message: error.message || "Failed to update template" });
+    }
+  });
+
   // DELETE /api/document-templates/:id - Delete template
   api.delete("/api/document-templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
@@ -9694,6 +9969,67 @@ Seller Signature (if applicable)
   // ============================================
   // GENERATED DOCUMENTS (Phase 4.3-4.5)
   // ============================================
+
+  // GET /api/documents - List generated documents (alias)
+  api.get("/api/documents", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const dealId = req.query.dealId ? parseInt(req.query.dealId as string) : undefined;
+      const propertyId = req.query.propertyId ? parseInt(req.query.propertyId as string) : undefined;
+      const status = req.query.status as string | undefined;
+      
+      const documents = await storage.getGeneratedDocuments(org.id, { dealId, propertyId, status });
+      res.json(documents);
+    } catch (error: any) {
+      console.error("Get documents error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch documents" });
+    }
+  });
+
+  // POST /api/documents/generate - Generate document from template
+  api.post("/api/documents/generate", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = (req as any).user;
+      const { templateId, dealId, propertyId, name, variables } = req.body;
+      
+      if (!templateId) {
+        return res.status(400).json({ message: "Template ID is required" });
+      }
+      
+      const template = await storage.getDocumentTemplate(templateId);
+      if (!template) {
+        return res.status(404).json({ message: "Template not found" });
+      }
+      
+      // Generate content by replacing variables
+      let generatedContent = template.content;
+      if (variables && typeof variables === 'object') {
+        for (const [key, value] of Object.entries(variables)) {
+          const regex = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
+          generatedContent = generatedContent.replace(regex, String(value));
+        }
+      }
+      
+      const document = await storage.createGeneratedDocument({
+        organizationId: org.id,
+        templateId,
+        dealId: dealId || null,
+        propertyId: propertyId || null,
+        name: name || `${template.name} - ${new Date().toLocaleDateString()}`,
+        type: template.type,
+        content: generatedContent,
+        variables: variables || {},
+        status: "draft",
+        createdBy: user?.id ? parseInt(user.id) : undefined,
+      });
+      
+      res.status(201).json(document);
+    } catch (error: any) {
+      console.error("Generate document error:", error);
+      res.status(500).json({ message: error.message || "Failed to generate document" });
+    }
+  });
 
   // GET /api/generated-documents - List generated documents
   api.get("/api/generated-documents", isAuthenticated, getOrCreateOrg, async (req, res) => {

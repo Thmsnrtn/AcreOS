@@ -109,6 +109,8 @@ import {
   type ApiUsageLog, type InsertApiUsageLog,
   agentRuns,
   type AgentRun,
+  borrowerSessions,
+  type BorrowerSession, type InsertBorrowerSession,
   DEFAULT_DUE_DILIGENCE_TEMPLATES,
   DEFAULT_DEAL_CHECKLIST_TEMPLATES,
 } from "@shared/schema";
@@ -730,6 +732,13 @@ export interface IStorage {
   // Agent Runs (background agent status tracking)
   getAgentStatuses(): Promise<AgentRun[]>;
   updateAgentStatus(agentName: string, updates: Partial<AgentRun>): Promise<AgentRun>;
+
+  // Borrower Sessions
+  createBorrowerSession(data: InsertBorrowerSession): Promise<BorrowerSession>;
+  getBorrowerSession(token: string): Promise<BorrowerSession | undefined>;
+  updateBorrowerSessionAccess(token: string): Promise<BorrowerSession | undefined>;
+  deleteBorrowerSession(token: string): Promise<void>;
+  cleanExpiredBorrowerSessions(): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3848,9 +3857,12 @@ export class DatabaseStorage implements IStorage {
   // Document Templates
   async getDocumentTemplates(orgId: number) {
     return db.select().from(documentTemplates)
-      .where(or(
-        eq(documentTemplates.organizationId, orgId),
-        sql`${documentTemplates.organizationId} IS NULL`
+      .where(and(
+        or(
+          eq(documentTemplates.organizationId, orgId),
+          sql`${documentTemplates.organizationId} IS NULL`
+        ),
+        eq(documentTemplates.isActive, true)
       ))
       .orderBy(documentTemplates.isSystemTemplate, documentTemplates.name);
   }
@@ -3867,15 +3879,26 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateDocumentTemplate(id: number, updates: Partial<InsertDocumentTemplate>) {
+    const existing = await this.getDocumentTemplate(id);
+    const currentVersion = existing?.version || 1;
+    
     const [updated] = await db.update(documentTemplates)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({ 
+        ...updates, 
+        version: currentVersion + 1,
+        updatedAt: new Date() 
+      })
       .where(eq(documentTemplates.id, id))
       .returning();
     return updated;
   }
 
   async deleteDocumentTemplate(id: number) {
-    await db.delete(documentTemplates).where(eq(documentTemplates.id, id));
+    const [updated] = await db.update(documentTemplates)
+      .set({ isActive: false, updatedAt: new Date() })
+      .where(eq(documentTemplates.id, id))
+      .returning();
+    return updated;
   }
 
   async seedSystemTemplates() {
@@ -4043,6 +4066,246 @@ Date: _____________</p>`,
           { name: "assignment_fee", description: "Assignment fee amount", type: "currency", required: true },
           { name: "closing_date", description: "Date of assignment", type: "date", required: true },
           { name: "original_contract_date", description: "Date of original purchase contract", type: "date", required: true },
+        ],
+      },
+      {
+        name: "Promissory Note",
+        type: "promissory_note",
+        category: "financing",
+        isSystemTemplate: true,
+        isActive: true,
+        content: `<h1>PROMISSORY NOTE</h1>
+
+<p><strong>Principal Amount:</strong> {{principal_amount}}<br/>
+<strong>Date:</strong> {{note_date}}<br/>
+<strong>Maturity Date:</strong> {{maturity_date}}</p>
+
+<hr/>
+
+<p>FOR VALUE RECEIVED, the undersigned <strong>{{borrower_name}}</strong> ("Borrower"), whose address is {{borrower_address}}, hereby promises to pay to the order of <strong>{{lender_name}}</strong> ("Lender"), or assigns, at {{lender_address}}, or such other place as the holder hereof may designate in writing, the principal sum of <strong>{{principal_amount}}</strong>, together with interest thereon at the rate of <strong>{{interest_rate}}</strong> percent per annum, in lawful money of the United States of America.</p>
+
+<h2>PAYMENT TERMS</h2>
+
+<p>This Note shall be payable as follows:</p>
+<ul>
+<li><strong>Down Payment:</strong> {{down_payment}} paid upon execution of this Note</li>
+<li><strong>Monthly Payments:</strong> {{monthly_payment}} due on the {{payment_day}} day of each month</li>
+<li><strong>First Payment Due:</strong> {{first_payment_date}}</li>
+<li><strong>Number of Payments:</strong> {{term_months}} monthly payments</li>
+<li><strong>Final Payment Due:</strong> {{maturity_date}}</li>
+</ul>
+
+<h2>SECURITY</h2>
+
+<p>This Note is secured by a deed of trust or mortgage on the following real property:</p>
+<p><strong>Property Address:</strong> {{property_address}}<br/>
+<strong>Parcel Number:</strong> {{parcel_number}}<br/>
+<strong>County:</strong> {{county}}, <strong>State:</strong> {{state}}</p>
+
+<h2>LATE CHARGES</h2>
+
+<p>If any payment is not received within {{grace_period_days}} days after its due date, Borrower shall pay a late charge of {{late_fee_amount}} or {{late_fee_percentage}}% of the overdue payment, whichever is greater.</p>
+
+<h2>PREPAYMENT</h2>
+
+<p>Borrower may prepay this Note in whole or in part at any time without penalty.</p>
+
+<h2>DEFAULT</h2>
+
+<p>Upon default in the payment of any installment when due, or upon breach of any condition of the deed of trust or mortgage securing this Note, the entire unpaid principal balance, together with all accrued interest, shall, at the option of the holder, become immediately due and payable.</p>
+
+<h2>SIGNATURES</h2>
+
+<p>____________________________<br/>
+Borrower: {{borrower_name}}<br/>
+Date: _____________</p>
+
+<p>____________________________<br/>
+Lender: {{lender_name}}<br/>
+Date: _____________</p>`,
+        variables: [
+          { name: "borrower_name", description: "Full legal name of the borrower", type: "text", required: true },
+          { name: "borrower_address", description: "Mailing address of the borrower", type: "text", required: true },
+          { name: "lender_name", description: "Full legal name of the lender", type: "text", required: true },
+          { name: "lender_address", description: "Mailing address of the lender", type: "text", required: true },
+          { name: "principal_amount", description: "Total loan amount", type: "currency", required: true },
+          { name: "interest_rate", description: "Annual interest rate (e.g., 8.5)", type: "number", required: true },
+          { name: "down_payment", description: "Down payment amount", type: "currency", required: false, defaultValue: "$0" },
+          { name: "monthly_payment", description: "Monthly payment amount", type: "currency", required: true },
+          { name: "payment_day", description: "Day of month payment is due", type: "number", required: true, defaultValue: "1" },
+          { name: "term_months", description: "Total number of monthly payments", type: "number", required: true },
+          { name: "note_date", description: "Date of the promissory note", type: "date", required: true },
+          { name: "first_payment_date", description: "Date of first payment", type: "date", required: true },
+          { name: "maturity_date", description: "Final payment due date", type: "date", required: true },
+          { name: "property_address", description: "Full street address of the property", type: "text", required: true },
+          { name: "parcel_number", description: "APN/Parcel number", type: "text", required: true },
+          { name: "county", description: "County where property is located", type: "text", required: true },
+          { name: "state", description: "State where property is located", type: "text", required: true },
+          { name: "grace_period_days", description: "Number of grace period days", type: "number", required: false, defaultValue: "10" },
+          { name: "late_fee_amount", description: "Late fee flat amount", type: "currency", required: false, defaultValue: "$25" },
+          { name: "late_fee_percentage", description: "Late fee percentage", type: "number", required: false, defaultValue: "5" },
+        ],
+      },
+      {
+        name: "Warranty Deed",
+        type: "warranty_deed",
+        category: "closing",
+        isSystemTemplate: true,
+        isActive: true,
+        content: `<h1>WARRANTY DEED</h1>
+
+<p><strong>Recording Requested By:</strong><br/>
+{{buyer_name}}</p>
+
+<p><strong>When Recorded Mail To:</strong><br/>
+{{buyer_name}}<br/>
+{{buyer_address}}</p>
+
+<p><strong>Mail Tax Statements To:</strong><br/>
+{{buyer_name}}<br/>
+{{buyer_address}}</p>
+
+<hr/>
+
+<p><strong>APN:</strong> {{parcel_number}}</p>
+
+<h2>WARRANTY DEED</h2>
+
+<p>FOR VALUABLE CONSIDERATION, receipt of which is hereby acknowledged,</p>
+
+<p><strong>{{seller_name}}</strong>, Grantor(s),</p>
+
+<p>hereby GRANT(S), BARGAIN(S), SELL(S), and CONVEY(S) to</p>
+
+<p><strong>{{buyer_name}}</strong>, Grantee(s),</p>
+
+<p>the following described real property in the County of <strong>{{county}}</strong>, State of <strong>{{state}}</strong>:</p>
+
+<p><strong>Property Address:</strong> {{property_address}}</p>
+
+<p><strong>Legal Description:</strong><br/>
+{{legal_description}}</p>
+
+<p>TOGETHER WITH all and singular the tenements, hereditaments, and appurtenances thereunto belonging or in anywise appertaining, and the reversion and reversions, remainder and remainders, rents, issues, and profits thereof.</p>
+
+<p>TO HAVE AND TO HOLD the said premises unto the said Grantee(s), and Grantee's heirs and assigns forever.</p>
+
+<p>AND THE SAID GRANTOR(S) hereby covenant(s) with the said Grantee(s), and Grantee's heirs and assigns, that Grantor(s) is/are seized of an indefeasible estate in fee simple in and to said premises; that Grantor(s) has/have good right to convey the same; that the premises are free from all encumbrances, except as noted herein; and that Grantor(s) will warrant and defend said premises against the lawful claims of all persons whomsoever.</p>
+
+<p><strong>CONSIDERATION:</strong> {{purchase_price}}</p>
+
+<p>Dated: {{closing_date}}</p>
+
+<p>____________________________<br/>
+{{seller_name}}, Grantor</p>
+
+<h2>ACKNOWLEDGMENT</h2>
+
+<p><strong>STATE OF {{state}}</strong><br/>
+<strong>COUNTY OF {{county}}</strong></p>
+
+<p>On {{closing_date}}, before me, a Notary Public in and for said State, personally appeared {{seller_name}}, known to me (or proved to me on the basis of satisfactory evidence) to be the person(s) whose name(s) is/are subscribed to the within instrument and acknowledged to me that he/she/they executed the same in his/her/their authorized capacity(ies), and that by his/her/their signature(s) on the instrument the person(s), or the entity upon behalf of which the person(s) acted, executed the instrument.</p>
+
+<p>WITNESS my hand and official seal.</p>
+
+<p>____________________________<br/>
+Notary Public</p>
+
+<p>My Commission Expires: _____________</p>`,
+        variables: [
+          { name: "buyer_name", description: "Full legal name of the grantee (buyer)", type: "text", required: true },
+          { name: "buyer_address", description: "Mailing address of the grantee", type: "text", required: true },
+          { name: "seller_name", description: "Full legal name of the grantor (seller)", type: "text", required: true },
+          { name: "property_address", description: "Full street address of the property", type: "text", required: true },
+          { name: "parcel_number", description: "APN/Parcel number", type: "text", required: true },
+          { name: "legal_description", description: "Full legal description from deed", type: "text", required: true },
+          { name: "county", description: "County where property is located", type: "text", required: true },
+          { name: "state", description: "State where property is located", type: "text", required: true },
+          { name: "purchase_price", description: "Purchase price/consideration", type: "currency", required: true },
+          { name: "closing_date", description: "Date of execution", type: "date", required: true },
+        ],
+      },
+      {
+        name: "Offer Letter",
+        type: "offer_letter",
+        category: "acquisition",
+        isSystemTemplate: true,
+        isActive: true,
+        content: `<h1>OFFER TO PURCHASE REAL PROPERTY</h1>
+
+<p><strong>Date:</strong> {{offer_date}}</p>
+
+<p><strong>To:</strong> {{seller_name}}</p>
+
+<p><strong>From:</strong> {{buyer_name}}<br/>
+{{buyer_address}}<br/>
+{{buyer_phone}}<br/>
+{{buyer_email}}</p>
+
+<hr/>
+
+<p>Dear {{seller_name}},</p>
+
+<p>I am writing to express my interest in purchasing your property located at:</p>
+
+<p><strong>Property Address:</strong> {{property_address}}<br/>
+<strong>Parcel Number:</strong> {{parcel_number}}<br/>
+<strong>County:</strong> {{county}}, <strong>State:</strong> {{state}}</p>
+
+<h2>OFFER TERMS</h2>
+
+<p>I am prepared to make the following offer for the above-referenced property:</p>
+
+<ul>
+<li><strong>Purchase Price:</strong> {{purchase_price}} (Cash offer)</li>
+<li><strong>Earnest Money Deposit:</strong> {{earnest_money}}</li>
+<li><strong>Proposed Closing Date:</strong> {{closing_date}}</li>
+<li><strong>Offer Expiration:</strong> {{offer_expiration_date}}</li>
+</ul>
+
+<h2>CONDITIONS</h2>
+
+<p>This offer is contingent upon:</p>
+<ul>
+<li>Clear and marketable title</li>
+<li>Property inspection satisfactory to Buyer (if applicable)</li>
+<li>Standard title insurance</li>
+</ul>
+
+<h2>BENEFITS OF THIS OFFER</h2>
+
+<ul>
+<li>All-cash offer with quick closing</li>
+<li>No financing contingencies</li>
+<li>Flexible closing date</li>
+<li>Property purchased as-is</li>
+</ul>
+
+<p>I believe this offer represents fair value for your property and I am committed to a smooth, hassle-free transaction. Please feel free to contact me at {{buyer_phone}} or {{buyer_email}} to discuss this offer further.</p>
+
+<p>I look forward to hearing from you.</p>
+
+<p>Sincerely,</p>
+
+<p>____________________________<br/>
+{{buyer_name}}</p>
+
+<p>This offer expires on {{offer_expiration_date}} at 11:59 PM local time.</p>`,
+        variables: [
+          { name: "buyer_name", description: "Full legal name of the buyer", type: "text", required: true },
+          { name: "buyer_address", description: "Mailing address of the buyer", type: "text", required: true },
+          { name: "buyer_phone", description: "Buyer's phone number", type: "text", required: true },
+          { name: "buyer_email", description: "Buyer's email address", type: "text", required: true },
+          { name: "seller_name", description: "Full legal name of the seller", type: "text", required: true },
+          { name: "property_address", description: "Full street address of the property", type: "text", required: true },
+          { name: "parcel_number", description: "APN/Parcel number", type: "text", required: true },
+          { name: "county", description: "County where property is located", type: "text", required: true },
+          { name: "state", description: "State where property is located", type: "text", required: true },
+          { name: "purchase_price", description: "Offered purchase price", type: "currency", required: true },
+          { name: "earnest_money", description: "Earnest money deposit amount", type: "currency", required: false, defaultValue: "$100" },
+          { name: "offer_date", description: "Date of the offer letter", type: "date", required: true },
+          { name: "closing_date", description: "Proposed closing date", type: "date", required: true },
+          { name: "offer_expiration_date", description: "Date when offer expires", type: "date", required: true },
         ],
       },
     ];
@@ -5093,6 +5356,46 @@ Date: _____________</p>`,
         .returning();
       return created;
     }
+  }
+
+  // Borrower Sessions
+  async createBorrowerSession(data: InsertBorrowerSession): Promise<BorrowerSession> {
+    const [session] = await db.insert(borrowerSessions).values(data).returning();
+    return session;
+  }
+
+  async getBorrowerSession(token: string): Promise<BorrowerSession | undefined> {
+    const [session] = await db.select()
+      .from(borrowerSessions)
+      .where(eq(borrowerSessions.sessionToken, token));
+    return session;
+  }
+
+  async updateBorrowerSessionAccess(token: string): Promise<BorrowerSession | undefined> {
+    const now = new Date();
+    const newExpiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000); // 24 hours from now
+    
+    const [updated] = await db.update(borrowerSessions)
+      .set({ 
+        lastAccessedAt: now,
+        expiresAt: newExpiresAt, // Sliding expiration
+      })
+      .where(eq(borrowerSessions.sessionToken, token))
+      .returning();
+    return updated;
+  }
+
+  async deleteBorrowerSession(token: string): Promise<void> {
+    await db.delete(borrowerSessions)
+      .where(eq(borrowerSessions.sessionToken, token));
+  }
+
+  async cleanExpiredBorrowerSessions(): Promise<number> {
+    const now = new Date();
+    const result = await db.delete(borrowerSessions)
+      .where(lt(borrowerSessions.expiresAt, now))
+      .returning();
+    return result.length;
   }
 }
 
