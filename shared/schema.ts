@@ -65,6 +65,10 @@ export const organizations = pgTable("organizations", {
       communications?: { enabled: boolean; retentionDays: number };
     };
   }>(),
+  // Free trial tracking
+  trialStartedAt: timestamp("trial_started_at"), // When trial began
+  trialEndsAt: timestamp("trial_ends_at"), // When trial expires (7 days from start)
+  trialUsed: boolean("trial_used").default(false), // True once trial has been used (prevents repeat trials)
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
