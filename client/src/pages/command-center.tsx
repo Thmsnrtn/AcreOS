@@ -1168,7 +1168,7 @@ export default function CommandCenterPage() {
               <Bot className="w-5 h-5" />
             </div>
             <div>
-              <h1 className="text-xl font-bold" data-testid="text-page-title">AI Command Center</h1>
+              <h1 className="text-xl font-bold" data-testid="text-page-title">AI</h1>
               <p className="text-sm text-muted-foreground">Manage your AI agents and conversations</p>
             </div>
           </div>
@@ -1317,7 +1317,7 @@ export default function CommandCenterPage() {
                     {!currentConversationId ? (
                       <div className="flex flex-col items-center justify-center h-96 text-center">
                         <Bot className="w-16 h-16 text-muted-foreground/30 mb-4" />
-                        <h3 className="text-lg font-medium mb-2">AI Command Center</h3>
+                        <h3 className="text-lg font-medium mb-2">AI Assistant</h3>
                         <p className="text-muted-foreground text-sm max-w-md">
                           Start a new conversation to interact with your AI agents. They can help
                           manage leads, properties, notes, and more.

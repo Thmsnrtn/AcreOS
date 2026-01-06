@@ -116,7 +116,7 @@ const faqItems = [
   },
   {
     question: "How do AI Agents work?",
-    answer: "AI Agents are specialized assistants that help with specific tasks. The Command Center provides a chat interface to ask questions about your data. AI Team shows autonomous agents working on tasks like lead nurturing and market analysis. Usage counts toward your AI request limits."
+    answer: "AI Agents are specialized assistants that help with specific tasks. The AI section provides a chat interface to ask questions about your data. The Team tab shows autonomous agents working on tasks like lead nurturing and market analysis. Usage counts toward your AI request limits."
   },
   {
     question: "Is my data secure?",

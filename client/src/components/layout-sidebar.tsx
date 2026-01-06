@@ -55,7 +55,7 @@ const navItems = [
   { label: "Documents", icon: FileText, href: "/documents" },
   { label: "Marketing", icon: Mail, href: "/campaigns" },
   { label: "Tools", icon: Calculator, href: "/tools" },
-  { label: "AI Command Center", icon: Bot, href: "/command-center" },
+  { label: "AI", icon: Bot, href: "/command-center" },
   { label: "Help & Support", icon: HelpCircle, href: "/help" },
   { label: "Settings", icon: Settings, href: "/settings" },
 ];
