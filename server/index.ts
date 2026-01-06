@@ -197,9 +197,25 @@ app.use(requestLoggingMiddleware);
       
       // Start sequence processor background job (every 60 seconds)
       startSequenceProcessorJob();
+      
+      // Auto-seed county GIS endpoints for free parcel lookups
+      seedCountyGisEndpointsOnStartup();
     },
   );
 })();
+
+// Auto-seed county GIS endpoints on startup
+async function seedCountyGisEndpointsOnStartup() {
+  try {
+    const { seedCountyGisEndpoints } = await import('./services/parcel');
+    const result = await seedCountyGisEndpoints();
+    if (result.added > 0) {
+      log(`Seeded ${result.added} county GIS endpoints (${result.skipped} already existed)`, 'parcel');
+    }
+  } catch (err) {
+    log(`Failed to seed county GIS endpoints: ${err}`, 'parcel');
+  }
+}
 
 // Lead nurturing background job
 async function processLeadNurturing() {
