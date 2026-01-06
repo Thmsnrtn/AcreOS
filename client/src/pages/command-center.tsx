@@ -58,6 +58,7 @@ import {
   Headphones,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { DisclaimerBanner } from "@/components/disclaimer-banner";
 
 interface Agent {
   name: string;
@@ -1171,6 +1172,7 @@ export default function CommandCenterPage() {
               <p className="text-sm text-muted-foreground">Manage your AI agents and conversations</p>
             </div>
           </div>
+          <DisclaimerBanner type="ai" className="mb-4" />
           <Tabs value={mainTab} onValueChange={setMainTab} className="w-full">
             <TabsList className={isMobile ? "w-full" : ""}>
               <TabsTrigger value="chat" className={isMobile ? "flex-1" : ""} data-testid="tab-chat">

@@ -25,6 +25,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { format, addMonths } from "date-fns";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { DisclaimerBanner } from "@/components/disclaimer-banner";
 
 type NoteWithDetails = Note & {
   borrower?: Lead;
@@ -139,6 +140,8 @@ export default function FinancePage() {
               </Dialog>
             </div>
           </div>
+
+          <DisclaimerBanner type="finance" />
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <Card className="glass-panel">

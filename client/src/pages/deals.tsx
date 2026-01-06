@@ -28,6 +28,7 @@ import { Progress } from "@/components/ui/progress";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ActivityTimeline } from "@/components/activity-timeline";
 import { CustomFieldValuesEditor } from "@/components/custom-fields";
+import { DisclaimerBanner } from "@/components/disclaimer-banner";
 
 type DealWithProperty = Deal & { property?: Property };
 
@@ -145,6 +146,8 @@ export default function DealsPage() {
               </Dialog>
             </div>
           </div>
+
+          <DisclaimerBanner type="deals" />
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
             <Card className="glass-panel">
