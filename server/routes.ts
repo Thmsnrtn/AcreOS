@@ -167,15 +167,20 @@ async function getOrCreateOrg(req: Request, res: Response, next: NextFunction) {
   let org = await storage.getOrganizationByOwner(userId);
   
   if (!org) {
-    // Create default organization for new user
+    // Create default organization for new user with 7-day free trial
     const displayName = user.claims?.first_name || user.username || user.email || "User";
     const slug = `org-${userId}-${Date.now()}`;
+    const now = new Date();
+    const trialEnds = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days from now
     org = await storage.createOrganization({
       name: `${displayName}'s Organization`,
       slug,
       ownerId: userId,
       subscriptionTier: "free",
       subscriptionStatus: "active",
+      trialStartedAt: now,
+      trialEndsAt: trialEnds,
+      trialUsed: false,
     });
     
     // Add user as owner team member
