@@ -1,6 +1,6 @@
 import { db } from "./db";
 export { db };
-import { eq, and, desc, sql, count, sum, arrayContains, gte, lte, or } from "drizzle-orm";
+import { eq, and, desc, sql, count, sum, arrayContains, gte, lte, or, inArray } from "drizzle-orm";
 import { aiConversations, aiMessages } from "@shared/schema";
 import {
   organizations, teamMembers, leads, leadActivities, properties, deals,
@@ -107,6 +107,8 @@ import {
   type FeatureRequest, type InsertFeatureRequest,
   apiUsageLogs,
   type ApiUsageLog, type InsertApiUsageLog,
+  agentRuns,
+  type AgentRun,
   DEFAULT_DUE_DILIGENCE_TEMPLATES,
   DEFAULT_DEAL_CHECKLIST_TEMPLATES,
 } from "@shared/schema";
@@ -181,6 +183,8 @@ export interface IStorage {
   updateLead(id: number, updates: Partial<InsertLead>): Promise<Lead>;
   deleteLead(id: number): Promise<void>;
   getLeadCount(orgId: number): Promise<number>;
+  bulkDeleteLeads(orgId: number, ids: number[]): Promise<number>;
+  bulkUpdateLeads(orgId: number, ids: number[], updates: Partial<InsertLead>): Promise<number>;
   
   // Lead Scoring & Nurturing
   getLeadsNeedingScoring(orgId: number, limit?: number): Promise<Lead[]>;
@@ -196,6 +200,8 @@ export interface IStorage {
   updateProperty(id: number, updates: Partial<InsertProperty>): Promise<Property>;
   deleteProperty(id: number): Promise<void>;
   getPropertyCount(orgId: number): Promise<number>;
+  bulkDeleteProperties(orgId: number, ids: number[]): Promise<number>;
+  bulkUpdateProperties(orgId: number, ids: number[], updates: Partial<InsertProperty>): Promise<number>;
   
   // Deals
   getDeals(orgId: number): Promise<Deal[]>;
@@ -720,6 +726,10 @@ export interface IStorage {
     };
     recentUsage: Array<{ date: string; costCents: number }>;
   }>;
+
+  // Agent Runs (background agent status tracking)
+  getAgentStatuses(): Promise<AgentRun[]>;
+  updateAgentStatus(agentName: string, updates: Partial<AgentRun>): Promise<AgentRun>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -843,6 +853,21 @@ export class DatabaseStorage implements IStorage {
     return result?.count || 0;
   }
   
+  async bulkDeleteLeads(orgId: number, ids: number[]): Promise<number> {
+    if (ids.length === 0) return 0;
+    const result = await db.delete(leads)
+      .where(and(eq(leads.organizationId, orgId), inArray(leads.id, ids)));
+    return ids.length;
+  }
+  
+  async bulkUpdateLeads(orgId: number, ids: number[], updates: Partial<InsertLead>): Promise<number> {
+    if (ids.length === 0) return 0;
+    await db.update(leads)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(and(eq(leads.organizationId, orgId), inArray(leads.id, ids)));
+    return ids.length;
+  }
+  
   // Lead Scoring & Nurturing
   async getLeadsNeedingScoring(orgId: number, limit: number = 50): Promise<Lead[]> {
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -938,6 +963,21 @@ export class DatabaseStorage implements IStorage {
   async getPropertyCount(orgId: number) {
     const [result] = await db.select({ count: count() }).from(properties).where(eq(properties.organizationId, orgId));
     return result?.count || 0;
+  }
+  
+  async bulkDeleteProperties(orgId: number, ids: number[]): Promise<number> {
+    if (ids.length === 0) return 0;
+    await db.delete(properties)
+      .where(and(eq(properties.organizationId, orgId), inArray(properties.id, ids)));
+    return ids.length;
+  }
+  
+  async bulkUpdateProperties(orgId: number, ids: number[], updates: Partial<InsertProperty>): Promise<number> {
+    if (ids.length === 0) return 0;
+    await db.update(properties)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(and(eq(properties.organizationId, orgId), inArray(properties.id, ids)));
+    return ids.length;
   }
   
   // Deals
@@ -5031,6 +5071,28 @@ Date: _____________</p>`,
     }
     
     return { totalCostCents, byService, recentUsage };
+  }
+
+  // Agent Runs (background agent status tracking)
+  async getAgentStatuses(): Promise<AgentRun[]> {
+    return await db.select().from(agentRuns).orderBy(agentRuns.agentName);
+  }
+
+  async updateAgentStatus(agentName: string, updates: Partial<AgentRun>): Promise<AgentRun> {
+    const [existing] = await db.select().from(agentRuns).where(eq(agentRuns.agentName, agentName));
+    
+    if (existing) {
+      const [updated] = await db.update(agentRuns)
+        .set(updates)
+        .where(eq(agentRuns.agentName, agentName))
+        .returning();
+      return updated;
+    } else {
+      const [created] = await db.insert(agentRuns)
+        .values({ agentName, ...updates })
+        .returning();
+      return created;
+    }
   }
 }
 

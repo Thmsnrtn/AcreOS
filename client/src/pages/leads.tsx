@@ -20,7 +20,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, Mail, Phone, Trash2, Edit, Loader2, Users, FileText, Download, Upload, CheckCircle, XCircle, AlertCircle, Flame, Sun, Snowflake, Skull, ArrowUpDown, ArrowUp, ArrowDown, X, Clock, Eye, User, Calendar, MapPin, StickyNote, PhoneOff, Shield } from "lucide-react";
+import { Plus, Search, Mail, Phone, Trash2, Edit, Loader2, Users, FileText, Download, Upload, CheckCircle, XCircle, AlertCircle, Flame, Sun, Snowflake, Skull, ArrowUpDown, ArrowUp, ArrowDown, X, Clock, Eye, User, Calendar, MapPin, StickyNote, PhoneOff, Shield, CheckSquare } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState } from "@/components/empty-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -321,6 +322,83 @@ export default function LeadsPage() {
     errors: Array<{ row: number; data: Record<string, string>; error: string }>;
   } | null>(null);
   const { mutate: deleteLead, isPending: isDeleting } = useDeleteLead();
+  const [selectedLeadIds, setSelectedLeadIds] = useState<Set<number>>(new Set());
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const [isBulkUpdating, setIsBulkUpdating] = useState(false);
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+  const { toast } = useToast();
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked && filteredLeads) {
+      setSelectedLeadIds(new Set(filteredLeads.map(l => l.id)));
+    } else {
+      setSelectedLeadIds(new Set());
+    }
+  };
+
+  const handleSelectLead = (leadId: number, checked: boolean) => {
+    const newSet = new Set(selectedLeadIds);
+    if (checked) {
+      newSet.add(leadId);
+    } else {
+      newSet.delete(leadId);
+    }
+    setSelectedLeadIds(newSet);
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedLeadIds.size === 0) return;
+    setIsBulkDeleting(true);
+    try {
+      const res = await apiRequest("POST", "/api/leads/bulk-delete", { ids: Array.from(selectedLeadIds) });
+      if (!res.ok) throw new Error("Failed to delete leads");
+      const result = await res.json();
+      toast({ title: "Success", description: `Deleted ${result.deletedCount} leads.` });
+      setSelectedLeadIds(new Set());
+      queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to delete leads", variant: "destructive" });
+    } finally {
+      setIsBulkDeleting(false);
+      setShowBulkDeleteConfirm(false);
+    }
+  };
+
+  const handleBulkStatusChange = async (status: string) => {
+    if (selectedLeadIds.size === 0) return;
+    setIsBulkUpdating(true);
+    try {
+      const res = await apiRequest("POST", "/api/leads/bulk-update", { ids: Array.from(selectedLeadIds), updates: { status } });
+      if (!res.ok) throw new Error("Failed to update leads");
+      const result = await res.json();
+      toast({ title: "Success", description: `Updated ${result.updatedCount} leads to "${status}".` });
+      setSelectedLeadIds(new Set());
+      queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to update leads", variant: "destructive" });
+    } finally {
+      setIsBulkUpdating(false);
+    }
+  };
+
+  const handleBulkExport = () => {
+    if (selectedLeadIds.size === 0) return;
+    const selectedLeads = filteredLeads?.filter(l => selectedLeadIds.has(l.id)) || [];
+    const headers = ["firstName", "lastName", "email", "phone", "status"];
+    const csvRows = [headers.join(",")];
+    selectedLeads.forEach(lead => {
+      csvRows.push([lead.firstName, lead.lastName, lead.email || "", lead.phone || "", lead.status].map(v => `"${v || ""}"`).join(","));
+    });
+    const blob = new Blob([csvRows.join("\n")], { type: "text/csv" });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `leads-export-${new Date().toISOString().split("T")[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  };
 
   const handleStageFilterChange = (value: string) => {
     setStageFilter(value);
@@ -659,6 +737,38 @@ export default function LeadsPage() {
                   )}
                 </div>
 
+                {selectedLeadIds.size > 0 && (
+                  <div className="p-3 bg-muted/50 border-b flex flex-wrap items-center gap-3" data-testid="bulk-actions-toolbar">
+                    <div className="flex items-center gap-2">
+                      <CheckSquare className="w-4 h-4" />
+                      <span className="text-sm font-medium" data-testid="text-selected-count">{selectedLeadIds.size} lead{selectedLeadIds.size !== 1 ? "s" : ""} selected</span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 ml-auto">
+                      <Button variant="outline" size="sm" onClick={handleBulkExport} data-testid="button-bulk-export">
+                        <Download className="w-4 h-4 mr-1" /> Export
+                      </Button>
+                      <Select onValueChange={handleBulkStatusChange} disabled={isBulkUpdating}>
+                        <SelectTrigger className="w-[150px]" data-testid="select-bulk-status">
+                          <SelectValue placeholder={isBulkUpdating ? "Updating..." : "Change Status"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="new">New</SelectItem>
+                          <SelectItem value="contacting">Contacting</SelectItem>
+                          <SelectItem value="negotiation">Negotiation</SelectItem>
+                          <SelectItem value="closed">Closed</SelectItem>
+                          <SelectItem value="dead">Dead</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Button variant="destructive" size="sm" onClick={() => setShowBulkDeleteConfirm(true)} disabled={isBulkDeleting} data-testid="button-bulk-delete">
+                        <Trash2 className="w-4 h-4 mr-1" /> Delete
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => setSelectedLeadIds(new Set())} data-testid="button-clear-selection">
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
                 {isLoading ? (
                   <div className="p-4" data-testid="skeleton-leads-table">
                     <ListSkeleton count={8} variant="table" />
@@ -668,6 +778,13 @@ export default function LeadsPage() {
                     <Table>
                       <TableHeader>
                         <TableRow className="bg-slate-50/50 dark:bg-slate-900/50">
+                          <TableHead className="w-[50px]">
+                            <Checkbox
+                              checked={filteredLeads && filteredLeads.length > 0 && selectedLeadIds.size === filteredLeads.length}
+                              onCheckedChange={(checked) => handleSelectAll(checked === true)}
+                              data-testid="checkbox-select-all-leads"
+                            />
+                          </TableHead>
                           <TableHead className="min-w-[120px]">Name</TableHead>
                           <TableHead className="min-w-[100px]">
                             <button
@@ -688,7 +805,7 @@ export default function LeadsPage() {
                       <TableBody>
                         {filteredLeads?.length === 0 && leads?.length === 0 && (
                           <TableRow>
-                            <TableCell colSpan={5} className="p-0">
+                            <TableCell colSpan={6} className="p-0">
                               <EmptyState
                                 icon={Users}
                                 title="No leads yet"
@@ -707,13 +824,20 @@ export default function LeadsPage() {
                         )}
                         {filteredLeads?.length === 0 && leads && leads.length > 0 && (
                           <TableRow>
-                            <TableCell colSpan={5} className="text-center h-32 text-muted-foreground">
+                            <TableCell colSpan={6} className="text-center h-32 text-muted-foreground">
                               No leads found matching your search or filter.
                             </TableCell>
                           </TableRow>
                         )}
                         {filteredLeads?.map((lead) => (
                           <TableRow key={lead.id} className="group" data-testid={`row-lead-${lead.id}`}>
+                            <TableCell>
+                              <Checkbox
+                                checked={selectedLeadIds.has(lead.id)}
+                                onCheckedChange={(checked) => handleSelectLead(lead.id, checked === true)}
+                                data-testid={`checkbox-lead-${lead.id}`}
+                              />
+                            </TableCell>
                             <TableCell className="font-medium">
                               {lead.firstName} {lead.lastName}
                             </TableCell>
@@ -813,6 +937,17 @@ export default function LeadsPage() {
         confirmLabel="Delete Lead"
         onConfirm={handleDelete}
         isLoading={isDeleting}
+        variant="destructive"
+      />
+
+      <ConfirmDialog
+        open={showBulkDeleteConfirm}
+        onOpenChange={(open) => !open && setShowBulkDeleteConfirm(false)}
+        title="Delete Selected Leads"
+        description={`Are you sure you want to delete ${selectedLeadIds.size} lead${selectedLeadIds.size !== 1 ? "s" : ""}? This action cannot be undone and will permanently remove them from your CRM.`}
+        confirmLabel={`Delete ${selectedLeadIds.size} Lead${selectedLeadIds.size !== 1 ? "s" : ""}`}
+        onConfirm={handleBulkDelete}
+        isLoading={isBulkDeleting}
         variant="destructive"
       />
 

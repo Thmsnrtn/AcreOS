@@ -980,6 +980,72 @@ export async function registerRoutes(
     res.status(204).send();
   });
   
+  api.post("/api/leads/bulk-delete", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteLeads"), async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { ids } = req.body;
+      
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ message: "ids must be a non-empty array" });
+      }
+      
+      const deletedCount = await storage.bulkDeleteLeads(org.id, ids);
+      
+      const user = req.user as any;
+      const userId = user?.claims?.sub || user?.id;
+      await storage.createAuditLogEntry({
+        organizationId: org.id,
+        userId,
+        action: "bulk_delete",
+        entityType: "lead",
+        entityId: 0,
+        changes: { ids, count: deletedCount },
+        ipAddress: req.ip || req.socket?.remoteAddress,
+        userAgent: req.headers["user-agent"],
+      });
+      
+      res.json({ deletedCount });
+    } catch (error: any) {
+      console.error("Bulk delete leads error:", error);
+      res.status(500).json({ message: error.message || "Failed to bulk delete leads" });
+    }
+  });
+  
+  api.post("/api/leads/bulk-update", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { ids, updates } = req.body;
+      
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ message: "ids must be a non-empty array" });
+      }
+      
+      if (!updates || typeof updates !== "object") {
+        return res.status(400).json({ message: "updates must be an object" });
+      }
+      
+      const updatedCount = await storage.bulkUpdateLeads(org.id, ids, updates);
+      
+      const user = req.user as any;
+      const userId = user?.claims?.sub || user?.id;
+      await storage.createAuditLogEntry({
+        organizationId: org.id,
+        userId,
+        action: "bulk_update",
+        entityType: "lead",
+        entityId: 0,
+        changes: { ids, updates, count: updatedCount },
+        ipAddress: req.ip || req.socket?.remoteAddress,
+        userAgent: req.headers["user-agent"],
+      });
+      
+      res.json({ updatedCount });
+    } catch (error: any) {
+      console.error("Bulk update leads error:", error);
+      res.status(500).json({ message: error.message || "Failed to bulk update leads" });
+    }
+  });
+  
   api.get("/api/leads/:id/activities", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const leadId = Number(req.params.id);
     const limit = req.query.limit ? Number(req.query.limit) : 50;
@@ -1471,6 +1537,72 @@ export async function registerRoutes(
     }
     
     res.status(204).send();
+  });
+  
+  api.post("/api/properties/bulk-delete", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { ids } = req.body;
+      
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ message: "ids must be a non-empty array" });
+      }
+      
+      const deletedCount = await storage.bulkDeleteProperties(org.id, ids);
+      
+      const user = req.user as any;
+      const userId = user?.claims?.sub || user?.id;
+      await storage.createAuditLogEntry({
+        organizationId: org.id,
+        userId,
+        action: "bulk_delete",
+        entityType: "property",
+        entityId: 0,
+        changes: { ids, count: deletedCount },
+        ipAddress: req.ip || req.socket?.remoteAddress,
+        userAgent: req.headers["user-agent"],
+      });
+      
+      res.json({ deletedCount });
+    } catch (error: any) {
+      console.error("Bulk delete properties error:", error);
+      res.status(500).json({ message: error.message || "Failed to bulk delete properties" });
+    }
+  });
+  
+  api.post("/api/properties/bulk-update", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { ids, updates } = req.body;
+      
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ message: "ids must be a non-empty array" });
+      }
+      
+      if (!updates || typeof updates !== "object") {
+        return res.status(400).json({ message: "updates must be an object" });
+      }
+      
+      const updatedCount = await storage.bulkUpdateProperties(org.id, ids, updates);
+      
+      const user = req.user as any;
+      const userId = user?.claims?.sub || user?.id;
+      await storage.createAuditLogEntry({
+        organizationId: org.id,
+        userId,
+        action: "bulk_update",
+        entityType: "property",
+        entityId: 0,
+        changes: { ids, updates, count: updatedCount },
+        ipAddress: req.ip || req.socket?.remoteAddress,
+        userAgent: req.headers["user-agent"],
+      });
+      
+      res.json({ updatedCount });
+    } catch (error: any) {
+      console.error("Bulk update properties error:", error);
+      res.status(500).json({ message: error.message || "Failed to bulk update properties" });
+    }
   });
   
   api.get("/api/properties/export", isAuthenticated, getOrCreateOrg, async (req, res) => {
@@ -4319,6 +4451,16 @@ export async function registerRoutes(
         return res.status(400).json({ message: err.errors[0].message });
       }
       throw err;
+    }
+  });
+
+  // Get background agent statuses (for Agents tab in Command Center)
+  api.get("/api/agents/status", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const statuses = await storage.getAgentStatuses();
+      res.json(statuses);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to fetch agent statuses" });
     }
   });
   

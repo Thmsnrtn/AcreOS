@@ -698,16 +698,29 @@ interface BackgroundAgent {
   icon: typeof Bot;
   status: "running" | "idle" | "error";
   lastRunAt?: string;
+  processedCount?: number;
+  errorCount?: number;
 }
 
-const backgroundAgents: BackgroundAgent[] = [
+interface AgentRunStatus {
+  id: number;
+  agentName: string;
+  status: string;
+  lastRunAt: string | null;
+  nextRunAt: string | null;
+  processedCount: number | null;
+  errorCount: number | null;
+  lastError: string | null;
+  metadata: Record<string, any> | null;
+}
+
+const defaultBackgroundAgents: Omit<BackgroundAgent, "status" | "lastRunAt" | "processedCount" | "errorCount">[] = [
   {
-    id: "lead_nurturing",
-    name: "Lead Nurturing Agent",
+    id: "lead_nurturer",
+    name: "Lead Nurturer",
     description: "Scores leads and generates personalized follow-up sequences",
-    frequency: "Every 15 minutes",
+    frequency: "Every 30 minutes",
     icon: Users,
-    status: "running",
   },
   {
     id: "campaign_optimizer",
@@ -715,39 +728,34 @@ const backgroundAgents: BackgroundAgent[] = [
     description: "Analyzes campaign performance and suggests optimizations",
     frequency: "Every hour",
     icon: TrendingUp,
-    status: "idle",
   },
   {
     id: "finance_agent",
     name: "Finance Agent",
     description: "Handles delinquency detection and payment reminders",
-    frequency: "Every 30 minutes",
+    frequency: "Every 4 hours",
     icon: DollarSign,
-    status: "running",
   },
   {
     id: "alerting_service",
     name: "Alerting Service",
     description: "Monitors system health and detects issues",
-    frequency: "Every hour",
+    frequency: "Every 15 minutes",
     icon: Bell,
-    status: "idle",
   },
   {
     id: "digest_service",
     name: "Digest Service",
     description: "Generates performance summaries and reports",
-    frequency: "Every 6 hours",
+    frequency: "Weekly",
     icon: FileText,
-    status: "idle",
   },
   {
     id: "sequence_processor",
     name: "Sequence Processor",
     description: "Processes automation sequences and workflows",
-    frequency: "Every 60 seconds",
+    frequency: "Every minute",
     icon: GitBranch,
-    status: "running",
   },
 ];
 
@@ -767,6 +775,25 @@ function getAgentStatusBadge(status: BackgroundAgent["status"]) {
 function AgentsTabContent() {
   const { toast } = useToast();
 
+  const { data: agentStatuses = [], isLoading } = useQuery<AgentRunStatus[]>({
+    queryKey: ["/api/agents/status"],
+    refetchInterval: 30000,
+  });
+
+  const backgroundAgents: BackgroundAgent[] = defaultBackgroundAgents.map((agent) => {
+    const apiStatus = agentStatuses.find((s) => s.agentName === agent.id);
+    const status: BackgroundAgent["status"] = apiStatus
+      ? (apiStatus.status === "failed" ? "error" : apiStatus.status === "running" ? "running" : apiStatus.status === "completed" ? "idle" : "idle")
+      : "idle";
+    return {
+      ...agent,
+      status,
+      lastRunAt: apiStatus?.lastRunAt || undefined,
+      processedCount: apiStatus?.processedCount || 0,
+      errorCount: apiStatus?.errorCount || 0,
+    };
+  });
+
   const handleViewActivity = (agentId: string, agentName: string) => {
     toast({ 
       title: "Coming Soon", 
@@ -785,54 +812,82 @@ function AgentsTabContent() {
 
       <ScrollArea className="flex-1">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-4">
-          {backgroundAgents.map((agent) => {
-            const IconComponent = agent.icon;
-
-            return (
-              <Card key={agent.id} className="flex flex-col" data-testid={`card-agent-${agent.id}`}>
+          {isLoading ? (
+            Array.from({ length: 6 }).map((_, i) => (
+              <Card key={i} className="flex flex-col" data-testid={`card-agent-skeleton-${i}`}>
                 <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className={`p-2 rounded-lg ${agent.status === "running" ? "bg-green-100 dark:bg-green-900/30" : "bg-muted"}`}>
-                        <IconComponent className={`w-4 h-4 ${agent.status === "running" ? "text-green-600 dark:text-green-400" : ""}`} />
-                      </div>
-                      <div>
-                        <CardTitle className="text-sm font-medium">{agent.name}</CardTitle>
-                      </div>
-                    </div>
-                    {getAgentStatusBadge(agent.status)}
-                  </div>
+                  <Skeleton className="h-10 w-full" />
                 </CardHeader>
-                <CardContent className="flex-1 flex flex-col gap-3">
-                  <p className="text-sm text-muted-foreground">{agent.description}</p>
-                  
-                  <div className="space-y-2 text-xs">
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <RefreshCw className="w-3 h-3" />
-                      <span>{agent.frequency}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <CheckCircle2 className="w-3 h-3 text-green-500" />
-                      <span>Runs automatically</span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 mt-auto pt-3">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="flex-1"
-                      onClick={() => handleViewActivity(agent.id, agent.name)}
-                      data-testid={`button-view-agent-${agent.id}`}
-                    >
-                      <Activity className="w-3 h-3 mr-1" />
-                      View Activity
-                    </Button>
-                  </div>
+                <CardContent>
+                  <Skeleton className="h-16 w-full mb-3" />
+                  <Skeleton className="h-4 w-24" />
                 </CardContent>
               </Card>
-            );
-          })}
+            ))
+          ) : (
+            backgroundAgents.map((agent) => {
+              const IconComponent = agent.icon;
+
+              return (
+                <Card key={agent.id} className="flex flex-col" data-testid={`card-agent-${agent.id}`}>
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className={`p-2 rounded-lg ${agent.status === "running" ? "bg-green-100 dark:bg-green-900/30" : agent.status === "error" ? "bg-red-100 dark:bg-red-900/30" : "bg-muted"}`}>
+                          <IconComponent className={`w-4 h-4 ${agent.status === "running" ? "text-green-600 dark:text-green-400" : agent.status === "error" ? "text-red-600 dark:text-red-400" : ""}`} />
+                        </div>
+                        <div>
+                          <CardTitle className="text-sm font-medium">{agent.name}</CardTitle>
+                        </div>
+                      </div>
+                      {getAgentStatusBadge(agent.status)}
+                    </div>
+                  </CardHeader>
+                  <CardContent className="flex-1 flex flex-col gap-3">
+                    <p className="text-sm text-muted-foreground">{agent.description}</p>
+                    
+                    <div className="space-y-2 text-xs">
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <RefreshCw className="w-3 h-3" />
+                        <span>{agent.frequency}</span>
+                      </div>
+                      {agent.lastRunAt && (
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <Clock className="w-3 h-3" />
+                          <span>Last run: {formatDistanceToNow(new Date(agent.lastRunAt), { addSuffix: true })}</span>
+                        </div>
+                      )}
+                      {(agent.processedCount !== undefined && agent.processedCount > 0) && (
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <CheckCircle2 className="w-3 h-3 text-green-500" />
+                          <span>Processed: {agent.processedCount}</span>
+                        </div>
+                      )}
+                      {(agent.errorCount !== undefined && agent.errorCount > 0) && (
+                        <div className="flex items-center gap-2 text-red-500">
+                          <AlertCircle className="w-3 h-3" />
+                          <span>Errors: {agent.errorCount}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2 mt-auto pt-3">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => handleViewActivity(agent.id, agent.name)}
+                        data-testid={`button-view-agent-${agent.id}`}
+                      >
+                        <Activity className="w-3 h-3 mr-1" />
+                        View Activity
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })
+          )}
         </div>
       </ScrollArea>
     </div>

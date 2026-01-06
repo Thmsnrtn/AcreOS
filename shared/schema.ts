@@ -725,6 +725,19 @@ export const agentTasks = pgTable("agent_tasks", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Background Agent Runs (tracking status of automated agents)
+export const agentRuns = pgTable("agent_runs", {
+  id: serial("id").primaryKey(),
+  agentName: text("agent_name").notNull().unique(), // lead_nurturer, campaign_optimizer, finance_agent, sequence_processor, alerting_service, digest_service
+  status: text("status").notNull().default("idle"), // idle, running, completed, failed
+  lastRunAt: timestamp("last_run_at"),
+  nextRunAt: timestamp("next_run_at"),
+  processedCount: integer("processed_count").default(0),
+  errorCount: integer("error_count").default(0),
+  lastError: text("last_error"),
+  metadata: jsonb("metadata").$type<Record<string, any>>(),
+});
+
 // Conversations (for buyer communication agent)
 export const conversations = pgTable("conversations", {
   id: serial("id").primaryKey(),
@@ -1237,6 +1250,9 @@ export const insertAgentConfigSchema = createInsertSchema(agentConfigs).omit({
 export const insertAgentTaskSchema = createInsertSchema(agentTasks).omit({ 
   id: true, createdAt: true, startedAt: true, completedAt: true 
 });
+export const insertAgentRunSchema = createInsertSchema(agentRuns).omit({ 
+  id: true 
+});
 export const insertConversationSchema = createInsertSchema(conversations).omit({ 
   id: true, createdAt: true 
 });
@@ -1331,6 +1347,10 @@ export type InsertAgentConfig = z.infer<typeof insertAgentConfigSchema>;
 // Agent Tasks
 export type AgentTask = typeof agentTasks.$inferSelect;
 export type InsertAgentTask = z.infer<typeof insertAgentTaskSchema>;
+
+// Agent Runs (background agent status)
+export type AgentRun = typeof agentRuns.$inferSelect;
+export type InsertAgentRun = z.infer<typeof insertAgentRunSchema>;
 
 // Conversations
 export type Conversation = typeof conversations.$inferSelect;

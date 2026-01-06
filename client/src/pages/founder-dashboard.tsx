@@ -1,8 +1,12 @@
+import { useState } from "react";
 import { Sidebar } from "@/components/layout-sidebar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -27,9 +31,11 @@ import {
   Zap,
   Mail,
   Map,
-  MessageSquare
+  MessageSquare,
+  Lightbulb,
+  FileText
 } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, format } from "date-fns";
 
 interface AdminDashboardData {
   revenue: {
@@ -115,6 +121,65 @@ interface ApiUsageStats {
   recentUsage: Array<{ date: string; costCents: number }>;
 }
 
+interface FeatureRequest {
+  id: number;
+  organizationId: number | null;
+  userId: string;
+  title: string;
+  description: string;
+  category: string;
+  priority: string | null;
+  status: string | null;
+  founderNotes: string | null;
+  upvotes: number | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  organizationName?: string;
+}
+
+const FEATURE_STATUS_OPTIONS = [
+  { value: "submitted", label: "Submitted" },
+  { value: "under_review", label: "Under Review" },
+  { value: "planned", label: "Planned" },
+  { value: "in_progress", label: "In Progress" },
+  { value: "completed", label: "Completed" },
+  { value: "declined", label: "Declined" },
+];
+
+const FEATURE_PRIORITY_OPTIONS = [
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+];
+
+const FEATURE_CATEGORY_LABELS: Record<string, string> = {
+  enhancement: "Enhancement",
+  new_feature: "New Feature",
+  integration: "Integration",
+  ux: "UX",
+};
+
+function getStatusBadgeColor(status: string | null) {
+  switch (status) {
+    case 'submitted': return 'bg-gray-500/10 text-gray-600 border-gray-500/20';
+    case 'under_review': return 'bg-blue-500/10 text-blue-600 border-blue-500/20';
+    case 'planned': return 'bg-purple-500/10 text-purple-600 border-purple-500/20';
+    case 'in_progress': return 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20';
+    case 'completed': return 'bg-green-500/10 text-green-600 border-green-500/20';
+    case 'declined': return 'bg-red-500/10 text-red-600 border-red-500/20';
+    default: return 'bg-gray-500/10 text-gray-600 border-gray-500/20';
+  }
+}
+
+function getPriorityBadgeColor(priority: string | null) {
+  switch (priority) {
+    case 'high': return 'bg-red-500/10 text-red-600 border-red-500/20';
+    case 'medium': return 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20';
+    case 'low': return 'bg-green-500/10 text-green-600 border-green-500/20';
+    default: return 'bg-gray-500/10 text-gray-600 border-gray-500/20';
+  }
+}
+
 function formatCurrency(cents: number): string {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
@@ -125,6 +190,9 @@ function formatCurrency(cents: number): string {
 
 export default function FounderDashboard() {
   const { toast } = useToast();
+  const [notesModalOpen, setNotesModalOpen] = useState(false);
+  const [selectedFeatureRequest, setSelectedFeatureRequest] = useState<FeatureRequest | null>(null);
+  const [notesValue, setNotesValue] = useState("");
 
   const { data: dashboardData, isLoading } = useQuery<AdminDashboardData>({
     queryKey: ['/api/admin/dashboard'],
@@ -137,6 +205,50 @@ export default function FounderDashboard() {
   const { data: apiUsageData } = useQuery<ApiUsageStats>({
     queryKey: ['/api/founder/api-usage'],
   });
+
+  const { data: featureRequests, isLoading: featureRequestsLoading } = useQuery<FeatureRequest[]>({
+    queryKey: ['/api/founder/feature-requests'],
+  });
+
+  const updateFeatureRequestMutation = useMutation({
+    mutationFn: async ({ id, updates }: { id: number; updates: Partial<{ status: string; priority: string; founderNotes: string }> }) => {
+      const res = await apiRequest("PATCH", `/api/founder/feature-requests/${id}`, updates);
+      if (!res.ok) throw new Error("Failed to update feature request");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/founder/feature-requests'] });
+      toast({ title: "Feature request updated" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const handleStatusChange = (id: number, status: string) => {
+    updateFeatureRequestMutation.mutate({ id, updates: { status } });
+  };
+
+  const handlePriorityChange = (id: number, priority: string) => {
+    updateFeatureRequestMutation.mutate({ id, updates: { priority } });
+  };
+
+  const handleOpenNotesModal = (request: FeatureRequest) => {
+    setSelectedFeatureRequest(request);
+    setNotesValue(request.founderNotes || "");
+    setNotesModalOpen(true);
+  };
+
+  const handleSaveNotes = () => {
+    if (selectedFeatureRequest) {
+      updateFeatureRequestMutation.mutate({ 
+        id: selectedFeatureRequest.id, 
+        updates: { founderNotes: notesValue } 
+      });
+      setNotesModalOpen(false);
+      setSelectedFeatureRequest(null);
+    }
+  };
 
   const acknowledgeMutation = useMutation({
     mutationFn: async (alertId: number) => {
@@ -558,6 +670,123 @@ export default function FounderDashboard() {
             </Card>
           </div>
 
+          {/* Feature Requests Section */}
+          <Card data-testid="card-feature-requests">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Lightbulb className="w-5 h-5 text-amber-500" />
+                Feature Requests
+              </CardTitle>
+              <CardDescription>Review and manage feature requests from users</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {featureRequestsLoading ? (
+                <div className="space-y-3">
+                  {[1, 2, 3].map((i) => (
+                    <Skeleton key={i} className="h-16" />
+                  ))}
+                </div>
+              ) : featureRequests && featureRequests.length > 0 ? (
+                <div className="space-y-3 max-h-[500px] overflow-y-auto">
+                  {featureRequests.map((request) => (
+                    <div
+                      key={request.id}
+                      className="flex flex-col gap-3 p-4 rounded-lg border bg-card"
+                      data-testid={`feature-request-${request.id}`}
+                    >
+                      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <h4 className="font-medium truncate" data-testid={`text-feature-title-${request.id}`}>
+                            {request.title}
+                          </h4>
+                          <p className="text-sm text-muted-foreground line-clamp-2 mt-1">
+                            {request.description}
+                          </p>
+                          <div className="flex flex-wrap items-center gap-2 mt-2">
+                            <Badge variant="outline" data-testid={`badge-category-${request.id}`}>
+                              {FEATURE_CATEGORY_LABELS[request.category] || request.category}
+                            </Badge>
+                            {request.organizationName && (
+                              <span className="text-xs text-muted-foreground" data-testid={`text-org-${request.id}`}>
+                                {request.organizationName}
+                              </span>
+                            )}
+                            <span className="text-xs text-muted-foreground" data-testid={`text-date-${request.id}`}>
+                              {request.createdAt ? format(new Date(request.createdAt), "MMM d, yyyy") : "N/A"}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant="outline" className={getStatusBadgeColor(request.status)} data-testid={`badge-status-${request.id}`}>
+                            {FEATURE_STATUS_OPTIONS.find(s => s.value === request.status)?.label || request.status}
+                          </Badge>
+                          <Badge variant="outline" className={getPriorityBadgeColor(request.priority)} data-testid={`badge-priority-${request.id}`}>
+                            {FEATURE_PRIORITY_OPTIONS.find(p => p.value === request.priority)?.label || request.priority}
+                          </Badge>
+                        </div>
+                      </div>
+                      <div className="flex flex-col md:flex-row md:items-center gap-2 pt-2 border-t">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-muted-foreground">Status:</span>
+                          <Select
+                            value={request.status || "submitted"}
+                            onValueChange={(value) => handleStatusChange(request.id, value)}
+                          >
+                            <SelectTrigger className="w-[140px]" data-testid={`select-status-${request.id}`}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {FEATURE_STATUS_OPTIONS.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-muted-foreground">Priority:</span>
+                          <Select
+                            value={request.priority || "medium"}
+                            onValueChange={(value) => handlePriorityChange(request.id, value)}
+                          >
+                            <SelectTrigger className="w-[100px]" data-testid={`select-priority-${request.id}`}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {FEATURE_PRIORITY_OPTIONS.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleOpenNotesModal(request)}
+                          data-testid={`button-notes-${request.id}`}
+                        >
+                          <FileText className="w-3 h-3 mr-1" />
+                          {request.founderNotes ? "Edit Notes" : "Add Notes"}
+                        </Button>
+                      </div>
+                      {request.founderNotes && (
+                        <div className="text-sm bg-muted/50 p-2 rounded" data-testid={`text-notes-${request.id}`}>
+                          <span className="font-medium">Notes: </span>
+                          {request.founderNotes}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No feature requests yet.</p>
+              )}
+            </CardContent>
+          </Card>
+
           {alerts && alerts.length > 0 && (
             <Card data-testid="card-all-alerts">
               <CardHeader>
@@ -637,6 +866,43 @@ export default function FounderDashboard() {
           )}
         </div>
       </main>
+
+      {/* Notes Modal */}
+      <Dialog open={notesModalOpen} onOpenChange={setNotesModalOpen}>
+        <DialogContent data-testid="dialog-feature-notes">
+          <DialogHeader>
+            <DialogTitle>Founder Notes</DialogTitle>
+            <DialogDescription>
+              {selectedFeatureRequest && (
+                <>Add internal notes for "{selectedFeatureRequest.title}"</>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={notesValue}
+            onChange={(e) => setNotesValue(e.target.value)}
+            placeholder="Enter internal notes about this feature request..."
+            className="min-h-[120px]"
+            data-testid="textarea-founder-notes"
+          />
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => setNotesModalOpen(false)}
+              data-testid="button-cancel-notes"
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleSaveNotes}
+              disabled={updateFeatureRequestMutation.isPending}
+              data-testid="button-save-notes"
+            >
+              {updateFeatureRequestMutation.isPending ? "Saving..." : "Save Notes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

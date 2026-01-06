@@ -22,7 +22,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, MapPin, Ruler, DollarSign, Trash2, Loader2, Map as MapIcon, RefreshCw, FileText, Download, Upload, CheckCircle, AlertCircle, ClipboardCheck, Printer, Calculator, BarChart2 } from "lucide-react";
+import { Plus, MapPin, Ruler, DollarSign, Trash2, Loader2, Map as MapIcon, RefreshCw, FileText, Download, Upload, CheckCircle, AlertCircle, ClipboardCheck, Printer, Calculator, BarChart2, X, CheckSquare } from "lucide-react";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import { DealCalculator } from "@/components/deal-calculator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DialogDescription, DialogFooter } from "@/components/ui/dialog";
@@ -62,6 +64,83 @@ export default function PropertiesPage() {
     errors: Array<{ row: number; data: Record<string, string>; error: string }>;
   } | null>(null);
   const { mutate: deleteProperty, isPending: isDeleting } = useDeleteProperty();
+  const [selectedPropertyIds, setSelectedPropertyIds] = useState<Set<number>>(new Set());
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const [isBulkUpdating, setIsBulkUpdating] = useState(false);
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+  const { toast } = useToast();
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked && properties) {
+      setSelectedPropertyIds(new Set(properties.map(p => p.id)));
+    } else {
+      setSelectedPropertyIds(new Set());
+    }
+  };
+
+  const handleSelectProperty = (propertyId: number, checked: boolean) => {
+    const newSet = new Set(selectedPropertyIds);
+    if (checked) {
+      newSet.add(propertyId);
+    } else {
+      newSet.delete(propertyId);
+    }
+    setSelectedPropertyIds(newSet);
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedPropertyIds.size === 0) return;
+    setIsBulkDeleting(true);
+    try {
+      const res = await apiRequest("POST", "/api/properties/bulk-delete", { ids: Array.from(selectedPropertyIds) });
+      if (!res.ok) throw new Error("Failed to delete properties");
+      const result = await res.json();
+      toast({ title: "Success", description: `Deleted ${result.deletedCount} properties.` });
+      setSelectedPropertyIds(new Set());
+      queryClient.invalidateQueries({ queryKey: ["/api/properties"] });
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to delete properties", variant: "destructive" });
+    } finally {
+      setIsBulkDeleting(false);
+      setShowBulkDeleteConfirm(false);
+    }
+  };
+
+  const handleBulkStatusChange = async (status: string) => {
+    if (selectedPropertyIds.size === 0) return;
+    setIsBulkUpdating(true);
+    try {
+      const res = await apiRequest("POST", "/api/properties/bulk-update", { ids: Array.from(selectedPropertyIds), updates: { status } });
+      if (!res.ok) throw new Error("Failed to update properties");
+      const result = await res.json();
+      toast({ title: "Success", description: `Updated ${result.updatedCount} properties to "${status}".` });
+      setSelectedPropertyIds(new Set());
+      queryClient.invalidateQueries({ queryKey: ["/api/properties"] });
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to update properties", variant: "destructive" });
+    } finally {
+      setIsBulkUpdating(false);
+    }
+  };
+
+  const handleBulkExportProperties = () => {
+    if (selectedPropertyIds.size === 0) return;
+    const selectedProps = properties?.filter(p => selectedPropertyIds.has(p.id)) || [];
+    const headers = ["apn", "county", "state", "sizeAcres", "status", "purchasePrice", "marketValue"];
+    const csvRows = [headers.join(",")];
+    selectedProps.forEach(prop => {
+      csvRows.push([prop.apn, prop.county, prop.state, prop.sizeAcres || "", prop.status, prop.purchasePrice || "", prop.marketValue || ""].map(v => `"${v || ""}"`).join(","));
+    });
+    const blob = new Blob([csvRows.join("\n")], { type: "text/csv" });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `properties-export-${new Date().toISOString().split("T")[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  };
 
   const handleExport = async () => {
     setIsExporting(true);
@@ -209,6 +288,50 @@ export default function PropertiesPage() {
             </div>
           </div>
 
+          {selectedPropertyIds.size > 0 && (
+            <div className="p-3 bg-muted/50 border rounded-md flex flex-wrap items-center gap-3" data-testid="bulk-actions-toolbar-properties">
+              <div className="flex items-center gap-2">
+                <CheckSquare className="w-4 h-4" />
+                <span className="text-sm font-medium" data-testid="text-selected-properties-count">{selectedPropertyIds.size} propert{selectedPropertyIds.size !== 1 ? "ies" : "y"} selected</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 ml-auto">
+                <Button variant="outline" size="sm" onClick={handleBulkExportProperties} data-testid="button-bulk-export-properties">
+                  <Download className="w-4 h-4 mr-1" /> Export
+                </Button>
+                <Select onValueChange={handleBulkStatusChange} disabled={isBulkUpdating}>
+                  <SelectTrigger className="w-[150px]" data-testid="select-bulk-status-properties">
+                    <SelectValue placeholder={isBulkUpdating ? "Updating..." : "Change Status"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="available">Available</SelectItem>
+                    <SelectItem value="under_contract">Under Contract</SelectItem>
+                    <SelectItem value="due_diligence">Due Diligence</SelectItem>
+                    <SelectItem value="closing">Closing</SelectItem>
+                    <SelectItem value="sold">Sold</SelectItem>
+                    <SelectItem value="listed">Listed</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button variant="destructive" size="sm" onClick={() => setShowBulkDeleteConfirm(true)} disabled={isBulkDeleting} data-testid="button-bulk-delete-properties">
+                  <Trash2 className="w-4 h-4 mr-1" /> Delete
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setSelectedPropertyIds(new Set())} data-testid="button-clear-selection-properties">
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {!isLoading && properties && properties.length > 0 && (
+            <div className="flex items-center gap-2 p-2 bg-muted/30 rounded-md">
+              <Checkbox
+                checked={properties.length > 0 && selectedPropertyIds.size === properties.length}
+                onCheckedChange={(checked) => handleSelectAll(checked === true)}
+                data-testid="checkbox-select-all-properties"
+              />
+              <span className="text-sm text-muted-foreground">Select All</span>
+            </div>
+          )}
+
           {isLoading ? (
             <div data-testid="skeleton-properties-grid">
               <ListSkeleton count={6} variant="card" />
@@ -216,11 +339,20 @@ export default function PropertiesPage() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {properties?.map((property) => (
-                <PropertyCard 
-                  key={property.id} 
-                  property={property} 
-                  onDelete={() => setDeletingProperty(property)}
-                />
+                <div key={property.id} className="relative">
+                  <div className="absolute top-3 left-3 z-10">
+                    <Checkbox
+                      checked={selectedPropertyIds.has(property.id)}
+                      onCheckedChange={(checked) => handleSelectProperty(property.id, checked === true)}
+                      data-testid={`checkbox-property-${property.id}`}
+                      className="bg-background/80"
+                    />
+                  </div>
+                  <PropertyCard 
+                    property={property} 
+                    onDelete={() => setDeletingProperty(property)}
+                  />
+                </div>
               ))}
               {properties?.length === 0 && (
                 <div className="col-span-full">
@@ -252,6 +384,17 @@ export default function PropertiesPage() {
         confirmLabel="Delete Property"
         onConfirm={handleDelete}
         isLoading={isDeleting}
+        variant="destructive"
+      />
+
+      <ConfirmDialog
+        open={showBulkDeleteConfirm}
+        onOpenChange={(open) => !open && setShowBulkDeleteConfirm(false)}
+        title="Delete Selected Properties"
+        description={`Are you sure you want to delete ${selectedPropertyIds.size} propert${selectedPropertyIds.size !== 1 ? "ies" : "y"}? This action cannot be undone and will permanently remove them from your inventory.`}
+        confirmLabel={`Delete ${selectedPropertyIds.size} Propert${selectedPropertyIds.size !== 1 ? "ies" : "y"}`}
+        onConfirm={handleBulkDelete}
+        isLoading={isBulkDeleting}
         variant="destructive"
       />
 
