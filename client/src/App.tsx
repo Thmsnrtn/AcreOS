@@ -38,6 +38,8 @@ import MailSettingsPage from "@/pages/mail-settings";
 import InboxPage from "@/pages/inbox";
 import AuthPage from "@/pages/auth-page";
 import BorrowerPortal from "@/pages/borrower-portal";
+import TermsOfService from "@/pages/terms";
+import PrivacyPolicy from "@/pages/privacy";
 import NotFound from "@/pages/not-found";
 import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
 import { MobileBottomNav } from "@/components/mobile-bottom-nav";
@@ -92,6 +94,8 @@ function Router() {
   return (
     <Switch>
       <Route path="/auth" component={AuthPage} />
+      <Route path="/terms" component={TermsOfService} />
+      <Route path="/privacy" component={PrivacyPolicy} />
       
       {/* Public Borrower Portal */}
       <Route path="/portal" component={BorrowerPortal} />
