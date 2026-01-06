@@ -68,7 +68,7 @@ Preferred communication style: Simple, everyday language.
     - **Chat Tab**: Conversational AI interface with specialized agents (Research, Marketing, etc.)
     - **Team Tab**: AI team management for coordinating agent activities
     - **Tasks Tab**: Create and track agent tasks across 6 types: Research, Marketing, Lead Nurturing, Campaign, Finance, Support
-    - **Agents Tab**: View background agent services with status, run frequency, and activity (uses static status, no real-time API yet)
+    - **Agents Tab**: View background agent services with real-time status, run frequency, processed counts, and error tracking (30-second auto-refresh from `/api/agents/status`)
     - **AI Settings**: Response style, default agent, auto-suggestions toggle, context memory preferences (accessible from AI section header or Settings)
 - **Founder Dashboard**: Analytics for revenue, system health, agent status, and alert management.
 - **Team Performance Dashboard**: SQL-based aggregation for scalability (handles 10k+ records), includes lead metrics, deal metrics, task metrics, activity trends (from leadActivities table), and response times with 5-minute caching.
@@ -126,7 +126,18 @@ Preferred communication style: Simple, everyday language.
 ### Feature Requests
 - Users can submit feature/enhancement requests via Help > Support tab
 - Stored in `featureRequests` table with title, description, category, status, priority
-- Founder can review requests in database (admin UI pending)
+- **Admin UI**: Founder Dashboard (`/founder`) includes Feature Requests section with:
+  - View all requests across organizations
+  - Update status (submitted, under_review, planned, in_progress, completed, declined)
+  - Set priority (low, medium, high)
+  - Add founder notes for internal tracking
+
+### Bulk Operations
+- **Leads Page**: Multi-select checkboxes, bulk delete, bulk status change, bulk export to CSV
+- **Properties Page**: Multi-select checkboxes, bulk delete, bulk status change, bulk export to CSV
+- All bulk operations respect organization isolation (org-scoped queries)
+- Confirmation dialogs for destructive actions
+- Audit logging for all bulk operations
 
 ### AI Section Improvements
 - Renamed from "AI Command Center" to "AI" in navigation
@@ -165,15 +176,15 @@ Preferred communication style: Simple, everyday language.
 ## Roadmap & Future Enhancements
 
 ### Near-Term (Next Session)
-- [ ] Admin UI for reviewing feature requests
-- [ ] Real-time AI agent status API (currently static)
+- [x] Admin UI for reviewing feature requests ✓
+- [x] Real-time AI agent status API ✓
+- [x] Bulk operations on leads/properties ✓
 - [ ] SendGrid email integration (configured but not connected)
 - [ ] Twilio SMS integration (configured but not connected)
 
 ### Medium-Term
 - [ ] Borrower portal authentication (currently uses shared links)
 - [ ] Advanced document template system
-- [ ] Bulk operations on leads/properties
 - [ ] Mobile app testing (Capacitor config exists)
 
 ### Long-Term
