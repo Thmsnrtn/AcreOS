@@ -1,4 +1,6 @@
 import Lob from 'lob';
+import { storage } from '../storage';
+import { decryptJsonCredentials } from './encryption';
 
 // Cost structure (in cents) - our pricing to users
 export const DIRECT_MAIL_COSTS = {
@@ -54,6 +56,7 @@ export interface SendResult {
   id: string;
   expectedDeliveryDate: string;
   isTestMode: boolean;
+  credentialSource?: 'organization' | 'platform';
 }
 
 export class DirectMailService {
@@ -128,8 +131,62 @@ export class DirectMailService {
     }
   }
 
-  async sendPostcard(options: PostcardOptions, mode: MailMode = 'live'): Promise<SendResult> {
-    const lob = this.getLobClient(mode);
+  async getOrgLobClient(orgId: number): Promise<{ client: any; source: 'organization' | 'platform' } | null> {
+    try {
+      const integration = await storage.getOrganizationIntegration(orgId, 'lob');
+      
+      if (integration && integration.isEnabled && integration.credentials?.encrypted) {
+        const decrypted = decryptJsonCredentials<{ apiKey: string }>(
+          integration.credentials.encrypted,
+          orgId
+        );
+        
+        if (decrypted.apiKey) {
+          console.log(`[DirectMail] Using organization Lob credentials for org ${orgId}`);
+          return {
+            client: new Lob({ apiKey: decrypted.apiKey }),
+            source: 'organization',
+          };
+        }
+      }
+    } catch (error) {
+      console.error(`[DirectMail] Failed to get org Lob credentials for org ${orgId}:`, error);
+    }
+    
+    return null;
+  }
+
+  async hasOrgLobCredentials(orgId: number): Promise<boolean> {
+    try {
+      const integration = await storage.getOrganizationIntegration(orgId, 'lob');
+      if (integration && integration.isEnabled && integration.credentials?.encrypted) {
+        const decrypted = decryptJsonCredentials<{ apiKey: string }>(
+          integration.credentials.encrypted,
+          orgId
+        );
+        return !!decrypted.apiKey;
+      }
+    } catch (error) {
+      console.error(`[DirectMail] Failed to check org Lob credentials for org ${orgId}:`, error);
+    }
+    return false;
+  }
+
+  async sendPostcard(options: PostcardOptions, mode: MailMode = 'live', orgId?: number): Promise<SendResult> {
+    let lob: any;
+    let credentialSource: 'organization' | 'platform' = 'platform';
+    
+    if (orgId) {
+      const orgClient = await this.getOrgLobClient(orgId);
+      if (orgClient) {
+        lob = orgClient.client;
+        credentialSource = orgClient.source;
+      }
+    }
+    
+    if (!lob) {
+      lob = this.getLobClient(mode);
+    }
     
     const result = await lob.postcards.create({
       to: {
@@ -157,11 +214,25 @@ export class DirectMailService {
       id: result.id,
       expectedDeliveryDate: result.expected_delivery_date,
       isTestMode: mode === 'test',
+      credentialSource,
     };
   }
 
-  async sendLetter(options: LetterOptions, mode: MailMode = 'live'): Promise<SendResult> {
-    const lob = this.getLobClient(mode);
+  async sendLetter(options: LetterOptions, mode: MailMode = 'live', orgId?: number): Promise<SendResult> {
+    let lob: any;
+    let credentialSource: 'organization' | 'platform' = 'platform';
+    
+    if (orgId) {
+      const orgClient = await this.getOrgLobClient(orgId);
+      if (orgClient) {
+        lob = orgClient.client;
+        credentialSource = orgClient.source;
+      }
+    }
+    
+    if (!lob) {
+      lob = this.getLobClient(mode);
+    }
     
     const result = await lob.letters.create({
       to: {
@@ -189,6 +260,7 @@ export class DirectMailService {
       id: result.id,
       expectedDeliveryDate: result.expected_delivery_date,
       isTestMode: mode === 'test',
+      credentialSource,
     };
   }
 

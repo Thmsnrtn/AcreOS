@@ -3707,8 +3707,12 @@ export async function registerRoutes(
       };
 
       const { directMailService, DIRECT_MAIL_COSTS } = await import("./services/directMail");
-      if (!directMailService.isAvailable()) {
-        return res.status(503).json({ error: "Direct mail service not configured. Please add LOB_API_KEY." });
+      
+      // Check if org has their own Lob credentials (BYOK) - if so, skip credit check
+      const usingOrgLobCredentials = await directMailService.hasOrgLobCredentials(org.id);
+      
+      if (!usingOrgLobCredentials && !directMailService.isAvailable()) {
+        return res.status(503).json({ error: "Direct mail service not configured. Please add LOB_API_KEY or configure your own Lob API key in Integrations." });
       }
 
       const campaign = await storage.getCampaign(org.id, campaignId);
@@ -3737,15 +3741,20 @@ export async function registerRoutes(
       const costPerPiece = DIRECT_MAIL_COSTS[pieceType];
       const totalCost = costPerPiece * leadIds.length;
 
-      const balance = await creditService.getBalance(org.id);
-      if (balance < totalCost) {
-        return res.status(402).json({
-          error: "Insufficient credits",
-          required: totalCost / 100,
-          balance: balance / 100,
-          perPiece: costPerPiece / 100,
-          recipientCount: leadIds.length,
-        });
+      // Only check credits if NOT using org Lob credentials (BYOK)
+      if (!usingOrgLobCredentials) {
+        const balance = await creditService.getBalance(org.id);
+        if (balance < totalCost) {
+          return res.status(402).json({
+            error: "Insufficient credits",
+            required: totalCost / 100,
+            balance: balance / 100,
+            perPiece: costPerPiece / 100,
+            recipientCount: leadIds.length,
+          });
+        }
+      } else {
+        console.log(`[DirectMailRoute] Skipping credit pre-check for org ${org.id} - using org Lob credentials`);
       }
 
       const leadsData = await Promise.all(
@@ -3757,15 +3766,21 @@ export async function registerRoutes(
         return res.status(400).json({ error: "No valid recipients with complete addresses" });
       }
 
-      const deductResult = await creditService.deductCredits(
-        org.id,
-        costPerPiece * validLeads.length,
-        `Direct mail campaign: ${campaign.name} - ${validLeads.length} pieces`,
-        { campaignId, pieceType, recipientCount: validLeads.length }
-      );
+      // Only deduct credits if NOT using org Lob credentials (BYOK)
+      let deductResult: any = true;
+      if (!usingOrgLobCredentials) {
+        deductResult = await creditService.deductCredits(
+          org.id,
+          costPerPiece * validLeads.length,
+          `Direct mail campaign: ${campaign.name} - ${validLeads.length} pieces`,
+          { campaignId, pieceType, recipientCount: validLeads.length }
+        );
 
-      if (!deductResult) {
-        return res.status(402).json({ error: "Insufficient credits" });
+        if (!deductResult) {
+          return res.status(402).json({ error: "Insufficient credits" });
+        }
+      } else {
+        console.log(`[DirectMailRoute] Skipping credit deduction for org ${org.id} - using org Lob credentials`);
       }
 
       // Create return address snapshot from mail sender identity
@@ -3783,6 +3798,7 @@ export async function registerRoutes(
       const mailType = pieceType.startsWith('postcard_') ? 'postcard' : 'letter';
 
       // Create mailing order record with pending status
+      // creditsUsed is 0 when using org Lob credentials (BYOK)
       const mailingOrder = await storage.createMailingOrder({
         organizationId: org.id,
         campaignId,
@@ -3790,9 +3806,9 @@ export async function registerRoutes(
         returnAddressSnapshot,
         mailType,
         totalPieces: validLeads.length,
-        costPerPiece,
-        totalCost: costPerPiece * validLeads.length,
-        creditsUsed: costPerPiece * validLeads.length,
+        costPerPiece: usingOrgLobCredentials ? 0 : costPerPiece,
+        totalCost: usingOrgLobCredentials ? 0 : (costPerPiece * validLeads.length),
+        creditsUsed: usingOrgLobCredentials ? 0 : (costPerPiece * validLeads.length),
         status: 'pending',
       });
 
@@ -3839,7 +3855,7 @@ export async function registerRoutes(
                 zip: lead.zip!,
               },
               from: senderAddress,
-            }, mailMode);
+            }, mailMode, org.id);
           } else {
             result = await directMailService.sendLetter({
               file: campaign.content || '<html><body><p>Letter content</p></body></html>',
@@ -3851,7 +3867,7 @@ export async function registerRoutes(
                 zip: lead.zip!,
               },
               from: senderAddress,
-            }, mailMode);
+            }, mailMode, org.id);
           }
 
           const expectedDeliveryDate = result.expected_delivery_date ? new Date(result.expected_delivery_date) : undefined;
@@ -3905,27 +3921,32 @@ export async function registerRoutes(
         completedAt: new Date(),
       });
 
-      // Record usage only for successful sends
-      if (successCount > 0) {
-        await usageMeteringService.recordUsage(
-          org.id,
-          'direct_mail',
-          successCount,
-          { campaignId, pieceType, mailingOrderId: mailingOrder.id },
-          false // already deducted upfront
-        );
-      }
+      // Record usage and handle refunds only if NOT using org credentials (BYOK)
+      if (!usingOrgLobCredentials) {
+        // Record usage only for successful sends
+        if (successCount > 0) {
+          await usageMeteringService.recordUsage(
+            org.id,
+            'direct_mail',
+            successCount,
+            { campaignId, pieceType, mailingOrderId: mailingOrder.id },
+            false // already deducted upfront
+          );
+        }
 
-      // Refund credits for failed sends
-      if (failCount > 0) {
-        const refundAmount = costPerPiece * failCount;
-        await creditService.addCredits(
-          org.id,
-          refundAmount,
-          'refund',
-          `Refund for ${failCount} failed direct mail pieces in campaign: ${campaign.name}`,
-          { campaignId, pieceType, failedCount: failCount, mailingOrderId: mailingOrder.id }
-        );
+        // Refund credits for failed sends
+        if (failCount > 0) {
+          const refundAmount = costPerPiece * failCount;
+          await creditService.addCredits(
+            org.id,
+            refundAmount,
+            'refund',
+            `Refund for ${failCount} failed direct mail pieces in campaign: ${campaign.name}`,
+            { campaignId, pieceType, failedCount: failCount, mailingOrderId: mailingOrder.id }
+          );
+        }
+      } else {
+        console.log(`[DirectMailRoute] Skipping usage recording for org ${org.id} - using org Lob credentials (BYOK)`);
       }
 
       await storage.updateCampaign(campaignId, {
