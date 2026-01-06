@@ -6302,6 +6302,16 @@ Seller Signature (if applicable)
     }
   });
 
+  api.get("/api/founder/api-usage", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const stats = await storage.getApiUsageStats();
+      res.json(stats);
+    } catch (err: any) {
+      console.error("API usage stats error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   api.get("/api/integrations/status", isAuthenticated, async (req, res) => {
     try {
       const { communicationsService } = await import('./services/communications');

@@ -6,6 +6,25 @@
 import { storage } from '../storage';
 import { decryptJsonCredentials } from './encryption';
 
+async function logRegridApiUsage(
+  orgId: number | undefined,
+  action: string,
+  metadata?: Record<string, any>
+) {
+  try {
+    await storage.logApiUsage({
+      organizationId: orgId || null,
+      service: 'regrid',
+      action,
+      count: 1,
+      estimatedCostCents: 2, // ~$0.02 per call
+      metadata,
+    });
+  } catch (error) {
+    console.error('[CompsService] Failed to log API usage:', error);
+  }
+}
+
 interface RegridParcel {
   type: "Feature";
   geometry: {
@@ -275,6 +294,8 @@ export async function getComparableProperties(
     }
     
     const data = await response.json() as RegridResponse;
+    
+    logRegridApiUsage(orgId, 'parcel_lookup', { resultCount: data.results?.length || 0 });
     
     if (!data.results || data.results.length === 0) {
       return {

@@ -188,6 +188,22 @@ export async function processChat(
     tools: tools.length > 0 ? tools : undefined,
     max_tokens: 2048
   });
+  
+  try {
+    const { storage } = await import('../storage');
+    const estimatedTokens = JSON.stringify(chatMessages).length / 4;
+    const estimatedCostCents = Math.ceil(estimatedTokens * 0.002 / 10);
+    await storage.logApiUsage({
+      organizationId: org.id,
+      service: 'openai',
+      action: 'chat_completion',
+      count: 1,
+      estimatedCostCents,
+      metadata: { model: 'gpt-4o', estimatedTokens: Math.round(estimatedTokens) },
+    });
+  } catch (error) {
+    console.error('[AI Executive] Failed to log API usage:', error);
+  }
 
   let assistantMessage = response.choices[0].message;
   const toolCallsExecuted: any[] = [];

@@ -23,7 +23,11 @@ import {
   UserPlus,
   Crown,
   Eye,
-  Check
+  Check,
+  Zap,
+  Mail,
+  Map,
+  MessageSquare
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
@@ -101,6 +105,16 @@ interface SystemAlert {
   organizationId: number | null;
 }
 
+interface ApiUsageStats {
+  totalCostCents: number;
+  byService: {
+    lob: { count: number; costCents: number };
+    regrid: { count: number; costCents: number };
+    openai: { count: number; costCents: number };
+  };
+  recentUsage: Array<{ date: string; costCents: number }>;
+}
+
 function formatCurrency(cents: number): string {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
@@ -118,6 +132,10 @@ export default function FounderDashboard() {
 
   const { data: alerts } = useQuery<SystemAlert[]>({
     queryKey: ['/api/admin/alerts'],
+  });
+
+  const { data: apiUsageData } = useQuery<ApiUsageStats>({
+    queryKey: ['/api/founder/api-usage'],
   });
 
   const acknowledgeMutation = useMutation({
@@ -458,6 +476,82 @@ export default function FounderDashboard() {
                         {tier}: {count}
                       </Badge>
                     ))}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card data-testid="card-api-usage">
+              <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+                <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                  <Zap className="w-5 h-5 text-orange-500" />
+                  API Usage & Costs
+                </CardTitle>
+                <Badge variant="outline" data-testid="text-api-total-cost">
+                  {formatCurrency(apiUsageData?.totalCostCents || 0)} this month
+                </Badge>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-2">
+                      <Mail className="w-4 h-4 text-blue-500" />
+                      <span className="text-sm">Lob (Direct Mail)</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground" data-testid="text-lob-count">
+                        {apiUsageData?.byService.lob.count || 0} calls
+                      </span>
+                      <Badge variant="outline" data-testid="text-lob-cost">
+                        {formatCurrency(apiUsageData?.byService.lob.costCents || 0)}
+                      </Badge>
+                    </div>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-2">
+                      <Map className="w-4 h-4 text-green-500" />
+                      <span className="text-sm">Regrid (Parcel Data)</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground" data-testid="text-regrid-count">
+                        {apiUsageData?.byService.regrid.count || 0} calls
+                      </span>
+                      <Badge variant="outline" data-testid="text-regrid-cost">
+                        {formatCurrency(apiUsageData?.byService.regrid.costCents || 0)}
+                      </Badge>
+                    </div>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-2">
+                      <MessageSquare className="w-4 h-4 text-purple-500" />
+                      <span className="text-sm">OpenAI (AI Features)</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground" data-testid="text-openai-count">
+                        {apiUsageData?.byService.openai.count || 0} calls
+                      </span>
+                      <Badge variant="outline" data-testid="text-openai-cost">
+                        {formatCurrency(apiUsageData?.byService.openai.costCents || 0)}
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
+                <div className="pt-2 border-t">
+                  <span className="text-xs text-muted-foreground">Last 7 days usage</span>
+                  <div className="flex items-end gap-1 h-12 mt-2">
+                    {apiUsageData?.recentUsage.map((day, i) => {
+                      const maxCost = Math.max(...(apiUsageData?.recentUsage.map(d => d.costCents) || [1]));
+                      const height = maxCost > 0 ? (day.costCents / maxCost) * 100 : 0;
+                      return (
+                        <div
+                          key={i}
+                          className="flex-1 bg-orange-500/20 rounded-t-sm hover:bg-orange-500/40 transition-colors"
+                          style={{ height: `${Math.max(height, 4)}%` }}
+                          title={`${day.date}: ${formatCurrency(day.costCents)}`}
+                          data-testid={`bar-usage-${i}`}
+                        />
+                      );
+                    })}
                   </div>
                 </div>
               </CardContent>

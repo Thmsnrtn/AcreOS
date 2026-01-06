@@ -105,6 +105,8 @@ import {
   type MailingOrderPiece, type InsertMailingOrderPiece,
   featureRequests,
   type FeatureRequest, type InsertFeatureRequest,
+  apiUsageLogs,
+  type ApiUsageLog, type InsertApiUsageLog,
   DEFAULT_DUE_DILIGENCE_TEMPLATES,
   DEFAULT_DEAL_CHECKLIST_TEMPLATES,
 } from "@shared/schema";
@@ -706,6 +708,18 @@ export interface IStorage {
   createFeatureRequest(request: InsertFeatureRequest): Promise<FeatureRequest>;
   updateFeatureRequest(id: number, updates: Partial<FeatureRequest>): Promise<FeatureRequest>;
   getAllFeatureRequestsForFounder(): Promise<FeatureRequest[]>;
+
+  // API Usage Logs
+  logApiUsage(log: InsertApiUsageLog): Promise<void>;
+  getApiUsageStats(startDate?: Date, endDate?: Date): Promise<{
+    totalCostCents: number;
+    byService: {
+      lob: { count: number; costCents: number };
+      regrid: { count: number; costCents: number };
+      openai: { count: number; costCents: number };
+    };
+    recentUsage: Array<{ date: string; costCents: number }>;
+  }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -4939,6 +4953,84 @@ Date: _____________</p>`,
     return await db.select()
       .from(featureRequests)
       .orderBy(desc(featureRequests.createdAt));
+  }
+
+  // API Usage Logs
+  async logApiUsage(log: InsertApiUsageLog): Promise<void> {
+    await db.insert(apiUsageLogs).values(log);
+  }
+
+  async getApiUsageStats(startDate?: Date, endDate?: Date): Promise<{
+    totalCostCents: number;
+    byService: {
+      lob: { count: number; costCents: number };
+      regrid: { count: number; costCents: number };
+      openai: { count: number; costCents: number };
+    };
+    recentUsage: Array<{ date: string; costCents: number }>;
+  }> {
+    const now = new Date();
+    const start = startDate || new Date(now.getFullYear(), now.getMonth(), 1);
+    const end = endDate || now;
+    
+    const conditions = [
+      gte(apiUsageLogs.createdAt, start),
+      lte(apiUsageLogs.createdAt, end),
+    ];
+    
+    const logs = await db.select()
+      .from(apiUsageLogs)
+      .where(and(...conditions));
+    
+    const byService = {
+      lob: { count: 0, costCents: 0 },
+      regrid: { count: 0, costCents: 0 },
+      openai: { count: 0, costCents: 0 },
+    };
+    
+    let totalCostCents = 0;
+    
+    for (const log of logs) {
+      const costCents = log.estimatedCostCents || 0;
+      const logCount = log.count || 1;
+      totalCostCents += costCents;
+      
+      if (log.service === 'lob') {
+        byService.lob.count += logCount;
+        byService.lob.costCents += costCents;
+      } else if (log.service === 'regrid') {
+        byService.regrid.count += logCount;
+        byService.regrid.costCents += costCents;
+      } else if (log.service === 'openai') {
+        byService.openai.count += logCount;
+        byService.openai.costCents += costCents;
+      }
+    }
+    
+    const sevenDaysAgo = new Date(now);
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    
+    const recentLogs = await db.select()
+      .from(apiUsageLogs)
+      .where(gte(apiUsageLogs.createdAt, sevenDaysAgo));
+    
+    const dailyCosts: Record<string, number> = {};
+    for (const log of recentLogs) {
+      if (log.createdAt) {
+        const dateStr = log.createdAt.toISOString().split('T')[0];
+        dailyCosts[dateStr] = (dailyCosts[dateStr] || 0) + (log.estimatedCostCents || 0);
+      }
+    }
+    
+    const recentUsage: Array<{ date: string; costCents: number }> = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().split('T')[0];
+      recentUsage.push({ date: dateStr, costCents: dailyCosts[dateStr] || 0 });
+    }
+    
+    return { totalCostCents, byService, recentUsage };
   }
 }
 

@@ -2,6 +2,26 @@ import Lob from 'lob';
 import { storage } from '../storage';
 import { decryptJsonCredentials } from './encryption';
 
+async function logLobApiUsage(
+  orgId: number | undefined,
+  action: string,
+  estimatedCostCents: number,
+  metadata?: Record<string, any>
+) {
+  try {
+    await storage.logApiUsage({
+      organizationId: orgId || null,
+      service: 'lob',
+      action,
+      count: 1,
+      estimatedCostCents,
+      metadata,
+    });
+  } catch (error) {
+    console.error('[DirectMail] Failed to log API usage:', error);
+  }
+}
+
 // Cost structure (in cents) - our pricing to users
 export const DIRECT_MAIL_COSTS = {
   postcard_4x6: 75,    // $0.75 - small postcard
@@ -210,6 +230,9 @@ export class DirectMailService {
       size: options.size,
     });
     
+    const costCents = options.size === '4x6' ? 80 : options.size === '6x9' ? 95 : 115;
+    logLobApiUsage(orgId, 'send_postcard', costCents, { size: options.size, isTestMode: mode === 'test' });
+    
     return {
       id: result.id,
       expectedDeliveryDate: result.expected_delivery_date,
@@ -255,6 +278,9 @@ export class DirectMailService {
       color: options.color ?? false,
       double_sided: options.doubleSided ?? false,
     });
+    
+    const costCents = (options.pageCount || 1) <= 1 ? 150 : 150 + ((options.pageCount || 1) - 1) * 15;
+    logLobApiUsage(orgId, 'send_letter', costCents, { pageCount: options.pageCount || 1, isTestMode: mode === 'test' });
     
     return {
       id: result.id,

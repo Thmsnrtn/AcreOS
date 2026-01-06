@@ -3557,3 +3557,22 @@ export const insertMailingOrderPieceSchema = createInsertSchema(mailingOrderPiec
 });
 export type InsertMailingOrderPiece = z.infer<typeof insertMailingOrderPieceSchema>;
 export type MailingOrderPiece = typeof mailingOrderPieces.$inferSelect;
+
+// ============================================
+// API USAGE LOGS (Cost Tracking)
+// ============================================
+
+export const apiUsageLogs = pgTable("api_usage_logs", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id),
+  service: text("service").notNull(), // lob, regrid, openai
+  action: text("action").notNull(), // e.g., "send_postcard", "parcel_lookup", "chat_completion"
+  count: integer("count").default(1),
+  estimatedCostCents: integer("estimated_cost_cents").default(0),
+  metadata: jsonb("metadata").$type<Record<string, any>>(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertApiUsageLogSchema = createInsertSchema(apiUsageLogs).omit({ id: true, createdAt: true });
+export type InsertApiUsageLog = z.infer<typeof insertApiUsageLogSchema>;
+export type ApiUsageLog = typeof apiUsageLogs.$inferSelect;
