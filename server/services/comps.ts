@@ -3,6 +3,9 @@
  * Uses Regrid API to find nearby parcels and calculate market value estimates
  */
 
+import { storage } from '../storage';
+import { decryptJsonCredentials } from './encryption';
+
 interface RegridParcel {
   type: "Feature";
   geometry: {
@@ -122,10 +125,52 @@ export interface CompsSearchResult {
   error?: string;
   limitedData?: boolean;
   message?: string;
+  credentialSource?: 'organization' | 'platform';
+}
+
+interface RegridCredentials {
+  apiKey: string;
+  source: 'organization' | 'platform';
 }
 
 const compsCache = new Map<string, { data: CompsSearchResult; timestamp: number }>();
 const CACHE_TTL = 1000 * 60 * 60;
+
+async function getRegridCredentials(orgId?: number): Promise<RegridCredentials | null> {
+  if (orgId) {
+    try {
+      const integration = await storage.getOrganizationIntegration(orgId, 'regrid');
+      
+      if (integration && integration.isEnabled && integration.credentials?.encrypted) {
+        const decrypted = decryptJsonCredentials<{ apiKey: string }>(
+          integration.credentials.encrypted,
+          orgId
+        );
+        
+        if (decrypted.apiKey) {
+          console.log(`[CompsService] Using organization Regrid credentials for org ${orgId}`);
+          return {
+            apiKey: decrypted.apiKey,
+            source: 'organization',
+          };
+        }
+      }
+    } catch (error) {
+      console.error(`[CompsService] Failed to get org Regrid credentials for org ${orgId}:`, error);
+    }
+  }
+  
+  const platformKey = process.env.REGRID_API_KEY;
+  if (platformKey) {
+    console.log(`[CompsService] Using platform Regrid credentials${orgId ? ` for org ${orgId}` : ''}`);
+    return {
+      apiKey: platformKey,
+      source: 'platform',
+    };
+  }
+  
+  return null;
+}
 
 function formatAddress(props: RegridParcel["properties"]): string {
   const parts = [
@@ -180,22 +225,25 @@ export async function getComparableProperties(
   lat: number,
   lng: number,
   radiusMiles: number = 5,
-  filters: CompsFilters = {}
+  filters: CompsFilters = {},
+  orgId?: number
 ): Promise<CompsSearchResult> {
-  const token = process.env.REGRID_API_KEY;
+  const credentials = await getRegridCredentials(orgId);
   
-  if (!token) {
+  if (!credentials) {
     return {
       success: false,
       comps: [],
-      error: "Regrid API key not configured. Please add REGRID_API_KEY to secrets.",
+      error: "Regrid API key not configured. Please add REGRID_API_KEY to secrets or configure your own in Integrations settings.",
     };
   }
+  
+  const { apiKey: token, source } = credentials;
 
   const cacheKey = getCacheKey(lat, lng, radiusMiles, filters);
   const cached = compsCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-    return cached.data;
+    return { ...cached.data, credentialSource: source };
   }
 
   try {
@@ -211,6 +259,7 @@ export async function getComparableProperties(
           comps: [],
           limitedData: true,
           message: "No comparable properties found in this area.",
+          credentialSource: source,
         };
       }
       if (response.status === 403 || response.status === 402) {
@@ -219,6 +268,7 @@ export async function getComparableProperties(
           comps: [],
           error: "Regrid API access limited. Radius search may require a higher tier subscription.",
           limitedData: true,
+          credentialSource: source,
         };
       }
       throw new Error(`Regrid API error: ${response.status}`);
@@ -232,6 +282,7 @@ export async function getComparableProperties(
         comps: [],
         limitedData: true,
         message: "No comparable properties found within the search radius.",
+        credentialSource: source,
       };
     }
 
@@ -297,6 +348,7 @@ export async function getComparableProperties(
       success: true,
       comps,
       limitedData: comps.filter(c => c.salePrice).length < 3,
+      credentialSource: source,
     };
 
     if (result.limitedData) {
@@ -312,6 +364,7 @@ export async function getComparableProperties(
       success: false,
       comps: [],
       error: error instanceof Error ? error.message : "Unknown error fetching comparables",
+      credentialSource: source,
     };
   }
 }
@@ -529,9 +582,10 @@ export async function getPropertyComps(
   subjectAcreage: number,
   radiusMiles: number = 5,
   filters: CompsFilters = {},
-  propertyAttributes?: PropertyAttributes
+  propertyAttributes?: PropertyAttributes,
+  orgId?: number
 ): Promise<CompsSearchResult> {
-  const result = await getComparableProperties(lat, lng, radiusMiles, filters);
+  const result = await getComparableProperties(lat, lng, radiusMiles, filters, orgId);
   
   if (result.success && result.comps.length > 0) {
     const marketAnalysis = calculateMarketValue(subjectAcreage, result.comps)!;

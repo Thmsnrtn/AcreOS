@@ -1560,16 +1560,24 @@ export async function registerRoutes(
         });
       }
       
-      // Credit pre-check for comps query (10 cents per query)
-      const compsCost = await usageMeteringService.calculateCost("comps_query", 1);
-      const hasCredits = await creditService.hasEnoughCredits(org.id, compsCost);
-      if (!hasCredits) {
-        const balance = await creditService.getBalance(org.id);
-        return res.status(402).json({
-          error: "Insufficient credits",
-          required: compsCost / 100,
-          balance: balance / 100,
-        });
+      // Check if org has their own Regrid credentials (BYOK) - if so, skip credit check
+      const regridIntegration = await storage.getOrganizationIntegration(org.id, 'regrid');
+      const usingOrgRegridCredentials = regridIntegration?.isEnabled && regridIntegration?.credentials?.encrypted;
+      
+      if (!usingOrgRegridCredentials) {
+        // Credit pre-check for comps query (10 cents per query) - only when using platform credentials
+        const compsCost = await usageMeteringService.calculateCost("comps_query", 1);
+        const hasCredits = await creditService.hasEnoughCredits(org.id, compsCost);
+        if (!hasCredits) {
+          const balance = await creditService.getBalance(org.id);
+          return res.status(402).json({
+            error: "Insufficient credits",
+            required: compsCost / 100,
+            balance: balance / 100,
+          });
+        }
+      } else {
+        console.log(`[CompsEndpoint] Skipping credit pre-check for org ${org.id} - using org Regrid credentials`);
       }
       
       const radiusMiles = parseFloat(req.query.radius as string) || 5;
@@ -1596,15 +1604,22 @@ export async function registerRoutes(
         city: property.city,
       };
       
-      const result = await getPropertyComps(lat, lng, subjectAcreage, radiusMiles, filters, propertyAttributes);
+      const result = await getPropertyComps(lat, lng, subjectAcreage, radiusMiles, filters, propertyAttributes, org.id);
       
-      // Record usage after successful comps query
-      await usageMeteringService.recordUsage(org.id, "comps_query", 1, {
-        propertyId: property.id,
-        lat,
-        lng,
-        radiusMiles,
-      });
+      // Skip credit recording if using organization's own Regrid credentials (BYOK)
+      const usingOrgCredentials = result.credentialSource === 'organization';
+      
+      if (!usingOrgCredentials) {
+        // Record usage after successful comps query only when using platform credentials
+        await usageMeteringService.recordUsage(org.id, "comps_query", 1, {
+          propertyId: property.id,
+          lat,
+          lng,
+          radiusMiles,
+        });
+      } else {
+        console.log(`[CompsEndpoint] Skipping credit usage for org ${org.id} - using org Regrid credentials`);
+      }
       
       res.json({
         ...result,
@@ -1633,30 +1648,45 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Latitude and longitude are required" });
       }
       
-      // Credit pre-check for comps query (10 cents per query)
-      const compsCost = await usageMeteringService.calculateCost("comps_query", 1);
-      const hasCredits = await creditService.hasEnoughCredits(org.id, compsCost);
-      if (!hasCredits) {
-        const balance = await creditService.getBalance(org.id);
-        return res.status(402).json({
-          error: "Insufficient credits",
-          required: compsCost / 100,
-          balance: balance / 100,
-        });
+      // Check if org has their own Regrid credentials (BYOK) - if so, skip credit check
+      const regridIntegration = await storage.getOrganizationIntegration(org.id, 'regrid');
+      const usingOrgRegridCredentials = regridIntegration?.isEnabled && regridIntegration?.credentials?.encrypted;
+      
+      if (!usingOrgRegridCredentials) {
+        // Credit pre-check for comps query (10 cents per query) - only when using platform credentials
+        const compsCost = await usageMeteringService.calculateCost("comps_query", 1);
+        const hasCredits = await creditService.hasEnoughCredits(org.id, compsCost);
+        if (!hasCredits) {
+          const balance = await creditService.getBalance(org.id);
+          return res.status(402).json({
+            error: "Insufficient credits",
+            required: compsCost / 100,
+            balance: balance / 100,
+          });
+        }
+      } else {
+        console.log(`[CompsSearch] Skipping credit pre-check for org ${org.id} - using org Regrid credentials`);
       }
       
       const radiusMiles = radius || 5;
       const acreage = subjectAcreage || 0;
       
       const { getPropertyComps } = await import("./services/comps");
-      const result = await getPropertyComps(lat, lng, acreage, radiusMiles, filters || {});
+      const result = await getPropertyComps(lat, lng, acreage, radiusMiles, filters || {}, undefined, org.id);
       
-      // Record usage after successful comps search
-      await usageMeteringService.recordUsage(org.id, "comps_query", 1, {
-        lat,
-        lng,
-        radiusMiles,
-      });
+      // Skip credit recording if using organization's own Regrid credentials (BYOK)
+      const usingOrgCredentials = result.credentialSource === 'organization';
+      
+      if (!usingOrgCredentials) {
+        // Record usage after successful comps search only when using platform credentials
+        await usageMeteringService.recordUsage(org.id, "comps_query", 1, {
+          lat,
+          lng,
+          radiusMiles,
+        });
+      } else {
+        console.log(`[CompsSearch] Skipping credit usage for org ${org.id} - using org Regrid credentials`);
+      }
       
       res.json(result);
     } catch (err) {
@@ -6257,7 +6287,7 @@ Seller Signature (if applicable)
         return res.status(400).json({ message: "API key is required" });
       }
       
-      const validProviders = ['sendgrid', 'twilio', 'lob'];
+      const validProviders = ['sendgrid', 'twilio', 'lob', 'regrid'];
       if (!validProviders.includes(provider)) {
         return res.status(400).json({ message: `Invalid provider. Must be one of: ${validProviders.join(', ')}` });
       }
@@ -6331,6 +6361,17 @@ Seller Signature (if applicable)
         testResult = { success: true, message: 'Twilio validation pending - full implementation coming soon' };
       } else if (provider === 'lob') {
         testResult = { success: true, message: 'Lob validation pending - full implementation coming soon' };
+      } else if (provider === 'regrid') {
+        try {
+          const testResponse = await fetch(`https://app.regrid.com/api/v2/parcels/address?query=1600%20Pennsylvania%20Ave%20NW,%20Washington,%20DC&token=${credentials.apiKey}&limit=1`);
+          if (testResponse.status === 401 || testResponse.status === 403) {
+            testResult = { success: false, message: 'Invalid Regrid API key' };
+          } else {
+            testResult = { success: true, message: 'Regrid API key is valid' };
+          }
+        } catch (regridErr: any) {
+          testResult = { success: false, message: `Regrid test failed: ${regridErr.message}` };
+        }
       }
       
       if (testResult.success) {

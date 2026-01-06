@@ -96,7 +96,7 @@ export class FinanceAgentService {
     }
 
     try {
-      await usageMeteringService.recordUsage(orgId, "ai_chat_message", 1, {
+      await usageMeteringService.recordUsage(orgId, "ai_chat", 1, {
         action: "finance_reminder_generation",
         reminderType: type,
       });
@@ -289,6 +289,7 @@ export class FinanceAgentService {
 
     if (status === "default_candidate" && statusChanged) {
       const alert: InsertSystemAlert = {
+        type: "finance_delinquency",
         alertType: "revenue_at_risk",
         severity: "critical",
         title: `Default Candidate: Note #${note.id}`,
@@ -329,7 +330,7 @@ export class FinanceAgentService {
         allNotes.set(note.id, note);
       }
 
-      for (const note of allNotes.values()) {
+      for (const note of Array.from(allNotes.values())) {
         try {
           let borrower: Lead | null = null;
           if (note.borrowerId) {

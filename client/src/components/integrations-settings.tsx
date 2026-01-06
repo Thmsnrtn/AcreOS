@@ -22,7 +22,8 @@ import {
   AlertCircle,
   Key,
   Phone,
-  Send
+  Send,
+  MapPin
 } from "lucide-react";
 import { SiSendgrid, SiTwilio } from "react-icons/si";
 import {
@@ -79,6 +80,16 @@ const PROVIDERS = [
     apiKeyLabel: 'Lob API Key',
     helpUrl: 'https://www.lob.com/docs',
     helpText: 'Connect your Lob account to send direct mail with your own custom return addresses. This creates a more professional impression and allows recipients to respond directly to your business address.',
+  },
+  {
+    id: 'regrid',
+    name: 'Regrid',
+    description: 'Parcel data and comparable property lookups',
+    icon: MapPin,
+    iconColor: 'text-purple-500',
+    apiKeyLabel: 'Regrid API Key',
+    helpUrl: 'https://regrid.com/api',
+    helpText: 'Connect your Regrid account for parcel data and comparable property (comps) analysis. Using your own API key bypasses platform credit usage for comps queries, giving you unlimited lookups based on your Regrid plan.',
   },
 ];
 
@@ -456,6 +467,7 @@ export function IntegrationsSettings() {
                 <InfoCard
                   icon={provider.id === 'sendgrid' ? <Send className="w-4 h-4" /> : 
                         provider.id === 'twilio' ? <Phone className="w-4 h-4" /> : 
+                        provider.id === 'regrid' ? <MapPin className="w-4 h-4" /> :
                         <FileText className="w-4 h-4" />}
                   title={`About ${provider.name}`}
                   description={provider.helpText}

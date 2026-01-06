@@ -309,7 +309,7 @@ Respond in JSON format:
 
           const usageResult = await usageMeteringService.recordUsage(
             organizationId,
-            "ai_response",
+            "ai_chat",
             1,
             { feature: "lead_nurturing", leadId: lead.id }
           );
