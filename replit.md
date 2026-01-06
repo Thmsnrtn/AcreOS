@@ -66,6 +66,17 @@ Preferred communication style: Simple, everyday language.
 - **Founder Dashboard**: Analytics for revenue, system health, agent status, and alert management.
 - **Team Performance Dashboard**: SQL-based aggregation for scalability (handles 10k+ records), includes lead metrics, deal metrics, task metrics, activity trends (from leadActivities table), and response times with 5-minute caching.
 
+### Navigation & UX Organization (January 2026)
+- **Sidebar Navigation**: Consolidated from 24+ items to 17 items for reduced cognitive load
+- **Hub Pages with Tabbed Interfaces**: 
+  - **Marketing Hub** (`/campaigns`): Campaigns, A/B Tests, Sequences tabs
+  - **Insights Hub** (`/analytics`): Analytics, Team, Activity tabs
+  - **Settings** (`/settings`): General, Team, Communications, Notifications, Data, Developer tabs
+  - **Help & Support** (`/help`): Help, Support tabs
+- **URL Hash Navigation**: Deep linking to specific tabs via hash (e.g., `/settings#communications`, `/campaigns#ab-tests`)
+- **Redirect Pages**: Legacy routes (ab-tests, sequences, team-dashboard, activity, support, email-settings, mail-settings) redirect to new tabbed locations
+- **Reusable Content Components**: Extracted page content into components (EmailSettingsContent, MailSettingsContent, CampaignsContent, etc.) for use in both standalone pages and tabbed interfaces
+
 ## External Dependencies
 
 - **Database**: PostgreSQL (main data store), Drizzle Kit (migrations).
