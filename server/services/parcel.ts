@@ -138,26 +138,45 @@ export async function lookupParcelByAPN(
     // Clean the APN - remove dashes and spaces for matching
     const cleanApn = apn.replace(/[-\s]/g, "");
     
-    // Build the URL
-    let url = `https://app.regrid.com/api/v2/parcels/apn/${encodeURIComponent(cleanApn)}?token=${token}&return_geometry=true`;
+    // Try multiple APN formats
+    const apnVariants = [
+      cleanApn,
+      apn.trim(), // Original with dashes/spaces
+      cleanApn.replace(/^0+/, ""), // Without leading zeros
+    ].filter((v, i, arr) => arr.indexOf(v) === i); // Unique only
     
-    if (stateCountyPath) {
-      url += `&path=${encodeURIComponent(stateCountyPath)}`;
-    }
+    let data: RegridResponse | null = null;
+    let lastError = "";
     
-    const response = await fetch(url);
-    
-    if (!response.ok) {
-      if (response.status === 404) {
-        return { found: false, error: "Parcel not found" };
+    for (const apnVariant of apnVariants) {
+      // Build the URL
+      let url = `https://app.regrid.com/api/v2/parcels/apn/${encodeURIComponent(apnVariant)}?token=${token}&return_geometry=true`;
+      
+      if (stateCountyPath) {
+        url += `&path=${encodeURIComponent(stateCountyPath)}`;
       }
-      throw new Error(`Regrid API error: ${response.status}`);
+      
+      console.log(`[Regrid] Trying APN lookup: ${apnVariant} (path: ${stateCountyPath || 'none'})`);
+      
+      const response = await fetch(url);
+      
+      if (response.ok) {
+        const result = await response.json() as RegridResponse;
+        if (result.results && result.results.length > 0) {
+          console.log(`[Regrid] Found parcel with APN variant: ${apnVariant}`);
+          data = result;
+          break;
+        }
+      } else if (response.status === 401 || response.status === 403) {
+        return { found: false, error: "Regrid API key is invalid or expired. Please check your REGRID_API_KEY." };
+      } else if (response.status !== 404) {
+        lastError = `Regrid API error: ${response.status}`;
+      }
     }
     
-    const data = await response.json() as RegridResponse;
-    
-    if (!data.results || data.results.length === 0) {
-      return { found: false, error: "Parcel not found" };
+    if (!data || !data.results || data.results.length === 0) {
+      console.log(`[Regrid] Parcel not found for APN: ${apn}`);
+      return { found: false, error: `Parcel not found for APN: ${apn}. Try verifying the APN format matches your county's records.` };
     }
     
     const parcel = data.results[0];
