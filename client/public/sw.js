@@ -1,4 +1,4 @@
-const CACHE_NAME = 'acreos-v1';
+const CACHE_NAME = 'acreos-v2';
 const STATIC_ASSETS = [
   '/',
   '/manifest.json',
