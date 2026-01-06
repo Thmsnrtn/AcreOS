@@ -13,19 +13,14 @@ import {
   Inbox,
   GitBranch,
   Calculator,
-  Headphones,
   Crown,
   HelpCircle,
-  Workflow,
   PieChart,
   ListTodo,
-  BarChart3,
   Store,
   FileText,
-  TestTube,
   Zap,
-  Activity,
-  Send
+  TrendingUp
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useState, useCallback } from "react";
@@ -45,8 +40,6 @@ const routePrefetchMap: Record<string, string> = {
   "/inbox": "/api/inbox",
 };
 
-import { TrendingUp } from "lucide-react";
-
 const navItems = [
   { label: "Dashboard", icon: LayoutDashboard, href: "/" },
   { label: "Inbox", icon: Inbox, href: "/inbox", showUnreadBadge: true },
@@ -55,22 +48,16 @@ const navItems = [
   { label: "Deal Pipeline", icon: GitBranch, href: "/deals" },
   { label: "Tasks", icon: ListTodo, href: "/tasks" },
   { label: "Automation", icon: Zap, href: "/automation" },
-  { label: "Activity", icon: Activity, href: "/activity" },
-  { label: "Team Dashboard", icon: BarChart3, href: "/team-dashboard" },
-  { label: "Analytics", icon: TrendingUp, href: "/analytics" },
+  { label: "Insights", icon: TrendingUp, href: "/analytics" },
   { label: "Finance", icon: Banknote, href: "/finance" },
   { label: "Portfolio", icon: PieChart, href: "/portfolio" },
   { label: "Listings", icon: Store, href: "/listings" },
   { label: "Documents", icon: FileText, href: "/documents" },
-  { label: "Campaigns", icon: Mail, href: "/campaigns" },
-  { label: "A/B Testing", icon: TestTube, href: "/ab-tests" },
-  { label: "Sequences", icon: Workflow, href: "/sequences" },
+  { label: "Marketing", icon: Mail, href: "/campaigns" },
   { label: "Tools", icon: Calculator, href: "/tools" },
   { label: "AI Command Center", icon: Bot, href: "/command-center" },
-  { label: "Support", icon: Headphones, href: "/support" },
-  { label: "Help", icon: HelpCircle, href: "/help" },
+  { label: "Help & Support", icon: HelpCircle, href: "/help" },
   { label: "Settings", icon: Settings, href: "/settings" },
-  { label: "Mail Settings", icon: Send, href: "/settings/mail" },
 ];
 
 export function Sidebar() {
