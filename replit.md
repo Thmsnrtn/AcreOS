@@ -61,8 +61,14 @@ Preferred communication style: Simple, everyday language.
     - **API Queue System**: Manages rate-limited API calls with exponential backoff and retries.
     - **Alerting Service**: Rule-based triggers for system issues and financial alerts.
     - **Digest Service**: Weekly performance summaries for founders.
+    - **Sequence Processor**: Processes automation sequences and workflows (every 60 seconds).
     - **Communications Service**: Unified wrapper for email, SMS, and direct mail.
     - **Onboarding Wizard**: AI-guided setup with business type templates.
+- **AI Command Center** (`/command-center`):
+    - **Chat Tab**: Conversational AI interface with specialized agents (Research, Marketing, etc.)
+    - **Team Tab**: AI team management for coordinating agent activities
+    - **Tasks Tab**: Create and track agent tasks across 6 types: Research, Marketing, Lead Nurturing, Campaign, Finance, Support
+    - **Agents Tab**: View background agent services with status, run frequency, and activity (uses static status, no real-time API yet)
 - **Founder Dashboard**: Analytics for revenue, system health, agent status, and alert management.
 - **Team Performance Dashboard**: SQL-based aggregation for scalability (handles 10k+ records), includes lead metrics, deal metrics, task metrics, activity trends (from leadActivities table), and response times with 5-minute caching.
 
