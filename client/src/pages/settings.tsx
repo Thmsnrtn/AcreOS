@@ -21,7 +21,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, Crown, Check, ExternalLink, CreditCard, Loader2, Lightbulb, RotateCcw, Database, Trash2, BarChart3, Users, Home, FileText, Sparkles, TrendingUp, Coins, Shield, Mail, Phone, Bell, Code, Settings as SettingsIcon } from "lucide-react";
+import { Building2, Crown, Check, ExternalLink, CreditCard, Loader2, Lightbulb, RotateCcw, Database, Trash2, BarChart3, Users, Home, FileText, Sparkles, TrendingUp, Coins, Shield, Mail, Phone, Bell, Code, Settings as SettingsIcon, Gift } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Progress } from "@/components/ui/progress";
@@ -520,9 +520,26 @@ export default function Settings() {
                           </Button>
                         </div>
                       ) : organization.subscriptionTier === "free" && (
-                        <p className="text-sm text-muted-foreground">
-                          You're on the free tier. Upgrade below to unlock more features!
-                        </p>
+                        <div className="space-y-3">
+                          {!organization.trialUsed && (
+                            <div className="flex items-start gap-3 p-4 rounded-md bg-emerald-500/10 border border-emerald-500/20">
+                              <Gift className="w-5 h-5 text-emerald-500 mt-0.5 flex-shrink-0" />
+                              <div>
+                                <p className="font-medium text-emerald-500" data-testid="text-trial-available">
+                                  7-Day Free Trial Available
+                                </p>
+                                <p className="text-sm text-muted-foreground mt-1">
+                                  Start your subscription with a 7-day free trial. No charge until the trial ends.
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                          <p className="text-sm text-muted-foreground">
+                            {organization.trialUsed 
+                              ? "Upgrade below to unlock more features!"
+                              : "Select a plan below to start your free trial."}
+                          </p>
+                        </div>
                       )}
                     </>
                   )}
