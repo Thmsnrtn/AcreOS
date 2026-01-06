@@ -292,15 +292,15 @@ export async function registerRoutes(
         });
       }
       
-      const { getStripe } = await import("./stripeClient");
-      const stripe = await getStripe();
+      const { getUncachableStripeClient } = await import("./stripeClient");
+      const stripe = await getUncachableStripeClient();
       
       const prices = await stripe.prices.search({
         query: `metadata['type']:'seat_addon' AND metadata['tier']:'${tier}' AND active:'true'`,
       });
       
-      const monthlyPrice = prices.data.find(p => p.recurring?.interval === "month");
-      const yearlyPrice = prices.data.find(p => p.recurring?.interval === "year");
+      const monthlyPrice = prices.data.find((p) => p.recurring?.interval === "month");
+      const yearlyPrice = prices.data.find((p) => p.recurring?.interval === "year");
       
       res.json({
         canPurchaseSeats: true,
@@ -345,8 +345,8 @@ export async function registerRoutes(
         });
       }
       
-      const { getStripe } = await import("./stripeClient");
-      const stripe = await getStripe();
+      const { getUncachableStripeClient } = await import("./stripeClient");
+      const stripe = await getUncachableStripeClient();
       
       // Server-side lookup of the correct price for this tier - prevents cross-tier price manipulation
       const interval = billingPeriod === "monthly" ? "month" : "year";
@@ -354,7 +354,7 @@ export async function registerRoutes(
         query: `metadata['type']:'seat_addon' AND metadata['tier']:'${tier}' AND active:'true'`,
       });
       
-      const validPrice = prices.data.find(p => p.recurring?.interval === interval);
+      const validPrice = prices.data.find((p) => p.recurring?.interval === interval);
       if (!validPrice) {
         return res.status(400).json({ message: `Seat add-on pricing not available for ${tier} ${billingPeriod}` });
       }
@@ -1125,7 +1125,7 @@ export async function registerRoutes(
       
       const headers = Object.keys(csvData[0]);
       const preview = csvData.slice(0, 5);
-      const expectedColumns = getExpectedLeadColumns();
+      const expectedColumns = getExpectedColumns("leads");
       
       res.json({
         totalRows: csvData.length,
@@ -1521,7 +1521,7 @@ export async function registerRoutes(
       
       const headers = Object.keys(csvData[0]);
       const preview = csvData.slice(0, 5);
-      const expectedColumns = getExpectedPropertyColumns();
+      const expectedColumns = getExpectedColumns("properties");
       
       res.json({
         totalRows: csvData.length,
@@ -2122,7 +2122,7 @@ export async function registerRoutes(
         }
       }
       
-      const deal = await storage.updateDeal(dealId, { stage });
+      const deal = await storage.updateDeal(dealId, { status: stage });
       if (!deal) return res.status(404).json({ message: "Deal not found" });
       res.json(deal);
     } catch (err: any) {
@@ -3829,7 +3829,7 @@ export async function registerRoutes(
           lobJobIds.push(result.id);
 
           // Create mailing order piece record for successful send
-          await storage.createMailingOrderPiece({
+          const piece = await storage.createMailingOrderPiece({
             mailingOrderId: mailingOrder.id,
             leadId: lead.id,
             recipientName,
@@ -3837,9 +3837,12 @@ export async function registerRoutes(
             recipientCity: lead.city!,
             recipientState: lead.state!,
             recipientZipCode: lead.zip!,
+            status: 'sent',
+          });
+          // Update with Lob-specific fields after creation
+          await storage.updateMailingOrderPiece(piece.id, {
             lobMailId: result.id,
             lobUrl: result.url,
-            status: 'sent',
             expectedDeliveryDate,
           });
         } catch (err: any) {
@@ -7565,7 +7568,7 @@ Seller Signature (if applicable)
         : undefined;
       const entityType = req.query.entityType as string | undefined;
       
-      const orgId = req.organization!.id;
+      const orgId = (req as any).organization!.id;
       
       let events = await storage.getRecentActivityEvents(orgId, limit + offset);
       
@@ -7596,8 +7599,8 @@ Seller Signature (if applicable)
   
   api.get("/api/notification-preferences", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const userId = req.user!.id;
-      const orgId = req.organization!.id;
+      const userId = (req.user as any).id;
+      const orgId = (req as any).organization!.id;
       
       const preferences = await storage.getNotificationPreferences(userId, orgId);
       res.json(preferences);
@@ -7609,8 +7612,8 @@ Seller Signature (if applicable)
 
   api.post("/api/notification-preferences", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const userId = req.user!.id;
-      const orgId = req.organization!.id;
+      const userId = (req.user as any).id;
+      const orgId = (req as any).organization!.id;
       
       const { eventType, emailEnabled, pushEnabled, inAppEnabled } = req.body;
       
@@ -7658,7 +7661,7 @@ Seller Signature (if applicable)
 
   api.get("/api/tasks", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const orgId = req.organization!.id;
+      const orgId = (req as any).organization!.id;
       const filters: { status?: string; priority?: string; assignedTo?: number; entityType?: string; entityId?: number } = {};
       
       if (req.query.status) filters.status = req.query.status as string;
@@ -7677,7 +7680,7 @@ Seller Signature (if applicable)
 
   api.get("/api/tasks/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const orgId = req.organization!.id;
+      const orgId = (req as any).organization!.id;
       const id = parseInt(req.params.id);
       
       const task = await storage.getTask(orgId, id);
@@ -7694,8 +7697,8 @@ Seller Signature (if applicable)
 
   api.post("/api/tasks", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const orgId = req.organization!.id;
-      const userId = req.user!.id;
+      const orgId = (req as any).organization!.id;
+      const userId = (req.user as any).id;
       
       const validated = insertTaskSchema.parse({
         ...req.body,
@@ -7736,8 +7739,8 @@ Seller Signature (if applicable)
 
   api.put("/api/tasks/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const orgId = req.organization!.id;
-      const userId = req.user!.id;
+      const orgId = (req as any).organization!.id;
+      const userId = (req.user as any).id;
       const id = parseInt(req.params.id);
       
       const existingTask = await storage.getTask(orgId, id);
@@ -7782,7 +7785,7 @@ Seller Signature (if applicable)
 
   api.delete("/api/tasks/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const orgId = req.organization!.id;
+      const orgId = (req as any).organization!.id;
       const id = parseInt(req.params.id);
       
       const task = await storage.getTask(orgId, id);
@@ -7815,8 +7818,8 @@ Seller Signature (if applicable)
 
   api.post("/api/tasks/:id/complete", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const orgId = req.organization!.id;
-      const userId = req.user!.id;
+      const orgId = (req as any).organization!.id;
+      const userId = (req.user as any).id;
       const id = parseInt(req.params.id);
       
       const existingTask = await storage.getTask(orgId, id);
@@ -7949,11 +7952,13 @@ Seller Signature (if applicable)
         entityType: entityType,
         entityId: 0,
         changes: { 
-          summary: `Imported ${result.imported || 0} ${entityType}`,
-          totalRows: data.length,
-          imported: result.imported,
-          skipped: result.skipped,
-          errors: result.errors?.length || 0,
+          before: {},
+          after: {
+            totalRows: data.length,
+            imported: result.successCount,
+            errors: result.errorCount,
+          },
+          fields: ["import"],
         },
         ipAddress: req.ip || req.socket?.remoteAddress,
         userAgent: req.headers["user-agent"],
@@ -8044,7 +8049,7 @@ Seller Signature (if applicable)
   // Audit Log (20.1)
   api.get("/api/audit-log", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const orgId = req.organization!.id;
+      const orgId = (req as any).organization!.id;
       
       const filters: {
         action?: string;
@@ -8081,7 +8086,7 @@ Seller Signature (if applicable)
   // TCPA Compliance (20.2)
   api.get("/api/compliance/tcpa/no-consent", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const orgId = req.organization!.id;
+      const orgId = (req as any).organization!.id;
       const leads = await storage.getLeadsWithoutConsent(orgId);
       res.json(leads);
     } catch (error: any) {
@@ -8092,7 +8097,7 @@ Seller Signature (if applicable)
 
   api.get("/api/compliance/tcpa/opted-out", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const orgId = req.organization!.id;
+      const orgId = (req as any).organization!.id;
       const leads = await storage.getLeadsOptedOut(orgId);
       res.json(leads);
     } catch (error: any) {
@@ -8103,8 +8108,8 @@ Seller Signature (if applicable)
 
   api.patch("/api/leads/:id/consent", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const orgId = req.organization!.id;
-      const userId = req.user!.id;
+      const orgId = (req as any).organization!.id;
+      const userId = (req.user as any).id;
       const leadId = parseInt(req.params.id);
       const { tcpaConsent, consentSource, optOutReason } = req.body;
       
@@ -8145,7 +8150,7 @@ Seller Signature (if applicable)
   // Data Retention (20.3)
   api.get("/api/compliance/retention-policies", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = req.organization!;
+      const org = (req as any).organization!;
       const policies = org.settings?.retentionPolicies || {
         leads: { enabled: false, retentionDays: 365 },
         closedDeals: { enabled: false, retentionDays: 2555 }, // 7 years for tax purposes
@@ -8161,9 +8166,9 @@ Seller Signature (if applicable)
 
   api.patch("/api/compliance/retention-policies", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const orgId = req.organization!.id;
-      const userId = req.user!.id;
-      const org = req.organization!;
+      const orgId = (req as any).organization!.id;
+      const userId = (req.user as any).id;
+      const org = (req as any).organization!;
       const newPolicies = req.body;
       
       const updatedSettings = {
@@ -8198,8 +8203,8 @@ Seller Signature (if applicable)
 
   api.post("/api/compliance/purge-data", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const orgId = req.organization!.id;
-      const userId = req.user!.id;
+      const orgId = (req as any).organization!.id;
+      const userId = (req.user as any).id;
       const { dataType, beforeDate } = req.body;
       
       if (!dataType || !beforeDate) {
@@ -8252,7 +8257,7 @@ Seller Signature (if applicable)
   // TCPA stats endpoint
   api.get("/api/compliance/tcpa/stats", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const orgId = req.organization!.id;
+      const orgId = (req as any).organization!.id;
       
       const [noConsent, optedOut, allLeads] = await Promise.all([
         storage.getLeadsWithoutConsent(orgId),
