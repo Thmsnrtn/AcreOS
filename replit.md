@@ -64,11 +64,12 @@ Preferred communication style: Simple, everyday language.
     - **Sequence Processor**: Processes automation sequences and workflows (every 60 seconds).
     - **Communications Service**: Unified wrapper for email, SMS, and direct mail.
     - **Onboarding Wizard**: AI-guided setup with business type templates.
-- **AI Command Center** (`/command-center`):
+- **AI Section** (`/command-center` or `/ai`):
     - **Chat Tab**: Conversational AI interface with specialized agents (Research, Marketing, etc.)
     - **Team Tab**: AI team management for coordinating agent activities
     - **Tasks Tab**: Create and track agent tasks across 6 types: Research, Marketing, Lead Nurturing, Campaign, Finance, Support
     - **Agents Tab**: View background agent services with status, run frequency, and activity (uses static status, no real-time API yet)
+    - **AI Settings**: Response style, default agent, auto-suggestions toggle, context memory preferences (accessible from AI section header or Settings)
 - **Founder Dashboard**: Analytics for revenue, system health, agent status, and alert management.
 - **Team Performance Dashboard**: SQL-based aggregation for scalability (handles 10k+ records), includes lead metrics, deal metrics, task metrics, activity trends (from leadActivities table), and response times with 5-minute caching.
 
@@ -109,3 +110,84 @@ Preferred communication style: Simple, everyday language.
 - Team Messaging: Unlocks at 2+ total seats
 - 7-Day Free Trial: Available for Starter/Pro/Scale tiers with trial eligibility tracking
 - AI Agents run on all tiers but respect AI request limits
+
+## Recent Updates (January 2026)
+
+### Legal Compliance & Public Pages
+- **Terms of Service** (`/terms`): Public route with standard SaaS terms, BYOK provisions, and land investment disclaimers
+- **Privacy Policy** (`/privacy`): Public route covering data handling, GDPR, CCPA compliance, no data selling policy, and BYOK privacy practices
+- Both pages are accessible without authentication
+
+### Disclaimers
+- **DisclaimerBanner Component**: Dismissible legal disclaimers on Finance, AI, and Deals pages
+- Informs users platform is not a substitute for professional legal, tax, or financial advice
+- Uses localStorage for per-page dismiss persistence (keys: `disclaimer-dismissed-finance`, `disclaimer-dismissed-ai`, `disclaimer-dismissed-deals`)
+
+### Feature Requests
+- Users can submit feature/enhancement requests via Help > Support tab
+- Stored in `featureRequests` table with title, description, category, status, priority
+- Founder can review requests in database (admin UI pending)
+
+### AI Section Improvements
+- Renamed from "AI Command Center" to "AI" in navigation
+- Added AI Settings panel accessible from both AI section header and Settings page
+- Settings stored in organization.settings JSON field:
+  - `responseStyle`: professional, friendly, concise, detailed
+  - `defaultAgent`: research, marketing, lead_nurturing, campaign, finance, support
+  - `autoSuggestions`: boolean
+  - `rememberContext`: boolean
+
+### Data Export Enhancements
+- Export functionality now supports both CSV and JSON formats
+- Available for leads, properties, deals, and notes
+- Format selection dropdown in Settings > Data > Export tab
+
+### API Cost Tracking
+- **apiUsageLogs** table tracks external API usage
+- Logs Lob (direct mail: $0.80-$1.50), Regrid (parcel data: $0.02), OpenAI (tokens: ~$0.002/10 tokens)
+- Founder Dashboard displays API Usage & Costs section with:
+  - Monthly totals by service
+  - 7-day usage chart
+  - Call counts and estimated costs
+
+## Known Technical Notes
+
+### Pre-existing LSP Warnings
+- `finance.tsx` lines 1013, 1135: Nullable field type mismatches with organizationId
+- `deals.tsx` lines 858, 896: Nullable value props
+- These are type strictness issues, not runtime blockers
+
+### Database Schema Notes
+- Custom fields stored in separate tables (fieldDefinitions, customFieldValues)
+- API usage logs track estimated costs in cents
+- Feature requests use text enum for status ('pending', 'under_review', 'planned', 'completed', 'declined')
+
+## Roadmap & Future Enhancements
+
+### Near-Term (Next Session)
+- [ ] Admin UI for reviewing feature requests
+- [ ] Real-time AI agent status API (currently static)
+- [ ] SendGrid email integration (configured but not connected)
+- [ ] Twilio SMS integration (configured but not connected)
+
+### Medium-Term
+- [ ] Borrower portal authentication (currently uses shared links)
+- [ ] Advanced document template system
+- [ ] Bulk operations on leads/properties
+- [ ] Mobile app testing (Capacitor config exists)
+
+### Long-Term
+- [ ] White-label support for enterprise clients
+- [ ] Advanced reporting with custom dashboards
+- [ ] Integration marketplace for third-party services
+- [ ] AI agent marketplace for custom agent creation
+
+## Publishing Notes
+
+The application is ready for publishing to **acreage.pro** domain. Key considerations:
+- All legal pages (Terms, Privacy) are in place
+- Disclaimers protect against liability for financial/legal advice
+- BYOK system allows users to bring their own API keys
+- Stripe subscription billing is configured
+- Replit Auth handles user authentication
+- PostgreSQL database for production data
