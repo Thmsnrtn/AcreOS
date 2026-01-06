@@ -6796,6 +6796,78 @@ Seller Signature (if applicable)
     }
   });
 
+  // ============================================
+  // COUNTY GIS ENDPOINTS (Free Parcel Data)
+  // ============================================
+
+  api.get("/api/county-gis-endpoints", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { getCountyGisEndpoints } = await import('./services/parcel');
+      const endpoints = await getCountyGisEndpoints();
+      res.json(endpoints);
+    } catch (err: any) {
+      console.error("Get county GIS endpoints error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.post("/api/county-gis-endpoints", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { countyGisEndpoints, insertCountyGisEndpointSchema } = await import('@shared/schema');
+      
+      // Validate required fields
+      const { state, county, baseUrl, endpointType } = req.body;
+      if (!state || !county || !baseUrl) {
+        return res.status(400).json({ message: "state, county, and baseUrl are required" });
+      }
+      
+      const endpoint = await db.insert(countyGisEndpoints).values({
+        state: state.toUpperCase(),
+        county,
+        baseUrl,
+        endpointType: endpointType || "arcgis_rest",
+        layerId: req.body.layerId,
+        apnField: req.body.apnField || "APN",
+        ownerField: req.body.ownerField || "OWNER",
+        fieldMappings: req.body.fieldMappings,
+        fipsCode: req.body.fipsCode,
+        sourceUrl: req.body.sourceUrl,
+        notes: req.body.notes,
+        isActive: true,
+        isVerified: false,
+        contributedBy: (req as any).user?.email || "admin",
+      }).returning();
+      res.json(endpoint[0]);
+    } catch (err: any) {
+      console.error("Add county GIS endpoint error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.post("/api/county-gis-endpoints/seed", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { seedCountyGisEndpoints } = await import('./services/parcel');
+      const result = await seedCountyGisEndpoints();
+      res.json({ message: `Seeded ${result.added} endpoints, ${result.skipped} already existed` });
+    } catch (err: any) {
+      console.error("Seed county GIS endpoints error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.delete("/api/county-gis-endpoints/:id", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { countyGisEndpoints } = await import('@shared/schema');
+      const { eq } = await import('drizzle-orm');
+      await db.delete(countyGisEndpoints).where(eq(countyGisEndpoints.id, id));
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("Delete county GIS endpoint error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   api.get("/api/integrations/status", isAuthenticated, async (req, res) => {
     try {
       const { communicationsService } = await import('./services/communications');

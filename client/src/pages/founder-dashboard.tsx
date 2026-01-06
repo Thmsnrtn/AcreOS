@@ -33,7 +33,11 @@ import {
   Map,
   MessageSquare,
   Lightbulb,
-  FileText
+  FileText,
+  MapPin,
+  Database,
+  Trash2,
+  RefreshCw
 } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 
@@ -135,6 +139,20 @@ interface FeatureRequest {
   createdAt: string | null;
   updatedAt: string | null;
   organizationName?: string;
+}
+
+interface CountyGisEndpoint {
+  id: number;
+  state: string;
+  county: string;
+  fipsCode: string | null;
+  endpointType: string;
+  baseUrl: string;
+  isVerified: boolean;
+  isActive: boolean;
+  errorCount: number;
+  lastVerified: string | null;
+  createdAt: string | null;
 }
 
 const FEATURE_STATUS_OPTIONS = [
@@ -273,6 +291,40 @@ export default function FounderDashboard() {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['/api/admin/alerts'] });
       toast({ title: "Alert resolved" });
+    },
+  });
+
+  const { data: countyGisEndpoints, isLoading: gisEndpointsLoading } = useQuery<CountyGisEndpoint[]>({
+    queryKey: ['/api/county-gis-endpoints'],
+  });
+
+  const seedGisEndpointsMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/county-gis-endpoints/seed`, {});
+      if (!res.ok) throw new Error("Failed to seed endpoints");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/county-gis-endpoints'] });
+      toast({ title: "Success", description: data.message });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const deleteGisEndpointMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("DELETE", `/api/county-gis-endpoints/${id}`, {});
+      if (!res.ok) throw new Error("Failed to delete endpoint");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/county-gis-endpoints'] });
+      toast({ title: "Endpoint deleted" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
     },
   });
 
@@ -820,10 +872,10 @@ export default function FounderDashboard() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-medium">{alert.title}</span>
-                          <Badge variant="outline" size="sm" className={getSeverityColor(alert.severity)}>
+                          <Badge variant="outline" className={getSeverityColor(alert.severity)}>
                             {alert.severity}
                           </Badge>
-                          <Badge variant="outline" size="sm">
+                          <Badge variant="outline">
                             {alert.status}
                           </Badge>
                         </div>
@@ -864,6 +916,105 @@ export default function FounderDashboard() {
               </CardContent>
             </Card>
           )}
+
+          {/* County GIS Endpoints - Free Parcel Data Sources */}
+          <Card data-testid="card-county-gis-endpoints" className="col-span-full">
+            <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <MapPin className="w-5 h-5 text-primary" />
+                  County GIS Endpoints
+                </CardTitle>
+                <CardDescription>Free parcel data sources - saves API costs by using county GIS directly</CardDescription>
+              </div>
+              <Button 
+                onClick={() => seedGisEndpointsMutation.mutate()}
+                disabled={seedGisEndpointsMutation.isPending}
+                variant="outline"
+                size="sm"
+                data-testid="button-seed-gis"
+              >
+                <RefreshCw className={`w-4 h-4 mr-1 ${seedGisEndpointsMutation.isPending ? 'animate-spin' : ''}`} />
+                Seed Default Endpoints
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {gisEndpointsLoading ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="h-10 w-full" />
+                </div>
+              ) : countyGisEndpoints && countyGisEndpoints.length > 0 ? (
+                <div className="space-y-2 max-h-96 overflow-y-auto">
+                  <div className="grid grid-cols-12 gap-2 text-xs font-medium text-muted-foreground px-3 pb-2 border-b">
+                    <span className="col-span-1">State</span>
+                    <span className="col-span-2">County</span>
+                    <span className="col-span-2">Type</span>
+                    <span className="col-span-4">Base URL</span>
+                    <span className="col-span-2">Status</span>
+                    <span className="col-span-1">Actions</span>
+                  </div>
+                  {countyGisEndpoints.map((endpoint) => (
+                    <div 
+                      key={endpoint.id} 
+                      className="grid grid-cols-12 gap-2 items-center p-3 rounded-lg border hover-elevate"
+                      data-testid={`gis-endpoint-${endpoint.id}`}
+                    >
+                      <span className="col-span-1 font-medium">{endpoint.state}</span>
+                      <span className="col-span-2">{endpoint.county}</span>
+                      <span className="col-span-2">
+                        <Badge variant="outline">{endpoint.endpointType}</Badge>
+                      </span>
+                      <span className="col-span-4 text-xs text-muted-foreground truncate" title={endpoint.baseUrl}>
+                        {endpoint.baseUrl}
+                      </span>
+                      <span className="col-span-2 flex items-center gap-1">
+                        {endpoint.isVerified ? (
+                          <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">
+                            <CheckCircle2 className="w-3 h-3 mr-1" />
+                            Verified
+                          </Badge>
+                        ) : endpoint.errorCount > 0 ? (
+                          <Badge variant="outline" className="bg-red-500/10 text-red-600 border-red-500/20">
+                            <AlertCircle className="w-3 h-3 mr-1" />
+                            {endpoint.errorCount} errors
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="bg-gray-500/10 text-gray-600 border-gray-500/20">
+                            Pending
+                          </Badge>
+                        )}
+                      </span>
+                      <span className="col-span-1">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => deleteGisEndpointMutation.mutate(endpoint.id)}
+                          disabled={deleteGisEndpointMutation.isPending}
+                          data-testid={`button-delete-gis-${endpoint.id}`}
+                        >
+                          <Trash2 className="w-4 h-4 text-muted-foreground" />
+                        </Button>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Database className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                  <p>No county GIS endpoints configured yet.</p>
+                  <p className="text-sm mt-1">Click "Seed Default Endpoints" to add endpoints for major counties.</p>
+                </div>
+              )}
+              <div className="mt-4 pt-4 border-t">
+                <p className="text-xs text-muted-foreground">
+                  County GIS endpoints allow free parcel lookups without using Regrid API credits. 
+                  The system tries county endpoints first, then falls back to Regrid if needed.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </main>
 

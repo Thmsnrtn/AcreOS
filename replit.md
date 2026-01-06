@@ -61,7 +61,10 @@ Preferred communication style: Simple, everyday language.
 - **Authentication**: Replit Auth (OAuth/OpenID Connect).
 - **Payment Processing**: Stripe (subscription billing, one-time credit purchases via Replit Stripe connector).
 - **AI Services**: OpenAI (via Replit AI Integrations for chat completions and image generation).
-- **Mapping/Comps**: Regrid API (parcel lookup for comparable sales analysis).
+- **Mapping/Comps**: Tiered parcel lookup system:
+  - **County GIS Endpoints** (FREE): Direct queries to county ArcGIS REST services for parcel data
+  - **Regrid API** (paid fallback): Used only when county GIS endpoints aren't available
+  - Admin interface in Founder Dashboard to manage county GIS endpoints
 - **Direct Mail**: Lob API (for sending physical mail).
 - **Development Tools**: Vite, Replit Plugins.
 - **Future Integrations (configured but not fully connected)**: SendGrid (Email), Twilio (SMS).

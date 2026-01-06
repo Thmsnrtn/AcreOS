@@ -2780,6 +2780,64 @@ export type InsertTargetCounty = z.infer<typeof insertTargetCountySchema>;
 export type TargetCounty = typeof targetCounties.$inferSelect;
 
 // ============================================
+// COUNTY GIS ENDPOINTS (Free Parcel Data Sources)
+// ============================================
+
+// Global registry of county GIS endpoints for free parcel lookups
+export const countyGisEndpoints = pgTable("county_gis_endpoints", {
+  id: serial("id").primaryKey(),
+  state: text("state").notNull(), // 2-letter state code (TX, NM, AZ, etc.)
+  county: text("county").notNull(), // County name
+  fipsCode: text("fips_code"), // 5-digit FIPS code
+  
+  // Endpoint configuration
+  endpointType: text("endpoint_type").notNull().default("arcgis_rest"), // arcgis_rest, arcgis_feature, wfs, direct_api
+  baseUrl: text("base_url").notNull(), // Base URL for the GIS service
+  layerId: text("layer_id"), // Layer ID for ArcGIS services
+  
+  // Query configuration
+  apnField: text("apn_field").default("APN"), // Field name for parcel number
+  ownerField: text("owner_field").default("OWNER"), // Field name for owner
+  geometryField: text("geometry_field"), // Geometry field if different from default
+  additionalParams: jsonb("additional_params").$type<Record<string, string>>(), // Extra query parameters
+  
+  // Field mappings (map county fields to our standard schema)
+  fieldMappings: jsonb("field_mappings").$type<{
+    apn?: string;
+    owner?: string;
+    address?: string;
+    acres?: string;
+    assessedValue?: string;
+    taxAmount?: string;
+    legalDescription?: string;
+    zoning?: string;
+  }>(),
+  
+  // Status
+  isVerified: boolean("is_verified").default(false), // Has this endpoint been verified to work?
+  lastVerified: timestamp("last_verified"),
+  isActive: boolean("is_active").default(true),
+  errorCount: integer("error_count").default(0), // Track failures
+  lastError: text("last_error"),
+  
+  // Attribution
+  sourceUrl: text("source_url"), // URL to the county's GIS website
+  notes: text("notes"),
+  contributedBy: text("contributed_by"), // Who added this endpoint
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertCountyGisEndpointSchema = createInsertSchema(countyGisEndpoints).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertCountyGisEndpoint = z.infer<typeof insertCountyGisEndpointSchema>;
+export type CountyGisEndpoint = typeof countyGisEndpoints.$inferSelect;
+
+// ============================================
 // ACQUISITION: OFFER LETTERS & BLIND OFFERS
 // ============================================
 
