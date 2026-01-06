@@ -1,6 +1,6 @@
 import { db } from "./db";
 export { db };
-import { eq, and, desc, sql, count, sum, arrayContains, gte, lte, or, inArray } from "drizzle-orm";
+import { eq, and, desc, sql, count, sum, arrayContains, gte, lte, lt, or, inArray } from "drizzle-orm";
 import { aiConversations, aiMessages } from "@shared/schema";
 import {
   organizations, teamMembers, leads, leadActivities, properties, deals,
