@@ -13,6 +13,7 @@ import {
   insertTaskSchema, insertOfferLetterSchema, insertOfferTemplateSchema,
   insertPropertyListingSchema,
   insertMailSenderIdentitySchema, insertMailingOrderSchema,
+  insertFeatureRequestSchema,
   SUBSCRIPTION_TIERS, payments, notes, deals, properties, leads, activityLog,
   teamConversations, teamMessages, teamMemberPresence,
   insertTeamConversationSchema, insertTeamMessageSchema, insertTeamMemberPresenceSchema,
@@ -5942,6 +5943,97 @@ Seller Signature (if applicable)
     } catch (err: any) {
       console.error("Get support metrics error:", err);
       res.status(500).json({ error: err.message || "Failed to fetch support metrics" });
+    }
+  });
+
+  // ============================================
+  // FEATURE REQUESTS
+  // ============================================
+
+  // Create a new feature request
+  api.post("/api/feature-requests", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = (req as any).user;
+      const userId = user.claims?.sub || user.id;
+
+      const validation = insertFeatureRequestSchema.safeParse({
+        ...req.body,
+        organizationId: org.id,
+        userId,
+      });
+
+      if (!validation.success) {
+        return res.status(400).json({ error: validation.error.message });
+      }
+
+      const featureRequest = await storage.createFeatureRequest(validation.data);
+      res.status(201).json(featureRequest);
+    } catch (err: any) {
+      console.error("Create feature request error:", err);
+      res.status(500).json({ error: err.message || "Failed to create feature request" });
+    }
+  });
+
+  // Get user's organization feature requests
+  api.get("/api/feature-requests", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const requests = await storage.getFeatureRequests(org.id);
+      res.json(requests);
+    } catch (err: any) {
+      console.error("Get feature requests error:", err);
+      res.status(500).json({ error: err.message || "Failed to fetch feature requests" });
+    }
+  });
+
+  // Founder: Get all feature requests across all orgs
+  api.get("/api/founder/feature-requests", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = (req as any).user;
+
+      // Simple founder check - org owner can see all feature requests
+      if (org.ownerId !== (user.claims?.sub || user.id)) {
+        return res.status(403).json({ error: "Founder access required" });
+      }
+
+      const requests = await storage.getAllFeatureRequestsForFounder();
+      res.json(requests);
+    } catch (err: any) {
+      console.error("Get all feature requests error:", err);
+      res.status(500).json({ error: err.message || "Failed to fetch feature requests" });
+    }
+  });
+
+  // Founder: Update feature request status/notes
+  api.patch("/api/founder/feature-requests/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = (req as any).user;
+      const requestId = parseInt(req.params.id);
+
+      // Simple founder check
+      if (org.ownerId !== (user.claims?.sub || user.id)) {
+        return res.status(403).json({ error: "Founder access required" });
+      }
+
+      const { status, founderNotes, priority } = req.body as { 
+        status?: string; 
+        founderNotes?: string;
+        priority?: string;
+      };
+
+      const updates: Record<string, any> = {};
+      if (status !== undefined) updates.status = status;
+      if (founderNotes !== undefined) updates.founderNotes = founderNotes;
+      if (priority !== undefined) updates.priority = priority;
+
+      const updated = await storage.updateFeatureRequest(requestId, updates);
+      res.json(updated);
+    } catch (err: any) {
+      console.error("Update feature request error:", err);
+      res.status(500).json({ error: err.message || "Failed to update feature request" });
     }
   });
 

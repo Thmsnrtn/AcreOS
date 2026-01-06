@@ -1946,6 +1946,36 @@ export const DEFAULT_SUPPORT_PLAYBOOKS = [
 ] as const;
 
 // ============================================
+// FEATURE REQUESTS
+// ============================================
+
+export const featureRequests = pgTable("feature_requests", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  userId: text("user_id").notNull(),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  category: text("category").notNull(), // enhancement, new_feature, integration, ux
+  priority: text("priority").default("medium"), // low, medium, high
+  status: text("status").default("submitted"), // submitted, under_review, planned, in_progress, completed, declined
+  founderNotes: text("founder_notes"), // Internal notes from founder
+  upvotes: integer("upvotes").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertFeatureRequestSchema = createInsertSchema(featureRequests).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  status: true,
+  founderNotes: true,
+  upvotes: true,
+});
+export type InsertFeatureRequest = z.infer<typeof insertFeatureRequestSchema>;
+export type FeatureRequest = typeof featureRequests.$inferSelect;
+
+// ============================================
 // DUNNING & PAYMENT RECOVERY
 // ============================================
 

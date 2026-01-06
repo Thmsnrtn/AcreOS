@@ -103,6 +103,8 @@ import {
   type MailingOrder, type InsertMailingOrder,
   mailingOrderPieces,
   type MailingOrderPiece, type InsertMailingOrderPiece,
+  featureRequests,
+  type FeatureRequest, type InsertFeatureRequest,
   DEFAULT_DUE_DILIGENCE_TEMPLATES,
   DEFAULT_DEAL_CHECKLIST_TEMPLATES,
 } from "@shared/schema";
@@ -692,6 +694,12 @@ export interface IStorage {
   getMailingOrderPieces(orderId: number): Promise<MailingOrderPiece[]>;
   createMailingOrderPiece(data: InsertMailingOrderPiece): Promise<MailingOrderPiece>;
   updateMailingOrderPiece(id: number, data: Partial<MailingOrderPiece>): Promise<MailingOrderPiece>;
+
+  // Feature Requests
+  getFeatureRequests(organizationId?: number): Promise<FeatureRequest[]>;
+  createFeatureRequest(request: InsertFeatureRequest): Promise<FeatureRequest>;
+  updateFeatureRequest(id: number, updates: Partial<FeatureRequest>): Promise<FeatureRequest>;
+  getAllFeatureRequestsForFounder(): Promise<FeatureRequest[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -4868,6 +4876,40 @@ Date: _____________</p>`,
       .where(eq(mailingOrderPieces.id, id))
       .returning();
     return updated;
+  }
+
+  // Feature Requests
+  async getFeatureRequests(organizationId?: number): Promise<FeatureRequest[]> {
+    if (organizationId !== undefined) {
+      return await db.select()
+        .from(featureRequests)
+        .where(eq(featureRequests.organizationId, organizationId))
+        .orderBy(desc(featureRequests.createdAt));
+    }
+    return await db.select()
+      .from(featureRequests)
+      .orderBy(desc(featureRequests.createdAt));
+  }
+
+  async createFeatureRequest(request: InsertFeatureRequest): Promise<FeatureRequest> {
+    const [newRequest] = await db.insert(featureRequests)
+      .values(request)
+      .returning();
+    return newRequest;
+  }
+
+  async updateFeatureRequest(id: number, updates: Partial<FeatureRequest>): Promise<FeatureRequest> {
+    const [updated] = await db.update(featureRequests)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(featureRequests.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getAllFeatureRequestsForFounder(): Promise<FeatureRequest[]> {
+    return await db.select()
+      .from(featureRequests)
+      .orderBy(desc(featureRequests.createdAt));
   }
 }
 

@@ -9,9 +9,10 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { MessageSquare, Plus, Send, CheckCircle, User, Bot, Star, Loader2, ArrowLeft, Headphones } from "lucide-react";
-import type { SupportCase, SupportMessage } from "@shared/schema";
+import { MessageSquare, Plus, Send, CheckCircle, User, Bot, Star, Loader2, ArrowLeft, Headphones, Lightbulb } from "lucide-react";
+import type { SupportCase, SupportMessage, FeatureRequest } from "@shared/schema";
 
 type CaseWithMessages = {
   case: SupportCase;
@@ -75,6 +76,59 @@ function formatDate(date: string | Date | null | undefined): string {
   });
 }
 
+function getFeatureRequestStatusColor(status: string): string {
+  switch (status) {
+    case "submitted":
+      return "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20";
+    case "under_review":
+      return "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20";
+    case "planned":
+      return "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20";
+    case "in_progress":
+      return "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-500/20";
+    case "completed":
+      return "bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20";
+    case "declined":
+      return "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20";
+    default:
+      return "";
+  }
+}
+
+function getFeatureRequestStatusLabel(status: string): string {
+  switch (status) {
+    case "submitted":
+      return "Submitted";
+    case "under_review":
+      return "Under Review";
+    case "planned":
+      return "Planned";
+    case "in_progress":
+      return "In Progress";
+    case "completed":
+      return "Completed";
+    case "declined":
+      return "Declined";
+    default:
+      return status;
+  }
+}
+
+function getCategoryLabel(category: string): string {
+  switch (category) {
+    case "enhancement":
+      return "Enhancement";
+    case "new_feature":
+      return "New Feature";
+    case "integration":
+      return "Integration Request";
+    case "ux":
+      return "UX Improvement";
+    default:
+      return category;
+  }
+}
+
 export function SupportContent() {
   const { toast } = useToast();
   const [activeCaseId, setActiveCaseId] = useState<number | null>(null);
@@ -86,6 +140,12 @@ export function SupportContent() {
   const [showRating, setShowRating] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Feature Request state
+  const [isFeatureRequestOpen, setIsFeatureRequestOpen] = useState(false);
+  const [featureTitle, setFeatureTitle] = useState("");
+  const [featureDescription, setFeatureDescription] = useState("");
+  const [featureCategory, setFeatureCategory] = useState("");
+
   const { data: cases, isLoading: casesLoading } = useQuery<SupportCase[]>({
     queryKey: ["/api/support/cases"],
   });
@@ -93,6 +153,36 @@ export function SupportContent() {
   const { data: activeCaseData, isLoading: caseLoading } = useQuery<CaseWithMessages>({
     queryKey: ["/api/support/cases", activeCaseId],
     enabled: !!activeCaseId,
+  });
+
+  // Feature Requests
+  const { data: featureRequests, isLoading: featureRequestsLoading } = useQuery<FeatureRequest[]>({
+    queryKey: ["/api/feature-requests"],
+  });
+
+  const createFeatureRequestMutation = useMutation({
+    mutationFn: async (data: { title: string; description: string; category: string }) => {
+      const res = await apiRequest("POST", "/api/feature-requests", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/feature-requests"] });
+      setIsFeatureRequestOpen(false);
+      setFeatureTitle("");
+      setFeatureDescription("");
+      setFeatureCategory("");
+      toast({
+        title: "Feature request submitted",
+        description: "Thank you for your feedback! We'll review your request.",
+      });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Error",
+        description: err.message || "Failed to submit feature request",
+        variant: "destructive",
+      });
+    },
   });
 
   const createCaseMutation = useMutation({
@@ -210,6 +300,15 @@ export function SupportContent() {
   const handleRate = () => {
     if (!activeCaseId || rating === 0) return;
     rateCaseMutation.mutate({ caseId: activeCaseId, rating });
+  };
+
+  const handleCreateFeatureRequest = () => {
+    if (!featureTitle.trim() || !featureDescription.trim() || !featureCategory) return;
+    createFeatureRequestMutation.mutate({
+      title: featureTitle,
+      description: featureDescription,
+      category: featureCategory,
+    });
   };
 
   const activeCase = activeCaseData?.case;
@@ -519,6 +618,135 @@ export function SupportContent() {
           )}
         </Card>
       </div>
+
+      {/* Feature Requests Section */}
+      <Card data-testid="card-feature-requests">
+        <CardHeader className="flex flex-row items-center justify-between gap-4 flex-wrap">
+          <div>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Lightbulb className="w-5 h-5" />
+              Feature Requests
+            </CardTitle>
+            <CardDescription>Suggest improvements and new features</CardDescription>
+          </div>
+          <Dialog open={isFeatureRequestOpen} onOpenChange={setIsFeatureRequestOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" data-testid="button-new-feature-request">
+                <Plus className="w-4 h-4 mr-2" /> Submit Request
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[500px]">
+              <DialogHeader>
+                <DialogTitle>Submit Feature Request</DialogTitle>
+                <DialogDescription>
+                  Share your ideas for new features or improvements.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label htmlFor="feature-title">Title</Label>
+                  <Input
+                    id="feature-title"
+                    placeholder="Brief summary of your request..."
+                    value={featureTitle}
+                    onChange={(e) => setFeatureTitle(e.target.value)}
+                    data-testid="input-feature-title"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="feature-category">Category</Label>
+                  <Select value={featureCategory} onValueChange={setFeatureCategory}>
+                    <SelectTrigger data-testid="select-feature-category">
+                      <SelectValue placeholder="Select a category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="enhancement" data-testid="select-category-enhancement">Enhancement</SelectItem>
+                      <SelectItem value="new_feature" data-testid="select-category-new-feature">New Feature</SelectItem>
+                      <SelectItem value="integration" data-testid="select-category-integration">Integration Request</SelectItem>
+                      <SelectItem value="ux" data-testid="select-category-ux">UX Improvement</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="feature-description">Description</Label>
+                  <Textarea
+                    id="feature-description"
+                    placeholder="Describe your feature request in detail..."
+                    rows={5}
+                    value={featureDescription}
+                    onChange={(e) => setFeatureDescription(e.target.value)}
+                    data-testid="input-feature-description"
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsFeatureRequestOpen(false)} data-testid="button-cancel-feature-request">
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleCreateFeatureRequest}
+                  disabled={!featureTitle.trim() || !featureDescription.trim() || !featureCategory || createFeatureRequestMutation.isPending}
+                  data-testid="button-submit-feature-request"
+                >
+                  {createFeatureRequestMutation.isPending ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Submitting...
+                    </>
+                  ) : (
+                    <>
+                      <Lightbulb className="w-4 h-4 mr-2" />
+                      Submit Request
+                    </>
+                  )}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </CardHeader>
+        <CardContent>
+          {featureRequestsLoading ? (
+            <div className="p-4 text-center text-muted-foreground">
+              <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" />
+              Loading feature requests...
+            </div>
+          ) : featureRequests?.length === 0 ? (
+            <div className="p-6 text-center">
+              <Lightbulb className="w-10 h-10 mx-auto mb-3 text-muted-foreground" />
+              <p className="text-muted-foreground text-sm">No feature requests yet</p>
+              <p className="text-muted-foreground text-xs mt-1">
+                Submit your first feature request to help us improve
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {featureRequests?.map((request) => (
+                <div
+                  key={request.id}
+                  className="p-4 border rounded-md"
+                  data-testid={`feature-request-${request.id}`}
+                >
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <h4 className="font-medium" data-testid={`feature-request-title-${request.id}`}>{request.title}</h4>
+                    <Badge variant="outline" className={`text-xs ${getFeatureRequestStatusColor(request.status || "submitted")}`} data-testid={`feature-request-status-${request.id}`}>
+                      {getFeatureRequestStatusLabel(request.status || "submitted")}
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground mb-2" data-testid={`feature-request-description-${request.id}`}>
+                    {request.description}
+                  </p>
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    <Badge variant="secondary" className="text-xs" data-testid={`feature-request-category-${request.id}`}>
+                      {getCategoryLabel(request.category)}
+                    </Badge>
+                    <span data-testid={`feature-request-date-${request.id}`}>{formatDate(request.createdAt)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
