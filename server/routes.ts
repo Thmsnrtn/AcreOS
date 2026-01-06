@@ -38,6 +38,10 @@ import {
   exportPropertiesToCSV,
   exportDealsToCSV,
   exportNotesToCSV,
+  getLeadsData,
+  getPropertiesData,
+  getDealsData,
+  getNotesData,
   createBackupZip,
   getExpectedColumns,
   type ExportFilters,
@@ -8152,9 +8156,14 @@ Seller Signature (if applicable)
     try {
       const org = (req as any).organization;
       const entityType = req.params.entityType as "leads" | "properties" | "deals" | "notes";
+      const format = (req.query.format as string) || "csv";
 
       if (!["leads", "properties", "deals", "notes"].includes(entityType)) {
         return res.status(400).json({ message: "Invalid entity type. Must be leads, properties, deals, or notes." });
+      }
+
+      if (!["csv", "json"].includes(format)) {
+        return res.status(400).json({ message: "Invalid format. Must be csv or json." });
       }
 
       const filters: ExportFilters = {
@@ -8164,26 +8173,46 @@ Seller Signature (if applicable)
         endDate: req.query.endDate as string | undefined,
       };
 
-      let csv: string;
-      let filename: string;
+      const date = new Date().toISOString().split("T")[0];
 
-      if (entityType === "leads") {
-        csv = await exportLeadsToCSV(org.id, filters);
-        filename = `leads_export_${new Date().toISOString().split("T")[0]}.csv`;
-      } else if (entityType === "properties") {
-        csv = await exportPropertiesToCSV(org.id, filters);
-        filename = `properties_export_${new Date().toISOString().split("T")[0]}.csv`;
-      } else if (entityType === "deals") {
-        csv = await exportDealsToCSV(org.id, filters);
-        filename = `deals_export_${new Date().toISOString().split("T")[0]}.csv`;
+      if (format === "json") {
+        let data: any[];
+        if (entityType === "leads") {
+          data = await getLeadsData(org.id, filters);
+        } else if (entityType === "properties") {
+          data = await getPropertiesData(org.id, filters);
+        } else if (entityType === "deals") {
+          data = await getDealsData(org.id, filters);
+        } else {
+          data = await getNotesData(org.id, filters);
+        }
+
+        const filename = `${entityType}_export_${date}.json`;
+        res.setHeader("Content-Type", "application/json");
+        res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+        res.send(JSON.stringify(data, null, 2));
       } else {
-        csv = await exportNotesToCSV(org.id, filters);
-        filename = `notes_export_${new Date().toISOString().split("T")[0]}.csv`;
-      }
+        let csv: string;
+        let filename: string;
 
-      res.setHeader("Content-Type", "text/csv");
-      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-      res.send(csv);
+        if (entityType === "leads") {
+          csv = await exportLeadsToCSV(org.id, filters);
+          filename = `leads_export_${date}.csv`;
+        } else if (entityType === "properties") {
+          csv = await exportPropertiesToCSV(org.id, filters);
+          filename = `properties_export_${date}.csv`;
+        } else if (entityType === "deals") {
+          csv = await exportDealsToCSV(org.id, filters);
+          filename = `deals_export_${date}.csv`;
+        } else {
+          csv = await exportNotesToCSV(org.id, filters);
+          filename = `notes_export_${date}.csv`;
+        }
+
+        res.setHeader("Content-Type", "text/csv");
+        res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+        res.send(csv);
+      }
     } catch (error: any) {
       console.error("Export error:", error);
       res.status(500).json({ message: error.message || "Failed to export data" });

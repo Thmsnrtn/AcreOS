@@ -61,6 +61,7 @@ export function ImportExportManager() {
   const [activeTab, setActiveTab] = useState("import");
   const [selectedImportType, setSelectedImportType] = useState<EntityType>("leads");
   const [selectedExportType, setSelectedExportType] = useState<ExportEntityType>("leads");
+  const [exportFormat, setExportFormat] = useState<"csv" | "json">("csv");
   const [isDragging, setIsDragging] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
@@ -147,12 +148,13 @@ export function ImportExportManager() {
   const exportMutation = useMutation({
     mutationFn: async () => {
       const params = new URLSearchParams();
+      params.append("format", exportFormat);
       if (exportFilters.status) params.append("status", exportFilters.status);
       if (exportFilters.type) params.append("type", exportFilters.type);
       if (exportFilters.startDate) params.append("startDate", exportFilters.startDate);
       if (exportFilters.endDate) params.append("endDate", exportFilters.endDate);
       
-      const url = `/api/export/${selectedExportType}${params.toString() ? `?${params.toString()}` : ""}`;
+      const url = `/api/export/${selectedExportType}?${params.toString()}`;
       const res = await fetch(url, { credentials: "include" });
       if (!res.ok) {
         const error = await res.json();
@@ -160,13 +162,13 @@ export function ImportExportManager() {
       }
       const blob = await res.blob();
       const filename = res.headers.get("content-disposition")?.match(/filename="(.+)"/)?.[1] 
-        || `${selectedExportType}_export.csv`;
+        || `${selectedExportType}_export.${exportFormat}`;
       downloadBlob(blob, filename);
     },
     onSuccess: () => {
       toast({
         title: "Export completed",
-        description: `${selectedExportType} exported successfully.`,
+        description: `${selectedExportType} exported successfully as ${exportFormat.toUpperCase()}.`,
       });
     },
     onError: (error: Error) => {
@@ -519,7 +521,7 @@ export function ImportExportManager() {
           </TabsContent>
 
           <TabsContent value="export" className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="export-type">Export Type</Label>
                 <Select
@@ -551,6 +553,33 @@ export function ImportExportManager() {
                     <SelectItem value="notes">
                       <span className="flex items-center gap-2">
                         <FileSpreadsheet className="w-4 h-4" /> Notes
+                      </span>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="export-format">Format</Label>
+                <Select
+                  value={exportFormat}
+                  onValueChange={(v) => setExportFormat(v as "csv" | "json")}
+                >
+                  <SelectTrigger 
+                    id="export-format"
+                    data-testid="select-export-format"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="csv">
+                      <span className="flex items-center gap-2">
+                        <FileText className="w-4 h-4" /> CSV
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="json">
+                      <span className="flex items-center gap-2">
+                        <FileText className="w-4 h-4" /> JSON
                       </span>
                     </SelectItem>
                   </SelectContent>
@@ -607,7 +636,7 @@ export function ImportExportManager() {
               ) : (
                 <FileDown className="w-4 h-4 mr-2" />
               )}
-              Export {selectedExportType.charAt(0).toUpperCase() + selectedExportType.slice(1)} to CSV
+              Export {selectedExportType.charAt(0).toUpperCase() + selectedExportType.slice(1)} to {exportFormat.toUpperCase()}
             </Button>
           </TabsContent>
 

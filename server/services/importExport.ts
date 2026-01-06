@@ -780,6 +780,104 @@ export async function exportNotesToCSV(
   return [headers.join(","), ...rows].join("\n");
 }
 
+export async function getLeadsData(
+  organizationId: number,
+  filters?: ExportFilters
+): Promise<any[]> {
+  let leads = await storage.getLeads(organizationId);
+
+  if (filters) {
+    if (filters.status) {
+      leads = leads.filter((l) => l.status === filters.status);
+    }
+    if (filters.type) {
+      leads = leads.filter((l) => l.type === filters.type);
+    }
+    if (filters.startDate) {
+      const start = new Date(filters.startDate);
+      leads = leads.filter((l) => l.createdAt && new Date(l.createdAt) >= start);
+    }
+    if (filters.endDate) {
+      const end = new Date(filters.endDate);
+      leads = leads.filter((l) => l.createdAt && new Date(l.createdAt) <= end);
+    }
+  }
+
+  return leads;
+}
+
+export async function getPropertiesData(
+  organizationId: number,
+  filters?: ExportFilters
+): Promise<any[]> {
+  let properties = await storage.getProperties(organizationId);
+
+  if (filters) {
+    if (filters.status) {
+      properties = properties.filter((p) => p.status === filters.status);
+    }
+    if (filters.startDate) {
+      const start = new Date(filters.startDate);
+      properties = properties.filter((p) => p.createdAt && new Date(p.createdAt) >= start);
+    }
+    if (filters.endDate) {
+      const end = new Date(filters.endDate);
+      properties = properties.filter((p) => p.createdAt && new Date(p.createdAt) <= end);
+    }
+  }
+
+  return properties;
+}
+
+export async function getDealsData(
+  organizationId: number,
+  filters?: ExportFilters
+): Promise<any[]> {
+  let deals = await storage.getDeals(organizationId);
+
+  if (filters) {
+    if (filters.status) {
+      deals = deals.filter((d) => d.status === filters.status);
+    }
+    if (filters.type) {
+      deals = deals.filter((d) => d.type === filters.type);
+    }
+    if (filters.startDate) {
+      const start = new Date(filters.startDate);
+      deals = deals.filter((d) => d.createdAt && new Date(d.createdAt) >= start);
+    }
+    if (filters.endDate) {
+      const end = new Date(filters.endDate);
+      deals = deals.filter((d) => d.createdAt && new Date(d.createdAt) <= end);
+    }
+  }
+
+  return deals;
+}
+
+export async function getNotesData(
+  organizationId: number,
+  filters?: ExportFilters
+): Promise<any[]> {
+  let notes = await storage.getNotes(organizationId);
+
+  if (filters) {
+    if (filters.status) {
+      notes = notes.filter((n) => n.status === filters.status);
+    }
+    if (filters.startDate) {
+      const start = new Date(filters.startDate);
+      notes = notes.filter((n) => n.createdAt && new Date(n.createdAt) >= start);
+    }
+    if (filters.endDate) {
+      const end = new Date(filters.endDate);
+      notes = notes.filter((n) => n.createdAt && new Date(n.createdAt) <= end);
+    }
+  }
+
+  return notes;
+}
+
 export async function createBackupZip(organizationId: number): Promise<{
   files: Array<{ name: string; content: string }>;
   organization: any;
