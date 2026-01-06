@@ -4939,12 +4939,21 @@ export async function registerRoutes(
         customerId = customer.id;
       }
       
+      // Check if organization is eligible for 7-day free trial (first subscription only)
+      const trialDays = org.trialUsed ? undefined : 7;
+      
+      // Mark trial as used when they start their first subscription
+      if (!org.trialUsed) {
+        await storage.updateOrganization(org.id, { trialUsed: true });
+      }
+      
       const session = await stripeService.createCheckoutSession(
         customerId,
         priceId,
         `${req.protocol}://${req.get('host')}/settings?subscription=success`,
         `${req.protocol}://${req.get('host')}/settings?subscription=cancelled`,
-        { organizationId: String(org.id) }
+        { organizationId: String(org.id) },
+        trialDays
       );
       
       res.json({ url: session.url });
