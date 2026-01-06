@@ -10,6 +10,8 @@ import {
   agentTasks
 } from './schema';
 
+export const createAgentTaskInputSchema = insertAgentTaskSchema.omit({ organizationId: true });
+
 // ============================================
 // SHARED ERROR SCHEMAS
 // ============================================
@@ -112,15 +114,15 @@ export const api = {
   agentTasks: {
     list: {
       method: 'GET' as const,
-      path: '/api/agent-tasks',
+      path: '/api/agents/tasks',
       responses: {
         200: z.array(z.custom<typeof agentTasks.$inferSelect>()),
       },
     },
     create: {
       method: 'POST' as const,
-      path: '/api/agent-tasks',
-      input: insertAgentTaskSchema,
+      path: '/api/agents/tasks',
+      input: createAgentTaskInputSchema,
       responses: {
         201: z.custom<typeof agentTasks.$inferSelect>(),
         400: errorSchemas.validation,
@@ -133,6 +135,7 @@ export type InsertNote = z.infer<typeof insertNoteSchema>;
 export type InsertLead = z.infer<typeof insertLeadSchema>;
 export type InsertProperty = z.infer<typeof insertPropertySchema>;
 export type InsertAgentTask = z.infer<typeof insertAgentTaskSchema>;
+export type CreateAgentTaskInput = z.infer<typeof createAgentTaskInputSchema>;
 
 export function buildUrl(path: string, params?: Record<string, string | number>): string {
   let url = path;

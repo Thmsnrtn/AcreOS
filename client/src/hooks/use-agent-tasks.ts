@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, type CreateAgentTaskRequest } from "@shared/routes";
+import { api, type CreateAgentTaskInput } from "@shared/routes";
 
 export function useAgentTasks() {
   return useQuery({
@@ -17,7 +17,7 @@ export function useAgentTasks() {
 export function useCreateAgentTask() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: CreateAgentTaskRequest) => {
+    mutationFn: async (data: CreateAgentTaskInput) => {
       const validated = api.agentTasks.create.input.parse(data);
       const res = await fetch(api.agentTasks.create.path, {
         method: "POST",

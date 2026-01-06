@@ -51,6 +51,11 @@ import {
   Check,
   X,
   ListTodo,
+  Bell,
+  GitBranch,
+  RefreshCw,
+  Activity,
+  Headphones,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
@@ -682,6 +687,182 @@ function TeamTabContent() {
   );
 }
 
+interface BackgroundAgent {
+  id: string;
+  name: string;
+  description: string;
+  frequency: string;
+  icon: typeof Bot;
+  status: "running" | "idle" | "error";
+  lastRunAt?: string;
+}
+
+const backgroundAgents: BackgroundAgent[] = [
+  {
+    id: "lead_nurturing",
+    name: "Lead Nurturing Agent",
+    description: "Scores leads and generates personalized follow-up sequences",
+    frequency: "Every 15 minutes",
+    icon: Users,
+    status: "running",
+  },
+  {
+    id: "campaign_optimizer",
+    name: "Campaign Optimizer",
+    description: "Analyzes campaign performance and suggests optimizations",
+    frequency: "Every hour",
+    icon: TrendingUp,
+    status: "idle",
+  },
+  {
+    id: "finance_agent",
+    name: "Finance Agent",
+    description: "Handles delinquency detection and payment reminders",
+    frequency: "Every 30 minutes",
+    icon: DollarSign,
+    status: "running",
+  },
+  {
+    id: "alerting_service",
+    name: "Alerting Service",
+    description: "Monitors system health and detects issues",
+    frequency: "Every hour",
+    icon: Bell,
+    status: "idle",
+  },
+  {
+    id: "digest_service",
+    name: "Digest Service",
+    description: "Generates performance summaries and reports",
+    frequency: "Every 6 hours",
+    icon: FileText,
+    status: "idle",
+  },
+  {
+    id: "sequence_processor",
+    name: "Sequence Processor",
+    description: "Processes automation sequences and workflows",
+    frequency: "Every 60 seconds",
+    icon: GitBranch,
+    status: "running",
+  },
+];
+
+function getAgentStatusBadge(status: BackgroundAgent["status"]) {
+  switch (status) {
+    case "running":
+      return <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">Running</Badge>;
+    case "idle":
+      return <Badge variant="secondary">Idle</Badge>;
+    case "error":
+      return <Badge className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">Error</Badge>;
+    default:
+      return <Badge variant="outline">Unknown</Badge>;
+  }
+}
+
+function AgentsTabContent() {
+  const { toast } = useToast();
+
+  const handleViewActivity = (agentId: string, agentName: string) => {
+    toast({ 
+      title: "Coming Soon", 
+      description: `Activity logs for ${agentName} will be available in a future update.` 
+    });
+  };
+
+  return (
+    <div className="flex-1 flex flex-col overflow-hidden p-6">
+      <div className="mb-6">
+        <h2 className="text-lg font-semibold mb-1">Background Agent Services</h2>
+        <p className="text-sm text-muted-foreground">
+          These agents run automatically in the background to keep your business running smoothly.
+        </p>
+      </div>
+
+      <ScrollArea className="flex-1">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-4">
+          {backgroundAgents.map((agent) => {
+            const IconComponent = agent.icon;
+
+            return (
+              <Card key={agent.id} className="flex flex-col" data-testid={`card-agent-${agent.id}`}>
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className={`p-2 rounded-lg ${agent.status === "running" ? "bg-green-100 dark:bg-green-900/30" : "bg-muted"}`}>
+                        <IconComponent className={`w-4 h-4 ${agent.status === "running" ? "text-green-600 dark:text-green-400" : ""}`} />
+                      </div>
+                      <div>
+                        <CardTitle className="text-sm font-medium">{agent.name}</CardTitle>
+                      </div>
+                    </div>
+                    {getAgentStatusBadge(agent.status)}
+                  </div>
+                </CardHeader>
+                <CardContent className="flex-1 flex flex-col gap-3">
+                  <p className="text-sm text-muted-foreground">{agent.description}</p>
+                  
+                  <div className="space-y-2 text-xs">
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <RefreshCw className="w-3 h-3" />
+                      <span>{agent.frequency}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <CheckCircle2 className="w-3 h-3 text-green-500" />
+                      <span>Runs automatically</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 mt-auto pt-3">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => handleViewActivity(agent.id, agent.name)}
+                      data-testid={`button-view-agent-${agent.id}`}
+                    >
+                      <Activity className="w-3 h-3 mr-1" />
+                      View Activity
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      </ScrollArea>
+    </div>
+  );
+}
+
+const agentTypeDescriptions: Record<string, { description: string; placeholder: string }> = {
+  research: {
+    description: "Use this agent to analyze county data, pricing, and comps.",
+    placeholder: "Describe your research task here..."
+  },
+  marketing: {
+    description: "Use this agent to write ad copy and generate listing descriptions.",
+    placeholder: "Describe your marketing task here..."
+  },
+  lead_nurturing: {
+    description: "Score leads and generate personalized follow-up sequences.",
+    placeholder: "Describe which leads to nurture or follow-up strategy..."
+  },
+  campaign: {
+    description: "Analyze campaign performance and suggest optimizations.",
+    placeholder: "Describe which campaign to optimize or analyze..."
+  },
+  finance: {
+    description: "Handle payment reminders and delinquency management.",
+    placeholder: "Describe payment reminders or collection tasks..."
+  },
+  support: {
+    description: "Handle support cases and generate response recommendations.",
+    placeholder: "Describe the support case or issue to handle..."
+  }
+};
+
 function TasksTabContent() {
   const { data: tasks, isLoading } = useAgentTasks();
   const { mutate: createTask, isPending } = useCreateAgentTask();
@@ -701,6 +882,8 @@ function TasksTabContent() {
     });
   };
 
+  const currentAgentType = agentTypeDescriptions[activeTab] || agentTypeDescriptions.research;
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden p-6">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 min-h-0">
@@ -712,20 +895,42 @@ function TasksTabContent() {
           </CardHeader>
           <CardContent className="flex-1 flex flex-col pt-6 gap-4">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="research">Research</TabsTrigger>
-                <TabsTrigger value="marketing">Marketing</TabsTrigger>
-              </TabsList>
+              <ScrollArea className="w-full">
+                <TabsList className="inline-flex w-max gap-1 p-1">
+                  <TabsTrigger value="research" data-testid="tab-task-research">
+                    <Search className="w-3 h-3 mr-1" />
+                    Research
+                  </TabsTrigger>
+                  <TabsTrigger value="marketing" data-testid="tab-task-marketing">
+                    <Megaphone className="w-3 h-3 mr-1" />
+                    Marketing
+                  </TabsTrigger>
+                  <TabsTrigger value="lead_nurturing" data-testid="tab-task-lead-nurturing">
+                    <Users className="w-3 h-3 mr-1" />
+                    Nurturing
+                  </TabsTrigger>
+                  <TabsTrigger value="campaign" data-testid="tab-task-campaign">
+                    <TrendingUp className="w-3 h-3 mr-1" />
+                    Campaign
+                  </TabsTrigger>
+                  <TabsTrigger value="finance" data-testid="tab-task-finance">
+                    <DollarSign className="w-3 h-3 mr-1" />
+                    Finance
+                  </TabsTrigger>
+                  <TabsTrigger value="support" data-testid="tab-task-support">
+                    <Headphones className="w-3 h-3 mr-1" />
+                    Support
+                  </TabsTrigger>
+                </TabsList>
+              </ScrollArea>
               <div className="mt-4 text-sm text-muted-foreground">
-                {activeTab === 'research' 
-                  ? "Use this agent to analyze county data, pricing, and comps."
-                  : "Use this agent to write ad copy and generate listing descriptions."}
+                {currentAgentType.description}
               </div>
             </Tabs>
             
             <form onSubmit={handleSubmit} className="flex-1 flex flex-col gap-4">
               <Textarea 
-                placeholder={`Describe your ${activeTab} task here...`}
+                placeholder={currentAgentType.placeholder}
                 className="flex-1 resize-none p-4 text-base"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
@@ -776,13 +981,13 @@ function TasksTabContent() {
                         <div className="bg-muted/50 rounded-lg p-4 mb-3 border">
                           <p className="text-sm font-medium">{String(task.input ?? '')}</p>
                         </div>
-                        {task.output && (
+                        {task.output != null && task.output !== '' ? (
                           <div className="bg-green-50/50 dark:bg-green-900/10 rounded-lg p-4 border border-green-100 dark:border-green-900/50">
                             <p className="text-sm whitespace-pre-wrap leading-relaxed">
-                              {String(task.output ?? '')}
+                              {String(task.output)}
                             </p>
                           </div>
-                        )}
+                        ) : null}
                       </div>
                     </div>
                   ))
@@ -979,6 +1184,10 @@ export default function CommandCenterPage() {
               <TabsTrigger value="tasks" className={isMobile ? "flex-1" : ""} data-testid="tab-tasks">
                 <ListTodo className="w-4 h-4 mr-2" />
                 Tasks
+              </TabsTrigger>
+              <TabsTrigger value="agents" className={isMobile ? "flex-1" : ""} data-testid="tab-agents">
+                <Bot className="w-4 h-4 mr-2" />
+                Agents
               </TabsTrigger>
             </TabsList>
           </Tabs>
@@ -1265,6 +1474,10 @@ export default function CommandCenterPage() {
 
           {mainTab === "tasks" && (
             <TasksTabContent />
+          )}
+
+          {mainTab === "agents" && (
+            <AgentsTabContent />
           )}
         </div>
       </main>
