@@ -3316,6 +3316,25 @@ export type InsertJobCursor = z.infer<typeof insertJobCursorSchema>;
 export type JobCursor = typeof jobCursors.$inferSelect;
 
 // ============================================
+// JOB LOCKS (Prevent duplicate execution in multi-instance deployment)
+// ============================================
+
+export const jobLocks = pgTable("job_locks", {
+  id: serial("id").primaryKey(),
+  jobName: text("job_name").notNull().unique(),
+  lockedBy: text("locked_by").notNull(),
+  lockedAt: timestamp("locked_at").defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(),
+});
+
+export const insertJobLockSchema = createInsertSchema(jobLocks).omit({
+  id: true,
+  lockedAt: true,
+});
+export type InsertJobLock = z.infer<typeof insertJobLockSchema>;
+export type JobLock = typeof jobLocks.$inferSelect;
+
+// ============================================
 // EMAIL SENDER IDENTITIES
 // ============================================
 

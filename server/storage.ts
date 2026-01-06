@@ -93,6 +93,8 @@ import {
   automationRules, automationExecutions, notifications,
   jobCursors,
   type JobCursor, type InsertJobCursor,
+  jobLocks,
+  type JobLock, type InsertJobLock,
   emailSenderIdentities,
   type EmailSenderIdentity, type InsertEmailSenderIdentity,
   inboxMessages,
@@ -739,6 +741,11 @@ export interface IStorage {
   updateBorrowerSessionAccess(token: string): Promise<BorrowerSession | undefined>;
   deleteBorrowerSession(token: string): Promise<void>;
   cleanExpiredBorrowerSessions(): Promise<number>;
+
+  // Job Locks (prevent duplicate execution in multi-instance deployment)
+  acquireJobLock(jobName: string, instanceId: string, ttlSeconds: number): Promise<boolean>;
+  releaseJobLock(jobName: string, instanceId: string): Promise<void>;
+  cleanExpiredJobLocks(): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -5396,6 +5403,58 @@ Notary Public</p>
       .where(lt(borrowerSessions.expiresAt, now))
       .returning();
     return result.length;
+  }
+
+  // Job Locks (prevent duplicate execution in multi-instance deployment)
+  async acquireJobLock(jobName: string, instanceId: string, ttlSeconds: number): Promise<boolean> {
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + ttlSeconds * 1000);
+    
+    try {
+      // Try to insert a new lock or update if expired
+      const [existing] = await db.select().from(jobLocks).where(eq(jobLocks.jobName, jobName));
+      
+      if (!existing) {
+        // No lock exists, create one
+        await db.insert(jobLocks).values({
+          jobName,
+          lockedBy: instanceId,
+          expiresAt,
+        });
+        return true;
+      }
+      
+      // Check if lock is expired or owned by us
+      if (existing.expiresAt < now || existing.lockedBy === instanceId) {
+        // Update the lock
+        await db.update(jobLocks)
+          .set({ lockedBy: instanceId, lockedAt: now, expiresAt })
+          .where(eq(jobLocks.jobName, jobName));
+        return true;
+      }
+      
+      // Lock is held by another instance and not expired
+      return false;
+    } catch (error: any) {
+      // Handle unique constraint violation (race condition on insert)
+      if (error.code === '23505') {
+        return false;
+      }
+      throw error;
+    }
+  }
+
+  async releaseJobLock(jobName: string, instanceId: string): Promise<void> {
+    await db.delete(jobLocks)
+      .where(and(
+        eq(jobLocks.jobName, jobName),
+        eq(jobLocks.lockedBy, instanceId)
+      ));
+  }
+
+  async cleanExpiredJobLocks(): Promise<void> {
+    const now = new Date();
+    await db.delete(jobLocks).where(lt(jobLocks.expiresAt, now));
   }
 }
 

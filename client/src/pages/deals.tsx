@@ -857,6 +857,7 @@ function DealForm({ onSuccess }: { onSuccess: () => void }) {
                 <FormControl>
                   <Input 
                     {...field}
+                    value={field.value ?? ""}
                     type="number" 
                     placeholder="5000" 
                     data-testid="input-offer-amount"
@@ -895,6 +896,7 @@ function DealForm({ onSuccess }: { onSuccess: () => void }) {
                 <FormControl>
                   <Input 
                     {...field}
+                    value={field.value ?? ""}
                     placeholder="ABC Title Co" 
                     data-testid="input-title-company"
                   />

@@ -89,6 +89,18 @@ import {
 } from "./utils/permissions";
 
 // ============================================
+// STRUCTURED LOGGER
+// ============================================
+const logger = {
+  info: (msg: string, meta?: Record<string, any>) => console.log(JSON.stringify({ level: 'INFO', timestamp: new Date().toISOString(), message: msg, ...meta })),
+  warn: (msg: string, meta?: Record<string, any>) => console.warn(JSON.stringify({ level: 'WARN', timestamp: new Date().toISOString(), message: msg, ...meta })),
+  error: (msg: string, meta?: Record<string, any>) => console.error(JSON.stringify({ level: 'ERROR', timestamp: new Date().toISOString(), message: msg, ...meta })),
+};
+
+// Server start time for uptime calculation
+const serverStartTime = Date.now();
+
+// ============================================
 // RATE LIMITER (In-memory for portal endpoints)
 // ============================================
 interface RateLimitEntry {
@@ -128,6 +140,37 @@ function createRateLimiter(maxRequests: number, windowMs: number) {
 // Rate limiter for portal payment endpoints: 5 requests per minute per IP
 const portalPaymentRateLimiter = createRateLimiter(5, 60 * 1000);
 
+// Stricter rate limiter for deprecated access-token payment endpoint: 2 requests per minute per IP
+const deprecatedPaymentRateLimiter = createRateLimiter(2, 60 * 1000);
+
+// Global rate limiter: 100 requests per 15 seconds per IP
+const globalRateLimiter = createRateLimiter(100, 15 * 1000);
+
+// ============================================
+// JOB LOCKING FOR MULTI-INSTANCE DEPLOYMENT
+// ============================================
+
+// Unique instance identifier for this server process
+const instanceId = crypto.randomUUID();
+
+// Wrapper function to prevent duplicate job execution across instances
+async function withJobLock<T>(
+  jobName: string, 
+  ttlSeconds: number, 
+  fn: () => Promise<T>
+): Promise<T | null> {
+  const acquired = await storage.acquireJobLock(jobName, instanceId, ttlSeconds);
+  if (!acquired) {
+    console.log(`[${jobName}] Lock not acquired, skipping execution`);
+    return null;
+  }
+  try {
+    return await fn();
+  } finally {
+    await storage.releaseJobLock(jobName, instanceId);
+  }
+}
+
 // Clean up old rate limit entries every 5 minutes
 setInterval(() => {
   const now = Date.now();
@@ -139,17 +182,30 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000);
 
-// Clean expired borrower sessions every hour
+// Clean expired borrower sessions every hour (with job lock)
+setInterval(async () => {
+  await withJobLock("clean_borrower_sessions", 300, async () => {
+    try {
+      const cleaned = await storage.cleanExpiredBorrowerSessions();
+      if (cleaned > 0) {
+        console.log(`Cleaned ${cleaned} expired borrower sessions`);
+      }
+      return cleaned;
+    } catch (err) {
+      console.error("Error cleaning expired borrower sessions:", err);
+      return 0;
+    }
+  });
+}, 60 * 60 * 1000);
+
+// Clean expired job locks every 5 minutes
 setInterval(async () => {
   try {
-    const cleaned = await storage.cleanExpiredBorrowerSessions();
-    if (cleaned > 0) {
-      console.log(`Cleaned ${cleaned} expired borrower sessions`);
-    }
+    await storage.cleanExpiredJobLocks();
   } catch (err) {
-    console.error("Error cleaning expired borrower sessions:", err);
+    console.error("Error cleaning expired job locks:", err);
   }
-}, 60 * 60 * 1000);
+}, 5 * 60 * 1000);
 
 // Middleware to validate borrower session from cookie or header
 async function validateBorrowerSession(req: Request, res: Response, next: NextFunction) {
@@ -260,32 +316,76 @@ export async function registerRoutes(
   registerAuthRoutes(app);
   
   // ============================================
-  // HEALTH CHECK (Public endpoint for monitoring)
+  // HEALTH CHECK (Public endpoint for monitoring - no rate limiting)
   // ============================================
   app.get("/api/health", async (req, res) => {
+    const uptimeSeconds = Math.floor((Date.now() - serverStartTime) / 1000);
+    let dbStatus: "connected" | "disconnected" = "disconnected";
+    
     try {
-      // Check database connection
       await db.execute(sql`SELECT 1`);
-      
-      res.json({
-        status: "healthy",
-        timestamp: new Date().toISOString(),
-        services: {
-          database: "connected",
-          server: "running",
-        },
-      });
+      dbStatus = "connected";
     } catch (error: any) {
-      res.status(503).json({
-        status: "unhealthy",
-        timestamp: new Date().toISOString(),
-        services: {
-          database: "disconnected",
-          server: "running",
-        },
-        error: error.message,
-      });
+      logger.error("Health check database connection failed", { error: error.message });
     }
+    
+    const healthResponse = {
+      status: dbStatus === "connected" ? "healthy" : "unhealthy",
+      timestamp: new Date().toISOString(),
+      uptime: uptimeSeconds,
+      database: dbStatus,
+      version: "1.0.0",
+    };
+    
+    if (dbStatus === "disconnected") {
+      return res.status(503).json(healthResponse);
+    }
+    
+    res.json(healthResponse);
+  });
+  
+  // ============================================
+  // GLOBAL RATE LIMITING (excludes health check above)
+  // ============================================
+  app.use("/api", (req, res, next) => {
+    // Skip rate limiting for health check endpoint
+    if (req.path === "/health") {
+      return next();
+    }
+    return globalRateLimiter(req, res, next);
+  });
+  
+  // ============================================
+  // HTTP REQUEST LOGGING MIDDLEWARE
+  // ============================================
+  app.use("/api", (req, res, next) => {
+    const requestId = crypto.randomUUID();
+    const startTime = Date.now();
+    
+    // Attach request ID to request object
+    (req as any).requestId = requestId;
+    
+    // Log request start
+    logger.info("HTTP Request", {
+      requestId,
+      method: req.method,
+      path: req.path,
+      ip: req.ip || req.socket.remoteAddress,
+    });
+    
+    // Log response on finish
+    res.on("finish", () => {
+      const duration = Date.now() - startTime;
+      logger.info("HTTP Response", {
+        requestId,
+        method: req.method,
+        path: req.path,
+        statusCode: res.statusCode,
+        durationMs: duration,
+      });
+    });
+    
+    next();
   });
   
   // Protected API routes - all require authentication
@@ -5515,9 +5615,19 @@ export async function registerRoutes(
   });
   
   // Create Stripe checkout session for borrower portal payment
-  // Rate limited: 5 requests per minute per IP
-  // Supports both access token (legacy) and session-based auth
-  api.post("/api/portal/:accessToken/payment", portalPaymentRateLimiter, async (req, res) => {
+  // DEPRECATED: Use session-based auth at /api/borrower/payment instead
+  // Rate limited: 2 requests per minute per IP (stricter than session-based)
+  api.post("/api/portal/:accessToken/payment", deprecatedPaymentRateLimiter, async (req, res) => {
+    // Log deprecation warning
+    logger.warn("Deprecated endpoint accessed: /api/portal/:accessToken/payment", {
+      ip: req.ip || req.socket.remoteAddress,
+      userAgent: req.headers["user-agent"],
+      accessToken: req.params.accessToken ? "[REDACTED]" : undefined,
+    });
+    
+    // Set deprecation warning header
+    res.setHeader("X-Deprecation-Warning", "This endpoint is deprecated. Use session-based auth at /api/borrower/payment instead.");
+    
     try {
       const { accessToken } = req.params;
       const { amount } = req.body;

@@ -6,10 +6,11 @@ import { createServer } from "http";
 import { getStripeSync } from "./stripeClient";
 import { WebhookHandlers } from "./webhookHandlers";
 import { leadNurturerService } from "./services/leadNurturer";
-import { db } from "./db";
+import { db, storage } from "./storage";
 import { eq, sql } from "drizzle-orm";
 import { organizations } from "@shared/schema";
 import { logger, requestLoggingMiddleware, errorLoggingMiddleware } from "./utils/logger";
+import crypto from "crypto";
 
 const app = express();
 const httpServer = createServer(app);
@@ -29,6 +30,29 @@ export function log(message: string, source = "express") {
   });
 
   console.log(`${formattedTime} [${source}] ${message}`);
+}
+
+// ============================================
+// JOB LOCKING FOR MULTI-INSTANCE DEPLOYMENT
+// ============================================
+
+const instanceId = crypto.randomUUID();
+
+async function withJobLock<T>(
+  jobName: string, 
+  ttlSeconds: number, 
+  fn: () => Promise<T>
+): Promise<T | null> {
+  const acquired = await storage.acquireJobLock(jobName, instanceId, ttlSeconds);
+  if (!acquired) {
+    log(`Lock not acquired, skipping execution`, jobName);
+    return null;
+  }
+  try {
+    return await fn();
+  } finally {
+    await storage.releaseJobLock(jobName, instanceId);
+  }
 }
 
 async function initStripe() {
@@ -207,19 +231,20 @@ async function processLeadNurturing() {
 
 function startLeadNurturingJob() {
   const FIFTEEN_MINUTES = 15 * 60 * 1000;
+  const TTL_SECONDS = 14 * 60; // Lock TTL slightly less than interval
   
   log('Starting lead nurturing background job (every 15 minutes)', 'nurturing');
   
   // Run immediately on startup after a short delay
   setTimeout(() => {
-    processLeadNurturing().catch(err => {
+    withJobLock('lead_nurturing', TTL_SECONDS, processLeadNurturing).catch(err => {
       log(`Initial lead nurturing run failed: ${err}`, 'nurturing');
     });
   }, 30000); // Wait 30 seconds after startup
   
   // Then run every 15 minutes
   setInterval(() => {
-    processLeadNurturing().catch(err => {
+    withJobLock('lead_nurturing', TTL_SECONDS, processLeadNurturing).catch(err => {
       log(`Scheduled lead nurturing run failed: ${err}`, 'nurturing');
     });
   }, FIFTEEN_MINUTES);
@@ -256,19 +281,20 @@ async function processCampaignOptimizations() {
 
 function startCampaignOptimizationJob() {
   const ONE_HOUR = 60 * 60 * 1000;
+  const TTL_SECONDS = 55 * 60; // Lock TTL slightly less than interval
   
   log('Starting campaign optimization background job (every hour)', 'optimizer');
   
   // Run after a short delay on startup
   setTimeout(() => {
-    processCampaignOptimizations().catch(err => {
+    withJobLock('campaign_optimizer', TTL_SECONDS, processCampaignOptimizations).catch(err => {
       log(`Initial campaign optimization run failed: ${err}`, 'optimizer');
     });
   }, 60000); // Wait 1 minute after startup
   
   // Then run every hour
   setInterval(() => {
-    processCampaignOptimizations().catch(err => {
+    withJobLock('campaign_optimizer', TTL_SECONDS, processCampaignOptimizations).catch(err => {
       log(`Scheduled campaign optimization run failed: ${err}`, 'optimizer');
     });
   }, ONE_HOUR);
@@ -291,19 +317,20 @@ async function processFinanceAgent() {
 
 function startFinanceAgentJob() {
   const THIRTY_MINUTES = 30 * 60 * 1000;
+  const TTL_SECONDS = 25 * 60; // Lock TTL slightly less than interval
   
   log('Starting finance agent background job (every 30 minutes)', 'finance');
   
   // Run after a short delay on startup
   setTimeout(() => {
-    processFinanceAgent().catch(err => {
+    withJobLock('finance_agent', TTL_SECONDS, processFinanceAgent).catch(err => {
       log(`Initial finance agent run failed: ${err}`, 'finance');
     });
   }, 45000); // Wait 45 seconds after startup
   
   // Then run every 30 minutes
   setInterval(() => {
-    processFinanceAgent().catch(err => {
+    withJobLock('finance_agent', TTL_SECONDS, processFinanceAgent).catch(err => {
       log(`Scheduled finance agent run failed: ${err}`, 'finance');
     });
   }, THIRTY_MINUTES);
@@ -330,11 +357,12 @@ async function processApiQueue() {
 
 function startApiQueueJob() {
   const TEN_SECONDS = 10 * 1000;
+  const TTL_SECONDS = 9; // Lock TTL slightly less than interval
   
   log('Starting API queue background job (every 10 seconds)', 'queue');
   
   setInterval(() => {
-    processApiQueue().catch(err => {
+    withJobLock('api_queue', TTL_SECONDS, processApiQueue).catch(err => {
       log(`API queue run failed: ${err}`, 'queue');
     });
   }, TEN_SECONDS);
@@ -356,18 +384,19 @@ async function processAlerts() {
 
 function startAlertingJob() {
   const ONE_HOUR = 60 * 60 * 1000;
+  const TTL_SECONDS = 55 * 60; // Lock TTL slightly less than interval
   
   log('Starting alerting background job (every hour)', 'alerting');
   
   // Run after startup delay
   setTimeout(() => {
-    processAlerts().catch(err => {
+    withJobLock('alerting', TTL_SECONDS, processAlerts).catch(err => {
       log(`Initial alerting run failed: ${err}`, 'alerting');
     });
   }, 120000); // Wait 2 minutes after startup
   
   setInterval(() => {
-    processAlerts().catch(err => {
+    withJobLock('alerting', TTL_SECONDS, processAlerts).catch(err => {
       log(`Scheduled alerting run failed: ${err}`, 'alerting');
     });
   }, ONE_HOUR);
@@ -389,12 +418,13 @@ async function processDigests() {
 
 function startDigestJob() {
   const SIX_HOURS = 6 * 60 * 60 * 1000;
+  const TTL_SECONDS = 5 * 60 * 60; // Lock TTL slightly less than interval
   
   log('Starting digest background job (every 6 hours)', 'digest');
   
   // Check every 6 hours (will only send on scheduled days)
   setInterval(() => {
-    processDigests().catch(err => {
+    withJobLock('digest', TTL_SECONDS, processDigests).catch(err => {
       log(`Scheduled digest run failed: ${err}`, 'digest');
     });
   }, SIX_HOURS);

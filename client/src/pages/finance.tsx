@@ -997,7 +997,7 @@ function NoteForm({ onSuccess }: { onSuccess: () => void }) {
 
   const suggestedPayment = calculatePayment();
 
-  const onSubmit = (data: z.infer<typeof insertNoteSchema>) => {
+  const onSubmit = (data: z.infer<typeof noteFormSchema>) => {
     const payment = data.monthlyPayment || suggestedPayment.toFixed(2);
     mutate({
       ...data,
@@ -1132,7 +1132,7 @@ function NoteForm({ onSuccess }: { onSuccess: () => void }) {
               <FormItem>
                 <FormLabel>Down Payment ($)</FormLabel>
                 <FormControl>
-                  <Input {...field} type="number" placeholder="1000" data-testid="input-down-payment" />
+                  <Input {...field} value={field.value ?? ""} type="number" placeholder="1000" data-testid="input-down-payment" />
                 </FormControl>
                 <FormMessage />
               </FormItem>

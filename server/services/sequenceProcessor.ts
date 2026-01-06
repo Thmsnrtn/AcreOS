@@ -1,10 +1,15 @@
 import { storage } from "../storage";
 import type { SequenceEnrollment, SequenceStep, CampaignSequence, Lead } from "@shared/schema";
 import { checkTcpaConsentFromLead, canSendViaChannel } from "./tcpaCompliance";
+import crypto from "crypto";
 
 type EnrollmentWithDetails = SequenceEnrollment & { sequence: CampaignSequence; lead: Lead };
 
 const CHECK_INTERVAL_MS = 60 * 1000;
+const JOB_LOCK_TTL_SECONDS = 55; // Slightly less than interval
+
+// Instance identifier for job locking
+const instanceId = crypto.randomUUID();
 
 export class SequenceProcessorService {
   private isRunning = false;
@@ -14,8 +19,21 @@ export class SequenceProcessorService {
     if (this.isRunning) return;
     this.isRunning = true;
     console.log("[sequence-processor] Starting sequence processor background job");
-    this.intervalId = setInterval(() => this.processEnrollments(), CHECK_INTERVAL_MS);
-    this.processEnrollments();
+    this.intervalId = setInterval(() => this.runWithLock(), CHECK_INTERVAL_MS);
+    this.runWithLock();
+  }
+
+  private async runWithLock() {
+    const acquired = await storage.acquireJobLock('sequence_processor', instanceId, JOB_LOCK_TTL_SECONDS);
+    if (!acquired) {
+      console.log("[sequence-processor] Lock not acquired, skipping execution");
+      return;
+    }
+    try {
+      await this.processEnrollments();
+    } finally {
+      await storage.releaseJobLock('sequence_processor', instanceId);
+    }
   }
 
   stop() {
