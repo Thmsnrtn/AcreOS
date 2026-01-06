@@ -93,3 +93,19 @@ Preferred communication style: Simple, everyday language.
 - **Direct Mail**: Lob API (for sending direct mail pieces).
 - **Development Tools**: Vite, Replit Plugins.
 - **Future Integrations (configured but not fully connected)**: SendGrid (Email), Twilio (SMS).
+- **BYOK (Bring Your Own Key)**: Users can configure their own API keys for Lob (direct mail), Regrid (parcel data/comps), SendGrid, and Twilio. When using organization credentials, platform credit usage is automatically bypassed.
+
+## Subscription Tiers & Feature Gating
+
+| Tier | Leads | Properties | Notes | AI Requests/Day | Included Seats | Add-on Seats |
+|------|-------|------------|-------|-----------------|----------------|--------------|
+| Free | 50 | 10 | 5 | 100 | 1 | N/A |
+| Starter | 500 | 100 | 50 | 1,000 | 2 | +$20/mo (max 5) |
+| Pro | 5,000 | 1,000 | 500 | 10,000 | 5 | +$30/mo (max 20) |
+| Scale | Unlimited | Unlimited | Unlimited | Unlimited | 10 | +$40/mo (max 100) |
+| Enterprise | Unlimited | Unlimited | Unlimited | Unlimited | 25+ | Negotiable |
+
+**Additional Feature Gating:**
+- Team Messaging: Unlocks at 2+ total seats
+- 7-Day Free Trial: Available for Starter/Pro/Scale tiers with trial eligibility tracking
+- AI Agents run on all tiers but respect AI request limits
