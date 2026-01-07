@@ -121,6 +121,36 @@ function calculateCentroid(geometry: RegridParcel["geometry"]): { lat: number; l
   };
 }
 
+/**
+ * Convert Web Mercator (EPSG:3857) to WGS84 (EPSG:4326)
+ * Used when ArcGIS returns coordinates in meters instead of degrees
+ */
+function webMercatorToWGS84(x: number, y: number): { lat: number; lng: number } {
+  const lng = (x * 180) / 20037508.34;
+  const lat = (Math.atan(Math.exp((y * Math.PI) / 20037508.34)) * 360) / Math.PI - 90;
+  return { lat, lng };
+}
+
+/**
+ * Check if coordinates are in Web Mercator format (very large values)
+ * and convert to WGS84 if needed
+ */
+function normalizeCoordinates(lat: number, lng: number): { lat: number; lng: number } {
+  // If values are way outside normal lat/lng range, they're likely Web Mercator
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+    // Web Mercator: x is longitude, y is latitude in meters
+    return webMercatorToWGS84(lng, lat);
+  }
+  return { lat, lng };
+}
+
+/**
+ * Validate that coordinates are within valid WGS84 bounds
+ */
+function isValidLatLng(lat: number, lng: number): boolean {
+  return lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+}
+
 function formatOwnerAddress(props: RegridParcel["properties"]): string {
   const parts = [
     props.mail_addno,
@@ -267,23 +297,27 @@ async function queryArcGISEndpoint(
               sumX += coord[0];
               sumY += coord[1];
             }
-            centroid = {
+            const rawCentroid = {
               lng: sumX / firstRing.length,
               lat: sumY / firstRing.length,
             };
+            // Convert from Web Mercator if needed
+            centroid = normalizeCoordinates(rawCentroid.lat, rawCentroid.lng);
           }
           geometry.centroid = centroid;
         } else {
+          // Normalize coordinates from potential Web Mercator format
+          const rawLat = feature.geometry?.y || 0;
+          const rawLng = feature.geometry?.x || 0;
+          const normalized = normalizeCoordinates(rawLat, rawLng);
+          
           geometry = {
             apn: String(attrs[mappings.apn || apnField] || apn),
             boundary: {
               type: "Polygon" as const,
               coordinates: [],
             },
-            centroid: {
-              lat: feature.geometry?.y || 0,
-              lng: feature.geometry?.x || 0,
-            },
+            centroid: normalized,
             data: {
               regridId: "",
               owner: String(attrs[mappings.owner || endpoint.ownerField || "OWNER"] || "Unknown"),
