@@ -176,13 +176,13 @@ function extractLocationInfo(item: ArcGISSearchItem): { state: string | null; co
   ];
   
   for (const pattern of countyPatterns) {
-    const matches = [...text.matchAll(pattern)];
-    if (matches.length > 0) {
-      county = matches[0][1].trim();
-      if (county.toLowerCase() !== "the") {
+    const match = pattern.exec(text);
+    if (match && match[1]) {
+      const foundCounty = match[1].trim();
+      if (foundCounty.toLowerCase() !== "the") {
+        county = foundCounty;
         break;
       }
-      county = null;
     }
   }
   
@@ -275,6 +275,7 @@ export function extractEndpointInfo(item: ArcGISSearchItem): DiscoveredEndpointI
 /**
  * Validate that an endpoint is accessible and returns valid parcel data
  * Performs deep validation by checking layers and attempting a query
+ * Handles both service-level URLs (FeatureServer) and layer-level URLs (FeatureServer/0)
  */
 export async function validateEndpoint(url: string): Promise<{ 
   valid: boolean; 
@@ -283,6 +284,9 @@ export async function validateEndpoint(url: string): Promise<{
   parcelLayerId?: number;
   parcelFields?: string[];
 }> {
+  const apnFieldNames = ["apn", "parcel_id", "parcelid", "pin", "parcel_number", "parcelnumber", "parcel_no", "prop_id", "property_id", "objectid"];
+  const parcelKeywords = ["parcel", "property", "tax", "lot", "cadastral", "assessor"];
+  
   try {
     let baseUrl = url;
     if (baseUrl.endsWith("/")) {
@@ -310,6 +314,56 @@ export async function validateEndpoint(url: string): Promise<{
       };
     }
     
+    const isLayerResponse = data.type === "Feature Layer" || data.geometryType !== undefined || 
+      (data.fields && Array.isArray(data.fields) && !data.layers);
+    
+    if (isLayerResponse) {
+      const parcelFields = data.fields ? data.fields.map((f: any) => f.name) : [];
+      const layerName = (data.name || "").toLowerCase();
+      
+      const hasParcelKeyword = parcelKeywords.some(kw => layerName.includes(kw));
+      const hasApnField = parcelFields.some((fieldName: string) => 
+        apnFieldNames.some(apn => fieldName.toLowerCase().includes(apn))
+      );
+      
+      if (!hasParcelKeyword && !hasApnField) {
+        return {
+          valid: false,
+          message: "Layer does not appear to contain parcel data (no matching keywords or APN fields)",
+          hasParcelData: false
+        };
+      }
+      
+      try {
+        const queryUrl = `${baseUrl}/query?where=1=1&returnCountOnly=true&f=json`;
+        const queryResponse = await fetch(queryUrl, { 
+          signal: AbortSignal.timeout(5000) 
+        });
+        
+        if (queryResponse.ok) {
+          const queryData = await queryResponse.json();
+          if (queryData.count !== undefined && queryData.count > 0) {
+            return {
+              valid: true,
+              message: `Valid parcel layer with ${queryData.count.toLocaleString()} records`,
+              hasParcelData: true,
+              parcelLayerId: data.id,
+              parcelFields
+            };
+          }
+        }
+      } catch {
+      }
+      
+      return {
+        valid: true,
+        message: hasApnField ? "Valid parcel layer with APN field" : "Valid layer with parcel keywords",
+        hasParcelData: true,
+        parcelLayerId: data.id,
+        parcelFields
+      };
+    }
+    
     const hasLayers = data.layers && Array.isArray(data.layers) && data.layers.length > 0;
     const isFeatureServer = data.serviceDescription !== undefined || data.layers !== undefined;
     
@@ -319,9 +373,6 @@ export async function validateEndpoint(url: string): Promise<{
         message: "No layers found or invalid service response"
       };
     }
-    
-    const parcelKeywords = ["parcel", "property", "tax", "lot", "cadastral", "assessor"];
-    const apnFieldNames = ["apn", "parcel_id", "parcelid", "pin", "parcel_number", "parcelnumber", "parcel_no", "prop_id", "property_id"];
     
     let parcelLayerId: number | undefined;
     let hasParcelData = false;
@@ -335,6 +386,10 @@ export async function validateEndpoint(url: string): Promise<{
           hasParcelData = true;
           break;
         }
+      }
+      
+      if (parcelLayerId === undefined && data.layers.length > 0) {
+        parcelLayerId = data.layers[0].id;
       }
     }
     
@@ -355,14 +410,8 @@ export async function validateEndpoint(url: string): Promise<{
               apnFieldNames.some(apn => fieldName.toLowerCase().includes(apn))
             );
             
-            if (!hasApnField) {
-              return {
-                valid: true,
-                message: "Valid service but no APN/parcel ID field found - may require field mapping",
-                hasParcelData: true,
-                parcelLayerId,
-                parcelFields
-              };
+            if (hasApnField) {
+              hasParcelData = true;
             }
             
             try {
@@ -376,14 +425,26 @@ export async function validateEndpoint(url: string): Promise<{
                 if (queryData.count !== undefined && queryData.count > 0) {
                   return {
                     valid: true,
-                    message: `Valid parcel service with ${queryData.count.toLocaleString()} records`,
-                    hasParcelData: true,
+                    message: hasParcelData 
+                      ? `Valid parcel service with ${queryData.count.toLocaleString()} records`
+                      : `Service has ${queryData.count.toLocaleString()} records (verify parcel content)`,
+                    hasParcelData,
                     parcelLayerId,
                     parcelFields
                   };
                 }
               }
             } catch {
+            }
+            
+            if (hasApnField) {
+              return {
+                valid: true,
+                message: "Valid service with APN field found",
+                hasParcelData: true,
+                parcelLayerId,
+                parcelFields
+              };
             }
           }
         }
@@ -395,7 +456,7 @@ export async function validateEndpoint(url: string): Promise<{
       valid: hasParcelData,
       message: hasParcelData 
         ? "Valid service with parcel-related layers" 
-        : "Service accessible but no parcel layers found",
+        : "Service accessible but parcel data uncertain - manual review recommended",
       hasParcelData,
       parcelLayerId,
       parcelFields
