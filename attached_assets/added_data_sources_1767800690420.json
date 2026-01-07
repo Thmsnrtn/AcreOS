@@ -1,0 +1,115 @@
+{
+    "metadata": {
+        "title": "Additional Data Sources for AcreOS Expansion",
+        "description": "Datasets recommended for expanding the AcreOS land-investing platform, covering tribal lands, climate and carbon data, energy and telecommunications infrastructure, renewable energy zones and tax incentive zones.",
+        "created_date": "2026-01-07",
+        "total_sources": 11,
+        "categories": 6,
+        "version": "1.0"
+    },
+    "categories": {
+        "tribal_data": {
+            "BIA TAAMS Mapped Tribal Tracts": {
+                "portal_url": "https://catalog.data.gov/dataset/bia-mapped-tribal-tracts",
+                "api_endpoint": "https://biamaps.geoplatform.gov/arcgis/rest/services/Hosted/BIA_Mapped_Tribal_Tracts/FeatureServer",
+                "data_types": ["Land area code", "Tract number", "Ownership attribute (T = tribal, A = allotted)"],
+                "coverage": "Tribal trust lands in the United States",
+                "pricing": "Free",
+                "use_case": "Identify parcels on tribal trust or allotted land to avoid legal complications",
+                "accuracy": "Not complete—only mapped tracts and parcels are shown"
+            }
+        },
+        "climate_and_carbon_data": {
+            "Wildfire Hazard Potential (WHP) 2023": {
+                "portal_url": "https://catalog.data.gov/dataset/wildfire-hazard-potential-version-2023-continuous-image-service",
+                "api_endpoint": "https://apps.fs.usda.gov/arcgis/rest/services/RDWFS/WHP_2023_Continuous/ImageServer",
+                "data_types": ["Relative wildfire potential index", "Continuous and classified WHP values", "270 m resolution raster"],
+                "coverage": "Conterminous United States",
+                "pricing": "Free",
+                "use_case": "Assess wildfire risk and prioritise fuel treatment or mitigation efforts",
+                "notes": "WHP is not a forecast—values indicate relative potential for high-intensity wildfire"
+            },
+            "ESA Climate Change Initiative (CCI) Land-Cover & Climate Data": {
+                "portal_url": "https://climate.esa.int/en/odp/",
+                "api_endpoint": "OpenSearch and THREDDS endpoints",
+                "data_types": ["Land-cover classes", "Climate variables", "Greenhouse gas concentrations"],
+                "coverage": "Global",
+                "pricing": "Free",
+                "use_case": "Analyse land-cover change and climate trends for carbon sequestration or risk assessment"
+            },
+            "Nature-based Carbon Offset Projects Database": {
+                "portal_url": "https://zenodo.org/record/10013101",
+                "api_endpoint": "Download via Zenodo (CSV/GeoJSON)",
+                "data_types": ["Project ID", "Registry", "Project type (ARR, AD, IFM)", "Start and end dates", "Project and accounting areas", "Boundary geometry"],
+                "coverage": "575 projects across 55 countries",
+                "pricing": "Free",
+                "use_case": "Determine whether a parcel intersects existing carbon offset projects and evaluate offset potential",
+                "accuracy": "Boundary accuracy ≈0.98±0.015 (intersection-of-union score)"
+            },
+            "OffsetsDB / CarbonPlan": {
+                "portal_url": "https://carbonplan.org/research/offsets-db",
+                "api_endpoint": "Python package (offsets_db_data) and CSV/Parquet downloads",
+                "data_types": ["Carbon credit issuance", "Transaction records", "Project IDs", "Quantities", "Prices", "Dates"],
+                "coverage": "Global voluntary carbon markets",
+                "pricing": "Free",
+                "use_case": "Analyze carbon credit performance and estimate revenue from offset projects"
+            }
+        },
+        "energy_infrastructure": {
+            "Natural Gas Interstate & Intrastate Pipelines": {
+                "portal_url": "https://catalog.data.gov/dataset/natural-gas-interstate-and-intrastate-pipelines",
+                "api_endpoint": "N/A",
+                "data_types": ["Pipeline routes", "Name", "Owner", "Diameter", "Commodity type"],
+                "coverage": "United States",
+                "pricing": "Free",
+                "use_case": "Identify pipeline corridors, easement opportunities and safety setbacks"
+            },
+            "Liquids Pipeline Projects Database": {
+                "portal_url": "https://catalog.data.gov/dataset/liquids-pipeline-projects-database",
+                "api_endpoint": "N/A",
+                "data_types": ["Project type", "Start year", "Capacity", "Mileage", "Geographic information"],
+                "coverage": "United States",
+                "pricing": "Free",
+                "use_case": "Monitor planned and existing liquid pipeline projects to assess development impacts"
+            },
+            "National Pipeline Mapping System (NPMS)": {
+                "portal_url": "https://www.phmsa.dot.gov/pipeline/national-pipeline-mapping-system/about-npms",
+                "api_endpoint": "Access via PHMSA secure portal",
+                "data_types": ["Gas transmission pipelines", "Hazardous liquid pipelines", "LNG plants", "Breakout tanks", "Diameter", "Commodity type"],
+                "coverage": "United States",
+                "pricing": "Free (restricted)",
+                "use_case": "Assess pipeline presence and regulatory compliance; identify hazardous areas",
+                "notes": "Distribution is limited to pipeline operators and government officials"
+            }
+        },
+        "telecommunications_infrastructure": {
+            "OpenCellID": {
+                "portal_url": "https://opencellid.org",
+                "api_endpoint": "https://opencellid.org/api",
+                "data_types": ["Cell tower locations", "Cell identifiers", "Network operator", "Signal parameters"],
+                "coverage": "Global",
+                "pricing": "Free (API key required)",
+                "use_case": "Evaluate mobile coverage for development sites and identify tower lease opportunities",
+                "accuracy": "Community-sourced dataset—location accuracy varies"
+            }
+        },
+        "renewable_energy_and_special_zones": {
+            "BOEM Renewable Energy GIS Data": {
+                "portal_url": "https://www.boem.gov/renewable-energy/mapping-and-gis-data",
+                "api_endpoint": "N/A",
+                "data_types": ["Offshore wind energy lease areas", "Planning areas", "Marine hydrokinetic lease areas"],
+                "coverage": "Outer Continental Shelf (USA)",
+                "pricing": "Free",
+                "use_case": "Assess proximity to renewable energy lease areas and understand regulatory constraints"
+            },
+            "HUD Opportunity Zones": {
+                "portal_url": "https://catalog.data.gov/dataset/opportunity-zones-16322",
+                "api_endpoint": "https://opportunityzones.hud.gov/arcgis/rest/services/Opportunity_Zones/MapServer",
+                "data_types": ["Qualified Opportunity Zone census tracts", "FIPS codes", "Designation attributes"],
+                "coverage": "United States",
+                "pricing": "Free",
+                "use_case": "Identify parcels within Opportunity Zones to leverage capital gains tax incentives"
+            }
+        }
+    }
+}
