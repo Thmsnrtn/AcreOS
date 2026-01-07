@@ -62,9 +62,11 @@ Preferred communication style: Simple, everyday language.
 - **Payment Processing**: Stripe (subscription billing, one-time credit purchases via Replit Stripe connector).
 - **AI Services**: OpenAI (via Replit AI Integrations for chat completions and image generation).
 - **Mapping/Comps**: Tiered parcel lookup system:
-  - **County GIS Endpoints** (FREE): Direct queries to county ArcGIS REST services for parcel data
+  - **County GIS Endpoints** (FREE): Direct queries to county ArcGIS REST services for parcel data (52+ counties auto-seeded)
   - **Regrid API** (paid fallback): Used only when county GIS endpoints aren't available
+  - **Parcel Snapshots Cache**: Centralized parcel_snapshots table with 30-day freshness tracking
   - Admin interface in Founder Dashboard to manage county GIS endpoints
+- **Due Diligence Reports**: Comprehensive property analysis with parcel data, ownership info, tax history, market analysis, risk assessment, and AI-powered summaries. Supports PDF export.
 - **Direct Mail**: Lob API (for sending physical mail).
 - **Development Tools**: Vite, Replit Plugins.
 - **Future Integrations (configured but not fully connected)**: SendGrid (Email), Twilio (SMS).
