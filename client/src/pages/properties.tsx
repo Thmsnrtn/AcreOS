@@ -871,16 +871,35 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
   open: boolean; 
   onOpenChange: (open: boolean) => void;
 }) {
+  const utilities = property.utilities as { electric?: boolean; water?: boolean; sewer?: boolean; gas?: boolean } | null;
+  const parcelData = property.parcelData as { regridId?: string; owner?: string; ownerAddress?: string; taxAmount?: string; lastUpdated?: string } | null;
+  
+  const formatDate = (date: Date | string | null | undefined) => {
+    if (!date) return "N/A";
+    return new Date(date).toLocaleDateString();
+  };
+
+  const formatCurrency = (value: string | number | null | undefined) => {
+    if (!value) return "$0";
+    return `$${Number(value).toLocaleString()}`;
+  };
+
+  const hasMapData = property.parcelBoundary && property.parcelCentroid;
+  const hasOwnerData = parcelData?.owner || parcelData?.ownerAddress;
+  const hasUtilities = utilities && Object.values(utilities).some(Boolean);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[800px] max-h-[85vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <MapPin className="w-5 h-5" />
-            {property.county}, {property.state}
+            {property.address || `${property.county}, ${property.state}`}
           </DialogTitle>
-          <DialogDescription>
-            APN: {property.apn} - {property.sizeAcres} Acres
+          <DialogDescription className="flex items-center gap-4 flex-wrap">
+            <span>APN: {property.apn}</span>
+            <span>{property.sizeAcres} Acres</span>
+            <Badge variant="outline" className="capitalize">{property.status.replace('_', ' ')}</Badge>
           </DialogDescription>
         </DialogHeader>
         
@@ -898,41 +917,199 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
             <TabsTrigger value="due-diligence" data-testid="tab-due-diligence">Due Diligence</TabsTrigger>
           </TabsList>
           
-          <TabsContent value="overview" className="space-y-4 mt-4">
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="text-muted-foreground">Status:</span>
-                <Badge variant="outline" className="ml-2 capitalize">{property.status.replace('_', ' ')}</Badge>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Zoning:</span>
-                <span className="ml-2">{property.zoning || "N/A"}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Market Value:</span>
-                <span className="ml-2">${Number(property.marketValue || 0).toLocaleString()}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Purchase Price:</span>
-                <span className="ml-2">${Number(property.purchasePrice || 0).toLocaleString()}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Road Access:</span>
-                <span className="ml-2 capitalize">{property.roadAccess || "N/A"}</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Terrain:</span>
-                <span className="ml-2 capitalize">{property.terrain || "N/A"}</span>
-              </div>
-            </div>
-            {property.description && (
-              <div className="pt-2">
-                <span className="text-muted-foreground text-sm">Description:</span>
-                <p className="text-sm mt-1">{property.description}</p>
+          <TabsContent value="overview" className="space-y-6 mt-4">
+            {hasMapData && (
+              <div className="rounded-md overflow-hidden border">
+                <SinglePropertyMap
+                  boundary={property.parcelBoundary as { type: "Polygon" | "MultiPolygon"; coordinates: number[][][] | number[][][][]; }}
+                  centroid={property.parcelCentroid as { lat: number; lng: number }}
+                  apn={property.apn}
+                  height="350px"
+                  enable3DTerrain={true}
+                />
               </div>
             )}
+
+            <div className="space-y-4">
+              <div>
+                <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                  <MapPin className="w-4 h-4" />
+                  Location Details
+                </h4>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+                  <div className="space-y-1">
+                    <span className="text-muted-foreground text-xs">County</span>
+                    <p className="font-medium">{property.county}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-muted-foreground text-xs">State</span>
+                    <p className="font-medium">{property.state}</p>
+                  </div>
+                  {property.city && (
+                    <div className="space-y-1">
+                      <span className="text-muted-foreground text-xs">City</span>
+                      <p className="font-medium">{property.city}</p>
+                    </div>
+                  )}
+                  {property.zip && (
+                    <div className="space-y-1">
+                      <span className="text-muted-foreground text-xs">ZIP</span>
+                      <p className="font-medium">{property.zip}</p>
+                    </div>
+                  )}
+                  {property.subdivision && (
+                    <div className="space-y-1">
+                      <span className="text-muted-foreground text-xs">Subdivision</span>
+                      <p className="font-medium">{property.subdivision}</p>
+                    </div>
+                  )}
+                  {property.lotNumber && (
+                    <div className="space-y-1">
+                      <span className="text-muted-foreground text-xs">Lot Number</span>
+                      <p className="font-medium">{property.lotNumber}</p>
+                    </div>
+                  )}
+                  {property.latitude && property.longitude && (
+                    <div className="space-y-1 col-span-2">
+                      <span className="text-muted-foreground text-xs">Coordinates</span>
+                      <p className="font-medium font-mono text-xs">{Number(property.latitude).toFixed(6)}, {Number(property.longitude).toFixed(6)}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="border-t pt-4">
+                <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                  <Ruler className="w-4 h-4" />
+                  Property Characteristics
+                </h4>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+                  <div className="space-y-1">
+                    <span className="text-muted-foreground text-xs">Size</span>
+                    <p className="font-medium">{property.sizeAcres} Acres</p>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-muted-foreground text-xs">Zoning</span>
+                    <p className="font-medium">{property.zoning || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-muted-foreground text-xs">Terrain</span>
+                    <p className="font-medium capitalize">{property.terrain || "N/A"}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-muted-foreground text-xs">Road Access</span>
+                    <p className="font-medium capitalize">{property.roadAccess || "N/A"}</p>
+                  </div>
+                  {hasUtilities && (
+                    <div className="space-y-1 col-span-2">
+                      <span className="text-muted-foreground text-xs">Utilities</span>
+                      <div className="flex gap-2 flex-wrap">
+                        {utilities?.electric && <Badge variant="secondary">Electric</Badge>}
+                        {utilities?.water && <Badge variant="secondary">Water</Badge>}
+                        {utilities?.sewer && <Badge variant="secondary">Sewer</Badge>}
+                        {utilities?.gas && <Badge variant="secondary">Gas</Badge>}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="border-t pt-4">
+                <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                  <DollarSign className="w-4 h-4" />
+                  Financial Information
+                </h4>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+                  <div className="space-y-1">
+                    <span className="text-muted-foreground text-xs">Assessed Value</span>
+                    <p className="font-medium">{formatCurrency(property.assessedValue)}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-muted-foreground text-xs">Market Value</span>
+                    <p className="font-medium">{formatCurrency(property.marketValue)}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-muted-foreground text-xs">Purchase Price</span>
+                    <p className="font-medium">{formatCurrency(property.purchasePrice)}</p>
+                  </div>
+                  {property.purchaseDate && (
+                    <div className="space-y-1">
+                      <span className="text-muted-foreground text-xs">Purchase Date</span>
+                      <p className="font-medium">{formatDate(property.purchaseDate)}</p>
+                    </div>
+                  )}
+                  <div className="space-y-1">
+                    <span className="text-muted-foreground text-xs">List Price</span>
+                    <p className="font-medium">{formatCurrency(property.listPrice)}</p>
+                  </div>
+                  {property.soldPrice && (
+                    <>
+                      <div className="space-y-1">
+                        <span className="text-muted-foreground text-xs">Sold Price</span>
+                        <p className="font-medium">{formatCurrency(property.soldPrice)}</p>
+                      </div>
+                      <div className="space-y-1">
+                        <span className="text-muted-foreground text-xs">Sold Date</span>
+                        <p className="font-medium">{formatDate(property.soldDate)}</p>
+                      </div>
+                    </>
+                  )}
+                  {parcelData?.taxAmount && (
+                    <div className="space-y-1">
+                      <span className="text-muted-foreground text-xs">Annual Taxes</span>
+                      <p className="font-medium">{parcelData.taxAmount}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {hasOwnerData && (
+                <div className="border-t pt-4">
+                  <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                    <FileText className="w-4 h-4" />
+                    Owner Information
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                    {parcelData?.owner && (
+                      <div className="space-y-1">
+                        <span className="text-muted-foreground text-xs">Owner Name</span>
+                        <p className="font-medium">{parcelData.owner}</p>
+                      </div>
+                    )}
+                    {parcelData?.ownerAddress && (
+                      <div className="space-y-1">
+                        <span className="text-muted-foreground text-xs">Owner Address</span>
+                        <p className="font-medium">{parcelData.ownerAddress}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {property.legalDescription && (
+                <div className="border-t pt-4">
+                  <h4 className="text-sm font-semibold mb-2">Legal Description</h4>
+                  <p className="text-sm text-muted-foreground bg-muted/50 p-3 rounded-md font-mono text-xs">
+                    {property.legalDescription}
+                  </p>
+                </div>
+              )}
+
+              {property.description && (
+                <div className="border-t pt-4">
+                  <h4 className="text-sm font-semibold mb-2">Description</h4>
+                  <p className="text-sm">{property.description}</p>
+                </div>
+              )}
+
+              {parcelData?.lastUpdated && (
+                <div className="text-xs text-muted-foreground pt-2">
+                  Parcel data last updated: {formatDate(parcelData.lastUpdated)}
+                </div>
+              )}
+            </div>
             
-            <div className="pt-4">
+            <div className="pt-4 border-t">
               <CustomFieldValuesEditor entityType="property" entityId={property.id} />
             </div>
           </TabsContent>
