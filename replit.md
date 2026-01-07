@@ -54,7 +54,11 @@ Preferred communication style: Simple, everyday language.
   - All agents use DataSourceBroker for data lookups and OpenAI (gpt-4o) for intelligent analysis
   - Unified execution endpoint: `/api/agents/execute`
 - **AI Section**: Conversational AI interface (`/command-center` or `/ai`) with specialized agents, task management, and real-time agent status monitoring.
-- **Founder Dashboard**: Analytics for revenue, system health, and agent status.
+- **Founder Dashboard**: Analytics for revenue, system health, and agent status. Now includes:
+  - Bulk alert operations (Acknowledge All, Resolve All)
+  - Expandable metric tiles with detailed breakdowns
+  - User analytics with All Users table and subscription lifecycle tracking (upgrades/downgrades/cancels)
+  - Data endpoint health checks with Test, Test All, and Diagnose capabilities
 - **Team Performance Dashboard**: Aggregated metrics for leads, deals, tasks, and activity trends.
 - **Navigation & UX Organization**: Consolidated sidebar navigation and tabbed hub pages (Marketing, Insights, Settings, Help & Support) with URL hash navigation for deep linking.
 - **Legal Compliance**: Public Terms of Service and Privacy Policy pages, and dismissible disclaimer banners for Finance, AI, and Deals sections.
