@@ -2280,6 +2280,23 @@ export async function registerRoutes(
       userAgent: req.headers["user-agent"],
     });
     
+    // Track conversion when deal is closed (for lead scoring feedback loop)
+    if (req.body.status === "closed" && existingDeal.status !== "closed") {
+      try {
+        // Get the property to find associated lead
+        const property = await storage.getProperty(org.id, deal.propertyId);
+        if (property && property.leadId) {
+          const dealValue = deal.acceptedAmount ? parseFloat(String(deal.acceptedAmount)) : undefined;
+          await leadScoringService.recordConversion(property.leadId, org.id, "deal_closed", {
+            dealValue,
+            profitMargin: deal.analysisResults?.netProfit,
+          });
+        }
+      } catch (conversionErr) {
+        console.error("Failed to record conversion:", conversionErr);
+      }
+    }
+    
     res.json(deal);
   });
   

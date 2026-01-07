@@ -3,7 +3,7 @@ import { useLeads, useCreateLead, useUpdateLead, useDeleteLead } from "@/hooks/u
 import { useProperties } from "@/hooks/use-properties";
 import { useTeamMembers, useUserPermissions, getRoleBadgeStyle, getRoleLabel } from "@/hooks/use-organization";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { ListSkeleton, TableRowSkeleton } from "@/components/list-skeleton";
 import { useState, useMemo } from "react";
@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, Mail, Phone, Trash2, Edit, Loader2, Users, FileText, Download, Upload, CheckCircle, XCircle, AlertCircle, Flame, Sun, Snowflake, Skull, ArrowUpDown, ArrowUp, ArrowDown, X, Clock, Eye, User, Calendar, MapPin, StickyNote, PhoneOff, Shield, CheckSquare } from "lucide-react";
+import { Plus, Search, Mail, Phone, Trash2, Edit, Loader2, Users, FileText, Download, Upload, CheckCircle, XCircle, AlertCircle, Flame, Sun, Snowflake, Skull, ArrowUpDown, ArrowUp, ArrowDown, X, Clock, Eye, User, Calendar, MapPin, StickyNote, PhoneOff, Shield, CheckSquare, RefreshCw, TrendingUp, TrendingDown, Minus, History } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState } from "@/components/empty-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -71,24 +71,319 @@ function getStageStyle(stage: string) {
   }
 }
 
-function LeadScoreBadge({ lead }: { lead: LeadWithScore }) {
-  const stage = lead.nurturingStage || "new";
+function getRecommendationStyle(rec: "mail" | "maybe" | "skip"): string {
+  switch (rec) {
+    case "mail":
+      return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300";
+    case "maybe":
+      return "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300";
+    case "skip":
+      return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300";
+  }
+}
+
+interface ScoreHistory {
+  id: number;
+  score: number;
+  previousScore: number | null;
+  factors: Record<string, any>;
+  triggerSource: string;
+  scoredAt: string;
+}
+
+function normalizeRawScore(rawScore: number): number {
+  return Math.round((rawScore + 400) / 8);
+}
+
+function ScoreDetailsDialog({ 
+  lead, 
+  open, 
+  onOpenChange 
+}: { 
+  lead: LeadWithScore; 
+  open: boolean; 
+  onOpenChange: (open: boolean) => void;
+}) {
+  const { toast } = useToast();
+  const normalizedScore = lead.score ?? 0;
+  // Use nurturingStage from backend which maps directly to recommendation
+  const recommendation = (lead.nurturingStage === "hot" ? "mail" : 
+                          lead.nurturingStage === "warm" ? "maybe" : 
+                          "skip") as "mail" | "maybe" | "skip";
+
+  const { data: scoreHistory, isLoading: isLoadingHistory, refetch: refetchHistory } = useQuery<ScoreHistory[]>({
+    queryKey: ["/api/leads", lead.id, "score-history"],
+    enabled: open,
+  });
+
+  const rescoreMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/leads/${lead.id}/betty-score`, { triggerSource: "manual" });
+      if (!res.ok) throw new Error("Failed to rescore lead");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
+      refetchHistory();
+      toast({
+        title: "Lead rescored",
+        description: "The lead score has been updated.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to rescore lead.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const latestFactors = scoreHistory?.[0]?.factors || lead.scoreFactors || {};
+  
+  const propertyFactors = ["ownershipDuration", "taxDelinquency", "absenteeOwner", "propertySize"];
+  const ownerFactors = ["corporateOwner", "outOfState", "inheritanceIndicator"];
+  const marketFactors = ["floodZone"];
+  const engagementFactors = ["responseRecency", "emailEngagement", "campaignTouches"];
+
+  const renderFactor = (key: string, factor: any) => {
+    if (!factor) return null;
+    const score = factor.score || 0;
+    const isPositive = score > 0;
+    const isNegative = score < 0;
+    const colorClass = isPositive 
+      ? "text-green-600 dark:text-green-400" 
+      : isNegative 
+        ? "text-red-600 dark:text-red-400" 
+        : "text-muted-foreground";
+    const bgClass = isPositive
+      ? "bg-green-50 dark:bg-green-900/20"
+      : isNegative
+        ? "bg-red-50 dark:bg-red-900/20"
+        : "bg-muted/50";
+    
+    return (
+      <div 
+        key={key} 
+        className={`flex items-center justify-between py-2 px-3 rounded-md ${bgClass}`}
+        data-testid={`factor-${key}-${lead.id}`}
+      >
+        <div className="flex items-center gap-2">
+          {isPositive && <TrendingUp className="w-3 h-3 text-green-600 dark:text-green-400" />}
+          {isNegative && <TrendingDown className="w-3 h-3 text-red-600 dark:text-red-400" />}
+          {!isPositive && !isNegative && <Minus className="w-3 h-3 text-muted-foreground" />}
+          <span className="text-sm capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
+        </div>
+        <span className={`text-sm font-medium ${colorClass}`}>
+          {isPositive ? "+" : ""}{score}
+        </span>
+      </div>
+    );
+  };
+
+  const renderFactorGroup = (title: string, factors: string[]) => {
+    const factorData = factors.map(f => ({ key: f, data: latestFactors[f] })).filter(f => f.data);
+    if (factorData.length === 0) return null;
+    
+    return (
+      <div className="space-y-2">
+        <h4 className="text-sm font-medium text-muted-foreground">{title}</h4>
+        <div className="space-y-1">
+          {factorData.map(({ key, data }) => renderFactor(key, data))}
+        </div>
+      </div>
+    );
+  };
+
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Badge
-          variant="outline"
-          className={`text-xs border-0 flex items-center gap-1 cursor-default ${getStageStyle(stage)}`}
-          data-testid={`badge-score-${lead.id}`}
-        >
-          {getStageIcon(stage)}
-          {stage}
-        </Badge>
-      </TooltipTrigger>
-      <TooltipContent>
-        <span data-testid={`tooltip-score-${lead.id}`}>Score: {lead.score ?? 0}/100</span>
-      </TooltipContent>
-    </Tooltip>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[500px] max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            Score Details: {lead.firstName} {lead.lastName}
+          </DialogTitle>
+          <DialogDescription>
+            Betty-style lead scoring breakdown
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-6">
+          <div className="flex items-center justify-between gap-4 p-4 bg-muted/50 rounded-lg">
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">Overall Score</p>
+              <p className="text-3xl font-bold" data-testid={`text-score-value-${lead.id}`}>{normalizedScore}</p>
+            </div>
+            <Badge 
+              variant="outline"
+              className={`text-sm border-0 px-3 py-1 capitalize ${getRecommendationStyle(recommendation)}`}
+              data-testid={`badge-recommendation-${lead.id}`}
+            >
+              {recommendation}
+            </Badge>
+          </div>
+
+          <div className="space-y-4">
+            {renderFactorGroup("Property Factors", propertyFactors)}
+            {renderFactorGroup("Owner Factors", ownerFactors)}
+            {renderFactorGroup("Market/Location", marketFactors)}
+            {renderFactorGroup("Engagement", engagementFactors)}
+          </div>
+
+          {scoreHistory && scoreHistory.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <History className="w-4 h-4 text-muted-foreground" />
+                <h4 className="text-sm font-medium text-muted-foreground">Score History</h4>
+              </div>
+              <div className="space-y-2 max-h-32 overflow-y-auto">
+                {scoreHistory.slice(0, 5).map((entry) => {
+                  const historyRec = entry.factors?.recommendation as "mail" | "maybe" | "skip" | undefined;
+                  const normalizedHistoryScore = normalizeRawScore(entry.score);
+                  const normalizedPrevScore = entry.previousScore !== null ? normalizeRawScore(entry.previousScore) : null;
+                  return (
+                    <div 
+                      key={entry.id} 
+                      className="flex items-center justify-between text-sm p-2 bg-muted/30 rounded"
+                      data-testid={`history-entry-${entry.id}`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">
+                          {new Date(entry.scoredAt).toLocaleDateString()}
+                        </span>
+                        {historyRec && (
+                          <Badge 
+                            variant="outline" 
+                            className={`text-xs border-0 capitalize ${getRecommendationStyle(historyRec)}`}
+                          >
+                            {historyRec}
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {normalizedPrevScore !== null && (
+                          <span className="text-muted-foreground">{normalizedPrevScore}/100</span>
+                        )}
+                        {normalizedPrevScore !== null && <span className="text-muted-foreground">→</span>}
+                        <span className="font-medium">{normalizedHistoryScore}/100</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {isLoadingHistory && (
+            <div className="flex items-center justify-center py-4">
+              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+            </div>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Close
+          </Button>
+          <Button 
+            onClick={() => rescoreMutation.mutate()} 
+            disabled={rescoreMutation.isPending}
+            data-testid={`button-rescore-${lead.id}`}
+          >
+            {rescoreMutation.isPending ? (
+              <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Rescoring...</>
+            ) : (
+              <><RefreshCw className="w-4 h-4 mr-2" /> Rescore</>
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function RescoreMenuItem({ leadId }: { leadId: number }) {
+  const { toast } = useToast();
+  const rescoreMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/leads/${leadId}/betty-score`, { triggerSource: "manual" });
+      if (!res.ok) throw new Error("Failed to rescore lead");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
+      toast({
+        title: "Lead rescored",
+        description: "The lead score has been updated.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to rescore lead.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  return (
+    <DropdownMenuItem 
+      onClick={() => rescoreMutation.mutate()} 
+      disabled={rescoreMutation.isPending}
+      data-testid={`button-rescore-menu-${leadId}`}
+    >
+      {rescoreMutation.isPending ? (
+        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+      ) : (
+        <RefreshCw className="w-4 h-4 mr-2" />
+      )}
+      Rescore Lead
+    </DropdownMenuItem>
+  );
+}
+
+function LeadScoreBadge({ lead }: { lead: LeadWithScore }) {
+  const [showDetails, setShowDetails] = useState(false);
+  const stage = lead.nurturingStage || "new";
+  const normalizedScore = lead.score ?? 0;
+  // Use nurturingStage from backend which maps directly to recommendation
+  const recommendation = (stage === "hot" ? "mail" : 
+                          stage === "warm" ? "maybe" : 
+                          "skip") as "mail" | "maybe" | "skip";
+  
+  return (
+    <>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div 
+            className="flex items-center gap-1 cursor-pointer"
+            onClick={() => setShowDetails(true)}
+            data-testid={`badge-score-${lead.id}`}
+          >
+            <Badge
+              variant="outline"
+              className={`text-xs border-0 flex items-center gap-1 ${getStageStyle(stage)}`}
+            >
+              {getStageIcon(stage)}
+              {normalizedScore}
+            </Badge>
+            <Badge
+              variant="outline"
+              className={`text-xs border-0 capitalize ${getRecommendationStyle(recommendation)}`}
+            >
+              {recommendation}
+            </Badge>
+          </div>
+        </TooltipTrigger>
+        <TooltipContent>
+          <span data-testid={`tooltip-score-${lead.id}`}>Score: {normalizedScore}/100 - Click for details</span>
+        </TooltipContent>
+      </Tooltip>
+      <ScoreDetailsDialog 
+        lead={lead} 
+        open={showDetails} 
+        onOpenChange={setShowDetails}
+      />
+    </>
   );
 }
 
@@ -577,7 +872,7 @@ export default function LeadsPage() {
       if (assigneeFilter === "unassigned") {
         result = result.filter(l => !l.assignedTo);
       } else {
-        result = result.filter(l => l.assignedTo === assigneeFilter);
+        result = result.filter(l => String(l.assignedTo) === assigneeFilter);
       }
     }
     
@@ -873,6 +1168,7 @@ export default function LeadsPage() {
                                     <Edit className="w-4 h-4 mr-2" />
                                     Edit
                                   </DropdownMenuItem>
+                                  <RescoreMenuItem leadId={lead.id} />
                                   <DropdownMenuItem onClick={() => setOfferLetterLead(lead)} data-testid={`button-offer-letter-${lead.id}`}>
                                     <FileText className="w-4 h-4 mr-2" />
                                     Generate Offer Letter
