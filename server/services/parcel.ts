@@ -151,6 +151,26 @@ function isValidLatLng(lat: number, lng: number): boolean {
   return lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
 }
 
+/**
+ * Convert polygon ring coordinates from Web Mercator to WGS84 if needed
+ * ArcGIS rings are [lng, lat] pairs (x, y in Web Mercator)
+ */
+function normalizePolygonRings(rings: number[][][]): number[][][] {
+  return rings.map(ring => 
+    ring.map(coord => {
+      const x = coord[0]; // lng in degrees or x in meters
+      const y = coord[1]; // lat in degrees or y in meters
+      
+      // Check if coordinates are in Web Mercator (very large values)
+      if (Math.abs(x) > 180 || Math.abs(y) > 90) {
+        const converted = webMercatorToWGS84(x, y);
+        return [converted.lng, converted.lat];
+      }
+      return [x, y];
+    })
+  );
+}
+
 function formatOwnerAddress(props: RegridParcel["properties"]): string {
   const parts = [
     props.mail_addno,
@@ -271,11 +291,13 @@ async function queryArcGISEndpoint(
         
         if (feature.geometry?.rings) {
           const rings = feature.geometry.rings;
+          // Convert boundary coordinates from Web Mercator to WGS84 if needed
+          const normalizedRings = normalizePolygonRings(rings);
           geometry = {
             apn: String(attrs[mappings.apn || apnField] || apn),
             boundary: {
               type: "Polygon" as const,
-              coordinates: rings,
+              coordinates: normalizedRings,
             },
             centroid: { lat: 0, lng: 0 },
             data: {
