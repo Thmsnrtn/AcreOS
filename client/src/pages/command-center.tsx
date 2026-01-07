@@ -57,6 +57,7 @@ import {
   RefreshCw,
   Activity,
   Headphones,
+  Gift,
 } from "lucide-react";
 import { AISettings } from "@/components/ai-settings";
 import { formatDistanceToNow } from "date-fns";
@@ -1067,6 +1068,13 @@ interface Suggestion {
   requiredTier?: string;
   available: boolean;
   currentTier: string;
+  canUseTrialToken?: boolean;
+}
+
+interface SuggestionsResponse {
+  suggestions: Suggestion[];
+  trialTokens: number;
+  tier: string;
 }
 
 interface ActiveSkill {
@@ -1088,9 +1096,12 @@ export default function CommandCenterPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const { data: suggestions = [] } = useQuery<Suggestion[]>({
+  const { data: suggestionsData } = useQuery<SuggestionsResponse>({
     queryKey: ["/api/assistant/suggestions"],
   });
+  
+  const suggestions = suggestionsData?.suggestions || [];
+  const trialTokens = suggestionsData?.trialTokens || 0;
 
   const { data: conversations = [], isLoading: conversationsLoading } = useQuery<Conversation[]>({
     queryKey: ["/api/ai/conversations"],
@@ -1272,11 +1283,21 @@ export default function CommandCenterPage() {
 
   const handleSuggestionClick = (suggestion: Suggestion) => {
     if (!suggestion.available && suggestion.category === "action") {
-      toast({
-        title: "Upgrade Required",
-        description: `This action requires ${suggestion.requiredTier || 'a higher'} tier. Upgrade in Settings to unlock it.`,
-        variant: "default",
-      });
+      if (suggestion.canUseTrialToken && trialTokens > 0) {
+        toast({
+          title: "Trial Token Available",
+          description: `You have ${trialTokens} trial tokens. This action will use 1 token. Type your request to try it!`,
+          variant: "default",
+        });
+        setInput(suggestion.label);
+        textareaRef.current?.focus();
+      } else {
+        toast({
+          title: "Upgrade Required",
+          description: `This action requires ${suggestion.requiredTier || 'a higher'} tier. Upgrade in Settings to unlock it.`,
+          variant: "default",
+        });
+      }
       return;
     }
     setInput(suggestion.label);
@@ -1423,9 +1444,17 @@ export default function CommandCenterPage() {
                           <Sparkles className="w-10 h-10 text-primary" />
                         </div>
                         <h3 className="text-xl font-semibold mb-2" data-testid="text-assistant-welcome">AcreOS Assistant</h3>
-                        <p className="text-muted-foreground text-sm max-w-md mb-8">
+                        <p className="text-muted-foreground text-sm max-w-md mb-4">
                           Your intelligent partner for land investment. I can help with research, deals, communications, and operations.
                         </p>
+                        {trialTokens > 0 && (
+                          <div className="flex items-center gap-2 mb-8 px-3 py-2 rounded-md bg-emerald-500/10 border border-emerald-500/20" data-testid="trial-tokens-indicator">
+                            <Gift className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                            <span className="text-sm text-emerald-700 dark:text-emerald-400">
+                              {trialTokens} trial token{trialTokens !== 1 ? 's' : ''} available to try premium features
+                            </span>
+                          </div>
+                        )}
                         
                         {suggestions.length > 0 && (
                           <div className="w-full max-w-2xl">
@@ -1436,7 +1465,7 @@ export default function CommandCenterPage() {
                                   key={idx}
                                   variant="outline"
                                   className={`justify-start text-left h-auto py-3 px-4 ${
-                                    !suggestion.available && suggestion.category === "action" 
+                                    !suggestion.available && suggestion.category === "action" && !suggestion.canUseTrialToken
                                       ? "opacity-60" 
                                       : ""
                                   }`}
@@ -1451,7 +1480,12 @@ export default function CommandCenterPage() {
                                           Free
                                         </Badge>
                                       )}
-                                      {suggestion.category === "action" && !suggestion.available && (
+                                      {suggestion.category === "action" && !suggestion.available && suggestion.canUseTrialToken && (
+                                        <Badge className="text-xs ml-auto bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border-emerald-500/30">
+                                          Try Free
+                                        </Badge>
+                                      )}
+                                      {suggestion.category === "action" && !suggestion.available && !suggestion.canUseTrialToken && (
                                         <Badge variant="outline" className="text-xs ml-auto">
                                           {suggestion.requiredTier}
                                         </Badge>

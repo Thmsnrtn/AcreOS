@@ -241,12 +241,20 @@ export interface PermissionCheckResult {
   currentTier: SubscriptionTier;
   creditCost?: number;
   upgradeMessage?: string;
+  canUseTrialToken?: boolean;
+  trialTokensRemaining?: number;
+}
+
+export interface TrialTokenInfo {
+  available: number;
+  canUse: boolean;
 }
 
 export function checkSkillPermission(
   actionId: string,
   userTier: SubscriptionTier,
-  isFounder: boolean = false
+  isFounder: boolean = false,
+  trialTokens: number = 0
 ): PermissionCheckResult {
   if (isFounder) {
     return { allowed: true, currentTier: userTier };
@@ -280,6 +288,9 @@ export function checkSkillPermission(
     };
   }
 
+  // Check if user can use a trial token for this action
+  const canUseTrialToken = trialTokens > 0;
+  
   const tierConfig = SUBSCRIPTION_TIERS[action.requiredTier];
   return {
     allowed: false,
@@ -287,8 +298,42 @@ export function checkSkillPermission(
     requiredTier: action.requiredTier,
     currentTier: userTier,
     creditCost: action.creditCost,
-    upgradeMessage: `Upgrade to ${tierConfig.name} ($${tierConfig.price}/mo) to unlock "${action.name}" and other powerful actions.`,
+    upgradeMessage: canUseTrialToken 
+      ? `Use a trial token to try "${action.name}" free, or upgrade to ${tierConfig.name} ($${tierConfig.price}/mo) for unlimited access.`
+      : `Upgrade to ${tierConfig.name} ($${tierConfig.price}/mo) to unlock "${action.name}" and other powerful actions.`,
+    canUseTrialToken,
+    trialTokensRemaining: trialTokens,
   };
+}
+
+export function checkTrialTokenEligibility(
+  actionId: string,
+  userTier: SubscriptionTier,
+  trialTokens: number
+): { eligible: boolean; reason?: string } {
+  const action = SKILL_ACTIONS.find(a => a.id === actionId);
+  if (!action) {
+    return { eligible: false, reason: "Unknown action" };
+  }
+
+  // Insights are always free - no trial token needed
+  if (action.category === "insight") {
+    return { eligible: false, reason: "This action is already free" };
+  }
+
+  // Check if user already has tier access
+  const userTierIndex = TIER_HIERARCHY.indexOf(userTier);
+  const requiredTierIndex = TIER_HIERARCHY.indexOf(action.requiredTier);
+  if (userTierIndex >= requiredTierIndex) {
+    return { eligible: false, reason: "You already have access to this action" };
+  }
+
+  // Check if tokens available
+  if (trialTokens <= 0) {
+    return { eligible: false, reason: "No trial tokens remaining" };
+  }
+
+  return { eligible: true };
 }
 
 export function getAvailableActions(

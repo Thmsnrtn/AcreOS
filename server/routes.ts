@@ -5407,7 +5407,7 @@ export async function registerRoutes(
     try {
       const org = (req as any).organization;
       const user = (req as any).user;
-      const { message, useAIClassification } = req.body;
+      const { message, useAIClassification, useTrialToken } = req.body;
 
       if (!message) {
         return res.status(400).json({ message: "message is required" });
@@ -5415,7 +5415,7 @@ export async function registerRoutes(
 
       const { classifyIntentSimple, classifyIntentWithAI } = await import('./services/intent-router');
       const { executeAgentTask } = await import('./services/core-agents');
-      const { checkSkillPermission, mapIntentToAction } = await import('./services/skill-permissions');
+      const { checkSkillPermission, mapIntentToAction, checkTrialTokenEligibility } = await import('./services/skill-permissions');
 
       const intent = useAIClassification 
         ? await classifyIntentWithAI(message)
@@ -5423,20 +5423,54 @@ export async function registerRoutes(
 
       const isFounder = user?.id === 'founder' || org?.stripeCustomerId?.includes('founder');
       const tier = (org?.subscriptionTier || 'free') as SubscriptionTier;
+      const trialTokens = await storage.getTrialTokens(org.id);
       
+      // Permission check for gated actions
       const actionId = mapIntentToAction(intent.action);
+      let usedTrialToken = false;
+      
       if (actionId) {
-        const permissionCheck = checkSkillPermission(actionId, tier, isFounder);
+        const permissionCheck = checkSkillPermission(actionId, tier, isFounder, trialTokens);
+        
         if (!permissionCheck.allowed) {
-          return res.status(403).json({
-            error: "upgrade_required",
-            message: permissionCheck.reason,
-            requiredTier: permissionCheck.requiredTier,
-            currentTier: permissionCheck.currentTier,
-            upgradeMessage: permissionCheck.upgradeMessage,
-            intent,
-          });
+          // Action is gated - check if user wants to use a trial token
+          if (useTrialToken) {
+            const eligibility = checkTrialTokenEligibility(actionId, tier, trialTokens);
+            if (!eligibility.eligible) {
+              return res.status(403).json({
+                error: "trial_token_ineligible",
+                message: eligibility.reason,
+                intent,
+              });
+            }
+            
+            // Attempt to consume a trial token atomically
+            const consumption = await storage.consumeTrialToken(org.id);
+            if (!consumption.success) {
+              return res.status(403).json({
+                error: "trial_token_failed",
+                message: "No trial tokens available",
+                intent,
+              });
+            }
+            
+            // Trial token consumed successfully - action is now allowed
+            usedTrialToken = true;
+          } else {
+            // No trial token requested - deny access
+            return res.status(403).json({
+              error: "upgrade_required",
+              message: permissionCheck.reason,
+              requiredTier: permissionCheck.requiredTier,
+              currentTier: permissionCheck.currentTier,
+              upgradeMessage: permissionCheck.upgradeMessage,
+              canUseTrialToken: permissionCheck.canUseTrialToken,
+              trialTokensRemaining: permissionCheck.trialTokensRemaining,
+              intent,
+            });
+          }
         }
+        // If permissionCheck.allowed is true, action proceeds normally
       }
 
       const result = await executeAgentTask(intent.agentType, {
@@ -5448,10 +5482,15 @@ export async function registerRoutes(
         },
       });
 
+      // Get updated trial token count
+      const remainingTokens = await storage.getTrialTokens(org.id);
+
       res.json({
         intent,
         result,
         skill: intent.skillLabel,
+        trialTokensRemaining: remainingTokens,
+        usedTrialToken,
       });
     } catch (err: any) {
       console.error("Assistant execute error:", err);
@@ -5465,6 +5504,7 @@ export async function registerRoutes(
       const user = (req as any).user;
       const isFounder = user?.id === 'founder' || org?.stripeCustomerId?.includes('founder');
       const tier = (org?.subscriptionTier || 'free') as SubscriptionTier;
+      const trialTokens = await storage.getTrialTokens(org.id);
       
       const { getAvailableActions } = await import('./services/skill-permissions');
       const { insights, actions } = getAvailableActions(tier, isFounder);
@@ -5487,9 +5527,31 @@ export async function registerRoutes(
         ...s,
         available: availableIds.has(s.actionId),
         currentTier: tier,
+        canUseTrialToken: !availableIds.has(s.actionId) && s.category === "action" && trialTokens > 0,
       }));
       
-      res.json(enrichedSuggestions);
+      res.json({ 
+        suggestions: enrichedSuggestions,
+        trialTokens,
+        tier,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Get trial token info
+  api.get("/api/assistant/trial-tokens", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const trialTokens = await storage.getTrialTokens(org.id);
+      const tier = (org?.subscriptionTier || 'free') as SubscriptionTier;
+      
+      res.json({
+        trialTokens,
+        tier,
+        maxTokens: 5, // Initial tokens granted to new users
+      });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

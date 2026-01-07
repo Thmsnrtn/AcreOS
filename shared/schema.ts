@@ -76,6 +76,9 @@ export const organizations = pgTable("organizations", {
   trialStartedAt: timestamp("trial_started_at"), // When trial began
   trialEndsAt: timestamp("trial_ends_at"), // When trial expires (7 days from start)
   trialUsed: boolean("trial_used").default(false), // True once trial has been used (prevents repeat trials)
+  // Trial tokens for sampling premium actions (free tier users)
+  trialTokens: integer("trial_tokens").default(5), // Free tokens to try premium actions
+  trialTokensGrantedAt: timestamp("trial_tokens_granted_at").defaultNow(), // When tokens were last granted
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

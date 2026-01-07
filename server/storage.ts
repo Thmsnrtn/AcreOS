@@ -177,6 +177,8 @@ export interface IStorage {
     autoSuggestions?: boolean;
     rememberContext?: boolean;
   }): Promise<void>;
+  consumeTrialToken(orgId: number): Promise<{ success: boolean; remaining: number }>;
+  getTrialTokens(orgId: number): Promise<number>;
   
   // Team Members
   getTeamMembers(orgId: number): Promise<TeamMember[]>;
@@ -822,6 +824,31 @@ export class DatabaseStorage implements IStorage {
     await db.update(organizations)
       .set({ settings: updatedSettings, updatedAt: new Date() })
       .where(eq(organizations.id, orgId));
+  }
+
+  async getTrialTokens(orgId: number): Promise<number> {
+    const org = await this.getOrganization(orgId);
+    if (!org) return 0;
+    return org.trialTokens ?? 0;
+  }
+
+  async consumeTrialToken(orgId: number): Promise<{ success: boolean; remaining: number }> {
+    // Atomic decrement with check - prevents race conditions
+    const result = await db.execute(sql`
+      UPDATE organizations 
+      SET trial_tokens = trial_tokens - 1, updated_at = NOW()
+      WHERE id = ${orgId} AND trial_tokens > 0
+      RETURNING trial_tokens
+    `);
+    
+    if (result.rowCount === 0) {
+      // No rows updated - either org doesn't exist or no tokens available
+      const org = await this.getOrganization(orgId);
+      return { success: false, remaining: org?.trialTokens ?? 0 };
+    }
+    
+    const newTokens = (result.rows[0] as any).trial_tokens ?? 0;
+    return { success: true, remaining: newTokens };
   }
   
   // Team Members
