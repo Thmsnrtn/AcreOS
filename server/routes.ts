@@ -2370,6 +2370,78 @@ export async function registerRoutes(
     }
   });
 
+  api.post("/api/due-diligence/:propertyId/lookup/soil", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const propertyId = Number(req.params.propertyId);
+      
+      const property = await storage.getProperty(org.id, propertyId);
+      if (!property) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+      
+      const { dataSourceLookupService } = await import('./services/data-source-lookup');
+      
+      if (property.latitude && property.longitude) {
+        const lookupResult = await dataSourceLookupService.lookupSoilData({
+          latitude: Number(property.latitude),
+          longitude: Number(property.longitude),
+          state: property.state || undefined,
+          county: property.county || undefined,
+        });
+        res.json(lookupResult.data);
+      } else {
+        res.json({
+          soilType: "Unknown",
+          drainage: "unknown",
+          suitability: "unknown",
+          source: "N/A",
+          lastUpdated: new Date().toISOString(),
+          details: { message: "Property has no coordinates for soil data lookup" },
+        });
+      }
+    } catch (error: any) {
+      console.error("Soil data lookup error:", error);
+      res.status(500).json({ message: error.message || "Failed to lookup soil data" });
+    }
+  });
+
+  api.post("/api/due-diligence/:propertyId/lookup/environmental", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const propertyId = Number(req.params.propertyId);
+      
+      const property = await storage.getProperty(org.id, propertyId);
+      if (!property) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+      
+      const { dataSourceLookupService } = await import('./services/data-source-lookup');
+      
+      if (property.latitude && property.longitude) {
+        const lookupResult = await dataSourceLookupService.lookupEpaData({
+          latitude: Number(property.latitude),
+          longitude: Number(property.longitude),
+          state: property.state || undefined,
+          county: property.county || undefined,
+        });
+        res.json(lookupResult.data);
+      } else {
+        res.json({
+          superfundSites: [],
+          nearestSiteDistance: null,
+          riskLevel: "unknown",
+          source: "N/A",
+          lastUpdated: new Date().toISOString(),
+          details: { message: "Property has no coordinates for EPA data lookup" },
+        });
+      }
+    } catch (error: any) {
+      console.error("EPA environmental lookup error:", error);
+      res.status(500).json({ message: error.message || "Failed to lookup EPA data" });
+    }
+  });
+
   api.post("/api/due-diligence/:propertyId/lookup/tax", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const propertyId = Number(req.params.propertyId);
@@ -4876,18 +4948,126 @@ export async function registerRoutes(
   // Verify a single address
   api.post("/api/direct-mail/verify-address", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const { address } = req.body;
+      const { line1, line2, city, state, zip } = req.body;
       
-      const { directMailService } = await import("./services/directMail");
-      
-      if (!directMailService.isAvailable()) {
-        return res.status(400).json({ error: "Direct mail service not configured" });
+      if (!line1 || !city || !state || !zip) {
+        return res.status(400).json({ error: "Address fields (line1, city, state, zip) are required" });
       }
       
-      const result = await directMailService.verifyAddress(address);
+      const isProduction = process.env.NODE_ENV === 'production';
+      const apiKey = isProduction 
+        ? process.env.LOB_LIVE_API_KEY 
+        : (process.env.LOB_TEST_API_KEY || process.env.LOB_LIVE_API_KEY);
+      
+      if (!apiKey) {
+        return res.status(400).json({ error: "Address verification service not configured. Please add Lob API key in settings." });
+      }
+      
+      const { verifyAddress } = await import("./services/directMailService");
+      
+      const result = await verifyAddress({
+        line1,
+        line2,
+        city,
+        state,
+        zip,
+      });
       res.json(result);
     } catch (error: any) {
       res.status(500).json({ error: error.message || "Failed to verify address" });
+    }
+  });
+  
+  // Bulk verify addresses for leads
+  api.post("/api/direct-mail/bulk-verify-addresses", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { leadIds } = req.body;
+      
+      if (!leadIds || !Array.isArray(leadIds) || leadIds.length === 0) {
+        return res.status(400).json({ error: "leadIds array is required" });
+      }
+      
+      if (leadIds.length > 100) {
+        return res.status(400).json({ error: "Maximum 100 addresses can be verified at once" });
+      }
+      
+      const isProduction = process.env.NODE_ENV === 'production';
+      const apiKey = isProduction 
+        ? process.env.LOB_LIVE_API_KEY 
+        : (process.env.LOB_TEST_API_KEY || process.env.LOB_LIVE_API_KEY);
+      
+      if (!apiKey) {
+        return res.status(400).json({ error: "Address verification service not configured. Please add Lob API key in settings." });
+      }
+      
+      const { verifyAddress } = await import("./services/directMailService");
+      
+      const results: Array<{
+        leadId: number;
+        isValid: boolean;
+        deliverability: string;
+        errorMessage?: string;
+      }> = [];
+      
+      let deliverable = 0;
+      let undeliverable = 0;
+      
+      for (const leadId of leadIds) {
+        const lead = await storage.getLead(org.id, leadId);
+        if (!lead) {
+          results.push({ leadId, isValid: false, deliverability: 'unknown', errorMessage: 'Lead not found' });
+          undeliverable++;
+          continue;
+        }
+        
+        if (!lead.mailingAddress || !lead.city || !lead.state || !lead.zipCode) {
+          results.push({ leadId, isValid: false, deliverability: 'incomplete_address', errorMessage: 'Incomplete address information' });
+          undeliverable++;
+          continue;
+        }
+        
+        try {
+          const verificationResult = await verifyAddress({
+            line1: lead.mailingAddress,
+            line2: undefined,
+            city: lead.city,
+            state: lead.state,
+            zip: lead.zipCode,
+          });
+          
+          results.push({
+            leadId,
+            isValid: verificationResult.isValid,
+            deliverability: verificationResult.deliverability,
+            errorMessage: verificationResult.errorMessage,
+          });
+          
+          if (verificationResult.isValid) {
+            deliverable++;
+          } else {
+            undeliverable++;
+          }
+        } catch (error: any) {
+          results.push({
+            leadId,
+            isValid: false,
+            deliverability: 'error',
+            errorMessage: error.message || 'Verification failed',
+          });
+          undeliverable++;
+        }
+      }
+      
+      res.json({
+        total: leadIds.length,
+        verified: results.length,
+        deliverable,
+        undeliverable,
+        results,
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || "Failed to verify addresses" });
     }
   });
   

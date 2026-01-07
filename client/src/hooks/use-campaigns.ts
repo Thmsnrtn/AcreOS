@@ -120,3 +120,57 @@ export function useSendDirectMail() {
     },
   });
 }
+
+interface VerifyAddressResult {
+  isValid: boolean;
+  deliverability: string;
+  details: {
+    components?: {
+      primaryNumber?: string;
+      streetPredirection?: string;
+      streetName?: string;
+      streetSuffix?: string;
+      city?: string;
+      state?: string;
+      zipCode?: string;
+      zipCodePlus4?: string;
+    };
+    deliverabilityAnalysis?: {
+      dpvConfirmation?: string;
+      dpvCmra?: string;
+      dpvVacant?: string;
+      dpvFootnotes?: string[];
+    };
+    lobAddressId?: string;
+  };
+  errorMessage?: string;
+}
+
+export function useVerifyAddress() {
+  return useMutation({
+    mutationFn: async (address: { line1: string; line2?: string; city: string; state: string; zip: string }) => {
+      const res = await apiRequest("POST", "/api/direct-mail/verify-address", address);
+      return res.json() as Promise<VerifyAddressResult>;
+    },
+  });
+}
+
+export function useBulkVerifyAddresses() {
+  return useMutation({
+    mutationFn: async (leadIds: number[]) => {
+      const res = await apiRequest("POST", "/api/direct-mail/bulk-verify-addresses", { leadIds });
+      return res.json() as Promise<{
+        total: number;
+        verified: number;
+        deliverable: number;
+        undeliverable: number;
+        results: Array<{
+          leadId: number;
+          isValid: boolean;
+          deliverability: string;
+          errorMessage?: string;
+        }>;
+      }>;
+    },
+  });
+}

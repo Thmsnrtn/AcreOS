@@ -4,8 +4,11 @@ import {
   useUpdateDueDiligenceChecklist,
   useLookupFloodZone,
   useLookupWetlands,
-  useLookupTax 
+  useLookupTax,
+  useLookupSoilData,
+  useLookupEnvironmental
 } from "@/hooks/use-due-diligence";
+import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -75,10 +78,13 @@ const categoryLabels: Record<string, string> = {
 
 export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
   const { data: checklist, isLoading } = useDueDiligenceChecklist(propertyId);
-  const { mutate: updateChecklist, isPending: isUpdating } = useUpdateDueDiligenceChecklist();
+  const { mutateAsync: updateChecklistAsync, isPending: isUpdating } = useUpdateDueDiligenceChecklist();
   const { mutateAsync: lookupFlood, isPending: isLookingUpFlood } = useLookupFloodZone();
   const { mutateAsync: lookupWetlands, isPending: isLookingUpWetlands } = useLookupWetlands();
   const { mutateAsync: lookupTax, isPending: isLookingUpTax } = useLookupTax();
+  const { mutateAsync: lookupSoil, isPending: isLookingUpSoil } = useLookupSoilData();
+  const { mutateAsync: lookupEnvironmental, isPending: isLookingUpEnvironmental } = useLookupEnvironmental();
+  const { toast } = useToast();
   
   const [editingNotes, setEditingNotes] = useState<Record<string, string>>({});
   const [runningAll, setRunningAll] = useState(false);
@@ -106,7 +112,7 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
     const updatedItems = items.map(item =>
       item.id === itemId ? { ...item, status: newStatus } : item
     );
-    updateChecklist({ propertyId, updates: { items: updatedItems } });
+    updateChecklistAsync({ propertyId, updates: { items: updatedItems } });
   };
 
   const handleNotesChange = (itemId: string, notes: string) => {
@@ -117,38 +123,62 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
     const updatedItems = items.map(item =>
       item.id === itemId ? { ...item, notes: editingNotes[itemId] ?? item.notes } : item
     );
-    updateChecklist({ propertyId, updates: { items: updatedItems } });
+    updateChecklistAsync({ propertyId, updates: { items: updatedItems } });
     setEditingNotes(prev => {
       const { [itemId]: _, ...rest } = prev;
       return rest;
     });
   };
 
-  const runLookup = async (type: "flood" | "wetlands" | "tax") => {
+  const runLookup = async (type: "flood" | "wetlands" | "tax" | "soil" | "environmental") => {
+    const typeLabels: Record<typeof type, string> = {
+      flood: "Flood Zone",
+      wetlands: "Wetlands",
+      soil: "Soil",
+      environmental: "EPA Sites",
+      tax: "Tax History",
+    };
+    
     try {
       let result: any;
       let itemId: string;
       let newStatus: ItemStatus;
+      let notes: string;
       
       if (type === "flood") {
         result = await lookupFlood(propertyId);
         itemId = "env-flood";
         newStatus = result.riskLevel === "low" ? "passed" : result.riskLevel === "high" ? "failed" : "warning";
+        notes = result.zone || "Flood zone data retrieved";
       } else if (type === "wetlands") {
         result = await lookupWetlands(propertyId);
         itemId = "env-wetlands";
         newStatus = result.hasWetlands ? "warning" : "passed";
+        notes = result.hasWetlands ? `Wetlands present (${result.percentage}%)` : "No wetlands detected";
+      } else if (type === "soil") {
+        result = await lookupSoil(propertyId);
+        itemId = "env-soil";
+        newStatus = result.suitability === "good" ? "passed" : result.suitability === "poor" ? "warning" : "pending";
+        notes = `Soil: ${result.soilType || "Unknown"}. Drainage: ${result.drainage || "Unknown"}. Suitability: ${result.suitability || "Unknown"}`;
+      } else if (type === "environmental") {
+        result = await lookupEnvironmental(propertyId);
+        itemId = "env-epa";
+        newStatus = result.riskLevel === "low" ? "passed" : result.riskLevel === "high" ? "failed" : "warning";
+        notes = result.superfundSites?.length > 0 
+          ? `${result.superfundSites.length} EPA sites nearby (${result.nearestSiteDistance} mi)` 
+          : "No EPA Superfund sites nearby";
       } else {
         result = await lookupTax(propertyId);
         itemId = "tax-history";
         newStatus = result.backTaxes > 0 ? "failed" : "passed";
+        notes = `Annual tax: $${result.annualTax}. Last paid: ${result.lastPaidDate}`;
         
         const taxBackId = "tax-back";
         const taxSaleId = "tax-sale";
         
         const updatedItems = items.map(item => {
           if (item.id === itemId) {
-            return { ...item, status: newStatus, researchData: result, notes: `Annual tax: $${result.annualTax}. Last paid: ${result.lastPaidDate}` };
+            return { ...item, status: newStatus, researchData: result, notes };
           }
           if (item.id === taxBackId) {
             return { ...item, status: result.backTaxes > 0 ? "failed" : "passed", notes: result.backTaxes > 0 ? `Back taxes: $${result.backTaxes}` : "No back taxes" };
@@ -158,18 +188,23 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
           }
           return item;
         });
-        updateChecklist({ propertyId, updates: { items: updatedItems } });
+        await updateChecklistAsync({ propertyId, updates: { items: updatedItems } });
         return;
       }
       
       const updatedItems = items.map(item =>
         item.id === itemId
-          ? { ...item, status: newStatus, researchData: result, notes: type === "flood" ? `${result.zone}` : type === "wetlands" ? (result.hasWetlands ? `Wetlands present (${result.percentage}%)` : "No wetlands detected") : "" }
+          ? { ...item, status: newStatus, researchData: result, notes }
           : item
       );
-      updateChecklist({ propertyId, updates: { items: updatedItems } });
-    } catch (error) {
+      await updateChecklistAsync({ propertyId, updates: { items: updatedItems } });
+    } catch (error: any) {
       console.error(`Lookup ${type} failed:`, error);
+      toast({
+        variant: "destructive",
+        title: `${typeLabels[type]} lookup failed`,
+        description: error.message || "Could not retrieve data. Please try again.",
+      });
     }
   };
 
@@ -179,6 +214,8 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
       await Promise.all([
         runLookup("flood"),
         runLookup("wetlands"),
+        runLookup("soil"),
+        runLookup("environmental"),
         runLookup("tax"),
       ]);
     } finally {
@@ -219,7 +256,7 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
             variant="outline"
             size="sm"
             onClick={runAllLookups}
-            disabled={runningAll || isLookingUpFlood || isLookingUpWetlands || isLookingUpTax}
+            disabled={runningAll || isLookingUpFlood || isLookingUpWetlands || isLookingUpTax || isLookingUpSoil || isLookingUpEnvironmental}
             data-testid="button-run-all-lookups"
           >
             {runningAll ? (
@@ -273,24 +310,30 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
                               <p className="text-sm text-muted-foreground mt-1">{item.notes}</p>
                             )}
                           </div>
-                          {(item.id === "env-flood" || item.id === "env-wetlands" || item.id === "tax-history") && (
+                          {(item.id === "env-flood" || item.id === "env-wetlands" || item.id === "env-soil" || item.id === "env-epa" || item.id === "tax-history") && (
                             <Button
                               variant="outline"
                               size="sm"
                               onClick={() => {
                                 if (item.id === "env-flood") runLookup("flood");
                                 else if (item.id === "env-wetlands") runLookup("wetlands");
+                                else if (item.id === "env-soil") runLookup("soil");
+                                else if (item.id === "env-epa") runLookup("environmental");
                                 else runLookup("tax");
                               }}
                               disabled={
                                 (item.id === "env-flood" && isLookingUpFlood) ||
                                 (item.id === "env-wetlands" && isLookingUpWetlands) ||
+                                (item.id === "env-soil" && isLookingUpSoil) ||
+                                (item.id === "env-epa" && isLookingUpEnvironmental) ||
                                 (item.id === "tax-history" && isLookingUpTax)
                               }
                               data-testid={`button-lookup-${item.id}`}
                             >
                               {((item.id === "env-flood" && isLookingUpFlood) ||
                                 (item.id === "env-wetlands" && isLookingUpWetlands) ||
+                                (item.id === "env-soil" && isLookingUpSoil) ||
+                                (item.id === "env-epa" && isLookingUpEnvironmental) ||
                                 (item.id === "tax-history" && isLookingUpTax)) ? (
                                 <Loader2 className="w-3 h-3 animate-spin" />
                               ) : (

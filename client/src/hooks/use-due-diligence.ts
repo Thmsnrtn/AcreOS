@@ -65,6 +65,24 @@ export function useLookupTax() {
   });
 }
 
+export function useLookupSoilData() {
+  return useMutation({
+    mutationFn: async (propertyId: number) => {
+      const res = await apiRequest("POST", `/api/due-diligence/${propertyId}/lookup/soil`);
+      return res.json();
+    },
+  });
+}
+
+export function useLookupEnvironmental() {
+  return useMutation({
+    mutationFn: async (propertyId: number) => {
+      const res = await apiRequest("POST", `/api/due-diligence/${propertyId}/lookup/environmental`);
+      return res.json();
+    },
+  });
+}
+
 export function useDueDiligenceTemplates() {
   return useQuery<DueDiligenceTemplate[]>({
     queryKey: ["/api/due-diligence/templates"],

@@ -3763,6 +3763,8 @@ export class DatabaseStorage implements IStorage {
     const defaultItems = [
       { id: "env-flood", category: "environmental", name: "Flood Zone Check", status: "pending", dataSource: "FEMA" },
       { id: "env-wetlands", category: "environmental", name: "Wetlands Assessment", status: "pending", dataSource: "NWI" },
+      { id: "env-soil", category: "environmental", name: "Soil Analysis", status: "pending", dataSource: "USDA NRCS" },
+      { id: "env-epa", category: "environmental", name: "EPA Superfund Sites", status: "pending", dataSource: "EPA TRI" },
       { id: "tax-history", category: "taxes", name: "Tax History Review", status: "pending", dataSource: "County Records" },
       { id: "tax-back", category: "taxes", name: "Back Taxes Check", status: "pending", dataSource: "County Treasurer" },
       { id: "tax-sale", category: "taxes", name: "Tax Sale Status", status: "pending", dataSource: "County Records" },
