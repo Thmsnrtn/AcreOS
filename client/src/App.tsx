@@ -5,6 +5,8 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/use-auth";
 import { Loader2 } from "lucide-react";
+import { ThemeProvider } from "@/contexts/theme-context";
+import { SoundProvider } from "@/contexts/sound-context";
 
 import { LowBalanceAlert } from "@/components/low-balance-alert";
 import { HintsProvider } from "@/components/feature-hints";
@@ -215,15 +217,19 @@ function AppContent() {
 function App() {
   return (
     <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
-        <TooltipProvider>
-          <HintsProvider>
-            <OfflineIndicator />
-            <Toaster />
-            <AppContent />
-          </HintsProvider>
-        </TooltipProvider>
-      </QueryClientProvider>
+      <ThemeProvider>
+        <SoundProvider>
+          <QueryClientProvider client={queryClient}>
+            <TooltipProvider>
+              <HintsProvider>
+                <OfflineIndicator />
+                <Toaster />
+                <AppContent />
+              </HintsProvider>
+            </TooltipProvider>
+          </QueryClientProvider>
+        </SoundProvider>
+      </ThemeProvider>
     </ErrorBoundary>
   );
 }

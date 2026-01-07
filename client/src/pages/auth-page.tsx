@@ -2,17 +2,37 @@ import { useAuth } from "@/hooks/use-auth";
 import { Redirect } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Loader2, AlertTriangle } from "lucide-react";
-import { useMemo } from "react";
+import { Loader2, AlertTriangle, Volume2, VolumeX, Moon, Sun } from "lucide-react";
+import { useMemo, useRef, useEffect } from "react";
+import { useTheme } from "@/contexts/theme-context";
+import { useSound } from "@/contexts/sound-context";
+import lightVideoUrl from "@assets/sora-video-7c27f502-4e29-4fd0-a9fd-8d3c01e00976_1767815815459.mp4";
+import darkVideoUrl from "@assets/sora-video-2b175e72-0fc2-49dd-a55d-53d010076426_1767815815461.mp4";
 
 export default function AuthPage() {
   const { user, isLoading } = useAuth();
+  const { theme, toggleTheme } = useTheme();
+  const { isSoundEnabled, toggleSound } = useSound();
+  const videoRef = useRef<HTMLVideoElement>(null);
   
   const isSafari = useMemo(() => {
     if (typeof navigator === 'undefined') return false;
     const ua = navigator.userAgent.toLowerCase();
     return ua.includes('safari') && !ua.includes('chrome') && !ua.includes('chromium');
   }, []);
+
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.muted = !isSoundEnabled;
+    }
+  }, [isSoundEnabled]);
+
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.load();
+      videoRef.current.play().catch(() => {});
+    }
+  }, [theme]);
 
   if (isLoading) {
     return (
@@ -30,11 +50,51 @@ export default function AuthPage() {
     window.location.href = "/api/login";
   };
 
+  const videoSrc = theme === "dark" ? darkVideoUrl : lightVideoUrl;
+
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-br from-[#8B4513] via-[#A0522D] to-[#CD853F]" />
-      <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1500382017468-9049fed747ef?q=80&w=2500&auto=format&fit=crop')] opacity-20 bg-cover bg-center mix-blend-overlay" />
-      <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
+      <video
+        ref={videoRef}
+        className="absolute inset-0 w-full h-full object-cover"
+        autoPlay
+        loop
+        playsInline
+        muted={!isSoundEnabled}
+        data-testid="video-background"
+      >
+        <source src={videoSrc} type="video/mp4" />
+      </video>
+      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/30 to-transparent" />
+      
+      <div className="absolute top-4 right-4 flex items-center gap-2 z-20">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={toggleSound}
+          className="bg-black/30 backdrop-blur-sm border border-white/20 text-white hover:bg-white/20"
+          data-testid="button-sound-toggle-auth"
+        >
+          {isSoundEnabled ? (
+            <Volume2 className="w-5 h-5" />
+          ) : (
+            <VolumeX className="w-5 h-5" />
+          )}
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={toggleTheme}
+          className="bg-black/30 backdrop-blur-sm border border-white/20 text-white hover:bg-white/20"
+          data-testid="button-theme-toggle-auth"
+        >
+          {theme === "dark" ? (
+            <Sun className="w-5 h-5" />
+          ) : (
+            <Moon className="w-5 h-5" />
+          )}
+        </Button>
+      </div>
       
       <Card className="w-full max-w-md relative z-10 floating-window border-white/20 bg-black/40 backdrop-blur-2xl">
         <CardContent className="p-8 text-center space-y-6">
