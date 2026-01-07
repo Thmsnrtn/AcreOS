@@ -212,6 +212,24 @@ interface SubscriptionEvent {
   createdAt: string | null;
 }
 
+interface DiscoveredEndpoint {
+  state: string;
+  county: string;
+  baseUrl: string;
+  endpointType: string;
+  fipsCode?: string;
+  confidenceScore: number;
+}
+
+interface ScanResult {
+  discovered: DiscoveredEndpoint[];
+  byState: Record<string, DiscoveredEndpoint[]>;
+  totalKnown: number;
+  totalExisting: number;
+  totalNew: number;
+  message: string;
+}
+
 const FEATURE_STATUS_OPTIONS = [
   { value: "submitted", label: "Submitted" },
   { value: "under_review", label: "Under Review" },
@@ -280,6 +298,10 @@ export default function FounderDashboard() {
   const [dataSourceTestResults, setDataSourceTestResults] = useState<Map<number, { success: boolean; message: string }>>(new Map());
   const [diagnosingEndpoint, setDiagnosingEndpoint] = useState<number | null>(null);
   const [diagnosisResult, setDiagnosisResult] = useState<{ issues: string[]; suggestions: string[] } | null>(null);
+  const [scanDialogOpen, setScanDialogOpen] = useState(false);
+  const [discoveredEndpoints, setDiscoveredEndpoints] = useState<DiscoveredEndpoint[]>([]);
+  const [selectedEndpoints, setSelectedEndpoints] = useState<Set<string>>(new Set());
+  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
 
   const { data: dashboardData, isLoading } = useQuery<AdminDashboardData>({
     queryKey: ['/api/admin/dashboard'],
@@ -533,6 +555,76 @@ export default function FounderDashboard() {
       toast({ title: "Diagnosis failed", description: error.message, variant: "destructive" });
     },
   });
+
+  const scanGisEndpointsMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/county-gis-endpoints/scan`, {});
+      if (!res.ok) throw new Error("Failed to scan for endpoints");
+      return res.json() as Promise<ScanResult>;
+    },
+    onSuccess: (data) => {
+      setScanResult(data);
+      setDiscoveredEndpoints(data.discovered);
+      setSelectedEndpoints(new Set());
+      setScanDialogOpen(true);
+      if (data.totalNew === 0) {
+        toast({ title: "No new endpoints found", description: "All known endpoints are already in the database" });
+      } else {
+        toast({ title: "Scan complete", description: data.message });
+      }
+    },
+    onError: (error: Error) => {
+      toast({ title: "Scan failed", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const bulkAddEndpointsMutation = useMutation({
+    mutationFn: async (endpoints: DiscoveredEndpoint[]) => {
+      const res = await apiRequest("POST", `/api/county-gis-endpoints/bulk-add`, { endpoints });
+      if (!res.ok) throw new Error("Failed to add endpoints");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/county-gis-endpoints'] });
+      setScanDialogOpen(false);
+      setSelectedEndpoints(new Set());
+      setDiscoveredEndpoints([]);
+      toast({ title: "Endpoints added", description: data.message });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to add endpoints", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const handleToggleEndpoint = (endpoint: DiscoveredEndpoint) => {
+    const key = `${endpoint.state}|${endpoint.county}|${endpoint.baseUrl}`;
+    setSelectedEndpoints(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAllEndpoints = () => {
+    if (selectedEndpoints.size === discoveredEndpoints.length) {
+      setSelectedEndpoints(new Set());
+    } else {
+      setSelectedEndpoints(new Set(discoveredEndpoints.map(e => `${e.state}|${e.county}|${e.baseUrl}`)));
+    }
+  };
+
+  const handleAddSelectedEndpoints = () => {
+    const endpointsToAdd = discoveredEndpoints.filter(e => 
+      selectedEndpoints.has(`${e.state}|${e.county}|${e.baseUrl}`)
+    );
+    if (endpointsToAdd.length > 0) {
+      bulkAddEndpointsMutation.mutate(endpointsToAdd);
+    }
+  };
 
   const testDataSourceMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -1288,6 +1380,20 @@ export default function FounderDashboard() {
               </div>
               <div className="flex items-center gap-2 flex-wrap">
                 <Button 
+                  onClick={() => scanGisEndpointsMutation.mutate()}
+                  disabled={scanGisEndpointsMutation.isPending}
+                  variant="default"
+                  size="sm"
+                  data-testid="button-scan-gis"
+                >
+                  {scanGisEndpointsMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                  ) : (
+                    <Zap className="w-4 h-4 mr-1" />
+                  )}
+                  Scan for New
+                </Button>
+                <Button 
                   onClick={() => testAllGisEndpointsMutation.mutate()}
                   disabled={testAllGisEndpointsMutation.isPending}
                   variant="outline"
@@ -1858,6 +1964,136 @@ export default function FounderDashboard() {
               data-testid="button-save-notes"
             >
               {updateFeatureRequestMutation.isPending ? "Saving..." : "Save Notes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Scan for New Endpoints Dialog */}
+      <Dialog open={scanDialogOpen} onOpenChange={setScanDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[85vh] overflow-hidden flex flex-col" data-testid="dialog-scan-endpoints">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Zap className="w-5 h-5 text-primary" />
+              Discovered GIS Endpoints
+            </DialogTitle>
+            <DialogDescription>
+              {scanResult && (
+                <>
+                  Found {scanResult.totalNew} new endpoints across {Object.keys(scanResult.byState || {}).length} states. 
+                  Select which endpoints to add to the database.
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          
+          {discoveredEndpoints.length > 0 ? (
+            <div className="flex-1 overflow-hidden flex flex-col">
+              <div className="flex items-center justify-between gap-2 pb-3 border-b">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={selectedEndpoints.size === discoveredEndpoints.length}
+                    onChange={handleSelectAllEndpoints}
+                    className="w-4 h-4 rounded border-muted-foreground"
+                    data-testid="checkbox-select-all-endpoints"
+                  />
+                  <span className="text-sm text-muted-foreground">
+                    {selectedEndpoints.size} of {discoveredEndpoints.length} selected
+                  </span>
+                </div>
+                <div className="flex gap-2 text-xs">
+                  <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/20">
+                    {scanResult?.totalKnown || 0} known patterns
+                  </Badge>
+                  <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">
+                    {scanResult?.totalExisting || 0} already added
+                  </Badge>
+                </div>
+              </div>
+              
+              <div className="flex-1 overflow-y-auto mt-3 pr-2">
+                <div className="space-y-1">
+                  {/* Group by state */}
+                  {scanResult?.byState && Object.entries(scanResult.byState)
+                    .sort(([a], [b]) => a.localeCompare(b))
+                    .map(([state, endpoints]) => (
+                      <div key={state} className="mb-4">
+                        <h4 className="text-sm font-semibold text-muted-foreground mb-2 sticky top-0 bg-background py-1">
+                          {state} ({endpoints.length} endpoint{endpoints.length !== 1 ? 's' : ''})
+                        </h4>
+                        <div className="space-y-1">
+                          {endpoints.map((endpoint) => {
+                            const key = `${endpoint.state}|${endpoint.county}|${endpoint.baseUrl}`;
+                            const isSelected = selectedEndpoints.has(key);
+                            return (
+                              <div 
+                                key={key}
+                                className={`flex items-center gap-3 p-2 rounded-lg border hover-elevate cursor-pointer ${isSelected ? 'bg-primary/5 border-primary/20' : ''}`}
+                                onClick={() => handleToggleEndpoint(endpoint)}
+                                data-testid={`endpoint-row-${endpoint.state}-${endpoint.county}`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => handleToggleEndpoint(endpoint)}
+                                  className="w-4 h-4 rounded border-muted-foreground"
+                                  onClick={(e) => e.stopPropagation()}
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-medium">{endpoint.county}</span>
+                                    <Badge variant="outline" className="text-xs">{endpoint.endpointType.replace('arcgis_', '')}</Badge>
+                                    {endpoint.confidenceScore && (
+                                      <Badge 
+                                        variant="outline" 
+                                        className={`text-xs ${endpoint.confidenceScore >= 85 ? 'bg-green-500/10 text-green-600 border-green-500/20' : endpoint.confidenceScore >= 70 ? 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20' : 'bg-gray-500/10 text-gray-600 border-gray-500/20'}`}
+                                      >
+                                        {endpoint.confidenceScore}% confidence
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <div className="text-xs text-muted-foreground truncate mt-0.5" title={endpoint.baseUrl}>
+                                    {endpoint.baseUrl}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="py-8 text-center text-muted-foreground">
+              <Database className="w-12 h-12 mx-auto mb-3 opacity-50" />
+              <p>All known endpoints are already in the database.</p>
+            </div>
+          )}
+          
+          <DialogFooter className="pt-4 border-t">
+            <Button 
+              variant="outline" 
+              onClick={() => setScanDialogOpen(false)}
+              data-testid="button-cancel-scan"
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleAddSelectedEndpoints}
+              disabled={selectedEndpoints.size === 0 || bulkAddEndpointsMutation.isPending}
+              data-testid="button-add-selected-endpoints"
+            >
+              {bulkAddEndpointsMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Adding...
+                </>
+              ) : (
+                <>Add {selectedEndpoints.size} Endpoint{selectedEndpoints.size !== 1 ? 's' : ''}</>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

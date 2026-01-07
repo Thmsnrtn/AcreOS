@@ -758,6 +758,7 @@ export interface IStorage {
   // County GIS Endpoints
   updateCountyGisEndpoint(id: number, updates: { isVerified?: boolean; errorCount?: number; lastVerified?: Date; isActive?: boolean; lastError?: string | null }): Promise<any>;
   getCountyGisEndpoint(id: number): Promise<any>;
+  bulkCreateCountyGisEndpoints(endpoints: Array<{ state: string; county: string; baseUrl: string; endpointType: string; fipsCode?: string | null; confidenceScore?: number }>): Promise<{ added: number; skipped: number }>;
 
   // Data Sources (Free Data Endpoint Registry)
   getDataSources(filters?: { category?: string; isEnabled?: boolean }): Promise<DataSource[]>;
@@ -5564,6 +5565,47 @@ Notary Public</p>
       .where(eq(countyGisEndpoints.id, id))
       .returning();
     return updated;
+  }
+
+  async bulkCreateCountyGisEndpoints(endpoints: Array<{ state: string; county: string; baseUrl: string; endpointType: string; fipsCode?: string | null; confidenceScore?: number }>): Promise<{ added: number; skipped: number }> {
+    const { countyGisEndpoints } = await import('@shared/schema');
+    let added = 0;
+    let skipped = 0;
+
+    const existing = await db.select({ state: countyGisEndpoints.state, county: countyGisEndpoints.county, baseUrl: countyGisEndpoints.baseUrl }).from(countyGisEndpoints);
+    const existingSet = new Set(existing.map(e => `${e.state.toUpperCase()}|${e.county.toLowerCase()}|${e.baseUrl.toLowerCase()}`));
+
+    for (const ep of endpoints) {
+      const key = `${ep.state.toUpperCase()}|${ep.county.toLowerCase()}|${ep.baseUrl.toLowerCase()}`;
+      if (existingSet.has(key)) {
+        skipped++;
+        continue;
+      }
+
+      try {
+        await db.insert(countyGisEndpoints).values({
+          state: ep.state.toUpperCase(),
+          county: ep.county,
+          baseUrl: ep.baseUrl,
+          endpointType: ep.endpointType || "arcgis_rest",
+          fipsCode: ep.fipsCode || null,
+          isActive: true,
+          isVerified: false,
+          contributedBy: "scan",
+          notes: ep.confidenceScore ? `Confidence: ${ep.confidenceScore}%` : undefined,
+        });
+        added++;
+        existingSet.add(key);
+      } catch (err: any) {
+        if (err.code === '23505') {
+          skipped++;
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    return { added, skipped };
   }
 
   // Data Sources (Free Data Endpoint Registry)
