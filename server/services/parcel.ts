@@ -422,6 +422,11 @@ async function lookupFromRegrid(
       } else if (response.status === 401 || response.status === 403) {
         const errorText = await response.text();
         console.log(`[Regrid] Auth error: ${errorText}`);
+        
+        // Check for trial limitation
+        if (errorText.includes("not included in API trials")) {
+          return { found: false, error: "This area is not included in your Regrid trial. Upgrade your Regrid account or use a property in a covered area." };
+        }
         return { found: false, error: "Regrid API key is invalid or expired." };
       } else {
         const errorText = await response.text();
