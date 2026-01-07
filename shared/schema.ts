@@ -3865,3 +3865,43 @@ export const insertDataSourceCacheSchema = createInsertSchema(dataSourceCache).o
 });
 export type InsertDataSourceCache = z.infer<typeof insertDataSourceCacheSchema>;
 export type DataSourceCache = typeof dataSourceCache.$inferSelect;
+
+// ============================================
+// DISCOVERED ENDPOINTS (Live GIS Discovery Results)
+// ============================================
+
+export const discoveredEndpoints = pgTable("discovered_endpoints", {
+  id: serial("id").primaryKey(),
+  
+  // Location info
+  state: text("state").notNull(), // 2-letter state code
+  county: text("county").notNull(),
+  
+  // Endpoint info
+  baseUrl: text("base_url").notNull(),
+  endpointType: text("endpoint_type").notNull().default("arcgis_rest"),
+  serviceName: text("service_name"), // Name from discovery source
+  
+  // Discovery metadata
+  discoverySource: text("discovery_source").notNull(), // 'arcgis_online', 'open_data_catalog', 'manual'
+  discoveryDate: timestamp("discovery_date").defaultNow().notNull(),
+  lastChecked: timestamp("last_checked"),
+  
+  // Validation
+  status: text("status").notNull().default("pending"), // pending, validated, rejected, added
+  healthCheckPassed: boolean("health_check_passed"),
+  healthCheckMessage: text("health_check_message"),
+  confidenceScore: integer("confidence_score"), // 0-100
+  
+  // Additional metadata from discovery
+  metadata: jsonb("metadata").$type<Record<string, any>>(),
+  
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertDiscoveredEndpointSchema = createInsertSchema(discoveredEndpoints).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertDiscoveredEndpoint = z.infer<typeof insertDiscoveredEndpointSchema>;
+export type DiscoveredEndpoint = typeof discoveredEndpoints.$inferSelect;

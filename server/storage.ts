@@ -119,6 +119,8 @@ import {
   type DataSourceCache, type InsertDataSourceCache,
   subscriptionEvents,
   type SubscriptionEvent, type InsertSubscriptionEvent,
+  discoveredEndpoints,
+  type DiscoveredEndpoint, type InsertDiscoveredEndpoint,
   DEFAULT_DUE_DILIGENCE_TEMPLATES,
   DEFAULT_DEAL_CHECKLIST_TEMPLATES,
 } from "@shared/schema";
@@ -5779,6 +5781,138 @@ Notary Public</p>
     .orderBy(desc(organizations.createdAt));
     
     return orgs;
+  }
+
+  // ============================================
+  // DISCOVERED ENDPOINTS (Live GIS Discovery)
+  // ============================================
+
+  async createDiscoveredEndpoint(data: InsertDiscoveredEndpoint): Promise<DiscoveredEndpoint> {
+    const [created] = await db.insert(discoveredEndpoints).values(data).returning();
+    return created;
+  }
+
+  async getDiscoveredEndpoints(filters?: { status?: string; state?: string }): Promise<DiscoveredEndpoint[]> {
+    const conditions: any[] = [];
+    
+    if (filters?.status) {
+      conditions.push(eq(discoveredEndpoints.status, filters.status));
+    }
+    if (filters?.state) {
+      conditions.push(eq(discoveredEndpoints.state, filters.state.toUpperCase()));
+    }
+    
+    if (conditions.length > 0) {
+      return await db.select()
+        .from(discoveredEndpoints)
+        .where(and(...conditions))
+        .orderBy(desc(discoveredEndpoints.discoveryDate));
+    }
+    return await db.select()
+      .from(discoveredEndpoints)
+      .orderBy(desc(discoveredEndpoints.discoveryDate));
+  }
+
+  async getDiscoveredEndpoint(id: number): Promise<DiscoveredEndpoint | undefined> {
+    const [endpoint] = await db.select().from(discoveredEndpoints).where(eq(discoveredEndpoints.id, id));
+    return endpoint;
+  }
+
+  async updateDiscoveredEndpoint(id: number, updates: Partial<InsertDiscoveredEndpoint>): Promise<DiscoveredEndpoint> {
+    const [updated] = await db.update(discoveredEndpoints)
+      .set(updates)
+      .where(eq(discoveredEndpoints.id, id))
+      .returning();
+    return updated;
+  }
+
+  async bulkCreateDiscoveredEndpoints(endpoints: Array<InsertDiscoveredEndpoint>): Promise<{ added: number; skipped: number }> {
+    let added = 0;
+    let skipped = 0;
+
+    const existing = await db.select({ 
+      state: discoveredEndpoints.state, 
+      county: discoveredEndpoints.county, 
+      baseUrl: discoveredEndpoints.baseUrl 
+    }).from(discoveredEndpoints);
+    const existingSet = new Set(existing.map(e => `${e.state.toUpperCase()}|${e.county.toLowerCase()}|${e.baseUrl.toLowerCase()}`));
+
+    const { countyGisEndpoints } = await import('@shared/schema');
+    const existingGis = await db.select({ 
+      state: countyGisEndpoints.state, 
+      county: countyGisEndpoints.county, 
+      baseUrl: countyGisEndpoints.baseUrl 
+    }).from(countyGisEndpoints);
+    const gisSet = new Set(existingGis.map(e => `${e.state.toUpperCase()}|${e.county.toLowerCase()}|${e.baseUrl.toLowerCase()}`));
+
+    for (const ep of endpoints) {
+      const key = `${ep.state.toUpperCase()}|${ep.county.toLowerCase()}|${ep.baseUrl.toLowerCase()}`;
+      if (existingSet.has(key) || gisSet.has(key)) {
+        skipped++;
+        continue;
+      }
+
+      try {
+        await db.insert(discoveredEndpoints).values({
+          ...ep,
+          state: ep.state.toUpperCase(),
+        });
+        added++;
+        existingSet.add(key);
+      } catch (err: any) {
+        if (err.code === '23505') {
+          skipped++;
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    return { added, skipped };
+  }
+
+  async approveDiscoveredEndpoint(id: number): Promise<{ success: boolean; message: string }> {
+    const endpoint = await this.getDiscoveredEndpoint(id);
+    if (!endpoint) {
+      return { success: false, message: "Endpoint not found" };
+    }
+
+    if (endpoint.status === "added") {
+      return { success: false, message: "Endpoint already added" };
+    }
+
+    const { countyGisEndpoints } = await import('@shared/schema');
+    
+    const [existingGis] = await db.select()
+      .from(countyGisEndpoints)
+      .where(and(
+        eq(countyGisEndpoints.state, endpoint.state),
+        sql`LOWER(${countyGisEndpoints.county}) = LOWER(${endpoint.county})`,
+        sql`LOWER(${countyGisEndpoints.baseUrl}) = LOWER(${endpoint.baseUrl})`
+      ));
+
+    if (existingGis) {
+      await this.updateDiscoveredEndpoint(id, { status: "added" });
+      return { success: false, message: "Endpoint already exists in GIS registry" };
+    }
+
+    await db.insert(countyGisEndpoints).values({
+      state: endpoint.state,
+      county: endpoint.county,
+      baseUrl: endpoint.baseUrl,
+      endpointType: endpoint.endpointType,
+      isActive: true,
+      isVerified: endpoint.healthCheckPassed || false,
+      contributedBy: "discovery",
+      notes: endpoint.serviceName ? `Service: ${endpoint.serviceName}` : undefined,
+    });
+
+    await this.updateDiscoveredEndpoint(id, { status: "added" });
+    return { success: true, message: "Endpoint added to GIS registry" };
+  }
+
+  async rejectDiscoveredEndpoint(id: number): Promise<DiscoveredEndpoint> {
+    return await this.updateDiscoveredEndpoint(id, { status: "rejected" });
   }
 }
 

@@ -8183,6 +8183,190 @@ Seller Signature (if applicable)
   });
 
   // ============================================
+  // LIVE GIS DISCOVERY (ArcGIS Online Scanning)
+  // ============================================
+
+  api.post("/api/discovery/scan-arcgis", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { runDiscoveryScan } = await import('./services/arcgis-discovery');
+      const { keywords, maxResults, targetStates } = req.body;
+      
+      console.log("[Discovery] Starting ArcGIS Online scan...");
+      const result = await runDiscoveryScan({
+        keywords: keywords || undefined,
+        maxResults: maxResults || 100,
+        targetStates: targetStates || undefined,
+      });
+      
+      const endpointsToStore = result.endpoints.map(ep => ({
+        state: ep.state,
+        county: ep.county,
+        baseUrl: ep.baseUrl,
+        endpointType: ep.endpointType,
+        serviceName: ep.serviceName,
+        discoverySource: ep.discoverySource,
+        confidenceScore: ep.confidenceScore,
+        metadata: ep.metadata,
+        status: "pending" as const,
+      }));
+      
+      const storeResult = await storage.bulkCreateDiscoveredEndpoints(endpointsToStore);
+      
+      console.log(`[Discovery] Scan complete: ${storeResult.added} new, ${storeResult.skipped} duplicates`);
+      
+      res.json({
+        success: true,
+        totalSearchResults: result.stats.totalSearchResults,
+        validEndpoints: result.stats.validEndpoints,
+        added: storeResult.added,
+        skipped: storeResult.skipped,
+        message: `Found ${result.stats.validEndpoints} endpoints, added ${storeResult.added} new (${storeResult.skipped} already exist)`
+      });
+    } catch (err: any) {
+      console.error("ArcGIS discovery scan error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.get("/api/discovery/pending", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const status = (req.query.status as string) || "pending";
+      const state = req.query.state as string | undefined;
+      const endpoints = await storage.getDiscoveredEndpoints({ status, state });
+      res.json(endpoints);
+    } catch (err: any) {
+      console.error("Get pending discovery endpoints error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.get("/api/discovery/all", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const state = req.query.state as string | undefined;
+      const endpoints = await storage.getDiscoveredEndpoints({ state });
+      res.json(endpoints);
+    } catch (err: any) {
+      console.error("Get all discovery endpoints error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.post("/api/discovery/:id/validate", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid endpoint ID" });
+      }
+      
+      const endpoint = await storage.getDiscoveredEndpoint(id);
+      if (!endpoint) {
+        return res.status(404).json({ message: "Endpoint not found" });
+      }
+      
+      const { validateEndpoint } = await import('./services/arcgis-discovery');
+      const result = await validateEndpoint(endpoint.baseUrl);
+      
+      await storage.updateDiscoveredEndpoint(id, {
+        lastChecked: new Date(),
+        healthCheckPassed: result.valid,
+        healthCheckMessage: result.message,
+        status: result.valid ? "validated" : "pending",
+      });
+      
+      const updated = await storage.getDiscoveredEndpoint(id);
+      res.json({ ...result, endpoint: updated });
+    } catch (err: any) {
+      console.error("Validate discovery endpoint error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.post("/api/discovery/:id/approve", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid endpoint ID" });
+      }
+      
+      const result = await storage.approveDiscoveredEndpoint(id);
+      res.json(result);
+    } catch (err: any) {
+      console.error("Approve discovery endpoint error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.post("/api/discovery/:id/reject", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid endpoint ID" });
+      }
+      
+      const endpoint = await storage.rejectDiscoveredEndpoint(id);
+      res.json({ success: true, endpoint });
+    } catch (err: any) {
+      console.error("Reject discovery endpoint error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.post("/api/discovery/validate-all", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const pendingEndpoints = await storage.getDiscoveredEndpoints({ status: "pending" });
+      const { validateEndpoint } = await import('./services/arcgis-discovery');
+      
+      let validated = 0;
+      let failed = 0;
+      
+      for (const endpoint of pendingEndpoints.slice(0, 20)) {
+        try {
+          const result = await validateEndpoint(endpoint.baseUrl);
+          await storage.updateDiscoveredEndpoint(endpoint.id, {
+            lastChecked: new Date(),
+            healthCheckPassed: result.valid,
+            healthCheckMessage: result.message,
+            status: result.valid ? "validated" : "pending",
+          });
+          if (result.valid) validated++;
+          else failed++;
+          await new Promise(r => setTimeout(r, 500));
+        } catch (err) {
+          failed++;
+        }
+      }
+      
+      res.json({ 
+        success: true, 
+        validated, 
+        failed, 
+        total: pendingEndpoints.length,
+        processed: Math.min(pendingEndpoints.length, 20)
+      });
+    } catch (err: any) {
+      console.error("Batch validate discovery endpoints error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.delete("/api/discovery/:id", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid endpoint ID" });
+      }
+      
+      const { discoveredEndpoints } = await import('@shared/schema');
+      const { eq } = await import('drizzle-orm');
+      await db.delete(discoveredEndpoints).where(eq(discoveredEndpoints.id, id));
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("Delete discovery endpoint error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
   // DATA SOURCES (Free Data Endpoint Registry)
   // ============================================
 

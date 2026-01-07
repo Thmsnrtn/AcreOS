@@ -40,7 +40,9 @@ import {
   RefreshCw,
   Play,
   Stethoscope,
-  Loader2
+  Loader2,
+  Globe,
+  X
 } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 
@@ -230,6 +232,23 @@ interface ScanResult {
   message: string;
 }
 
+interface LiveDiscoveredEndpoint {
+  id: number;
+  state: string;
+  county: string;
+  baseUrl: string;
+  endpointType: string;
+  serviceName: string | null;
+  discoverySource: string;
+  discoveryDate: string;
+  lastChecked: string | null;
+  status: string;
+  healthCheckPassed: boolean | null;
+  healthCheckMessage: string | null;
+  confidenceScore: number | null;
+  metadata: Record<string, any> | null;
+}
+
 const FEATURE_STATUS_OPTIONS = [
   { value: "submitted", label: "Submitted" },
   { value: "under_review", label: "Under Review" },
@@ -300,6 +319,7 @@ export default function FounderDashboard() {
   const [diagnosisResult, setDiagnosisResult] = useState<{ issues: string[]; suggestions: string[] } | null>(null);
   const [scanDialogOpen, setScanDialogOpen] = useState(false);
   const [discoveredEndpoints, setDiscoveredEndpoints] = useState<DiscoveredEndpoint[]>([]);
+  const [liveDiscoveryTab, setLiveDiscoveryTab] = useState<"patterns" | "live">("patterns");
   const [selectedEndpoints, setSelectedEndpoints] = useState<Set<string>>(new Set());
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
 
@@ -625,6 +645,93 @@ export default function FounderDashboard() {
       bulkAddEndpointsMutation.mutate(endpointsToAdd);
     }
   };
+
+  const { data: liveDiscoveredEndpoints, refetch: refetchLiveDiscovered } = useQuery<LiveDiscoveredEndpoint[]>({
+    queryKey: ['/api/discovery/all'],
+    enabled: scanDialogOpen && liveDiscoveryTab === "live",
+  });
+
+  const scanArcGISMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/discovery/scan-arcgis`, { maxResults: 100 });
+      if (!res.ok) throw new Error("Failed to scan ArcGIS Online");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      refetchLiveDiscovered();
+      toast({ 
+        title: "ArcGIS Scan Complete", 
+        description: `Found ${data.validEndpoints} endpoints, added ${data.added} new (${data.skipped} duplicates)` 
+      });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Scan failed", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const validateLiveEndpointMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("POST", `/api/discovery/${id}/validate`, {});
+      if (!res.ok) throw new Error("Failed to validate endpoint");
+      return res.json();
+    },
+    onSuccess: () => {
+      refetchLiveDiscovered();
+      toast({ title: "Validation complete" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Validation failed", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const approveLiveEndpointMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("POST", `/api/discovery/${id}/approve`, {});
+      if (!res.ok) throw new Error("Failed to approve endpoint");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      refetchLiveDiscovered();
+      queryClient.invalidateQueries({ queryKey: ['/api/county-gis-endpoints'] });
+      toast({ title: data.success ? "Endpoint approved" : "Could not approve", description: data.message });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Approve failed", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const rejectLiveEndpointMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("POST", `/api/discovery/${id}/reject`, {});
+      if (!res.ok) throw new Error("Failed to reject endpoint");
+      return res.json();
+    },
+    onSuccess: () => {
+      refetchLiveDiscovered();
+      toast({ title: "Endpoint rejected" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Reject failed", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const batchValidateMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/discovery/validate-all`, {});
+      if (!res.ok) throw new Error("Failed to validate endpoints");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      refetchLiveDiscovered();
+      toast({ 
+        title: "Batch validation complete", 
+        description: `${data.validated} passed, ${data.failed} failed (processed ${data.processed}/${data.total})` 
+      });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Batch validation failed", description: error.message, variant: "destructive" });
+    },
+  });
 
   const testDataSourceMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -1975,127 +2082,281 @@ export default function FounderDashboard() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Zap className="w-5 h-5 text-primary" />
-              Discovered GIS Endpoints
+              GIS Endpoint Discovery
             </DialogTitle>
             <DialogDescription>
-              {scanResult && (
-                <>
-                  Found {scanResult.totalNew} new endpoints across {Object.keys(scanResult.byState || {}).length} states. 
-                  Select which endpoints to add to the database.
-                </>
-              )}
+              Discover and add new county GIS endpoints to the database
             </DialogDescription>
           </DialogHeader>
           
-          {discoveredEndpoints.length > 0 ? (
-            <div className="flex-1 overflow-hidden flex flex-col">
-              <div className="flex items-center justify-between gap-2 pb-3 border-b">
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={selectedEndpoints.size === discoveredEndpoints.length}
-                    onChange={handleSelectAllEndpoints}
-                    className="w-4 h-4 rounded border-muted-foreground"
-                    data-testid="checkbox-select-all-endpoints"
-                  />
-                  <span className="text-sm text-muted-foreground">
-                    {selectedEndpoints.size} of {discoveredEndpoints.length} selected
-                  </span>
+          <div className="flex gap-2 border-b pb-2">
+            <Button 
+              variant={liveDiscoveryTab === "patterns" ? "default" : "outline"} 
+              size="sm" 
+              onClick={() => setLiveDiscoveryTab("patterns")}
+              data-testid="tab-known-patterns"
+            >
+              Known Patterns
+            </Button>
+            <Button 
+              variant={liveDiscoveryTab === "live" ? "default" : "outline"} 
+              size="sm" 
+              onClick={() => setLiveDiscoveryTab("live")}
+              data-testid="tab-live-discovery"
+            >
+              Live Discovery
+            </Button>
+          </div>
+
+          {liveDiscoveryTab === "patterns" ? (
+            <>
+              {discoveredEndpoints.length > 0 ? (
+                <div className="flex-1 overflow-hidden flex flex-col">
+                  <div className="flex items-center justify-between gap-2 pb-3 border-b">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedEndpoints.size === discoveredEndpoints.length}
+                        onChange={handleSelectAllEndpoints}
+                        className="w-4 h-4 rounded border-muted-foreground"
+                        data-testid="checkbox-select-all-endpoints"
+                      />
+                      <span className="text-sm text-muted-foreground">
+                        {selectedEndpoints.size} of {discoveredEndpoints.length} selected
+                      </span>
+                    </div>
+                    <div className="flex gap-2 text-xs">
+                      <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/20">
+                        {scanResult?.totalKnown || 0} known patterns
+                      </Badge>
+                      <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">
+                        {scanResult?.totalExisting || 0} already added
+                      </Badge>
+                    </div>
+                  </div>
+                  
+                  <div className="flex-1 overflow-y-auto mt-3 pr-2">
+                    <div className="space-y-1">
+                      {scanResult?.byState && Object.entries(scanResult.byState)
+                        .sort(([a], [b]) => a.localeCompare(b))
+                        .map(([state, endpoints]) => (
+                          <div key={state} className="mb-4">
+                            <h4 className="text-sm font-semibold text-muted-foreground mb-2 sticky top-0 bg-background py-1">
+                              {state} ({endpoints.length} endpoint{endpoints.length !== 1 ? 's' : ''})
+                            </h4>
+                            <div className="space-y-1">
+                              {endpoints.map((endpoint) => {
+                                const key = `${endpoint.state}|${endpoint.county}|${endpoint.baseUrl}`;
+                                const isSelected = selectedEndpoints.has(key);
+                                return (
+                                  <div 
+                                    key={key}
+                                    className={`flex items-center gap-3 p-2 rounded-lg border hover-elevate cursor-pointer ${isSelected ? 'bg-primary/5 border-primary/20' : ''}`}
+                                    onClick={() => handleToggleEndpoint(endpoint)}
+                                    data-testid={`endpoint-row-${endpoint.state}-${endpoint.county}`}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={isSelected}
+                                      onChange={() => handleToggleEndpoint(endpoint)}
+                                      className="w-4 h-4 rounded border-muted-foreground"
+                                      onClick={(e) => e.stopPropagation()}
+                                    />
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-medium">{endpoint.county}</span>
+                                        <Badge variant="outline" className="text-xs">{endpoint.endpointType.replace('arcgis_', '')}</Badge>
+                                        {endpoint.confidenceScore && (
+                                          <Badge 
+                                            variant="outline" 
+                                            className={`text-xs ${endpoint.confidenceScore >= 85 ? 'bg-green-500/10 text-green-600 border-green-500/20' : endpoint.confidenceScore >= 70 ? 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20' : 'bg-gray-500/10 text-gray-600 border-gray-500/20'}`}
+                                          >
+                                            {endpoint.confidenceScore}% confidence
+                                          </Badge>
+                                        )}
+                                      </div>
+                                      <div className="text-xs text-muted-foreground truncate mt-0.5" title={endpoint.baseUrl}>
+                                        {endpoint.baseUrl}
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
                 </div>
-                <div className="flex gap-2 text-xs">
-                  <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/20">
-                    {scanResult?.totalKnown || 0} known patterns
-                  </Badge>
-                  <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">
-                    {scanResult?.totalExisting || 0} already added
-                  </Badge>
+              ) : (
+                <div className="py-8 text-center text-muted-foreground">
+                  <Database className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                  <p>Click "Scan for New" to discover endpoints from known patterns.</p>
+                </div>
+              )}
+              
+              <DialogFooter className="pt-4 border-t">
+                <Button 
+                  variant="outline" 
+                  onClick={() => setScanDialogOpen(false)}
+                  data-testid="button-cancel-scan"
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  onClick={handleAddSelectedEndpoints}
+                  disabled={selectedEndpoints.size === 0 || bulkAddEndpointsMutation.isPending}
+                  data-testid="button-add-selected-endpoints"
+                >
+                  {bulkAddEndpointsMutation.isPending ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Adding...
+                    </>
+                  ) : (
+                    <>Add {selectedEndpoints.size} Endpoint{selectedEndpoints.size !== 1 ? 's' : ''}</>
+                  )}
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center justify-between gap-2 pb-3 border-b">
+                <div className="text-sm text-muted-foreground">
+                  Scan ArcGIS Online to discover new parcel/property services
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => batchValidateMutation.mutate()}
+                    disabled={batchValidateMutation.isPending}
+                    data-testid="button-batch-validate"
+                  >
+                    {batchValidateMutation.isPending ? (
+                      <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                    ) : (
+                      <CheckCircle2 className="w-4 h-4 mr-1" />
+                    )}
+                    Validate Pending
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => scanArcGISMutation.mutate()}
+                    disabled={scanArcGISMutation.isPending}
+                    data-testid="button-scan-arcgis"
+                  >
+                    {scanArcGISMutation.isPending ? (
+                      <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                    ) : (
+                      <Globe className="w-4 h-4 mr-1" />
+                    )}
+                    Scan ArcGIS Online
+                  </Button>
                 </div>
               </div>
-              
-              <div className="flex-1 overflow-y-auto mt-3 pr-2">
-                <div className="space-y-1">
-                  {/* Group by state */}
-                  {scanResult?.byState && Object.entries(scanResult.byState)
-                    .sort(([a], [b]) => a.localeCompare(b))
-                    .map(([state, endpoints]) => (
-                      <div key={state} className="mb-4">
-                        <h4 className="text-sm font-semibold text-muted-foreground mb-2 sticky top-0 bg-background py-1">
-                          {state} ({endpoints.length} endpoint{endpoints.length !== 1 ? 's' : ''})
-                        </h4>
-                        <div className="space-y-1">
-                          {endpoints.map((endpoint) => {
-                            const key = `${endpoint.state}|${endpoint.county}|${endpoint.baseUrl}`;
-                            const isSelected = selectedEndpoints.has(key);
-                            return (
-                              <div 
-                                key={key}
-                                className={`flex items-center gap-3 p-2 rounded-lg border hover-elevate cursor-pointer ${isSelected ? 'bg-primary/5 border-primary/20' : ''}`}
-                                onClick={() => handleToggleEndpoint(endpoint)}
-                                data-testid={`endpoint-row-${endpoint.state}-${endpoint.county}`}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={isSelected}
-                                  onChange={() => handleToggleEndpoint(endpoint)}
-                                  className="w-4 h-4 rounded border-muted-foreground"
-                                  onClick={(e) => e.stopPropagation()}
-                                />
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-medium">{endpoint.county}</span>
-                                    <Badge variant="outline" className="text-xs">{endpoint.endpointType.replace('arcgis_', '')}</Badge>
-                                    {endpoint.confidenceScore && (
-                                      <Badge 
-                                        variant="outline" 
-                                        className={`text-xs ${endpoint.confidenceScore >= 85 ? 'bg-green-500/10 text-green-600 border-green-500/20' : endpoint.confidenceScore >= 70 ? 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20' : 'bg-gray-500/10 text-gray-600 border-gray-500/20'}`}
-                                      >
-                                        {endpoint.confidenceScore}% confidence
-                                      </Badge>
-                                    )}
-                                  </div>
-                                  <div className="text-xs text-muted-foreground truncate mt-0.5" title={endpoint.baseUrl}>
-                                    {endpoint.baseUrl}
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
+
+              <div className="flex-1 overflow-y-auto">
+                {liveDiscoveredEndpoints && liveDiscoveredEndpoints.length > 0 ? (
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-12 gap-2 text-xs font-medium text-muted-foreground px-3 pb-2 border-b sticky top-0 bg-background">
+                      <span className="col-span-1">State</span>
+                      <span className="col-span-2">County</span>
+                      <span className="col-span-1">Type</span>
+                      <span className="col-span-2">Status</span>
+                      <span className="col-span-2">Confidence</span>
+                      <span className="col-span-4">Actions</span>
+                    </div>
+                    {liveDiscoveredEndpoints.map((endpoint) => (
+                      <div 
+                        key={endpoint.id} 
+                        className="grid grid-cols-12 gap-2 items-center p-3 rounded-lg border hover-elevate"
+                        data-testid={`live-endpoint-${endpoint.id}`}
+                      >
+                        <span className="col-span-1 font-medium">{endpoint.state}</span>
+                        <span className="col-span-2">{endpoint.county}</span>
+                        <span className="col-span-1">
+                          <Badge variant="outline" className="text-xs">{endpoint.endpointType.replace('arcgis_', '')}</Badge>
+                        </span>
+                        <span className="col-span-2">
+                          {endpoint.status === "pending" && (
+                            <Badge variant="outline" className="bg-gray-500/10 text-gray-600 border-gray-500/20">Pending</Badge>
+                          )}
+                          {endpoint.status === "validated" && (
+                            <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">Validated</Badge>
+                          )}
+                          {endpoint.status === "rejected" && (
+                            <Badge variant="outline" className="bg-red-500/10 text-red-600 border-red-500/20">Rejected</Badge>
+                          )}
+                          {endpoint.status === "added" && (
+                            <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/20">Added</Badge>
+                          )}
+                        </span>
+                        <span className="col-span-2">
+                          {endpoint.confidenceScore && (
+                            <Badge 
+                              variant="outline" 
+                              className={`text-xs ${endpoint.confidenceScore >= 80 ? 'bg-green-500/10 text-green-600 border-green-500/20' : endpoint.confidenceScore >= 60 ? 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20' : 'bg-gray-500/10 text-gray-600 border-gray-500/20'}`}
+                            >
+                              {endpoint.confidenceScore}%
+                            </Badge>
+                          )}
+                        </span>
+                        <span className="col-span-4 flex items-center gap-1">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => validateLiveEndpointMutation.mutate(endpoint.id)}
+                            disabled={validateLiveEndpointMutation.isPending || endpoint.status === "added"}
+                            data-testid={`button-validate-live-${endpoint.id}`}
+                            title="Validate endpoint"
+                          >
+                            <Play className="w-4 h-4 text-muted-foreground" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => approveLiveEndpointMutation.mutate(endpoint.id)}
+                            disabled={approveLiveEndpointMutation.isPending || endpoint.status === "added" || endpoint.status === "rejected"}
+                            data-testid={`button-approve-live-${endpoint.id}`}
+                            title="Approve and add to database"
+                          >
+                            <Check className="w-4 h-4 text-green-600" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => rejectLiveEndpointMutation.mutate(endpoint.id)}
+                            disabled={rejectLiveEndpointMutation.isPending || endpoint.status === "added" || endpoint.status === "rejected"}
+                            data-testid={`button-reject-live-${endpoint.id}`}
+                            title="Reject endpoint"
+                          >
+                            <X className="w-4 h-4 text-red-600" />
+                          </Button>
+                        </span>
                       </div>
                     ))}
-                </div>
+                  </div>
+                ) : (
+                  <div className="py-8 text-center text-muted-foreground">
+                    <Globe className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                    <p>No discovered endpoints yet.</p>
+                    <p className="text-sm mt-1">Click "Scan ArcGIS Online" to search for new GIS services.</p>
+                  </div>
+                )}
               </div>
-            </div>
-          ) : (
-            <div className="py-8 text-center text-muted-foreground">
-              <Database className="w-12 h-12 mx-auto mb-3 opacity-50" />
-              <p>All known endpoints are already in the database.</p>
-            </div>
+
+              <DialogFooter className="pt-4 border-t">
+                <Button 
+                  variant="outline" 
+                  onClick={() => setScanDialogOpen(false)}
+                  data-testid="button-close-discovery"
+                >
+                  Close
+                </Button>
+              </DialogFooter>
+            </>
           )}
-          
-          <DialogFooter className="pt-4 border-t">
-            <Button 
-              variant="outline" 
-              onClick={() => setScanDialogOpen(false)}
-              data-testid="button-cancel-scan"
-            >
-              Cancel
-            </Button>
-            <Button 
-              onClick={handleAddSelectedEndpoints}
-              disabled={selectedEndpoints.size === 0 || bulkAddEndpointsMutation.isPending}
-              data-testid="button-add-selected-endpoints"
-            >
-              {bulkAddEndpointsMutation.isPending ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Adding...
-                </>
-              ) : (
-                <>Add {selectedEndpoints.size} Endpoint{selectedEndpoints.size !== 1 ? 's' : ''}</>
-              )}
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
 
