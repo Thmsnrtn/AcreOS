@@ -5339,7 +5339,85 @@ export async function registerRoutes(
     await storage.deleteAiConversation(conversationId);
     res.json({ success: true });
   });
-  
+
+  // ============================================
+  // EXECUTIVE ASSISTANT (UNIFIED AI INTERFACE)
+  // ============================================
+
+  api.get("/api/assistant/skills", isAuthenticated, async (req, res) => {
+    try {
+      const { getAllSkills } = await import('./services/intent-router');
+      res.json(getAllSkills());
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.post("/api/assistant/classify-intent", isAuthenticated, async (req, res) => {
+    try {
+      const { message } = req.body;
+      if (!message) {
+        return res.status(400).json({ message: "message is required" });
+      }
+      const { classifyIntentSimple } = await import('./services/intent-router');
+      const intent = classifyIntentSimple(message);
+      res.json(intent);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.post("/api/assistant/execute", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = (req as any).user;
+      const { message, useAIClassification } = req.body;
+
+      if (!message) {
+        return res.status(400).json({ message: "message is required" });
+      }
+
+      const { classifyIntentSimple, classifyIntentWithAI } = await import('./services/intent-router');
+      const { executeAgentTask } = await import('./services/core-agents');
+
+      const intent = useAIClassification 
+        ? await classifyIntentWithAI(message)
+        : classifyIntentSimple(message);
+
+      const result = await executeAgentTask(intent.agentType, {
+        action: intent.action,
+        parameters: { ...intent.extractedParams, userMessage: message },
+        context: {
+          organizationId: org.id,
+          userId: user?.id,
+        },
+      });
+
+      res.json({
+        intent,
+        result,
+        skill: intent.skillLabel,
+      });
+    } catch (err: any) {
+      console.error("Assistant execute error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.get("/api/assistant/suggestions", isAuthenticated, async (req, res) => {
+    const suggestions = [
+      { label: "Run due diligence", skill: "Research & Intelligence", action: "Check flood zones, wetlands, and environmental factors for a property" },
+      { label: "Generate an offer", skill: "Deals & Acquisition", action: "Create a professional offer letter for a seller" },
+      { label: "Draft follow-up email", skill: "Communications", action: "Write a personalized follow-up email to a lead" },
+      { label: "Check delinquent notes", skill: "Operations", action: "Review notes with overdue payments" },
+      { label: "Analyze investment", skill: "Research & Intelligence", action: "Get ROI analysis and risk assessment for a property" },
+      { label: "Compose SMS", skill: "Communications", action: "Draft a quick text message to a lead" },
+      { label: "Get performance digest", skill: "Operations", action: "Summarize your business performance" },
+      { label: "Look up comps", skill: "Deals & Acquisition", action: "Find comparable sales in an area" },
+    ];
+    res.json(suggestions);
+  });
+
   // ============================================
   // VA (VIRTUAL ASSISTANTS) SYSTEM
   // ============================================

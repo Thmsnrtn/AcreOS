@@ -1059,21 +1059,33 @@ function TasksTabContent() {
   );
 }
 
+interface Suggestion {
+  label: string;
+  skill: string;
+  action: string;
+}
+
+interface ActiveSkill {
+  type: string;
+  label: string;
+}
+
 export default function CommandCenterPage() {
   const queryClient = useQueryClient();
   const isMobile = useIsMobile();
+  const { toast } = useToast();
   const [mainTab, setMainTab] = useState<string>("chat");
   const [input, setInput] = useState("");
-  const [selectedAgent, setSelectedAgent] = useState<string>("executive");
   const [currentConversationId, setCurrentConversationId] = useState<number | null>(null);
   const [streamingContent, setStreamingContent] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [pendingToolCalls, setPendingToolCalls] = useState<Array<{ name: string; result?: any }>>([]);
+  const [activeSkill, setActiveSkill] = useState<ActiveSkill | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const { data: agents = [], isLoading: agentsLoading } = useQuery<Agent[]>({
-    queryKey: ["/api/ai/agents"],
+  const { data: suggestions = [] } = useQuery<Suggestion[]>({
+    queryKey: ["/api/assistant/suggestions"],
   });
 
   const { data: conversations = [], isLoading: conversationsLoading } = useQuery<Conversation[]>({
@@ -1089,8 +1101,8 @@ export default function CommandCenterPage() {
   });
 
   const createConversationMutation = useMutation({
-    mutationFn: async (agentRole: string) => {
-      const res = await apiRequest("POST", "/api/ai/conversations", { agentRole });
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/ai/conversations", { agentRole: "assistant" });
       return res.json() as Promise<Conversation>;
     },
     onSuccess: (conversation) => {
@@ -1111,6 +1123,13 @@ export default function CommandCenterPage() {
     },
   });
 
+  const classifyIntentMutation = useMutation({
+    mutationFn: async (message: string) => {
+      const res = await apiRequest("POST", "/api/assistant/classify-intent", { message });
+      return res.json();
+    },
+  });
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -1127,18 +1146,59 @@ export default function CommandCenterPage() {
     setStreamingContent("");
     setPendingToolCalls([]);
     setIsStreaming(true);
+    setActiveSkill(null);
 
     try {
+      const intentResult = await classifyIntentMutation.mutateAsync(message);
+      if (intentResult?.skillLabel) {
+        setActiveSkill({ type: intentResult.agentType, label: intentResult.skillLabel });
+      }
+
+      let conversationId = currentConversationId;
+      if (!conversationId) {
+        try {
+          const newConversation = await createConversationMutation.mutateAsync();
+          conversationId = newConversation.id;
+          setCurrentConversationId(conversationId);
+        } catch (err) {
+          toast({
+            title: "Error",
+            description: "Failed to create conversation. Please try again.",
+            variant: "destructive",
+          });
+          setInput(message);
+          setIsStreaming(false);
+          return;
+        }
+      }
+
       const response = await fetch("/api/ai/chat/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message,
-          conversationId: currentConversationId,
-          agentRole: selectedAgent,
+          conversationId,
+          agentRole: "assistant",
         }),
         credentials: "include",
       });
+
+      if (response.status === 402) {
+        toast({
+          title: "Insufficient AI Credits",
+          description: "Please add credits to continue using the AI assistant. Visit Settings to purchase more.",
+          variant: "destructive",
+        });
+        setInput(message);
+        setIsStreaming(false);
+        setActiveSkill(null);
+        return;
+      }
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Request failed with status ${response.status}`);
+      }
 
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
@@ -1182,10 +1242,12 @@ export default function CommandCenterPage() {
       }
     } catch (error) {
       console.error("Streaming error:", error);
+      toast({ title: "Error", description: "Failed to send message", variant: "destructive" });
     } finally {
       setIsStreaming(false);
       setStreamingContent("");
       setPendingToolCalls([]);
+      setActiveSkill(null);
     }
   };
 
@@ -1197,15 +1259,19 @@ export default function CommandCenterPage() {
   };
 
   const handleNewConversation = () => {
-    createConversationMutation.mutate(selectedAgent);
+    createConversationMutation.mutate();
   };
 
   const handleSelectConversation = (id: number) => {
     setCurrentConversationId(id);
-    const conv = conversations.find((c) => c.id === id);
-    if (conv) {
-      setSelectedAgent(conv.agentRole);
+  };
+
+  const handleSuggestionClick = (suggestion: Suggestion) => {
+    setInput(suggestion.action);
+    if (!currentConversationId) {
+      createConversationMutation.mutate();
     }
+    textareaRef.current?.focus();
   };
 
   const handleDeleteConversation = (e: React.MouseEvent, id: number) => {
@@ -1222,11 +1288,11 @@ export default function CommandCenterPage() {
         <div className="p-4 pt-16 md:pt-4 border-b border-border">
           <div className="flex items-center gap-3 mb-4">
             <div className="p-2 bg-primary rounded-lg text-primary-foreground">
-              <Bot className="w-5 h-5" />
+              <Sparkles className="w-5 h-5" />
             </div>
             <div>
-              <h1 className="text-xl font-bold" data-testid="text-page-title">AI</h1>
-              <p className="text-sm text-muted-foreground">Manage your AI agents and conversations</p>
+              <h1 className="text-xl font-bold" data-testid="text-page-title">AcreOS Assistant</h1>
+              <p className="text-sm text-muted-foreground">Your AI partner for land investment</p>
             </div>
           </div>
           <DisclaimerBanner type="ai" className="mb-4" />
@@ -1235,7 +1301,7 @@ export default function CommandCenterPage() {
               <TabsList className={isMobile ? "w-full" : ""}>
                 <TabsTrigger value="chat" className={isMobile ? "flex-1" : ""} data-testid="tab-chat">
                   <MessageSquare className="w-4 h-4 mr-2" />
-                  Chat
+                  Assistant
                 </TabsTrigger>
                 <TabsTrigger value="team" className={isMobile ? "flex-1" : ""} data-testid="tab-team">
                   <Users className="w-4 h-4 mr-2" />
@@ -1247,7 +1313,7 @@ export default function CommandCenterPage() {
                 </TabsTrigger>
                 <TabsTrigger value="agents" className={isMobile ? "flex-1" : ""} data-testid="tab-agents">
                   <Bot className="w-4 h-4 mr-2" />
-                  Agents
+                  Background
                 </TabsTrigger>
               </TabsList>
             </Tabs>
@@ -1340,66 +1406,39 @@ export default function CommandCenterPage() {
               )}
 
               <div className="flex-1 flex flex-col overflow-hidden">
-                <div className="p-4 border-b border-border">
-                  <h2 className="text-sm font-medium text-muted-foreground mb-3">Select Agent</h2>
-                  <div className="flex gap-3 overflow-x-auto pb-2">
-                    {agentsLoading ? (
-                      <div className="flex items-center gap-2">
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        <span className="text-sm text-muted-foreground">Loading agents...</span>
-                      </div>
-                    ) : (
-                      agents.map((agent) => {
-                        const IconComponent = getAgentIcon(agent.icon);
-                        const isSelected = selectedAgent === agent.role;
-                        return (
-                          <Card
-                            key={agent.role}
-                            onClick={() => setSelectedAgent(agent.role)}
-                            className={`cursor-pointer shrink-0 w-48 transition-all ${
-                              isSelected
-                                ? "ring-2 ring-primary border-primary"
-                                : "hover-elevate"
-                            }`}
-                            data-testid={`card-agent-${agent.role}`}
-                          >
-                            <CardContent className="p-4">
-                              <div className="flex items-center gap-3 mb-2">
-                                <div
-                                  className={`p-2 rounded-lg ${
-                                    isSelected ? "bg-primary text-primary-foreground" : "bg-muted"
-                                  }`}
-                                >
-                                  <IconComponent className="w-4 h-4" />
-                                </div>
-                                <div>
-                                  <p className="font-semibold text-sm">{agent.name}</p>
-                                  <Badge variant="outline" className="text-xs">
-                                    {agent.displayName}
-                                  </Badge>
-                                </div>
-                              </div>
-                              <p className="text-xs text-muted-foreground line-clamp-2">
-                                {agent.description}
-                              </p>
-                            </CardContent>
-                          </Card>
-                        );
-                      })
-                    )}
-                  </div>
-                </div>
-
                 <ScrollArea className="flex-1 p-4" data-testid="list-messages">
                   <div className="max-w-3xl mx-auto space-y-4">
                     {!currentConversationId ? (
-                      <div className="flex flex-col items-center justify-center h-96 text-center">
-                        <Bot className="w-16 h-16 text-muted-foreground/30 mb-4" />
-                        <h3 className="text-lg font-medium mb-2">AI Assistant</h3>
-                        <p className="text-muted-foreground text-sm max-w-md">
-                          Start a new conversation to interact with your AI agents. They can help
-                          manage leads, properties, notes, and more.
+                      <div className="flex flex-col items-center justify-center py-12 text-center">
+                        <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mb-6">
+                          <Sparkles className="w-10 h-10 text-primary" />
+                        </div>
+                        <h3 className="text-xl font-semibold mb-2" data-testid="text-assistant-welcome">AcreOS Assistant</h3>
+                        <p className="text-muted-foreground text-sm max-w-md mb-8">
+                          Your intelligent partner for land investment. I can help with research, deals, communications, and operations.
                         </p>
+                        
+                        {suggestions.length > 0 && (
+                          <div className="w-full max-w-2xl">
+                            <p className="text-xs text-muted-foreground mb-3">Try asking me to:</p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {suggestions.slice(0, 6).map((suggestion, idx) => (
+                                <Button
+                                  key={idx}
+                                  variant="outline"
+                                  className="justify-start text-left h-auto py-3 px-4"
+                                  onClick={() => handleSuggestionClick(suggestion)}
+                                  data-testid={`button-suggestion-${idx}`}
+                                >
+                                  <div className="flex flex-col items-start gap-1">
+                                    <span className="font-medium text-sm">{suggestion.label}</span>
+                                    <span className="text-xs text-muted-foreground">{suggestion.skill}</span>
+                                  </div>
+                                </Button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ) : messagesLoading ? (
                       <div className="flex items-center justify-center py-20">
@@ -1476,6 +1515,15 @@ export default function CommandCenterPage() {
                         {isStreaming && (
                           <div className="flex justify-start" data-testid="message-streaming">
                             <div className="max-w-[80%] rounded-lg p-4 bg-card border">
+                              {activeSkill && (
+                                <div className="flex items-center gap-2 mb-3 text-xs">
+                                  <Badge variant="secondary" className="text-xs">
+                                    <Brain className="w-3 h-3 mr-1" />
+                                    {activeSkill.label}
+                                  </Badge>
+                                </div>
+                              )}
+                              
                               {pendingToolCalls.length > 0 && (
                                 <div className="mb-3 space-y-2">
                                   {pendingToolCalls.map((tc, idx) => (
@@ -1520,18 +1568,14 @@ export default function CommandCenterPage() {
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
                         onKeyDown={handleKeyDown}
-                        placeholder={
-                          currentConversationId
-                            ? "Type your message..."
-                            : "Start a new conversation first..."
-                        }
+                        placeholder="Ask me anything about your land investments..."
                         className="flex-1 min-h-[48px] max-h-32 resize-none"
-                        disabled={!currentConversationId || isStreaming}
+                        disabled={isStreaming}
                         data-testid="input-message"
                       />
                       <Button
                         onClick={sendMessage}
-                        disabled={!input.trim() || !currentConversationId || isStreaming}
+                        disabled={!input.trim() || isStreaming}
                         data-testid="button-send-message"
                       >
                         {isStreaming ? (
