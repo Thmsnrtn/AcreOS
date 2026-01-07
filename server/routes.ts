@@ -1201,6 +1201,26 @@ export async function registerRoutes(
     res.json(activities);
   });
 
+  api.get("/api/leads/:id/properties", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const leadId = Number(req.params.id);
+      
+      const lead = await storage.getLead(org.id, leadId);
+      if (!lead) {
+        return res.status(404).json({ message: "Lead not found" });
+      }
+      
+      const allProperties = await storage.getProperties(org.id);
+      const linkedProperties = allProperties.filter(p => p.sellerId === leadId);
+      
+      res.json(linkedProperties);
+    } catch (error: any) {
+      console.error("Get lead properties error:", error);
+      res.status(500).json({ message: error.message || "Failed to get lead properties" });
+    }
+  });
+
   // Timeline endpoints for communication history
   api.get("/api/leads/:id/timeline", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = (req as any).organization;
@@ -2341,6 +2361,266 @@ export async function registerRoutes(
       res.status(500).json({ message: error.message || "Failed to lookup tax info" });
     }
   });
+
+  // ============================================
+  // DUE DILIGENCE REPORT GENERATION
+  // ============================================
+
+  api.get("/api/properties/:id/report", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const propertyId = Number(req.params.id);
+      const includeComps = req.query.comps === "true";
+      const includeAI = req.query.ai === "true";
+      
+      // Verify property belongs to organization
+      const property = await storage.getProperty(org.id, propertyId);
+      if (!property) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+      
+      const { generateDueDiligenceReport } = await import("./services/dueDiligence");
+      const report = await generateDueDiligenceReport(org.id, propertyId, {
+        includeComps,
+        includeAI,
+      });
+      
+      res.json(report);
+    } catch (error: any) {
+      console.error("Due diligence report error:", error);
+      res.status(500).json({ message: error.message || "Failed to generate report" });
+    }
+  });
+
+  api.get("/api/properties/:id/report/pdf", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const propertyId = Number(req.params.id);
+      const includeComps = req.query.comps === "true";
+      const includeAI = req.query.ai === "true";
+      
+      // Verify property belongs to organization
+      const property = await storage.getProperty(org.id, propertyId);
+      if (!property) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+      
+      const { generateDueDiligenceReport } = await import("./services/dueDiligence");
+      const jsPDF = (await import("jspdf")).jsPDF;
+      
+      const report = await generateDueDiligenceReport(org.id, propertyId, {
+        includeComps,
+        includeAI,
+      });
+      
+      // Generate PDF
+      const doc = new jsPDF();
+      let y = 20;
+      const lineHeight = 7;
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const margin = 20;
+      const contentWidth = pageWidth - (margin * 2);
+      
+      // Header
+      doc.setFontSize(20);
+      doc.setFont("helvetica", "bold");
+      doc.text("Due Diligence Report", margin, y);
+      y += lineHeight * 2;
+      
+      // Property Summary
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.text("Property Summary", margin, y);
+      y += lineHeight;
+      
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Property: ${report.summary.propertyName}`, margin, y);
+      y += lineHeight;
+      doc.text(`APN: ${report.summary.apn}`, margin, y);
+      y += lineHeight;
+      doc.text(`Address: ${report.summary.address}`, margin, y);
+      y += lineHeight;
+      doc.text(`County: ${report.summary.county}, ${report.summary.state}`, margin, y);
+      y += lineHeight;
+      doc.text(`Generated: ${new Date(report.summary.generatedAt).toLocaleString()}`, margin, y);
+      y += lineHeight * 2;
+      
+      // Parcel Information
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.text("Parcel Information", margin, y);
+      y += lineHeight;
+      
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Size: ${report.parcelInfo.acres ? `${report.parcelInfo.acres} acres` : "Unknown"}`, margin, y);
+      y += lineHeight;
+      doc.text(`Zoning: ${report.parcelInfo.zoning || "Unknown"}`, margin, y);
+      y += lineHeight;
+      if (report.parcelInfo.legalDescription) {
+        const lines = doc.splitTextToSize(`Legal Description: ${report.parcelInfo.legalDescription}`, contentWidth);
+        doc.text(lines, margin, y);
+        y += lineHeight * lines.length;
+      }
+      y += lineHeight;
+      
+      // Ownership
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.text("Ownership Information", margin, y);
+      y += lineHeight;
+      
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Owner: ${report.ownership.currentOwner || "Unknown"}`, margin, y);
+      y += lineHeight;
+      if (report.ownership.ownerAddress) {
+        doc.text(`Owner Address: ${report.ownership.ownerAddress}`, margin, y);
+        y += lineHeight;
+      }
+      y += lineHeight;
+      
+      // Tax Information
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.text("Tax Information", margin, y);
+      y += lineHeight;
+      
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Assessed Value: ${report.taxes.assessedValue ? `$${report.taxes.assessedValue.toLocaleString()}` : "Unknown"}`, margin, y);
+      y += lineHeight;
+      doc.text(`Annual Tax: ${report.taxes.taxAmount ? `$${report.taxes.taxAmount.toLocaleString()}` : "Unknown"}`, margin, y);
+      y += lineHeight * 2;
+      
+      // Check if we need a new page
+      if (y > 240) {
+        doc.addPage();
+        y = 20;
+      }
+      
+      // Market Analysis
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.text("Market Analysis", margin, y);
+      y += lineHeight;
+      
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Price Per Acre: ${report.marketAnalysis.pricePerAcre ? `$${report.marketAnalysis.pricePerAcre.toLocaleString()}` : "Unknown"}`, margin, y);
+      y += lineHeight;
+      doc.text(`Estimated Value: ${report.marketAnalysis.estimatedValue ? `$${report.marketAnalysis.estimatedValue.toLocaleString()}` : "Unknown"}`, margin, y);
+      y += lineHeight;
+      doc.text(`Market Trend: ${report.marketAnalysis.marketTrend}`, margin, y);
+      y += lineHeight;
+      
+      if (report.marketAnalysis.offerPrices) {
+        y += lineHeight;
+        const offers = report.marketAnalysis.offerPrices;
+        doc.text(`Conservative: $${offers.conservative.min.toLocaleString()} - $${offers.conservative.max.toLocaleString()}`, margin, y);
+        y += lineHeight;
+        doc.text(`Standard: $${offers.standard.min.toLocaleString()} - $${offers.standard.max.toLocaleString()}`, margin, y);
+        y += lineHeight;
+        doc.text(`Aggressive: $${offers.aggressive.min.toLocaleString()} - $${offers.aggressive.max.toLocaleString()}`, margin, y);
+      }
+      y += lineHeight * 2;
+      
+      // Check if we need a new page
+      if (y > 240) {
+        doc.addPage();
+        y = 20;
+      }
+      
+      // Risk Assessment
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.text("Risk Assessment", margin, y);
+      y += lineHeight;
+      
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      
+      if (report.risks.accessIssues.length > 0) {
+        doc.text("Access Issues:", margin, y);
+        y += lineHeight;
+        report.risks.accessIssues.forEach(issue => {
+          doc.text(`  - ${issue}`, margin, y);
+          y += lineHeight;
+        });
+      }
+      
+      if (report.risks.zoningRestrictions.length > 0) {
+        doc.text("Zoning Restrictions:", margin, y);
+        y += lineHeight;
+        report.risks.zoningRestrictions.forEach(restriction => {
+          doc.text(`  - ${restriction}`, margin, y);
+          y += lineHeight;
+        });
+      }
+      y += lineHeight;
+      
+      // AI Summary
+      if (report.aiSummary) {
+        if (y > 180) {
+          doc.addPage();
+          y = 20;
+        }
+        
+        doc.setFontSize(12);
+        doc.setFont("helvetica", "bold");
+        doc.text("AI Analysis", margin, y);
+        y += lineHeight;
+        
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "normal");
+        const aiLines = doc.splitTextToSize(report.aiSummary, contentWidth);
+        doc.text(aiLines, margin, y);
+      }
+      
+      // Footer
+      const pageCount = doc.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "normal");
+        doc.text(
+          `AcreOS Due Diligence Report - Page ${i} of ${pageCount}`,
+          pageWidth / 2,
+          doc.internal.pageSize.getHeight() - 10,
+          { align: "center" }
+        );
+      }
+      
+      // Send PDF
+      const pdfBuffer = Buffer.from(doc.output("arraybuffer"));
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="due-diligence-${report.summary.apn}.pdf"`);
+      res.send(pdfBuffer);
+    } catch (error: any) {
+      console.error("PDF generation error:", error);
+      res.status(500).json({ message: error.message || "Failed to generate PDF" });
+    }
+  });
+
+  api.get("/api/properties/:id/report/summary", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const propertyId = Number(req.params.id);
+      
+      const { getQuickPropertySummary } = await import("./services/dueDiligence");
+      const summary = await getQuickPropertySummary(org.id, propertyId);
+      
+      if (!summary) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+      
+      res.json(summary);
+    } catch (error: any) {
+      console.error("Quick summary error:", error);
+      res.status(500).json({ message: error.message || "Failed to get summary" });
+    }
+  });
   
   // ============================================
   // DEAL CHECKLIST TEMPLATES
@@ -2442,6 +2722,40 @@ export async function registerRoutes(
   api.get("/api/deals/:id/stage-gate", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const result = await storage.checkStageGate(Number(req.params.id));
     res.json(result);
+  });
+
+  api.get("/api/deals/:id/report", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const dealId = Number(req.params.id);
+      const includeComps = req.query.comps === "true";
+      const includeAI = req.query.ai === "true";
+      
+      const deal = await storage.getDeal(dealId);
+      if (!deal || deal.organizationId !== org.id) {
+        return res.status(404).json({ message: "Deal not found" });
+      }
+      
+      const { generateDueDiligenceReport } = await import("./services/dueDiligence");
+      const report = await generateDueDiligenceReport(org.id, deal.propertyId, {
+        includeComps,
+        includeAI,
+      });
+      
+      res.json({
+        ...report,
+        deal: {
+          id: deal.id,
+          type: deal.type,
+          status: deal.status,
+          offerAmount: deal.offerAmount,
+          acceptedAmount: deal.acceptedAmount,
+        },
+      });
+    } catch (error: any) {
+      console.error("Deal due diligence report error:", error);
+      res.status(500).json({ message: error.message || "Failed to generate report" });
+    }
   });
   
   // Enhanced deal stage update with stage gate check

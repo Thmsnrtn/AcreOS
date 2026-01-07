@@ -4,11 +4,14 @@
  */
 
 import { db } from "../db";
-import { properties } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+import { properties, parcelSnapshots } from "@shared/schema";
+import { eq, and, isNull, or, sql } from "drizzle-orm";
 import { lookupParcelByAPN, type ParcelLookupResult } from "./parcel";
 import { getComparableProperties, calculateOfferPrices, type ComparableProperty, type OfferPrices } from "./comps";
 import OpenAI from "openai";
+
+// Cache freshness: 30 days
+const CACHE_FRESHNESS_MS = 30 * 24 * 60 * 60 * 1000;
 
 // ============================================
 // TYPES
@@ -228,6 +231,157 @@ Provide a professional assessment focusing on:
 }
 
 // ============================================
+// PARCEL SNAPSHOT CACHE
+// ============================================
+
+interface CachedParcelData {
+  snapshot: typeof parcelSnapshots.$inferSelect | null;
+  dataSource: DueDiligenceReport["dataSource"];
+  isStale: boolean;
+}
+
+/**
+ * Get or refresh parcel snapshot from cache
+ */
+async function getOrCreateParcelSnapshot(
+  organizationId: number,
+  state: string,
+  county: string,
+  apn: string
+): Promise<CachedParcelData> {
+  // Normalize inputs
+  const normalizedState = state.toUpperCase();
+  const normalizedCounty = county.toLowerCase();
+  const normalizedApn = apn.trim();
+
+  // Check for existing snapshot (org-specific or global)
+  const [existingSnapshot] = await db
+    .select()
+    .from(parcelSnapshots)
+    .where(
+      and(
+        eq(parcelSnapshots.state, normalizedState),
+        sql`LOWER(${parcelSnapshots.county}) = ${normalizedCounty}`,
+        eq(parcelSnapshots.apn, normalizedApn),
+        or(
+          eq(parcelSnapshots.organizationId, organizationId),
+          isNull(parcelSnapshots.organizationId)
+        )
+      )
+    )
+    .limit(1);
+
+  if (existingSnapshot) {
+    // Check if snapshot is still fresh
+    const fetchedAt = existingSnapshot.fetchedAt ? new Date(existingSnapshot.fetchedAt).getTime() : 0;
+    const isStale = Date.now() - fetchedAt > CACHE_FRESHNESS_MS;
+    
+    if (!isStale) {
+      console.log(`[DueDiligence] Cache hit for ${normalizedApn} in ${county}, ${state}`);
+      return {
+        snapshot: existingSnapshot,
+        dataSource: "cache",
+        isStale: false,
+      };
+    }
+    
+    console.log(`[DueDiligence] Cache stale for ${normalizedApn}, refreshing...`);
+    return {
+      snapshot: existingSnapshot,
+      dataSource: "cache",
+      isStale: true,
+    };
+  }
+
+  console.log(`[DueDiligence] Cache miss for ${normalizedApn} in ${county}, ${state}`);
+  return {
+    snapshot: null,
+    dataSource: "property_record",
+    isStale: true,
+  };
+}
+
+/**
+ * Save parcel data to snapshot cache
+ */
+async function saveParcelSnapshot(
+  organizationId: number | null,
+  parcelResult: ParcelLookupResult,
+  state: string,
+  county: string,
+  apn: string,
+  source: string
+): Promise<typeof parcelSnapshots.$inferSelect | null> {
+  if (!parcelResult.found || !parcelResult.parcel) {
+    return null;
+  }
+
+  const normalizedState = state.toUpperCase();
+  const normalizedApn = apn.trim();
+  const data = parcelResult.parcel.data;
+  const now = new Date();
+
+  try {
+    const [inserted] = await db
+      .insert(parcelSnapshots)
+      .values({
+        organizationId: null, // Store as global/shared cache
+        apn: normalizedApn,
+        state: normalizedState,
+        county: county,
+        fipsCode: null,
+        source: source,
+        sourceId: data.regridId || null,
+        boundary: parcelResult.parcel.boundary || null,
+        centroid: parcelResult.parcel.centroid || null,
+        owner: data.owner || null,
+        ownerAddress: data.ownerAddress || null,
+        mailingAddress: data.ownerAddress || null,
+        siteAddress: null,
+        acres: data.acres ? String(data.acres) : null,
+        legalDescription: null,
+        zoning: null,
+        landUse: null,
+        propertyType: null,
+        assessedValue: null,
+        marketValue: null,
+        taxAmount: data.taxAmount ? String(data.taxAmount) : null,
+        taxYear: new Date().getFullYear(),
+        lastSalePrice: null,
+        lastSaleDate: null,
+        rawData: data as unknown as Record<string, unknown>,
+        fetchedAt: now,
+        expiresAt: new Date(now.getTime() + CACHE_FRESHNESS_MS),
+      })
+      .onConflictDoUpdate({
+        target: [parcelSnapshots.state, parcelSnapshots.county, parcelSnapshots.apn],
+        set: {
+          source: source,
+          sourceId: data.regridId || null,
+          boundary: parcelResult.parcel.boundary || null,
+          centroid: parcelResult.parcel.centroid || null,
+          owner: data.owner || null,
+          ownerAddress: data.ownerAddress || null,
+          mailingAddress: data.ownerAddress || null,
+          acres: data.acres ? String(data.acres) : null,
+          taxAmount: data.taxAmount ? String(data.taxAmount) : null,
+          rawData: data as unknown as Record<string, unknown>,
+          fetchedAt: now,
+          expiresAt: new Date(now.getTime() + CACHE_FRESHNESS_MS),
+          updatedAt: now,
+        },
+      })
+      .returning();
+
+    console.log(`[DueDiligence] Saved snapshot for ${normalizedApn}`);
+    return inserted || null;
+  } catch (error) {
+    console.error("[DueDiligence] Failed to save snapshot:", error);
+    return null;
+  }
+}
+
+// ============================================
 // MAIN FUNCTION
 // ============================================
 
@@ -259,30 +413,21 @@ export async function generateDueDiligenceReport(
 
   let dataSource: DueDiligenceReport["dataSource"] = "property_record";
   let parcelResult: ParcelLookupResult | null = null;
+  let cachedSnapshot: typeof parcelSnapshots.$inferSelect | null = null;
 
-  // Check if we have cached parcel data
-  const hasCachedParcelData = property.parcelData && 
-    property.parcelData.lastUpdated && 
-    property.parcelData.owner;
+  // Check parcel_snapshots cache first
+  const cacheResult = await getOrCreateParcelSnapshot(
+    organizationId,
+    property.state,
+    property.county,
+    property.apn
+  );
+  
+  cachedSnapshot = cacheResult.snapshot;
+  dataSource = cacheResult.dataSource;
 
-  if (hasCachedParcelData) {
-    // Check if cache is fresh (less than 30 days old)
-    const cacheAge = property.parcelData?.lastUpdated 
-      ? Date.now() - new Date(property.parcelData.lastUpdated).getTime()
-      : Infinity;
-    const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
-
-    if (cacheAge < thirtyDaysMs) {
-      dataSource = "cache";
-      console.log(`[DueDiligence] Using cached parcel data for property ${propertyId}`);
-    } else {
-      // Cache is stale, refresh
-      console.log(`[DueDiligence] Cache expired, refreshing parcel data for property ${propertyId}`);
-    }
-  }
-
-  // Fetch fresh parcel data if not cached or stale
-  if (dataSource !== "cache") {
+  // Fetch fresh parcel data if no cache or stale
+  if (!cachedSnapshot || cacheResult.isStale) {
     try {
       const stateCountyPath = buildStateCountyPath(property.state, property.county);
       parcelResult = await lookupParcelByAPN(property.apn, stateCountyPath);
@@ -290,7 +435,17 @@ export async function generateDueDiligenceReport(
       if (parcelResult.found && parcelResult.parcel) {
         dataSource = parcelResult.source || "regrid";
         
-        // Update property with fresh parcel data
+        // Save to parcel_snapshots cache
+        cachedSnapshot = await saveParcelSnapshot(
+          organizationId,
+          parcelResult,
+          property.state,
+          property.county,
+          property.apn,
+          dataSource
+        );
+        
+        // Also update property record for backwards compatibility
         await db
           .update(properties)
           .set({
@@ -316,10 +471,19 @@ export async function generateDueDiligenceReport(
     }
   }
 
-  // Use fresh data if available, otherwise fall back to cached/property record
-  const parcelData = parcelResult?.parcel?.data || property.parcelData;
-  const boundary = parcelResult?.parcel?.boundary || property.parcelBoundary;
-  const centroid = parcelResult?.parcel?.centroid || property.parcelCentroid;
+  // Build unified parcel data from snapshot or property record
+  const boundary = cachedSnapshot?.boundary || parcelResult?.parcel?.boundary || property.parcelBoundary;
+  const centroid = cachedSnapshot?.centroid || parcelResult?.parcel?.centroid || property.parcelCentroid;
+  
+  // Build parcelData object from snapshot or property record
+  const parcelData = cachedSnapshot ? {
+    regridId: cachedSnapshot.sourceId,
+    owner: cachedSnapshot.owner,
+    ownerAddress: cachedSnapshot.ownerAddress,
+    taxAmount: cachedSnapshot.taxAmount ? parseFloat(cachedSnapshot.taxAmount) : null,
+    acres: cachedSnapshot.acres ? parseFloat(cachedSnapshot.acres) : null,
+    lastUpdated: cachedSnapshot.fetchedAt?.toISOString(),
+  } : (parcelResult?.parcel?.data || property.parcelData);
 
   // Build report sections
   const summary: DueDiligenceReportSummary = {
