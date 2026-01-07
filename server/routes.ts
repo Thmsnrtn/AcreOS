@@ -2301,40 +2301,71 @@ export async function registerRoutes(
 
   api.post("/api/due-diligence/:propertyId/lookup/flood-zone", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const org = (req as any).organization;
       const propertyId = Number(req.params.propertyId);
-      const result = {
-        zone: "Zone X (Minimal Flood Hazard)",
-        riskLevel: "low",
-        lastUpdated: new Date().toISOString(),
-        source: "FEMA National Flood Hazard Layer",
-        details: {
-          panelNumber: "06071C7200J",
-          communityId: "060258",
-          effectiveDate: "2023-09-26",
-        }
-      };
-      res.json(result);
+      
+      const property = await storage.getProperty(org.id, propertyId);
+      if (!property) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+      
+      const { dataSourceLookupService } = await import('./services/data-source-lookup');
+      
+      if (property.latitude && property.longitude) {
+        const lookupResult = await dataSourceLookupService.lookupFloodZone({
+          latitude: Number(property.latitude),
+          longitude: Number(property.longitude),
+          state: property.state || undefined,
+          county: property.county || undefined,
+        });
+        res.json(lookupResult.data);
+      } else {
+        res.json({
+          zone: "Unknown (No coordinates)",
+          riskLevel: "unknown",
+          lastUpdated: new Date().toISOString(),
+          source: "N/A",
+          details: { message: "Property has no coordinates for flood zone lookup" },
+        });
+      }
     } catch (error: any) {
+      console.error("Flood zone lookup error:", error);
       res.status(500).json({ message: error.message || "Failed to lookup flood zone" });
     }
   });
 
   api.post("/api/due-diligence/:propertyId/lookup/wetlands", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const org = (req as any).organization;
       const propertyId = Number(req.params.propertyId);
-      const result = {
-        hasWetlands: false,
-        classification: null,
-        percentage: 0,
-        source: "National Wetlands Inventory (NWI)",
-        lastUpdated: new Date().toISOString(),
-        details: {
-          nearestWetland: "0.5 miles",
-          watershedName: "Lower Colorado River",
-        }
-      };
-      res.json(result);
+      
+      const property = await storage.getProperty(org.id, propertyId);
+      if (!property) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+      
+      const { dataSourceLookupService } = await import('./services/data-source-lookup');
+      
+      if (property.latitude && property.longitude) {
+        const lookupResult = await dataSourceLookupService.lookupWetlands({
+          latitude: Number(property.latitude),
+          longitude: Number(property.longitude),
+          state: property.state || undefined,
+          county: property.county || undefined,
+        });
+        res.json(lookupResult.data);
+      } else {
+        res.json({
+          hasWetlands: false,
+          classification: null,
+          percentage: 0,
+          source: "N/A",
+          lastUpdated: new Date().toISOString(),
+          details: { message: "Property has no coordinates for wetlands lookup" },
+        });
+      }
     } catch (error: any) {
+      console.error("Wetlands lookup error:", error);
       res.status(500).json({ message: error.message || "Failed to lookup wetlands" });
     }
   });
