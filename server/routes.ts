@@ -7505,6 +7505,26 @@ Seller Signature (if applicable)
     }
   });
 
+  api.put("/api/admin/alerts/acknowledge-all", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const count = await storage.acknowledgeAllAlerts();
+      res.json({ success: true, count, message: `${count} alerts acknowledged` });
+    } catch (err: any) {
+      console.error("Acknowledge all alerts error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.put("/api/admin/alerts/resolve-all", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const count = await storage.resolveAllAlerts();
+      res.json({ success: true, count, message: `${count} alerts resolved` });
+    } catch (err: any) {
+      console.error("Resolve all alerts error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   api.get("/api/admin/organizations", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
       const orgs = await storage.getAllOrganizations();
@@ -7534,6 +7554,38 @@ Seller Signature (if applicable)
       res.json(stats);
     } catch (err: any) {
       console.error("API usage stats error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // User Analytics Endpoints
+  api.get("/api/admin/users", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const orgs = await storage.getAllOrganizationsWithDetails();
+      res.json(orgs);
+    } catch (err: any) {
+      console.error("Admin users error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.get("/api/admin/subscription-stats", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const stats = await storage.getSubscriptionStats();
+      res.json(stats);
+    } catch (err: any) {
+      console.error("Subscription stats error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.get("/api/admin/subscription-events", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+      const events = await storage.getSubscriptionEvents({ limit });
+      res.json(events);
+    } catch (err: any) {
+      console.error("Subscription events error:", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -7606,6 +7658,247 @@ Seller Signature (if applicable)
       res.json({ success: true });
     } catch (err: any) {
       console.error("Delete county GIS endpoint error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Test a single GIS endpoint
+  api.post("/api/county-gis-endpoints/:id/test", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid endpoint ID" });
+      }
+
+      const endpoint = await storage.getCountyGisEndpoint(id);
+      if (!endpoint) {
+        return res.status(404).json({ message: "Endpoint not found" });
+      }
+
+      let success = false;
+      let message = "";
+      let details: any = null;
+
+      try {
+        const testUrl = new URL(endpoint.baseUrl);
+        if (endpoint.endpointType === "arcgis_rest" || endpoint.endpointType === "arcgis_feature") {
+          testUrl.searchParams.set("f", "json");
+          testUrl.searchParams.set("where", "1=1");
+          testUrl.searchParams.set("resultRecordCount", "1");
+          testUrl.searchParams.set("outFields", "*");
+        }
+
+        const response = await fetch(testUrl.toString(), {
+          method: "GET",
+          headers: { "Accept": "application/json" },
+          signal: AbortSignal.timeout(10000),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.error) {
+            success = false;
+            message = `API returned error: ${data.error.message || JSON.stringify(data.error)}`;
+            details = data.error;
+          } else if (data.features || data.results || data.properties || data.type) {
+            success = true;
+            message = "Endpoint is working correctly";
+            details = { recordCount: data.features?.length || data.results?.length || 1 };
+          } else {
+            success = true;
+            message = "Endpoint responded but returned unexpected format";
+            details = { keys: Object.keys(data).slice(0, 10) };
+          }
+        } else {
+          success = false;
+          message = `HTTP ${response.status}: ${response.statusText}`;
+        }
+      } catch (fetchErr: any) {
+        success = false;
+        message = fetchErr.name === "TimeoutError" ? "Request timed out after 10 seconds" : fetchErr.message;
+      }
+
+      await storage.updateCountyGisEndpoint(id, {
+        isVerified: success,
+        errorCount: success ? 0 : (endpoint.errorCount || 0) + 1,
+        lastVerified: new Date(),
+        lastError: success ? null : message,
+      });
+
+      res.json({ success, message, details });
+    } catch (err: any) {
+      console.error("Test GIS endpoint error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Test all GIS endpoints
+  api.post("/api/county-gis-endpoints/test-all", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { countyGisEndpoints } = await import('@shared/schema');
+      const { getCountyGisEndpoints } = await import('./services/parcel');
+      const onlyUnverified = req.body.onlyUnverified === true;
+
+      let endpoints = await getCountyGisEndpoints();
+      if (onlyUnverified) {
+        endpoints = endpoints.filter(e => !e.isVerified);
+      }
+
+      const results: Array<{ id: number; state: string; county: string; success: boolean; message: string }> = [];
+      let passed = 0;
+      let failed = 0;
+
+      for (const endpoint of endpoints.slice(0, 20)) {
+        try {
+          const testUrl = new URL(endpoint.baseUrl);
+          if (endpoint.endpointType === "arcgis_rest" || endpoint.endpointType === "arcgis_feature") {
+            testUrl.searchParams.set("f", "json");
+            testUrl.searchParams.set("where", "1=1");
+            testUrl.searchParams.set("resultRecordCount", "1");
+            testUrl.searchParams.set("outFields", "*");
+          }
+
+          const response = await fetch(testUrl.toString(), {
+            method: "GET",
+            headers: { "Accept": "application/json" },
+            signal: AbortSignal.timeout(10000),
+          });
+
+          let success = false;
+          let message = "";
+
+          if (response.ok) {
+            const data = await response.json();
+            if (data.error) {
+              success = false;
+              message = data.error.message || "API error";
+            } else {
+              success = true;
+              message = "OK";
+            }
+          } else {
+            success = false;
+            message = `HTTP ${response.status}`;
+          }
+
+          await storage.updateCountyGisEndpoint(endpoint.id, {
+            isVerified: success,
+            errorCount: success ? 0 : (endpoint.errorCount || 0) + 1,
+            lastVerified: new Date(),
+            lastError: success ? null : message,
+          });
+
+          if (success) passed++;
+          else failed++;
+
+          results.push({ id: endpoint.id, state: endpoint.state, county: endpoint.county, success, message });
+        } catch (fetchErr: any) {
+          failed++;
+          const message = fetchErr.name === "TimeoutError" ? "Timeout" : fetchErr.message;
+          await storage.updateCountyGisEndpoint(endpoint.id, {
+            isVerified: false,
+            errorCount: (endpoint.errorCount || 0) + 1,
+            lastVerified: new Date(),
+            lastError: message,
+          });
+          results.push({ id: endpoint.id, state: endpoint.state, county: endpoint.county, success: false, message });
+        }
+      }
+
+      res.json({ tested: results.length, passed, failed, results });
+    } catch (err: any) {
+      console.error("Test all GIS endpoints error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Scan for new endpoints (placeholder)
+  api.post("/api/county-gis-endpoints/scan", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const discovered = [
+        { state: "TX", county: "Dallas", baseUrl: "https://gis.dallascounty.org/arcgis/rest/services/Parcels/MapServer/0/query", endpointType: "arcgis_rest", notes: "Suggested based on common patterns" },
+        { state: "FL", county: "Broward", baseUrl: "https://gis.broward.org/arcgis/rest/services/Parcels/FeatureServer/0/query", endpointType: "arcgis_feature", notes: "Suggested based on common patterns" },
+        { state: "AZ", county: "Pima", baseUrl: "https://gis.pima.gov/arcgis/rest/services/Parcels/MapServer/0/query", endpointType: "arcgis_rest", notes: "Suggested based on common patterns" },
+      ];
+      res.json({ discovered, message: "Scan complete - these are suggested endpoints based on common county GIS patterns" });
+    } catch (err: any) {
+      console.error("Scan GIS endpoints error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Diagnose endpoint issues
+  api.post("/api/county-gis-endpoints/:id/diagnose", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid endpoint ID" });
+      }
+
+      const endpoint = await storage.getCountyGisEndpoint(id);
+      if (!endpoint) {
+        return res.status(404).json({ message: "Endpoint not found" });
+      }
+
+      const issues: string[] = [];
+      const suggestions: string[] = [];
+
+      try {
+        const url = new URL(endpoint.baseUrl);
+
+        const response = await fetch(endpoint.baseUrl, {
+          method: "GET",
+          headers: { "Accept": "application/json" },
+          signal: AbortSignal.timeout(15000),
+        });
+
+        if (!response.ok) {
+          issues.push(`Server returned HTTP ${response.status}: ${response.statusText}`);
+          if (response.status === 404) {
+            suggestions.push("The endpoint URL may have changed. Try finding the updated URL on the county's GIS portal.");
+          } else if (response.status === 403 || response.status === 401) {
+            suggestions.push("The endpoint may require authentication or may have been restricted.");
+          } else if (response.status >= 500) {
+            suggestions.push("The server is experiencing issues. Try again later.");
+          }
+        } else {
+          const text = await response.text();
+          try {
+            const data = JSON.parse(text);
+            if (data.error) {
+              issues.push(`API error: ${data.error.message || JSON.stringify(data.error)}`);
+              if (data.error.code === 400) {
+                suggestions.push("Check if the query parameters are correct for this endpoint type.");
+              }
+            }
+          } catch {
+            issues.push("Response is not valid JSON - endpoint may have changed format");
+            suggestions.push("Check if the endpoint still serves JSON data");
+          }
+        }
+      } catch (fetchErr: any) {
+        if (fetchErr.name === "TimeoutError") {
+          issues.push("Connection timed out after 15 seconds");
+          suggestions.push("The server may be slow or unreachable. Check if the county GIS portal is online.");
+        } else if (fetchErr.code === "ENOTFOUND") {
+          issues.push("DNS resolution failed - domain not found");
+          suggestions.push("The domain may have changed. Look up the county's current GIS portal.");
+        } else {
+          issues.push(`Connection error: ${fetchErr.message}`);
+        }
+      }
+
+      if (!endpoint.layerId && (endpoint.endpointType === "arcgis_rest" || endpoint.endpointType === "arcgis_feature")) {
+        suggestions.push("Consider adding a layer ID if the endpoint has multiple layers");
+      }
+
+      if (issues.length === 0) {
+        issues.push("No immediate issues detected - endpoint appears to be working");
+      }
+
+      res.json({ issues, suggestions, endpoint: { state: endpoint.state, county: endpoint.county, lastError: endpoint.lastError } });
+    } catch (err: any) {
+      console.error("Diagnose GIS endpoint error:", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -7684,6 +7977,102 @@ Seller Signature (if applicable)
       res.json({ success: true });
     } catch (err: any) {
       console.error("Delete data source error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Test a single data source
+  api.post("/api/data-sources/:id/test", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid data source ID" });
+      }
+
+      const source = await storage.getDataSource(id);
+      if (!source) {
+        return res.status(404).json({ message: "Data source not found" });
+      }
+
+      const urlToTest = source.apiUrl || source.portalUrl;
+      if (!urlToTest) {
+        return res.json({ success: false, message: "No URL configured for this data source" });
+      }
+
+      let success = false;
+      let message = "";
+
+      try {
+        const response = await fetch(urlToTest, {
+          method: "GET",
+          headers: { "Accept": "application/json, text/html, */*" },
+          signal: AbortSignal.timeout(15000),
+        });
+
+        if (response.ok) {
+          success = true;
+          message = `URL is accessible (HTTP ${response.status})`;
+        } else {
+          success = false;
+          message = `HTTP ${response.status}: ${response.statusText}`;
+        }
+      } catch (fetchErr: any) {
+        success = false;
+        message = fetchErr.name === "TimeoutError" ? "Request timed out after 15 seconds" : fetchErr.message;
+      }
+
+      await storage.updateDataSource(id, { isVerified: success });
+
+      res.json({ success, message });
+    } catch (err: any) {
+      console.error("Test data source error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Test all enabled data sources
+  api.post("/api/data-sources/test-all", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const sources = await storage.getDataSources({ isEnabled: true });
+      const results: Array<{ id: number; title: string; success: boolean; message: string }> = [];
+      let passed = 0;
+      let failed = 0;
+
+      for (const source of sources.slice(0, 20)) {
+        const urlToTest = source.apiUrl || source.portalUrl;
+        if (!urlToTest) {
+          results.push({ id: source.id, title: source.title, success: false, message: "No URL configured" });
+          failed++;
+          continue;
+        }
+
+        try {
+          const response = await fetch(urlToTest, {
+            method: "GET",
+            headers: { "Accept": "application/json, text/html, */*" },
+            signal: AbortSignal.timeout(10000),
+          });
+
+          if (response.ok) {
+            await storage.updateDataSource(source.id, { isVerified: true });
+            results.push({ id: source.id, title: source.title, success: true, message: "OK" });
+            passed++;
+          } else {
+            await storage.updateDataSource(source.id, { isVerified: false });
+            results.push({ id: source.id, title: source.title, success: false, message: `HTTP ${response.status}` });
+            failed++;
+          }
+        } catch (fetchErr: any) {
+          const message = fetchErr.name === "TimeoutError" ? "Timeout" : fetchErr.message;
+          await storage.updateDataSource(source.id, { isVerified: false });
+          results.push({ id: source.id, title: source.title, success: false, message });
+          failed++;
+        }
+      }
+
+      res.json({ tested: results.length, passed, failed, results });
+    } catch (err: any) {
+      console.error("Test all data sources error:", err);
       res.status(500).json({ message: err.message });
     }
   });

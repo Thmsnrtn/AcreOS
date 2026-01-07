@@ -3819,6 +3819,26 @@ export type InsertDataSource = z.infer<typeof insertDataSourceSchema>;
 export type DataSource = typeof dataSources.$inferSelect;
 
 // ============================================
+// SUBSCRIPTION EVENTS (Tier change tracking for analytics)
+// ============================================
+
+export const subscriptionEvents = pgTable("subscription_events", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id),
+  eventType: text("event_type").notNull(), // 'signup', 'upgrade', 'downgrade', 'cancel', 'reactivate', 'trial_start', 'trial_end'
+  fromTier: text("from_tier"), // null for signup
+  toTier: text("to_tier"), // null for cancel
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertSubscriptionEventSchema = createInsertSchema(subscriptionEvents).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertSubscriptionEvent = z.infer<typeof insertSubscriptionEventSchema>;
+export type SubscriptionEvent = typeof subscriptionEvents.$inferSelect;
+
+// ============================================
 // DATA SOURCE CACHE (Cached lookups from free sources)
 // ============================================
 

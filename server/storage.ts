@@ -1,6 +1,6 @@
 import { db } from "./db";
 export { db };
-import { eq, and, desc, sql, count, sum, arrayContains, gte, lte, lt, or, inArray } from "drizzle-orm";
+import { eq, and, desc, sql, count, sum, arrayContains, gte, lte, lt, or, inArray, ne } from "drizzle-orm";
 import { aiConversations, aiMessages } from "@shared/schema";
 import {
   organizations, teamMembers, leads, leadActivities, properties, deals,
@@ -117,6 +117,8 @@ import {
   type DataSource, type InsertDataSource,
   dataSourceCache,
   type DataSourceCache, type InsertDataSourceCache,
+  subscriptionEvents,
+  type SubscriptionEvent, type InsertSubscriptionEvent,
   DEFAULT_DUE_DILIGENCE_TEMPLATES,
   DEFAULT_DEAL_CHECKLIST_TEMPLATES,
 } from "@shared/schema";
@@ -753,6 +755,10 @@ export interface IStorage {
   releaseJobLock(jobName: string, instanceId: string): Promise<void>;
   cleanExpiredJobLocks(): Promise<void>;
 
+  // County GIS Endpoints
+  updateCountyGisEndpoint(id: number, updates: { isVerified?: boolean; errorCount?: number; lastVerified?: Date; isActive?: boolean; lastError?: string | null }): Promise<any>;
+  getCountyGisEndpoint(id: number): Promise<any>;
+
   // Data Sources (Free Data Endpoint Registry)
   getDataSources(filters?: { category?: string; isEnabled?: boolean }): Promise<DataSource[]>;
   getDataSource(id: number): Promise<DataSource | undefined>;
@@ -766,6 +772,27 @@ export interface IStorage {
   getDataSourceCacheEntry(lookupKey: string, dataSourceId?: number): Promise<DataSourceCache | undefined>;
   createDataSourceCacheEntry(data: InsertDataSourceCache): Promise<DataSourceCache>;
   invalidateDataSourceCache(dataSourceId: number): Promise<void>;
+
+  // Subscription Events (Analytics)
+  logSubscriptionEvent(event: InsertSubscriptionEvent): Promise<SubscriptionEvent>;
+  getSubscriptionEvents(options?: { orgId?: number; limit?: number }): Promise<SubscriptionEvent[]>;
+  getSubscriptionStats(): Promise<{
+    upgrades30d: number;
+    downgrades30d: number;
+    cancellations30d: number;
+    reactivations30d: number;
+    signups30d: number;
+    totalEvents: number;
+  }>;
+  getAllOrganizationsWithDetails(): Promise<Array<{
+    id: number;
+    name: string;
+    ownerEmail: string | null;
+    tier: string | null;
+    subscriptionStatus: string | null;
+    createdAt: Date | null;
+    lastActiveAt: Date | null;
+  }>>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2301,6 +2328,25 @@ export class DatabaseStorage implements IStorage {
       .where(eq(systemAlerts.id, id))
       .returning();
     return updated;
+  }
+
+  async acknowledgeAllAlerts() {
+    const result = await db.update(systemAlerts)
+      .set({ status: "acknowledged", acknowledgedAt: new Date() })
+      .where(and(
+        ne(systemAlerts.status, "resolved"),
+        ne(systemAlerts.status, "acknowledged")
+      ))
+      .returning();
+    return result.length;
+  }
+
+  async resolveAllAlerts() {
+    const result = await db.update(systemAlerts)
+      .set({ status: "resolved", resolvedAt: new Date() })
+      .where(ne(systemAlerts.status, "resolved"))
+      .returning();
+    return result.length;
   }
 
   async getAllOrganizations() {
@@ -5504,6 +5550,22 @@ Notary Public</p>
     await db.delete(jobLocks).where(lt(jobLocks.expiresAt, now));
   }
 
+  // County GIS Endpoints
+  async getCountyGisEndpoint(id: number): Promise<any> {
+    const { countyGisEndpoints } = await import('@shared/schema');
+    const [endpoint] = await db.select().from(countyGisEndpoints).where(eq(countyGisEndpoints.id, id));
+    return endpoint;
+  }
+
+  async updateCountyGisEndpoint(id: number, updates: { isVerified?: boolean; errorCount?: number; lastVerified?: Date; isActive?: boolean; lastError?: string | null }): Promise<any> {
+    const { countyGisEndpoints } = await import('@shared/schema');
+    const [updated] = await db.update(countyGisEndpoints)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(countyGisEndpoints.id, id))
+      .returning();
+    return updated;
+  }
+
   // Data Sources (Free Data Endpoint Registry)
   async getDataSources(filters?: { category?: string; isEnabled?: boolean }): Promise<DataSource[]> {
     let query = db.select().from(dataSources);
@@ -5585,6 +5647,96 @@ Notary Public</p>
 
   async invalidateDataSourceCache(dataSourceId: number): Promise<void> {
     await db.delete(dataSourceCache).where(eq(dataSourceCache.dataSourceId, dataSourceId));
+  }
+
+  // Subscription Events (Analytics)
+  async logSubscriptionEvent(event: InsertSubscriptionEvent): Promise<SubscriptionEvent> {
+    const [created] = await db.insert(subscriptionEvents).values(event).returning();
+    return created;
+  }
+
+  async getSubscriptionEvents(options?: { orgId?: number; limit?: number }): Promise<SubscriptionEvent[]> {
+    const conditions: any[] = [];
+    if (options?.orgId) {
+      conditions.push(eq(subscriptionEvents.organizationId, options.orgId));
+    }
+    
+    let query = db.select().from(subscriptionEvents);
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions)) as any;
+    }
+    
+    const results = await query
+      .orderBy(desc(subscriptionEvents.createdAt))
+      .limit(options?.limit || 100);
+    return results;
+  }
+
+  async getSubscriptionStats(): Promise<{
+    upgrades30d: number;
+    downgrades30d: number;
+    cancellations30d: number;
+    reactivations30d: number;
+    signups30d: number;
+    totalEvents: number;
+  }> {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    
+    const events = await db.select()
+      .from(subscriptionEvents)
+      .where(gte(subscriptionEvents.createdAt, thirtyDaysAgo));
+    
+    let upgrades30d = 0;
+    let downgrades30d = 0;
+    let cancellations30d = 0;
+    let reactivations30d = 0;
+    let signups30d = 0;
+    
+    for (const event of events) {
+      switch (event.eventType) {
+        case 'upgrade': upgrades30d++; break;
+        case 'downgrade': downgrades30d++; break;
+        case 'cancel': cancellations30d++; break;
+        case 'reactivate': reactivations30d++; break;
+        case 'signup': signups30d++; break;
+      }
+    }
+    
+    const [totalResult] = await db.select({ count: count() }).from(subscriptionEvents);
+    
+    return {
+      upgrades30d,
+      downgrades30d,
+      cancellations30d,
+      reactivations30d,
+      signups30d,
+      totalEvents: totalResult?.count || 0,
+    };
+  }
+
+  async getAllOrganizationsWithDetails(): Promise<Array<{
+    id: number;
+    name: string;
+    ownerEmail: string | null;
+    tier: string | null;
+    subscriptionStatus: string | null;
+    createdAt: Date | null;
+    lastActiveAt: Date | null;
+  }>> {
+    const orgs = await db.select({
+      id: organizations.id,
+      name: organizations.name,
+      ownerEmail: organizations.ownerEmail,
+      tier: organizations.tier,
+      subscriptionStatus: organizations.subscriptionStatus,
+      createdAt: organizations.createdAt,
+      lastActiveAt: organizations.lastActiveAt,
+    })
+    .from(organizations)
+    .orderBy(desc(organizations.createdAt));
+    
+    return orgs;
   }
 }
 

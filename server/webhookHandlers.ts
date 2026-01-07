@@ -144,12 +144,22 @@ export class WebhookHandlers {
       const org = await storage.getOrganizationByStripeCustomerId(customerId);
       if (!org) return;
 
+      const previousTier = org.tier || org.subscriptionTier || 'free';
+
       // Update org to free tier
       await storage.updateOrganization(org.id, {
         subscriptionTier: 'free',
         subscriptionStatus: 'cancelled',
         dunningStage: 'cancelled',
         stripeSubscriptionId: null,
+      });
+
+      // Log the subscription cancel event
+      await storage.logSubscriptionEvent({
+        organizationId: org.id,
+        eventType: 'cancel',
+        fromTier: previousTier,
+        toTier: null,
       });
 
       console.log(`Subscription cancelled: Org ${org.id}`);
