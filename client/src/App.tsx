@@ -6,7 +6,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/use-auth";
 import { Loader2 } from "lucide-react";
 import { ThemeProvider } from "@/contexts/theme-context";
-import { SoundProvider } from "@/contexts/sound-context";
 
 import { LowBalanceAlert } from "@/components/low-balance-alert";
 import { HintsProvider } from "@/components/feature-hints";
@@ -218,17 +217,15 @@ function App() {
   return (
     <ErrorBoundary>
       <ThemeProvider>
-        <SoundProvider>
-          <QueryClientProvider client={queryClient}>
-            <TooltipProvider>
-              <HintsProvider>
-                <OfflineIndicator />
-                <Toaster />
-                <AppContent />
-              </HintsProvider>
-            </TooltipProvider>
-          </QueryClientProvider>
-        </SoundProvider>
+        <QueryClientProvider client={queryClient}>
+          <TooltipProvider>
+            <HintsProvider>
+              <OfflineIndicator />
+              <Toaster />
+              <AppContent />
+            </HintsProvider>
+          </TooltipProvider>
+        </QueryClientProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );

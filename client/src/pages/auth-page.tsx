@@ -2,17 +2,15 @@ import { useAuth } from "@/hooks/use-auth";
 import { Redirect } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Loader2, AlertTriangle, Volume2, VolumeX, Moon, Sun } from "lucide-react";
+import { Loader2, AlertTriangle, Moon, Sun } from "lucide-react";
 import { useMemo, useRef, useEffect } from "react";
 import { useTheme } from "@/contexts/theme-context";
-import { useSound } from "@/contexts/sound-context";
 import lightVideoUrl from "@assets/sora-video-7c27f502-4e29-4fd0-a9fd-8d3c01e00976_1767815815459.mp4";
 import darkVideoUrl from "@assets/sora-video-2b175e72-0fc2-49dd-a55d-53d010076426_1767815815461.mp4";
 
 export default function AuthPage() {
   const { user, isLoading } = useAuth();
   const { theme, toggleTheme } = useTheme();
-  const { isSoundEnabled, toggleSound } = useSound();
   const videoRef = useRef<HTMLVideoElement>(null);
   
   const isSafari = useMemo(() => {
@@ -20,12 +18,6 @@ export default function AuthPage() {
     const ua = navigator.userAgent.toLowerCase();
     return ua.includes('safari') && !ua.includes('chrome') && !ua.includes('chromium');
   }, []);
-
-  useEffect(() => {
-    if (videoRef.current) {
-      videoRef.current.muted = !isSoundEnabled;
-    }
-  }, [isSoundEnabled]);
 
   useEffect(() => {
     if (videoRef.current) {
@@ -59,28 +51,15 @@ export default function AuthPage() {
         className="absolute inset-0 w-full h-full object-cover"
         autoPlay
         loop
+        muted
         playsInline
-        muted={!isSoundEnabled}
         data-testid="video-background"
       >
         <source src={videoSrc} type="video/mp4" />
       </video>
       <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/30 to-transparent" />
       
-      <div className="absolute top-4 right-4 flex items-center gap-2 z-20">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={toggleSound}
-          className="bg-black/30 backdrop-blur-sm border border-white/20 text-white hover:bg-white/20"
-          data-testid="button-sound-toggle-auth"
-        >
-          {isSoundEnabled ? (
-            <Volume2 className="w-5 h-5" />
-          ) : (
-            <VolumeX className="w-5 h-5" />
-          )}
-        </Button>
+      <div className="absolute top-4 right-4 z-20">
         <Button
           variant="ghost"
           size="icon"

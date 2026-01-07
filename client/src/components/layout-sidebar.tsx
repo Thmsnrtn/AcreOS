@@ -31,7 +31,6 @@ import { Badge } from "@/components/ui/badge";
 import { prefetchRoute } from "@/lib/queryClient";
 import { NotificationCenter } from "@/components/notification-center";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { SoundToggle } from "@/components/sound-toggle";
 
 const routePrefetchMap: Record<string, string> = {
   "/leads": "/api/leads",
@@ -162,11 +161,8 @@ export function Sidebar() {
 
       <div className="p-4 border-t border-sidebar-border safe-area-bottom space-y-2">
         <div className="flex items-center justify-between px-2">
-          <span className="text-xs text-muted-foreground">Preferences</span>
-          <div className="flex items-center gap-1">
-            <ThemeToggle />
-            <SoundToggle />
-          </div>
+          <span className="text-xs text-muted-foreground">Theme</span>
+          <ThemeToggle />
         </div>
         <button 
           onClick={() => logout()}

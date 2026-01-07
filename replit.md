@@ -22,9 +22,6 @@ Preferred communication style: Simple, everyday language.
   - ThemeProvider context with localStorage persistence
   - Respects system preference as default
   - Toggle available in sidebar footer and auth page
-- **Ambient Sound**: Video backgrounds with sound
-  - SoundProvider context with localStorage persistence
-  - Toggle available in sidebar footer and auth page
   - Auth page features Sora.ai generated video backgrounds (different for light/dark modes)
 
 ## System Architecture
