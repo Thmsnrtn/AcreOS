@@ -428,19 +428,26 @@ interface SinglePropertyMapProps {
 export function SinglePropertyMap({ boundary, centroid, apn, height = "300px", enable3DTerrain = true }: SinglePropertyMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
+  const [mapError, setMapError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!mapContainer.current || !MAPBOX_TOKEN || !boundary || !centroid) return;
 
-    map.current = new mapboxgl.Map({
-      container: mapContainer.current,
-      style: "mapbox://styles/mapbox/satellite-streets-v12",
-      center: [centroid.lng, centroid.lat],
-      zoom: 17,
-      pitch: 60,
-      bearing: -17,
-      interactive: true,
-    });
+    try {
+      map.current = new mapboxgl.Map({
+        container: mapContainer.current,
+        style: "mapbox://styles/mapbox/satellite-streets-v12",
+        center: [centroid.lng, centroid.lat],
+        zoom: 17,
+        pitch: 60,
+        bearing: -17,
+        interactive: true,
+      });
+    } catch (error) {
+      console.error("Failed to initialize map:", error);
+      setMapError("Unable to load map. WebGL may not be supported.");
+      return;
+    }
 
     map.current.on("load", () => {
       if (!map.current) return;
@@ -526,6 +533,18 @@ export function SinglePropertyMap({ boundary, centroid, apn, height = "300px", e
         <div className="text-center text-muted-foreground p-4">
           <MapPin className="h-6 w-6 mx-auto mb-2 opacity-50" />
           <p className="text-xs">No map data</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (mapError) {
+    return (
+      <div className="flex items-center justify-center bg-muted/30 rounded-md" style={{ height }} data-testid="single-property-map">
+        <div className="text-center text-muted-foreground p-4">
+          <MapPin className="h-6 w-6 mx-auto mb-2 opacity-50" />
+          <p className="text-xs">{mapError}</p>
+          <p className="text-xs mt-1">Coordinates: {centroid.lat.toFixed(4)}, {centroid.lng.toFixed(4)}</p>
         </div>
       </div>
     );

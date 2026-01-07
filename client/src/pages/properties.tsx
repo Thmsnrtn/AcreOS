@@ -4,6 +4,7 @@ import { queryClient } from "@/lib/queryClient";
 import { ListSkeleton } from "@/components/list-skeleton";
 import { useFetchPropertyParcel } from "@/hooks/use-parcels";
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertPropertySchema, type Property, type DueDiligenceItem, type DueDiligenceTemplate } from "@shared/schema";
@@ -871,8 +872,17 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
   open: boolean; 
   onOpenChange: (open: boolean) => void;
 }) {
-  const utilities = property.utilities as { electric?: boolean; water?: boolean; sewer?: boolean; gas?: boolean } | null;
-  const parcelData = property.parcelData as { regridId?: string; owner?: string; ownerAddress?: string; taxAmount?: string; lastUpdated?: string } | null;
+  const { data: freshProperty, isLoading: isLoadingProperty } = useQuery<Property>({
+    queryKey: ['/api/properties', property.id],
+    enabled: open,
+    staleTime: 0,
+    gcTime: 0,
+  });
+  
+  const currentProperty = freshProperty || property;
+  
+  const utilities = currentProperty.utilities as { electric?: boolean; water?: boolean; sewer?: boolean; gas?: boolean } | null;
+  const parcelData = currentProperty.parcelData as { regridId?: string; owner?: string; ownerAddress?: string; taxAmount?: string; lastUpdated?: string } | null;
   
   const formatDate = (date: Date | string | null | undefined) => {
     if (!date) return "N/A";
@@ -886,7 +896,7 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
     return `$${num.toLocaleString()}`;
   };
 
-  const hasMapData = property.parcelBoundary && property.parcelCentroid;
+  const hasMapData = currentProperty.parcelBoundary && currentProperty.parcelCentroid;
   const hasOwnerData = parcelData?.owner || parcelData?.ownerAddress;
   const hasUtilities = utilities && Object.values(utilities).some(Boolean);
 
@@ -896,12 +906,12 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <MapPin className="w-5 h-5" />
-            {property.address || `${property.county}, ${property.state}`}
+            {currentProperty.address || `${currentProperty.county}, ${currentProperty.state}`}
           </DialogTitle>
           <DialogDescription className="flex items-center gap-4 flex-wrap">
-            <span>APN: {property.apn}</span>
-            <span>{property.sizeAcres} Acres</span>
-            <Badge variant="outline" className="capitalize">{property.status.replace('_', ' ')}</Badge>
+            <span>APN: {currentProperty.apn}</span>
+            <span>{currentProperty.sizeAcres} Acres</span>
+            <Badge variant="outline" className="capitalize">{currentProperty.status.replace('_', ' ')}</Badge>
           </DialogDescription>
         </DialogHeader>
         
@@ -923,9 +933,9 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
             {hasMapData && (
               <div className="rounded-md overflow-hidden border">
                 <SinglePropertyMap
-                  boundary={property.parcelBoundary as { type: "Polygon" | "MultiPolygon"; coordinates: number[][][] | number[][][][]; }}
-                  centroid={property.parcelCentroid as { lat: number; lng: number }}
-                  apn={property.apn}
+                  boundary={currentProperty.parcelBoundary as { type: "Polygon" | "MultiPolygon"; coordinates: number[][][] | number[][][][]; }}
+                  centroid={currentProperty.parcelCentroid as { lat: number; lng: number }}
+                  apn={currentProperty.apn}
                   height="350px"
                   enable3DTerrain={true}
                 />
@@ -941,40 +951,40 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
                   <div className="space-y-1">
                     <span className="text-muted-foreground text-xs">County</span>
-                    <p className="font-medium">{property.county}</p>
+                    <p className="font-medium">{currentProperty.county}</p>
                   </div>
                   <div className="space-y-1">
                     <span className="text-muted-foreground text-xs">State</span>
-                    <p className="font-medium">{property.state}</p>
+                    <p className="font-medium">{currentProperty.state}</p>
                   </div>
-                  {property.city && (
+                  {currentProperty.city && (
                     <div className="space-y-1">
                       <span className="text-muted-foreground text-xs">City</span>
-                      <p className="font-medium">{property.city}</p>
+                      <p className="font-medium">{currentProperty.city}</p>
                     </div>
                   )}
-                  {property.zip && (
+                  {currentProperty.zip && (
                     <div className="space-y-1">
                       <span className="text-muted-foreground text-xs">ZIP</span>
-                      <p className="font-medium">{property.zip}</p>
+                      <p className="font-medium">{currentProperty.zip}</p>
                     </div>
                   )}
-                  {property.subdivision && (
+                  {currentProperty.subdivision && (
                     <div className="space-y-1">
                       <span className="text-muted-foreground text-xs">Subdivision</span>
-                      <p className="font-medium">{property.subdivision}</p>
+                      <p className="font-medium">{currentProperty.subdivision}</p>
                     </div>
                   )}
-                  {property.lotNumber && (
+                  {currentProperty.lotNumber && (
                     <div className="space-y-1">
                       <span className="text-muted-foreground text-xs">Lot Number</span>
-                      <p className="font-medium">{property.lotNumber}</p>
+                      <p className="font-medium">{currentProperty.lotNumber}</p>
                     </div>
                   )}
-                  {property.latitude && property.longitude && (
+                  {currentProperty.latitude && currentProperty.longitude && (
                     <div className="space-y-1 col-span-2">
                       <span className="text-muted-foreground text-xs">Coordinates</span>
-                      <p className="font-medium font-mono text-xs">{Number(property.latitude).toFixed(6)}, {Number(property.longitude).toFixed(6)}</p>
+                      <p className="font-medium font-mono text-xs">{Number(currentProperty.latitude).toFixed(6)}, {Number(currentProperty.longitude).toFixed(6)}</p>
                     </div>
                   )}
                 </div>
@@ -988,19 +998,19 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
                   <div className="space-y-1">
                     <span className="text-muted-foreground text-xs">Size</span>
-                    <p className="font-medium">{property.sizeAcres} Acres</p>
+                    <p className="font-medium">{currentProperty.sizeAcres} Acres</p>
                   </div>
                   <div className="space-y-1">
                     <span className="text-muted-foreground text-xs">Zoning</span>
-                    <p className="font-medium">{property.zoning || "N/A"}</p>
+                    <p className="font-medium">{currentProperty.zoning || "N/A"}</p>
                   </div>
                   <div className="space-y-1">
                     <span className="text-muted-foreground text-xs">Terrain</span>
-                    <p className="font-medium capitalize">{property.terrain || "N/A"}</p>
+                    <p className="font-medium capitalize">{currentProperty.terrain || "N/A"}</p>
                   </div>
                   <div className="space-y-1">
                     <span className="text-muted-foreground text-xs">Road Access</span>
-                    <p className="font-medium capitalize">{property.roadAccess || "N/A"}</p>
+                    <p className="font-medium capitalize">{currentProperty.roadAccess || "N/A"}</p>
                   </div>
                   {hasUtilities && (
                     <div className="space-y-1 col-span-2">
@@ -1024,35 +1034,35 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
                   <div className="space-y-1">
                     <span className="text-muted-foreground text-xs">Assessed Value</span>
-                    <p className="font-medium">{formatCurrency(property.assessedValue)}</p>
+                    <p className="font-medium">{formatCurrency(currentProperty.assessedValue)}</p>
                   </div>
                   <div className="space-y-1">
                     <span className="text-muted-foreground text-xs">Market Value</span>
-                    <p className="font-medium">{formatCurrency(property.marketValue)}</p>
+                    <p className="font-medium">{formatCurrency(currentProperty.marketValue)}</p>
                   </div>
                   <div className="space-y-1">
                     <span className="text-muted-foreground text-xs">Purchase Price</span>
-                    <p className="font-medium">{formatCurrency(property.purchasePrice)}</p>
+                    <p className="font-medium">{formatCurrency(currentProperty.purchasePrice)}</p>
                   </div>
-                  {property.purchaseDate && (
+                  {currentProperty.purchaseDate && (
                     <div className="space-y-1">
                       <span className="text-muted-foreground text-xs">Purchase Date</span>
-                      <p className="font-medium">{formatDate(property.purchaseDate)}</p>
+                      <p className="font-medium">{formatDate(currentProperty.purchaseDate)}</p>
                     </div>
                   )}
                   <div className="space-y-1">
                     <span className="text-muted-foreground text-xs">List Price</span>
-                    <p className="font-medium">{formatCurrency(property.listPrice)}</p>
+                    <p className="font-medium">{formatCurrency(currentProperty.listPrice)}</p>
                   </div>
-                  {property.soldPrice && (
+                  {currentProperty.soldPrice && (
                     <>
                       <div className="space-y-1">
                         <span className="text-muted-foreground text-xs">Sold Price</span>
-                        <p className="font-medium">{formatCurrency(property.soldPrice)}</p>
+                        <p className="font-medium">{formatCurrency(currentProperty.soldPrice)}</p>
                       </div>
                       <div className="space-y-1">
                         <span className="text-muted-foreground text-xs">Sold Date</span>
-                        <p className="font-medium">{formatDate(property.soldDate)}</p>
+                        <p className="font-medium">{formatDate(currentProperty.soldDate)}</p>
                       </div>
                     </>
                   )}
@@ -1088,19 +1098,19 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                 </div>
               )}
 
-              {property.legalDescription && (
+              {currentProperty.legalDescription && (
                 <div className="border-t pt-4">
                   <h4 className="text-sm font-semibold mb-2">Legal Description</h4>
                   <p className="text-sm text-muted-foreground bg-muted/50 p-3 rounded-md font-mono text-xs">
-                    {property.legalDescription}
+                    {currentProperty.legalDescription}
                   </p>
                 </div>
               )}
 
-              {property.description && (
+              {currentProperty.description && (
                 <div className="border-t pt-4">
                   <h4 className="text-sm font-semibold mb-2">Description</h4>
-                  <p className="text-sm">{property.description}</p>
+                  <p className="text-sm">{currentProperty.description}</p>
                 </div>
               )}
 
@@ -1112,20 +1122,20 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
             </div>
             
             <div className="pt-4 border-t">
-              <CustomFieldValuesEditor entityType="property" entityId={property.id} />
+              <CustomFieldValuesEditor entityType="property" entityId={currentProperty.id} />
             </div>
           </TabsContent>
           
           <TabsContent value="comps" className="mt-4">
-            <CompsAnalysis property={property} />
+            <CompsAnalysis property={currentProperty} />
           </TabsContent>
           
           <TabsContent value="ai-offer" className="mt-4">
-            <AIOfferGenerator property={property} />
+            <AIOfferGenerator property={currentProperty} />
           </TabsContent>
           
           <TabsContent value="due-diligence" className="mt-4">
-            <DueDiligencePanel propertyId={property.id} />
+            <DueDiligencePanel propertyId={currentProperty.id} />
           </TabsContent>
         </Tabs>
       </DialogContent>
