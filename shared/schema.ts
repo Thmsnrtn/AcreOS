@@ -3764,3 +3764,81 @@ export const insertBorrowerSessionSchema = createInsertSchema(borrowerSessions).
 });
 export type InsertBorrowerSession = z.infer<typeof insertBorrowerSessionSchema>;
 export type BorrowerSession = typeof borrowerSessions.$inferSelect;
+
+// ============================================
+// DATA SOURCES (Free Data Endpoint Registry)
+// ============================================
+
+export const dataSources = pgTable("data_sources", {
+  id: serial("id").primaryKey(),
+  key: text("key").notNull().unique(),
+  title: text("title").notNull(),
+  category: text("category").notNull(),
+  subcategory: text("subcategory"),
+  description: text("description"),
+  
+  portalUrl: text("portal_url"),
+  apiUrl: text("api_url"),
+  coverage: text("coverage"),
+  
+  accessLevel: text("access_level").notNull().default("free"),
+  authRequirements: text("auth_requirements"),
+  rateLimitNotes: text("rate_limit_notes"),
+  costPerCall: integer("cost_per_call").default(0),
+  
+  dataTypes: text("data_types").array(),
+  
+  endpointType: text("endpoint_type"),
+  queryParams: jsonb("query_params").$type<Record<string, string>>(),
+  fieldMappings: jsonb("field_mappings").$type<Record<string, string>>(),
+  
+  isEnabled: boolean("is_enabled").default(true),
+  isVerified: boolean("is_verified").default(false),
+  lastVerifiedAt: timestamp("last_verified_at"),
+  lastStatus: text("last_status"),
+  lastStatusMessage: text("last_status_message"),
+  
+  freshnessdays: integer("freshness_days").default(30),
+  priority: integer("priority").default(100),
+  
+  notes: text("notes"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertDataSourceSchema = createInsertSchema(dataSources).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertDataSource = z.infer<typeof insertDataSourceSchema>;
+export type DataSource = typeof dataSources.$inferSelect;
+
+// ============================================
+// DATA SOURCE CACHE (Cached lookups from free sources)
+// ============================================
+
+export const dataSourceCache = pgTable("data_source_cache", {
+  id: serial("id").primaryKey(),
+  dataSourceId: integer("data_source_id").references(() => dataSources.id),
+  
+  lookupKey: text("lookup_key").notNull(),
+  state: text("state"),
+  county: text("county"),
+  
+  data: jsonb("data").$type<Record<string, any>>(),
+  
+  fetchedAt: timestamp("fetched_at").defaultNow(),
+  expiresAt: timestamp("expires_at"),
+  
+  successfulFetch: boolean("successful_fetch").default(true),
+  errorMessage: text("error_message"),
+});
+
+export const insertDataSourceCacheSchema = createInsertSchema(dataSourceCache).omit({
+  id: true,
+  fetchedAt: true,
+});
+export type InsertDataSourceCache = z.infer<typeof insertDataSourceCacheSchema>;
+export type DataSourceCache = typeof dataSourceCache.$inferSelect;
