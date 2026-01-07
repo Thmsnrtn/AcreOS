@@ -16,18 +16,37 @@ class AuthStorage implements IAuthStorage {
   }
 
   async upsertUser(userData: UpsertUser): Promise<User> {
-    const [user] = await db
-      .insert(users)
-      .values(userData)
-      .onConflictDoUpdate({
-        target: users.id,
-        set: {
-          ...userData,
-          updatedAt: new Date(),
-        },
-      })
-      .returning();
-    return user;
+    try {
+      // Try upsert by id first
+      const [user] = await db
+        .insert(users)
+        .values(userData)
+        .onConflictDoUpdate({
+          target: users.id,
+          set: {
+            ...userData,
+            updatedAt: new Date(),
+          },
+        })
+        .returning();
+      return user;
+    } catch (error: any) {
+      // Handle email uniqueness conflict (23505 = unique_violation)
+      if (error?.code === '23505' && error?.constraint?.includes('email')) {
+        // User with this email exists under different id - update by email
+        const [user] = await db
+          .update(users)
+          .set({
+            id: userData.id,
+            ...userData,
+            updatedAt: new Date(),
+          })
+          .where(eq(users.email, userData.email!))
+          .returning();
+        return user;
+      }
+      throw error;
+    }
   }
 }
 
