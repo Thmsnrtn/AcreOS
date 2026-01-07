@@ -18,6 +18,14 @@ Preferred communication style: Simple, everyday language.
   - Rounded corners (0.875rem radius)
   - Vibrancy effects on sidebars
   - System fonts (-apple-system, SF Pro)
+- **Theme System**: Full light/dark mode support
+  - ThemeProvider context with localStorage persistence
+  - Respects system preference as default
+  - Toggle available in sidebar footer and auth page
+- **Ambient Sound**: Video backgrounds with sound
+  - SoundProvider context with localStorage persistence
+  - Toggle available in sidebar footer and auth page
+  - Auth page features Sora.ai generated video backgrounds (different for light/dark modes)
 
 ## System Architecture
 
