@@ -388,18 +388,22 @@ async function lookupFromRegrid(
     let data: RegridResponse | null = null;
     
     for (const apnVariant of apnVariants) {
-      let url = `https://app.regrid.com/api/v2/parcels/parcelnumb?parcelnumb=${encodeURIComponent(apnVariant)}&token=${token}&return_geometry=true`;
+      // Try the query endpoint first (more flexible)
+      let url = `https://app.regrid.com/api/v2/parcels/query?parcelnumb=${encodeURIComponent(apnVariant)}&token=${token}&return_geometry=true`;
       
       if (stateCountyPath) {
         url += `&path=${encodeURIComponent(stateCountyPath)}`;
       }
       
       console.log(`[Regrid] Trying APN lookup: ${apnVariant}`);
+      console.log(`[Regrid] URL: ${url.replace(token, 'REDACTED')}`);
       
       const response = await fetch(url);
+      console.log(`[Regrid] Response status: ${response.status}`);
       
       if (response.ok) {
         const result = await response.json() as RegridResponse;
+        console.log(`[Regrid] Response keys:`, Object.keys(result));
         
         if (result.status === "error") {
           console.log(`[Regrid] Account error: ${result.message}`);
@@ -410,12 +414,18 @@ async function lookupFromRegrid(
         }
         
         const features = result.parcels?.features || result.results || [];
+        console.log(`[Regrid] Found ${features.length} features`);
         if (features.length > 0) {
           data = { ...result, results: features };
           break;
         }
       } else if (response.status === 401 || response.status === 403) {
+        const errorText = await response.text();
+        console.log(`[Regrid] Auth error: ${errorText}`);
         return { found: false, error: "Regrid API key is invalid or expired." };
+      } else {
+        const errorText = await response.text();
+        console.log(`[Regrid] Error response: ${errorText}`);
       }
     }
     
