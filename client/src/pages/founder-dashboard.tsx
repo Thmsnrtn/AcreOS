@@ -155,6 +155,32 @@ interface CountyGisEndpoint {
   createdAt: string | null;
 }
 
+interface DataSource {
+  id: number;
+  key: string;
+  title: string;
+  category: string;
+  subcategory: string | null;
+  description: string | null;
+  portalUrl: string | null;
+  apiUrl: string | null;
+  coverage: string | null;
+  accessLevel: string;
+  dataTypes: string[] | null;
+  isEnabled: boolean;
+  isVerified: boolean;
+  priority: number;
+  createdAt: string | null;
+}
+
+interface DataSourceStats {
+  total: number;
+  enabled: number;
+  verified: number;
+  byCategory: Record<string, number>;
+  byAccessLevel: Record<string, number>;
+}
+
 const FEATURE_STATUS_OPTIONS = [
   { value: "submitted", label: "Submitted" },
   { value: "under_review", label: "Under Review" },
@@ -296,6 +322,30 @@ export default function FounderDashboard() {
 
   const { data: countyGisEndpoints, isLoading: gisEndpointsLoading } = useQuery<CountyGisEndpoint[]>({
     queryKey: ['/api/county-gis-endpoints'],
+  });
+
+  const { data: dataSources, isLoading: dataSourcesLoading } = useQuery<DataSource[]>({
+    queryKey: ['/api/data-sources'],
+  });
+
+  const { data: dataSourceStats } = useQuery<DataSourceStats>({
+    queryKey: ['/api/data-sources/stats'],
+  });
+
+  const toggleDataSourceMutation = useMutation({
+    mutationFn: async ({ id, isEnabled }: { id: number; isEnabled: boolean }) => {
+      const res = await apiRequest("PATCH", `/api/data-sources/${id}`, { isEnabled });
+      if (!res.ok) throw new Error("Failed to toggle data source");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/data-sources'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/data-sources/stats'] });
+      toast({ title: "Data source updated" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
   });
 
   const seedGisEndpointsMutation = useMutation({
@@ -1011,6 +1061,133 @@ export default function FounderDashboard() {
                 <p className="text-xs text-muted-foreground">
                   County GIS endpoints allow free parcel lookups without using Regrid API credits. 
                   The system tries county endpoints first, then falls back to Regrid if needed.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Data Sources - Free External Data Endpoints */}
+          <Card data-testid="card-data-sources" className="col-span-full">
+            <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Database className="w-5 h-5 text-primary" />
+                  Free Data Sources
+                </CardTitle>
+                <CardDescription>
+                  External data endpoints for environmental, market, and property analysis - {dataSourceStats?.total || 0} sources across {Object.keys(dataSourceStats?.byCategory || {}).length} categories
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-2">
+                {dataSourceStats && (
+                  <div className="flex gap-2 text-xs">
+                    <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">
+                      {dataSourceStats.enabled} enabled
+                    </Badge>
+                    <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/20">
+                      {dataSourceStats.verified} verified
+                    </Badge>
+                  </div>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent>
+              {dataSourcesLoading ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="h-10 w-full" />
+                </div>
+              ) : dataSources && dataSources.length > 0 ? (
+                <div className="space-y-4">
+                  {/* Category summary */}
+                  <div className="flex flex-wrap gap-2 pb-3 border-b">
+                    {dataSourceStats && Object.entries(dataSourceStats.byCategory)
+                      .sort((a, b) => b[1] - a[1])
+                      .slice(0, 10)
+                      .map(([category, count]) => (
+                        <Badge key={category} variant="outline">
+                          {category.replace(/_/g, ' ')}: {count}
+                        </Badge>
+                      ))}
+                  </div>
+                  
+                  {/* Data sources list */}
+                  <div className="space-y-2 max-h-96 overflow-y-auto">
+                    <div className="grid grid-cols-12 gap-2 text-xs font-medium text-muted-foreground px-3 pb-2 border-b sticky top-0 bg-card">
+                      <span className="col-span-3">Title</span>
+                      <span className="col-span-2">Category</span>
+                      <span className="col-span-2">Access</span>
+                      <span className="col-span-3">Coverage</span>
+                      <span className="col-span-1">Status</span>
+                      <span className="col-span-1">Toggle</span>
+                    </div>
+                    {dataSources.map((source) => (
+                      <div 
+                        key={source.id} 
+                        className={`grid grid-cols-12 gap-2 items-center p-3 rounded-lg border hover-elevate ${!source.isEnabled ? 'opacity-50' : ''}`}
+                        data-testid={`data-source-${source.id}`}
+                      >
+                        <span className="col-span-3 font-medium truncate" title={source.title}>
+                          {source.portalUrl ? (
+                            <a href={source.portalUrl} target="_blank" rel="noopener noreferrer" className="hover:underline text-primary">
+                              {source.title}
+                            </a>
+                          ) : source.title}
+                        </span>
+                        <span className="col-span-2">
+                          <Badge variant="outline" className="text-xs">
+                            {source.category.replace(/_/g, ' ')}
+                          </Badge>
+                        </span>
+                        <span className="col-span-2">
+                          <Badge 
+                            variant="outline" 
+                            className={source.accessLevel === 'free' ? 'bg-green-500/10 text-green-600 border-green-500/20' : 
+                                       source.accessLevel === 'limited_free' ? 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20' : 
+                                       'bg-gray-500/10 text-gray-600 border-gray-500/20'}
+                          >
+                            {source.accessLevel}
+                          </Badge>
+                        </span>
+                        <span className="col-span-3 text-xs text-muted-foreground truncate" title={source.coverage || ''}>
+                          {source.coverage || 'N/A'}
+                        </span>
+                        <span className="col-span-1">
+                          {source.isVerified ? (
+                            <CheckCircle2 className="w-4 h-4 text-green-600" />
+                          ) : source.isEnabled ? (
+                            <Clock className="w-4 h-4 text-muted-foreground" />
+                          ) : (
+                            <AlertCircle className="w-4 h-4 text-muted-foreground" />
+                          )}
+                        </span>
+                        <span className="col-span-1">
+                          <Button
+                            size="icon"
+                            variant={source.isEnabled ? "default" : "outline"}
+                            onClick={() => toggleDataSourceMutation.mutate({ id: source.id, isEnabled: !source.isEnabled })}
+                            disabled={toggleDataSourceMutation.isPending}
+                            data-testid={`button-toggle-source-${source.id}`}
+                          >
+                            {source.isEnabled ? <Check className="w-4 h-4" /> : <Zap className="w-4 h-4" />}
+                          </Button>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Database className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                  <p>No data sources configured yet.</p>
+                  <p className="text-sm mt-1">Run the import script to populate data sources.</p>
+                </div>
+              )}
+              <div className="mt-4 pt-4 border-t">
+                <p className="text-xs text-muted-foreground">
+                  Free data sources include environmental (FEMA floods, wetlands, EPA), market data, soil surveys, and more. 
+                  The system uses these free endpoints before falling back to paid APIs.
                 </p>
               </div>
             </CardContent>

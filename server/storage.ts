@@ -113,6 +113,10 @@ import {
   type AgentRun,
   borrowerSessions,
   type BorrowerSession, type InsertBorrowerSession,
+  dataSources,
+  type DataSource, type InsertDataSource,
+  dataSourceCache,
+  type DataSourceCache, type InsertDataSourceCache,
   DEFAULT_DUE_DILIGENCE_TEMPLATES,
   DEFAULT_DEAL_CHECKLIST_TEMPLATES,
 } from "@shared/schema";
@@ -746,6 +750,20 @@ export interface IStorage {
   acquireJobLock(jobName: string, instanceId: string, ttlSeconds: number): Promise<boolean>;
   releaseJobLock(jobName: string, instanceId: string): Promise<void>;
   cleanExpiredJobLocks(): Promise<void>;
+
+  // Data Sources (Free Data Endpoint Registry)
+  getDataSources(filters?: { category?: string; isEnabled?: boolean }): Promise<DataSource[]>;
+  getDataSource(id: number): Promise<DataSource | undefined>;
+  getDataSourceByKey(key: string): Promise<DataSource | undefined>;
+  createDataSource(data: InsertDataSource): Promise<DataSource>;
+  updateDataSource(id: number, updates: Partial<InsertDataSource>): Promise<DataSource>;
+  deleteDataSource(id: number): Promise<void>;
+  getDataSourceStats(): Promise<{ total: number; enabled: number; verified: number; byCategory: Record<string, number> }>;
+  
+  // Data Source Cache
+  getDataSourceCacheEntry(lookupKey: string, dataSourceId?: number): Promise<DataSourceCache | undefined>;
+  createDataSourceCacheEntry(data: InsertDataSourceCache): Promise<DataSourceCache>;
+  invalidateDataSourceCache(dataSourceId: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -5455,6 +5473,89 @@ Notary Public</p>
   async cleanExpiredJobLocks(): Promise<void> {
     const now = new Date();
     await db.delete(jobLocks).where(lt(jobLocks.expiresAt, now));
+  }
+
+  // Data Sources (Free Data Endpoint Registry)
+  async getDataSources(filters?: { category?: string; isEnabled?: boolean }): Promise<DataSource[]> {
+    let query = db.select().from(dataSources);
+    const conditions: any[] = [];
+    
+    if (filters?.category) {
+      conditions.push(eq(dataSources.category, filters.category));
+    }
+    if (filters?.isEnabled !== undefined) {
+      conditions.push(eq(dataSources.isEnabled, filters.isEnabled));
+    }
+    
+    if (conditions.length > 0) {
+      return await query.where(and(...conditions)).orderBy(dataSources.priority, dataSources.title);
+    }
+    return await query.orderBy(dataSources.priority, dataSources.title);
+  }
+
+  async getDataSource(id: number): Promise<DataSource | undefined> {
+    const [source] = await db.select().from(dataSources).where(eq(dataSources.id, id));
+    return source;
+  }
+
+  async getDataSourceByKey(key: string): Promise<DataSource | undefined> {
+    const [source] = await db.select().from(dataSources).where(eq(dataSources.key, key));
+    return source;
+  }
+
+  async createDataSource(data: InsertDataSource): Promise<DataSource> {
+    const [created] = await db.insert(dataSources).values(data).returning();
+    return created;
+  }
+
+  async updateDataSource(id: number, updates: Partial<InsertDataSource>): Promise<DataSource> {
+    const [updated] = await db.update(dataSources)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(dataSources.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteDataSource(id: number): Promise<void> {
+    await db.delete(dataSources).where(eq(dataSources.id, id));
+  }
+
+  async getDataSourceStats(): Promise<{ total: number; enabled: number; verified: number; byCategory: Record<string, number> }> {
+    const sources = await db.select().from(dataSources);
+    const byCategory: Record<string, number> = {};
+    let enabled = 0;
+    let verified = 0;
+    
+    for (const source of sources) {
+      byCategory[source.category] = (byCategory[source.category] || 0) + 1;
+      if (source.isEnabled) enabled++;
+      if (source.isVerified) verified++;
+    }
+    
+    return { total: sources.length, enabled, verified, byCategory };
+  }
+
+  // Data Source Cache
+  async getDataSourceCacheEntry(lookupKey: string, dataSourceId?: number): Promise<DataSourceCache | undefined> {
+    const conditions = [eq(dataSourceCache.lookupKey, lookupKey)];
+    if (dataSourceId !== undefined) {
+      conditions.push(eq(dataSourceCache.dataSourceId, dataSourceId));
+    }
+    
+    const [entry] = await db.select()
+      .from(dataSourceCache)
+      .where(and(...conditions))
+      .orderBy(desc(dataSourceCache.fetchedAt));
+    return entry;
+  }
+
+  async createDataSourceCacheEntry(data: InsertDataSourceCache): Promise<DataSourceCache> {
+    const [created] = await db.insert(dataSourceCache).values(data).returning();
+    return created;
+  }
+
+  async invalidateDataSourceCache(dataSourceId: number): Promise<void> {
+    await db.delete(dataSourceCache).where(eq(dataSourceCache.dataSourceId, dataSourceId));
   }
 }
 

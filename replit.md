@@ -62,10 +62,19 @@ Preferred communication style: Simple, everyday language.
 - **Payment Processing**: Stripe (subscription billing, one-time credit purchases via Replit Stripe connector).
 - **AI Services**: OpenAI (via Replit AI Integrations for chat completions and image generation).
 - **Mapping/Comps**: Tiered parcel lookup system:
-  - **County GIS Endpoints** (FREE): Direct queries to county ArcGIS REST services for parcel data (52+ counties auto-seeded)
+  - **County GIS Endpoints** (FREE): Direct queries to county ArcGIS REST services for parcel data (296 counties across all 50 states)
   - **Regrid API** (paid fallback): Used only when county GIS endpoints aren't available
   - **Parcel Snapshots Cache**: Centralized parcel_snapshots table with 30-day freshness tracking
   - Admin interface in Founder Dashboard to manage county GIS endpoints
+- **Free Data Sources Registry**: 124+ external data endpoints for land investment analysis:
+  - **Environmental Data**: FEMA flood zones, National Wetlands Inventory, EPA Superfund sites
+  - **Natural Resources**: USDA soil survey, forest data, conservation easements
+  - **Government Housing**: HUD, Census, FHFA housing data
+  - **Real Estate Market**: Zillow, Realtor.com, Redfin, MLS systems
+  - **Address Validation**: USPS, Census Geocoder, OpenAddresses
+  - **Natural Hazards**: Earthquake, wildfire, hurricane risk data
+  - Managed via `data_sources` table with category, access level, and verification tracking
+  - Admin interface in Founder Dashboard to enable/disable sources
 - **Due Diligence Reports**: Comprehensive property analysis with parcel data, ownership info, tax history, market analysis, risk assessment, and AI-powered summaries. Supports PDF export.
 - **Direct Mail**: Lob API (for sending physical mail).
 - **Development Tools**: Vite, Replit Plugins.

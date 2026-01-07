@@ -7182,6 +7182,84 @@ Seller Signature (if applicable)
     }
   });
 
+  // ============================================
+  // DATA SOURCES (Free Data Endpoint Registry)
+  // ============================================
+
+  const updateDataSourceSchema = z.object({
+    isEnabled: z.boolean().optional(),
+    isVerified: z.boolean().optional(),
+    priority: z.number().optional(),
+    notes: z.string().optional(),
+  });
+
+  api.get("/api/data-sources", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const category = req.query.category as string | undefined;
+      const isEnabled = req.query.isEnabled === 'true' ? true : req.query.isEnabled === 'false' ? false : undefined;
+      const sources = await storage.getDataSources({ category, isEnabled });
+      res.json(sources);
+    } catch (err: any) {
+      console.error("Get data sources error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.get("/api/data-sources/stats", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const stats = await storage.getDataSourceStats();
+      res.json(stats);
+    } catch (err: any) {
+      console.error("Get data sources stats error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.patch("/api/data-sources/:id", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid data source ID" });
+      }
+      
+      const parseResult = updateDataSourceSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ message: "Invalid request body", errors: parseResult.error.errors });
+      }
+      
+      const source = await storage.getDataSource(id);
+      if (!source) {
+        return res.status(404).json({ message: "Data source not found" });
+      }
+      
+      const updated = await storage.updateDataSource(id, parseResult.data);
+      res.json(updated);
+    } catch (err: any) {
+      console.error("Update data source error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.delete("/api/data-sources/:id", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid data source ID" });
+      }
+      
+      const source = await storage.getDataSource(id);
+      if (!source) {
+        return res.status(404).json({ message: "Data source not found" });
+      }
+      
+      await storage.deleteDataSource(id);
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("Delete data source error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   api.get("/api/integrations/status", isAuthenticated, async (req, res) => {
     try {
       const { communicationsService } = await import('./services/communications');
