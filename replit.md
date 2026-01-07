@@ -46,7 +46,13 @@ Preferred communication style: Simple, everyday language.
 - **Hybrid Per-Seat Pricing**: Subscription tiers with optional per-seat add-ons for team growth.
 - **Custom Fields System**: User-defined custom fields for leads, properties, and deals.
 - **Saved Views**: Reusable filtered views with sorting and column visibility.
-- **AI Agents (Autonomous Operations)**: Includes agents for lead nurturing, campaign optimization, finance management (delinquency escalation), and an API queue system.
+- **AI Agents (Autonomous Operations)**: Consolidated into 4 core super-agents:
+  - **Research & Intelligence Agent**: Due diligence, environmental lookups, investment analysis, property enrichment
+  - **Deals & Acquisition Agent**: Offer generation, deal analysis, comp research, financing calculations
+  - **Communications Agent**: Email/SMS composition, lead nurturing, campaign content generation
+  - **Operations Agent**: Delinquency checking, campaign optimization, alerts, digests, performance analysis
+  - All agents use DataSourceBroker for data lookups and OpenAI (gpt-4o) for intelligent analysis
+  - Unified execution endpoint: `/api/agents/execute`
 - **AI Section**: Conversational AI interface (`/command-center` or `/ai`) with specialized agents, task management, and real-time agent status monitoring.
 - **Founder Dashboard**: Analytics for revenue, system health, and agent status.
 - **Team Performance Dashboard**: Aggregated metrics for leads, deals, tasks, and activity trends.
@@ -66,15 +72,21 @@ Preferred communication style: Simple, everyday language.
   - **Regrid API** (paid fallback): Used only when county GIS endpoints aren't available
   - **Parcel Snapshots Cache**: Centralized parcel_snapshots table with 30-day freshness tracking
   - Admin interface in Founder Dashboard to manage county GIS endpoints
-- **Free Data Sources Registry**: 124+ external data endpoints for land investment analysis:
-  - **Environmental Data**: FEMA flood zones, National Wetlands Inventory, EPA Superfund sites
-  - **Natural Resources**: USDA soil survey, forest data, conservation easements
-  - **Government Housing**: HUD, Census, FHFA housing data
-  - **Real Estate Market**: Zillow, Realtor.com, Redfin, MLS systems
-  - **Address Validation**: USPS, Census Geocoder, OpenAddresses
-  - **Natural Hazards**: Earthquake, wildfire, hurricane risk data
+- **Data Source Broker**: Intelligent tiered data lookup system with 563+ sources:
+  - **Tiered Routing**: Free sources > Cached (30-day) > BYOK (user keys) > Paid APIs
+  - **Health Scoring**: Success rate, latency, consecutive failure tracking per source
+  - **Cost Optimization**: Usage metrics, cache hit rates, and cost summaries
+  - **Source Categories**:
+    - Environmental: FEMA flood zones, National Wetlands Inventory, EPA Superfund
+    - Natural Resources: USDA soil survey, forest data, conservation easements
+    - Government Housing: HUD, Census, FHFA housing data
+    - Real Estate Market: 61+ MLS systems, national portals, county assessors
+    - County GIS Portals: 358+ state/county level endpoints across 48 states
+    - Advanced Analytics: 20+ AI/ML predictions, satellite imagery, sentiment analysis
+    - Address Validation: USPS, Census Geocoder, OpenAddresses
+    - Natural Hazards: Earthquake, wildfire, hurricane risk data
   - Managed via `data_sources` table with category, access level, and verification tracking
-  - Admin interface in Founder Dashboard to enable/disable sources
+  - Admin interface in Founder Dashboard to manage sources and view broker metrics
 - **Due Diligence Reports**: Comprehensive property analysis with parcel data, ownership info, tax history, market analysis, risk assessment, and AI-powered summaries. Supports PDF export.
 - **Direct Mail**: Lob API (for sending physical mail).
 - **Development Tools**: Vite, Replit Plugins.

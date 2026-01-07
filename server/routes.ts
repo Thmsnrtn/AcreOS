@@ -7471,6 +7471,240 @@ Seller Signature (if applicable)
     }
   });
 
+  // ============================================
+  // DATA SOURCE BROKER - Unified Lookup API
+  // ============================================
+
+  const brokerLookupSchema = z.object({
+    category: z.enum(["parcel_data", "flood_zone", "wetlands", "soil", "environmental", "tax_assessment", "market_data", "zoning", "satellite", "valuation"]),
+    latitude: z.number(),
+    longitude: z.number(),
+    state: z.string().optional(),
+    county: z.string().optional(),
+    address: z.string().optional(),
+    apn: z.string().optional(),
+    forceRefresh: z.boolean().optional(),
+    maxTier: z.enum(["free", "cached", "byok", "paid"]).optional(),
+  });
+
+  api.post("/api/broker/lookup", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const parseResult = brokerLookupSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ message: "Invalid request", errors: parseResult.error.errors });
+      }
+
+      const { dataSourceBroker } = await import('./services/data-source-broker');
+      const { category, ...options } = parseResult.data;
+      
+      const result = await dataSourceBroker.lookup(category, options);
+      res.json(result);
+    } catch (err: any) {
+      console.error("Broker lookup error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.post("/api/broker/enrich-property", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { propertyId, categories } = req.body;
+
+      if (!propertyId) {
+        return res.status(400).json({ message: "propertyId is required" });
+      }
+
+      const property = await storage.getProperty(org.id, propertyId);
+      if (!property) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+
+      const lat = property.latitude ? parseFloat(property.latitude) : null;
+      const lng = property.longitude ? parseFloat(property.longitude) : null;
+
+      if (!lat || !lng) {
+        return res.status(400).json({ message: "Property must have latitude and longitude" });
+      }
+
+      const { dataSourceBroker } = await import('./services/data-source-broker');
+      
+      const categoriesToEnrich = categories || ["flood_zone", "wetlands", "soil", "environmental"];
+      const results: Record<string, any> = {};
+
+      for (const category of categoriesToEnrich) {
+        try {
+          const result = await dataSourceBroker.lookup(category, {
+            latitude: lat,
+            longitude: lng,
+            state: property.state || undefined,
+            county: property.county || undefined,
+          });
+          results[category] = result;
+        } catch (err: any) {
+          results[category] = { success: false, error: err.message };
+        }
+      }
+
+      res.json({
+        propertyId,
+        enrichments: results,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err: any) {
+      console.error("Property enrichment error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.get("/api/broker/metrics", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { dataSourceBroker } = await import('./services/data-source-broker');
+      
+      const [health, usage, cost] = await Promise.all([
+        dataSourceBroker.getHealthMetrics(),
+        dataSourceBroker.getUsageMetrics(),
+        dataSourceBroker.getCostSummary(),
+      ]);
+
+      res.json({ health, usage, cost });
+    } catch (err: any) {
+      console.error("Broker metrics error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // CORE AI AGENTS
+  // ============================================
+
+  const agentTaskSchema = z.object({
+    agentType: z.enum(["research", "deals", "communications", "operations"]),
+    action: z.string(),
+    parameters: z.record(z.any()).optional(),
+  });
+
+  api.get("/api/agents", isAuthenticated, async (req, res) => {
+    try {
+      const { getAllAgentsInfo } = await import('./services/core-agents');
+      res.json(getAllAgentsInfo());
+    } catch (err: any) {
+      console.error("Get agents error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.get("/api/agents/:type", isAuthenticated, async (req, res) => {
+    try {
+      const { getAgentInfo } = await import('./services/core-agents');
+      const agentType = req.params.type as any;
+      const info = getAgentInfo(agentType);
+      
+      if (!info) {
+        return res.status(404).json({ message: "Agent type not found" });
+      }
+      
+      res.json(info);
+    } catch (err: any) {
+      console.error("Get agent error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.post("/api/agents/execute", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = (req as any).user;
+      
+      const parseResult = agentTaskSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ message: "Invalid request", errors: parseResult.error.errors });
+      }
+
+      const { agentType, action, parameters } = parseResult.data;
+      const { executeAgentTask } = await import('./services/core-agents');
+      
+      const result = await executeAgentTask(agentType, {
+        action,
+        parameters: parameters || {},
+        context: {
+          organizationId: org.id,
+          userId: user?.id,
+          relatedLeadId: parameters?.leadId,
+          relatedPropertyId: parameters?.propertyId,
+          relatedDealId: parameters?.dealId,
+        },
+      });
+
+      res.json(result);
+    } catch (err: any) {
+      console.error("Agent execute error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.post("/api/agents/research/due-diligence", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { propertyId } = req.body;
+
+      if (!propertyId) {
+        return res.status(400).json({ message: "propertyId is required" });
+      }
+
+      const { executeAgentTask } = await import('./services/core-agents');
+      const result = await executeAgentTask("research", {
+        action: "run_due_diligence",
+        parameters: { propertyId },
+        context: { organizationId: org.id },
+      });
+
+      res.json(result);
+    } catch (err: any) {
+      console.error("Due diligence error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.post("/api/agents/deals/generate-offer", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { leadId, propertyId, offerPrice, terms } = req.body;
+
+      const { executeAgentTask } = await import('./services/core-agents');
+      const result = await executeAgentTask("deals", {
+        action: "generate_offer",
+        parameters: { leadId, propertyId, offerPrice, terms },
+        context: { organizationId: org.id },
+      });
+
+      res.json(result);
+    } catch (err: any) {
+      console.error("Generate offer error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.post("/api/agents/communications/compose", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { type, leadId, purpose, tone, customDetails } = req.body;
+
+      const { executeAgentTask } = await import('./services/core-agents');
+      const action = type === "sms" ? "compose_sms" : "compose_email";
+      
+      const result = await executeAgentTask("communications", {
+        action,
+        parameters: { leadId, purpose, tone, customDetails },
+        context: { organizationId: org.id },
+      });
+
+      res.json(result);
+    } catch (err: any) {
+      console.error("Compose message error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   api.get("/api/integrations/status", isAuthenticated, async (req, res) => {
     try {
       const { communicationsService } = await import('./services/communications');
