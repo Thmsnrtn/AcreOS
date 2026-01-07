@@ -880,8 +880,10 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
   };
 
   const formatCurrency = (value: string | number | null | undefined) => {
-    if (!value) return "$0";
-    return `$${Number(value).toLocaleString()}`;
+    if (value === null || value === undefined || value === "") return "N/A";
+    const num = Number(value);
+    if (isNaN(num) || num === 0) return "N/A";
+    return `$${num.toLocaleString()}`;
   };
 
   const hasMapData = property.parcelBoundary && property.parcelCentroid;
