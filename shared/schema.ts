@@ -2838,6 +2838,73 @@ export type InsertCountyGisEndpoint = z.infer<typeof insertCountyGisEndpointSche
 export type CountyGisEndpoint = typeof countyGisEndpoints.$inferSelect;
 
 // ============================================
+// PARCEL SNAPSHOTS (Centralized Parcel Cache)
+// ============================================
+
+export const parcelSnapshots = pgTable("parcel_snapshots", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id), // null = global/shared cache
+  
+  // Parcel identification
+  apn: text("apn").notNull(),
+  state: text("state").notNull(), // 2-letter state code
+  county: text("county").notNull(),
+  fipsCode: text("fips_code"),
+  
+  // Data source
+  source: text("source").notNull().default("regrid"), // county_gis, regrid, manual
+  sourceId: text("source_id"), // External ID from the source (regrid_id, etc)
+  
+  // Geometry
+  boundary: jsonb("boundary").$type<{
+    type: "Polygon" | "MultiPolygon";
+    coordinates: number[][][] | number[][][][];
+  }>(),
+  centroid: jsonb("centroid").$type<{ lat: number; lng: number }>(),
+  
+  // Property information
+  owner: text("owner"),
+  ownerAddress: text("owner_address"),
+  mailingAddress: text("mailing_address"),
+  siteAddress: text("site_address"),
+  
+  // Parcel details
+  acres: numeric("acres"),
+  legalDescription: text("legal_description"),
+  zoning: text("zoning"),
+  landUse: text("land_use"),
+  propertyType: text("property_type"),
+  
+  // Valuation
+  assessedValue: numeric("assessed_value"),
+  marketValue: numeric("market_value"),
+  taxAmount: numeric("tax_amount"),
+  taxYear: integer("tax_year"),
+  
+  // Sales history
+  lastSalePrice: numeric("last_sale_price"),
+  lastSaleDate: timestamp("last_sale_date"),
+  
+  // Raw data from source
+  rawData: jsonb("raw_data").$type<Record<string, unknown>>(),
+  
+  // Cache management
+  fetchedAt: timestamp("fetched_at").defaultNow(),
+  expiresAt: timestamp("expires_at"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertParcelSnapshotSchema = createInsertSchema(parcelSnapshots).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertParcelSnapshot = z.infer<typeof insertParcelSnapshotSchema>;
+export type ParcelSnapshot = typeof parcelSnapshots.$inferSelect;
+
+// ============================================
 // ACQUISITION: OFFER LETTERS & BLIND OFFERS
 // ============================================
 
