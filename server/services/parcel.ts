@@ -388,8 +388,8 @@ async function lookupFromRegrid(
     let data: RegridResponse | null = null;
     
     for (const apnVariant of apnVariants) {
-      // Try the query endpoint first (more flexible)
-      let url = `https://app.regrid.com/api/v2/parcels/query?parcelnumb=${encodeURIComponent(apnVariant)}&token=${token}&return_geometry=true`;
+      // Use the correct APN endpoint
+      let url = `https://app.regrid.com/api/v2/parcels/apn?parcelnumb=${encodeURIComponent(apnVariant)}&token=${token}&return_custom=true`;
       
       if (stateCountyPath) {
         url += `&path=${encodeURIComponent(stateCountyPath)}`;
@@ -436,10 +436,14 @@ async function lookupFromRegrid(
     }
     
     const parcel = features[0];
-    const props = parcel.properties;
+    // Regrid v2 API nests properties under properties.fields
+    const rawProps = parcel.properties?.fields || parcel.properties || {};
+    const props = rawProps as Record<string, any>;
+    
+    console.log(`[Regrid] Parcel properties keys:`, Object.keys(props).slice(0, 20));
     
     const centroid = props.lat && props.lon
-      ? { lat: props.lat, lng: props.lon }
+      ? { lat: Number(props.lat), lng: Number(props.lon) }
       : calculateCentroid(parcel.geometry);
     
     return {
@@ -452,7 +456,7 @@ async function lookupFromRegrid(
         data: {
           regridId: props.ll_uuid || props.ll_stable_id || "",
           owner: props.owner || "Unknown",
-          ownerAddress: formatOwnerAddress(props),
+          ownerAddress: formatOwnerAddress(props as any),
           taxAmount: props.taxamt || "",
           lastUpdated: new Date().toISOString(),
           acres: props.ll_gisacre,
