@@ -49,7 +49,7 @@ import {
 } from "./services/importExport";
 
 // Usage limits
-import { checkUsageLimit, getAllUsageLimits, UsageLimitError, TIER_LIMITS } from "./services/usageLimits";
+import { checkUsageLimit, getAllUsageLimits, UsageLimitError, TIER_LIMITS, type SubscriptionTier } from "./services/usageLimits";
 
 // Usage metering for credits
 import { usageMeteringService, creditService } from "./services/credits";
@@ -5344,10 +5344,46 @@ export async function registerRoutes(
   // EXECUTIVE ASSISTANT (UNIFIED AI INTERFACE)
   // ============================================
 
-  api.get("/api/assistant/skills", isAuthenticated, async (req, res) => {
+  api.get("/api/assistant/skills", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const { getAllSkills } = await import('./services/intent-router');
-      res.json(getAllSkills());
+      const org = (req as any).organization;
+      const user = (req as any).user;
+      const isFounder = user?.id === 'founder' || org?.stripeCustomerId?.includes('founder');
+      const tier = (org?.subscriptionTier || 'free') as SubscriptionTier;
+      
+      const { getAvailableActions, SKILL_ACTIONS } = await import('./services/skill-permissions');
+      const { insights, actions, lockedActions } = getAvailableActions(tier, isFounder);
+      
+      res.json({
+        tier,
+        isFounder,
+        insights,
+        actions,
+        lockedActions,
+        allActions: SKILL_ACTIONS,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.post("/api/assistant/check-permission", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = (req as any).user;
+      const { actionId } = req.body;
+      
+      if (!actionId) {
+        return res.status(400).json({ message: "actionId is required" });
+      }
+      
+      const isFounder = user?.id === 'founder' || org?.stripeCustomerId?.includes('founder');
+      const tier = (org?.subscriptionTier || 'free') as SubscriptionTier;
+      
+      const { checkSkillPermission } = await import('./services/skill-permissions');
+      const result = checkSkillPermission(actionId, tier, isFounder);
+      
+      res.json(result);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -5379,10 +5415,29 @@ export async function registerRoutes(
 
       const { classifyIntentSimple, classifyIntentWithAI } = await import('./services/intent-router');
       const { executeAgentTask } = await import('./services/core-agents');
+      const { checkSkillPermission, mapIntentToAction } = await import('./services/skill-permissions');
 
       const intent = useAIClassification 
         ? await classifyIntentWithAI(message)
         : classifyIntentSimple(message);
+
+      const isFounder = user?.id === 'founder' || org?.stripeCustomerId?.includes('founder');
+      const tier = (org?.subscriptionTier || 'free') as SubscriptionTier;
+      
+      const actionId = mapIntentToAction(intent.action);
+      if (actionId) {
+        const permissionCheck = checkSkillPermission(actionId, tier, isFounder);
+        if (!permissionCheck.allowed) {
+          return res.status(403).json({
+            error: "upgrade_required",
+            message: permissionCheck.reason,
+            requiredTier: permissionCheck.requiredTier,
+            currentTier: permissionCheck.currentTier,
+            upgradeMessage: permissionCheck.upgradeMessage,
+            intent,
+          });
+        }
+      }
 
       const result = await executeAgentTask(intent.agentType, {
         action: intent.action,
@@ -5404,18 +5459,40 @@ export async function registerRoutes(
     }
   });
 
-  api.get("/api/assistant/suggestions", isAuthenticated, async (req, res) => {
-    const suggestions = [
-      { label: "Run due diligence", skill: "Research & Intelligence", action: "Check flood zones, wetlands, and environmental factors for a property" },
-      { label: "Generate an offer", skill: "Deals & Acquisition", action: "Create a professional offer letter for a seller" },
-      { label: "Draft follow-up email", skill: "Communications", action: "Write a personalized follow-up email to a lead" },
-      { label: "Check delinquent notes", skill: "Operations", action: "Review notes with overdue payments" },
-      { label: "Analyze investment", skill: "Research & Intelligence", action: "Get ROI analysis and risk assessment for a property" },
-      { label: "Compose SMS", skill: "Communications", action: "Draft a quick text message to a lead" },
-      { label: "Get performance digest", skill: "Operations", action: "Summarize your business performance" },
-      { label: "Look up comps", skill: "Deals & Acquisition", action: "Find comparable sales in an area" },
-    ];
-    res.json(suggestions);
+  api.get("/api/assistant/suggestions", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = (req as any).user;
+      const isFounder = user?.id === 'founder' || org?.stripeCustomerId?.includes('founder');
+      const tier = (org?.subscriptionTier || 'free') as SubscriptionTier;
+      
+      const { getAvailableActions } = await import('./services/skill-permissions');
+      const { insights, actions } = getAvailableActions(tier, isFounder);
+      
+      const suggestions = [
+        { label: "Analyze a property", skill: "Research & Intelligence", actionId: "analyze_property", category: "insight" },
+        { label: "Check environmental risks", skill: "Research & Intelligence", actionId: "lookup_environmental", category: "insight" },
+        { label: "Get market analysis", skill: "Research & Intelligence", actionId: "market_analysis", category: "insight" },
+        { label: "Calculate investment ROI", skill: "Deals & Acquisition", actionId: "investment_calculator", category: "insight" },
+        { label: "Find comparable sales", skill: "Deals & Acquisition", actionId: "comp_analysis", category: "insight" },
+        { label: "Score this deal", skill: "Deals & Acquisition", actionId: "deal_scoring", category: "insight" },
+        { label: "Run due diligence report", skill: "Research & Intelligence", actionId: "run_due_diligence", category: "action", requiredTier: "starter" },
+        { label: "Generate an offer letter", skill: "Deals & Acquisition", actionId: "generate_offer", category: "action", requiredTier: "starter" },
+        { label: "Draft a follow-up email", skill: "Communications", actionId: "compose_email", category: "action", requiredTier: "starter" },
+        { label: "Check overdue payments", skill: "Operations", actionId: "delinquency_check", category: "insight" },
+      ];
+      
+      const availableIds = new Set([...insights, ...actions].map(a => a.id));
+      const enrichedSuggestions = suggestions.map(s => ({
+        ...s,
+        available: availableIds.has(s.actionId),
+        currentTier: tier,
+      }));
+      
+      res.json(enrichedSuggestions);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
   // ============================================

@@ -1062,7 +1062,11 @@ function TasksTabContent() {
 interface Suggestion {
   label: string;
   skill: string;
-  action: string;
+  actionId: string;
+  category: "insight" | "action";
+  requiredTier?: string;
+  available: boolean;
+  currentTier: string;
 }
 
 interface ActiveSkill {
@@ -1267,10 +1271,15 @@ export default function CommandCenterPage() {
   };
 
   const handleSuggestionClick = (suggestion: Suggestion) => {
-    setInput(suggestion.action);
-    if (!currentConversationId) {
-      createConversationMutation.mutate();
+    if (!suggestion.available && suggestion.category === "action") {
+      toast({
+        title: "Upgrade Required",
+        description: `This action requires ${suggestion.requiredTier || 'a higher'} tier. Upgrade in Settings to unlock it.`,
+        variant: "default",
+      });
+      return;
     }
+    setInput(suggestion.label);
     textareaRef.current?.focus();
   };
 
@@ -1426,12 +1435,28 @@ export default function CommandCenterPage() {
                                 <Button
                                   key={idx}
                                   variant="outline"
-                                  className="justify-start text-left h-auto py-3 px-4"
+                                  className={`justify-start text-left h-auto py-3 px-4 ${
+                                    !suggestion.available && suggestion.category === "action" 
+                                      ? "opacity-60" 
+                                      : ""
+                                  }`}
                                   onClick={() => handleSuggestionClick(suggestion)}
                                   data-testid={`button-suggestion-${idx}`}
                                 >
-                                  <div className="flex flex-col items-start gap-1">
-                                    <span className="font-medium text-sm">{suggestion.label}</span>
+                                  <div className="flex flex-col items-start gap-1 w-full">
+                                    <div className="flex items-center gap-2 w-full">
+                                      <span className="font-medium text-sm">{suggestion.label}</span>
+                                      {suggestion.category === "insight" && (
+                                        <Badge variant="secondary" className="text-xs ml-auto">
+                                          Free
+                                        </Badge>
+                                      )}
+                                      {suggestion.category === "action" && !suggestion.available && (
+                                        <Badge variant="outline" className="text-xs ml-auto">
+                                          {suggestion.requiredTier}
+                                        </Badge>
+                                      )}
+                                    </div>
                                     <span className="text-xs text-muted-foreground">{suggestion.skill}</span>
                                   </div>
                                 </Button>
