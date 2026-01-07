@@ -30,7 +30,7 @@ import {
   Check,
   Zap,
   Mail,
-  Map,
+  Map as MapIcon,
   MessageSquare,
   Lightbulb,
   FileText,
@@ -1207,7 +1207,7 @@ export default function FounderDashboard() {
                   </div>
                   <div className="flex justify-between items-center">
                     <div className="flex items-center gap-2">
-                      <Map className="w-4 h-4 text-green-500" />
+                      <MapIcon className="w-4 h-4 text-green-500" />
                       <span className="text-sm">Regrid (Parcel Data)</span>
                     </div>
                     <div className="flex items-center gap-2">
@@ -1758,9 +1758,9 @@ export default function FounderDashboard() {
                             <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
                           ) : dataSourceTestResults.has(source.id) ? (
                             dataSourceTestResults.get(source.id)?.success ? (
-                              <CheckCircle2 className="w-4 h-4 text-green-600" title="Test passed" />
+                              <span title="Test passed"><CheckCircle2 className="w-4 h-4 text-green-600" /></span>
                             ) : (
-                              <AlertCircle className="w-4 h-4 text-red-600" title={dataSourceTestResults.get(source.id)?.message} />
+                              <span title={dataSourceTestResults.get(source.id)?.message}><AlertCircle className="w-4 h-4 text-red-600" /></span>
                             )
                           ) : source.isVerified ? (
                             <CheckCircle2 className="w-4 h-4 text-green-600" />
