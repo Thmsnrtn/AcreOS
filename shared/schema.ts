@@ -266,6 +266,153 @@ export const leadActivities = pgTable("lead_activities", {
 });
 
 // ============================================
+// LEAD SCORING (Betty-style)
+// ============================================
+
+// Scoring profiles - configurable weights per organization
+export const leadScoringProfiles = pgTable("lead_scoring_profiles", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  name: text("name").notNull().default("Default"),
+  isActive: boolean("is_active").default(true),
+  
+  // Property-based factor weights (sum to ~40%)
+  ownershipDurationWeight: integer("ownership_duration_weight").default(15),
+  taxDelinquencyWeight: integer("tax_delinquency_weight").default(20),
+  absenteeOwnerWeight: integer("absentee_owner_weight").default(15),
+  propertySizeWeight: integer("property_size_weight").default(10),
+  assessedValueWeight: integer("assessed_value_weight").default(10),
+  
+  // Owner-based factor weights (sum to ~30%)
+  corporateOwnerWeight: integer("corporate_owner_weight").default(10),
+  multiplePropertiesWeight: integer("multiple_properties_weight").default(10),
+  inheritanceIndicatorWeight: integer("inheritance_indicator_weight").default(15),
+  outOfStateWeight: integer("out_of_state_weight").default(15),
+  
+  // Market/Location factor weights (sum to ~15%)
+  floodZoneWeight: integer("flood_zone_weight").default(10),
+  marketActivityWeight: integer("market_activity_weight").default(15),
+  developmentPotentialWeight: integer("development_potential_weight").default(10),
+  
+  // Engagement factor weights (sum to ~15%)
+  responseRecencyWeight: integer("response_recency_weight").default(25),
+  emailEngagementWeight: integer("email_engagement_weight").default(15),
+  campaignTouchesWeight: integer("campaign_touches_weight").default(10),
+  
+  // Thresholds
+  hotThreshold: integer("hot_threshold").default(70),
+  warmThreshold: integer("warm_threshold").default(40),
+  coldThreshold: integer("cold_threshold").default(20),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Lead score history - tracks score changes over time
+export const leadScoreHistory = pgTable("lead_score_history", {
+  id: serial("id").primaryKey(),
+  leadId: integer("lead_id").references(() => leads.id).notNull(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  profileId: integer("profile_id").references(() => leadScoringProfiles.id),
+  
+  // Score (-400 to +400 Betty-style range, stored as integer)
+  score: integer("score").notNull(),
+  previousScore: integer("previous_score"),
+  
+  // Factor breakdown
+  factors: jsonb("factors").$type<{
+    // Property factors
+    ownershipDuration?: { value: number; score: number; yearsOwned?: number };
+    taxDelinquency?: { value: number; score: number; delinquentAmount?: number };
+    absenteeOwner?: { value: boolean; score: number };
+    propertySize?: { value: number; score: number; acres?: number };
+    assessedValue?: { value: number; score: number; assessedAmount?: number };
+    
+    // Owner factors
+    corporateOwner?: { value: boolean; score: number; entityType?: string };
+    multipleProperties?: { value: boolean; score: number; count?: number };
+    inheritanceIndicator?: { value: boolean; score: number; indicator?: string };
+    outOfState?: { value: boolean; score: number; ownerState?: string };
+    
+    // Market/Location factors
+    floodZone?: { value: string; score: number };
+    marketActivity?: { value: number; score: number; recentSales?: number };
+    developmentPotential?: { value: number; score: number };
+    
+    // Engagement factors
+    responseRecency?: { value: number; score: number; daysSinceResponse?: number };
+    emailEngagement?: { value: number; score: number; openRate?: number };
+    campaignTouches?: { value: number; score: number; touchCount?: number };
+    
+    // Computed
+    totalRawScore?: number;
+    normalizedScore?: number;
+    recommendation?: "mail" | "maybe" | "skip";
+  }>(),
+  
+  // Enrichment data used
+  enrichmentData: jsonb("enrichment_data").$type<{
+    parcelData?: any;
+    floodData?: any;
+    censusData?: any;
+    taxData?: any;
+    marketData?: any;
+    lastEnriched?: string;
+  }>(),
+  
+  triggerSource: text("trigger_source"), // manual, scheduled, import, campaign
+  scoredAt: timestamp("scored_at").defaultNow(),
+});
+
+// Lead conversion tracking - for training the model
+export const leadConversions = pgTable("lead_conversions", {
+  id: serial("id").primaryKey(),
+  leadId: integer("lead_id").references(() => leads.id).notNull(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  
+  // What happened
+  conversionType: text("conversion_type").notNull(), // responded, negotiating, accepted, closed, dead
+  scoreAtConversion: integer("score_at_conversion"),
+  
+  // Campaign attribution
+  campaignId: integer("campaign_id"),
+  campaignType: text("campaign_type"), // direct_mail, email, sms, cold_call
+  touchNumber: integer("touch_number"), // Which touch in the sequence led to conversion
+  
+  // Timing
+  daysFromFirstTouch: integer("days_from_first_touch"),
+  daysFromScore: integer("days_from_score"),
+  
+  // Outcome value
+  dealValue: integer("deal_value"), // If closed, what was the deal value
+  profitMargin: integer("profit_margin"), // Percentage profit
+  
+  convertedAt: timestamp("converted_at").defaultNow(),
+});
+
+export const insertLeadScoringProfileSchema = createInsertSchema(leadScoringProfiles).omit({ 
+  id: true, 
+  createdAt: true, 
+  updatedAt: true 
+});
+export type LeadScoringProfile = typeof leadScoringProfiles.$inferSelect;
+export type InsertLeadScoringProfile = z.infer<typeof insertLeadScoringProfileSchema>;
+
+export const insertLeadScoreHistorySchema = createInsertSchema(leadScoreHistory).omit({ 
+  id: true, 
+  scoredAt: true 
+});
+export type LeadScoreHistory = typeof leadScoreHistory.$inferSelect;
+export type InsertLeadScoreHistory = z.infer<typeof insertLeadScoreHistorySchema>;
+
+export const insertLeadConversionSchema = createInsertSchema(leadConversions).omit({ 
+  id: true, 
+  convertedAt: true 
+});
+export type LeadConversion = typeof leadConversions.$inferSelect;
+export type InsertLeadConversion = z.infer<typeof insertLeadConversionSchema>;
+
+// ============================================
 // INVENTORY: PROPERTIES & DEALS
 // ============================================
 

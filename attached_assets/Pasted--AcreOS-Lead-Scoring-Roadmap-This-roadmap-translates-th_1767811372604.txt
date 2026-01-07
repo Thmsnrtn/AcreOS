@@ -1,0 +1,100 @@
+
+# AcreOS Lead‑Scoring Roadmap
+
+This roadmap translates the **Betty**‑style lead‑scoring concept into a practical implementation plan for AcreOS. It combines insights about Reworked.ai’s Betty (which uses minimal inputs to predict which property owners will sell) with a detailed plan for building a proprietary scoring engine using only public data.  The aim is to enable engineers working in a Replit environment to implement the necessary data pipelines, machine‑learning models and application integrations.
+
+## 1 Project vision and goals
+
+1. **Objective** – Build an automated scoring engine within AcreOS that ranks vacant‑land leads by their likelihood to sell at a discount within a given time horizon.  The system should provide a numeric score and the underlying factors, enabling targeted outreach and reducing marketing costs.
+2. **Constraints** – Use only publicly available data and aggregated socio‑economic statistics (no sensitive personal characteristics).  Follow privacy laws and avoid high‑impact decision making based on race, gender, religion, etc.
+3. **Outcome** – Deliver a module that ingests a list of owner names and addresses, enriches each record with data points from AcreOS’s expanded database, generates a probability score using a machine‑learning model and returns a sorted list with explanation metrics.
+
+## 2 Data acquisition and integration
+
+Create ETL (extract‑transform‑load) pipelines for all relevant datasets so that property and owner records can be enriched with features needed for scoring.  Each dataset below should be stored in a database (e.g., PostgreSQL/PostGIS or a Replit‑hosted DB) with spatial indexing for efficient joins.
+
+### 2.1 Property‑specific datasets
+
+| Source | Key fields | Integration notes |
+|---|---|---|
+| County GIS portals and assessor data (from the existing dataset) | Parcel ID, owner name, mailing address, acreage, assessed value, last sale date, zoning category, land‑use restrictions | Use a unique parcel identifier (APN) to join with other layers.  Normalise owner names for matching. |
+| Building permits and code enforcement datasets (e.g., St. Louis building permits) | Permit type, issue date, owner name, owner address, occupant name/addresshttps://www.stlouis-mo.gov/data/datasets/dataset.cfm#:~:text=OccAddr%20Occupant%20Address%20String%20OccCity,String%20OwnerState%20Owner%20State%20String | Map permit addresses to parcels; flag properties with recent permits or violations as having active development or deferred maintenance. |
+| Tax lien and sheriff‑sale lists (e.g., NYC tax‑lien sale, Allegheny County sheriff sales) | Owner name, property address, delinquent amount, sale datehttps://data.milwaukee.gov/dataset/delinquent-personal-property-tax-accounts/resource/098495f3-0ef3-4e32-bb78-cc11eb1c024f#:~:text=Data%20Dictionaryhttps://catalog.data.gov/dataset/allegheny-county-sheriff-sales#:~:text=List%20of%20properties%20up%20for,postings%20uploaded%20to%20the%20WPRDC | Flag delinquent properties; include time since lien or sale posting; compute lien‑to‑value ratio if assessed value is available. |
+| UCC debtor information (Colorado API) | Organization/individual debtor name, mailing addresshttps://data.colorado.gov/resource/8upq-58vz.json#:~:text=%5B%7B,50130160 | Match entity names to LLC owners on parcels; flag presence of outstanding UCC filings as potential distress signal. |
+| Census tract socio‑economic data (ACS 5‑year) | Median household income, poverty rate, housing vacancy rate, population growthhttps://rtslabs.com/predictive-analytics-real-estate/#:~:text=Precision%20matters%20more%20than%20volume,messaging%2C%20and%20shorten%20conversion%20cycles | Join parcels to tracts via spatial overlay; use aggregated statistics (not individual demographic fields) to represent economic conditions. |
+| Environmental and opportunity data | Flood zones, wildfire hazard potentialhttps://catalog.data.gov/dataset/wildfire-hazard-potential-classified-image-service, soil type, wetlands, carbon‑offset project boundaries, renewable‑energy zoneshttps://www.boem.gov/renewable-energy/mapping-and-data/renewable-energy-gis-data#:~:text=The%20Renewable%20Energy%20Program%20develops%2C,raster%2C%20text%2Ftabular%20or%20geodatabase%20format, opportunity zoneshttps://catalog.data.gov/dataset/opportunity-zones-16322#:~:text=This%20service%20provides%20spatial%20data,eligible%20for%20additional%20tax%20benefits | Use GIS overlay operations to create binary indicators or continuous measures (e.g., risk level, distance to hazard).  Areas with high hazard risk may lower sale probability. |
+| Infrastructure & utilities | Proximity to pipelineshttps://catalog.data.gov/dataset/natural-gas-interstate-and-intrastate-pipelines#:~:text=The%20Natural%20Gas%20Interstate%20and,as%20company%20web%20pages%20and, cell towershttps://www.opencellid.org/#:~:text=The%20world%27s%20largest%20Open%20Database,of%20Cell%20Towers, roads and power lines; presence of municipal utilities | Compute shortest distance metrics; these factors influence development potential and thus sale likelihood. |
+| Permit and licensing data | Business licenses (Philadelphia API)https://catalog.data.gov/dataset/licenses-and-inspections-business-licenses#:~:text=Information%20regarding%20applications%20for%20licenses,order%20to%20practice%20their%20trade, contractor licenseshttps://catalog.data.gov/dataset/li-contractor-license-data-general#:~:text=Metadata%20Updated%3A%20January%203%2C%202026, professional license data | Identify owners who are licensed professionals (contractors, realtors) as they may be more likely to transact.  Ensure these fields are used responsibly. |
+
+### 2.2 Owner‑centric datasets
+
+| Source | Key fields | Integration notes |
+|---|---|---|
+| OpenCorporates API | Company officers’ names, addresses and roleshttps://knowledge.opencorporates.com/knowledge-base/fetching-a-company/#:~:text=The%20OpenCorporates%20company%20endpoint%20,things%20like%20filings%20or%20officershttps://knowledge.opencorporates.com/knowledge-base/fetching-a-company/ | For parcels owned by LLCs or trusts, query this API to retrieve officer or registered‑agent addresses; use as secondary contact information. |
+| Secretary of State & business portals (CT, CO, WA, etc.) | Registered business name, registered agent, mailing addresshttps://business.ct.gov/knowledge-base/articles/sots/api#:~:text=We%20offer%20several%20free%20and,can%20access%20state%20business%20data | Provide additional verification of entity owners; treat this as optional enrichment due to varying accessibility. |
+| SAM.gov Entity Management API | Entity name, physical and mailing addresses, NAICS codes and points of contacthttps://open.gsa.gov/api/entity-api/#:~:text=The%20Entity%20Management%20API%20allows,through%20several%20optional%20request%20parametershttps://open.gsa.gov/api/entity-api/#:~:text=Sensitive%20 | Use for properties owned by federal contractors or non‑profits; can reveal updated mailing addresses and contact persons. |
+| Professional licensing APIs (MA, WA) | License holder name, business name, address, license statushttps://catalog.data.gov/dataset/li-contractor-license-data-general#:~:text=Metadata%20Updated%3A%20January%203%2C%202026 | Use to cross‑validate owner identity and update contact details; only use aggregated indicators (e.g., licensed vs. not licensed). |
+
+## 3 Data preparation and feature engineering
+
+This phase transforms raw datasets into model‑ready features.  Implement these steps as Python scripts or notebooks (e.g., using Pandas, GeoPandas and scikit‑learn) within Replit.
+
+1. **Record linkage** – Normalize owner names using string‑matching (e.g., fuzzy matching) to join assessor records with UCC filings, tax‑lien lists and business‑entity data.  Resolve synonyms (e.g., “LLC” vs “L.L.C.”) and handle corporate designations.
+2. **Spatial joins** – Use GeoPandas to overlay parcels with environmental layers (flood zones, wildfire risk) and socio‑economic tracts.  Add columns like `flood_risk`, `wildfire_risk`, `median_income`, `vacancy_rate` and `opportunity_zone_flag`.
+3. **Time‑based features** – Compute time since last sale, time since last building permit, and time since tax lien filing.  Use log or bucketed transformations to capture non‑linear effects (e.g., properties unsold for >10 years may be more likely to sell).
+4. **Distress indicators** – Create Boolean or categorical features: `tax_delinquent`, `ucc_filing_present`, `recent_code_violation`.  Encode the severity (e.g., number of liens or total delinquent amount divided by assessed value).
+5. **Development potential** – Calculate distances to nearest major road, cell tower and pipeline; assign `development_ready` if utilities are within thresholds.  Combine with zoning codes to determine highest and best use (e.g., residential vs. agricultural).
+6. **Market conditions** – Aggregate building‑permit counts and price appreciation from local data to represent demand; assign `market_hotness` index.  Use county‑level or tract‑level statistics to avoid personal data.
+7. **Normalize and encode** – Standardize continuous variables (z‑scores) and one‑hot encode categorical variables (zoning type, hazard class).  Impute missing values using median or domain‑specific defaults.
+8. **Assemble feature vector** – For each lead (owner/address pair), compile a vector of features summarizing property characteristics, owner/entity signals and market context.
+
+## 4 Model selection and training
+
+Follow a structured process to design and validate the scoring model:
+
+1. **Label collection** – Use historical outreach campaigns or transaction data to label each lead as “converted” (owner sold or responded) or “not converted.”  If no labels exist, start with a heuristic (e.g., classify tax‑delinquent properties as high‑propensity) and refine as data is collected.
+2. **Train/test split** – Partition labeled data into training (80 %) and test (20 %) sets with stratification on the outcome to maintain class balance.
+3. **Baseline model** – Start with logistic regression or decision trees to establish a baseline.  Evaluate using Area Under the Receiver Operating Characteristic (AUROC), precision‑recall and calibration metrics.
+4. **Advanced models** – Experiment with ensemble methods (random forest, gradient‑boosted trees) that can capture nonlinear relationships.  Avoid overly complex models if data quantity is limited.  Use cross‑validation to select hyperparameters.
+5. **Scoring scale** – Transform predicted probabilities into a scoring range (e.g., –100 to +100) similar to Betty’s –400 to +400 scale.  Define thresholds that correspond to recommended mailing targets (e.g., score ≥ 50 means “mail;” score ≤ 0 means “do not mail”).
+6. **Feature importance and explainability** – Use model‑explainability tools (e.g., SHAP values) to determine which features influence scores.  Present top contributing factors for each lead to users.  This transparency helps avoid bias and builds trust.
+7. **Fairness and compliance checks** – Ensure that no sensitive personal data is used.  Evaluate whether socio‑economic proxies produce disparate impact; if so, adjust the model or remove problematic features.  Document data sources and modeling assumptions.
+
+## 5 System architecture and integration
+
+Implement the scoring engine as a microservice within AcreOS.  The architecture should support scheduled data updates, real‑time scoring requests, and integration with the user interface.
+
+1. **Data store** – Use a relational database (PostgreSQL/PostGIS) to store parcels and features.  Data pipelines (ETL jobs) regularly update the database with new tax liens, permits and socio‑economic data.
+2. **Scoring API** – Build a RESTful API (e.g., using FastAPI or Flask) that accepts a CSV of leads (name and address) or a single lead via JSON.  The service performs record linkage, fetches feature vectors, runs the trained model and returns scores with explanations.
+3. **Model serving** – Package the trained model using a model‑serving library like MLflow or joblib.  Maintain versioning and ability to roll back if a new model underperforms.
+4. **User interface integration** – In the AcreOS UI, add a “Lead Scoring” module where users can upload or select leads from the property database.  Provide a tabular output with scores, key factors and recommended action (mail/do not mail).  Include filter and sort options.
+5. **Feedback loop** – After campaigns, capture whether each scored lead resulted in a response or sale.  Store this feedback in the database for model retraining.  Provide a simple interface for users to annotate outcomes.
+
+## 6 Deployment and maintenance
+
+1. **Staging vs. production** – Deploy the scoring service to a staging environment first.  Use synthetic or historic data to validate throughput and concurrency.  Evaluate the UI integration for usability.
+2. **Monitoring** – Implement logging and metrics to track API usage, latency and error rates.  Monitor model performance metrics (precision, recall) over time.  Use alerts if performance drifts.
+3. **Data refresh** – Schedule periodic updates for external datasets (e.g., monthly for tax‑lien lists and building permits; annually for ACS demographics).  Update environment variables or config files with dataset refresh schedules.
+4. **Model retraining** – Set up a retraining pipeline (e.g., monthly or quarterly) that pulls the latest labeled data, retrains the model, evaluates it against hold‑out data and promotes it if performance is consistent or better.
+5. **Documentation and reproducibility** – Document the feature engineering steps, model configuration and evaluation results.  Store code in version control (Git) and maintain a Jupyter notebook demonstrating the full pipeline.  Provide a README to guide future developers.
+
+## 7 Risks and mitigation strategies
+
+1. **Data quality and completeness** – Public datasets may have missing or inconsistent records.  Mitigate by performing data quality checks and using imputation strategies.
+2. **Bias and fairness** – Some features (e.g., neighborhood socio‑economic data) could correlate with protected classes.  Use aggregated data at the tract level and evaluate for disparate impact.  Exclude features with high bias potential.
+3. **Label scarcity** – Initial training data may be limited.  Use semi‑supervised learning or heuristics to bootstrap the model and gradually improve accuracy as more labeled outcomes are collected.
+4. **Model explainability** – Real‑estate investors may distrust a “black box.”  Provide feature importance and individual explanation metrics to foster transparency and user acceptance.
+5. **Legal and ethical considerations** – Ensure the scoring system complies with fair‑housing laws and data‑privacy regulations.  Avoid making final decisions on individual sales; use the score as a guide for marketing outreach.
+
+## 8 Timeline (6‑month high‑level plan)
+
+| Month | Tasks |
+|---|---|
+| **1** | Requirements definition, select goals and metrics; inventory current datasets and identify missing features; set up development environment on Replit; design data schema in PostgreSQL/PostGIS. |
+| **2** | Build ETL pipelines for assessor data, permits, tax liens, UCC filings, socio‑economic and environmental layers; implement record linkage and spatial joins. |
+| **3** | Engineer initial feature set; develop baseline model using logistic regression; create evaluation scripts; design REST API skeleton. |
+| **4** | Integrate model with API; build UI prototype for lead uploading and score display; implement explanation metrics; start collecting feedback from early users. |
+| **5** | Expand to advanced models (e.g., gradient boosting), add additional datasets (e.g., professional licenses, corporate officer data); implement fairness checks; refine feature engineering. |
+| **6** | Deploy to staging then production; set up monitoring and retraining pipelines; document all workflows; plan next iteration (e.g., incorporate behavioural data from user interactions). |
+
+By following this roadmap, the AcreOS team can develop a sophisticated lead‑scoring engine that mirrors the concept of Reworked.ai’s **Betty** and applies it responsibly to vacant land investing.  The result will be a scalable, transparent and continuously improving system that empowers investors to target the right leads at the right time.

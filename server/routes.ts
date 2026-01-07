@@ -57,6 +57,9 @@ import { usageMeteringService, creditService } from "./services/credits";
 // Lead nurturing
 import { leadNurturerService } from "./services/leadNurturer";
 
+// Lead Scoring (Betty-style)
+import { leadScoringService } from "./services/leadScoring";
+
 // Alerting
 import { alertingService } from "./services/alerting";
 
@@ -1262,6 +1265,116 @@ export async function registerRoutes(
       scoreFactors: scoredLead.scoreFactors,
       nurturingStage: scoredLead.nurturingStage,
     });
+  });
+
+  // ============================================
+  // BETTY-STYLE LEAD SCORING
+  // ============================================
+  
+  api.post("/api/leads/:id/betty-score", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const leadId = Number(req.params.id);
+    const triggerSource = req.body.triggerSource || "manual";
+    
+    try {
+      const result = await leadScoringService.scoreLead(leadId, org.id, triggerSource);
+      res.json({
+        success: true,
+        score: result.score,
+        normalizedScore: result.normalizedScore,
+        recommendation: result.recommendation,
+        factors: result.factors,
+        scoredAt: result.scoredAt,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to score lead" });
+    }
+  });
+
+  api.post("/api/leads/batch-score", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const { leadIds, triggerSource = "batch" } = req.body;
+    
+    if (!Array.isArray(leadIds) || leadIds.length === 0) {
+      return res.status(400).json({ message: "leadIds array is required" });
+    }
+    
+    if (leadIds.length > 100) {
+      return res.status(400).json({ message: "Maximum 100 leads per batch" });
+    }
+    
+    try {
+      const results = await leadScoringService.batchScoreLeads(leadIds, org.id, triggerSource);
+      res.json({
+        success: true,
+        scored: results.length,
+        results: results.map(r => ({
+          leadId: r.leadId,
+          score: r.score,
+          recommendation: r.recommendation,
+        })),
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to batch score leads" });
+    }
+  });
+
+  api.get("/api/leads/:id/score-history", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const leadId = Number(req.params.id);
+    const limit = Math.min(Number(req.query.limit) || 10, 50);
+    
+    try {
+      const history = await leadScoringService.getScoreHistory(leadId, limit);
+      res.json(history);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to get score history" });
+    }
+  });
+
+  api.get("/api/scoring/profiles", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    
+    try {
+      const profile = await leadScoringService.getOrCreateDefaultProfile(org.id);
+      res.json([profile]);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to get scoring profiles" });
+    }
+  });
+
+  api.get("/api/scoring/stats", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    
+    try {
+      const stats = await leadScoringService.getScoringStats(org.id);
+      res.json(stats);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to get scoring stats" });
+    }
+  });
+
+  api.post("/api/leads/:id/conversion", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const leadId = Number(req.params.id);
+    const { conversionType, campaignId, campaignType, touchNumber, dealValue, profitMargin } = req.body;
+    
+    if (!conversionType) {
+      return res.status(400).json({ message: "conversionType is required" });
+    }
+    
+    try {
+      await leadScoringService.recordConversion(leadId, org.id, conversionType, {
+        campaignId,
+        campaignType,
+        touchNumber,
+        dealValue,
+        profitMargin,
+      });
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to record conversion" });
+    }
   });
 
   api.post("/api/leads/:id/nurture", isAuthenticated, getOrCreateOrg, async (req, res) => {
