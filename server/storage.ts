@@ -141,6 +141,24 @@ import {
   type WorkflowRun, type InsertWorkflowRun,
   scheduledTasks,
   type ScheduledTask, type InsertScheduledTask,
+  marketingLists,
+  offerBatches,
+  offers,
+  sellerCommunications,
+  adPostings,
+  buyerPrequalifications,
+  collectionSequences,
+  collectionEnrollments,
+  countyResearch,
+  type MarketingList, type InsertMarketingList,
+  type OfferBatch, type InsertOfferBatch,
+  type Offer, type InsertOffer,
+  type SellerCommunication, type InsertSellerCommunication,
+  type AdPosting, type InsertAdPosting,
+  type BuyerPrequalification, type InsertBuyerPrequalification,
+  type CollectionSequence, type InsertCollectionSequence,
+  type CollectionEnrollment, type InsertCollectionEnrollment,
+  type CountyResearch, type InsertCountyResearch,
 } from "@shared/schema";
 
 // Helper to calculate amortization schedule
@@ -384,6 +402,75 @@ export interface IStorage {
   createVaTemplate(template: InsertVaTemplate): Promise<VaTemplate>;
   updateVaTemplate(id: number, updates: Partial<InsertVaTemplate>): Promise<VaTemplate>;
   deleteVaTemplate(id: number): Promise<void>;
+
+  // VA Replacement Engine Tables
+  // Marketing Lists
+  getMarketingLists(orgId: number): Promise<MarketingList[]>;
+  getMarketingListById(orgId: number, id: number): Promise<MarketingList | undefined>;
+  createMarketingList(data: InsertMarketingList): Promise<MarketingList>;
+  updateMarketingList(orgId: number, id: number, updates: Partial<InsertMarketingList>): Promise<MarketingList>;
+  deleteMarketingList(orgId: number, id: number): Promise<void>;
+
+  // Offer Batches
+  getOfferBatches(orgId: number): Promise<OfferBatch[]>;
+  getOfferBatchById(orgId: number, id: number): Promise<OfferBatch | undefined>;
+  createOfferBatch(data: InsertOfferBatch): Promise<OfferBatch>;
+  updateOfferBatch(orgId: number, id: number, updates: Partial<InsertOfferBatch>): Promise<OfferBatch>;
+  deleteOfferBatch(orgId: number, id: number): Promise<void>;
+
+  // Offers
+  getOffers(orgId: number): Promise<Offer[]>;
+  getOfferById(orgId: number, id: number): Promise<Offer | undefined>;
+  getOffersByBatch(orgId: number, batchId: number): Promise<Offer[]>;
+  createOffer(data: InsertOffer): Promise<Offer>;
+  updateOffer(orgId: number, id: number, updates: Partial<InsertOffer>): Promise<Offer>;
+  deleteOffer(orgId: number, id: number): Promise<void>;
+
+  // Seller Communications
+  getSellerCommunications(orgId: number): Promise<SellerCommunication[]>;
+  getSellerCommunicationById(orgId: number, id: number): Promise<SellerCommunication | undefined>;
+  getSellerCommunicationsByLead(leadId: number): Promise<SellerCommunication[]>;
+  createSellerCommunication(data: InsertSellerCommunication): Promise<SellerCommunication>;
+  updateSellerCommunication(id: number, updates: Partial<InsertSellerCommunication>): Promise<SellerCommunication>;
+
+  // Ad Postings
+  getAdPostings(orgId: number): Promise<AdPosting[]>;
+  getAdPostingById(orgId: number, id: number): Promise<AdPosting | undefined>;
+  getAdPostingsByProperty(propertyId: number): Promise<AdPosting[]>;
+  createAdPosting(data: InsertAdPosting): Promise<AdPosting>;
+  updateAdPosting(orgId: number, id: number, updates: Partial<InsertAdPosting>): Promise<AdPosting>;
+  deleteAdPosting(orgId: number, id: number): Promise<void>;
+
+  // Buyer Prequalifications
+  getBuyerPrequalifications(orgId: number): Promise<BuyerPrequalification[]>;
+  getBuyerPrequalificationById(orgId: number, id: number): Promise<BuyerPrequalification | undefined>;
+  getBuyerPrequalificationByLead(leadId: number): Promise<BuyerPrequalification | undefined>;
+  createBuyerPrequalification(data: InsertBuyerPrequalification): Promise<BuyerPrequalification>;
+  updateBuyerPrequalification(orgId: number, id: number, updates: Partial<InsertBuyerPrequalification>): Promise<BuyerPrequalification>;
+  deleteBuyerPrequalification(orgId: number, id: number): Promise<void>;
+
+  // Collection Sequences
+  getCollectionSequences(orgId: number): Promise<CollectionSequence[]>;
+  getCollectionSequenceById(orgId: number, id: number): Promise<CollectionSequence | undefined>;
+  getActiveCollectionSequence(orgId: number): Promise<CollectionSequence | undefined>;
+  createCollectionSequence(data: InsertCollectionSequence): Promise<CollectionSequence>;
+  updateCollectionSequence(orgId: number, id: number, updates: Partial<InsertCollectionSequence>): Promise<CollectionSequence>;
+  deleteCollectionSequence(orgId: number, id: number): Promise<void>;
+
+  // Collection Enrollments
+  getCollectionEnrollments(orgId: number): Promise<CollectionEnrollment[]>;
+  getCollectionEnrollmentById(orgId: number, id: number): Promise<CollectionEnrollment | undefined>;
+  getCollectionEnrollmentsByNote(noteId: number): Promise<CollectionEnrollment[]>;
+  getCollectionEnrollmentsBySequence(sequenceId: number): Promise<CollectionEnrollment[]>;
+  createCollectionEnrollment(data: InsertCollectionEnrollment): Promise<CollectionEnrollment>;
+  updateCollectionEnrollment(orgId: number, id: number, updates: Partial<InsertCollectionEnrollment>): Promise<CollectionEnrollment>;
+
+  // County Research
+  getCountyResearchList(): Promise<CountyResearch[]>;
+  getCountyResearchById(id: number): Promise<CountyResearch | undefined>;
+  getCountyResearch(state: string, county: string): Promise<CountyResearch | undefined>;
+  createCountyResearch(data: InsertCountyResearch): Promise<CountyResearch>;
+  updateCountyResearch(id: number, updates: Partial<InsertCountyResearch>): Promise<CountyResearch>;
 
   // Due Diligence Templates
   getDueDiligenceTemplates(orgId: number): Promise<DueDiligenceTemplate[]>;
@@ -6531,6 +6618,325 @@ Notary Public</p>
 
   async deleteScheduledTask(id: number): Promise<void> {
     await db.delete(scheduledTasks).where(eq(scheduledTasks.id, id));
+  }
+
+  // ============================================
+  // VA REPLACEMENT ENGINE TABLES
+  // ============================================
+
+  // Marketing Lists
+  async getMarketingLists(orgId: number): Promise<MarketingList[]> {
+    return await db.select().from(marketingLists)
+      .where(eq(marketingLists.organizationId, orgId))
+      .orderBy(desc(marketingLists.createdAt));
+  }
+
+  async getMarketingListById(orgId: number, id: number): Promise<MarketingList | undefined> {
+    const [list] = await db.select().from(marketingLists).where(and(eq(marketingLists.id, id), eq(marketingLists.organizationId, orgId)));
+    return list;
+  }
+
+  async createMarketingList(data: InsertMarketingList): Promise<MarketingList> {
+    const [created] = await db.insert(marketingLists).values(data).returning();
+    return created;
+  }
+
+  async updateMarketingList(orgId: number, id: number, updates: Partial<InsertMarketingList>): Promise<MarketingList> {
+    const [updated] = await db.update(marketingLists)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(and(eq(marketingLists.id, id), eq(marketingLists.organizationId, orgId)))
+      .returning();
+    return updated;
+  }
+
+  async deleteMarketingList(orgId: number, id: number): Promise<void> {
+    await db.delete(marketingLists).where(and(eq(marketingLists.id, id), eq(marketingLists.organizationId, orgId)));
+  }
+
+  // Offer Batches
+  async getOfferBatches(orgId: number): Promise<OfferBatch[]> {
+    return await db.select().from(offerBatches)
+      .where(eq(offerBatches.organizationId, orgId))
+      .orderBy(desc(offerBatches.createdAt));
+  }
+
+  async getOfferBatchById(orgId: number, id: number): Promise<OfferBatch | undefined> {
+    const [batch] = await db.select().from(offerBatches).where(and(eq(offerBatches.id, id), eq(offerBatches.organizationId, orgId)));
+    return batch;
+  }
+
+  async createOfferBatch(data: InsertOfferBatch): Promise<OfferBatch> {
+    const [created] = await db.insert(offerBatches).values(data).returning();
+    return created;
+  }
+
+  async updateOfferBatch(orgId: number, id: number, updates: Partial<InsertOfferBatch>): Promise<OfferBatch> {
+    const [updated] = await db.update(offerBatches)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(and(eq(offerBatches.id, id), eq(offerBatches.organizationId, orgId)))
+      .returning();
+    return updated;
+  }
+
+  async deleteOfferBatch(orgId: number, id: number): Promise<void> {
+    await db.delete(offerBatches).where(and(eq(offerBatches.id, id), eq(offerBatches.organizationId, orgId)));
+  }
+
+  // Offers
+  async getOffers(orgId: number): Promise<Offer[]> {
+    return await db.select().from(offers)
+      .where(eq(offers.organizationId, orgId))
+      .orderBy(desc(offers.createdAt));
+  }
+
+  async getOfferById(orgId: number, id: number): Promise<Offer | undefined> {
+    const [offer] = await db.select().from(offers).where(and(eq(offers.id, id), eq(offers.organizationId, orgId)));
+    return offer;
+  }
+
+  async getOffersByBatch(orgId: number, batchId: number): Promise<Offer[]> {
+    return await db.select().from(offers)
+      .where(and(eq(offers.batchId, batchId), eq(offers.organizationId, orgId)))
+      .orderBy(desc(offers.createdAt));
+  }
+
+  async createOffer(data: InsertOffer): Promise<Offer> {
+    const [created] = await db.insert(offers).values(data).returning();
+    return created;
+  }
+
+  async updateOffer(orgId: number, id: number, updates: Partial<InsertOffer>): Promise<Offer> {
+    const [updated] = await db.update(offers)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(and(eq(offers.id, id), eq(offers.organizationId, orgId)))
+      .returning();
+    return updated;
+  }
+
+  async deleteOffer(orgId: number, id: number): Promise<void> {
+    await db.delete(offers).where(and(eq(offers.id, id), eq(offers.organizationId, orgId)));
+  }
+
+  // Seller Communications
+  async getSellerCommunications(orgId: number): Promise<SellerCommunication[]> {
+    return await db.select().from(sellerCommunications)
+      .where(eq(sellerCommunications.organizationId, orgId))
+      .orderBy(desc(sellerCommunications.createdAt));
+  }
+
+  async getSellerCommunicationById(orgId: number, id: number): Promise<SellerCommunication | undefined> {
+    const [comm] = await db.select().from(sellerCommunications).where(and(eq(sellerCommunications.id, id), eq(sellerCommunications.organizationId, orgId)));
+    return comm;
+  }
+
+  async getSellerCommunicationsByLead(leadId: number): Promise<SellerCommunication[]> {
+    return await db.select().from(sellerCommunications)
+      .where(eq(sellerCommunications.leadId, leadId))
+      .orderBy(desc(sellerCommunications.createdAt));
+  }
+
+  async createSellerCommunication(data: InsertSellerCommunication): Promise<SellerCommunication> {
+    const [created] = await db.insert(sellerCommunications).values(data).returning();
+    return created;
+  }
+
+  async updateSellerCommunication(id: number, updates: Partial<InsertSellerCommunication>): Promise<SellerCommunication> {
+    const [updated] = await db.update(sellerCommunications)
+      .set(updates)
+      .where(eq(sellerCommunications.id, id))
+      .returning();
+    return updated;
+  }
+
+  // Ad Postings
+  async getAdPostings(orgId: number): Promise<AdPosting[]> {
+    return await db.select().from(adPostings)
+      .where(eq(adPostings.organizationId, orgId))
+      .orderBy(desc(adPostings.createdAt));
+  }
+
+  async getAdPostingById(orgId: number, id: number): Promise<AdPosting | undefined> {
+    const [posting] = await db.select().from(adPostings).where(and(eq(adPostings.id, id), eq(adPostings.organizationId, orgId)));
+    return posting;
+  }
+
+  async getAdPostingsByProperty(propertyId: number): Promise<AdPosting[]> {
+    return await db.select().from(adPostings)
+      .where(eq(adPostings.propertyId, propertyId))
+      .orderBy(desc(adPostings.createdAt));
+  }
+
+  async createAdPosting(data: InsertAdPosting): Promise<AdPosting> {
+    const [created] = await db.insert(adPostings).values(data).returning();
+    return created;
+  }
+
+  async updateAdPosting(orgId: number, id: number, updates: Partial<InsertAdPosting>): Promise<AdPosting> {
+    const [updated] = await db.update(adPostings)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(and(eq(adPostings.id, id), eq(adPostings.organizationId, orgId)))
+      .returning();
+    return updated;
+  }
+
+  async deleteAdPosting(orgId: number, id: number): Promise<void> {
+    await db.delete(adPostings).where(and(eq(adPostings.id, id), eq(adPostings.organizationId, orgId)));
+  }
+
+  // Buyer Prequalifications
+  async getBuyerPrequalifications(orgId: number): Promise<BuyerPrequalification[]> {
+    return await db.select().from(buyerPrequalifications)
+      .where(eq(buyerPrequalifications.organizationId, orgId))
+      .orderBy(desc(buyerPrequalifications.createdAt));
+  }
+
+  async getBuyerPrequalificationById(orgId: number, id: number): Promise<BuyerPrequalification | undefined> {
+    const [prequal] = await db.select().from(buyerPrequalifications).where(and(eq(buyerPrequalifications.id, id), eq(buyerPrequalifications.organizationId, orgId)));
+    return prequal;
+  }
+
+  async getBuyerPrequalificationByLead(leadId: number): Promise<BuyerPrequalification | undefined> {
+    const [prequal] = await db.select().from(buyerPrequalifications)
+      .where(eq(buyerPrequalifications.leadId, leadId))
+      .orderBy(desc(buyerPrequalifications.createdAt))
+      .limit(1);
+    return prequal;
+  }
+
+  async createBuyerPrequalification(data: InsertBuyerPrequalification): Promise<BuyerPrequalification> {
+    const [created] = await db.insert(buyerPrequalifications).values(data).returning();
+    return created;
+  }
+
+  async updateBuyerPrequalification(orgId: number, id: number, updates: Partial<InsertBuyerPrequalification>): Promise<BuyerPrequalification> {
+    const [updated] = await db.update(buyerPrequalifications)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(and(eq(buyerPrequalifications.id, id), eq(buyerPrequalifications.organizationId, orgId)))
+      .returning();
+    return updated;
+  }
+
+  async deleteBuyerPrequalification(orgId: number, id: number): Promise<void> {
+    await db.delete(buyerPrequalifications).where(and(eq(buyerPrequalifications.id, id), eq(buyerPrequalifications.organizationId, orgId)));
+  }
+
+  // Collection Sequences
+  async getCollectionSequences(orgId: number): Promise<CollectionSequence[]> {
+    return await db.select().from(collectionSequences)
+      .where(eq(collectionSequences.organizationId, orgId))
+      .orderBy(desc(collectionSequences.createdAt));
+  }
+
+  async getCollectionSequenceById(orgId: number, id: number): Promise<CollectionSequence | undefined> {
+    const [sequence] = await db.select().from(collectionSequences).where(and(eq(collectionSequences.id, id), eq(collectionSequences.organizationId, orgId)));
+    return sequence;
+  }
+
+  async getActiveCollectionSequence(orgId: number): Promise<CollectionSequence | undefined> {
+    const [sequence] = await db.select().from(collectionSequences)
+      .where(and(
+        eq(collectionSequences.organizationId, orgId),
+        eq(collectionSequences.isActive, true),
+        eq(collectionSequences.isDefault, true)
+      ))
+      .limit(1);
+    if (sequence) return sequence;
+    
+    const [fallback] = await db.select().from(collectionSequences)
+      .where(and(
+        eq(collectionSequences.organizationId, orgId),
+        eq(collectionSequences.isActive, true)
+      ))
+      .limit(1);
+    return fallback;
+  }
+
+  async createCollectionSequence(data: InsertCollectionSequence): Promise<CollectionSequence> {
+    const [created] = await db.insert(collectionSequences).values(data).returning();
+    return created;
+  }
+
+  async updateCollectionSequence(orgId: number, id: number, updates: Partial<InsertCollectionSequence>): Promise<CollectionSequence> {
+    const [updated] = await db.update(collectionSequences)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(and(eq(collectionSequences.id, id), eq(collectionSequences.organizationId, orgId)))
+      .returning();
+    return updated;
+  }
+
+  async deleteCollectionSequence(orgId: number, id: number): Promise<void> {
+    await db.delete(collectionSequences).where(and(eq(collectionSequences.id, id), eq(collectionSequences.organizationId, orgId)));
+  }
+
+  // Collection Enrollments
+  async getCollectionEnrollments(orgId: number): Promise<CollectionEnrollment[]> {
+    return await db.select().from(collectionEnrollments)
+      .where(eq(collectionEnrollments.organizationId, orgId))
+      .orderBy(desc(collectionEnrollments.createdAt));
+  }
+
+  async getCollectionEnrollmentById(orgId: number, id: number): Promise<CollectionEnrollment | undefined> {
+    const [enrollment] = await db.select().from(collectionEnrollments).where(and(eq(collectionEnrollments.id, id), eq(collectionEnrollments.organizationId, orgId)));
+    return enrollment;
+  }
+
+  async getCollectionEnrollmentsByNote(noteId: number): Promise<CollectionEnrollment[]> {
+    return await db.select().from(collectionEnrollments)
+      .where(eq(collectionEnrollments.noteId, noteId))
+      .orderBy(desc(collectionEnrollments.createdAt));
+  }
+
+  async getCollectionEnrollmentsBySequence(sequenceId: number): Promise<CollectionEnrollment[]> {
+    return await db.select().from(collectionEnrollments)
+      .where(eq(collectionEnrollments.sequenceId, sequenceId))
+      .orderBy(desc(collectionEnrollments.createdAt));
+  }
+
+  async createCollectionEnrollment(data: InsertCollectionEnrollment): Promise<CollectionEnrollment> {
+    const [created] = await db.insert(collectionEnrollments).values(data).returning();
+    return created;
+  }
+
+  async updateCollectionEnrollment(orgId: number, id: number, updates: Partial<InsertCollectionEnrollment>): Promise<CollectionEnrollment> {
+    const [updated] = await db.update(collectionEnrollments)
+      .set(updates)
+      .where(and(eq(collectionEnrollments.id, id), eq(collectionEnrollments.organizationId, orgId)))
+      .returning();
+    return updated;
+  }
+
+  // County Research
+  async getCountyResearchList(): Promise<CountyResearch[]> {
+    return await db.select().from(countyResearch)
+      .orderBy(countyResearch.state, countyResearch.county);
+  }
+
+  async getCountyResearchById(id: number): Promise<CountyResearch | undefined> {
+    const [research] = await db.select().from(countyResearch).where(eq(countyResearch.id, id));
+    return research;
+  }
+
+  async getCountyResearch(state: string, county: string): Promise<CountyResearch | undefined> {
+    const [research] = await db.select().from(countyResearch)
+      .where(and(
+        sql`UPPER(${countyResearch.state}) = UPPER(${state})`,
+        sql`LOWER(${countyResearch.county}) = LOWER(${county})`
+      ))
+      .limit(1);
+    return research;
+  }
+
+  async createCountyResearch(data: InsertCountyResearch): Promise<CountyResearch> {
+    const [created] = await db.insert(countyResearch).values(data).returning();
+    return created;
+  }
+
+  async updateCountyResearch(id: number, updates: Partial<InsertCountyResearch>): Promise<CountyResearch> {
+    const [updated] = await db.update(countyResearch)
+      .set({ ...updates, lastUpdatedAt: new Date() })
+      .where(eq(countyResearch.id, id))
+      .returning();
+    return updated;
   }
 }
 

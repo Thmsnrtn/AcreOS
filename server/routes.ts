@@ -19,6 +19,10 @@ import {
   teamConversations, teamMessages, teamMemberPresence,
   insertTeamConversationSchema, insertTeamMessageSchema, insertTeamMemberPresenceSchema,
   insertWorkflowSchema, WORKFLOW_TRIGGER_EVENTS, WORKFLOW_ACTION_TYPES,
+  insertMarketingListSchema, insertOfferBatchSchema, insertOfferSchema,
+  insertSellerCommunicationSchema, insertAdPostingSchema, insertBuyerPrequalificationSchema,
+  insertCollectionSequenceSchema, insertCollectionEnrollmentSchema, insertCountyResearchSchema,
+  offers,
 } from "@shared/schema";
 import { 
   workflowEngine, 
@@ -15029,6 +15033,733 @@ Seller Signature (if applicable)
     } catch (error: any) {
       console.error("Run scheduled task error:", error);
       res.status(500).json({ message: error.message || "Failed to run scheduled task" });
+    }
+  });
+
+  // ============================================
+  // MARKETING LISTS (VA Replacement Engine)
+  // ============================================
+
+  api.get("/api/marketing-lists", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const lists = await storage.getMarketingLists(org.id);
+      res.json(lists);
+    } catch (error: any) {
+      console.error("Get marketing lists error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch marketing lists" });
+    }
+  });
+
+  api.get("/api/marketing-lists/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const list = await storage.getMarketingListById(org.id, id);
+      if (!list) {
+        return res.status(404).json({ message: "Marketing list not found" });
+      }
+      res.json(list);
+    } catch (error: any) {
+      console.error("Get marketing list error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch marketing list" });
+    }
+  });
+
+  api.post("/api/marketing-lists", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const validated = insertMarketingListSchema.parse({
+        ...req.body,
+        organizationId: org.id,
+      });
+      const list = await storage.createMarketingList(validated);
+      res.status(201).json(list);
+    } catch (error: any) {
+      console.error("Create marketing list error:", error);
+      res.status(400).json({ message: error.message || "Failed to create marketing list" });
+    }
+  });
+
+  api.patch("/api/marketing-lists/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const existing = await storage.getMarketingListById(org.id, id);
+      if (!existing) {
+        return res.status(404).json({ message: "Marketing list not found" });
+      }
+      const list = await storage.updateMarketingList(org.id, id, req.body);
+      res.json(list);
+    } catch (error: any) {
+      console.error("Update marketing list error:", error);
+      res.status(400).json({ message: error.message || "Failed to update marketing list" });
+    }
+  });
+
+  api.delete("/api/marketing-lists/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const existing = await storage.getMarketingListById(org.id, id);
+      if (!existing) {
+        return res.status(404).json({ message: "Marketing list not found" });
+      }
+      await storage.deleteMarketingList(org.id, id);
+      res.status(204).send();
+    } catch (error: any) {
+      console.error("Delete marketing list error:", error);
+      res.status(500).json({ message: error.message || "Failed to delete marketing list" });
+    }
+  });
+
+  // ============================================
+  // OFFER BATCHES (VA Replacement Engine)
+  // ============================================
+
+  api.get("/api/offer-batches", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const batches = await storage.getOfferBatches(org.id);
+      res.json(batches);
+    } catch (error: any) {
+      console.error("Get offer batches error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch offer batches" });
+    }
+  });
+
+  api.get("/api/offer-batches/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const batch = await storage.getOfferBatchById(org.id, id);
+      if (!batch) {
+        return res.status(404).json({ message: "Offer batch not found" });
+      }
+      const batchOffers = await storage.getOffersByBatch(org.id, id);
+      res.json({ ...batch, offersCount: batchOffers.length });
+    } catch (error: any) {
+      console.error("Get offer batch error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch offer batch" });
+    }
+  });
+
+  api.get("/api/offer-batches/:id/offers", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const batch = await storage.getOfferBatchById(org.id, id);
+      if (!batch) {
+        return res.status(404).json({ message: "Offer batch not found" });
+      }
+      const batchOffers = await storage.getOffersByBatch(org.id, id);
+      res.json(batchOffers);
+    } catch (error: any) {
+      console.error("Get offers in batch error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch offers in batch" });
+    }
+  });
+
+  api.post("/api/offer-batches", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const validated = insertOfferBatchSchema.parse({
+        ...req.body,
+        organizationId: org.id,
+      });
+      const batch = await storage.createOfferBatch(validated);
+      res.status(201).json(batch);
+    } catch (error: any) {
+      console.error("Create offer batch error:", error);
+      res.status(400).json({ message: error.message || "Failed to create offer batch" });
+    }
+  });
+
+  api.patch("/api/offer-batches/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const existing = await storage.getOfferBatchById(org.id, id);
+      if (!existing) {
+        return res.status(404).json({ message: "Offer batch not found" });
+      }
+      const batch = await storage.updateOfferBatch(org.id, id, req.body);
+      res.json(batch);
+    } catch (error: any) {
+      console.error("Update offer batch error:", error);
+      res.status(400).json({ message: error.message || "Failed to update offer batch" });
+    }
+  });
+
+  api.delete("/api/offer-batches/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const existing = await storage.getOfferBatchById(org.id, id);
+      if (!existing) {
+        return res.status(404).json({ message: "Offer batch not found" });
+      }
+      await storage.deleteOfferBatch(org.id, id);
+      res.status(204).send();
+    } catch (error: any) {
+      console.error("Delete offer batch error:", error);
+      res.status(500).json({ message: error.message || "Failed to delete offer batch" });
+    }
+  });
+
+  // ============================================
+  // OFFERS (VA Replacement Engine)
+  // ============================================
+
+  api.get("/api/offers", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      let orgOffers = await storage.getOffers(org.id);
+      
+      const batchId = req.query.batchId ? parseInt(req.query.batchId as string) : undefined;
+      const leadId = req.query.leadId ? parseInt(req.query.leadId as string) : undefined;
+      const status = req.query.status as string | undefined;
+      
+      if (batchId) {
+        orgOffers = orgOffers.filter(o => o.batchId === batchId);
+      }
+      if (leadId) {
+        orgOffers = orgOffers.filter(o => o.leadId === leadId);
+      }
+      if (status) {
+        orgOffers = orgOffers.filter(o => o.status === status);
+      }
+      
+      res.json(orgOffers);
+    } catch (error: any) {
+      console.error("Get offers error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch offers" });
+    }
+  });
+
+  api.get("/api/offers/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const offer = await storage.getOfferById(org.id, id);
+      if (!offer) {
+        return res.status(404).json({ message: "Offer not found" });
+      }
+      res.json(offer);
+    } catch (error: any) {
+      console.error("Get offer error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch offer" });
+    }
+  });
+
+  api.post("/api/offers", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const validated = insertOfferSchema.parse({
+        ...req.body,
+        organizationId: org.id,
+      });
+      const offer = await storage.createOffer(validated);
+      res.status(201).json(offer);
+    } catch (error: any) {
+      console.error("Create offer error:", error);
+      res.status(400).json({ message: error.message || "Failed to create offer" });
+    }
+  });
+
+  api.patch("/api/offers/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const existing = await storage.getOfferById(org.id, id);
+      if (!existing) {
+        return res.status(404).json({ message: "Offer not found" });
+      }
+      const offer = await storage.updateOffer(org.id, id, req.body);
+      res.json(offer);
+    } catch (error: any) {
+      console.error("Update offer error:", error);
+      res.status(400).json({ message: error.message || "Failed to update offer" });
+    }
+  });
+
+  api.delete("/api/offers/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const existing = await storage.getOfferById(org.id, id);
+      if (!existing) {
+        return res.status(404).json({ message: "Offer not found" });
+      }
+      await storage.deleteOffer(org.id, id);
+      res.status(204).send();
+    } catch (error: any) {
+      console.error("Delete offer error:", error);
+      res.status(500).json({ message: error.message || "Failed to delete offer" });
+    }
+  });
+
+  // ============================================
+  // SELLER COMMUNICATIONS (VA Replacement Engine)
+  // ============================================
+
+  api.get("/api/seller-communications", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      let comms = await storage.getSellerCommunications(org.id);
+      
+      const leadId = req.query.leadId ? parseInt(req.query.leadId as string) : undefined;
+      if (leadId) {
+        comms = comms.filter(c => c.leadId === leadId);
+      }
+      
+      res.json(comms);
+    } catch (error: any) {
+      console.error("Get seller communications error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch seller communications" });
+    }
+  });
+
+  api.get("/api/seller-communications/lead/:leadId", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const leadId = parseInt(req.params.leadId);
+      const comms = await storage.getSellerCommunicationsByLead(leadId);
+      res.json(comms);
+    } catch (error: any) {
+      console.error("Get seller communications by lead error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch seller communications" });
+    }
+  });
+
+  api.get("/api/seller-communications/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const comm = await storage.getSellerCommunicationById(org.id, id);
+      if (!comm) {
+        return res.status(404).json({ message: "Seller communication not found" });
+      }
+      res.json(comm);
+    } catch (error: any) {
+      console.error("Get seller communication error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch seller communication" });
+    }
+  });
+
+  api.post("/api/seller-communications", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const validated = insertSellerCommunicationSchema.parse({
+        ...req.body,
+        organizationId: org.id,
+      });
+      const comm = await storage.createSellerCommunication(validated);
+      res.status(201).json(comm);
+    } catch (error: any) {
+      console.error("Create seller communication error:", error);
+      res.status(400).json({ message: error.message || "Failed to create seller communication" });
+    }
+  });
+
+  // ============================================
+  // AD POSTINGS (VA Replacement Engine)
+  // ============================================
+
+  api.get("/api/ad-postings", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const postings = await storage.getAdPostings(org.id);
+      res.json(postings);
+    } catch (error: any) {
+      console.error("Get ad postings error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch ad postings" });
+    }
+  });
+
+  api.get("/api/ad-postings/property/:propertyId", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const propertyId = parseInt(req.params.propertyId);
+      const postings = await storage.getAdPostingsByProperty(propertyId);
+      res.json(postings);
+    } catch (error: any) {
+      console.error("Get ad postings by property error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch ad postings" });
+    }
+  });
+
+  api.get("/api/ad-postings/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const posting = await storage.getAdPostingById(org.id, id);
+      if (!posting) {
+        return res.status(404).json({ message: "Ad posting not found" });
+      }
+      res.json(posting);
+    } catch (error: any) {
+      console.error("Get ad posting error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch ad posting" });
+    }
+  });
+
+  api.post("/api/ad-postings", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const validated = insertAdPostingSchema.parse({
+        ...req.body,
+        organizationId: org.id,
+      });
+      const posting = await storage.createAdPosting(validated);
+      res.status(201).json(posting);
+    } catch (error: any) {
+      console.error("Create ad posting error:", error);
+      res.status(400).json({ message: error.message || "Failed to create ad posting" });
+    }
+  });
+
+  api.patch("/api/ad-postings/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const existing = await storage.getAdPostingById(org.id, id);
+      if (!existing) {
+        return res.status(404).json({ message: "Ad posting not found" });
+      }
+      const posting = await storage.updateAdPosting(org.id, id, req.body);
+      res.json(posting);
+    } catch (error: any) {
+      console.error("Update ad posting error:", error);
+      res.status(400).json({ message: error.message || "Failed to update ad posting" });
+    }
+  });
+
+  api.delete("/api/ad-postings/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const existing = await storage.getAdPostingById(org.id, id);
+      if (!existing) {
+        return res.status(404).json({ message: "Ad posting not found" });
+      }
+      await storage.deleteAdPosting(org.id, id);
+      res.status(204).send();
+    } catch (error: any) {
+      console.error("Delete ad posting error:", error);
+      res.status(500).json({ message: error.message || "Failed to delete ad posting" });
+    }
+  });
+
+  // ============================================
+  // BUYER PREQUALIFICATIONS (VA Replacement Engine)
+  // ============================================
+
+  api.get("/api/buyer-prequalifications", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const prequalifications = await storage.getBuyerPrequalifications(org.id);
+      res.json(prequalifications);
+    } catch (error: any) {
+      console.error("Get buyer prequalifications error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch buyer prequalifications" });
+    }
+  });
+
+  api.get("/api/buyer-prequalifications/lead/:leadId", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const leadId = parseInt(req.params.leadId);
+      const prequal = await storage.getBuyerPrequalificationByLead(leadId);
+      if (!prequal) {
+        return res.status(404).json({ message: "Buyer prequalification not found for this lead" });
+      }
+      res.json(prequal);
+    } catch (error: any) {
+      console.error("Get buyer prequalification by lead error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch buyer prequalification" });
+    }
+  });
+
+  api.get("/api/buyer-prequalifications/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const prequal = await storage.getBuyerPrequalificationById(org.id, id);
+      if (!prequal) {
+        return res.status(404).json({ message: "Buyer prequalification not found" });
+      }
+      res.json(prequal);
+    } catch (error: any) {
+      console.error("Get buyer prequalification error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch buyer prequalification" });
+    }
+  });
+
+  api.post("/api/buyer-prequalifications", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const validated = insertBuyerPrequalificationSchema.parse({
+        ...req.body,
+        organizationId: org.id,
+      });
+      const prequal = await storage.createBuyerPrequalification(validated);
+      res.status(201).json(prequal);
+    } catch (error: any) {
+      console.error("Create buyer prequalification error:", error);
+      res.status(400).json({ message: error.message || "Failed to create buyer prequalification" });
+    }
+  });
+
+  api.patch("/api/buyer-prequalifications/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const existing = await storage.getBuyerPrequalificationById(org.id, id);
+      if (!existing) {
+        return res.status(404).json({ message: "Buyer prequalification not found" });
+      }
+      const prequal = await storage.updateBuyerPrequalification(org.id, id, req.body);
+      res.json(prequal);
+    } catch (error: any) {
+      console.error("Update buyer prequalification error:", error);
+      res.status(400).json({ message: error.message || "Failed to update buyer prequalification" });
+    }
+  });
+
+  api.delete("/api/buyer-prequalifications/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const existing = await storage.getBuyerPrequalificationById(org.id, id);
+      if (!existing) {
+        return res.status(404).json({ message: "Buyer prequalification not found" });
+      }
+      await storage.deleteBuyerPrequalification(org.id, id);
+      res.status(204).send();
+    } catch (error: any) {
+      console.error("Delete buyer prequalification error:", error);
+      res.status(500).json({ message: error.message || "Failed to delete buyer prequalification" });
+    }
+  });
+
+  // ============================================
+  // COLLECTION SEQUENCES (VA Replacement Engine)
+  // ============================================
+
+  api.get("/api/collection-sequences", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const sequences = await storage.getCollectionSequences(org.id);
+      res.json(sequences);
+    } catch (error: any) {
+      console.error("Get collection sequences error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch collection sequences" });
+    }
+  });
+
+  api.get("/api/collection-sequences/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const sequence = await storage.getCollectionSequenceById(org.id, id);
+      if (!sequence) {
+        return res.status(404).json({ message: "Collection sequence not found" });
+      }
+      res.json(sequence);
+    } catch (error: any) {
+      console.error("Get collection sequence error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch collection sequence" });
+    }
+  });
+
+  api.post("/api/collection-sequences", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const validated = insertCollectionSequenceSchema.parse({
+        ...req.body,
+        organizationId: org.id,
+      });
+      const sequence = await storage.createCollectionSequence(validated);
+      res.status(201).json(sequence);
+    } catch (error: any) {
+      console.error("Create collection sequence error:", error);
+      res.status(400).json({ message: error.message || "Failed to create collection sequence" });
+    }
+  });
+
+  api.patch("/api/collection-sequences/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const existing = await storage.getCollectionSequenceById(org.id, id);
+      if (!existing) {
+        return res.status(404).json({ message: "Collection sequence not found" });
+      }
+      const sequence = await storage.updateCollectionSequence(org.id, id, req.body);
+      res.json(sequence);
+    } catch (error: any) {
+      console.error("Update collection sequence error:", error);
+      res.status(400).json({ message: error.message || "Failed to update collection sequence" });
+    }
+  });
+
+  api.delete("/api/collection-sequences/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const existing = await storage.getCollectionSequenceById(org.id, id);
+      if (!existing) {
+        return res.status(404).json({ message: "Collection sequence not found" });
+      }
+      await storage.deleteCollectionSequence(org.id, id);
+      res.status(204).send();
+    } catch (error: any) {
+      console.error("Delete collection sequence error:", error);
+      res.status(500).json({ message: error.message || "Failed to delete collection sequence" });
+    }
+  });
+
+  // ============================================
+  // COLLECTION ENROLLMENTS (VA Replacement Engine)
+  // ============================================
+
+  api.get("/api/collection-enrollments", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const enrollments = await storage.getCollectionEnrollments(org.id);
+      res.json(enrollments);
+    } catch (error: any) {
+      console.error("Get collection enrollments error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch collection enrollments" });
+    }
+  });
+
+  api.get("/api/collection-enrollments/note/:noteId", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const noteId = parseInt(req.params.noteId);
+      const enrollments = await storage.getCollectionEnrollmentsByNote(noteId);
+      res.json(enrollments);
+    } catch (error: any) {
+      console.error("Get collection enrollments by note error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch collection enrollments" });
+    }
+  });
+
+  api.get("/api/collection-enrollments/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const enrollment = await storage.getCollectionEnrollmentById(org.id, id);
+      if (!enrollment) {
+        return res.status(404).json({ message: "Collection enrollment not found" });
+      }
+      res.json(enrollment);
+    } catch (error: any) {
+      console.error("Get collection enrollment error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch collection enrollment" });
+    }
+  });
+
+  api.post("/api/collection-enrollments", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const validated = insertCollectionEnrollmentSchema.parse({
+        ...req.body,
+        organizationId: org.id,
+      });
+      const enrollment = await storage.createCollectionEnrollment(validated);
+      res.status(201).json(enrollment);
+    } catch (error: any) {
+      console.error("Create collection enrollment error:", error);
+      res.status(400).json({ message: error.message || "Failed to create collection enrollment" });
+    }
+  });
+
+  api.patch("/api/collection-enrollments/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const existing = await storage.getCollectionEnrollmentById(org.id, id);
+      if (!existing) {
+        return res.status(404).json({ message: "Collection enrollment not found" });
+      }
+      const enrollment = await storage.updateCollectionEnrollment(org.id, id, req.body);
+      res.json(enrollment);
+    } catch (error: any) {
+      console.error("Update collection enrollment error:", error);
+      res.status(400).json({ message: error.message || "Failed to update collection enrollment" });
+    }
+  });
+
+  // ============================================
+  // COUNTY RESEARCH (VA Replacement Engine)
+  // ============================================
+
+  api.get("/api/county-research", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const research = await storage.getCountyResearchList();
+      res.json(research);
+    } catch (error: any) {
+      console.error("Get county research list error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch county research" });
+    }
+  });
+
+  api.get("/api/county-research/lookup", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const state = req.query.state as string;
+      const county = req.query.county as string;
+      
+      if (!state || !county) {
+        return res.status(400).json({ message: "Both state and county query parameters are required" });
+      }
+      
+      const research = await storage.getCountyResearch(state, county);
+      if (!research) {
+        return res.status(404).json({ message: "County research not found" });
+      }
+      res.json(research);
+    } catch (error: any) {
+      console.error("Get county research by state/county error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch county research" });
+    }
+  });
+
+  api.get("/api/county-research/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const research = await storage.getCountyResearchById(id);
+      if (!research) {
+        return res.status(404).json({ message: "County research not found" });
+      }
+      res.json(research);
+    } catch (error: any) {
+      console.error("Get county research error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch county research" });
+    }
+  });
+
+  api.post("/api/county-research", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const validated = insertCountyResearchSchema.parse(req.body);
+      const research = await storage.createCountyResearch(validated);
+      res.status(201).json(research);
+    } catch (error: any) {
+      console.error("Create county research error:", error);
+      res.status(400).json({ message: error.message || "Failed to create county research" });
+    }
+  });
+
+  api.patch("/api/county-research/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const existing = await storage.getCountyResearchById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "County research not found" });
+      }
+      const research = await storage.updateCountyResearch(id, req.body);
+      res.json(research);
+    } catch (error: any) {
+      console.error("Update county research error:", error);
+      res.status(400).json({ message: error.message || "Failed to update county research" });
     }
   });
 
