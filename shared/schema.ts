@@ -1354,6 +1354,408 @@ export const vaTemplates = pgTable("va_templates", {
 });
 
 // ============================================
+// VA REPLACEMENT ENGINE (Dirt Rich 2 Methodology)
+// ============================================
+
+// Marketing Lists - imported lead lists for mail campaigns
+export const marketingLists = pgTable("marketing_lists", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  
+  name: text("name").notNull(),
+  source: text("source").notNull(), // datatree, propstream, county_records, custom
+  status: text("status").notNull().default("pending"), // pending, processing, ready, scrubbed, archived
+  
+  totalRecords: integer("total_records").default(0),
+  validRecords: integer("valid_records").default(0),
+  duplicatesRemoved: integer("duplicates_removed").default(0),
+  invalidAddresses: integer("invalid_addresses").default(0),
+  
+  filters: jsonb("filters").$type<{
+    states?: string[];
+    counties?: string[];
+    acreageMin?: number;
+    acreageMax?: number;
+    priceMin?: number;
+    priceMax?: number;
+    zoning?: string[];
+    ownerType?: string[]; // individual, llc, trust, estate
+    yearsOwned?: number;
+    taxDelinquent?: boolean;
+  }>(),
+  
+  uploadedFileName: text("uploaded_file_name"),
+  scrubSettings: jsonb("scrub_settings").$type<{
+    removeDuplicates: boolean;
+    validateAddresses: boolean;
+    skipExistingLeads: boolean;
+    enrichParcelData: boolean;
+  }>(),
+  
+  processedAt: timestamp("processed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Offer Batches - bulk offer generation with pricing matrix
+export const offerBatches = pgTable("offer_batches", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  
+  name: text("name").notNull(),
+  status: text("status").notNull().default("draft"), // draft, generating, ready, sent, archived
+  
+  // Pricing matrix
+  pricingMatrix: jsonb("pricing_matrix").$type<{
+    targetMargin: number; // e.g., 0.25 for 25% of market value
+    minOfferAmount: number;
+    maxOfferAmount: number;
+    roundTo: number; // round to nearest $100, $500, $1000
+    adjustments: {
+      factor: string; // wetlands, flood_zone, road_access, utilities
+      adjustment: number; // percentage to add/subtract
+    }[];
+  }>().notNull(),
+  
+  // Terms for seller financing offers
+  termsConfig: jsonb("terms_config").$type<{
+    downPaymentPercent: number;
+    interestRate: number;
+    termMonths: number;
+    documentFee: number;
+  }>(),
+  
+  // Source filters
+  sourceListId: integer("source_list_id").references(() => marketingLists.id),
+  leadFilters: jsonb("lead_filters").$type<{
+    status?: string[];
+    source?: string[];
+    states?: string[];
+    counties?: string[];
+    acreageMin?: number;
+    acreageMax?: number;
+  }>(),
+  
+  totalOffers: integer("total_offers").default(0),
+  offersGenerated: integer("offers_generated").default(0),
+  offersSent: integer("offers_sent").default(0),
+  offersAccepted: integer("offers_accepted").default(0),
+  
+  generatedAt: timestamp("generated_at"),
+  sentAt: timestamp("sent_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Individual offers within a batch
+export const offers = pgTable("offers", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  batchId: integer("batch_id").references(() => offerBatches.id),
+  leadId: integer("lead_id").references(() => leads.id),
+  propertyId: integer("property_id").references(() => properties.id),
+  
+  status: text("status").notNull().default("draft"), // draft, approved, sent, viewed, accepted, rejected, expired, countered
+  
+  // Offer amounts
+  cashOffer: numeric("cash_offer"),
+  termsOffer: numeric("terms_offer"),
+  downPayment: numeric("down_payment"),
+  monthlyPayment: numeric("monthly_payment"),
+  interestRate: numeric("interest_rate"),
+  termMonths: integer("term_months"),
+  
+  // Calculated values
+  estimatedMarketValue: numeric("estimated_market_value"),
+  offerPercentage: numeric("offer_percentage"), // percentage of market value
+  
+  // Seller response
+  counterOffer: numeric("counter_offer"),
+  sellerNotes: text("seller_notes"),
+  respondedAt: timestamp("responded_at"),
+  
+  // Tracking
+  sentAt: timestamp("sent_at"),
+  viewedAt: timestamp("viewed_at"),
+  expiresAt: timestamp("expires_at"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Seller Communications - track all seller interactions
+export const sellerCommunications = pgTable("seller_communications", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  leadId: integer("lead_id").references(() => leads.id).notNull(),
+  propertyId: integer("property_id").references(() => properties.id),
+  offerId: integer("offer_id").references(() => offers.id),
+  
+  channel: text("channel").notNull(), // email, sms, call, mail, facebook
+  direction: text("direction").notNull(), // inbound, outbound
+  
+  subject: text("subject"),
+  content: text("content").notNull(),
+  
+  // For calls
+  callDuration: integer("call_duration"), // seconds
+  callNotes: text("call_notes"),
+  callOutcome: text("call_outcome"), // interested, not_interested, callback, voicemail, wrong_number
+  
+  // For mail
+  trackingNumber: text("tracking_number"),
+  deliveryStatus: text("delivery_status"), // pending, sent, delivered, returned
+  
+  // Sentiment analysis
+  sentiment: text("sentiment"), // positive, neutral, negative
+  urgencyScore: integer("urgency_score"), // 1-10
+  
+  // AI-generated flag
+  aiGenerated: boolean("ai_generated").default(false),
+  aiAgentId: integer("ai_agent_id").references(() => vaAgents.id),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Ad Postings - multi-platform marketing ads
+export const adPostings = pgTable("ad_postings", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  propertyId: integer("property_id").references(() => properties.id).notNull(),
+  
+  platform: text("platform").notNull(), // facebook, craigslist, lands_of_america, land_watch, zillow, land_com
+  status: text("status").notNull().default("draft"), // draft, scheduled, posted, active, expired, removed
+  
+  // Ad content
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  headline: text("headline"),
+  storyContent: text("story_content"), // Mark Podolsky story-style ad copy
+  
+  // Pricing
+  listingPrice: numeric("listing_price").notNull(),
+  termsPrice: numeric("terms_price"),
+  downPayment: numeric("down_payment"),
+  monthlyPayment: numeric("monthly_payment"),
+  
+  // Media
+  imageUrls: text("image_urls").array(),
+  videoUrl: text("video_url"),
+  
+  // Platform-specific
+  externalListingId: text("external_listing_id"),
+  externalUrl: text("external_url"),
+  
+  // Performance
+  views: integer("views").default(0),
+  inquiries: integer("inquiries").default(0),
+  clicks: integer("clicks").default(0),
+  
+  // AI-generated
+  aiGenerated: boolean("ai_generated").default(false),
+  
+  postedAt: timestamp("posted_at"),
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Buyer Prequalifications - scoring and qualifying buyers
+export const buyerPrequalifications = pgTable("buyer_prequalifications", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  leadId: integer("lead_id").references(() => leads.id).notNull(),
+  propertyId: integer("property_id").references(() => properties.id),
+  
+  status: text("status").notNull().default("pending"), // pending, qualified, disqualified, needs_info
+  
+  // Basic info
+  intendedUse: text("intended_use"), // residential, recreation, investment, farming
+  budgetMin: numeric("budget_min"),
+  budgetMax: numeric("budget_max"),
+  prefersCash: boolean("prefers_cash").default(false),
+  prefersTerms: boolean("prefers_terms").default(false),
+  
+  // Financial qualification
+  downPaymentAvailable: numeric("down_payment_available"),
+  monthlyPaymentCapacity: numeric("monthly_payment_capacity"),
+  employmentStatus: text("employment_status"), // employed, self_employed, retired, other
+  creditRangeReported: text("credit_range_reported"), // excellent, good, fair, poor
+  
+  // Scoring
+  qualificationScore: integer("qualification_score"), // 1-100
+  scoreFactors: jsonb("score_factors").$type<{
+    factor: string;
+    score: number;
+    notes: string;
+  }[]>(),
+  
+  // Follow-up
+  lastContactAt: timestamp("last_contact_at"),
+  nextFollowUpAt: timestamp("next_follow_up_at"),
+  followUpNotes: text("follow_up_notes"),
+  
+  // AI assessment
+  aiAssessment: text("ai_assessment"),
+  aiRecommendation: text("ai_recommendation"), // proceed, more_info, decline
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Collection Sequences - automated payment reminder sequences
+export const collectionSequences = pgTable("collection_sequences", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  
+  name: text("name").notNull(),
+  description: text("description"),
+  isActive: boolean("is_active").default(true),
+  isDefault: boolean("is_default").default(false),
+  
+  // Sequence steps
+  steps: jsonb("steps").$type<{
+    stepNumber: number;
+    daysAfterDue: number; // negative = before due, positive = after due
+    channel: "email" | "sms" | "call" | "mail";
+    templateId?: number;
+    subject?: string;
+    content?: string;
+    escalationLevel: "reminder" | "warning" | "urgent" | "final";
+  }[]>().notNull(),
+  
+  // Automation settings
+  autoStart: boolean("auto_start").default(true), // automatically start sequence when payment becomes overdue
+  pauseOnPayment: boolean("pause_on_payment").default(true),
+  pauseOnContact: boolean("pause_on_contact").default(false),
+  
+  // Metrics
+  totalEnrolled: integer("total_enrolled").default(0),
+  paymentsRecovered: integer("payments_recovered").default(0),
+  totalRecoveredAmount: numeric("total_recovered_amount").default("0"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Collection enrollments - notes enrolled in collection sequences
+export const collectionEnrollments = pgTable("collection_enrollments", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  sequenceId: integer("sequence_id").references(() => collectionSequences.id).notNull(),
+  noteId: integer("note_id").references(() => notes.id).notNull(),
+  paymentId: integer("payment_id"), // specific overdue payment if applicable
+  
+  status: text("status").notNull().default("active"), // active, paused, completed, cancelled
+  currentStep: integer("current_step").default(0),
+  
+  // Tracking
+  startedAt: timestamp("started_at").notNull().defaultNow(),
+  lastStepAt: timestamp("last_step_at"),
+  nextStepAt: timestamp("next_step_at"),
+  completedAt: timestamp("completed_at"),
+  
+  // Outcome
+  outcome: text("outcome"), // paid, partial_paid, no_response, escalated, cancelled
+  amountRecovered: numeric("amount_recovered").default("0"),
+  
+  // History
+  stepHistory: jsonb("step_history").$type<{
+    step: number;
+    executedAt: string;
+    channel: string;
+    result: string;
+  }[]>(),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// County Research Cache - cached research results for counties
+export const countyResearch = pgTable("county_research", {
+  id: serial("id").primaryKey(),
+  
+  state: text("state").notNull(),
+  county: text("county").notNull(),
+  
+  // Contact info
+  assessorPhone: text("assessor_phone"),
+  assessorEmail: text("assessor_email"),
+  assessorWebsite: text("assessor_website"),
+  recorderPhone: text("recorder_phone"),
+  recorderEmail: text("recorder_email"),
+  recorderWebsite: text("recorder_website"),
+  treasurerPhone: text("treasurer_phone"),
+  treasurerEmail: text("treasurer_email"),
+  treasurerWebsite: text("treasurer_website"),
+  
+  // GIS info
+  gisPortalUrl: text("gis_portal_url"),
+  gisApiEndpoint: text("gis_api_endpoint"),
+  hasOnlineMaps: boolean("has_online_maps").default(false),
+  
+  // Fees and processes
+  transferTax: numeric("transfer_tax"),
+  recordingFee: numeric("recording_fee"),
+  titleSearchCost: numeric("title_search_cost"),
+  closingProcess: text("closing_process"),
+  
+  // Market data
+  medianLandPrice: numeric("median_land_price"),
+  avgDaysOnMarket: integer("avg_days_on_market"),
+  salesVolumeLast12Mo: integer("sales_volume_last_12mo"),
+  
+  // AI-gathered insights
+  marketNotes: text("market_notes"),
+  investorFriendly: boolean("investor_friendly"),
+  competitionLevel: text("competition_level"), // low, medium, high
+  
+  // Freshness
+  lastUpdatedAt: timestamp("last_updated_at").defaultNow(),
+  dataSource: text("data_source"), // manual, ai_research, api
+  
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Insert schemas for VA Replacement Engine tables
+export const insertMarketingListSchema = createInsertSchema(marketingLists).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertOfferBatchSchema = createInsertSchema(offerBatches).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertOfferSchema = createInsertSchema(offers).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertSellerCommunicationSchema = createInsertSchema(sellerCommunications).omit({ id: true, createdAt: true });
+export const insertAdPostingSchema = createInsertSchema(adPostings).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertBuyerPrequalificationSchema = createInsertSchema(buyerPrequalifications).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertCollectionSequenceSchema = createInsertSchema(collectionSequences).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertCollectionEnrollmentSchema = createInsertSchema(collectionEnrollments).omit({ id: true, createdAt: true });
+export const insertCountyResearchSchema = createInsertSchema(countyResearch).omit({ id: true, createdAt: true });
+
+// Type exports for VA Replacement Engine
+export type MarketingList = typeof marketingLists.$inferSelect;
+export type InsertMarketingList = z.infer<typeof insertMarketingListSchema>;
+
+export type OfferBatch = typeof offerBatches.$inferSelect;
+export type InsertOfferBatch = z.infer<typeof insertOfferBatchSchema>;
+
+export type Offer = typeof offers.$inferSelect;
+export type InsertOffer = z.infer<typeof insertOfferSchema>;
+
+export type SellerCommunication = typeof sellerCommunications.$inferSelect;
+export type InsertSellerCommunication = z.infer<typeof insertSellerCommunicationSchema>;
+
+export type AdPosting = typeof adPostings.$inferSelect;
+export type InsertAdPosting = z.infer<typeof insertAdPostingSchema>;
+
+export type BuyerPrequalification = typeof buyerPrequalifications.$inferSelect;
+export type InsertBuyerPrequalification = z.infer<typeof insertBuyerPrequalificationSchema>;
+
+export type CollectionSequence = typeof collectionSequences.$inferSelect;
+export type InsertCollectionSequence = z.infer<typeof insertCollectionSequenceSchema>;
+
+export type CollectionEnrollment = typeof collectionEnrollments.$inferSelect;
+export type InsertCollectionEnrollment = z.infer<typeof insertCollectionEnrollmentSchema>;
+
+export type CountyResearch = typeof countyResearch.$inferSelect;
+export type InsertCountyResearch = z.infer<typeof insertCountyResearchSchema>;
+
+// ============================================
 // RELATIONS
 // ============================================
 

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { storage } from "../storage";
 import { dataSourceBroker, type LookupCategory } from "./data-source-broker";
-import { lookupParcel } from "./parcel";
+import { lookupParcelByAPN } from "./parcel";
 import { getPropertyComps, calculateMarketValue, calculateOfferPrices, calculateDesirabilityScore } from "./comps";
 import { emailService } from "./emailService";
 import { generateOfferLetter as generateOfferDocument } from "./documents";
@@ -55,7 +55,9 @@ const lookupParcelSkill: Skill = {
   execute: async (params, context) => {
     try {
       const { apn, state, county } = lookupParcelInputSchema.parse(params);
-      const result = await lookupParcel(apn, state, county);
+      // Format state/county path for lookupParcelByAPN
+      const stateCountyPath = `${state}/${county.replace(/\s+/g, "-")}`;
+      const result = await lookupParcelByAPN(apn, stateCountyPath);
       
       if (!result.found) {
         return {
@@ -489,7 +491,9 @@ const enrichLeadSkill: Skill = {
       const types = enrichmentTypes || ["property_data", "environmental", "comps"];
       const enrichmentResults: Record<string, any> = {};
       
-      const properties = await storage.getPropertiesByLead(context.organizationId, leadId);
+      // Get properties for this org and filter by seller/buyer ID
+      const allProperties = await storage.getProperties(context.organizationId);
+      const properties = allProperties.filter(p => p.sellerId === leadId || p.buyerId === leadId);
       const property = properties[0];
 
       if (!property) {
@@ -504,7 +508,8 @@ const enrichLeadSkill: Skill = {
 
       if (types.includes("property_data") && property.apn && property.state && property.county) {
         try {
-          const parcelResult = await lookupParcel(property.apn, property.state, property.county);
+          const stateCountyPath = `${property.state}/${property.county.replace(/\s+/g, "-")}`;
+          const parcelResult = await lookupParcelByAPN(property.apn, stateCountyPath);
           enrichmentResults.property_data = parcelResult;
         } catch (error: any) {
           enrichmentResults.property_data = { success: false, error: error.message };
