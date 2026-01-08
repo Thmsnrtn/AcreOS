@@ -4784,3 +4784,245 @@ export const insertScheduledTaskSchema = createInsertSchema(scheduledTasks).omit
 });
 export type InsertScheduledTask = z.infer<typeof insertScheduledTaskSchema>;
 export type ScheduledTask = typeof scheduledTasks.$inferSelect;
+
+// ============================================
+// PHASE 4: CLOSING & SERVICING AUTOMATION
+// ============================================
+
+// ----------------------------------------
+// DISPOSITION AUTOMATION TABLES
+// ----------------------------------------
+
+// Buyer Reservations - Track property reservations by buyers
+export const buyerReservations = pgTable("buyer_reservations", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  propertyId: integer("property_id").references(() => properties.id).notNull(),
+  buyerId: integer("buyer_id").references(() => leads.id),
+  buyerName: text("buyer_name").notNull(),
+  buyerEmail: text("buyer_email"),
+  buyerPhone: text("buyer_phone"),
+  reservationAmount: numeric("reservation_amount"),
+  reservationDate: timestamp("reservation_date").defaultNow(),
+  expirationDate: timestamp("expiration_date"),
+  status: text("status").notNull().default("pending"),
+  paymentMethod: text("payment_method"),
+  stripePaymentIntentId: text("stripe_payment_intent_id"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertBuyerReservationSchema = createInsertSchema(buyerReservations).omit({ id: true, createdAt: true });
+export type InsertBuyerReservation = z.infer<typeof insertBuyerReservationSchema>;
+export type BuyerReservation = typeof buyerReservations.$inferSelect;
+
+// Escrow Checklists - Track closing steps
+export const escrowChecklists = pgTable("escrow_checklists", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  dealId: integer("deal_id").references(() => deals.id).notNull(),
+  title: text("title").notNull(),
+  items: jsonb("items").$type<Array<{
+    id: string;
+    label: string;
+    completed: boolean;
+    completedAt?: string;
+    completedBy?: string;
+    required: boolean;
+    notes?: string;
+  }>>().default([]),
+  status: text("status").notNull().default("in_progress"),
+  targetCloseDate: timestamp("target_close_date"),
+  actualCloseDate: timestamp("actual_close_date"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertEscrowChecklistSchema = createInsertSchema(escrowChecklists).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertEscrowChecklist = z.infer<typeof insertEscrowChecklistSchema>;
+export type EscrowChecklist = typeof escrowChecklists.$inferSelect;
+
+// Closing Packets - Generated document bundles
+export const closingPackets = pgTable("closing_packets", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  dealId: integer("deal_id").references(() => deals.id).notNull(),
+  type: text("type").notNull(),
+  documents: jsonb("documents").$type<Array<{
+    name: string;
+    type: string;
+    url?: string;
+    generatedAt?: string;
+    signed?: boolean;
+    signedAt?: string;
+  }>>().default([]),
+  status: text("status").notNull().default("draft"),
+  sentAt: timestamp("sent_at"),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertClosingPacketSchema = createInsertSchema(closingPackets).omit({ id: true, createdAt: true });
+export type InsertClosingPacket = z.infer<typeof insertClosingPacketSchema>;
+export type ClosingPacket = typeof closingPackets.$inferSelect;
+
+// ----------------------------------------
+// NOTE SERVICING TABLES
+// ----------------------------------------
+
+// Autopay Enrollments - Recurring payment setup
+export const autopayEnrollments = pgTable("autopay_enrollments", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  noteId: integer("note_id").references(() => notes.id).notNull(),
+  borrowerName: text("borrower_name").notNull(),
+  borrowerEmail: text("borrower_email"),
+  paymentMethod: text("payment_method").notNull(),
+  stripeCustomerId: text("stripe_customer_id"),
+  stripePaymentMethodId: text("stripe_payment_method_id"),
+  amount: numeric("amount").notNull(),
+  dayOfMonth: integer("day_of_month").notNull().default(1),
+  status: text("status").notNull().default("active"),
+  lastPaymentDate: timestamp("last_payment_date"),
+  nextPaymentDate: timestamp("next_payment_date"),
+  failureCount: integer("failure_count").default(0),
+  lastFailureReason: text("last_failure_reason"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertAutopayEnrollmentSchema = createInsertSchema(autopayEnrollments).omit({ id: true, createdAt: true });
+export type InsertAutopayEnrollment = z.infer<typeof insertAutopayEnrollmentSchema>;
+export type AutopayEnrollment = typeof autopayEnrollments.$inferSelect;
+
+// Payoff Quotes - Calculate and track payoff amounts
+export const payoffQuotes = pgTable("payoff_quotes", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  noteId: integer("note_id").references(() => notes.id).notNull(),
+  requestedBy: text("requested_by"),
+  principalBalance: numeric("principal_balance").notNull(),
+  accruedInterest: numeric("accrued_interest").notNull(),
+  fees: numeric("fees").default("0"),
+  totalPayoff: numeric("total_payoff").notNull(),
+  goodThroughDate: timestamp("good_through_date").notNull(),
+  status: text("status").notNull().default("pending"),
+  paidAt: timestamp("paid_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertPayoffQuoteSchema = createInsertSchema(payoffQuotes).omit({ id: true, createdAt: true });
+export type InsertPayoffQuote = z.infer<typeof insertPayoffQuoteSchema>;
+export type PayoffQuote = typeof payoffQuotes.$inferSelect;
+
+// Trust Ledger - Accounting entries for trust accounts
+export const trustLedger = pgTable("trust_ledger", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  noteId: integer("note_id").references(() => notes.id),
+  entryType: text("entry_type").notNull(),
+  amount: numeric("amount").notNull(),
+  runningBalance: numeric("running_balance").notNull(),
+  description: text("description"),
+  referenceId: text("reference_id"),
+  referenceType: text("reference_type"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertTrustLedgerSchema = createInsertSchema(trustLedger).omit({ id: true, createdAt: true });
+export type InsertTrustLedger = z.infer<typeof insertTrustLedgerSchema>;
+export type TrustLedgerEntry = typeof trustLedger.$inferSelect;
+
+// Delinquency Escalations - Track and automate collection steps
+export const delinquencyEscalations = pgTable("delinquency_escalations", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  noteId: integer("note_id").references(() => notes.id).notNull(),
+  daysDelinquent: integer("days_delinquent").notNull(),
+  escalationLevel: integer("escalation_level").notNull().default(1),
+  amountDue: numeric("amount_due").notNull(),
+  lastContactDate: timestamp("last_contact_date"),
+  lastContactMethod: text("last_contact_method"),
+  nextActionDate: timestamp("next_action_date"),
+  nextAction: text("next_action"),
+  status: text("status").notNull().default("active"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertDelinquencyEscalationSchema = createInsertSchema(delinquencyEscalations).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertDelinquencyEscalation = z.infer<typeof insertDelinquencyEscalationSchema>;
+export type DelinquencyEscalation = typeof delinquencyEscalations.$inferSelect;
+
+// ----------------------------------------
+// DUE DILIGENCE OPS TABLES
+// ----------------------------------------
+
+// DD Assignments - Assign DD tasks to team/vendors
+export const ddAssignments = pgTable("dd_assignments", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  propertyId: integer("property_id").references(() => properties.id).notNull(),
+  assigneeType: text("assignee_type").notNull(),
+  assigneeId: integer("assignee_id"),
+  vendorName: text("vendor_name"),
+  vendorEmail: text("vendor_email"),
+  taskType: text("task_type").notNull(),
+  dueDate: timestamp("due_date"),
+  status: text("status").notNull().default("pending"),
+  priority: text("priority").default("normal"),
+  cost: numeric("cost"),
+  result: text("result"),
+  resultNotes: text("result_notes"),
+  attachments: jsonb("attachments").$type<string[]>().default([]),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertDdAssignmentSchema = createInsertSchema(ddAssignments).omit({ id: true, createdAt: true });
+export type InsertDdAssignment = z.infer<typeof insertDdAssignmentSchema>;
+export type DdAssignment = typeof ddAssignments.$inferSelect;
+
+// SWOT Reports - Property analysis reports
+export const swotReports = pgTable("swot_reports", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  propertyId: integer("property_id").references(() => properties.id).notNull(),
+  strengths: jsonb("strengths").$type<string[]>().default([]),
+  weaknesses: jsonb("weaknesses").$type<string[]>().default([]),
+  opportunities: jsonb("opportunities").$type<string[]>().default([]),
+  threats: jsonb("threats").$type<string[]>().default([]),
+  overallScore: integer("overall_score"),
+  recommendation: text("recommendation"),
+  aiGenerated: boolean("ai_generated").default(false),
+  generatedBy: text("generated_by"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertSwotReportSchema = createInsertSchema(swotReports).omit({ id: true, createdAt: true });
+export type InsertSwotReport = z.infer<typeof insertSwotReportSchema>;
+export type SwotReport = typeof swotReports.$inferSelect;
+
+// Go/No-Go Memos - Investment decision documents
+export const goNogoMemos = pgTable("go_nogo_memos", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  propertyId: integer("property_id").references(() => properties.id).notNull(),
+  dealId: integer("deal_id").references(() => deals.id),
+  decision: text("decision").notNull(),
+  decisionDate: timestamp("decision_date").defaultNow(),
+  decisionBy: text("decision_by"),
+  maxOfferPrice: numeric("max_offer_price"),
+  targetProfit: numeric("target_profit"),
+  riskLevel: text("risk_level"),
+  keyFindings: jsonb("key_findings").$type<string[]>().default([]),
+  conditions: jsonb("conditions").$type<string[]>().default([]),
+  attachedReports: jsonb("attached_reports").$type<Array<{type: string; id: number}>>().default([]),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertGoNogoMemoSchema = createInsertSchema(goNogoMemos).omit({ id: true, createdAt: true });
+export type InsertGoNogoMemo = z.infer<typeof insertGoNogoMemoSchema>;
+export type GoNogoMemo = typeof goNogoMemos.$inferSelect;
