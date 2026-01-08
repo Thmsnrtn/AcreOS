@@ -1,11 +1,14 @@
 /**
  * Parcel Boundary Service - Tiered Lookup System
- * Priority: County GIS (free) -> Regrid API (paid fallback)
+ * Priority: Cache (instant) -> County GIS (free) -> Regrid API (paid fallback)
+ * 
+ * Cache freshness: 30 days
  */
 
 import { db } from "../db";
-import { countyGisEndpoints } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+import { countyGisEndpoints, type InsertParcelSnapshot } from "@shared/schema";
+import { eq, and, ilike } from "drizzle-orm";
+import { storage } from "../storage";
 
 interface RegridParcel {
   type: "Feature";
@@ -389,7 +392,77 @@ async function queryArcGISEndpoint(
 }
 
 /**
- * Tiered parcel lookup: County GIS (free) -> Regrid (paid fallback)
+ * Cache freshness in days
+ */
+const CACHE_FRESHNESS_DAYS = 30;
+
+/**
+ * Convert cached snapshot to ParcelLookupResult format
+ */
+function snapshotToResult(snapshot: {
+  apn: string;
+  boundary: { type: "Polygon" | "MultiPolygon"; coordinates: number[][][] | number[][][][]; } | null;
+  centroid: { lat: number; lng: number } | null;
+  owner: string | null;
+  ownerAddress: string | null;
+  taxAmount: string | null;
+  acres: string | null;
+  county: string;
+  state: string;
+  sourceId: string | null;
+  fetchedAt: Date | null;
+}): ParcelLookupResult {
+  return {
+    found: true,
+    source: "cache",
+    parcel: {
+      apn: snapshot.apn,
+      boundary: snapshot.boundary || { type: "Polygon", coordinates: [] },
+      centroid: snapshot.centroid || { lat: 0, lng: 0 },
+      data: {
+        regridId: snapshot.sourceId || "",
+        owner: snapshot.owner || "Unknown",
+        ownerAddress: snapshot.ownerAddress || "",
+        taxAmount: snapshot.taxAmount || "",
+        lastUpdated: snapshot.fetchedAt?.toISOString() || new Date().toISOString(),
+        acres: snapshot.acres ? parseFloat(snapshot.acres) : undefined,
+        county: snapshot.county,
+        state: snapshot.state,
+      },
+    },
+  };
+}
+
+/**
+ * Store parcel result in cache
+ */
+async function cacheParcelResult(result: ParcelLookupResult, state: string, county: string): Promise<void> {
+  if (!result.found || !result.parcel) return;
+  
+  try {
+    const snapshotData: InsertParcelSnapshot = {
+      apn: result.parcel.apn,
+      state: state.toUpperCase(),
+      county: county,
+      source: result.source === "regrid" ? "regrid" : "county_gis",
+      sourceId: result.parcel.data.regridId || null,
+      boundary: result.parcel.boundary,
+      centroid: result.parcel.centroid,
+      owner: result.parcel.data.owner,
+      ownerAddress: result.parcel.data.ownerAddress,
+      acres: result.parcel.data.acres?.toString() || null,
+      taxAmount: result.parcel.data.taxAmount || null,
+    };
+    
+    await storage.upsertParcelSnapshot(snapshotData);
+    console.log(`[ParcelCache] Cached parcel ${result.parcel.apn} for ${county}, ${state}`);
+  } catch (error) {
+    console.error(`[ParcelCache] Failed to cache parcel:`, error);
+  }
+}
+
+/**
+ * Tiered parcel lookup: Cache (instant) -> County GIS (free) -> Regrid (paid fallback)
  */
 export async function lookupParcelByAPN(
   apn: string,
@@ -404,16 +477,39 @@ export async function lookupParcelByAPN(
     if (parts.length >= 2) county = parts[1].replace(/-/g, " ");
   }
   
+  // Step 1: Check cache first (if we have state/county)
+  if (state && county) {
+    try {
+      const cachedSnapshot = await storage.getParcelSnapshot(apn, state, county, CACHE_FRESHNESS_DAYS);
+      if (cachedSnapshot) {
+        console.log(`[Parcel] Found in cache (age: ${Math.round((Date.now() - (cachedSnapshot.fetchedAt?.getTime() || 0)) / (1000 * 60 * 60 * 24))} days)`);
+        return snapshotToResult(cachedSnapshot);
+      }
+    } catch (error) {
+      console.error(`[ParcelCache] Cache lookup error:`, error);
+    }
+  }
+  
+  // Step 2: Try County GIS (free)
   if (state && county) {
     const countyResult = await lookupFromCountyGIS(apn, state, county);
     if (countyResult?.found) {
       console.log(`[Parcel] Found via County GIS (FREE)`);
+      await cacheParcelResult(countyResult, state, county);
       return countyResult;
     }
   }
   
+  // Step 3: Fall back to Regrid (paid)
   console.log(`[Parcel] Falling back to Regrid API`);
-  return lookupFromRegrid(apn, stateCountyPath);
+  const regridResult = await lookupFromRegrid(apn, stateCountyPath);
+  
+  // Cache Regrid results too
+  if (regridResult.found && state && county) {
+    await cacheParcelResult(regridResult, state, county);
+  }
+  
+  return regridResult;
 }
 
 /**

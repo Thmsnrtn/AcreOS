@@ -1,6 +1,6 @@
 import { db } from "./db";
 export { db };
-import { eq, and, desc, sql, count, sum, arrayContains, gte, lte, lt, or, inArray, ne } from "drizzle-orm";
+import { eq, and, desc, sql, count, sum, arrayContains, gte, lte, lt, or, inArray, ne, ilike, type SQL } from "drizzle-orm";
 import { aiConversations, aiMessages } from "@shared/schema";
 import {
   organizations, teamMembers, leads, leadActivities, properties, deals,
@@ -24,6 +24,7 @@ import {
   offerTemplates,
   skipTraces,
   propertyListings,
+  parcelSnapshots,
   type Organization, type InsertOrganization,
   type TeamMember, type InsertTeamMember,
   type Lead, type InsertLead,
@@ -83,6 +84,7 @@ import {
   type DueDiligenceChecklist, type InsertDueDiligenceChecklist,
   type SkipTrace, type InsertSkipTrace,
   type PropertyListing, type InsertPropertyListing,
+  type ParcelSnapshot, type InsertParcelSnapshot,
   type DocumentTemplate, type InsertDocumentTemplate,
   type GeneratedDocument, type InsertGeneratedDocument,
   type Signature, type InsertSignature,
@@ -814,6 +816,10 @@ export interface IStorage {
     createdAt: Date | null;
     lastActiveAt: Date | null;
   }>>;
+
+  // Parcel Snapshots (Cache)
+  getParcelSnapshot(apn: string, state: string, county: string, maxAgeDays?: number): Promise<ParcelSnapshot | undefined>;
+  upsertParcelSnapshot(data: InsertParcelSnapshot): Promise<ParcelSnapshot>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1036,8 +1042,7 @@ export class DatabaseStorage implements IStorage {
     
     const mergedData: Partial<InsertLead> = {};
     const fieldsToMerge: (keyof InsertLead)[] = [
-      "email", "phone", "mailingAddress", "mailingCity", "mailingState", "mailingZip",
-      "propertyAddress", "propertyCounty", "propertyState", "notes",
+      "email", "phone", "address", "city", "state", "zip", "notes", "source",
     ];
     
     for (const field of fieldsToMerge) {
@@ -6050,6 +6055,79 @@ Notary Public</p>
 
   async rejectDiscoveredEndpoint(id: number): Promise<DiscoveredEndpoint> {
     return await this.updateDiscoveredEndpoint(id, { status: "rejected" });
+  }
+
+  // Parcel Snapshots (Cache)
+  async getParcelSnapshot(apn: string, state: string, county: string, maxAgeDays: number = 30): Promise<ParcelSnapshot | undefined> {
+    const normalizedApn = apn.replace(/[-\s]/g, "").toLowerCase();
+    const normalizedState = state.toUpperCase();
+    const normalizedCounty = county.toLowerCase().replace(/ county$/i, "").trim();
+    
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - maxAgeDays);
+    
+    const [snapshot] = await db
+      .select()
+      .from(parcelSnapshots)
+      .where(
+        and(
+          sql`LOWER(REPLACE(REPLACE(${parcelSnapshots.apn}, '-', ''), ' ', '')) = ${normalizedApn}`,
+          eq(parcelSnapshots.state, normalizedState),
+          sql`LOWER(REPLACE(${parcelSnapshots.county}, ' County', '')) = ${normalizedCounty}`,
+          gte(parcelSnapshots.fetchedAt, cutoffDate)
+        )
+      )
+      .orderBy(desc(parcelSnapshots.fetchedAt))
+      .limit(1);
+    
+    return snapshot;
+  }
+
+  async upsertParcelSnapshot(data: InsertParcelSnapshot): Promise<ParcelSnapshot> {
+    const normalizedApn = data.apn.replace(/[-\s]/g, "");
+    const normalizedState = data.state.toUpperCase();
+    const normalizedCounty = data.county.toLowerCase().replace(/ county$/i, "").trim();
+    
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 30);
+    
+    const [existing] = await db
+      .select()
+      .from(parcelSnapshots)
+      .where(
+        and(
+          sql`LOWER(REPLACE(REPLACE(${parcelSnapshots.apn}, '-', ''), ' ', '')) = ${normalizedApn.toLowerCase()}`,
+          eq(parcelSnapshots.state, normalizedState),
+          sql`LOWER(REPLACE(${parcelSnapshots.county}, ' County', '')) = ${normalizedCounty}`
+        )
+      )
+      .limit(1);
+    
+    if (existing) {
+      const [updated] = await db
+        .update(parcelSnapshots)
+        .set({
+          ...data,
+          state: normalizedState,
+          fetchedAt: new Date(),
+          expiresAt,
+          updatedAt: new Date(),
+        })
+        .where(eq(parcelSnapshots.id, existing.id))
+        .returning();
+      return updated;
+    } else {
+      const [created] = await db
+        .insert(parcelSnapshots)
+        .values({
+          ...data,
+          state: normalizedState,
+          fetchedAt: new Date(),
+          expiresAt,
+        })
+        .returning();
+      return created;
+    }
   }
 }
 

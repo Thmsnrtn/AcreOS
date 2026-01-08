@@ -26,9 +26,11 @@ export function KeyboardShortcutsProvider({ children }: { children: ReactNode })
   const [, setLocation] = useLocation();
   const pendingKeyRef = useRef<string | null>(null);
   const pendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const initializedRef = useRef(false);
 
   const registerShortcut = useCallback((id: string, shortcut: Shortcut) => {
     setShortcuts(prev => {
+      if (prev.has(id)) return prev;
       const next = new Map(prev);
       next.set(id, shortcut);
       return next;
@@ -37,6 +39,7 @@ export function KeyboardShortcutsProvider({ children }: { children: ReactNode })
 
   const unregisterShortcut = useCallback((id: string) => {
     setShortcuts(prev => {
+      if (!prev.has(id)) return prev;
       const next = new Map(prev);
       next.delete(id);
       return next;
@@ -44,72 +47,26 @@ export function KeyboardShortcutsProvider({ children }: { children: ReactNode })
   }, []);
 
   useEffect(() => {
-    registerShortcut("nav-leads", {
-      key: "g l",
-      description: "Go to Leads",
-      callback: () => setLocation("/leads"),
-      global: true,
-    });
-    registerShortcut("nav-properties", {
-      key: "g p",
-      description: "Go to Properties",
-      callback: () => setLocation("/properties"),
-      global: true,
-    });
-    registerShortcut("nav-deals", {
-      key: "g d",
-      description: "Go to Deals",
-      callback: () => setLocation("/deals"),
-      global: true,
-    });
-    registerShortcut("nav-finance", {
-      key: "g f",
-      description: "Go to Finance",
-      callback: () => setLocation("/finance"),
-      global: true,
-    });
-    registerShortcut("nav-dashboard", {
-      key: "g h",
-      description: "Go to Home/Dashboard",
-      callback: () => setLocation("/"),
-      global: true,
-    });
-    registerShortcut("nav-ai", {
-      key: "g a",
-      description: "Go to AI Command Center",
-      callback: () => setLocation("/command-center"),
-      global: true,
-    });
-    registerShortcut("nav-settings", {
-      key: "g s",
-      description: "Go to Settings",
-      callback: () => setLocation("/settings"),
-      global: true,
-    });
-    registerShortcut("show-shortcuts", {
-      key: "?",
-      description: "Show keyboard shortcuts",
-      callback: () => setDialogOpen(true),
-      global: true,
-    });
-    registerShortcut("search-focus", {
-      key: "/",
-      description: "Focus search",
-      callback: () => {
-        const searchInput = document.querySelector('[data-testid="input-global-search"]') as HTMLInputElement;
-        if (searchInput) {
-          searchInput.focus();
-        }
-      },
-      global: true,
-    });
+    if (initializedRef.current) return;
+    initializedRef.current = true;
 
-    return () => {
-      ["nav-leads", "nav-properties", "nav-deals", "nav-finance", "nav-dashboard", "nav-ai", "nav-settings", "show-shortcuts", "search-focus"].forEach(id => {
-        unregisterShortcut(id);
-      });
-    };
-  }, [registerShortcut, unregisterShortcut, setLocation]);
+    const defaultShortcuts: Array<[string, Shortcut]> = [
+      ["nav-leads", { key: "g l", description: "Go to Leads", callback: () => setLocation("/leads"), global: true }],
+      ["nav-properties", { key: "g p", description: "Go to Properties", callback: () => setLocation("/properties"), global: true }],
+      ["nav-deals", { key: "g d", description: "Go to Deals", callback: () => setLocation("/deals"), global: true }],
+      ["nav-finance", { key: "g f", description: "Go to Finance", callback: () => setLocation("/finance"), global: true }],
+      ["nav-dashboard", { key: "g h", description: "Go to Home/Dashboard", callback: () => setLocation("/"), global: true }],
+      ["nav-ai", { key: "g a", description: "Go to AI Command Center", callback: () => setLocation("/command-center"), global: true }],
+      ["nav-settings", { key: "g s", description: "Go to Settings", callback: () => setLocation("/settings"), global: true }],
+      ["show-shortcuts", { key: "?", description: "Show keyboard shortcuts", callback: () => setDialogOpen(true), global: true }],
+      ["search-focus", { key: "/", description: "Focus search", callback: () => {
+        const searchInput = document.querySelector('[data-testid="input-global-search"]') as HTMLInputElement;
+        if (searchInput) searchInput.focus();
+      }, global: true }],
+    ];
+
+    setShortcuts(new Map(defaultShortcuts));
+  }, [setLocation]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

@@ -322,6 +322,8 @@ export default function FounderDashboard() {
   const [liveDiscoveryTab, setLiveDiscoveryTab] = useState<"patterns" | "live">("patterns");
   const [selectedEndpoints, setSelectedEndpoints] = useState<Set<string>>(new Set());
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
+  const [discoveryStateFilter, setDiscoveryStateFilter] = useState<string>("all");
+  const [scanTargetStates, setScanTargetStates] = useState<string>("");
 
   const { data: dashboardData, isLoading } = useQuery<AdminDashboardData>({
     queryKey: ['/api/admin/dashboard'],
@@ -647,13 +649,25 @@ export default function FounderDashboard() {
   };
 
   const { data: liveDiscoveredEndpoints, refetch: refetchLiveDiscovered } = useQuery<LiveDiscoveredEndpoint[]>({
-    queryKey: ['/api/discovery/all'],
+    queryKey: ['/api/discovery/all', discoveryStateFilter],
+    queryFn: async () => {
+      const params = discoveryStateFilter !== "all" ? `?state=${discoveryStateFilter}` : "";
+      const res = await fetch(`/api/discovery/all${params}`, { credentials: 'include' });
+      if (!res.ok) throw new Error("Failed to fetch discovered endpoints");
+      return res.json();
+    },
     enabled: scanDialogOpen && liveDiscoveryTab === "live",
   });
 
   const scanArcGISMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/discovery/scan-arcgis`, { maxResults: 100 });
+      const targetStates = scanTargetStates.trim() 
+        ? scanTargetStates.split(',').map(s => s.trim().toUpperCase()).filter(s => s.length === 2)
+        : undefined;
+      const res = await apiRequest("POST", `/api/discovery/scan-arcgis`, { 
+        maxResults: 100,
+        targetStates 
+      });
       if (!res.ok) throw new Error("Failed to scan ArcGIS Online");
       return res.json();
     },
@@ -2221,38 +2235,115 @@ export default function FounderDashboard() {
             </>
           ) : (
             <>
-              <div className="flex items-center justify-between gap-2 pb-3 border-b">
-                <div className="text-sm text-muted-foreground">
-                  Scan ArcGIS Online to discover new parcel/property services
+              <div className="space-y-3 pb-3 border-b">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-sm text-muted-foreground">
+                    Scan ArcGIS Online to discover new parcel/property services
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => batchValidateMutation.mutate()}
+                      disabled={batchValidateMutation.isPending}
+                      data-testid="button-batch-validate"
+                    >
+                      {batchValidateMutation.isPending ? (
+                        <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                      ) : (
+                        <CheckCircle2 className="w-4 h-4 mr-1" />
+                      )}
+                      Validate Pending
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => scanArcGISMutation.mutate()}
+                      disabled={scanArcGISMutation.isPending}
+                      data-testid="button-scan-arcgis"
+                    >
+                      {scanArcGISMutation.isPending ? (
+                        <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                      ) : (
+                        <Globe className="w-4 h-4 mr-1" />
+                      )}
+                      Scan ArcGIS Online
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => batchValidateMutation.mutate()}
-                    disabled={batchValidateMutation.isPending}
-                    data-testid="button-batch-validate"
-                  >
-                    {batchValidateMutation.isPending ? (
-                      <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                    ) : (
-                      <CheckCircle2 className="w-4 h-4 mr-1" />
-                    )}
-                    Validate Pending
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={() => scanArcGISMutation.mutate()}
-                    disabled={scanArcGISMutation.isPending}
-                    data-testid="button-scan-arcgis"
-                  >
-                    {scanArcGISMutation.isPending ? (
-                      <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                    ) : (
-                      <Globe className="w-4 h-4 mr-1" />
-                    )}
-                    Scan ArcGIS Online
-                  </Button>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm text-muted-foreground">Filter by state:</label>
+                    <Select 
+                      value={discoveryStateFilter} 
+                      onValueChange={setDiscoveryStateFilter}
+                    >
+                      <SelectTrigger className="w-32" data-testid="select-discovery-state-filter">
+                        <SelectValue placeholder="All states" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All States</SelectItem>
+                        <SelectItem value="AL">AL</SelectItem>
+                        <SelectItem value="AZ">AZ</SelectItem>
+                        <SelectItem value="AR">AR</SelectItem>
+                        <SelectItem value="CA">CA</SelectItem>
+                        <SelectItem value="CO">CO</SelectItem>
+                        <SelectItem value="CT">CT</SelectItem>
+                        <SelectItem value="DE">DE</SelectItem>
+                        <SelectItem value="FL">FL</SelectItem>
+                        <SelectItem value="GA">GA</SelectItem>
+                        <SelectItem value="ID">ID</SelectItem>
+                        <SelectItem value="IL">IL</SelectItem>
+                        <SelectItem value="IN">IN</SelectItem>
+                        <SelectItem value="IA">IA</SelectItem>
+                        <SelectItem value="KS">KS</SelectItem>
+                        <SelectItem value="KY">KY</SelectItem>
+                        <SelectItem value="LA">LA</SelectItem>
+                        <SelectItem value="ME">ME</SelectItem>
+                        <SelectItem value="MD">MD</SelectItem>
+                        <SelectItem value="MA">MA</SelectItem>
+                        <SelectItem value="MI">MI</SelectItem>
+                        <SelectItem value="MN">MN</SelectItem>
+                        <SelectItem value="MS">MS</SelectItem>
+                        <SelectItem value="MO">MO</SelectItem>
+                        <SelectItem value="MT">MT</SelectItem>
+                        <SelectItem value="NE">NE</SelectItem>
+                        <SelectItem value="NV">NV</SelectItem>
+                        <SelectItem value="NH">NH</SelectItem>
+                        <SelectItem value="NJ">NJ</SelectItem>
+                        <SelectItem value="NM">NM</SelectItem>
+                        <SelectItem value="NY">NY</SelectItem>
+                        <SelectItem value="NC">NC</SelectItem>
+                        <SelectItem value="ND">ND</SelectItem>
+                        <SelectItem value="OH">OH</SelectItem>
+                        <SelectItem value="OK">OK</SelectItem>
+                        <SelectItem value="OR">OR</SelectItem>
+                        <SelectItem value="PA">PA</SelectItem>
+                        <SelectItem value="RI">RI</SelectItem>
+                        <SelectItem value="SC">SC</SelectItem>
+                        <SelectItem value="SD">SD</SelectItem>
+                        <SelectItem value="TN">TN</SelectItem>
+                        <SelectItem value="TX">TX</SelectItem>
+                        <SelectItem value="UT">UT</SelectItem>
+                        <SelectItem value="VT">VT</SelectItem>
+                        <SelectItem value="VA">VA</SelectItem>
+                        <SelectItem value="WA">WA</SelectItem>
+                        <SelectItem value="WV">WV</SelectItem>
+                        <SelectItem value="WI">WI</SelectItem>
+                        <SelectItem value="WY">WY</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm text-muted-foreground">Scan target states:</label>
+                    <input
+                      type="text"
+                      placeholder="e.g., TX, AZ, NM"
+                      value={scanTargetStates}
+                      onChange={(e) => setScanTargetStates(e.target.value)}
+                      className="h-9 w-40 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                      data-testid="input-scan-target-states"
+                    />
+                  </div>
                 </div>
               </div>
 
