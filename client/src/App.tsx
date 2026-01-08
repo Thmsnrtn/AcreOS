@@ -49,6 +49,8 @@ import { MobileBottomNav } from "@/components/mobile-bottom-nav";
 import { ConversationTray } from "@/components/conversation-tray";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { OfflineIndicator } from "@/components/offline-indicator";
+import { FloatingActionButton } from "@/components/floating-action-button";
+import { useSwipeNavigation } from "@/hooks/use-swipe-gesture";
 
 // Protected Route Wrapper
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
@@ -203,12 +205,14 @@ function Router() {
 
 function AppContent() {
   const { user } = useAuth();
+  useSwipeNavigation();
   
   return (
     <>
       {user && <LowBalanceAlert />}
       <Router />
       {user && <MobileBottomNav />}
+      {user && <FloatingActionButton />}
       {user && <ConversationTray />}
       <PWAInstallPrompt />
     </>

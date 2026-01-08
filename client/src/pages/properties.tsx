@@ -4,6 +4,7 @@ import { queryClient } from "@/lib/queryClient";
 import { ListSkeleton } from "@/components/list-skeleton";
 import { useFetchPropertyParcel } from "@/hooks/use-parcels";
 import { useState } from "react";
+import { useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -83,7 +84,11 @@ import { DueDiligencePanel } from "@/components/due-diligence-panel";
 
 export default function PropertiesPage() {
   const { data: properties, isLoading } = useProperties();
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const searchString = useSearch();
+  const urlParams = new URLSearchParams(searchString);
+  const actionFromUrl = urlParams.get("action");
+  
+  const [isCreateOpen, setIsCreateOpen] = useState(actionFromUrl === "new");
   const [deletingProperty, setDeletingProperty] = useState<Property | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);

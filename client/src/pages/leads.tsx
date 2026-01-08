@@ -616,8 +616,9 @@ export default function LeadsPage() {
   const searchString = useSearch();
   const urlParams = new URLSearchParams(searchString);
   const stageFromUrl = urlParams.get("stage") || "all";
+  const actionFromUrl = urlParams.get("action");
   
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isCreateOpen, setIsCreateOpen] = useState(actionFromUrl === "new");
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [deletingLead, setDeletingLead] = useState<Lead | null>(null);
   const [viewingLead, setViewingLead] = useState<Lead | null>(null);

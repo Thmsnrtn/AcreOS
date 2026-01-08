@@ -4,6 +4,7 @@ import { useProperties } from "@/hooks/use-properties";
 import { ListSkeleton } from "@/components/list-skeleton";
 import { useDealChecklist, useChecklistTemplates, useApplyChecklistTemplate, useUpdateChecklistItem, useStageGate } from "@/hooks/use-checklists";
 import { useState } from "react";
+import { useSearch } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertDealSchema, type Deal, type Property, type DealChecklistItem } from "@shared/schema";
@@ -54,7 +55,11 @@ const statusColors: Record<string, string> = {
 export default function DealsPage() {
   const { data: deals, isLoading } = useDeals();
   const { data: properties } = useProperties();
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const searchString = useSearch();
+  const urlParams = new URLSearchParams(searchString);
+  const actionFromUrl = urlParams.get("action");
+  
+  const [isCreateOpen, setIsCreateOpen] = useState(actionFromUrl === "new");
   const [selectedDeal, setSelectedDeal] = useState<DealWithProperty | null>(null);
   const [deletingDeal, setDeletingDeal] = useState<DealWithProperty | null>(null);
   const { mutate: deleteDeal, isPending: isDeleting } = useDeleteDeal();
