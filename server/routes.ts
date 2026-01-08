@@ -15763,5 +15763,813 @@ Seller Signature (if applicable)
     }
   });
 
+  // ============================================
+  // BUYER RESERVATIONS (Phase 4)
+  // ============================================
+
+  api.get("/api/buyer-reservations", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const reservations = await storage.getBuyerReservations(org.id);
+      res.json(reservations);
+    } catch (error: any) {
+      console.error("Get buyer reservations error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch buyer reservations" });
+    }
+  });
+
+  api.get("/api/buyer-reservations/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const reservation = await storage.getBuyerReservationById(org.id, id);
+      if (!reservation) {
+        return res.status(404).json({ message: "Buyer reservation not found" });
+      }
+      res.json(reservation);
+    } catch (error: any) {
+      console.error("Get buyer reservation error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch buyer reservation" });
+    }
+  });
+
+  api.get("/api/properties/:propertyId/reservations", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const propertyId = parseInt(req.params.propertyId);
+      const reservations = await storage.getBuyerReservationsByProperty(org.id, propertyId);
+      res.json(reservations);
+    } catch (error: any) {
+      console.error("Get property reservations error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch property reservations" });
+    }
+  });
+
+  api.post("/api/buyer-reservations", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const reservation = await storage.createBuyerReservation({
+        ...req.body,
+        organizationId: org.id,
+      });
+      res.status(201).json(reservation);
+    } catch (error: any) {
+      console.error("Create buyer reservation error:", error);
+      res.status(400).json({ message: error.message || "Failed to create buyer reservation" });
+    }
+  });
+
+  api.patch("/api/buyer-reservations/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const existing = await storage.getBuyerReservationById(org.id, id);
+      if (!existing) {
+        return res.status(404).json({ message: "Buyer reservation not found" });
+      }
+      const reservation = await storage.updateBuyerReservation(org.id, id, req.body);
+      res.json(reservation);
+    } catch (error: any) {
+      console.error("Update buyer reservation error:", error);
+      res.status(400).json({ message: error.message || "Failed to update buyer reservation" });
+    }
+  });
+
+  api.delete("/api/buyer-reservations/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const success = await storage.deleteBuyerReservation(org.id, id);
+      if (!success) {
+        return res.status(404).json({ message: "Buyer reservation not found" });
+      }
+      res.status(204).send();
+    } catch (error: any) {
+      console.error("Delete buyer reservation error:", error);
+      res.status(500).json({ message: error.message || "Failed to delete buyer reservation" });
+    }
+  });
+
+  // ============================================
+  // ESCROW CHECKLISTS (Phase 4)
+  // ============================================
+
+  api.get("/api/escrow-checklists", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const checklists = await storage.getEscrowChecklists(org.id);
+      res.json(checklists);
+    } catch (error: any) {
+      console.error("Get escrow checklists error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch escrow checklists" });
+    }
+  });
+
+  api.get("/api/escrow-checklists/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const checklist = await storage.getEscrowChecklistById(org.id, id);
+      if (!checklist) {
+        return res.status(404).json({ message: "Escrow checklist not found" });
+      }
+      res.json(checklist);
+    } catch (error: any) {
+      console.error("Get escrow checklist error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch escrow checklist" });
+    }
+  });
+
+  api.get("/api/deals/:dealId/escrow-checklist", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const dealId = parseInt(req.params.dealId);
+      const checklist = await storage.getEscrowChecklistByDeal(org.id, dealId);
+      res.json(checklist);
+    } catch (error: any) {
+      console.error("Get deal escrow checklist error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch deal escrow checklist" });
+    }
+  });
+
+  api.post("/api/escrow-checklists", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const checklist = await storage.createEscrowChecklist({
+        ...req.body,
+        organizationId: org.id,
+      });
+      res.status(201).json(checklist);
+    } catch (error: any) {
+      console.error("Create escrow checklist error:", error);
+      res.status(400).json({ message: error.message || "Failed to create escrow checklist" });
+    }
+  });
+
+  api.patch("/api/escrow-checklists/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const existing = await storage.getEscrowChecklistById(org.id, id);
+      if (!existing) {
+        return res.status(404).json({ message: "Escrow checklist not found" });
+      }
+      const checklist = await storage.updateEscrowChecklist(org.id, id, req.body);
+      res.json(checklist);
+    } catch (error: any) {
+      console.error("Update escrow checklist error:", error);
+      res.status(400).json({ message: error.message || "Failed to update escrow checklist" });
+    }
+  });
+
+  api.delete("/api/escrow-checklists/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const success = await storage.deleteEscrowChecklist(org.id, id);
+      if (!success) {
+        return res.status(404).json({ message: "Escrow checklist not found" });
+      }
+      res.status(204).send();
+    } catch (error: any) {
+      console.error("Delete escrow checklist error:", error);
+      res.status(500).json({ message: error.message || "Failed to delete escrow checklist" });
+    }
+  });
+
+  // ============================================
+  // CLOSING PACKETS (Phase 4)
+  // ============================================
+
+  api.get("/api/closing-packets", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const packets = await storage.getClosingPackets(org.id);
+      res.json(packets);
+    } catch (error: any) {
+      console.error("Get closing packets error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch closing packets" });
+    }
+  });
+
+  api.get("/api/closing-packets/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const packet = await storage.getClosingPacketById(org.id, id);
+      if (!packet) {
+        return res.status(404).json({ message: "Closing packet not found" });
+      }
+      res.json(packet);
+    } catch (error: any) {
+      console.error("Get closing packet error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch closing packet" });
+    }
+  });
+
+  api.get("/api/deals/:dealId/closing-packets", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const dealId = parseInt(req.params.dealId);
+      const packets = await storage.getClosingPacketsByDeal(org.id, dealId);
+      res.json(packets);
+    } catch (error: any) {
+      console.error("Get deal closing packets error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch deal closing packets" });
+    }
+  });
+
+  api.post("/api/closing-packets", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const packet = await storage.createClosingPacket({
+        ...req.body,
+        organizationId: org.id,
+      });
+      res.status(201).json(packet);
+    } catch (error: any) {
+      console.error("Create closing packet error:", error);
+      res.status(400).json({ message: error.message || "Failed to create closing packet" });
+    }
+  });
+
+  api.patch("/api/closing-packets/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const existing = await storage.getClosingPacketById(org.id, id);
+      if (!existing) {
+        return res.status(404).json({ message: "Closing packet not found" });
+      }
+      const packet = await storage.updateClosingPacket(org.id, id, req.body);
+      res.json(packet);
+    } catch (error: any) {
+      console.error("Update closing packet error:", error);
+      res.status(400).json({ message: error.message || "Failed to update closing packet" });
+    }
+  });
+
+  api.delete("/api/closing-packets/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const success = await storage.deleteClosingPacket(org.id, id);
+      if (!success) {
+        return res.status(404).json({ message: "Closing packet not found" });
+      }
+      res.status(204).send();
+    } catch (error: any) {
+      console.error("Delete closing packet error:", error);
+      res.status(500).json({ message: error.message || "Failed to delete closing packet" });
+    }
+  });
+
+  // ============================================
+  // AUTOPAY ENROLLMENTS (Phase 4)
+  // ============================================
+
+  api.get("/api/autopay-enrollments", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const enrollments = await storage.getAutopayEnrollments(org.id);
+      res.json(enrollments);
+    } catch (error: any) {
+      console.error("Get autopay enrollments error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch autopay enrollments" });
+    }
+  });
+
+  api.get("/api/autopay-enrollments/active", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const enrollments = await storage.getActiveAutopayEnrollments(org.id);
+      res.json(enrollments);
+    } catch (error: any) {
+      console.error("Get active autopay enrollments error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch active autopay enrollments" });
+    }
+  });
+
+  api.get("/api/autopay-enrollments/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const enrollment = await storage.getAutopayEnrollmentById(org.id, id);
+      if (!enrollment) {
+        return res.status(404).json({ message: "Autopay enrollment not found" });
+      }
+      res.json(enrollment);
+    } catch (error: any) {
+      console.error("Get autopay enrollment error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch autopay enrollment" });
+    }
+  });
+
+  api.get("/api/notes/:noteId/autopay", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const noteId = parseInt(req.params.noteId);
+      const enrollment = await storage.getAutopayEnrollmentByNote(org.id, noteId);
+      res.json(enrollment);
+    } catch (error: any) {
+      console.error("Get note autopay enrollment error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch note autopay enrollment" });
+    }
+  });
+
+  api.post("/api/autopay-enrollments", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const enrollment = await storage.createAutopayEnrollment({
+        ...req.body,
+        organizationId: org.id,
+      });
+      res.status(201).json(enrollment);
+    } catch (error: any) {
+      console.error("Create autopay enrollment error:", error);
+      res.status(400).json({ message: error.message || "Failed to create autopay enrollment" });
+    }
+  });
+
+  api.patch("/api/autopay-enrollments/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const existing = await storage.getAutopayEnrollmentById(org.id, id);
+      if (!existing) {
+        return res.status(404).json({ message: "Autopay enrollment not found" });
+      }
+      const enrollment = await storage.updateAutopayEnrollment(org.id, id, req.body);
+      res.json(enrollment);
+    } catch (error: any) {
+      console.error("Update autopay enrollment error:", error);
+      res.status(400).json({ message: error.message || "Failed to update autopay enrollment" });
+    }
+  });
+
+  api.delete("/api/autopay-enrollments/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const success = await storage.deleteAutopayEnrollment(org.id, id);
+      if (!success) {
+        return res.status(404).json({ message: "Autopay enrollment not found" });
+      }
+      res.status(204).send();
+    } catch (error: any) {
+      console.error("Delete autopay enrollment error:", error);
+      res.status(500).json({ message: error.message || "Failed to delete autopay enrollment" });
+    }
+  });
+
+  // ============================================
+  // PAYOFF QUOTES (Phase 4)
+  // ============================================
+
+  api.get("/api/payoff-quotes", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const quotes = await storage.getPayoffQuotes(org.id);
+      res.json(quotes);
+    } catch (error: any) {
+      console.error("Get payoff quotes error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch payoff quotes" });
+    }
+  });
+
+  api.get("/api/payoff-quotes/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const quote = await storage.getPayoffQuoteById(org.id, id);
+      if (!quote) {
+        return res.status(404).json({ message: "Payoff quote not found" });
+      }
+      res.json(quote);
+    } catch (error: any) {
+      console.error("Get payoff quote error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch payoff quote" });
+    }
+  });
+
+  api.get("/api/notes/:noteId/payoff-quotes", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const noteId = parseInt(req.params.noteId);
+      const quotes = await storage.getPayoffQuotesByNote(org.id, noteId);
+      res.json(quotes);
+    } catch (error: any) {
+      console.error("Get note payoff quotes error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch note payoff quotes" });
+    }
+  });
+
+  api.post("/api/payoff-quotes", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const quote = await storage.createPayoffQuote({
+        ...req.body,
+        organizationId: org.id,
+      });
+      res.status(201).json(quote);
+    } catch (error: any) {
+      console.error("Create payoff quote error:", error);
+      res.status(400).json({ message: error.message || "Failed to create payoff quote" });
+    }
+  });
+
+  api.patch("/api/payoff-quotes/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const existing = await storage.getPayoffQuoteById(org.id, id);
+      if (!existing) {
+        return res.status(404).json({ message: "Payoff quote not found" });
+      }
+      const quote = await storage.updatePayoffQuote(org.id, id, req.body);
+      res.json(quote);
+    } catch (error: any) {
+      console.error("Update payoff quote error:", error);
+      res.status(400).json({ message: error.message || "Failed to update payoff quote" });
+    }
+  });
+
+  // ============================================
+  // TRUST LEDGER (Phase 4)
+  // ============================================
+
+  api.get("/api/trust-ledger", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const entries = await storage.getTrustLedgerEntries(org.id);
+      res.json(entries);
+    } catch (error: any) {
+      console.error("Get trust ledger entries error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch trust ledger entries" });
+    }
+  });
+
+  api.get("/api/trust-ledger/balance", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const balance = await storage.getTrustBalance(org.id);
+      res.json({ balance });
+    } catch (error: any) {
+      console.error("Get trust ledger balance error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch trust ledger balance" });
+    }
+  });
+
+  api.get("/api/notes/:noteId/trust-ledger", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const noteId = parseInt(req.params.noteId);
+      const entries = await storage.getTrustLedgerByNote(org.id, noteId);
+      res.json(entries);
+    } catch (error: any) {
+      console.error("Get note trust ledger entries error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch note trust ledger entries" });
+    }
+  });
+
+  api.post("/api/trust-ledger", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const entry = await storage.createTrustLedgerEntry({
+        ...req.body,
+        organizationId: org.id,
+      });
+      res.status(201).json(entry);
+    } catch (error: any) {
+      console.error("Create trust ledger entry error:", error);
+      res.status(400).json({ message: error.message || "Failed to create trust ledger entry" });
+    }
+  });
+
+  // ============================================
+  // DELINQUENCY ESCALATIONS (Phase 4)
+  // ============================================
+
+  api.get("/api/delinquency-escalations", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const escalations = await storage.getDelinquencyEscalations(org.id);
+      res.json(escalations);
+    } catch (error: any) {
+      console.error("Get delinquency escalations error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch delinquency escalations" });
+    }
+  });
+
+  api.get("/api/delinquency-escalations/active", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const escalations = await storage.getActiveDelinquencyEscalations(org.id);
+      res.json(escalations);
+    } catch (error: any) {
+      console.error("Get active delinquency escalations error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch active delinquency escalations" });
+    }
+  });
+
+  api.get("/api/delinquency-escalations/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const escalation = await storage.getDelinquencyEscalationById(org.id, id);
+      if (!escalation) {
+        return res.status(404).json({ message: "Delinquency escalation not found" });
+      }
+      res.json(escalation);
+    } catch (error: any) {
+      console.error("Get delinquency escalation error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch delinquency escalation" });
+    }
+  });
+
+  api.get("/api/notes/:noteId/delinquency", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const noteId = parseInt(req.params.noteId);
+      const escalation = await storage.getDelinquencyEscalationByNote(org.id, noteId);
+      res.json(escalation ? [escalation] : []);
+    } catch (error: any) {
+      console.error("Get note delinquency escalations error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch note delinquency escalations" });
+    }
+  });
+
+  api.post("/api/delinquency-escalations", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const escalation = await storage.createDelinquencyEscalation({
+        ...req.body,
+        organizationId: org.id,
+      });
+      res.status(201).json(escalation);
+    } catch (error: any) {
+      console.error("Create delinquency escalation error:", error);
+      res.status(400).json({ message: error.message || "Failed to create delinquency escalation" });
+    }
+  });
+
+  api.patch("/api/delinquency-escalations/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const existing = await storage.getDelinquencyEscalationById(org.id, id);
+      if (!existing) {
+        return res.status(404).json({ message: "Delinquency escalation not found" });
+      }
+      const escalation = await storage.updateDelinquencyEscalation(org.id, id, req.body);
+      res.json(escalation);
+    } catch (error: any) {
+      console.error("Update delinquency escalation error:", error);
+      res.status(400).json({ message: error.message || "Failed to update delinquency escalation" });
+    }
+  });
+
+  // ============================================
+  // DD ASSIGNMENTS (Phase 4)
+  // ============================================
+
+  api.get("/api/dd-assignments", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const assignments = await storage.getDDAssignments(org.id);
+      res.json(assignments);
+    } catch (error: any) {
+      console.error("Get DD assignments error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch DD assignments" });
+    }
+  });
+
+  api.get("/api/dd-assignments/pending", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const assignments = await storage.getPendingDDAssignments(org.id);
+      res.json(assignments);
+    } catch (error: any) {
+      console.error("Get pending DD assignments error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch pending DD assignments" });
+    }
+  });
+
+  api.get("/api/dd-assignments/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const assignment = await storage.getDDAssignmentById(org.id, id);
+      if (!assignment) {
+        return res.status(404).json({ message: "DD assignment not found" });
+      }
+      res.json(assignment);
+    } catch (error: any) {
+      console.error("Get DD assignment error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch DD assignment" });
+    }
+  });
+
+  api.get("/api/properties/:propertyId/dd-assignments", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const propertyId = parseInt(req.params.propertyId);
+      const assignments = await storage.getDDAssignmentsByProperty(org.id, propertyId);
+      res.json(assignments);
+    } catch (error: any) {
+      console.error("Get property DD assignments error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch property DD assignments" });
+    }
+  });
+
+  api.post("/api/dd-assignments", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const assignment = await storage.createDdAssignment({
+        ...req.body,
+        organizationId: org.id,
+      });
+      res.status(201).json(assignment);
+    } catch (error: any) {
+      console.error("Create DD assignment error:", error);
+      res.status(400).json({ message: error.message || "Failed to create DD assignment" });
+    }
+  });
+
+  api.patch("/api/dd-assignments/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const existing = await storage.getDDAssignmentById(org.id, id);
+      if (!existing) {
+        return res.status(404).json({ message: "DD assignment not found" });
+      }
+      const assignment = await storage.updateDdAssignment(org.id, id, req.body);
+      res.json(assignment);
+    } catch (error: any) {
+      console.error("Update DD assignment error:", error);
+      res.status(400).json({ message: error.message || "Failed to update DD assignment" });
+    }
+  });
+
+  api.delete("/api/dd-assignments/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const success = await storage.deleteDdAssignment(org.id, id);
+      if (!success) {
+        return res.status(404).json({ message: "DD assignment not found" });
+      }
+      res.status(204).send();
+    } catch (error: any) {
+      console.error("Delete DD assignment error:", error);
+      res.status(500).json({ message: error.message || "Failed to delete DD assignment" });
+    }
+  });
+
+  // ============================================
+  // SWOT REPORTS (Phase 4)
+  // ============================================
+
+  api.get("/api/swot-reports", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const reports = await storage.getSwotReports(org.id);
+      res.json(reports);
+    } catch (error: any) {
+      console.error("Get SWOT reports error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch SWOT reports" });
+    }
+  });
+
+  api.get("/api/swot-reports/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const report = await storage.getSwotReportById(org.id, id);
+      if (!report) {
+        return res.status(404).json({ message: "SWOT report not found" });
+      }
+      res.json(report);
+    } catch (error: any) {
+      console.error("Get SWOT report error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch SWOT report" });
+    }
+  });
+
+  api.get("/api/properties/:propertyId/swot-report", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const propertyId = parseInt(req.params.propertyId);
+      const report = await storage.getSwotReportByProperty(org.id, propertyId);
+      res.json(report);
+    } catch (error: any) {
+      console.error("Get property SWOT report error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch property SWOT report" });
+    }
+  });
+
+  api.post("/api/swot-reports", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const report = await storage.createSwotReport({
+        ...req.body,
+        organizationId: org.id,
+      });
+      res.status(201).json(report);
+    } catch (error: any) {
+      console.error("Create SWOT report error:", error);
+      res.status(400).json({ message: error.message || "Failed to create SWOT report" });
+    }
+  });
+
+  api.patch("/api/swot-reports/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const existing = await storage.getSwotReportById(org.id, id);
+      if (!existing) {
+        return res.status(404).json({ message: "SWOT report not found" });
+      }
+      const report = await storage.updateSwotReport(org.id, id, req.body);
+      res.json(report);
+    } catch (error: any) {
+      console.error("Update SWOT report error:", error);
+      res.status(400).json({ message: error.message || "Failed to update SWOT report" });
+    }
+  });
+
+  // ============================================
+  // GO/NO-GO MEMOS (Phase 4)
+  // ============================================
+
+  api.get("/api/go-nogo-memos", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const memos = await storage.getGoNogoMemos(org.id);
+      res.json(memos);
+    } catch (error: any) {
+      console.error("Get Go/No-Go memos error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch Go/No-Go memos" });
+    }
+  });
+
+  api.get("/api/go-nogo-memos/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const memo = await storage.getGoNogoMemoById(org.id, id);
+      if (!memo) {
+        return res.status(404).json({ message: "Go/No-Go memo not found" });
+      }
+      res.json(memo);
+    } catch (error: any) {
+      console.error("Get Go/No-Go memo error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch Go/No-Go memo" });
+    }
+  });
+
+  api.get("/api/properties/:propertyId/go-nogo-memo", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const propertyId = parseInt(req.params.propertyId);
+      const memo = await storage.getGoNogoMemoByProperty(org.id, propertyId);
+      res.json(memo);
+    } catch (error: any) {
+      console.error("Get property Go/No-Go memo error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch property Go/No-Go memo" });
+    }
+  });
+
+  api.post("/api/go-nogo-memos", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const memo = await storage.createGoNogoMemo({
+        ...req.body,
+        organizationId: org.id,
+      });
+      res.status(201).json(memo);
+    } catch (error: any) {
+      console.error("Create Go/No-Go memo error:", error);
+      res.status(400).json({ message: error.message || "Failed to create Go/No-Go memo" });
+    }
+  });
+
+  api.patch("/api/go-nogo-memos/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const existing = await storage.getGoNogoMemoById(org.id, id);
+      if (!existing) {
+        return res.status(404).json({ message: "Go/No-Go memo not found" });
+      }
+      const memo = await storage.updateGoNogoMemo(org.id, id, req.body);
+      res.json(memo);
+    } catch (error: any) {
+      console.error("Update Go/No-Go memo error:", error);
+      res.status(400).json({ message: error.message || "Failed to update Go/No-Go memo" });
+    }
+  });
+
   return httpServer;
 }
