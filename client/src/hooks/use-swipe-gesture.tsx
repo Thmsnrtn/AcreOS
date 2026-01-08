@@ -12,7 +12,7 @@ const defaultRoutes = ["/", "/leads", "/properties", "/deals", "/finance", "/set
 
 export function useSwipeNavigation(config: SwipeConfig = {}) {
   const { 
-    threshold = 80, 
+    threshold = 150, // Increased from 80 for less sensitivity
     allowedRoutes = defaultRoutes,
     onSwipeLeft,
     onSwipeRight 
@@ -22,6 +22,7 @@ export function useSwipeNavigation(config: SwipeConfig = {}) {
   const touchStartX = useRef<number | null>(null);
   const touchStartY = useRef<number | null>(null);
   const touchMoved = useRef(false);
+  const isScrollingContainer = useRef(false);
 
   const getCurrentIndex = useCallback(() => {
     return allowedRoutes.indexOf(location);
@@ -50,31 +51,55 @@ export function useSwipeNavigation(config: SwipeConfig = {}) {
   }, [getCurrentIndex, setLocation, allowedRoutes, onSwipeRight]);
 
   useEffect(() => {
+    // Check if element or any parent is horizontally scrollable
+    const isInScrollableContainer = (element: HTMLElement | null): boolean => {
+      while (element) {
+        const style = window.getComputedStyle(element);
+        const overflowX = style.overflowX;
+        const isScrollable = (overflowX === 'auto' || overflowX === 'scroll') && 
+                            element.scrollWidth > element.clientWidth;
+        if (isScrollable) return true;
+        element = element.parentElement;
+      }
+      return false;
+    };
+
     const handleTouchStart = (e: TouchEvent) => {
       const target = e.target as HTMLElement;
-      if (target.closest("input, textarea, [data-no-swipe]")) {
+      // Exclude inputs, textareas, elements with data-no-swipe, tables, and scrollable containers
+      if (target.closest("input, textarea, [data-no-swipe], table, .overflow-x-auto, .overflow-x-scroll")) {
+        isScrollingContainer.current = true;
         return;
       }
+      // Check if inside a horizontally scrollable container
+      if (isInScrollableContainer(target)) {
+        isScrollingContainer.current = true;
+        return;
+      }
+      isScrollingContainer.current = false;
       touchStartX.current = e.touches[0].clientX;
       touchStartY.current = e.touches[0].clientY;
       touchMoved.current = false;
     };
 
     const handleTouchMove = (e: TouchEvent) => {
-      if (touchStartX.current === null || touchStartY.current === null) return;
+      if (touchStartX.current === null || touchStartY.current === null || isScrollingContainer.current) return;
       
       const deltaX = Math.abs(e.touches[0].clientX - touchStartX.current);
       const deltaY = Math.abs(e.touches[0].clientY - touchStartY.current);
       
-      if (deltaX > deltaY && deltaX > 20) {
+      // Require 3:1 horizontal to vertical ratio and minimum 50px horizontal movement
+      // This ensures the gesture is deliberate, not accidental during scrolling
+      if (deltaX > deltaY * 3 && deltaX > 50) {
         touchMoved.current = true;
       }
     };
 
     const handleTouchEnd = (e: TouchEvent) => {
-      if (touchStartX.current === null || !touchMoved.current) {
+      if (touchStartX.current === null || !touchMoved.current || isScrollingContainer.current) {
         touchStartX.current = null;
         touchStartY.current = null;
+        isScrollingContainer.current = false;
         return;
       }
 
@@ -92,6 +117,7 @@ export function useSwipeNavigation(config: SwipeConfig = {}) {
       touchStartX.current = null;
       touchStartY.current = null;
       touchMoved.current = false;
+      isScrollingContainer.current = false;
     };
 
     document.addEventListener("touchstart", handleTouchStart, { passive: true });
