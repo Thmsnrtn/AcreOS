@@ -1802,7 +1802,15 @@ export async function registerRoutes(
         });
       }
       
-      const input = insertPropertySchema.parse({ ...req.body, organizationId: org.id });
+      const numericFields = ["sizeAcres", "assessedValue", "marketValue", "purchasePrice", "listPrice", "soldPrice"];
+      const sanitizedBody = { ...req.body };
+      for (const field of numericFields) {
+        if (sanitizedBody[field] === "" || sanitizedBody[field] === null) {
+          delete sanitizedBody[field];
+        }
+      }
+      
+      const input = insertPropertySchema.parse({ ...sanitizedBody, organizationId: org.id });
       const property = await storage.createProperty(input);
       
       const user = req.user as any;
@@ -1833,7 +1841,15 @@ export async function registerRoutes(
     const existingProperty = await storage.getProperty(org.id, propertyId);
     if (!existingProperty) return res.status(404).json({ message: "Property not found" });
     
-    const property = await storage.updateProperty(propertyId, req.body);
+    const numericFields = ["sizeAcres", "assessedValue", "marketValue", "purchasePrice", "listPrice", "soldPrice"];
+    const sanitizedBody = { ...req.body };
+    for (const field of numericFields) {
+      if (sanitizedBody[field] === "") {
+        sanitizedBody[field] = null;
+      }
+    }
+    
+    const property = await storage.updateProperty(propertyId, sanitizedBody);
     
     const user = req.user as any;
     const userId = user?.claims?.sub || user?.id;
