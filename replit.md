@@ -47,28 +47,23 @@ Preferred communication style: Simple, everyday language.
 - **Marketing Module**: Campaign management for direct mail, email, and SMS with metrics and budget tracking.
 - **Deal Pipeline**: Kanban-style board for managing acquisition and disposition deals.
 - **Document Generation**: Automated creation of promissory notes, warranty deeds, and offer letters.
-- **Usage Limits & Credits**: Tier-based feature usage limits and a prepaid credit system for billable actions (email, SMS, AI, PDF, Comps, Direct Mail).
+- **Usage Limits & Credits**: Tier-based feature usage limits and a prepaid credit system for billable actions.
 - **Hybrid Per-Seat Pricing**: Subscription tiers with optional per-seat add-ons for team growth.
 - **Custom Fields System**: User-defined custom fields for leads, properties, and deals.
 - **Saved Views**: Reusable filtered views with sorting and column visibility.
-- **AI Agents (Autonomous Operations)**: Consolidated into 4 core super-agents:
-  - **Research & Intelligence Agent**: Due diligence, environmental lookups, investment analysis, property enrichment
-  - **Deals & Acquisition Agent**: Offer generation, deal analysis, comp research, financing calculations
-  - **Communications Agent**: Email/SMS composition, lead nurturing, campaign content generation
-  - **Operations Agent**: Delinquency checking, campaign optimization, alerts, digests, performance analysis
-  - All agents use DataSourceBroker for data lookups and OpenAI (gpt-4o) for intelligent analysis
-  - Unified execution endpoint: `/api/agents/execute`
+- **AI Agents (Autonomous Operations)**: Consolidated into 4 core super-agents: Research & Intelligence, Deals & Acquisition, Communications, and Operations. All agents use DataSourceBroker for data lookups and OpenAI (gpt-4o).
 - **AI Section**: Conversational AI interface (`/command-center` or `/ai`) with specialized agents, task management, and real-time agent status monitoring.
-- **Founder Dashboard**: Analytics for revenue, system health, and agent status. Now includes:
-  - Bulk alert operations (Acknowledge All, Resolve All)
-  - Expandable metric tiles with detailed breakdowns
-  - User analytics with All Users table and subscription lifecycle tracking (upgrades/downgrades/cancels)
-  - Data endpoint health checks with Test, Test All, and Diagnose capabilities
+- **Founder Dashboard**: Analytics for revenue, system health, agent status, and user analytics. Includes bulk alert operations and data endpoint health checks.
 - **Team Performance Dashboard**: Aggregated metrics for leads, deals, tasks, and activity trends.
-- **Navigation & UX Organization**: Consolidated sidebar navigation and tabbed hub pages (Marketing, Insights, Settings, Help & Support) with URL hash navigation for deep linking.
-- **Legal Compliance**: Public Terms of Service and Privacy Policy pages, and dismissible disclaimer banners for Finance, AI, and Deals sections.
-- **Bulk Operations**: Multi-select and bulk actions (delete, status change, export) for Leads and Properties.
+- **Navigation & UX Organization**: Consolidated sidebar navigation and tabbed hub pages with URL hash navigation.
+- **Legal Compliance**: Public Terms of Service and Privacy Policy pages, and dismissible disclaimer banners.
+- **Bulk Operations**: Multi-select and bulk actions for Leads and Properties.
 - **API Cost Tracking**: Logging and display of estimated costs for external API usage on the Founder Dashboard.
+- **VA Replacement Engine (Dirt Rich 2 Methodology)**: Marketing lists, batch offer generation, seller communications, ad posting management, buyer prequalification, collection sequences, county research cache.
+- **Advanced GIS/Mapping**: Map layer toggles, measurement tools, map export, nearby parcels discovery, comparables visualization.
+- **Enhanced AI Agents**: Agent memory system, feedback loop, skill registry, property analysis chat.
+- **Advanced Automation**: Workflow triggers (event-driven), visual workflow builder, scheduled task runner.
+- **Document Management**: Template management, version history, document packages.
 
 ## External Dependencies
 
@@ -76,123 +71,9 @@ Preferred communication style: Simple, everyday language.
 - **Authentication**: Replit Auth (OAuth/OpenID Connect).
 - **Payment Processing**: Stripe (subscription billing, one-time credit purchases via Replit Stripe connector).
 - **AI Services**: OpenAI (via Replit AI Integrations for chat completions and image generation).
-- **Mapping/Comps**: Tiered parcel lookup system:
-  - **County GIS Endpoints** (FREE): Direct queries to county ArcGIS REST services for parcel data (296 counties across all 50 states)
-  - **Regrid API** (paid fallback): Used only when county GIS endpoints aren't available
-  - **Parcel Snapshots Cache**: Centralized parcel_snapshots table with 30-day freshness tracking
-  - Admin interface in Founder Dashboard to manage county GIS endpoints
-- **Data Source Broker**: Intelligent tiered data lookup system with 563+ sources:
-  - **Tiered Routing**: Free sources > Cached (30-day) > BYOK (user keys) > Paid APIs
-  - **Health Scoring**: Success rate, latency, consecutive failure tracking per source
-  - **Cost Optimization**: Usage metrics, cache hit rates, and cost summaries
-  - **Source Categories**:
-    - Environmental: FEMA flood zones, National Wetlands Inventory, EPA Superfund
-    - Natural Resources: USDA soil survey, forest data, conservation easements
-    - Government Housing: HUD, Census, FHFA housing data
-    - Real Estate Market: 61+ MLS systems, national portals, county assessors
-    - County GIS Portals: 358+ state/county level endpoints across 48 states
-    - Advanced Analytics: 20+ AI/ML predictions, satellite imagery, sentiment analysis
-    - Address Validation: USPS, Census Geocoder, OpenAddresses
-    - Natural Hazards: Earthquake, wildfire, hurricane risk data
-  - Managed via `data_sources` table with category, access level, and verification tracking
-  - Admin interface in Founder Dashboard to manage sources and view broker metrics
-- **Due Diligence Reports**: Comprehensive property analysis with parcel data, ownership info, tax history, market analysis, risk assessment, and AI-powered summaries. Supports PDF export.
+- **Mapping/Comps**: Tiered parcel lookup system using County GIS Endpoints (free) and Regrid API (paid fallback).
+- **Data Source Broker**: Intelligent tiered data lookup system with 563+ sources across various categories (Environmental, Natural Resources, Government Housing, Real Estate Market, County GIS Portals, Advanced Analytics, Address Validation, Natural Hazards).
 - **Direct Mail**: Lob API (for sending physical mail).
 - **Development Tools**: Vite, Replit Plugins.
 - **Future Integrations (configured but not fully connected)**: SendGrid (Email), Twilio (SMS).
-- **BYOK (Bring Your Own Key)**: Support for users to configure their own API keys for Lob, Regrid, SendGrid, and Twilio, bypassing platform credit usage.
-
-## Recent Changes (Phase 3 Completion - January 2026)
-
-### VA Replacement Engine (Dirt Rich 2 Methodology)
-- **Marketing Lists**: Import/scrub lists with address validation and duplicate removal
-- **Batch Offer Generation**: Automated cash/terms offers using comps with pricing matrix support
-- **Seller Communications**: Track all touchpoints with sellers (calls, texts, emails) with negotiation notes
-- **Ad Posting Management**: Multi-platform ad creation (Facebook, Craigslist, LandWatch, etc.) with AI-generated copy
-- **Buyer Prequalification**: Score buyers based on financials, response time, and purchase history
-- **Collection Sequences**: Automated multi-step collection workflows for delinquent notes
-- **County Research Cache**: Store and reuse county assessor/recorder contact info, GIS URLs, fees
-
-### New Agent Skills
-- **generateBatchOffers**: Creates cash/terms offers for batch leads using market comps
-- **scrubLeadList**: Validates addresses, removes duplicates and invalid records
-- **scoreBuyer**: Calculates buyer qualification scores (0-100)
-- **generateAdCopy**: Creates Mark Podolsky style "story" ads for property listings
-- **startCollectionSequence**: Enrolls delinquent notes in automated collection workflows
-- **researchCounty**: Gathers and caches county office contact info and fee schedules
-
-### Database Tables Added
-- `marketing_lists`, `offer_batches`, `offers` - List and offer management
-- `seller_communications` - Communication tracking
-- `ad_postings` - Multi-platform ad management
-- `buyer_prequalifications` - Buyer scoring system
-- `collection_sequences`, `collection_enrollments` - Collection automation
-- `county_research` - County data cache
-
-### Security Hardening
-- All VA replacement storage methods now require organizationId for cross-tenant isolation
-- Getter methods use compound WHERE clauses: `and(eq(table.id, id), eq(table.organizationId, orgId))`
-- API routes and agent skills properly pass organization context
-
-## Phase 2 Completion (January 2026)
-
-### Advanced GIS/Mapping
-- **Map Layer Toggles**: FEMA flood zones overlay, property status heatmaps with opacity control
-- **Measurement Tools**: Distance and area measurement with unit toggling
-- **Map Export**: Screenshot/export to PNG functionality
-- **Nearby Parcels Discovery**: Find parcels within configurable radius
-- **Comparables Visualization**: Visual comp markers with recency-based coloring
-
-### Enhanced AI Agents  
-- **Agent Memory System**: Persistent memory storage with contextual retrieval
-- **Feedback Loop**: User rating system for agent responses enabling continuous improvement
-- **Skill Registry**: Modular skill system with 7 initial skills (lookupParcel, lookupEnvironmental, generateOffer, sendEmail, calculateFinancing, researchComps, enrichLead)
-- **Property Analysis Chat**: Conversational AI interface for property insights
-
-### Advanced Automation
-- **Workflow Triggers**: Event-driven system supporting 9 trigger events (lead/property/deal lifecycle)
-- **Visual Workflow Builder**: Drag-and-drop UI for creating automation workflows
-- **6 Action Types**: send_email, create_task, update_record, run_agent_skill, send_notification, delay
-- **Scheduled Task Runner**: Cron-based scheduling with retry logic and failure handling
-
-### Document Management
-- **Template Management**: Custom field placeholders with variable substitution
-- **Version History**: Document revision tracking with diff capability
-- **Document Packages**: Bundle multiple documents for deals with bulk generation
-
-### Security Hardening
-- Template ownership validation in document generation
-- Cross-tenant workflow toggle protection
-- Agent skill execution validation in task runner
-
-### Database Tables Added
-- `agentMemory`, `agentFeedback` - Agent learning system
-- `workflows`, `workflowRuns` - Automation engine
-- `scheduledTasks` - Scheduled job management  
-- `documentVersions`, `documentPackages` - Document management
-
-### Technical Files Added
-- `server/services/workflow-engine.ts` - Event-driven workflow execution
-- `server/services/agent-skills.ts` - Modular skill registry
-- `server/services/task-runner.ts` - Scheduled task execution
-- `client/src/pages/workflows.tsx` - Workflow management UI
-- `client/src/components/workflow-builder.tsx` - Visual builder
-- `client/src/components/property-analysis-chat.tsx` - AI chat interface
-
-## Phase 1 Completion (January 2026)
-
-### UX Polish
-- **Floating Action Button (FAB)**: Quick access to create Lead, Property, Deal, or Task from any page
-- **Touch-Optimized UI**: 52px tap targets on mobile, swipe gestures for navigation
-- **Bulk Actions**: Shift+click range selection in Lead/Property tables
-- **CSV Import**: Row-by-row validation feedback with detailed error messages
-
-### Mobile Experience
-- **PWA Hardening**: Enhanced service worker with separate static/API caching
-- **Push Notifications**: Infrastructure ready (requires VAPID keys configuration)
-- **Mobile Bottom Nav**: Touch-friendly navigation with haptic feedback support
-- **Offline Indicator**: Reconnection feedback with dismissible banner
-
-### Testing & Reliability
-- **E2E Test Suite**: Playwright tests for login, lead/property/deal creation, bulk actions
-- **Bug Fix**: Property creation now handles empty string numeric fields correctly
+- **BYOK (Bring Your Own Key)**: Support for users to configure their own API keys for Lob, Regrid, SendGrid, and Twilio.
