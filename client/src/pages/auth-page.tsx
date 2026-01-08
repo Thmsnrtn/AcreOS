@@ -82,7 +82,7 @@ export default function AuthPage() {
               AcreOS
             </h1>
             <p className="text-white/80 text-lg">
-              The Operating System for Land Investors.
+              An Operating System for Land Investors
             </p>
           </div>
 
