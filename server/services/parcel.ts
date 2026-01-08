@@ -1338,3 +1338,139 @@ export async function seedCountyGisEndpoints(): Promise<{ added: number; skipped
   
   return { added, skipped };
 }
+
+/**
+ * Fetch nearby parcels from county GIS within a bounding box
+ * Returns boundaries only (no owner data) for map visualization
+ */
+export async function getNearbyParcelsFromCountyGIS(
+  centerLat: number,
+  centerLng: number,
+  state: string,
+  county: string,
+  radiusMiles: number = 0.5
+): Promise<{
+  parcels: Array<{
+    apn: string;
+    boundary: GeoJSON.Geometry;
+    centroid: { lat: number; lng: number };
+  }>;
+  source: string;
+  count: number;
+}> {
+  const endpoints = await db
+    .select()
+    .from(countyGisEndpoints)
+    .where(
+      and(
+        eq(countyGisEndpoints.state, state.toUpperCase()),
+        ilike(countyGisEndpoints.county, county.replace(/-/g, " ")),
+        eq(countyGisEndpoints.isActive, true)
+      )
+    )
+    .limit(1);
+
+  if (endpoints.length === 0) {
+    console.log(`[NearbyParcels] No county GIS endpoint for ${county}, ${state}`);
+    return { parcels: [], source: "none", count: 0 };
+  }
+
+  const endpoint = endpoints[0];
+  
+  // Convert radius to approximate degrees (1 mile ≈ 0.0145 degrees at mid-latitudes)
+  const degreeOffset = radiusMiles * 0.0145;
+  
+  // Create bounding box in WGS84
+  const minLng = centerLng - degreeOffset;
+  const minLat = centerLat - degreeOffset;
+  const maxLng = centerLng + degreeOffset;
+  const maxLat = centerLat + degreeOffset;
+  
+  // Convert to Web Mercator (EPSG:3857) for ArcGIS query
+  const toWebMercator = (lng: number, lat: number) => {
+    const x = lng * 20037508.34 / 180;
+    const y = Math.log(Math.tan((90 + lat) * Math.PI / 360)) / (Math.PI / 180);
+    return { x, y: y * 20037508.34 / 180 };
+  };
+  
+  const minMerc = toWebMercator(minLng, minLat);
+  const maxMerc = toWebMercator(maxLng, maxLat);
+  
+  try {
+    const queryUrl = `${endpoint.baseUrl}/${endpoint.layerId || 0}/query`;
+    const params = new URLSearchParams({
+      where: "1=1",
+      geometry: JSON.stringify({
+        xmin: minMerc.x,
+        ymin: minMerc.y,
+        xmax: maxMerc.x,
+        ymax: maxMerc.y,
+        spatialReference: { wkid: 3857 }
+      }),
+      geometryType: "esriGeometryEnvelope",
+      spatialRel: "esriSpatialRelIntersects",
+      outFields: endpoint.apnField || "APN",
+      returnGeometry: "true",
+      outSR: "4326",
+      f: "json",
+      resultRecordCount: "100",
+    });
+
+    console.log(`[NearbyParcels] Querying ${endpoint.county}, ${endpoint.state} - ${queryUrl}`);
+    
+    const response = await fetch(`${queryUrl}?${params.toString()}`);
+    
+    if (!response.ok) {
+      console.log(`[NearbyParcels] Query failed: ${response.status}`);
+      return { parcels: [], source: "error", count: 0 };
+    }
+    
+    const data = await response.json();
+    
+    if (!data.features || data.features.length === 0) {
+      console.log(`[NearbyParcels] No features returned`);
+      return { parcels: [], source: endpoint.county, count: 0 };
+    }
+    
+    console.log(`[NearbyParcels] Found ${data.features.length} nearby parcels`);
+    
+    const parcels = data.features.map((feature: any) => {
+      let geometry: GeoJSON.Geometry;
+      
+      if (feature.geometry.rings) {
+        // ArcGIS polygon format
+        if (feature.geometry.rings.length === 1) {
+          geometry = {
+            type: "Polygon",
+            coordinates: feature.geometry.rings,
+          };
+        } else {
+          geometry = {
+            type: "MultiPolygon",
+            coordinates: feature.geometry.rings.map((ring: number[][]) => [ring]),
+          };
+        }
+      } else {
+        geometry = feature.geometry;
+      }
+      
+      const centroid = calculateCentroid(geometry);
+      const apnField = endpoint.apnField || "APN";
+      
+      return {
+        apn: feature.attributes[apnField] || feature.attributes["PARCEL_ID"] || "Unknown",
+        boundary: geometry,
+        centroid,
+      };
+    });
+    
+    return {
+      parcels,
+      source: `${endpoint.county}, ${endpoint.state}`,
+      count: parcels.length,
+    };
+  } catch (error) {
+    console.error(`[NearbyParcels] Error:`, error);
+    return { parcels: [], source: "error", count: 0 };
+  }
+}

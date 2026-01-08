@@ -3399,6 +3399,43 @@ export type InsertGeneratedDocument = z.infer<typeof insertGeneratedDocumentSche
 export type GeneratedDocument = typeof generatedDocuments.$inferSelect;
 
 // ============================================
+// NATIVE E-SIGNATURES
+// ============================================
+
+export const signatures = pgTable("signatures", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  documentId: integer("document_id").references(() => generatedDocuments.id),
+  
+  signerName: text("signer_name").notNull(),
+  signerEmail: text("signer_email"),
+  signerRole: text("signer_role").notNull().default("signer"), // buyer, seller, witness, notary, signer
+  
+  // Base64 encoded PNG signature image from HTML5 Canvas
+  signatureData: text("signature_data").notNull(),
+  signatureType: text("signature_type").notNull().default("drawn"), // drawn, typed, uploaded
+  
+  // IP and device info for audit trail
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  
+  // Legal consent
+  consentGiven: boolean("consent_given").notNull().default(true),
+  consentText: text("consent_text"),
+  
+  signedAt: timestamp("signed_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertSignatureSchema = createInsertSchema(signatures).omit({
+  id: true,
+  signedAt: true,
+  createdAt: true,
+});
+export type InsertSignature = z.infer<typeof insertSignatureSchema>;
+export type Signature = typeof signatures.$inferSelect;
+
+// ============================================
 // AUTOMATION RULES ENGINE (8.1)
 // ============================================
 

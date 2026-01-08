@@ -592,6 +592,9 @@ function PropertyCard({ property, onDelete }: { property: Property; onDelete: ()
             centroid={property.parcelCentroid}
             apn={property.apn}
             height="160px"
+            state={property.state}
+            county={property.county}
+            showNearbyParcels={true}
           />
         ) : (
           <div className="flex items-center justify-center h-full">
@@ -938,6 +941,9 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                   apn={currentProperty.apn}
                   height="350px"
                   enable3DTerrain={true}
+                  state={currentProperty.state}
+                  county={currentProperty.county}
+                  showNearbyParcels={true}
                 />
               </div>
             )}

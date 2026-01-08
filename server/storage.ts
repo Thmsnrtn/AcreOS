@@ -85,6 +85,8 @@ import {
   type PropertyListing, type InsertPropertyListing,
   type DocumentTemplate, type InsertDocumentTemplate,
   type GeneratedDocument, type InsertGeneratedDocument,
+  type Signature, type InsertSignature,
+  signatures,
   type AutomationRule, type InsertAutomationRule,
   type AutomationExecution, type InsertAutomationExecution,
   type Notification, type InsertNotification,
@@ -200,6 +202,16 @@ export interface IStorage {
   bulkDeleteLeads(orgId: number, ids: number[]): Promise<number>;
   bulkUpdateLeads(orgId: number, ids: number[], updates: Partial<InsertLead>): Promise<number>;
   
+  // Lead Duplicate Detection
+  findDuplicateLeads(orgId: number, criteria: {
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    phone?: string;
+    address?: string;
+  }): Promise<Lead[]>;
+  mergeLeads(orgId: number, primaryId: number, duplicateId: number): Promise<Lead>;
+
   // Lead Scoring & Nurturing
   getLeadsNeedingScoring(orgId: number, limit?: number): Promise<Lead[]>;
   getLeadsDueForFollowUp(orgId: number): Promise<Lead[]>;
@@ -617,6 +629,12 @@ export interface IStorage {
   createGeneratedDocument(doc: InsertGeneratedDocument): Promise<GeneratedDocument>;
   updateGeneratedDocument(id: number, updates: Partial<InsertGeneratedDocument>): Promise<GeneratedDocument>;
 
+  // Native E-Signatures
+  getSignatures(orgId: number, documentId?: number): Promise<Signature[]>;
+  getSignature(orgId: number, id: number): Promise<Signature | undefined>;
+  createSignature(signature: InsertSignature): Promise<Signature>;
+  getDocumentSignatures(documentId: number): Promise<Signature[]>;
+
   // Analytics & Reporting
   getExecutiveMetrics(orgId: number, dateRange: { startDate: Date; endDate: Date }): Promise<{
     totalRevenue: number;
@@ -957,6 +975,98 @@ export class DatabaseStorage implements IStorage {
       .set({ ...updates, updatedAt: new Date() })
       .where(and(eq(leads.organizationId, orgId), inArray(leads.id, ids)));
     return ids.length;
+  }
+
+  async findDuplicateLeads(orgId: number, criteria: {
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    phone?: string;
+    address?: string;
+  }): Promise<Lead[]> {
+    const conditions: SQL[] = [eq(leads.organizationId, orgId)];
+    
+    const orConditions: SQL[] = [];
+    
+    if (criteria.email) {
+      orConditions.push(ilike(leads.email, criteria.email.trim()));
+    }
+    
+    if (criteria.phone) {
+      const normalizedPhone = criteria.phone.replace(/\D/g, "");
+      if (normalizedPhone.length >= 10) {
+        orConditions.push(sql`REPLACE(REPLACE(REPLACE(${leads.phone}, '-', ''), ' ', ''), '(', '') LIKE '%' || ${normalizedPhone.slice(-10)} || '%'`);
+      }
+    }
+    
+    if (criteria.firstName && criteria.lastName) {
+      orConditions.push(
+        and(
+          ilike(leads.firstName, criteria.firstName.trim()),
+          ilike(leads.lastName, criteria.lastName.trim())
+        )!
+      );
+    }
+    
+    if (criteria.address) {
+      const cleanAddress = criteria.address.trim().toLowerCase();
+      orConditions.push(sql`LOWER(${leads.mailingAddress}) LIKE '%' || ${cleanAddress} || '%'`);
+      orConditions.push(sql`LOWER(${leads.propertyAddress}) LIKE '%' || ${cleanAddress} || '%'`);
+    }
+    
+    if (orConditions.length === 0) {
+      return [];
+    }
+    
+    conditions.push(or(...orConditions)!);
+    
+    return await db.select().from(leads)
+      .where(and(...conditions))
+      .limit(20);
+  }
+
+  async mergeLeads(orgId: number, primaryId: number, duplicateId: number): Promise<Lead> {
+    const [primary, duplicate] = await Promise.all([
+      this.getLead(orgId, primaryId),
+      this.getLead(orgId, duplicateId),
+    ]);
+    
+    if (!primary || !duplicate) {
+      throw new Error("Lead not found");
+    }
+    
+    const mergedData: Partial<InsertLead> = {};
+    const fieldsToMerge: (keyof InsertLead)[] = [
+      "email", "phone", "mailingAddress", "mailingCity", "mailingState", "mailingZip",
+      "propertyAddress", "propertyCounty", "propertyState", "notes",
+    ];
+    
+    for (const field of fieldsToMerge) {
+      const primaryVal = primary[field as keyof Lead];
+      const duplicateVal = duplicate[field as keyof Lead];
+      if (!primaryVal && duplicateVal) {
+        (mergedData as any)[field] = duplicateVal;
+      }
+    }
+    
+    if (duplicate.notes && primary.notes) {
+      mergedData.notes = `${primary.notes}\n\n--- Merged from duplicate lead ---\n${duplicate.notes}`;
+    } else if (duplicate.notes && !primary.notes) {
+      mergedData.notes = duplicate.notes;
+    }
+    
+    const updated = await this.updateLead(primaryId, mergedData);
+    await this.deleteLead(duplicateId);
+    
+    await this.logActivity({
+      organizationId: orgId,
+      action: "merged",
+      entityType: "lead",
+      entityId: primaryId,
+      description: `Merged duplicate lead #${duplicateId} into lead #${primaryId}`,
+    });
+    
+    return updated;
   }
   
   // Lead Scoring & Nurturing
@@ -4452,6 +4562,34 @@ Notary Public</p>
       .where(eq(generatedDocuments.id, id))
       .returning();
     return updated;
+  }
+
+  // Native E-Signatures
+  async getSignatures(orgId: number, documentId?: number) {
+    let conditions = [eq(signatures.organizationId, orgId)];
+    if (documentId) {
+      conditions.push(eq(signatures.documentId, documentId));
+    }
+    return db.select().from(signatures)
+      .where(and(...conditions))
+      .orderBy(desc(signatures.signedAt));
+  }
+
+  async getSignature(orgId: number, id: number) {
+    const [sig] = await db.select().from(signatures)
+      .where(and(eq(signatures.id, id), eq(signatures.organizationId, orgId)));
+    return sig;
+  }
+
+  async createSignature(signature: InsertSignature) {
+    const [created] = await db.insert(signatures).values(signature).returning();
+    return created;
+  }
+
+  async getDocumentSignatures(documentId: number) {
+    return db.select().from(signatures)
+      .where(eq(signatures.documentId, documentId))
+      .orderBy(signatures.signedAt);
   }
 
   // Analytics & Reporting

@@ -423,12 +423,54 @@ interface SinglePropertyMapProps {
   apn?: string;
   height?: string;
   enable3DTerrain?: boolean;
+  state?: string;
+  county?: string;
+  showNearbyParcels?: boolean;
 }
 
-export function SinglePropertyMap({ boundary, centroid, apn, height = "300px", enable3DTerrain = true }: SinglePropertyMapProps) {
+interface NearbyParcel {
+  apn: string;
+  boundary: GeoJSON.Geometry;
+  centroid: { lat: number; lng: number };
+}
+
+export function SinglePropertyMap({ 
+  boundary, 
+  centroid, 
+  apn, 
+  height = "300px", 
+  enable3DTerrain = true,
+  state,
+  county,
+  showNearbyParcels = true
+}: SinglePropertyMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
+  const [nearbyParcels, setNearbyParcels] = useState<NearbyParcel[]>([]);
+
+  useEffect(() => {
+    if (!centroid || !state || !county || !showNearbyParcels) return;
+    
+    const fetchNearbyParcels = async () => {
+      try {
+        const response = await fetch(
+          `/api/parcels/nearby?lat=${centroid.lat}&lng=${centroid.lng}&state=${state}&county=${encodeURIComponent(county)}&radius=0.25`
+        );
+        if (response.ok) {
+          const data = await response.json();
+          if (data.parcels && data.parcels.length > 0) {
+            const filtered = data.parcels.filter((p: NearbyParcel) => p.apn !== apn);
+            setNearbyParcels(filtered);
+          }
+        }
+      } catch (err) {
+        console.log("Could not fetch nearby parcels:", err);
+      }
+    };
+    
+    fetchNearbyParcels();
+  }, [centroid, state, county, apn, showNearbyParcels]);
 
   useEffect(() => {
     if (!mapContainer.current || !MAPBOX_TOKEN || !boundary || !centroid) return;
@@ -473,11 +515,40 @@ export function SinglePropertyMap({ boundary, centroid, apn, height = "300px", e
         });
       }
 
+      // Add nearby parcels first (yellow boundaries - underneath)
+      if (nearbyParcels.length > 0) {
+        const nearbyGeojson: GeoJSON.FeatureCollection = {
+          type: "FeatureCollection",
+          features: nearbyParcels.map(p => ({
+            type: "Feature" as const,
+            properties: { apn: p.apn },
+            geometry: p.boundary,
+          })),
+        };
+
+        map.current.addSource("nearby-parcels", {
+          type: "geojson",
+          data: nearbyGeojson,
+        });
+
+        map.current.addLayer({
+          id: "nearby-parcels-outline",
+          type: "line",
+          source: "nearby-parcels",
+          paint: {
+            "line-color": "#fbbf24",
+            "line-width": 2,
+            "line-opacity": 0.8,
+          },
+        });
+      }
+
+      // Add selected property on top (red/pink highlighted outline)
       const geojsonData: GeoJSON.FeatureCollection = {
         type: "FeatureCollection",
         features: [{
           type: "Feature",
-          properties: { apn, color: "#22c55e" },
+          properties: { apn, color: "#ef4444" },
           geometry: boundary as GeoJSON.Geometry,
         }],
       };
@@ -492,8 +563,8 @@ export function SinglePropertyMap({ boundary, centroid, apn, height = "300px", e
         type: "fill",
         source: "property",
         paint: {
-          "fill-color": "#22c55e",
-          "fill-opacity": 0.35,
+          "fill-color": "#ef4444",
+          "fill-opacity": 0.25,
         },
       });
 
@@ -502,9 +573,9 @@ export function SinglePropertyMap({ boundary, centroid, apn, height = "300px", e
         type: "line",
         source: "property",
         paint: {
-          "line-color": "#22c55e",
-          "line-width": 3,
-          "line-opacity": 0.9,
+          "line-color": "#ef4444",
+          "line-width": 4,
+          "line-opacity": 1,
         },
       });
 
@@ -514,7 +585,7 @@ export function SinglePropertyMap({ boundary, centroid, apn, height = "300px", e
     return () => {
       map.current?.remove();
     };
-  }, [boundary, centroid, apn, enable3DTerrain]);
+  }, [boundary, centroid, apn, enable3DTerrain, nearbyParcels]);
 
   if (!MAPBOX_TOKEN) {
     return (

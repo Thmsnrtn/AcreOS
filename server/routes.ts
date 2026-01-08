@@ -1031,6 +1031,62 @@ export async function registerRoutes(
     res.json(lead);
   });
   
+  // Check for duplicate leads before creating
+  api.post("/api/leads/check-duplicates", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { firstName, lastName, email, phone, address } = req.body;
+      
+      const duplicates = await storage.findDuplicateLeads(org.id, {
+        firstName,
+        lastName,
+        email,
+        phone,
+        address,
+      });
+      
+      res.json({
+        hasDuplicates: duplicates.length > 0,
+        duplicates: duplicates.map(d => ({
+          id: d.id,
+          firstName: d.firstName,
+          lastName: d.lastName,
+          email: d.email,
+          phone: d.phone,
+          mailingAddress: d.mailingAddress,
+          status: d.status,
+          createdAt: d.createdAt,
+        })),
+      });
+    } catch (err) {
+      console.error("Check duplicates error:", err);
+      res.status(500).json({ message: "Failed to check for duplicates" });
+    }
+  });
+
+  // Merge two leads
+  api.post("/api/leads/merge", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { primaryId, duplicateId } = req.body;
+      
+      if (!primaryId || !duplicateId) {
+        return res.status(400).json({ message: "Primary and duplicate lead IDs are required" });
+      }
+      
+      const merged = await storage.mergeLeads(org.id, primaryId, duplicateId);
+      
+      res.json({
+        success: true,
+        message: "Leads merged successfully",
+        lead: merged,
+      });
+    } catch (err) {
+      console.error("Merge leads error:", err);
+      res.status(500).json({ message: "Failed to merge leads" });
+    }
+  });
+
   api.post("/api/leads", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = (req as any).organization;
@@ -2175,6 +2231,33 @@ export async function registerRoutes(
     }
   });
   
+  // Get nearby parcels for map visualization
+  api.get("/api/parcels/nearby", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { getNearbyParcelsFromCountyGIS } = await import("./services/parcel");
+      
+      const lat = parseFloat(req.query.lat as string);
+      const lng = parseFloat(req.query.lng as string);
+      const state = req.query.state as string;
+      const county = req.query.county as string;
+      const radius = parseFloat(req.query.radius as string) || 0.5;
+      
+      if (isNaN(lat) || isNaN(lng)) {
+        return res.status(400).json({ message: "Valid lat/lng coordinates required" });
+      }
+      
+      if (!state || !county) {
+        return res.status(400).json({ message: "State and county required" });
+      }
+      
+      const result = await getNearbyParcelsFromCountyGIS(lat, lng, state, county, radius);
+      res.json(result);
+    } catch (err) {
+      console.error("Nearby parcels error:", err);
+      res.status(500).json({ message: "Failed to fetch nearby parcels" });
+    }
+  });
+
   // Update property with parcel data
   api.post("/api/properties/:id/fetch-parcel", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
@@ -12364,10 +12447,190 @@ Seller Signature (if applicable)
   });
 
   // ============================================
-  // E-SIGNATURE INTEGRATION (Phase 4.6 - Placeholder)
+  // NATIVE E-SIGNATURE SYSTEM (No external service required)
   // ============================================
 
-  // POST /api/generated-documents/:id/send-for-signature - Send document for e-signature
+  // POST /api/signatures - Create a new signature
+  api.post("/api/signatures", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { documentId, signerName, signerEmail, signerRole, signatureData, signatureType, consentGiven, consentText } = req.body;
+      
+      if (!signerName || !signatureData) {
+        return res.status(400).json({ message: "Signer name and signature data are required" });
+      }
+      
+      const signature = await storage.createSignature({
+        organizationId: org.id,
+        documentId: documentId || null,
+        signerName,
+        signerEmail: signerEmail || null,
+        signerRole: signerRole || "signer",
+        signatureData,
+        signatureType: signatureType || "drawn",
+        ipAddress: req.ip || (req.headers['x-forwarded-for'] as string) || null,
+        userAgent: req.headers['user-agent'] || null,
+        consentGiven: consentGiven !== false,
+        consentText: consentText || "I agree that this electronic signature is legally binding.",
+      });
+      
+      // If linked to a document, update document signers
+      if (documentId) {
+        const document = await storage.getGeneratedDocument(org.id, documentId);
+        if (document) {
+          const existingSigners = (document.signers || []) as Array<{
+            id: string;
+            name: string;
+            email: string;
+            role: string;
+            signedAt?: string;
+            signatureUrl?: string;
+          }>;
+          
+          const updatedSigners = existingSigners.map(s => {
+            if (s.name === signerName || s.email === signerEmail) {
+              return {
+                ...s,
+                signedAt: new Date().toISOString(),
+                signatureUrl: signatureData,
+              };
+            }
+            return s;
+          });
+          
+          // Check if all signers have signed
+          const allSigned = updatedSigners.every(s => s.signedAt);
+          
+          await storage.updateGeneratedDocument(documentId, {
+            signers: updatedSigners,
+            status: allSigned ? "signed" : "partially_signed",
+            ...(allSigned && { completedAt: new Date() }),
+          });
+        }
+      }
+      
+      res.json({ success: true, signature });
+    } catch (error: any) {
+      console.error("Create signature error:", error);
+      res.status(500).json({ message: error.message || "Failed to create signature" });
+    }
+  });
+
+  // GET /api/signatures - List signatures
+  api.get("/api/signatures", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const documentId = req.query.documentId ? parseInt(req.query.documentId as string) : undefined;
+      
+      const signatures = await storage.getSignatures(org.id, documentId);
+      res.json(signatures);
+    } catch (error: any) {
+      console.error("Get signatures error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch signatures" });
+    }
+  });
+
+  // GET /api/signatures/:id - Get a specific signature
+  api.get("/api/signatures/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid signature ID" });
+      }
+      
+      const signature = await storage.getSignature(org.id, id);
+      if (!signature) {
+        return res.status(404).json({ message: "Signature not found" });
+      }
+      
+      res.json(signature);
+    } catch (error: any) {
+      console.error("Get signature error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch signature" });
+    }
+  });
+
+  // GET /api/generated-documents/:id/signatures - Get signatures for a document
+  api.get("/api/generated-documents/:id/signatures", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const documentId = parseInt(req.params.id);
+      
+      if (isNaN(documentId)) {
+        return res.status(400).json({ message: "Invalid document ID" });
+      }
+      
+      const document = await storage.getGeneratedDocument(org.id, documentId);
+      if (!document) {
+        return res.status(404).json({ message: "Document not found" });
+      }
+      
+      const signatures = await storage.getDocumentSignatures(documentId);
+      res.json(signatures);
+    } catch (error: any) {
+      console.error("Get document signatures error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch document signatures" });
+    }
+  });
+
+  // POST /api/generated-documents/:id/request-signature - Request signatures (native system)
+  api.post("/api/generated-documents/:id/request-signature", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid document ID" });
+      }
+      
+      const document = await storage.getGeneratedDocument(org.id, id);
+      if (!document) {
+        return res.status(404).json({ message: "Document not found" });
+      }
+      
+      if (document.status !== "draft") {
+        return res.status(400).json({ message: "Document has already been sent or signed" });
+      }
+      
+      const { signers } = req.body;
+      
+      if (!signers || !Array.isArray(signers) || signers.length === 0) {
+        return res.status(400).json({ message: "At least one signer is required" });
+      }
+      
+      // Format signers with IDs
+      const formattedSigners = signers.map((signer: any, index: number) => ({
+        id: `signer-${Date.now()}-${index}`,
+        name: signer.name,
+        email: signer.email,
+        role: signer.role || "signer",
+        order: index + 1,
+      }));
+      
+      const updated = await storage.updateGeneratedDocument(id, {
+        status: "pending_signature",
+        esignProvider: "native",
+        esignStatus: "pending",
+        signers: formattedSigners,
+        sentAt: new Date(),
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      });
+      
+      res.json({
+        success: true,
+        message: "Document ready for signature",
+        document: updated,
+        signingUrl: `/sign/${id}`,
+      });
+    } catch (error: any) {
+      console.error("Request signature error:", error);
+      res.status(500).json({ message: error.message || "Failed to request signatures" });
+    }
+  });
+
+  // POST /api/generated-documents/:id/send-for-signature - Send document for e-signature (legacy)
   api.post("/api/generated-documents/:id/send-for-signature", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = (req as any).organization;
@@ -12388,20 +12651,18 @@ Seller Signature (if applicable)
       
       const { signers } = req.body;
       
-      // Update document with e-signature info (placeholder integration)
       const updated = await storage.updateGeneratedDocument(id, {
         status: "pending_signature",
-        esignProvider: "docusign",
-        esignEnvelopeId: `placeholder-${Date.now()}`, // Would be real DocuSign envelope ID
-        esignStatus: "sent",
+        esignProvider: "native",
+        esignStatus: "pending",
         signers: signers || [],
         sentAt: new Date(),
-        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days expiration
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
       });
       
       res.json({
         success: true,
-        message: "Document sent for signature (placeholder - DocuSign integration pending)",
+        message: "Document ready for signature",
         document: updated,
       });
     } catch (error: any) {
