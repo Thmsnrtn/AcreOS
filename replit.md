@@ -102,7 +102,39 @@ Preferred communication style: Simple, everyday language.
 - **Future Integrations (configured but not fully connected)**: SendGrid (Email), Twilio (SMS).
 - **BYOK (Bring Your Own Key)**: Support for users to configure their own API keys for Lob, Regrid, SendGrid, and Twilio, bypassing platform credit usage.
 
-## Recent Changes (Phase 2 Completion - January 2026)
+## Recent Changes (Phase 3 Completion - January 2026)
+
+### VA Replacement Engine (Dirt Rich 2 Methodology)
+- **Marketing Lists**: Import/scrub lists with address validation and duplicate removal
+- **Batch Offer Generation**: Automated cash/terms offers using comps with pricing matrix support
+- **Seller Communications**: Track all touchpoints with sellers (calls, texts, emails) with negotiation notes
+- **Ad Posting Management**: Multi-platform ad creation (Facebook, Craigslist, LandWatch, etc.) with AI-generated copy
+- **Buyer Prequalification**: Score buyers based on financials, response time, and purchase history
+- **Collection Sequences**: Automated multi-step collection workflows for delinquent notes
+- **County Research Cache**: Store and reuse county assessor/recorder contact info, GIS URLs, fees
+
+### New Agent Skills
+- **generateBatchOffers**: Creates cash/terms offers for batch leads using market comps
+- **scrubLeadList**: Validates addresses, removes duplicates and invalid records
+- **scoreBuyer**: Calculates buyer qualification scores (0-100)
+- **generateAdCopy**: Creates Mark Podolsky style "story" ads for property listings
+- **startCollectionSequence**: Enrolls delinquent notes in automated collection workflows
+- **researchCounty**: Gathers and caches county office contact info and fee schedules
+
+### Database Tables Added
+- `marketing_lists`, `offer_batches`, `offers` - List and offer management
+- `seller_communications` - Communication tracking
+- `ad_postings` - Multi-platform ad management
+- `buyer_prequalifications` - Buyer scoring system
+- `collection_sequences`, `collection_enrollments` - Collection automation
+- `county_research` - County data cache
+
+### Security Hardening
+- All VA replacement storage methods now require organizationId for cross-tenant isolation
+- Getter methods use compound WHERE clauses: `and(eq(table.id, id), eq(table.organizationId, orgId))`
+- API routes and agent skills properly pass organization context
+
+## Phase 2 Completion (January 2026)
 
 ### Advanced GIS/Mapping
 - **Map Layer Toggles**: FEMA flood zones overlay, property status heatmaps with opacity control
