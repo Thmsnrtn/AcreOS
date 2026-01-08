@@ -102,7 +102,52 @@ Preferred communication style: Simple, everyday language.
 - **Future Integrations (configured but not fully connected)**: SendGrid (Email), Twilio (SMS).
 - **BYOK (Bring Your Own Key)**: Support for users to configure their own API keys for Lob, Regrid, SendGrid, and Twilio, bypassing platform credit usage.
 
-## Recent Changes (Phase 1 Completion - January 2026)
+## Recent Changes (Phase 2 Completion - January 2026)
+
+### Advanced GIS/Mapping
+- **Map Layer Toggles**: FEMA flood zones overlay, property status heatmaps with opacity control
+- **Measurement Tools**: Distance and area measurement with unit toggling
+- **Map Export**: Screenshot/export to PNG functionality
+- **Nearby Parcels Discovery**: Find parcels within configurable radius
+- **Comparables Visualization**: Visual comp markers with recency-based coloring
+
+### Enhanced AI Agents  
+- **Agent Memory System**: Persistent memory storage with contextual retrieval
+- **Feedback Loop**: User rating system for agent responses enabling continuous improvement
+- **Skill Registry**: Modular skill system with 7 initial skills (lookupParcel, lookupEnvironmental, generateOffer, sendEmail, calculateFinancing, researchComps, enrichLead)
+- **Property Analysis Chat**: Conversational AI interface for property insights
+
+### Advanced Automation
+- **Workflow Triggers**: Event-driven system supporting 9 trigger events (lead/property/deal lifecycle)
+- **Visual Workflow Builder**: Drag-and-drop UI for creating automation workflows
+- **6 Action Types**: send_email, create_task, update_record, run_agent_skill, send_notification, delay
+- **Scheduled Task Runner**: Cron-based scheduling with retry logic and failure handling
+
+### Document Management
+- **Template Management**: Custom field placeholders with variable substitution
+- **Version History**: Document revision tracking with diff capability
+- **Document Packages**: Bundle multiple documents for deals with bulk generation
+
+### Security Hardening
+- Template ownership validation in document generation
+- Cross-tenant workflow toggle protection
+- Agent skill execution validation in task runner
+
+### Database Tables Added
+- `agentMemory`, `agentFeedback` - Agent learning system
+- `workflows`, `workflowRuns` - Automation engine
+- `scheduledTasks` - Scheduled job management  
+- `documentVersions`, `documentPackages` - Document management
+
+### Technical Files Added
+- `server/services/workflow-engine.ts` - Event-driven workflow execution
+- `server/services/agent-skills.ts` - Modular skill registry
+- `server/services/task-runner.ts` - Scheduled task execution
+- `client/src/pages/workflows.tsx` - Workflow management UI
+- `client/src/components/workflow-builder.tsx` - Visual builder
+- `client/src/components/property-analysis-chat.tsx` - AI chat interface
+
+## Phase 1 Completion (January 2026)
 
 ### UX Polish
 - **Floating Action Button (FAB)**: Quick access to create Lead, Property, Deal, or Task from any page
@@ -119,9 +164,3 @@ Preferred communication style: Simple, everyday language.
 ### Testing & Reliability
 - **E2E Test Suite**: Playwright tests for login, lead/property/deal creation, bulk actions
 - **Bug Fix**: Property creation now handles empty string numeric fields correctly
-
-### Technical Files Added
-- `client/src/components/floating-action-button.tsx` - FAB component
-- `client/src/hooks/use-swipe-gesture.tsx` - Swipe navigation hook
-- `client/src/hooks/use-push-notifications.tsx` - Push notification hook
-- `client/public/sw.js` - Enhanced service worker
