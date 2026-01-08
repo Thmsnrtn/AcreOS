@@ -9227,6 +9227,90 @@ Seller Signature (if applicable)
   });
   
   // ============================================
+  // EMAIL SERVICE STATUS & LOGS
+  // ============================================
+  
+  api.get("/api/email/status", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { getEmailServiceStatus, emailService } = await import("./services/emailService");
+      
+      const status = await getEmailServiceStatus();
+      const quota = await emailService.getSendQuota(org.id);
+      const credentialSource = await emailService.getCredentialSource(org.id);
+      
+      res.json({
+        ...status,
+        credentialSource: credentialSource || 'platform',
+        quota,
+      });
+    } catch (err: any) {
+      console.error("Get email status error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+  
+  api.get("/api/email/logs", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const limit = Math.min(Number(req.query.limit) || 50, 100);
+      const { emailService } = await import("./services/emailService");
+      
+      const logs = emailService.getLogsByOrganization(org.id, limit);
+      res.json(logs);
+    } catch (err: any) {
+      console.error("Get email logs error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+  
+  api.post("/api/email/test", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = req.user as any;
+      const { to } = req.body;
+      
+      const recipientEmail = to || user.email || user.claims?.email;
+      
+      if (!recipientEmail) {
+        return res.status(400).json({ message: "No recipient email address provided" });
+      }
+      
+      const { emailService } = await import("./services/emailService");
+      
+      const result = await emailService.sendTransactionalEmail('notification', {
+        to: recipientEmail,
+        templateData: {
+          title: 'Test Email',
+          message: `This is a test email from Acreage Land Co. If you received this, your AWS SES configuration is working correctly.`,
+          subject: 'Test Email - AWS SES Configuration',
+        },
+        organizationId: org.id,
+      });
+      
+      if (result.success) {
+        res.json({ 
+          success: true, 
+          message: `Test email sent to ${recipientEmail}`,
+          messageId: result.messageId,
+          attempts: result.attempts,
+        });
+      } else {
+        res.status(400).json({ 
+          success: false, 
+          message: result.error,
+          errorType: result.errorType,
+          attempts: result.attempts,
+          retryable: result.retryable,
+        });
+      }
+    } catch (err: any) {
+      console.error("Test email error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+  
+  // ============================================
   // VERIFIED EMAIL DOMAINS (SendGrid Domain Authentication)
   // ============================================
   

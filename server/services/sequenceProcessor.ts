@@ -246,7 +246,7 @@ export class SequenceProcessorService {
       .replace(/\{\{email\}\}/g, lead.email || "")
       .replace(/\{\{phone\}\}/g, lead.phone || "")
       .replace(/\{\{address\}\}/g, lead.address || "")
-      .replace(/\{\{propertyAddress\}\}/g, lead.propertyAddress || lead.address || "")
+      .replace(/\{\{propertyAddress\}\}/g, lead.address || "")
       .replace(/\{\{city\}\}/g, lead.city || "")
       .replace(/\{\{state\}\}/g, lead.state || "");
   }
@@ -265,7 +265,8 @@ export class SequenceProcessorService {
 
     try {
       const { emailService } = await import("./emailService");
-      if (emailService.isConfigured()) {
+      const configured = await emailService.isConfigured();
+      if (configured) {
         await emailService.sendEmail({
           to: lead.email,
           subject,

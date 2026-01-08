@@ -9,6 +9,8 @@ import { ThemeProvider } from "@/contexts/theme-context";
 
 import { LowBalanceAlert } from "@/components/low-balance-alert";
 import { HintsProvider } from "@/components/feature-hints";
+import { KeyboardShortcutsProvider } from "@/hooks/use-keyboard-shortcuts";
+import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
 import Dashboard from "@/pages/dashboard";
 import LeadsPage from "@/pages/leads";
 import PropertiesPage from "@/pages/properties";
@@ -220,9 +222,12 @@ function App() {
         <QueryClientProvider client={queryClient}>
           <TooltipProvider>
             <HintsProvider>
-              <OfflineIndicator />
-              <Toaster />
-              <AppContent />
+              <KeyboardShortcutsProvider>
+                <OfflineIndicator />
+                <Toaster />
+                <AppContent />
+                <KeyboardShortcutsDialog />
+              </KeyboardShortcutsProvider>
             </HintsProvider>
           </TooltipProvider>
         </QueryClientProvider>

@@ -17,7 +17,45 @@ import {
   useCreateDueDiligenceItem,
 } from "@/hooks/use-due-diligence";
 
-const propertyFormSchema = insertPropertySchema.omit({ organizationId: true });
+// APN validation pattern - supports common formats like 123-456-789, 123-45-678-901, 12345678
+const apnPattern = /^[\d]+([-][\d]+)*$/;
+
+// Client-side form schema with enhanced validation
+const propertyFormSchema = insertPropertySchema.omit({ organizationId: true }).extend({
+  apn: z.string()
+    .min(1, "APN (Assessor Parcel Number) is required")
+    .refine(
+      (val) => apnPattern.test(val.replace(/\s/g, '')),
+      { message: "Please enter a valid APN format (e.g., 123-456-789 or 12345678)" }
+    ),
+  county: z.string().min(1, "County is required"),
+  state: z.string()
+    .min(1, "State is required")
+    .max(2, "Please use 2-letter state code (e.g., CA, TX)")
+    .refine(
+      (val) => /^[A-Za-z]{2}$/.test(val),
+      { message: "Please enter a valid 2-letter state code (e.g., CA, TX)" }
+    ),
+  sizeAcres: z.string()
+    .optional()
+    .refine(
+      (val) => !val || (!isNaN(Number(val)) && Number(val) > 0),
+      { message: "Please enter a valid acreage (e.g., 5.0)" }
+    ),
+  purchasePrice: z.string()
+    .optional()
+    .refine(
+      (val) => !val || (!isNaN(Number(val)) && Number(val) >= 0),
+      { message: "Please enter a valid purchase price" }
+    ),
+  marketValue: z.string()
+    .optional()
+    .refine(
+      (val) => !val || (!isNaN(Number(val)) && Number(val) >= 0),
+      { message: "Please enter a valid market value" }
+    ),
+  status: z.string().min(1, "Status is required"),
+});
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

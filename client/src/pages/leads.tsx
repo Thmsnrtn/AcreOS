@@ -13,8 +13,41 @@ import { insertLeadSchema, type Lead } from "@shared/schema";
 import { z } from "zod";
 import { useLocation, useSearch } from "wouter";
 
-// Client-side form schema that omits organizationId (added by server)
-const leadFormSchema = insertLeadSchema.omit({ organizationId: true });
+// Phone number formatting helper - strips to digits only
+const formatPhoneNumber = (phone: string): string => {
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length === 10) {
+    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
+  if (digits.length === 11 && digits.startsWith('1')) {
+    return `(${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
+  }
+  return phone;
+};
+
+// Client-side form schema with enhanced validation
+const leadFormSchema = insertLeadSchema.omit({ organizationId: true }).extend({
+  firstName: z.string().min(1, "First name is required").max(100, "First name is too long"),
+  lastName: z.string().min(1, "Last name is required").max(100, "Last name is too long"),
+  email: z.string()
+    .optional()
+    .refine(
+      (val) => !val || /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(val),
+      { message: "Please enter a valid email address (e.g., name@example.com)" }
+    ),
+  phone: z.string()
+    .optional()
+    .transform((val) => val ? formatPhoneNumber(val) : val)
+    .refine(
+      (val) => {
+        if (!val) return true;
+        const digits = val.replace(/\D/g, '');
+        return digits.length === 10 || (digits.length === 11 && digits.startsWith('1'));
+      },
+      { message: "Please enter a valid 10-digit US phone number" }
+    ),
+  status: z.string().min(1, "Status is required"),
+});
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1628,10 +1661,11 @@ function LeadDetailDrawer({ lead, onClose, onEdit }: { lead: Lead; onClose: () =
     );
   };
 
-  const getAssigneeName = (userId: string | null | undefined) => {
+  const getAssigneeName = (userId: string | number | null | undefined) => {
     if (!userId) return "Unassigned";
-    const member = teamMembers?.find(m => m.userId === userId);
-    return member?.displayName || member?.email || userId;
+    const userIdStr = String(userId);
+    const member = teamMembers?.find(m => m.userId === userIdStr);
+    return member?.displayName || member?.email || userIdStr;
   };
 
   const statusColors: Record<string, string> = {
@@ -1829,7 +1863,7 @@ function LeadDetailDrawer({ lead, onClose, onEdit }: { lead: Lead; onClose: () =
                       <span className="text-sm text-muted-foreground">Assigned to</span>
                       {userPermissions?.permissions.canManageTeam ? (
                         <Select
-                          value={lead.assignedTo || "unassigned"}
+                          value={lead.assignedTo ? String(lead.assignedTo) : "unassigned"}
                           onValueChange={handleAssignmentChange}
                           disabled={isAssigning}
                         >

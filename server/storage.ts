@@ -1010,8 +1010,7 @@ export class DatabaseStorage implements IStorage {
     
     if (criteria.address) {
       const cleanAddress = criteria.address.trim().toLowerCase();
-      orConditions.push(sql`LOWER(${leads.mailingAddress}) LIKE '%' || ${cleanAddress} || '%'`);
-      orConditions.push(sql`LOWER(${leads.propertyAddress}) LIKE '%' || ${cleanAddress} || '%'`);
+      orConditions.push(sql`LOWER(${leads.address}) LIKE '%' || ${cleanAddress} || '%'`);
     }
     
     if (orConditions.length === 0) {

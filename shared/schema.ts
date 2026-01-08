@@ -71,6 +71,11 @@ export const organizations = pgTable("organizations", {
       autoSuggestions?: boolean;
       rememberContext?: boolean;
     };
+    // Dashboard Widget Settings
+    dashboardWidgets?: {
+      order: string[];
+      visibility: Record<string, boolean>;
+    };
   }>(),
   // Free trial tracking
   trialStartedAt: timestamp("trial_started_at"), // When trial began
