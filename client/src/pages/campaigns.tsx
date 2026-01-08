@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CampaignsContent } from "@/components/campaigns-content";
 import { ABTestsContent } from "@/components/ab-tests-content";
 import { SequencesContent } from "@/components/sequences-content";
+import { LowBalanceAlert } from "@/components/low-balance-alert";
 
 const menuItems = [
   { title: "Dashboard", href: "/", icon: TrendingUp },
@@ -79,8 +80,9 @@ export default function MarketingHub() {
         </SidebarContent>
       </Sidebar>
 
-      <main className="flex-1 p-6 overflow-auto" data-testid="marketing-hub-main">
-        <div className="max-w-7xl mx-auto space-y-6">
+      <main className="flex-1 flex flex-col overflow-auto" data-testid="marketing-hub-main">
+        <LowBalanceAlert />
+        <div className="max-w-7xl mx-auto space-y-6 p-6 flex-1">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <h1 className="text-3xl font-bold" data-testid="text-marketing-hub-title">Marketing Hub</h1>

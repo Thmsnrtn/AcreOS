@@ -7,7 +7,6 @@ import { useAuth } from "@/hooks/use-auth";
 import { Loader2 } from "lucide-react";
 import { ThemeProvider } from "@/contexts/theme-context";
 
-import { LowBalanceAlert } from "@/components/low-balance-alert";
 import { HintsProvider } from "@/components/feature-hints";
 import { KeyboardShortcutsProvider } from "@/hooks/use-keyboard-shortcuts";
 import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
@@ -213,7 +212,6 @@ function AppContent() {
   
   return (
     <>
-      {user && <LowBalanceAlert />}
       <Router />
       {user && <MobileBottomNav />}
       {user && <FloatingActionButton />}

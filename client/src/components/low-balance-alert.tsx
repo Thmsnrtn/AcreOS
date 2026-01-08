@@ -1,13 +1,34 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Plus } from "lucide-react";
+import { AlertTriangle, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CreditPurchaseModal } from "@/components/credit-purchase-modal";
 
 const LOW_BALANCE_THRESHOLD = 200; // $2.00 in cents
+const DISMISS_KEY = "lowBalanceAlertDismissed";
+const DISMISS_DURATION = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 
 export function LowBalanceAlert() {
   const [purchaseModalOpen, setPurchaseModalOpen] = useState(false);
+  const [isDismissed, setIsDismissed] = useState(true); // Start hidden, check localStorage
+
+  useEffect(() => {
+    const dismissedAt = localStorage.getItem(DISMISS_KEY);
+    if (dismissedAt) {
+      const dismissedTime = parseInt(dismissedAt, 10);
+      // Show again after 24 hours
+      if (Date.now() - dismissedTime < DISMISS_DURATION) {
+        setIsDismissed(true);
+        return;
+      }
+    }
+    setIsDismissed(false);
+  }, []);
+
+  const handleDismiss = () => {
+    localStorage.setItem(DISMISS_KEY, Date.now().toString());
+    setIsDismissed(true);
+  };
 
   const { data: balanceData } = useQuery<{ balance: number }>({
     queryKey: ["/api/credits/balance"],
@@ -16,7 +37,7 @@ export function LowBalanceAlert() {
   const balance = balanceData?.balance ?? 0;
   const isLowBalance = balance < LOW_BALANCE_THRESHOLD;
 
-  if (!isLowBalance) {
+  if (!isLowBalance || isDismissed) {
     return null;
   }
 
@@ -33,15 +54,25 @@ export function LowBalanceAlert() {
             ${(balance / 100).toFixed(2)} remaining. Add credits to continue using AI features, emails, and SMS.
           </p>
         </div>
-        <Button
-          size="sm"
-          onClick={() => setPurchaseModalOpen(true)}
-          className="flex-shrink-0"
-          data-testid="button-add-credits"
-        >
-          <Plus className="w-4 h-4 mr-1" />
-          Add Credits
-        </Button>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <Button
+            size="sm"
+            onClick={() => setPurchaseModalOpen(true)}
+            data-testid="button-add-credits"
+          >
+            <Plus className="w-4 h-4 mr-1" />
+            Add Credits
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={handleDismiss}
+            className="text-amber-700 dark:text-amber-300"
+            data-testid="button-dismiss-low-balance"
+          >
+            <X className="w-4 h-4" />
+          </Button>
+        </div>
       </div>
 
       <CreditPurchaseModal

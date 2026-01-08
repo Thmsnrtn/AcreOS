@@ -62,6 +62,7 @@ import {
 import { AISettings } from "@/components/ai-settings";
 import { formatDistanceToNow } from "date-fns";
 import { DisclaimerBanner } from "@/components/disclaimer-banner";
+import { LowBalanceAlert } from "@/components/low-balance-alert";
 
 interface Agent {
   name: string;
@@ -295,6 +296,7 @@ function TeamTabContent() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
+      <LowBalanceAlert />
       <div className="p-4 border-b border-border flex items-center gap-3 flex-wrap">
         <Button
           variant="outline"
