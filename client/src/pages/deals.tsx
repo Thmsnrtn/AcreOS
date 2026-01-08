@@ -4,10 +4,12 @@ import { useProperties } from "@/hooks/use-properties";
 import { ListSkeleton } from "@/components/list-skeleton";
 import { useDealChecklist, useChecklistTemplates, useApplyChecklistTemplate, useUpdateChecklistItem, useStageGate } from "@/hooks/use-checklists";
 import { useState } from "react";
-import { useSearch } from "wouter";
+import { useSearch, Link } from "wouter";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertDealSchema, type Deal, type Property, type DealChecklistItem } from "@shared/schema";
+import { insertDealSchema, type Deal, type Property, type DealChecklistItem, type DocumentPackage } from "@shared/schema";
 import { z } from "zod";
 import { DealCalculator, type AnalysisResults } from "@/components/deal-calculator";
 import { useToast } from "@/hooks/use-toast";
@@ -18,7 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, MapPin, DollarSign, Calendar, Building, TrendingUp, CheckCircle, X, GripVertical, FileText, Trash2, Loader2, Briefcase, Calculator, ClipboardCheck, Upload, AlertTriangle, CheckSquare, Square, Clock, Download } from "lucide-react";
+import { Plus, MapPin, DollarSign, Calendar, Building, TrendingUp, CheckCircle, X, GripVertical, FileText, Trash2, Loader2, Briefcase, Calculator, ClipboardCheck, Upload, AlertTriangle, CheckSquare, Square, Clock, Download, Package, Play, Eye, FolderPlus } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
@@ -351,6 +353,28 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
   const { data: stageGate } = useStageGate(deal.id);
   const { toast } = useToast();
 
+  const { data: dealPackages, isLoading: packagesLoading } = useQuery<DocumentPackage[]>({
+    queryKey: ["/api/document-packages", "deal", deal.id],
+    queryFn: async () => {
+      const response = await fetch(`/api/document-packages/deal/${deal.id}`, { credentials: 'include' });
+      if (!response.ok) return [];
+      return response.json();
+    },
+  });
+
+  const generateAllMutation = useMutation({
+    mutationFn: async ({ id, variables }: { id: number; variables?: Record<string, any> }) => {
+      return apiRequest("POST", `/api/document-packages/${id}/generate-all`, { variables });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/document-packages"] });
+      toast({ title: "Documents generated successfully" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to generate documents", description: error.message, variant: "destructive" });
+    },
+  });
+
   const handleStatusChange = (newStatus: string) => {
     if (stageGate && !stageGate.canAdvance && stageGate.incompleteItems.length > 0) {
       toast({
@@ -418,10 +442,14 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
 
         <div className="p-6">
           <Tabs defaultValue="details" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-5">
               <TabsTrigger value="details" data-testid="tab-deal-details">
                 <FileText className="w-4 h-4 mr-2" />
                 Details
+              </TabsTrigger>
+              <TabsTrigger value="documents" data-testid="tab-deal-documents">
+                <Package className="w-4 h-4 mr-2" />
+                Documents
               </TabsTrigger>
               <TabsTrigger value="timeline" data-testid="tab-deal-timeline">
                 <Clock className="w-4 h-4 mr-2" />
@@ -433,7 +461,7 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
               </TabsTrigger>
               <TabsTrigger value="analysis" data-testid="tab-deal-analysis">
                 <Calculator className="w-4 h-4 mr-2" />
-                ROI Analysis
+                ROI
               </TabsTrigger>
             </TabsList>
 
@@ -600,6 +628,103 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                   View Property
                 </Button>
               </div>
+            </TabsContent>
+
+            <TabsContent value="documents" className="space-y-6">
+              <div className="flex items-center justify-between gap-4">
+                <h3 className="font-medium">Document Packages</h3>
+                <Link href={`/documents?action=create-package&dealId=${deal.id}`}>
+                  <Button size="sm" data-testid="button-create-package-from-deal">
+                    <FolderPlus className="w-4 h-4 mr-2" />
+                    Create Package
+                  </Button>
+                </Link>
+              </div>
+
+              {packagesLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-6 h-6 animate-spin" />
+                </div>
+              ) : !dealPackages || dealPackages.length === 0 ? (
+                <Card className="glass-panel">
+                  <CardContent className="p-6 text-center space-y-4">
+                    <Package className="w-12 h-12 mx-auto text-muted-foreground" />
+                    <div>
+                      <h3 className="font-medium">No Document Packages</h3>
+                      <p className="text-sm text-muted-foreground">Create a package to bundle documents for this deal.</p>
+                    </div>
+                    <Link href={`/documents?action=create-package&dealId=${deal.id}`}>
+                      <Button variant="outline" data-testid="button-create-first-package">
+                        <Plus className="w-4 h-4 mr-2" />
+                        Create Package
+                      </Button>
+                    </Link>
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="space-y-3">
+                  {dealPackages.map(pkg => {
+                    const docsCount = (pkg.documents as any[] || []).length;
+                    const generatedCount = (pkg.documents as any[] || []).filter((d: any) => d.documentId).length;
+                    const statusColors: Record<string, string> = {
+                      draft: "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300",
+                      complete: "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300",
+                      sent: "bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300",
+                      signed: "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300",
+                    };
+
+                    return (
+                      <Card key={pkg.id} className="glass-panel" data-testid={`card-deal-package-${pkg.id}`}>
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between gap-4">
+                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                              <div className="p-2 rounded-lg bg-muted">
+                                <Package className="w-4 h-4 text-muted-foreground" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <h4 className="font-medium truncate" data-testid={`text-deal-package-name-${pkg.id}`}>
+                                  {pkg.name}
+                                </h4>
+                                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                  <Badge variant="outline" className={`text-xs ${statusColors[pkg.status] || ""}`}>
+                                    {pkg.status}
+                                  </Badge>
+                                  <span className="text-xs text-muted-foreground">
+                                    {generatedCount}/{docsCount} generated
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Link href={`/documents?packageId=${pkg.id}`}>
+                                <Button variant="outline" size="sm" data-testid={`button-view-deal-package-${pkg.id}`}>
+                                  <Eye className="w-3 h-3 mr-1" />
+                                  View
+                                </Button>
+                              </Link>
+                              {pkg.status === "draft" && docsCount > 0 && (
+                                <Button 
+                                  size="sm"
+                                  onClick={() => generateAllMutation.mutate({ id: pkg.id })}
+                                  disabled={generateAllMutation.isPending}
+                                  data-testid={`button-generate-deal-package-${pkg.id}`}
+                                >
+                                  {generateAllMutation.isPending ? (
+                                    <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                                  ) : (
+                                    <Play className="w-3 h-3 mr-1" />
+                                  )}
+                                  Generate
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
             </TabsContent>
 
             <TabsContent value="timeline" className="space-y-6">

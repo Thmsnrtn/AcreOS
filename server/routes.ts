@@ -18,7 +18,15 @@ import {
   SUBSCRIPTION_TIERS, payments, notes, deals, properties, leads, activityLog,
   teamConversations, teamMessages, teamMemberPresence,
   insertTeamConversationSchema, insertTeamMessageSchema, insertTeamMemberPresenceSchema,
+  insertWorkflowSchema, WORKFLOW_TRIGGER_EVENTS, WORKFLOW_ACTION_TYPES,
 } from "@shared/schema";
+import { 
+  workflowEngine, 
+  emitLeadEvent, 
+  emitPropertyEvent, 
+  emitDealEvent, 
+  emitPaymentEvent 
+} from "./services/workflow-engine";
 import { activityLogger } from "./services/activityLogger";
 
 // Auth imports
@@ -102,6 +110,18 @@ const logger = {
 
 // Server start time for uptime calculation
 const serverStartTime = Date.now();
+
+// Helper function to calculate distance in miles between two coordinates
+function calculateDistanceMiles(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 3959; // Earth's radius in miles
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
 
 // ============================================
 // RATE LIMITER (In-memory for portal endpoints)
@@ -2284,6 +2304,62 @@ export async function registerRoutes(
     }
   });
 
+  // Get nearby parcels for a specific property by ID
+  api.get("/api/properties/:id/nearby", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const property = await storage.getProperty(org.id, Number(req.params.id));
+      
+      if (!property) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+      
+      const lat = property.parcelCentroid?.lat || (property.latitude ? parseFloat(String(property.latitude)) : null);
+      const lng = property.parcelCentroid?.lng || (property.longitude ? parseFloat(String(property.longitude)) : null);
+      
+      if (!lat || !lng) {
+        return res.status(400).json({ 
+          message: "Property coordinates not available. Please fetch parcel data first.",
+          error: "missing_coordinates"
+        });
+      }
+      
+      if (!property.state || !property.county) {
+        return res.status(400).json({ 
+          message: "Property state and county required for nearby parcel lookup.",
+          error: "missing_location"
+        });
+      }
+      
+      const radiusMiles = parseFloat(req.query.radius as string) || 1;
+      
+      const { getNearbyParcelsFromCountyGIS } = await import("./services/parcel");
+      const result = await getNearbyParcelsFromCountyGIS(lat, lng, property.state, property.county, radiusMiles);
+      
+      // Filter out the subject property from results and add additional info
+      const filteredParcels = result.parcels
+        .filter(p => p.apn !== property.apn)
+        .map(p => ({
+          ...p,
+          distance: calculateDistanceMiles(lat, lng, p.centroid.lat, p.centroid.lng),
+        }))
+        .sort((a, b) => a.distance - b.distance);
+      
+      res.json({
+        ...result,
+        parcels: filteredParcels,
+        subjectProperty: {
+          id: property.id,
+          apn: property.apn,
+          coordinates: { lat, lng },
+        },
+      });
+    } catch (err) {
+      console.error("Nearby parcels by property error:", err);
+      res.status(500).json({ message: "Failed to fetch nearby parcels" });
+    }
+  });
+
   // Update property with parcel data
   api.post("/api/properties/:id/fetch-parcel", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
@@ -2505,6 +2581,128 @@ export async function registerRoutes(
     await storage.deleteDueDiligenceItem(Number(req.params.id));
     res.status(204).send();
   });
+
+  // ============================================
+  // PROPERTY ANALYSIS CHAT
+  // ============================================
+  
+  api.post("/api/properties/:id/analyze", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const propertyId = Number(req.params.id);
+      const { message, conversationHistory } = req.body;
+      
+      if (!message) {
+        return res.status(400).json({ message: "Message is required" });
+      }
+      
+      const property = await storage.getProperty(org.id, propertyId);
+      if (!property) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+      
+      const { ResearchIntelligenceAgent, DealsAcquisitionAgent, skillRegistry } = await import('./services/core-agents');
+      const OpenAI = (await import('openai')).default;
+      const openai = new OpenAI();
+      
+      const researchAgent = new ResearchIntelligenceAgent();
+      const dealsAgent = new DealsAcquisitionAgent();
+      
+      const propertyContext = `
+Property Information:
+- APN: ${property.apn}
+- Location: ${property.address || 'N/A'}, ${property.city || 'N/A'}, ${property.county}, ${property.state}
+- Size: ${property.sizeAcres || 'Unknown'} acres
+- Status: ${property.status}
+- Zoning: ${property.zoning || 'Unknown'}
+- Market Value: ${property.marketValue ? `$${Number(property.marketValue).toLocaleString()}` : 'Unknown'}
+- Purchase Price: ${property.purchasePrice ? `$${Number(property.purchasePrice).toLocaleString()}` : 'Unknown'}
+- Assessed Value: ${property.assessedValue ? `$${Number(property.assessedValue).toLocaleString()}` : 'Unknown'}
+- Road Access: ${property.roadAccess || 'Unknown'}
+- Terrain: ${property.terrain || 'Unknown'}
+- Coordinates: ${property.latitude && property.longitude ? `${property.latitude}, ${property.longitude}` : 'Not available'}
+- Description: ${property.description || 'None'}
+`;
+
+      const researchSkills = researchAgent.getAvailableSkills();
+      const dealsSkills = dealsAgent.getAvailableSkills();
+      const allSkills = [...researchSkills, ...dealsSkills];
+      
+      const skillsContext = allSkills.map(s => `- ${s.name}: ${s.description}`).join('\n');
+      
+      const historyContext = conversationHistory && conversationHistory.length > 0
+        ? conversationHistory.map((m: { role: string; content: string }) => `${m.role}: ${m.content}`).join('\n')
+        : '';
+
+      const systemPrompt = `You are an AI property analyst for AcreOS, a land investment platform. You help users analyze properties, assess risks, calculate valuations, and make informed investment decisions.
+
+${propertyContext}
+
+Available capabilities you can discuss:
+${skillsContext}
+
+When responding:
+1. Use the property data provided to give specific, actionable insights
+2. If asked about environmental risks (flood, wetlands, etc.), explain what data would be available and general risk factors for the location
+3. For financing questions, calculate based on typical land investment terms (10-15% interest, 5-10 year terms)
+4. For offer generation, consider comparable sales, market conditions, and typical land discounts
+5. Be concise but thorough
+6. Suggest follow-up questions that would be helpful
+
+${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: message },
+        ],
+        max_tokens: 1500,
+      });
+
+      const aiResponse = response.choices[0]?.message?.content || "I couldn't generate a response. Please try again.";
+      
+      const suggestions = generateSuggestions(message, property);
+      
+      res.json({
+        response: aiResponse,
+        suggestions,
+        actions: [],
+      });
+    } catch (err: any) {
+      console.error("Property analysis error:", err);
+      res.status(500).json({ message: err.message || "Failed to analyze property" });
+    }
+  });
+
+  function generateSuggestions(message: string, property: any): string[] {
+    const suggestions: string[] = [];
+    const lowerMessage = message.toLowerCase();
+    
+    if (lowerMessage.includes('flood') || lowerMessage.includes('risk') || lowerMessage.includes('environmental')) {
+      suggestions.push("What about wetlands on this property?");
+      suggestions.push("Are there EPA sites nearby?");
+    } else if (lowerMessage.includes('offer') || lowerMessage.includes('price')) {
+      suggestions.push("What financing terms would work?");
+      suggestions.push("What's a fair market value?");
+    } else if (lowerMessage.includes('financing') || lowerMessage.includes('payment')) {
+      suggestions.push("What if I do a 5-year term instead?");
+      suggestions.push("Generate an offer letter");
+    } else if (lowerMessage.includes('similar') || lowerMessage.includes('comp')) {
+      suggestions.push("What's the price per acre for this area?");
+      suggestions.push("How long do similar properties take to sell?");
+    } else {
+      if (!property.marketValue) {
+        suggestions.push("What's the estimated market value?");
+      }
+      if (property.latitude && property.longitude) {
+        suggestions.push("Run environmental risk assessment");
+      }
+      suggestions.push("Calculate seller financing options");
+    }
+    
+    return suggestions.slice(0, 3);
+  }
 
   // ============================================
   // DUE DILIGENCE CHECKLISTS (Enhanced)
@@ -8901,6 +9099,61 @@ Seller Signature (if applicable)
     }
   });
 
+  api.get("/api/agents/skills", isAuthenticated, async (req, res) => {
+    try {
+      const { getAllSkills } = await import('./services/core-agents');
+      res.json(getAllSkills());
+    } catch (err: any) {
+      console.error("Get all skills error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.get("/api/agents/skills/:agentType", isAuthenticated, async (req, res) => {
+    try {
+      const { getAgentSkills } = await import('./services/core-agents');
+      const agentType = req.params.agentType as any;
+      const skills = getAgentSkills(agentType);
+      
+      if (!skills) {
+        return res.status(404).json({ message: "Agent type not found" });
+      }
+      
+      res.json(skills);
+    } catch (err: any) {
+      console.error("Get agent skills error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.post("/api/agents/skills/:skillId/execute", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = (req as any).user;
+      const { skillId } = req.params;
+      const { params, agentType } = req.body;
+      
+      const { executeAgentTask } = await import('./services/core-agents');
+      
+      const result = await executeAgentTask(agentType || "research", {
+        action: "execute_skill",
+        parameters: { skillId, params: params || {} },
+        context: {
+          organizationId: org.id,
+          userId: user?.id,
+          relatedLeadId: params?.leadId,
+          relatedPropertyId: params?.propertyId,
+          relatedDealId: params?.dealId,
+        },
+      });
+
+      res.json(result);
+    } catch (err: any) {
+      console.error("Execute skill error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   api.get("/api/agents/:type", isAuthenticated, async (req, res) => {
     try {
       const { getAgentInfo } = await import('./services/core-agents');
@@ -9009,6 +9262,94 @@ Seller Signature (if applicable)
       res.json(result);
     } catch (err: any) {
       console.error("Compose message error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Agent Memory & Feedback Endpoints
+  api.post("/api/agents/feedback", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = (req as any).user;
+      const { agentTaskId, rating, helpful, feedback: feedbackText } = req.body;
+
+      if (!agentTaskId || rating === undefined || helpful === undefined) {
+        return res.status(400).json({ message: "agentTaskId, rating, and helpful are required" });
+      }
+
+      if (rating < 1 || rating > 5) {
+        return res.status(400).json({ message: "Rating must be between 1 and 5" });
+      }
+
+      const agentTask = await storage.getAgentTask(org.id, agentTaskId);
+      if (!agentTask) {
+        return res.status(404).json({ message: "Agent task not found" });
+      }
+
+      const existingFeedback = await storage.getAgentFeedbackByTask(agentTaskId);
+      if (existingFeedback) {
+        return res.status(409).json({ message: "Feedback already submitted for this task" });
+      }
+
+      const feedbackData = await storage.createAgentFeedback({
+        organizationId: org.id,
+        agentTaskId,
+        userId: user?.id || "anonymous",
+        rating,
+        helpful,
+        feedback: feedbackText || null,
+      });
+
+      res.json({ success: true, feedback: feedbackData });
+    } catch (err: any) {
+      console.error("Submit feedback error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.get("/api/agents/memory/:agentType", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { agentType } = req.params;
+      const limit = parseInt(req.query.limit as string) || 50;
+
+      const validTypes = ["research", "deals", "communications", "operations"];
+      if (!validTypes.includes(agentType)) {
+        return res.status(400).json({ message: "Invalid agent type" });
+      }
+
+      const memories = await storage.getAgentMemories(org.id, agentType, limit);
+      res.json({ memories, count: memories.length });
+    } catch (err: any) {
+      console.error("Get agent memory error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.get("/api/agents/feedback/stats", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const agentType = req.query.agentType as string | undefined;
+
+      const stats = await storage.getAgentFeedbackStats(org.id, agentType);
+      res.json(stats);
+    } catch (err: any) {
+      console.error("Get feedback stats error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.delete("/api/agents/memory/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const memoryId = parseInt(req.params.id);
+      if (isNaN(memoryId)) {
+        return res.status(400).json({ message: "Invalid memory ID" });
+      }
+
+      await storage.deleteAgentMemory(memoryId);
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("Delete agent memory error:", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -12377,6 +12718,272 @@ Seller Signature (if applicable)
     }
   });
 
+  // POST /api/document-templates/:id/preview - Preview template with sample data
+  api.post("/api/document-templates/:id/preview", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid template ID" });
+      }
+      
+      const template = await storage.getDocumentTemplate(id);
+      if (!template) {
+        return res.status(404).json({ message: "Template not found" });
+      }
+      
+      // Verify access - either system template or belongs to this org
+      if (!template.isSystemTemplate && template.organizationId !== org.id) {
+        return res.status(403).json({ message: "Not authorized to preview this template" });
+      }
+      
+      // Get sample data from request body or use defaults
+      const { sampleData } = req.body;
+      
+      // Default sample data for common placeholders
+      const defaultSampleData: Record<string, string> = {
+        // Property fields
+        "property.address": "123 Oak Lane, Austin, TX 78701",
+        "property.apn": "APN-12345-678",
+        "property.county": "Travis",
+        "property.state": "Texas",
+        "property.sizeAcres": "5.5",
+        "property.purchasePrice": "$45,000",
+        "property.assessedValue": "$52,000",
+        "property.legalDescription": "Lot 42, Block 3, Oak Ridge Subdivision",
+        // Lead/Contact fields  
+        "lead.firstName": "John",
+        "lead.lastName": "Smith",
+        "lead.fullName": "John Smith",
+        "lead.email": "john.smith@example.com",
+        "lead.phone": "(555) 123-4567",
+        "lead.address": "456 Maple Street, Dallas, TX 75201",
+        // Organization fields
+        "organization.name": org.name,
+        "organization.email": (org.settings as any)?.companyEmail || "contact@company.com",
+        "organization.phone": (org.settings as any)?.companyPhone || "(555) 999-0000",
+        "organization.address": (org.settings as any)?.companyAddress || "789 Business Ave, Suite 100",
+        // Deal fields
+        "deal.title": "Oak Lane Property Acquisition",
+        "deal.offerAmount": "$40,000",
+        "deal.earnestMoney": "$1,000",
+        "deal.closingDate": new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString(),
+        // Date fields
+        "date.today": new Date().toLocaleDateString(),
+        "date.current": new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
+        // Note/Finance fields
+        "note.principal": "$35,000",
+        "note.interestRate": "9.9%",
+        "note.termMonths": "60",
+        "note.monthlyPayment": "$741.52",
+        "note.downPayment": "$5,000",
+      };
+      
+      // Merge provided sample data with defaults
+      const mergedData = { ...defaultSampleData, ...(sampleData || {}) };
+      
+      // Replace all placeholders in template content
+      let previewContent = template.content;
+      for (const [key, value] of Object.entries(mergedData)) {
+        // Support both {{key}} and {{key.subkey}} formats
+        const regex = new RegExp(`\\{\\{${key.replace('.', '\\.')}\\}\\}`, 'g');
+        previewContent = previewContent.replace(regex, String(value));
+      }
+      
+      // Also replace any simple placeholders without dots
+      if (template.variables && Array.isArray(template.variables)) {
+        for (const variable of template.variables) {
+          const varName = variable.name;
+          if (!varName.includes('.') && !mergedData[varName]) {
+            const defaultValue = variable.defaultValue || `[${varName}]`;
+            const regex = new RegExp(`\\{\\{${varName}\\}\\}`, 'g');
+            previewContent = previewContent.replace(regex, defaultValue);
+          }
+        }
+      }
+      
+      // Mark any remaining unresolved placeholders
+      previewContent = previewContent.replace(/\{\{([^}]+)\}\}/g, '[$1]');
+      
+      res.json({
+        templateId: template.id,
+        templateName: template.name,
+        previewContent,
+        usedData: mergedData,
+      });
+    } catch (error: any) {
+      console.error("Preview document template error:", error);
+      res.status(500).json({ message: error.message || "Failed to preview template" });
+    }
+  });
+
+  // ============================================
+  // DOCUMENT VERSION HISTORY
+  // ============================================
+
+  // GET /api/document-templates/:id/versions - Get version history for a template
+  api.get("/api/document-templates/:id/versions", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid template ID" });
+      }
+      
+      const versions = await storage.getDocumentVersions(org.id, id, "template");
+      res.json(versions);
+    } catch (error: any) {
+      console.error("Get template versions error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch version history" });
+    }
+  });
+
+  // POST /api/document-templates/:id/versions - Create a version snapshot for a template
+  api.post("/api/document-templates/:id/versions", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = req.user as any;
+      const id = parseInt(req.params.id);
+      
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid template ID" });
+      }
+      
+      const template = await storage.getDocumentTemplate(id);
+      if (!template) {
+        return res.status(404).json({ message: "Template not found" });
+      }
+      
+      if (!template.isSystemTemplate && template.organizationId !== org.id) {
+        return res.status(403).json({ message: "Not authorized to version this template" });
+      }
+      
+      const versions = await storage.getDocumentVersions(org.id, id, "template");
+      const nextVersion = versions.length > 0 ? Math.max(...versions.map(v => v.version)) + 1 : 1;
+      
+      const version = await storage.createDocumentVersion({
+        organizationId: org.id,
+        documentId: id,
+        documentType: "template",
+        version: nextVersion,
+        content: template.content,
+        variables: template.variables,
+        changes: req.body.changes || `Version ${nextVersion} created`,
+        createdBy: user?.id || user?.claims?.sub || "system",
+      });
+      
+      res.status(201).json(version);
+    } catch (error: any) {
+      console.error("Create template version error:", error);
+      res.status(500).json({ message: error.message || "Failed to create version" });
+    }
+  });
+
+  // GET /api/generated-documents/:id/versions - Get version history for a generated document
+  api.get("/api/generated-documents/:id/versions", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid document ID" });
+      }
+      
+      const versions = await storage.getDocumentVersions(org.id, id, "generated");
+      res.json(versions);
+    } catch (error: any) {
+      console.error("Get document versions error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch version history" });
+    }
+  });
+
+  // POST /api/generated-documents/:id/versions - Create a version snapshot for a generated document
+  api.post("/api/generated-documents/:id/versions", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = req.user as any;
+      const id = parseInt(req.params.id);
+      
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid document ID" });
+      }
+      
+      const doc = await storage.getGeneratedDocument(org.id, id);
+      if (!doc) {
+        return res.status(404).json({ message: "Document not found" });
+      }
+      
+      const versions = await storage.getDocumentVersions(org.id, id, "generated");
+      const nextVersion = versions.length > 0 ? Math.max(...versions.map(v => v.version)) + 1 : 1;
+      
+      const version = await storage.createDocumentVersion({
+        organizationId: org.id,
+        documentId: id,
+        documentType: "generated",
+        version: nextVersion,
+        content: doc.content || "",
+        changes: req.body.changes || `Version ${nextVersion} created`,
+        createdBy: user?.id || user?.claims?.sub || "system",
+      });
+      
+      res.status(201).json(version);
+    } catch (error: any) {
+      console.error("Create document version error:", error);
+      res.status(500).json({ message: error.message || "Failed to create version" });
+    }
+  });
+
+  // GET /api/documents/versions/:versionId - Get a specific version
+  api.get("/api/documents/versions/:versionId", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const versionId = parseInt(req.params.versionId);
+      
+      if (isNaN(versionId)) {
+        return res.status(400).json({ message: "Invalid version ID" });
+      }
+      
+      const version = await storage.getDocumentVersion(versionId);
+      if (!version) {
+        return res.status(404).json({ message: "Version not found" });
+      }
+      
+      if (version.organizationId !== org.id) {
+        return res.status(403).json({ message: "Not authorized to view this version" });
+      }
+      
+      res.json(version);
+    } catch (error: any) {
+      console.error("Get version error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch version" });
+    }
+  });
+
+  // POST /api/documents/versions/:versionId/restore - Restore to a previous version
+  api.post("/api/documents/versions/:versionId/restore", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const versionId = parseInt(req.params.versionId);
+      
+      if (isNaN(versionId)) {
+        return res.status(400).json({ message: "Invalid version ID" });
+      }
+      
+      const result = await storage.restoreDocumentVersion(org.id, versionId);
+      
+      if (!result.success) {
+        return res.status(400).json({ message: result.message });
+      }
+      
+      res.json(result);
+    } catch (error: any) {
+      console.error("Restore version error:", error);
+      res.status(500).json({ message: error.message || "Failed to restore version" });
+    }
+  });
+
   // ============================================
   // GENERATED DOCUMENTS (Phase 4.3-4.5)
   // ============================================
@@ -12778,6 +13385,355 @@ Seller Signature (if applicable)
     } catch (error: any) {
       console.error("Send for signature error:", error);
       res.status(500).json({ message: error.message || "Failed to send for signature" });
+    }
+  });
+
+  // ============================================
+  // DOCUMENT PACKAGES
+  // ============================================
+
+  // GET /api/document-packages - List packages
+  api.get("/api/document-packages", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const dealId = req.query.dealId ? parseInt(req.query.dealId as string) : undefined;
+      const propertyId = req.query.propertyId ? parseInt(req.query.propertyId as string) : undefined;
+      const status = req.query.status as string | undefined;
+      
+      const packages = await storage.getDocumentPackages(org.id, { dealId, propertyId, status });
+      res.json(packages);
+    } catch (error: any) {
+      console.error("Get document packages error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch document packages" });
+    }
+  });
+
+  // GET /api/document-packages/:id - Get package with documents
+  api.get("/api/document-packages/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid package ID" });
+      }
+      
+      const pkg = await storage.getDocumentPackage(org.id, id);
+      if (!pkg) {
+        return res.status(404).json({ message: "Document package not found" });
+      }
+      
+      res.json(pkg);
+    } catch (error: any) {
+      console.error("Get document package error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch document package" });
+    }
+  });
+
+  // POST /api/document-packages - Create package
+  api.post("/api/document-packages", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = req.user as any;
+      const { name, description, dealId, propertyId, documents } = req.body;
+      
+      if (!name) {
+        return res.status(400).json({ message: "Package name is required" });
+      }
+      
+      const pkg = await storage.createDocumentPackage({
+        organizationId: org.id,
+        name,
+        description,
+        dealId: dealId || null,
+        propertyId: propertyId || null,
+        documents: documents || [],
+        status: "draft",
+        createdBy: user?.id || null,
+      });
+      
+      res.status(201).json(pkg);
+    } catch (error: any) {
+      console.error("Create document package error:", error);
+      res.status(500).json({ message: error.message || "Failed to create document package" });
+    }
+  });
+
+  // PUT /api/document-packages/:id - Update package
+  api.put("/api/document-packages/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid package ID" });
+      }
+      
+      const existing = await storage.getDocumentPackage(org.id, id);
+      if (!existing) {
+        return res.status(404).json({ message: "Document package not found" });
+      }
+      
+      const { name, description, dealId, propertyId, documents, status, sentAt, completedAt } = req.body;
+      
+      const updated = await storage.updateDocumentPackage(id, {
+        name,
+        description,
+        dealId,
+        propertyId,
+        documents,
+        status,
+        sentAt: sentAt ? new Date(sentAt) : undefined,
+        completedAt: completedAt ? new Date(completedAt) : undefined,
+      });
+      
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Update document package error:", error);
+      res.status(500).json({ message: error.message || "Failed to update document package" });
+    }
+  });
+
+  // DELETE /api/document-packages/:id - Delete package
+  api.delete("/api/document-packages/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid package ID" });
+      }
+      
+      const deleted = await storage.deleteDocumentPackage(org.id, id);
+      if (!deleted) {
+        return res.status(404).json({ message: "Document package not found" });
+      }
+      
+      res.json({ success: true, message: "Document package deleted" });
+    } catch (error: any) {
+      console.error("Delete document package error:", error);
+      res.status(500).json({ message: error.message || "Failed to delete document package" });
+    }
+  });
+
+  // POST /api/document-packages/:id/documents - Add document/template to package
+  api.post("/api/document-packages/:id/documents", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid package ID" });
+      }
+      
+      const pkg = await storage.getDocumentPackage(org.id, id);
+      if (!pkg) {
+        return res.status(404).json({ message: "Document package not found" });
+      }
+      
+      const { templateId, documentId, name } = req.body;
+      
+      if (!templateId && !documentId) {
+        return res.status(400).json({ message: "Either templateId or documentId is required" });
+      }
+      
+      const currentDocs = pkg.documents || [];
+      const newOrder = currentDocs.length + 1;
+      
+      const newDoc = {
+        templateId: templateId || 0,
+        documentId: documentId || undefined,
+        order: newOrder,
+        status: "pending",
+        name: name || undefined,
+      };
+      
+      const updated = await storage.updateDocumentPackage(id, {
+        documents: [...currentDocs, newDoc],
+      });
+      
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Add document to package error:", error);
+      res.status(500).json({ message: error.message || "Failed to add document to package" });
+    }
+  });
+
+  // DELETE /api/document-packages/:id/documents/:docIndex - Remove document from package
+  api.delete("/api/document-packages/:id/documents/:docIndex", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const docIndex = parseInt(req.params.docIndex);
+      
+      if (isNaN(id) || isNaN(docIndex)) {
+        return res.status(400).json({ message: "Invalid package ID or document index" });
+      }
+      
+      const pkg = await storage.getDocumentPackage(org.id, id);
+      if (!pkg) {
+        return res.status(404).json({ message: "Document package not found" });
+      }
+      
+      const currentDocs = pkg.documents || [];
+      if (docIndex < 0 || docIndex >= currentDocs.length) {
+        return res.status(400).json({ message: "Invalid document index" });
+      }
+      
+      const updatedDocs = currentDocs.filter((_, i) => i !== docIndex);
+      const reorderedDocs = updatedDocs.map((doc, i) => ({ ...doc, order: i + 1 }));
+      
+      const updated = await storage.updateDocumentPackage(id, {
+        documents: reorderedDocs,
+      });
+      
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Remove document from package error:", error);
+      res.status(500).json({ message: error.message || "Failed to remove document from package" });
+    }
+  });
+
+  // POST /api/document-packages/:id/generate-all - Generate all documents in package
+  api.post("/api/document-packages/:id/generate-all", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = req.user as any;
+      const id = parseInt(req.params.id);
+      
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid package ID" });
+      }
+      
+      const pkg = await storage.getDocumentPackage(org.id, id);
+      if (!pkg) {
+        return res.status(404).json({ message: "Document package not found" });
+      }
+      
+      const { variables } = req.body;
+      const currentDocs = pkg.documents || [];
+      const generatedDocs: any[] = [];
+      
+      for (const docItem of currentDocs) {
+        if (docItem.documentId) {
+          generatedDocs.push({ ...docItem, status: "generated" });
+          continue;
+        }
+        
+        const template = await storage.getDocumentTemplate(docItem.templateId);
+        if (!template) {
+          generatedDocs.push({ ...docItem, status: "error" });
+          continue;
+        }
+        
+        // Security: Ensure template belongs to this org or is a system template
+        if (template.organizationId !== null && template.organizationId !== org.id) {
+          generatedDocs.push({ ...docItem, status: "error" });
+          continue;
+        }
+        
+        let content = template.content;
+        const mergedVars = { ...variables };
+        
+        if (pkg.dealId) {
+          const deal = await storage.getDeal(org.id, pkg.dealId);
+          if (deal) {
+            Object.assign(mergedVars, {
+              deal_name: deal.name,
+              offer_amount: deal.offerAmount,
+              accepted_amount: deal.acceptedAmount,
+            });
+          }
+        }
+        
+        if (pkg.propertyId) {
+          const property = await storage.getProperty(org.id, pkg.propertyId);
+          if (property) {
+            Object.assign(mergedVars, {
+              property_address: property.address,
+              property_city: property.city,
+              property_state: property.state,
+              property_zip: property.zipCode,
+              parcel_number: property.parcelNumber,
+              acreage: property.acreage,
+            });
+          }
+        }
+        
+        for (const [key, value] of Object.entries(mergedVars)) {
+          const regex = new RegExp(`{{\\s*${key}\\s*}}`, 'gi');
+          content = content.replace(regex, String(value || ''));
+        }
+        
+        const generatedDoc = await storage.createGeneratedDocument({
+          organizationId: org.id,
+          templateId: template.id,
+          dealId: pkg.dealId || undefined,
+          propertyId: pkg.propertyId || undefined,
+          name: docItem.name || template.name,
+          type: template.type,
+          content,
+          variables: mergedVars,
+          status: "draft",
+          generatedBy: user?.id,
+        });
+        
+        generatedDocs.push({
+          ...docItem,
+          documentId: generatedDoc.id,
+          status: "generated",
+        });
+      }
+      
+      const updated = await storage.updateDocumentPackage(id, {
+        documents: generatedDocs,
+        status: "complete",
+      });
+      
+      res.json({
+        success: true,
+        message: `Generated ${generatedDocs.filter(d => d.status === 'generated').length} documents`,
+        package: updated,
+      });
+    } catch (error: any) {
+      console.error("Generate all documents error:", error);
+      res.status(500).json({ message: error.message || "Failed to generate documents" });
+    }
+  });
+
+  // GET /api/deals/:id/packages - Get packages for a deal
+  api.get("/api/deals/:id/packages", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const dealId = parseInt(req.params.id);
+      
+      if (isNaN(dealId)) {
+        return res.status(400).json({ message: "Invalid deal ID" });
+      }
+      
+      const packages = await storage.getPackagesByDeal(org.id, dealId);
+      res.json(packages);
+    } catch (error: any) {
+      console.error("Get deal packages error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch deal packages" });
+    }
+  });
+
+  // GET /api/properties/:id/packages - Get packages for a property
+  api.get("/api/properties/:id/packages", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const propertyId = parseInt(req.params.id);
+      
+      if (isNaN(propertyId)) {
+        return res.status(400).json({ message: "Invalid property ID" });
+      }
+      
+      const packages = await storage.getPackagesByProperty(org.id, propertyId);
+      res.json(packages);
+    } catch (error: any) {
+      console.error("Get property packages error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch property packages" });
     }
   });
 
@@ -13780,6 +14736,299 @@ Seller Signature (if applicable)
     } catch (error: any) {
       console.error("Export report error:", error);
       res.status(500).json({ message: error.message || "Failed to export report" });
+    }
+  });
+
+  // ============================================
+  // WORKFLOW AUTOMATION (Event-based Triggers)
+  // ============================================
+
+  // GET /api/workflows - List organization's workflows
+  api.get("/api/workflows", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const workflows = await storage.getWorkflows(org.id);
+      res.json(workflows);
+    } catch (error: any) {
+      console.error("Get workflows error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch workflows" });
+    }
+  });
+
+  // GET /api/workflows/trigger-types - Get available trigger events
+  api.get("/api/workflows/trigger-types", isAuthenticated, async (req, res) => {
+    res.json({
+      triggers: WORKFLOW_TRIGGER_EVENTS,
+      actions: WORKFLOW_ACTION_TYPES,
+    });
+  });
+
+  // GET /api/workflows/:id - Get single workflow
+  api.get("/api/workflows/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const workflow = await storage.getWorkflow(org.id, id);
+      if (!workflow) {
+        return res.status(404).json({ message: "Workflow not found" });
+      }
+      res.json(workflow);
+    } catch (error: any) {
+      console.error("Get workflow error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch workflow" });
+    }
+  });
+
+  // POST /api/workflows - Create workflow
+  api.post("/api/workflows", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const parsed = insertWorkflowSchema.parse({
+        ...req.body,
+        organizationId: org.id,
+      });
+      const workflow = await storage.createWorkflow(parsed);
+      res.status(201).json(workflow);
+    } catch (error: any) {
+      console.error("Create workflow error:", error);
+      res.status(400).json({ message: error.message || "Failed to create workflow" });
+    }
+  });
+
+  // PUT /api/workflows/:id - Update workflow
+  api.put("/api/workflows/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const existing = await storage.getWorkflow(org.id, id);
+      if (!existing) {
+        return res.status(404).json({ message: "Workflow not found" });
+      }
+      const workflow = await storage.updateWorkflow(id, req.body);
+      res.json(workflow);
+    } catch (error: any) {
+      console.error("Update workflow error:", error);
+      res.status(400).json({ message: error.message || "Failed to update workflow" });
+    }
+  });
+
+  // DELETE /api/workflows/:id - Delete workflow
+  api.delete("/api/workflows/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const existing = await storage.getWorkflow(org.id, id);
+      if (!existing) {
+        return res.status(404).json({ message: "Workflow not found" });
+      }
+      await storage.deleteWorkflow(id);
+      res.status(204).send();
+    } catch (error: any) {
+      console.error("Delete workflow error:", error);
+      res.status(500).json({ message: error.message || "Failed to delete workflow" });
+    }
+  });
+
+  // POST /api/workflows/:id/toggle - Enable/disable workflow
+  api.post("/api/workflows/:id/toggle", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const existing = await storage.getWorkflow(org.id, id);
+      if (!existing) {
+        return res.status(404).json({ message: "Workflow not found" });
+      }
+      const isActive = req.body.isActive !== undefined ? req.body.isActive : !existing.isActive;
+      const workflow = await storage.toggleWorkflow(org.id, id, isActive);
+      res.json(workflow);
+    } catch (error: any) {
+      console.error("Toggle workflow error:", error);
+      res.status(500).json({ message: error.message || "Failed to toggle workflow" });
+    }
+  });
+
+  // GET /api/workflows/:id/runs - Get workflow run history
+  api.get("/api/workflows/:id/runs", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const existing = await storage.getWorkflow(org.id, id);
+      if (!existing) {
+        return res.status(404).json({ message: "Workflow not found" });
+      }
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+      const runs = await storage.getWorkflowRuns(id, limit);
+      res.json(runs);
+    } catch (error: any) {
+      console.error("Get workflow runs error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch workflow runs" });
+    }
+  });
+
+  // POST /api/workflows/:id/test - Test run a workflow manually
+  api.post("/api/workflows/:id/test", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const workflow = await storage.getWorkflow(org.id, id);
+      if (!workflow) {
+        return res.status(404).json({ message: "Workflow not found" });
+      }
+      const testData = req.body.testData || {};
+      const run = await workflowEngine.testWorkflow(workflow, testData);
+      res.json(run);
+    } catch (error: any) {
+      console.error("Test workflow error:", error);
+      res.status(500).json({ message: error.message || "Failed to test workflow" });
+    }
+  });
+
+  // ============================================
+  // SCHEDULED TASKS ROUTES
+  // ============================================
+
+  // GET /api/scheduled-tasks - List organization's scheduled tasks
+  api.get("/api/scheduled-tasks", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const tasks = await storage.getScheduledTasks(org.id);
+      res.json(tasks);
+    } catch (error: any) {
+      console.error("Get scheduled tasks error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch scheduled tasks" });
+    }
+  });
+
+  // GET /api/scheduled-tasks/:id - Get single scheduled task
+  api.get("/api/scheduled-tasks/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const task = await storage.getScheduledTaskByOrg(org.id, id);
+      if (!task) {
+        return res.status(404).json({ message: "Scheduled task not found" });
+      }
+      res.json(task);
+    } catch (error: any) {
+      console.error("Get scheduled task error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch scheduled task" });
+    }
+  });
+
+  // POST /api/scheduled-tasks - Create scheduled task
+  api.post("/api/scheduled-tasks", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { taskRunnerService, parseSchedule } = await import("./services/task-runner");
+      
+      const nextRunAt = req.body.nextRunAt ? new Date(req.body.nextRunAt) : parseSchedule(req.body.schedule);
+      const task = await taskRunnerService.scheduleTask({
+        ...req.body,
+        organizationId: org.id,
+        nextRunAt,
+      });
+      res.status(201).json(task);
+    } catch (error: any) {
+      console.error("Create scheduled task error:", error);
+      res.status(500).json({ message: error.message || "Failed to create scheduled task" });
+    }
+  });
+
+  // PUT /api/scheduled-tasks/:id - Update scheduled task
+  api.put("/api/scheduled-tasks/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const existing = await storage.getScheduledTaskByOrg(org.id, id);
+      if (!existing) {
+        return res.status(404).json({ message: "Scheduled task not found" });
+      }
+      
+      const updates = { ...req.body };
+      delete updates.organizationId;
+      delete updates.id;
+      
+      if (updates.schedule && updates.schedule !== existing.schedule) {
+        const { parseSchedule } = await import("./services/task-runner");
+        updates.nextRunAt = parseSchedule(updates.schedule);
+      }
+      
+      const task = await storage.updateScheduledTask(id, updates);
+      res.json(task);
+    } catch (error: any) {
+      console.error("Update scheduled task error:", error);
+      res.status(500).json({ message: error.message || "Failed to update scheduled task" });
+    }
+  });
+
+  // DELETE /api/scheduled-tasks/:id - Delete scheduled task
+  api.delete("/api/scheduled-tasks/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const existing = await storage.getScheduledTaskByOrg(org.id, id);
+      if (!existing) {
+        return res.status(404).json({ message: "Scheduled task not found" });
+      }
+      await storage.deleteScheduledTask(id);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Delete scheduled task error:", error);
+      res.status(500).json({ message: error.message || "Failed to delete scheduled task" });
+    }
+  });
+
+  // POST /api/scheduled-tasks/:id/pause - Pause task
+  api.post("/api/scheduled-tasks/:id/pause", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const existing = await storage.getScheduledTaskByOrg(org.id, id);
+      if (!existing) {
+        return res.status(404).json({ message: "Scheduled task not found" });
+      }
+      const { taskRunnerService } = await import("./services/task-runner");
+      const task = await taskRunnerService.pauseTask(id);
+      res.json(task);
+    } catch (error: any) {
+      console.error("Pause scheduled task error:", error);
+      res.status(500).json({ message: error.message || "Failed to pause scheduled task" });
+    }
+  });
+
+  // POST /api/scheduled-tasks/:id/resume - Resume task
+  api.post("/api/scheduled-tasks/:id/resume", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const existing = await storage.getScheduledTaskByOrg(org.id, id);
+      if (!existing) {
+        return res.status(404).json({ message: "Scheduled task not found" });
+      }
+      const { taskRunnerService } = await import("./services/task-runner");
+      const task = await taskRunnerService.resumeTask(id);
+      res.json(task);
+    } catch (error: any) {
+      console.error("Resume scheduled task error:", error);
+      res.status(500).json({ message: error.message || "Failed to resume scheduled task" });
+    }
+  });
+
+  // POST /api/scheduled-tasks/:id/run-now - Run task immediately
+  api.post("/api/scheduled-tasks/:id/run-now", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const existing = await storage.getScheduledTaskByOrg(org.id, id);
+      if (!existing) {
+        return res.status(404).json({ message: "Scheduled task not found" });
+      }
+      const { taskRunnerService } = await import("./services/task-runner");
+      const result = await taskRunnerService.runTask(id);
+      res.json(result);
+    } catch (error: any) {
+      console.error("Run scheduled task error:", error);
+      res.status(500).json({ message: error.message || "Failed to run scheduled task" });
     }
   });
 

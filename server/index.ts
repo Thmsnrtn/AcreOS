@@ -198,6 +198,9 @@ app.use(requestLoggingMiddleware);
       // Start sequence processor background job (every 60 seconds)
       startSequenceProcessorJob();
       
+      // Start scheduled task runner background job (every minute)
+      startScheduledTaskRunnerJob();
+      
       // Auto-seed county GIS endpoints for free parcel lookups
       seedCountyGisEndpointsOnStartup();
     },
@@ -455,4 +458,38 @@ function startSequenceProcessorJob() {
   }).catch(err => {
     log(`Failed to start sequence processor: ${err}`, 'sequences');
   });
+}
+
+// Scheduled task runner background job
+async function processScheduledTasks() {
+  try {
+    const { taskRunnerService } = await import('./services/task-runner');
+    const result = await taskRunnerService.processScheduledTasks();
+    
+    if (result.processed > 0) {
+      log(`Scheduled tasks: processed=${result.processed}, succeeded=${result.succeeded}, failed=${result.failed}`, 'task-runner');
+    }
+  } catch (err) {
+    log(`Scheduled task runner job error: ${err}`, 'task-runner');
+  }
+}
+
+function startScheduledTaskRunnerJob() {
+  const ONE_MINUTE = 60 * 1000;
+  const TTL_SECONDS = 55; // Lock TTL slightly less than interval
+  
+  log('Starting scheduled task runner background job (every minute)', 'task-runner');
+  
+  // Run after startup delay
+  setTimeout(() => {
+    withJobLock('scheduled_tasks', TTL_SECONDS, processScheduledTasks).catch(err => {
+      log(`Initial scheduled task run failed: ${err}`, 'task-runner');
+    });
+  }, 60000); // Wait 1 minute after startup
+  
+  setInterval(() => {
+    withJobLock('scheduled_tasks', TTL_SECONDS, processScheduledTasks).catch(err => {
+      log(`Scheduled task runner run failed: ${err}`, 'task-runner');
+    });
+  }, ONE_MINUTE);
 }

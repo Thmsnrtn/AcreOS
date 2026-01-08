@@ -1,9 +1,18 @@
 import { useRef, useEffect, useState, useCallback } from "react";
 import mapboxgl from "mapbox-gl";
-import { MapPin, Maximize2, Minimize2, Mountain, Satellite, Map as MapIcon, Play, Pause } from "lucide-react";
+import { MapPin, Maximize2, Minimize2, Mountain, Satellite, Map as MapIcon, Play, Pause, Layers, ChevronDown, ChevronUp, Loader2, Ruler, Square, Camera, Download, X, Clipboard, MapPinned, BarChart3, CircleDot } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Slider } from "@/components/ui/slider";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Label } from "@/components/ui/label";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
 import "mapbox-gl/dist/mapbox-gl.css";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
@@ -19,6 +28,140 @@ const MAP_STYLES: Record<MapStyle, string> = {
   terrain: "mapbox://styles/mapbox/outdoors-v12",
   streets: "mapbox://styles/mapbox/streets-v12",
 };
+
+const FEMA_NFHL_URL = "https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer";
+
+const LAYER_STORAGE_KEY = "property-map-layers";
+const MEASUREMENT_UNITS_KEY = "property-map-measurement-units";
+
+type MeasurementMode = "none" | "distance" | "area";
+type MeasurementUnits = "imperial" | "metric";
+
+interface MeasurementPoint {
+  lng: number;
+  lat: number;
+  marker?: mapboxgl.Marker;
+}
+
+function loadMeasurementUnits(): MeasurementUnits {
+  try {
+    const stored = localStorage.getItem(MEASUREMENT_UNITS_KEY);
+    if (stored === "metric" || stored === "imperial") {
+      return stored;
+    }
+  } catch {
+    console.log("Could not load measurement units from localStorage");
+  }
+  return "imperial";
+}
+
+function saveMeasurementUnits(units: MeasurementUnits): void {
+  try {
+    localStorage.setItem(MEASUREMENT_UNITS_KEY, units);
+  } catch {
+    console.log("Could not save measurement units to localStorage");
+  }
+}
+
+function calculateDistance(points: MeasurementPoint[]): number {
+  if (points.length < 2) return 0;
+  let totalDistance = 0;
+  for (let i = 0; i < points.length - 1; i++) {
+    const from = points[i];
+    const to = points[i + 1];
+    const R = 6371000;
+    const lat1 = from.lat * Math.PI / 180;
+    const lat2 = to.lat * Math.PI / 180;
+    const deltaLat = (to.lat - from.lat) * Math.PI / 180;
+    const deltaLng = (to.lng - from.lng) * Math.PI / 180;
+    const a = Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
+              Math.cos(lat1) * Math.cos(lat2) *
+              Math.sin(deltaLng / 2) * Math.sin(deltaLng / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    totalDistance += R * c;
+  }
+  return totalDistance;
+}
+
+function calculatePolygonArea(points: MeasurementPoint[]): number {
+  if (points.length < 3) return 0;
+  const R = 6371000;
+  let area = 0;
+  const n = points.length;
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    const lat1 = points[i].lat * Math.PI / 180;
+    const lat2 = points[j].lat * Math.PI / 180;
+    const lng1 = points[i].lng * Math.PI / 180;
+    const lng2 = points[j].lng * Math.PI / 180;
+    area += (lng2 - lng1) * (2 + Math.sin(lat1) + Math.sin(lat2));
+  }
+  area = Math.abs(area * R * R / 2);
+  return area;
+}
+
+function formatDistance(meters: number, units: MeasurementUnits): string {
+  if (units === "metric") {
+    if (meters >= 1000) {
+      return `${(meters / 1000).toFixed(2)} km`;
+    }
+    return `${meters.toFixed(0)} m`;
+  }
+  const feet = meters * 3.28084;
+  if (feet >= 5280) {
+    return `${(feet / 5280).toFixed(2)} mi`;
+  }
+  return `${feet.toFixed(0)} ft`;
+}
+
+function formatArea(sqMeters: number, units: MeasurementUnits): string {
+  if (units === "metric") {
+    if (sqMeters >= 10000) {
+      return `${(sqMeters / 10000).toFixed(2)} ha`;
+    }
+    return `${sqMeters.toFixed(0)} m²`;
+  }
+  const acres = sqMeters / 4046.86;
+  if (acres >= 1) {
+    return `${acres.toFixed(2)} acres`;
+  }
+  const sqFeet = sqMeters * 10.7639;
+  return `${sqFeet.toFixed(0)} sq ft`;
+}
+
+interface LayerState {
+  femaFloodZone: boolean;
+  propertyHeatmap: boolean;
+  zoningDistricts: boolean;
+  heatmapOpacity: number;
+}
+
+const DEFAULT_LAYER_STATE: LayerState = {
+  femaFloodZone: false,
+  propertyHeatmap: true,
+  zoningDistricts: false,
+  heatmapOpacity: 0.35,
+};
+
+function loadLayerState(): LayerState {
+  try {
+    const stored = localStorage.getItem(LAYER_STORAGE_KEY);
+    if (stored) {
+      return { ...DEFAULT_LAYER_STATE, ...JSON.parse(stored) };
+    }
+  } catch {
+    console.log("Could not load layer state from localStorage");
+  }
+  return DEFAULT_LAYER_STATE;
+}
+
+function saveLayerState(state: LayerState): void {
+  try {
+    localStorage.setItem(LAYER_STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    console.log("Could not save layer state to localStorage");
+  }
+}
 
 interface PropertyBoundary {
   id: number;
@@ -64,8 +207,61 @@ const STATUS_COLORS: Record<string, string> = {
   default: "#22c55e",
 };
 
+interface NearbyParcelData {
+  apn: string;
+  boundary: GeoJSON.Geometry;
+  centroid: { lat: number; lng: number };
+  distance: number;
+  acres?: number;
+  owner?: string;
+}
+
+interface CompProperty {
+  id: string;
+  apn?: string;
+  address?: string;
+  salePrice?: number;
+  saleDate?: string;
+  acres?: number;
+  pricePerAcre?: number;
+  lat: number;
+  lng: number;
+  distance?: number;
+  adjustedValue?: number;
+  desirabilityScore?: number;
+}
+
+type NearbyRadius = "0.5" | "1" | "2" | "5";
+
+const COMP_RECENCY_COLORS = {
+  recent: "#22c55e",
+  moderate: "#84cc16",
+  older: "#eab308",
+  old: "#f97316",
+};
+
+function getCompRecencyColor(saleDate?: string): string {
+  if (!saleDate) return COMP_RECENCY_COLORS.old;
+  const monthsAgo = (Date.now() - new Date(saleDate).getTime()) / (1000 * 60 * 60 * 24 * 30);
+  if (monthsAgo <= 6) return COMP_RECENCY_COLORS.recent;
+  if (monthsAgo <= 12) return COMP_RECENCY_COLORS.moderate;
+  if (monthsAgo <= 24) return COMP_RECENCY_COLORS.older;
+  return COMP_RECENCY_COLORS.old;
+}
+
+function getCompRecencyOpacity(saleDate?: string): number {
+  if (!saleDate) return 0.5;
+  const monthsAgo = (Date.now() - new Date(saleDate).getTime()) / (1000 * 60 * 60 * 24 * 30);
+  if (monthsAgo <= 6) return 1;
+  if (monthsAgo <= 12) return 0.85;
+  if (monthsAgo <= 24) return 0.7;
+  return 0.5;
+}
+
 export function PropertyMap({
   properties,
+  selectedPropertyId,
+  onPropertySelect,
   height = "400px",
   showLabels = true,
   interactive = true,
@@ -80,6 +276,338 @@ export function PropertyMap({
   const [currentStyle, setCurrentStyle] = useState<MapStyle>("satellite");
   const [isFlyoverActive, setIsFlyoverActive] = useState(false);
   const flyoverAnimationRef = useRef<number | null>(null);
+  
+  const [layerState, setLayerState] = useState<LayerState>(loadLayerState);
+  const [isLayerPanelOpen, setIsLayerPanelOpen] = useState(false);
+  const [femaLoading, setFemaLoading] = useState(false);
+  
+  const [measurementMode, setMeasurementMode] = useState<MeasurementMode>("none");
+  const [measurementPoints, setMeasurementPoints] = useState<MeasurementPoint[]>([]);
+  const [measurementUnits, setMeasurementUnits] = useState<MeasurementUnits>(loadMeasurementUnits);
+  const [isExporting, setIsExporting] = useState(false);
+  const measurementClickHandlerRef = useRef<((e: mapboxgl.MapMouseEvent) => void) | null>(null);
+  
+  const [nearbyParcels, setNearbyParcels] = useState<NearbyParcelData[]>([]);
+  const [nearbyRadius, setNearbyRadius] = useState<NearbyRadius>("1");
+  const [nearbyLoading, setNearbyLoading] = useState(false);
+  const [showNearbyParcels, setShowNearbyParcels] = useState(false);
+  const [nearbyPanelOpen, setNearbyPanelOpen] = useState(false);
+  
+  const [comps, setComps] = useState<CompProperty[]>([]);
+  const [compsLoading, setCompsLoading] = useState(false);
+  const [showComps, setShowComps] = useState(false);
+  const [compsPanelOpen, setCompsPanelOpen] = useState(false);
+  
+  const compMarkersRef = useRef<mapboxgl.Marker[]>([]);
+  
+  const { toast } = useToast();
+
+  const updateLayerState = useCallback((updates: Partial<LayerState>) => {
+    setLayerState(prev => {
+      const newState = { ...prev, ...updates };
+      saveLayerState(newState);
+      return newState;
+    });
+  }, []);
+
+  const addFemaFloodLayer = useCallback(() => {
+    if (!map.current) return;
+    
+    setFemaLoading(true);
+    
+    if (!map.current.getSource("fema-flood")) {
+      map.current.addSource("fema-flood", {
+        type: "raster",
+        tiles: [
+          `${FEMA_NFHL_URL}/export?bbox={bbox-epsg-3857}&bboxSR=3857&imageSR=3857&size=256,256&format=png32&transparent=true&f=image`
+        ],
+        tileSize: 256,
+        attribution: "FEMA NFHL"
+      });
+    }
+    
+    if (!map.current.getLayer("fema-flood-layer")) {
+      const firstSymbolId = map.current.getStyle()?.layers?.find(l => l.type === "symbol")?.id;
+      
+      map.current.addLayer({
+        id: "fema-flood-layer",
+        type: "raster",
+        source: "fema-flood",
+        paint: {
+          "raster-opacity": 0.7,
+          "raster-fade-duration": 0
+        }
+      }, firstSymbolId);
+    }
+    
+    map.current.setLayoutProperty("fema-flood-layer", "visibility", "visible");
+    
+    setTimeout(() => setFemaLoading(false), 1000);
+  }, []);
+
+  const removeFemaFloodLayer = useCallback(() => {
+    if (!map.current) return;
+    
+    if (map.current.getLayer("fema-flood-layer")) {
+      map.current.setLayoutProperty("fema-flood-layer", "visibility", "none");
+    }
+  }, []);
+
+  const updateHeatmapOpacity = useCallback((opacity: number) => {
+    if (!map.current) return;
+    
+    if (map.current.getLayer("property-fill")) {
+      map.current.setPaintProperty("property-fill", "fill-opacity", opacity);
+    }
+  }, []);
+
+  const togglePropertyHeatmap = useCallback((visible: boolean) => {
+    if (!map.current) return;
+    
+    if (map.current.getLayer("property-fill")) {
+      map.current.setLayoutProperty("property-fill", "visibility", visible ? "visible" : "none");
+    }
+    if (map.current.getLayer("property-outline")) {
+      map.current.setLayoutProperty("property-outline", "visibility", visible ? "visible" : "none");
+    }
+  }, []);
+
+  const handleZoningToggle = useCallback((checked: boolean) => {
+    if (checked) {
+      toast({
+        title: "Coming Soon",
+        description: "Zoning district data will be available in a future update.",
+      });
+      updateLayerState({ zoningDistricts: false });
+    } else {
+      updateLayerState({ zoningDistricts: false });
+    }
+  }, [toast, updateLayerState]);
+
+  const fetchNearbyParcels = useCallback(async () => {
+    if (!selectedPropertyId) {
+      toast({
+        title: "No Property Selected",
+        description: "Please select a property to find nearby parcels.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    setNearbyLoading(true);
+    try {
+      const response = await fetch(`/api/properties/${selectedPropertyId}/nearby?radius=${nearbyRadius}`);
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.message || "Failed to fetch nearby parcels");
+      }
+      const data = await response.json();
+      setNearbyParcels(data.parcels || []);
+      setShowNearbyParcels(true);
+      setNearbyPanelOpen(true);
+      toast({
+        title: "Nearby Parcels Found",
+        description: `Found ${data.parcels?.length || 0} parcels within ${nearbyRadius} mile${nearbyRadius !== "1" ? "s" : ""}.`,
+      });
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: err instanceof Error ? err.message : "Failed to fetch nearby parcels",
+        variant: "destructive",
+      });
+    } finally {
+      setNearbyLoading(false);
+    }
+  }, [selectedPropertyId, nearbyRadius, toast]);
+
+  const fetchComps = useCallback(async () => {
+    if (!selectedPropertyId) {
+      toast({
+        title: "No Property Selected",
+        description: "Please select a property to view comparables.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    setCompsLoading(true);
+    try {
+      const response = await fetch(`/api/properties/${selectedPropertyId}/comps`);
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.message || "Failed to fetch comparable properties");
+      }
+      const data = await response.json();
+      const compsList = (data.comps || []).map((c: any, idx: number) => ({
+        id: c.id || `comp-${idx}`,
+        apn: c.apn,
+        address: c.address || c.siteAddress,
+        salePrice: c.salePrice || c.lastSalePrice,
+        saleDate: c.saleDate || c.lastSaleDate,
+        acres: c.acres || c.lotSizeAcres,
+        pricePerAcre: c.pricePerAcre,
+        lat: c.centroid?.lat || c.lat,
+        lng: c.centroid?.lng || c.lng,
+        distance: c.distanceMiles,
+        adjustedValue: c.adjustedValue,
+        desirabilityScore: c.desirabilityScore,
+      }));
+      setComps(compsList);
+      setShowComps(true);
+      setCompsPanelOpen(true);
+      toast({
+        title: "Comparables Found",
+        description: `Found ${compsList.length} comparable properties.`,
+      });
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: err instanceof Error ? err.message : "Failed to fetch comparables",
+        variant: "destructive",
+      });
+    } finally {
+      setCompsLoading(false);
+    }
+  }, [selectedPropertyId, toast]);
+
+  const addNearbyParcelsLayer = useCallback(() => {
+    if (!map.current || nearbyParcels.length === 0) return;
+    
+    if (map.current.getLayer("nearby-parcels-fill")) {
+      map.current.removeLayer("nearby-parcels-fill");
+    }
+    if (map.current.getLayer("nearby-parcels-outline")) {
+      map.current.removeLayer("nearby-parcels-outline");
+    }
+    if (map.current.getSource("nearby-parcels")) {
+      map.current.removeSource("nearby-parcels");
+    }
+    
+    const geojsonData: GeoJSON.FeatureCollection = {
+      type: "FeatureCollection",
+      features: nearbyParcels.map(p => ({
+        type: "Feature" as const,
+        properties: { apn: p.apn, distance: p.distance, acres: p.acres },
+        geometry: p.boundary,
+      })),
+    };
+    
+    map.current.addSource("nearby-parcels", {
+      type: "geojson",
+      data: geojsonData,
+    });
+    
+    map.current.addLayer({
+      id: "nearby-parcels-fill",
+      type: "fill",
+      source: "nearby-parcels",
+      paint: {
+        "fill-color": "#64748b",
+        "fill-opacity": 0.25,
+      },
+    });
+    
+    map.current.addLayer({
+      id: "nearby-parcels-outline",
+      type: "line",
+      source: "nearby-parcels",
+      paint: {
+        "line-color": "#3b82f6",
+        "line-width": 2,
+        "line-opacity": 0.8,
+      },
+    });
+  }, [nearbyParcels]);
+
+  const removeNearbyParcelsLayer = useCallback(() => {
+    if (!map.current) return;
+    if (map.current.getLayer("nearby-parcels-fill")) {
+      map.current.removeLayer("nearby-parcels-fill");
+    }
+    if (map.current.getLayer("nearby-parcels-outline")) {
+      map.current.removeLayer("nearby-parcels-outline");
+    }
+    if (map.current.getSource("nearby-parcels")) {
+      map.current.removeSource("nearby-parcels");
+    }
+  }, []);
+
+  const addCompMarkers = useCallback(() => {
+    if (!map.current) return;
+    
+    compMarkersRef.current.forEach(m => m.remove());
+    compMarkersRef.current = [];
+    
+    comps.forEach(comp => {
+      if (!comp.lat || !comp.lng) return;
+      
+      const color = getCompRecencyColor(comp.saleDate);
+      const opacity = getCompRecencyOpacity(comp.saleDate);
+      
+      const el = document.createElement("div");
+      el.className = "comp-marker";
+      el.style.cssText = `
+        width: 24px;
+        height: 24px;
+        background-color: ${color};
+        border: 2px solid white;
+        border-radius: 50%;
+        cursor: pointer;
+        opacity: ${opacity};
+        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      `;
+      el.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="white"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>`;
+      
+      const pricePerAcre = comp.pricePerAcre 
+        ? `$${comp.pricePerAcre.toLocaleString()}/ac`
+        : comp.salePrice && comp.acres 
+          ? `$${Math.round(comp.salePrice / comp.acres).toLocaleString()}/ac`
+          : "N/A";
+      
+      const popup = new mapboxgl.Popup({ offset: 25, closeButton: true })
+        .setHTML(`
+          <div style="min-width: 180px; font-family: system-ui;">
+            <div style="font-weight: 600; margin-bottom: 4px;">${comp.address || comp.apn || "Comp Property"}</div>
+            ${comp.salePrice ? `<div style="color: #22c55e; font-weight: 500;">$${comp.salePrice.toLocaleString()}</div>` : ""}
+            ${comp.saleDate ? `<div style="font-size: 12px; color: #6b7280;">Sold: ${new Date(comp.saleDate).toLocaleDateString()}</div>` : ""}
+            ${comp.acres ? `<div style="font-size: 12px; color: #6b7280;">Size: ${comp.acres.toFixed(2)} acres</div>` : ""}
+            <div style="font-size: 12px; color: #6b7280;">$/Acre: ${pricePerAcre}</div>
+            ${comp.distance ? `<div style="font-size: 12px; color: #6b7280;">Distance: ${comp.distance.toFixed(2)} mi</div>` : ""}
+          </div>
+        `);
+      
+      const marker = new mapboxgl.Marker({ element: el })
+        .setLngLat([comp.lng, comp.lat])
+        .setPopup(popup)
+        .addTo(map.current!);
+      
+      compMarkersRef.current.push(marker);
+    });
+  }, [comps]);
+
+  const removeCompMarkers = useCallback(() => {
+    compMarkersRef.current.forEach(m => m.remove());
+    compMarkersRef.current = [];
+  }, []);
+
+  useEffect(() => {
+    if (showNearbyParcels && nearbyParcels.length > 0 && mapLoaded) {
+      addNearbyParcelsLayer();
+    } else {
+      removeNearbyParcelsLayer();
+    }
+  }, [showNearbyParcels, nearbyParcels, mapLoaded, addNearbyParcelsLayer, removeNearbyParcelsLayer]);
+
+  useEffect(() => {
+    if (showComps && comps.length > 0 && mapLoaded) {
+      addCompMarkers();
+    } else {
+      removeCompMarkers();
+    }
+  }, [showComps, comps, mapLoaded, addCompMarkers, removeCompMarkers]);
 
   const addPropertyLayers = useCallback(() => {
     if (!map.current) return;
@@ -102,6 +630,7 @@ export function PropertyMap({
             id: p.id,
             apn: p.apn,
             name: p.name,
+            status: p.status || "default",
             color: STATUS_COLORS[p.status || "default"] || STATUS_COLORS.default,
           },
           geometry: p.boundary as GeoJSON.Geometry,
@@ -119,8 +648,11 @@ export function PropertyMap({
       source: "properties",
       paint: {
         "fill-color": ["get", "color"],
-        "fill-opacity": 0.35,
+        "fill-opacity": layerState.heatmapOpacity,
       },
+      layout: {
+        visibility: layerState.propertyHeatmap ? "visible" : "none"
+      }
     });
 
     map.current.addLayer({
@@ -132,6 +664,9 @@ export function PropertyMap({
         "line-width": 3,
         "line-opacity": 0.9,
       },
+      layout: {
+        visibility: layerState.propertyHeatmap ? "visible" : "none"
+      }
     });
 
     if (showLabels) {
@@ -171,7 +706,11 @@ export function PropertyMap({
         },
       });
     }
-  }, [properties, showLabels]);
+
+    if (layerState.femaFloodZone) {
+      addFemaFloodLayer();
+    }
+  }, [properties, showLabels, layerState.heatmapOpacity, layerState.propertyHeatmap, layerState.femaFloodZone, addFemaFloodLayer]);
 
   const setup3DTerrain = useCallback(() => {
     if (!map.current || !enable3DTerrain) return;
@@ -256,6 +795,251 @@ export function PropertyMap({
       map.current?.resize();
     }, 100);
   }, []);
+
+  const clearMeasurement = useCallback(() => {
+    measurementPoints.forEach(p => p.marker?.remove());
+    setMeasurementPoints([]);
+    
+    if (map.current) {
+      if (map.current.getLayer("measurement-line")) {
+        map.current.removeLayer("measurement-line");
+      }
+      if (map.current.getLayer("measurement-fill")) {
+        map.current.removeLayer("measurement-fill");
+      }
+      if (map.current.getSource("measurement")) {
+        map.current.removeSource("measurement");
+      }
+    }
+  }, [measurementPoints]);
+
+  const exitMeasurementMode = useCallback(() => {
+    if (measurementClickHandlerRef.current && map.current) {
+      map.current.off("click", measurementClickHandlerRef.current);
+      measurementClickHandlerRef.current = null;
+    }
+    clearMeasurement();
+    setMeasurementMode("none");
+    if (map.current) {
+      map.current.getCanvas().style.cursor = "";
+    }
+  }, [clearMeasurement]);
+
+  const updateMeasurementLayer = useCallback((points: MeasurementPoint[], mode: MeasurementMode) => {
+    if (!map.current || points.length < 2) return;
+    
+    const coordinates = points.map(p => [p.lng, p.lat]);
+    
+    if (map.current.getSource("measurement")) {
+      const source = map.current.getSource("measurement") as mapboxgl.GeoJSONSource;
+      if (mode === "area" && points.length >= 3) {
+        source.setData({
+          type: "Feature",
+          properties: {},
+          geometry: {
+            type: "Polygon",
+            coordinates: [[...coordinates, coordinates[0]]]
+          }
+        });
+      } else {
+        source.setData({
+          type: "Feature",
+          properties: {},
+          geometry: {
+            type: "LineString",
+            coordinates
+          }
+        });
+      }
+    } else {
+      const geojsonData: GeoJSON.Feature = mode === "area" && points.length >= 3
+        ? {
+            type: "Feature",
+            properties: {},
+            geometry: {
+              type: "Polygon",
+              coordinates: [[...coordinates, coordinates[0]]]
+            }
+          }
+        : {
+            type: "Feature",
+            properties: {},
+            geometry: {
+              type: "LineString",
+              coordinates
+            }
+          };
+      
+      map.current.addSource("measurement", {
+        type: "geojson",
+        data: geojsonData
+      });
+      
+      if (mode === "area") {
+        map.current.addLayer({
+          id: "measurement-fill",
+          type: "fill",
+          source: "measurement",
+          paint: {
+            "fill-color": "#3b82f6",
+            "fill-opacity": 0.3
+          }
+        });
+      }
+      
+      map.current.addLayer({
+        id: "measurement-line",
+        type: "line",
+        source: "measurement",
+        paint: {
+          "line-color": "#3b82f6",
+          "line-width": 3,
+          "line-dasharray": [2, 1]
+        }
+      });
+    }
+  }, []);
+
+  const startMeasurement = useCallback((mode: MeasurementMode) => {
+    if (!map.current) return;
+    
+    if (measurementClickHandlerRef.current) {
+      map.current.off("click", measurementClickHandlerRef.current);
+    }
+    clearMeasurement();
+    setMeasurementMode(mode);
+    map.current.getCanvas().style.cursor = "crosshair";
+    
+    const handleClick = (e: mapboxgl.MapMouseEvent) => {
+      const { lng, lat } = e.lngLat;
+      
+      const marker = new mapboxgl.Marker({
+        color: "#3b82f6",
+        scale: 0.7
+      })
+        .setLngLat([lng, lat])
+        .addTo(map.current!);
+      
+      setMeasurementPoints(prev => {
+        const newPoints = [...prev, { lng, lat, marker }];
+        updateMeasurementLayer(newPoints, mode);
+        return newPoints;
+      });
+    };
+    
+    measurementClickHandlerRef.current = handleClick;
+    map.current.on("click", handleClick);
+  }, [clearMeasurement, updateMeasurementLayer]);
+
+  const toggleMeasurementUnits = useCallback(() => {
+    setMeasurementUnits(prev => {
+      const newUnits = prev === "imperial" ? "metric" : "imperial";
+      saveMeasurementUnits(newUnits);
+      return newUnits;
+    });
+  }, []);
+
+  const exportMapAsPng = useCallback(async () => {
+    if (!map.current) return;
+    
+    setIsExporting(true);
+    try {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      const canvas = map.current.getCanvas();
+      const dataUrl = canvas.toDataURL("image/png");
+      
+      const link = document.createElement("a");
+      link.download = `map-export-${new Date().toISOString().slice(0, 10)}.png`;
+      link.href = dataUrl;
+      link.click();
+      
+      toast({
+        title: "Map Exported",
+        description: "Image downloaded successfully.",
+      });
+    } catch (error) {
+      toast({
+        title: "Export Failed",
+        description: "Could not export map image.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  }, [toast]);
+
+  const copyMapToClipboard = useCallback(async () => {
+    if (!map.current) return;
+    
+    setIsExporting(true);
+    try {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      const canvas = map.current.getCanvas();
+      
+      canvas.toBlob(async (blob) => {
+        if (!blob) {
+          throw new Error("Failed to create blob");
+        }
+        
+        try {
+          await navigator.clipboard.write([
+            new ClipboardItem({ "image/png": blob })
+          ]);
+          
+          toast({
+            title: "Copied to Clipboard",
+            description: "Map image copied successfully.",
+          });
+        } catch (err) {
+          toast({
+            title: "Copy Failed",
+            description: "Could not copy to clipboard. Try downloading instead.",
+            variant: "destructive",
+          });
+        } finally {
+          setIsExporting(false);
+        }
+      }, "image/png");
+    } catch (error) {
+      toast({
+        title: "Export Failed",
+        description: "Could not export map image.",
+        variant: "destructive",
+      });
+      setIsExporting(false);
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && measurementMode !== "none") {
+        exitMeasurementMode();
+      }
+    };
+    
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [measurementMode, exitMeasurementMode]);
+
+  useEffect(() => {
+    if (!mapLoaded || !map.current) return;
+    
+    if (layerState.femaFloodZone) {
+      addFemaFloodLayer();
+    } else {
+      removeFemaFloodLayer();
+    }
+  }, [layerState.femaFloodZone, mapLoaded, addFemaFloodLayer, removeFemaFloodLayer]);
+
+  useEffect(() => {
+    if (!mapLoaded || !map.current) return;
+    togglePropertyHeatmap(layerState.propertyHeatmap);
+  }, [layerState.propertyHeatmap, mapLoaded, togglePropertyHeatmap]);
+
+  useEffect(() => {
+    if (!mapLoaded || !map.current) return;
+    updateHeatmapOpacity(layerState.heatmapOpacity);
+  }, [layerState.heatmapOpacity, mapLoaded, updateHeatmapOpacity]);
 
   useEffect(() => {
     if (!mapContainer.current || !MAPBOX_TOKEN || properties.length === 0) return;
@@ -342,58 +1126,417 @@ export function PropertyMap({
       />
 
       {showControls && (
-        <div className="absolute top-3 left-3 flex flex-col gap-2 z-10">
-          <div className="flex gap-1 bg-background/80 backdrop-blur-sm rounded-md p-1 shadow-lg">
-            <Button
-              size="icon"
-              variant={currentStyle === "satellite" ? "default" : "ghost"}
-              onClick={() => changeMapStyle("satellite")}
-              title="Satellite View"
-              data-testid="button-map-satellite"
-            >
-              <Satellite className="h-4 w-4" />
-            </Button>
-            <Button
-              size="icon"
-              variant={currentStyle === "terrain" ? "default" : "ghost"}
-              onClick={() => changeMapStyle("terrain")}
-              title="Terrain View"
-              data-testid="button-map-terrain"
-            >
-              <Mountain className="h-4 w-4" />
-            </Button>
-            <Button
-              size="icon"
-              variant={currentStyle === "streets" ? "default" : "ghost"}
-              onClick={() => changeMapStyle("streets")}
-              title="Street View"
-              data-testid="button-map-streets"
-            >
-              <MapIcon className="h-4 w-4" />
-            </Button>
+        <>
+          <div className="absolute top-3 left-3 flex flex-col gap-2 z-10">
+            <div className="flex gap-1 bg-background/80 backdrop-blur-sm rounded-md p-1 shadow-lg">
+              <Button
+                size="icon"
+                variant={currentStyle === "satellite" ? "default" : "ghost"}
+                onClick={() => changeMapStyle("satellite")}
+                title="Satellite View"
+                data-testid="button-map-satellite"
+              >
+                <Satellite className="h-4 w-4" />
+              </Button>
+              <Button
+                size="icon"
+                variant={currentStyle === "terrain" ? "default" : "ghost"}
+                onClick={() => changeMapStyle("terrain")}
+                title="Terrain View"
+                data-testid="button-map-terrain"
+              >
+                <Mountain className="h-4 w-4" />
+              </Button>
+              <Button
+                size="icon"
+                variant={currentStyle === "streets" ? "default" : "ghost"}
+                onClick={() => changeMapStyle("streets")}
+                title="Street View"
+                data-testid="button-map-streets"
+              >
+                <MapIcon className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <div className="flex gap-1 bg-background/80 backdrop-blur-sm rounded-md p-1 shadow-lg">
+              <Button
+                size="icon"
+                variant={isFlyoverActive ? "default" : "ghost"}
+                onClick={isFlyoverActive ? stopFlyover : startFlyover}
+                title={isFlyoverActive ? "Stop Flyover" : "Start Flyover"}
+                data-testid="button-map-flyover"
+              >
+                {isFlyoverActive ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={toggleFullscreen}
+                title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+                data-testid="button-map-fullscreen"
+              >
+                {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+              </Button>
+            </div>
+
+            <div className="flex gap-1 bg-background/80 backdrop-blur-sm rounded-md p-1 shadow-lg">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant={measurementMode !== "none" ? "default" : "ghost"}
+                    title="Measure"
+                    data-testid="button-measure"
+                  >
+                    <Ruler className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuItem
+                    onClick={() => startMeasurement("distance")}
+                    data-testid="menu-item-measure-distance"
+                  >
+                    <Ruler className="h-4 w-4 mr-2" />
+                    Measure Distance
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => startMeasurement("area")}
+                    data-testid="menu-item-measure-area"
+                  >
+                    <Square className="h-4 w-4 mr-2" />
+                    Measure Area
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    title="Export Map"
+                    disabled={isExporting}
+                    data-testid="button-export"
+                  >
+                    {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuItem
+                    onClick={exportMapAsPng}
+                    disabled={isExporting}
+                    data-testid="menu-item-download-png"
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Download as PNG
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={copyMapToClipboard}
+                    disabled={isExporting}
+                    data-testid="menu-item-copy-clipboard"
+                  >
+                    <Clipboard className="h-4 w-4 mr-2" />
+                    Copy to Clipboard
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+
+            {selectedPropertyId && (
+              <div className="flex gap-1 bg-background/80 backdrop-blur-sm rounded-md p-1 shadow-lg">
+                <Button
+                  size="icon"
+                  variant={showNearbyParcels ? "default" : "ghost"}
+                  onClick={fetchNearbyParcels}
+                  disabled={nearbyLoading}
+                  title="Find Nearby Parcels"
+                  data-testid="button-find-nearby"
+                >
+                  {nearbyLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <MapPinned className="h-4 w-4" />}
+                </Button>
+                <Button
+                  size="icon"
+                  variant={showComps ? "default" : "ghost"}
+                  onClick={fetchComps}
+                  disabled={compsLoading}
+                  title="Show Comparables"
+                  data-testid="button-show-comps"
+                >
+                  {compsLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <BarChart3 className="h-4 w-4" />}
+                </Button>
+              </div>
+            )}
           </div>
 
-          <div className="flex gap-1 bg-background/80 backdrop-blur-sm rounded-md p-1 shadow-lg">
-            <Button
-              size="icon"
-              variant={isFlyoverActive ? "default" : "ghost"}
-              onClick={isFlyoverActive ? stopFlyover : startFlyover}
-              title={isFlyoverActive ? "Stop Flyover" : "Start Flyover"}
-              data-testid="button-map-flyover"
-            >
-              {isFlyoverActive ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-            </Button>
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={toggleFullscreen}
-              title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
-              data-testid="button-map-fullscreen"
-            >
-              {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-            </Button>
+          {showNearbyParcels && nearbyParcels.length > 0 && (
+            <div className="absolute top-3 right-14 z-10 w-64">
+              <Collapsible open={nearbyPanelOpen} onOpenChange={setNearbyPanelOpen}>
+                <div className="bg-background/90 backdrop-blur-sm rounded-md shadow-lg">
+                  <CollapsibleTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-between gap-2 rounded-b-none"
+                      data-testid="button-toggle-nearby-panel"
+                    >
+                      <div className="flex items-center gap-2">
+                        <MapPinned className="h-4 w-4 text-blue-500" />
+                        <span className="text-sm font-medium">Nearby Parcels ({nearbyParcels.length})</span>
+                      </div>
+                      {nearbyPanelOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    </Button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <div className="p-3 space-y-3 border-t">
+                      <div className="flex items-center gap-2">
+                        <Label className="text-xs text-muted-foreground">Radius:</Label>
+                        <Select value={nearbyRadius} onValueChange={(v) => setNearbyRadius(v as NearbyRadius)}>
+                          <SelectTrigger className="h-7 text-xs" data-testid="select-nearby-radius">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="0.5">0.5 mi</SelectItem>
+                            <SelectItem value="1">1 mi</SelectItem>
+                            <SelectItem value="2">2 mi</SelectItem>
+                            <SelectItem value="5">5 mi</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          onClick={fetchNearbyParcels}
+                          disabled={nearbyLoading}
+                          className="h-7 text-xs"
+                          data-testid="button-refresh-nearby"
+                        >
+                          {nearbyLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : "Refresh"}
+                        </Button>
+                      </div>
+                      <ScrollArea className="h-[150px]">
+                        <div className="space-y-2">
+                          {nearbyParcels.slice(0, 10).map((parcel, idx) => (
+                            <div 
+                              key={parcel.apn || idx} 
+                              className="p-2 rounded-md bg-muted/50 text-xs"
+                              data-testid={`nearby-parcel-${idx}`}
+                            >
+                              <div className="font-medium">{parcel.apn}</div>
+                              <div className="text-muted-foreground">
+                                {parcel.distance?.toFixed(2)} mi away
+                                {parcel.acres ? ` | ${parcel.acres.toFixed(2)} ac` : ""}
+                              </div>
+                            </div>
+                          ))}
+                          {nearbyParcels.length > 10 && (
+                            <div className="text-xs text-muted-foreground text-center">
+                              +{nearbyParcels.length - 10} more parcels
+                            </div>
+                          )}
+                        </div>
+                      </ScrollArea>
+                      <div className="flex items-center gap-2 pt-2 border-t">
+                        <Checkbox
+                          id="show-nearby"
+                          checked={showNearbyParcels}
+                          onCheckedChange={(c) => setShowNearbyParcels(!!c)}
+                          data-testid="checkbox-show-nearby"
+                        />
+                        <Label htmlFor="show-nearby" className="text-xs cursor-pointer">Show on map</Label>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="ml-auto h-6 text-xs"
+                          onClick={() => { setNearbyParcels([]); setShowNearbyParcels(false); }}
+                          data-testid="button-clear-nearby"
+                        >
+                          Clear
+                        </Button>
+                      </div>
+                    </div>
+                  </CollapsibleContent>
+                </div>
+              </Collapsible>
+            </div>
+          )}
+
+          {showComps && comps.length > 0 && (
+            <div className="absolute bottom-3 right-3 z-10 w-72">
+              <Collapsible open={compsPanelOpen} onOpenChange={setCompsPanelOpen}>
+                <div className="bg-background/90 backdrop-blur-sm rounded-md shadow-lg">
+                  <CollapsibleTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-between gap-2 rounded-b-none"
+                      data-testid="button-toggle-comps-panel"
+                    >
+                      <div className="flex items-center gap-2">
+                        <BarChart3 className="h-4 w-4 text-green-500" />
+                        <span className="text-sm font-medium">Comparables ({comps.length})</span>
+                      </div>
+                      {compsPanelOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    </Button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <div className="p-3 space-y-3 border-t">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs text-muted-foreground">Recency:</span>
+                        <div className="flex items-center gap-1">
+                          <CircleDot className="h-3 w-3" style={{ color: COMP_RECENCY_COLORS.recent }} />
+                          <span className="text-[10px]">0-6mo</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <CircleDot className="h-3 w-3" style={{ color: COMP_RECENCY_COLORS.moderate }} />
+                          <span className="text-[10px]">6-12mo</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <CircleDot className="h-3 w-3" style={{ color: COMP_RECENCY_COLORS.older }} />
+                          <span className="text-[10px]">12-24mo</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <CircleDot className="h-3 w-3" style={{ color: COMP_RECENCY_COLORS.old }} />
+                          <span className="text-[10px]">24mo+</span>
+                        </div>
+                      </div>
+                      <ScrollArea className="h-[180px]">
+                        <div className="space-y-2">
+                          {comps.map((comp, idx) => (
+                            <div 
+                              key={comp.id || idx} 
+                              className="p-2 rounded-md bg-muted/50 text-xs"
+                              data-testid={`comp-item-${idx}`}
+                            >
+                              <div className="font-medium truncate">{comp.address || comp.apn || "Comp Property"}</div>
+                              {comp.salePrice && (
+                                <div className="text-green-600 font-semibold">${comp.salePrice.toLocaleString()}</div>
+                              )}
+                              <div className="text-muted-foreground flex flex-wrap gap-2">
+                                {comp.saleDate && <span>{new Date(comp.saleDate).toLocaleDateString()}</span>}
+                                {comp.acres && <span>{comp.acres.toFixed(2)} ac</span>}
+                                {comp.pricePerAcre && <span>${comp.pricePerAcre.toLocaleString()}/ac</span>}
+                              </div>
+                              {comp.distance && (
+                                <div className="text-muted-foreground">{comp.distance.toFixed(2)} mi away</div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </ScrollArea>
+                      <div className="flex items-center gap-2 pt-2 border-t">
+                        <Checkbox
+                          id="show-comps"
+                          checked={showComps}
+                          onCheckedChange={(c) => setShowComps(!!c)}
+                          data-testid="checkbox-show-comps"
+                        />
+                        <Label htmlFor="show-comps" className="text-xs cursor-pointer">Show on map</Label>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="ml-auto h-6 text-xs"
+                          onClick={() => { setComps([]); setShowComps(false); }}
+                          data-testid="button-clear-comps"
+                        >
+                          Clear
+                        </Button>
+                      </div>
+                    </div>
+                  </CollapsibleContent>
+                </div>
+              </Collapsible>
+            </div>
+          )}
+
+          <div className="absolute bottom-3 left-3 z-10">
+            <Collapsible open={isLayerPanelOpen} onOpenChange={setIsLayerPanelOpen}>
+              <div className="bg-background/90 backdrop-blur-sm rounded-md shadow-lg overflow-visible">
+                <CollapsibleTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    className="w-full flex items-center justify-between gap-2 px-3"
+                    data-testid="button-layer-panel-toggle"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Layers className="h-4 w-4" />
+                      <span className="text-sm font-medium">Data Layers</span>
+                    </div>
+                    {isLayerPanelOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="p-3 pt-0 space-y-4 min-w-[220px]">
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="fema-flood"
+                          checked={layerState.femaFloodZone}
+                          onCheckedChange={(checked) => updateLayerState({ femaFloodZone: !!checked })}
+                          data-testid="checkbox-fema-flood"
+                        />
+                        <Label htmlFor="fema-flood" className="text-sm flex items-center gap-2 cursor-pointer">
+                          FEMA Flood Zones
+                          {femaLoading && <Loader2 className="h-3 w-3 animate-spin" data-testid="loader-fema" />}
+                        </Label>
+                      </div>
+
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            id="property-heatmap"
+                            checked={layerState.propertyHeatmap}
+                            onCheckedChange={(checked) => updateLayerState({ propertyHeatmap: !!checked })}
+                            data-testid="checkbox-property-heatmap"
+                          />
+                          <Label htmlFor="property-heatmap" className="text-sm cursor-pointer">
+                            Property Status
+                          </Label>
+                        </div>
+                        {layerState.propertyHeatmap && (
+                          <div className="pl-6 space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs text-muted-foreground">Opacity</span>
+                              <span className="text-xs text-muted-foreground" data-testid="text-opacity-value">{Math.round(layerState.heatmapOpacity * 100)}%</span>
+                            </div>
+                            <Slider
+                              value={[layerState.heatmapOpacity]}
+                              onValueChange={([value]) => updateLayerState({ heatmapOpacity: value })}
+                              min={0.1}
+                              max={1}
+                              step={0.05}
+                              className="w-full"
+                              data-testid="slider-heatmap-opacity"
+                            />
+                            <div className="flex flex-wrap gap-1 mt-2">
+                              {Object.entries(STATUS_COLORS).filter(([key]) => key !== "default").map(([status, color]) => (
+                                <div key={status} className="flex items-center gap-1" data-testid={`legend-status-${status}`}>
+                                  <div 
+                                    className="w-2 h-2 rounded-full" 
+                                    style={{ backgroundColor: color }}
+                                  />
+                                  <span className="text-[10px] text-muted-foreground capitalize">{status.replace("_", " ")}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="zoning-districts"
+                          checked={layerState.zoningDistricts}
+                          onCheckedChange={(checked) => handleZoningToggle(!!checked)}
+                          data-testid="checkbox-zoning-districts"
+                        />
+                        <Label htmlFor="zoning-districts" className="text-sm cursor-pointer text-muted-foreground">
+                          Zoning Districts
+                        </Label>
+                      </div>
+                    </div>
+                  </div>
+                </CollapsibleContent>
+              </div>
+            </Collapsible>
           </div>
-        </div>
+        </>
       )}
 
       {isFullscreen && (
@@ -406,6 +1549,79 @@ export function PropertyMap({
         >
           <Minimize2 className="h-4 w-4" />
         </Button>
+      )}
+
+      {measurementMode !== "none" && (
+        <div 
+          className="absolute top-3 left-1/2 transform -translate-x-1/2 z-10 bg-background/90 backdrop-blur-sm rounded-md shadow-lg p-3 min-w-[200px]"
+          data-testid="measurement-overlay"
+        >
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <div className="flex items-center gap-2">
+              {measurementMode === "distance" ? (
+                <Ruler className="h-4 w-4 text-blue-500" />
+              ) : (
+                <Square className="h-4 w-4 text-blue-500" />
+              )}
+              <span className="text-sm font-medium">
+                {measurementMode === "distance" ? "Distance" : "Area"}
+              </span>
+            </div>
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={exitMeasurementMode}
+              className="h-6 w-6"
+              title="Close (Esc)"
+              data-testid="button-close-measurement"
+            >
+              <X className="h-3 w-3" />
+            </Button>
+          </div>
+          
+          <div className="text-center py-2" data-testid="measurement-result">
+            {measurementMode === "distance" ? (
+              <span className="text-lg font-semibold">
+                {measurementPoints.length >= 2 
+                  ? formatDistance(calculateDistance(measurementPoints), measurementUnits)
+                  : "Click to add points"}
+              </span>
+            ) : (
+              <span className="text-lg font-semibold">
+                {measurementPoints.length >= 3 
+                  ? formatArea(calculatePolygonArea(measurementPoints), measurementUnits)
+                  : measurementPoints.length < 3 
+                    ? `Click to add ${3 - measurementPoints.length} more point${3 - measurementPoints.length > 1 ? "s" : ""}`
+                    : "Click to add points"}
+              </span>
+            )}
+          </div>
+          
+          <div className="flex items-center justify-between gap-2 mt-2 pt-2 border-t">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={toggleMeasurementUnits}
+              className="text-xs"
+              data-testid="button-toggle-units"
+            >
+              {measurementUnits === "imperial" ? "Switch to Metric" : "Switch to Imperial"}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={clearMeasurement}
+              disabled={measurementPoints.length === 0}
+              data-testid="button-clear-measurement"
+            >
+              Clear
+            </Button>
+          </div>
+          
+          <div className="text-xs text-muted-foreground text-center mt-2">
+            Press Esc to exit
+          </div>
+        </div>
       )}
     </div>
   );
@@ -515,7 +1731,6 @@ export function SinglePropertyMap({
         });
       }
 
-      // Add nearby parcels first (yellow boundaries - underneath)
       if (nearbyParcels.length > 0) {
         const nearbyGeojson: GeoJSON.FeatureCollection = {
           type: "FeatureCollection",
@@ -543,7 +1758,6 @@ export function SinglePropertyMap({
         });
       }
 
-      // Add selected property on top (red/pink highlighted outline)
       const geojsonData: GeoJSON.FeatureCollection = {
         type: "FeatureCollection",
         features: [{

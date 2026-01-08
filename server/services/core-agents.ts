@@ -1,12 +1,14 @@
 import { storage } from "../storage";
 import { dataSourceBroker, type LookupCategory } from "./data-source-broker";
+import { type InsertAgentMemory, type AgentMemory } from "@shared/schema";
 import OpenAI from "openai";
+import { skillRegistry, type Skill, type SkillResult, type AgentContext as SkillAgentContext } from "./agent-skills";
 
 const openai = new OpenAI();
 
 export type CoreAgentType = "research" | "deals" | "communications" | "operations";
 
-interface AgentContext {
+export interface AgentContext {
   organizationId: number;
   userId?: string;
   relatedLeadId?: number;
@@ -26,6 +28,7 @@ interface AgentTaskResult {
   message?: string;
   actions?: AgentAction[];
   requiresApproval?: boolean;
+  learnings?: { key: string; value: any; memoryType: string }[];
 }
 
 interface AgentAction {
@@ -42,23 +45,122 @@ abstract class CoreAgent {
   abstract description: string;
   abstract capabilities: string[];
 
-  protected async getSystemPrompt(): Promise<string> {
-    return `You are ${this.name}, an AI agent for AcreOS land investment platform.
+  protected async getRelevantMemories(context: AgentContext): Promise<AgentMemory[]> {
+    try {
+      const memories = await storage.getAgentMemories(context.organizationId, this.type, 20);
+      for (const memory of memories) {
+        await storage.updateAgentMemoryUsage(memory.id);
+      }
+      return memories;
+    } catch (error) {
+      console.error(`Error fetching memories for ${this.type} agent:`, error);
+      return [];
+    }
+  }
+
+  protected formatMemoriesForPrompt(memories: AgentMemory[]): string {
+    if (memories.length === 0) return "";
+
+    const grouped = {
+      facts: memories.filter(m => m.memoryType === "fact"),
+      preferences: memories.filter(m => m.memoryType === "preference"),
+      successPatterns: memories.filter(m => m.memoryType === "success_pattern"),
+      failurePatterns: memories.filter(m => m.memoryType === "failure_pattern"),
+    };
+
+    let memoryContext = "\n\n--- LEARNED CONTEXT ---\n";
+    
+    if (grouped.facts.length > 0) {
+      memoryContext += "\nKnown Facts:\n";
+      grouped.facts.forEach(m => {
+        memoryContext += `- ${m.key}: ${JSON.stringify(m.value)}\n`;
+      });
+    }
+    
+    if (grouped.preferences.length > 0) {
+      memoryContext += "\nUser Preferences:\n";
+      grouped.preferences.forEach(m => {
+        memoryContext += `- ${m.key}: ${JSON.stringify(m.value)}\n`;
+      });
+    }
+    
+    if (grouped.successPatterns.length > 0) {
+      memoryContext += "\nSuccessful Patterns:\n";
+      grouped.successPatterns.forEach(m => {
+        memoryContext += `- ${m.key}: ${JSON.stringify(m.value)}\n`;
+      });
+    }
+    
+    if (grouped.failurePatterns.length > 0) {
+      memoryContext += "\nPatterns to Avoid:\n";
+      grouped.failurePatterns.forEach(m => {
+        memoryContext += `- ${m.key}: ${JSON.stringify(m.value)}\n`;
+      });
+    }
+
+    return memoryContext;
+  }
+
+  protected async getSystemPrompt(context?: AgentContext): Promise<string> {
+    let basePrompt = `You are ${this.name}, an AI agent for AcreOS land investment platform.
 Your capabilities include: ${this.capabilities.join(", ")}.
 Always be helpful, accurate, and focused on land investment operations.
 When asked to perform actions, analyze the request and determine the best approach.`;
+
+    basePrompt += skillRegistry.getSkillDescriptionsForAgent(this.type);
+
+    if (context) {
+      const memories = await this.getRelevantMemories(context);
+      basePrompt += this.formatMemoriesForPrompt(memories);
+    }
+
+    return basePrompt;
   }
 
-  protected async callOpenAI(prompt: string, systemPrompt?: string): Promise<string> {
+  getAvailableSkills(): Skill[] {
+    return skillRegistry.getSkillsForAgent(this.type);
+  }
+
+  async executeSkill(skillId: string, params: any, context: AgentContext): Promise<SkillResult> {
+    const skill = skillRegistry.getSkillById(skillId);
+    if (!skill) {
+      return { success: false, error: `Skill not found: ${skillId}` };
+    }
+    if (!skill.agentTypes.includes(this.type)) {
+      return { success: false, error: `Skill ${skillId} is not available for ${this.type} agent` };
+    }
+    return skillRegistry.executeSkill(skillId, params, context as SkillAgentContext);
+  }
+
+  protected async callOpenAI(prompt: string, systemPrompt?: string, context?: AgentContext): Promise<string> {
+    const finalSystemPrompt = systemPrompt || await this.getSystemPrompt(context);
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [
-        { role: "system", content: systemPrompt || await this.getSystemPrompt() },
+        { role: "system", content: finalSystemPrompt },
         { role: "user", content: prompt },
       ],
       max_tokens: 2000,
     });
     return response.choices[0]?.message?.content || "";
+  }
+
+  async recordLearning(
+    context: AgentContext, 
+    key: string, 
+    value: Record<string, any>, 
+    memoryType: "fact" | "preference" | "success_pattern" | "failure_pattern",
+    confidence: number = 0.5
+  ): Promise<AgentMemory> {
+    const memory: InsertAgentMemory = {
+      organizationId: context.organizationId,
+      agentType: this.type,
+      memoryType,
+      key,
+      value,
+      confidence: confidence.toString(),
+    };
+    return await storage.createAgentMemory(memory);
   }
 
   abstract execute(input: AgentTaskInput): Promise<AgentTaskResult>;
@@ -733,6 +835,20 @@ export async function executeAgentTask(
   if (!agent) {
     return { success: false, message: `Unknown agent type: ${agentType}` };
   }
+  
+  if (input.action === "execute_skill") {
+    const { skillId, params } = input.parameters;
+    if (!skillId) {
+      return { success: false, message: "skillId is required for execute_skill action" };
+    }
+    const result = await agent.executeSkill(skillId, params || {}, input.context);
+    return {
+      success: result.success,
+      data: result.data,
+      message: result.message || result.error,
+    };
+  }
+  
   return agent.execute(input);
 }
 
@@ -745,6 +861,12 @@ export function getAgentInfo(agentType: CoreAgentType) {
     name: agent.name,
     description: agent.description,
     capabilities: agent.capabilities,
+    availableSkills: agent.getAvailableSkills().map(s => ({
+      id: s.id,
+      name: s.name,
+      description: s.description,
+      costEstimate: s.costEstimate,
+    })),
   };
 }
 
@@ -754,5 +876,30 @@ export function getAllAgentsInfo() {
     name: agent.name,
     description: agent.description,
     capabilities: agent.capabilities,
+    availableSkills: agent.getAvailableSkills().map(s => ({
+      id: s.id,
+      name: s.name,
+      description: s.description,
+      costEstimate: s.costEstimate,
+    })),
   }));
 }
+
+export function getAgentSkills(agentType: CoreAgentType) {
+  const agent = coreAgents[agentType];
+  if (!agent) return null;
+  return agent.getAvailableSkills().map(s => ({
+    id: s.id,
+    name: s.name,
+    description: s.description,
+    agentTypes: s.agentTypes,
+    costEstimate: s.costEstimate,
+    examples: s.examples,
+  }));
+}
+
+export function getAllSkills() {
+  return skillRegistry.getSkillsMetadata();
+}
+
+export { skillRegistry };

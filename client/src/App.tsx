@@ -30,6 +30,7 @@ import AbTestsPage from "@/pages/ab-tests";
 import TasksPage from "@/pages/tasks";
 import TeamDashboardPage from "@/pages/team-dashboard";
 import AutomationPage from "@/pages/automation";
+import WorkflowsPage from "@/pages/workflows";
 import ActivityPage from "@/pages/activity";
 import CountiesPage from "@/pages/counties";
 import OffersPage from "@/pages/offers";
@@ -127,6 +128,9 @@ function Router() {
       </Route>
       <Route path="/automation">
         {() => <ProtectedRoute component={AutomationPage} />}
+      </Route>
+      <Route path="/workflows">
+        {() => <ProtectedRoute component={WorkflowsPage} />}
       </Route>
       <Route path="/activity">
         {() => <ProtectedRoute component={ActivityPage} />}

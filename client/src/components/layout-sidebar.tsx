@@ -20,7 +20,8 @@ import {
   Store,
   FileText,
   Zap,
-  TrendingUp
+  TrendingUp,
+  Workflow
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useState, useCallback } from "react";
@@ -49,6 +50,7 @@ const navItems = [
   { label: "Deal Pipeline", icon: GitBranch, href: "/deals" },
   { label: "Tasks", icon: ListTodo, href: "/tasks" },
   { label: "Automation", icon: Zap, href: "/automation" },
+  { label: "Workflows", icon: Workflow, href: "/workflows" },
   { label: "Insights", icon: TrendingUp, href: "/analytics" },
   { label: "Finance", icon: Banknote, href: "/finance" },
   { label: "Portfolio", icon: PieChart, href: "/portfolio" },

@@ -88,7 +88,11 @@ import {
   type DocumentTemplate, type InsertDocumentTemplate,
   type GeneratedDocument, type InsertGeneratedDocument,
   type Signature, type InsertSignature,
+  type DocumentVersion, type InsertDocumentVersion,
+  type DocumentPackage, type InsertDocumentPackage,
   signatures,
+  documentVersions,
+  documentPackages,
   type AutomationRule, type InsertAutomationRule,
   type AutomationExecution, type InsertAutomationExecution,
   type Notification, type InsertNotification,
@@ -125,8 +129,18 @@ import {
   type SubscriptionEvent, type InsertSubscriptionEvent,
   discoveredEndpoints,
   type DiscoveredEndpoint, type InsertDiscoveredEndpoint,
+  agentMemory,
+  type AgentMemory, type InsertAgentMemory,
+  agentFeedback,
+  type AgentFeedback, type InsertAgentFeedback,
   DEFAULT_DUE_DILIGENCE_TEMPLATES,
   DEFAULT_DEAL_CHECKLIST_TEMPLATES,
+  workflows,
+  workflowRuns,
+  type Workflow, type InsertWorkflow,
+  type WorkflowRun, type InsertWorkflowRun,
+  scheduledTasks,
+  type ScheduledTask, type InsertScheduledTask,
 } from "@shared/schema";
 
 // Helper to calculate amortization schedule
@@ -637,6 +651,12 @@ export interface IStorage {
   createSignature(signature: InsertSignature): Promise<Signature>;
   getDocumentSignatures(documentId: number): Promise<Signature[]>;
 
+  // Document Version History
+  createDocumentVersion(version: InsertDocumentVersion): Promise<DocumentVersion>;
+  getDocumentVersions(orgId: number, documentId: number, documentType: string): Promise<DocumentVersion[]>;
+  getDocumentVersion(id: number): Promise<DocumentVersion | undefined>;
+  restoreDocumentVersion(orgId: number, versionId: number): Promise<{ success: boolean; message: string }>;
+
   // Analytics & Reporting
   getExecutiveMetrics(orgId: number, dateRange: { startDate: Date; endDate: Date }): Promise<{
     totalRevenue: number;
@@ -820,6 +840,38 @@ export interface IStorage {
   // Parcel Snapshots (Cache)
   getParcelSnapshot(apn: string, state: string, county: string, maxAgeDays?: number): Promise<ParcelSnapshot | undefined>;
   upsertParcelSnapshot(data: InsertParcelSnapshot): Promise<ParcelSnapshot>;
+
+  // Agent Memory
+  createAgentMemory(memory: InsertAgentMemory): Promise<AgentMemory>;
+  getAgentMemories(orgId: number, agentType?: string, limit?: number): Promise<AgentMemory[]>;
+  updateAgentMemoryUsage(id: number): Promise<AgentMemory>;
+  deleteAgentMemory(id: number): Promise<void>;
+
+  // Agent Feedback
+  createAgentFeedback(feedback: InsertAgentFeedback): Promise<AgentFeedback>;
+  getAgentFeedbackStats(orgId: number, agentType?: string): Promise<{
+    totalFeedback: number;
+    averageRating: number;
+    helpfulCount: number;
+    unhelpfulCount: number;
+    byRating: { rating: number; count: number }[];
+  }>;
+  getAgentFeedbackByTask(taskId: number): Promise<AgentFeedback | undefined>;
+
+  // Workflows
+  getWorkflows(orgId: number): Promise<Workflow[]>;
+  getWorkflow(orgId: number, id: number): Promise<Workflow | undefined>;
+  getActiveWorkflowsByTrigger(orgId: number, event: string): Promise<Workflow[]>;
+  createWorkflow(workflow: InsertWorkflow): Promise<Workflow>;
+  updateWorkflow(id: number, updates: Partial<InsertWorkflow>): Promise<Workflow>;
+  deleteWorkflow(id: number): Promise<void>;
+  toggleWorkflow(orgId: number, id: number, isActive: boolean): Promise<Workflow>;
+
+  // Workflow Runs
+  getWorkflowRuns(workflowId: number, limit?: number): Promise<WorkflowRun[]>;
+  getWorkflowRun(id: number): Promise<WorkflowRun | undefined>;
+  createWorkflowRun(run: InsertWorkflowRun): Promise<WorkflowRun>;
+  updateWorkflowRun(id: number, updates: Partial<InsertWorkflowRun>): Promise<WorkflowRun>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -4596,6 +4648,154 @@ Notary Public</p>
       .orderBy(signatures.signedAt);
   }
 
+  // Document Version History
+  async createDocumentVersion(version: InsertDocumentVersion) {
+    const [created] = await db.insert(documentVersions).values(version).returning();
+    return created;
+  }
+
+  async getDocumentVersions(orgId: number, documentId: number, documentType: string) {
+    return db.select().from(documentVersions)
+      .where(and(
+        eq(documentVersions.organizationId, orgId),
+        eq(documentVersions.documentId, documentId),
+        eq(documentVersions.documentType, documentType)
+      ))
+      .orderBy(desc(documentVersions.version));
+  }
+
+  async getDocumentVersion(id: number) {
+    const [version] = await db.select().from(documentVersions)
+      .where(eq(documentVersions.id, id));
+    return version;
+  }
+
+  async restoreDocumentVersion(orgId: number, versionId: number): Promise<{ success: boolean; message: string }> {
+    const version = await this.getDocumentVersion(versionId);
+    if (!version) {
+      return { success: false, message: "Version not found" };
+    }
+    if (version.organizationId !== orgId) {
+      return { success: false, message: "Access denied" };
+    }
+
+    if (version.documentType === "template") {
+      const template = await this.getDocumentTemplate(version.documentId);
+      if (!template) {
+        return { success: false, message: "Template not found" };
+      }
+      
+      const currentVersion = template.version || 1;
+      await this.createDocumentVersion({
+        organizationId: orgId,
+        documentId: template.id,
+        documentType: "template",
+        version: currentVersion,
+        content: template.content,
+        variables: template.variables,
+        changes: `Auto-saved before restoring to version ${version.version}`,
+        createdBy: version.createdBy,
+      });
+      
+      await this.updateDocumentTemplate(template.id, {
+        content: version.content,
+        variables: version.variables as any,
+        version: currentVersion + 1,
+      });
+      
+      return { success: true, message: `Restored to version ${version.version}` };
+    } else if (version.documentType === "generated") {
+      const doc = await this.getGeneratedDocument(orgId, version.documentId);
+      if (!doc) {
+        return { success: false, message: "Document not found" };
+      }
+      
+      const versions = await this.getDocumentVersions(orgId, doc.id, "generated");
+      const currentVersionNum = versions.length > 0 ? Math.max(...versions.map(v => v.version)) : 0;
+      
+      await this.createDocumentVersion({
+        organizationId: orgId,
+        documentId: doc.id,
+        documentType: "generated",
+        version: currentVersionNum + 1,
+        content: doc.content || "",
+        changes: `Auto-saved before restoring to version ${version.version}`,
+        createdBy: version.createdBy,
+      });
+      
+      await this.updateGeneratedDocument(doc.id, {
+        content: version.content,
+      });
+      
+      return { success: true, message: `Restored to version ${version.version}` };
+    }
+
+    return { success: false, message: "Invalid document type" };
+  }
+
+  // Document Packages
+  async getDocumentPackages(orgId: number, filters?: { dealId?: number; propertyId?: number; status?: string }) {
+    let conditions = [eq(documentPackages.organizationId, orgId)];
+    
+    if (filters?.dealId) {
+      conditions.push(eq(documentPackages.dealId, filters.dealId));
+    }
+    if (filters?.propertyId) {
+      conditions.push(eq(documentPackages.propertyId, filters.propertyId));
+    }
+    if (filters?.status) {
+      conditions.push(eq(documentPackages.status, filters.status));
+    }
+    
+    return db.select().from(documentPackages)
+      .where(and(...conditions))
+      .orderBy(desc(documentPackages.createdAt));
+  }
+
+  async getDocumentPackage(orgId: number, id: number) {
+    const [pkg] = await db.select().from(documentPackages)
+      .where(and(eq(documentPackages.id, id), eq(documentPackages.organizationId, orgId)));
+    return pkg;
+  }
+
+  async createDocumentPackage(pkg: InsertDocumentPackage) {
+    const [created] = await db.insert(documentPackages).values(pkg).returning();
+    return created;
+  }
+
+  async updateDocumentPackage(id: number, updates: Partial<InsertDocumentPackage>) {
+    const [updated] = await db.update(documentPackages)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(documentPackages.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteDocumentPackage(orgId: number, id: number) {
+    const [deleted] = await db.delete(documentPackages)
+      .where(and(eq(documentPackages.id, id), eq(documentPackages.organizationId, orgId)))
+      .returning();
+    return deleted;
+  }
+
+  async getPackagesByDeal(orgId: number, dealId: number) {
+    return db.select().from(documentPackages)
+      .where(and(
+        eq(documentPackages.organizationId, orgId),
+        eq(documentPackages.dealId, dealId)
+      ))
+      .orderBy(desc(documentPackages.createdAt));
+  }
+
+  async getPackagesByProperty(orgId: number, propertyId: number) {
+    return db.select().from(documentPackages)
+      .where(and(
+        eq(documentPackages.organizationId, orgId),
+        eq(documentPackages.propertyId, propertyId)
+      ))
+      .orderBy(desc(documentPackages.createdAt));
+  }
+
   // Analytics & Reporting
   async getExecutiveMetrics(orgId: number, dateRange: { startDate: Date; endDate: Date }) {
     const { startDate, endDate } = dateRange;
@@ -6128,6 +6328,209 @@ Notary Public</p>
         .returning();
       return created;
     }
+  }
+
+  // Agent Memory
+  async createAgentMemory(memory: InsertAgentMemory): Promise<AgentMemory> {
+    const [created] = await db.insert(agentMemory).values(memory).returning();
+    return created;
+  }
+
+  async getAgentMemories(orgId: number, agentType?: string, limit: number = 50): Promise<AgentMemory[]> {
+    let query = db.select().from(agentMemory).where(eq(agentMemory.organizationId, orgId));
+    if (agentType) {
+      query = db.select().from(agentMemory).where(
+        and(eq(agentMemory.organizationId, orgId), eq(agentMemory.agentType, agentType))
+      );
+    }
+    return await query.orderBy(desc(agentMemory.usageCount)).limit(limit);
+  }
+
+  async updateAgentMemoryUsage(id: number): Promise<AgentMemory> {
+    const [updated] = await db.update(agentMemory)
+      .set({
+        usageCount: sql`${agentMemory.usageCount} + 1`,
+        lastUsedAt: new Date(),
+      })
+      .where(eq(agentMemory.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteAgentMemory(id: number): Promise<void> {
+    await db.delete(agentMemory).where(eq(agentMemory.id, id));
+  }
+
+  // Agent Feedback
+  async createAgentFeedback(feedback: InsertAgentFeedback): Promise<AgentFeedback> {
+    const [created] = await db.insert(agentFeedback).values(feedback).returning();
+    return created;
+  }
+
+  async getAgentFeedbackStats(orgId: number, agentType?: string): Promise<{
+    totalFeedback: number;
+    averageRating: number;
+    helpfulCount: number;
+    unhelpfulCount: number;
+    byRating: { rating: number; count: number }[];
+  }> {
+    let feedbackQuery = db.select().from(agentFeedback)
+      .innerJoin(agentTasks, eq(agentFeedback.agentTaskId, agentTasks.id))
+      .where(eq(agentFeedback.organizationId, orgId));
+
+    if (agentType) {
+      feedbackQuery = db.select().from(agentFeedback)
+        .innerJoin(agentTasks, eq(agentFeedback.agentTaskId, agentTasks.id))
+        .where(and(
+          eq(agentFeedback.organizationId, orgId),
+          eq(agentTasks.agentType, agentType)
+        ));
+    }
+
+    const feedbackList = await feedbackQuery;
+    
+    const totalFeedback = feedbackList.length;
+    const avgRating = totalFeedback > 0 
+      ? feedbackList.reduce((sum, f) => sum + f.agent_feedback.rating, 0) / totalFeedback 
+      : 0;
+    const helpfulCount = feedbackList.filter(f => f.agent_feedback.helpful).length;
+    const unhelpfulCount = totalFeedback - helpfulCount;
+
+    const ratingCounts = [1, 2, 3, 4, 5].map(rating => ({
+      rating,
+      count: feedbackList.filter(f => f.agent_feedback.rating === rating).length
+    }));
+
+    return {
+      totalFeedback,
+      averageRating: Number(avgRating.toFixed(2)),
+      helpfulCount,
+      unhelpfulCount,
+      byRating: ratingCounts,
+    };
+  }
+
+  async getAgentFeedbackByTask(taskId: number): Promise<AgentFeedback | undefined> {
+    const [feedback] = await db.select().from(agentFeedback).where(eq(agentFeedback.agentTaskId, taskId));
+    return feedback;
+  }
+
+  // Workflows
+  async getWorkflows(orgId: number): Promise<Workflow[]> {
+    return await db.select().from(workflows)
+      .where(eq(workflows.organizationId, orgId))
+      .orderBy(desc(workflows.createdAt));
+  }
+
+  async getWorkflow(orgId: number, id: number): Promise<Workflow | undefined> {
+    const [workflow] = await db.select().from(workflows)
+      .where(and(eq(workflows.id, id), eq(workflows.organizationId, orgId)));
+    return workflow;
+  }
+
+  async getActiveWorkflowsByTrigger(orgId: number, event: string): Promise<Workflow[]> {
+    const allWorkflows = await db.select().from(workflows)
+      .where(and(
+        eq(workflows.organizationId, orgId),
+        eq(workflows.isActive, true)
+      ));
+    return allWorkflows.filter(w => w.trigger?.event === event);
+  }
+
+  async createWorkflow(workflow: InsertWorkflow): Promise<Workflow> {
+    const [created] = await db.insert(workflows).values(workflow).returning();
+    return created;
+  }
+
+  async updateWorkflow(id: number, updates: Partial<InsertWorkflow>): Promise<Workflow> {
+    const [updated] = await db.update(workflows)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(workflows.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteWorkflow(id: number): Promise<void> {
+    await db.delete(workflows).where(eq(workflows.id, id));
+  }
+
+  async toggleWorkflow(orgId: number, id: number, isActive: boolean): Promise<Workflow> {
+    const [updated] = await db.update(workflows)
+      .set({ isActive, updatedAt: new Date() })
+      .where(and(eq(workflows.id, id), eq(workflows.organizationId, orgId)))
+      .returning();
+    return updated;
+  }
+
+  // Workflow Runs
+  async getWorkflowRuns(workflowId: number, limit: number = 50): Promise<WorkflowRun[]> {
+    return await db.select().from(workflowRuns)
+      .where(eq(workflowRuns.workflowId, workflowId))
+      .orderBy(desc(workflowRuns.startedAt))
+      .limit(limit);
+  }
+
+  async getWorkflowRun(id: number): Promise<WorkflowRun | undefined> {
+    const [run] = await db.select().from(workflowRuns).where(eq(workflowRuns.id, id));
+    return run;
+  }
+
+  async createWorkflowRun(run: InsertWorkflowRun): Promise<WorkflowRun> {
+    const [created] = await db.insert(workflowRuns).values(run).returning();
+    return created;
+  }
+
+  async updateWorkflowRun(id: number, updates: Partial<InsertWorkflowRun>): Promise<WorkflowRun> {
+    const [updated] = await db.update(workflowRuns)
+      .set(updates)
+      .where(eq(workflowRuns.id, id))
+      .returning();
+    return updated;
+  }
+
+  // Scheduled Tasks CRUD
+  async getScheduledTasks(orgId: number): Promise<ScheduledTask[]> {
+    return await db.select().from(scheduledTasks)
+      .where(eq(scheduledTasks.organizationId, orgId))
+      .orderBy(desc(scheduledTasks.createdAt));
+  }
+
+  async getScheduledTask(id: number): Promise<ScheduledTask | undefined> {
+    const [task] = await db.select().from(scheduledTasks)
+      .where(eq(scheduledTasks.id, id));
+    return task;
+  }
+
+  async getScheduledTaskByOrg(orgId: number, id: number): Promise<ScheduledTask | undefined> {
+    const [task] = await db.select().from(scheduledTasks)
+      .where(and(eq(scheduledTasks.id, id), eq(scheduledTasks.organizationId, orgId)));
+    return task;
+  }
+
+  async getDueScheduledTasks(now: Date): Promise<ScheduledTask[]> {
+    return await db.select().from(scheduledTasks)
+      .where(and(
+        eq(scheduledTasks.status, "active"),
+        lte(scheduledTasks.nextRunAt, now)
+      ))
+      .orderBy(scheduledTasks.nextRunAt);
+  }
+
+  async createScheduledTask(task: InsertScheduledTask): Promise<ScheduledTask> {
+    const [created] = await db.insert(scheduledTasks).values(task).returning();
+    return created;
+  }
+
+  async updateScheduledTask(id: number, updates: Partial<InsertScheduledTask>): Promise<ScheduledTask | undefined> {
+    const [updated] = await db.update(scheduledTasks)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(scheduledTasks.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteScheduledTask(id: number): Promise<void> {
+    await db.delete(scheduledTasks).where(eq(scheduledTasks.id, id));
   }
 }
 

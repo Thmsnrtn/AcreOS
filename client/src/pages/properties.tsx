@@ -81,6 +81,8 @@ import { CompsAnalysis } from "@/components/comps-analysis";
 import { AIOfferGenerator } from "@/components/ai-offer-generator";
 import { CustomFieldValuesEditor } from "@/components/custom-fields";
 import { DueDiligencePanel } from "@/components/due-diligence-panel";
+import { PropertyAnalysisChat } from "@/components/property-analysis-chat";
+import { Bot } from "lucide-react";
 
 export default function PropertiesPage() {
   const { data: properties, isLoading } = useProperties();
@@ -918,6 +920,8 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
   open: boolean; 
   onOpenChange: (open: boolean) => void;
 }) {
+  const [isAnalysisChatOpen, setIsAnalysisChatOpen] = useState(false);
+  
   const { data: freshProperty, isLoading: isLoadingProperty } = useQuery<Property>({
     queryKey: ['/api/properties', property.id],
     enabled: open,
@@ -947,13 +951,25 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
   const hasUtilities = utilities && Object.values(utilities).some(Boolean);
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <MapPin className="w-5 h-5" />
-            {currentProperty.address || `${currentProperty.county}, ${currentProperty.state}`}
-          </DialogTitle>
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <DialogTitle className="flex items-center gap-2">
+              <MapPin className="w-5 h-5" />
+              {currentProperty.address || `${currentProperty.county}, ${currentProperty.state}`}
+            </DialogTitle>
+            <Button 
+              variant="default" 
+              size="sm" 
+              onClick={() => setIsAnalysisChatOpen(true)}
+              data-testid="button-analyze-with-ai"
+            >
+              <Bot className="w-4 h-4 mr-2" />
+              Analyze with AI
+            </Button>
+          </div>
           <DialogDescription className="flex items-center gap-4 flex-wrap">
             <span>APN: {currentProperty.apn}</span>
             <span>{currentProperty.sizeAcres} Acres</span>
@@ -1189,6 +1205,13 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
         </Tabs>
       </DialogContent>
     </Dialog>
+    
+    <PropertyAnalysisChat 
+      property={currentProperty} 
+      open={isAnalysisChatOpen} 
+      onOpenChange={setIsAnalysisChatOpen} 
+    />
+    </>
   );
 }
 

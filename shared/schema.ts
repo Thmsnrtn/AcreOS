@@ -893,6 +893,48 @@ export const agentRuns = pgTable("agent_runs", {
   metadata: jsonb("metadata").$type<Record<string, any>>(),
 });
 
+// Agent Memory - stores learned patterns, facts, and preferences
+export const agentMemory = pgTable("agent_memory", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  agentType: text("agent_type").notNull(), // research, deals, communications, operations
+  memoryType: text("memory_type").notNull(), // fact, preference, success_pattern, failure_pattern
+  key: text("key").notNull(), // unique identifier for the memory
+  value: jsonb("value").$type<Record<string, any>>().notNull(), // the actual memory data
+  confidence: numeric("confidence").default("0.5"), // 0-1 confidence score
+  usageCount: integer("usage_count").default(0), // how often this memory has been used
+  lastUsedAt: timestamp("last_used_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertAgentMemorySchema = createInsertSchema(agentMemory).omit({
+  id: true,
+  createdAt: true,
+  usageCount: true,
+  lastUsedAt: true,
+});
+export type InsertAgentMemory = z.infer<typeof insertAgentMemorySchema>;
+export type AgentMemory = typeof agentMemory.$inferSelect;
+
+// Agent Feedback - user ratings and feedback on agent task outputs
+export const agentFeedback = pgTable("agent_feedback", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  agentTaskId: integer("agent_task_id").references(() => agentTasks.id).notNull(),
+  userId: text("user_id").notNull(), // Replit user ID
+  rating: integer("rating").notNull(), // 1-5 star rating
+  helpful: boolean("helpful").notNull(), // was the output helpful?
+  feedback: text("feedback"), // optional text feedback
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertAgentFeedbackSchema = createInsertSchema(agentFeedback).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertAgentFeedback = z.infer<typeof insertAgentFeedbackSchema>;
+export type AgentFeedback = typeof agentFeedback.$inferSelect;
+
 // Conversations (for buyer communication agent)
 export const conversations = pgTable("conversations", {
   id: serial("id").primaryKey(),
@@ -3362,6 +3404,7 @@ export const generatedDocuments = pgTable("generated_documents", {
   templateId: integer("template_id").references(() => documentTemplates.id),
   dealId: integer("deal_id").references(() => deals.id),
   propertyId: integer("property_id").references(() => properties.id),
+  leadId: integer("lead_id").references(() => leads.id),
   
   name: text("name").notNull(),
   type: text("type").notNull(),
@@ -3370,7 +3413,7 @@ export const generatedDocuments = pgTable("generated_documents", {
   
   variables: jsonb("variables").$type<Record<string, string | number>>(),
   
-  status: text("status").notNull().default("draft"), // draft, pending_signature, partially_signed, signed, cancelled
+  status: text("status").notNull().default("draft"), // draft, pending_signature, partially_signed, signed, final, archived, cancelled
   
   signers: jsonb("signers").$type<{
     id: string;
@@ -3388,8 +3431,10 @@ export const generatedDocuments = pgTable("generated_documents", {
   
   sentAt: timestamp("sent_at"),
   completedAt: timestamp("completed_at"),
+  signedAt: timestamp("signed_at"),
   expiresAt: timestamp("expires_at"),
   
+  generatedBy: text("generated_by"), // userId who generated the document
   createdBy: integer("created_by"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -3439,6 +3484,67 @@ export const insertSignatureSchema = createInsertSchema(signatures).omit({
 });
 export type InsertSignature = z.infer<typeof insertSignatureSchema>;
 export type Signature = typeof signatures.$inferSelect;
+
+// ============================================
+// DOCUMENT VERSION HISTORY
+// ============================================
+
+export const documentVersions = pgTable("document_versions", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  documentId: integer("document_id").notNull(), // ID of the template or generated document
+  documentType: text("document_type").notNull(), // "template" or "generated"
+  version: integer("version").notNull(), // 1, 2, 3...
+  content: text("content").notNull(), // Snapshot of content at this version
+  variables: jsonb("variables").$type<Record<string, any>>(), // Variables snapshot (for templates)
+  changes: text("changes"), // Description of what changed
+  createdBy: text("created_by"), // userId who created this version
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertDocumentVersionSchema = createInsertSchema(documentVersions).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertDocumentVersion = z.infer<typeof insertDocumentVersionSchema>;
+export type DocumentVersion = typeof documentVersions.$inferSelect;
+
+// ============================================
+// DOCUMENT PACKAGES
+// ============================================
+
+export const DOCUMENT_PACKAGE_STATUSES = ["draft", "complete", "sent", "signed"] as const;
+export type DocumentPackageStatus = typeof DOCUMENT_PACKAGE_STATUSES[number];
+
+export const documentPackages = pgTable("document_packages", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  dealId: integer("deal_id").references(() => deals.id),
+  propertyId: integer("property_id").references(() => properties.id),
+  status: text("status").notNull().default("draft"),
+  documents: jsonb("documents").$type<{
+    documentId?: number;
+    templateId: number;
+    order: number;
+    status: string;
+    name?: string;
+  }[]>().default([]),
+  createdBy: text("created_by"),
+  sentAt: timestamp("sent_at"),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertDocumentPackageSchema = createInsertSchema(documentPackages).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertDocumentPackage = z.infer<typeof insertDocumentPackageSchema>;
+export type DocumentPackage = typeof documentPackages.$inferSelect;
 
 // ============================================
 // AUTOMATION RULES ENGINE (8.1)
@@ -4094,3 +4200,185 @@ export const insertDiscoveredEndpointSchema = createInsertSchema(discoveredEndpo
 });
 export type InsertDiscoveredEndpoint = z.infer<typeof insertDiscoveredEndpointSchema>;
 export type DiscoveredEndpoint = typeof discoveredEndpoints.$inferSelect;
+
+// ============================================
+// WORKFLOW AUTOMATION
+// ============================================
+
+// Trigger event types for workflows
+export const WORKFLOW_TRIGGER_EVENTS = [
+  "lead.created",
+  "lead.updated", 
+  "lead.status_changed",
+  "property.created",
+  "property.updated",
+  "property.status_changed",
+  "deal.created",
+  "deal.updated",
+  "deal.stage_changed",
+  "payment.received",
+  "payment.missed",
+] as const;
+
+export type WorkflowTriggerEvent = typeof WORKFLOW_TRIGGER_EVENTS[number];
+
+// Action types for workflows
+export const WORKFLOW_ACTION_TYPES = [
+  "send_email",
+  "create_task",
+  "update_record",
+  "run_agent_skill",
+  "send_notification",
+  "delay",
+] as const;
+
+export type WorkflowActionType = typeof WORKFLOW_ACTION_TYPES[number];
+
+// Workflow trigger configuration
+export type WorkflowTrigger = {
+  event: WorkflowTriggerEvent;
+  conditions?: {
+    field: string;
+    operator: "equals" | "not_equals" | "contains" | "greater_than" | "less_than" | "in" | "not_in";
+    value: any;
+  }[];
+};
+
+// Workflow action configuration
+export type WorkflowAction = {
+  id: string;
+  type: WorkflowActionType;
+  config: {
+    // send_email
+    to?: string;
+    subject?: string;
+    body?: string;
+    templateId?: string;
+    // create_task
+    title?: string;
+    description?: string;
+    priority?: "low" | "medium" | "high";
+    assignedTo?: number;
+    dueInDays?: number;
+    // update_record
+    entityType?: "lead" | "property" | "deal";
+    updates?: Record<string, any>;
+    // run_agent_skill
+    skillId?: string;
+    skillParams?: Record<string, any>;
+    // send_notification
+    message?: string;
+    notificationType?: "info" | "warning" | "success";
+    // delay
+    delayMinutes?: number;
+  };
+};
+
+// Workflow run statuses
+export const WORKFLOW_RUN_STATUSES = ["pending", "running", "completed", "failed"] as const;
+export type WorkflowRunStatus = typeof WORKFLOW_RUN_STATUSES[number];
+
+// Workflows table
+export const workflows = pgTable("workflows", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  trigger: jsonb("trigger").$type<WorkflowTrigger>().notNull(),
+  actions: jsonb("actions").$type<WorkflowAction[]>().notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertWorkflowSchema = createInsertSchema(workflows).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertWorkflow = z.infer<typeof insertWorkflowSchema>;
+export type Workflow = typeof workflows.$inferSelect;
+
+// Workflow execution log entry
+export type WorkflowExecutionLogEntry = {
+  actionId: string;
+  actionType: WorkflowActionType;
+  status: "pending" | "running" | "completed" | "failed" | "skipped";
+  startedAt?: string;
+  completedAt?: string;
+  result?: any;
+  error?: string;
+};
+
+// Workflow runs table (execution history)
+export const workflowRuns = pgTable("workflow_runs", {
+  id: serial("id").primaryKey(),
+  workflowId: integer("workflow_id").references(() => workflows.id).notNull(),
+  status: text("status").$type<WorkflowRunStatus>().notNull().default("pending"),
+  triggerData: jsonb("trigger_data").$type<{
+    event: WorkflowTriggerEvent;
+    entityId?: number;
+    entityType?: string;
+    data?: Record<string, any>;
+    previousData?: Record<string, any>;
+  }>(),
+  executionLog: jsonb("execution_log").$type<WorkflowExecutionLogEntry[]>(),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  error: text("error"),
+});
+
+export const insertWorkflowRunSchema = createInsertSchema(workflowRuns).omit({
+  id: true,
+});
+export type InsertWorkflowRun = z.infer<typeof insertWorkflowRunSchema>;
+export type WorkflowRun = typeof workflowRuns.$inferSelect;
+
+// ============================================
+// SCHEDULED TASKS (Automation with Retry Logic)
+// ============================================
+
+// Task types
+export const SCHEDULED_TASK_TYPES = ["workflow", "agent_skill", "custom"] as const;
+export type ScheduledTaskType = typeof SCHEDULED_TASK_TYPES[number];
+
+// Task statuses
+export const SCHEDULED_TASK_STATUSES = ["active", "paused", "failed"] as const;
+export type ScheduledTaskStatus = typeof SCHEDULED_TASK_STATUSES[number];
+
+// Simple schedule types
+export const SIMPLE_SCHEDULE_TYPES = ["hourly", "daily", "weekly", "monthly"] as const;
+export type SimpleScheduleType = typeof SIMPLE_SCHEDULE_TYPES[number];
+
+// Scheduled tasks table
+export const scheduledTasks = pgTable("scheduled_tasks", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  name: text("name").notNull(),
+  type: text("type").$type<ScheduledTaskType>().notNull(), // workflow, agent_skill, custom
+  config: jsonb("config").$type<{
+    workflowId?: number;
+    skillId?: string;
+    skillParams?: Record<string, any>;
+    customHandler?: string;
+    customParams?: Record<string, any>;
+  }>().notNull(),
+  schedule: text("schedule").notNull(), // cron expression or simple: daily, weekly, hourly, monthly
+  nextRunAt: timestamp("next_run_at"),
+  lastRunAt: timestamp("last_run_at"),
+  status: text("status").$type<ScheduledTaskStatus>().notNull().default("active"),
+  retryCount: integer("retry_count").notNull().default(0),
+  maxRetries: integer("max_retries").notNull().default(3),
+  retryDelayMinutes: integer("retry_delay_minutes").notNull().default(5),
+  lastError: text("last_error"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertScheduledTaskSchema = createInsertSchema(scheduledTasks).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertScheduledTask = z.infer<typeof insertScheduledTaskSchema>;
+export type ScheduledTask = typeof scheduledTasks.$inferSelect;
