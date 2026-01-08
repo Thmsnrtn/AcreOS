@@ -1186,6 +1186,564 @@ const researchCountySkill: Skill = {
   },
 };
 
+// ============================================
+// PHASE 4 SKILLS - Contracts, Closing, Collections
+// ============================================
+
+const prepareContractInputSchema = z.object({
+  propertyId: z.number().describe("Property ID for the contract"),
+  buyerId: z.number().describe("Buyer lead ID"),
+  salePrice: z.number().describe("Sale price in dollars"),
+  paymentType: z.enum(["cash", "terms"]).describe("Payment type: 'cash' or 'terms'"),
+  downPayment: z.number().optional().describe("Down payment amount for terms deals"),
+  monthlyPayment: z.number().optional().describe("Monthly payment amount for terms deals"),
+  termMonths: z.number().optional().describe("Loan term in months for terms deals"),
+});
+
+const prepareContractSkill: Skill = {
+  id: "prepareContract",
+  name: "Prepare Contract",
+  description: "Generates a purchase contract for a property deal",
+  agentTypes: ["deals"],
+  inputSchema: prepareContractInputSchema,
+  costEstimate: "low",
+  examples: [
+    'prepareContract({ propertyId: 123, buyerId: 456, salePrice: 25000, paymentType: "cash" })',
+    'prepareContract({ propertyId: 123, buyerId: 456, salePrice: 50000, paymentType: "terms", downPayment: 5000, monthlyPayment: 500, termMonths: 120 })',
+  ],
+  execute: async (params, context) => {
+    try {
+      const { propertyId, buyerId, salePrice, paymentType, downPayment, monthlyPayment, termMonths } = 
+        prepareContractInputSchema.parse(params);
+
+      const property = await storage.getProperty(context.organizationId, propertyId);
+      if (!property) {
+        return { success: false, error: "Property not found" };
+      }
+
+      const buyer = await storage.getLead(context.organizationId, buyerId);
+      if (!buyer) {
+        return { success: false, error: "Buyer not found" };
+      }
+
+      const org = await storage.getOrganization(context.organizationId);
+      const companyName = org?.name || "Land Acquisition Co.";
+      const today = new Date().toLocaleDateString();
+      const buyerName = `${buyer.firstName} ${buyer.lastName}`;
+      const propertyAddress = property.address || "[Property Address]";
+      const propertyLegal = property.legalDescription || `APN: ${property.apn || "N/A"}`;
+      const countyState = `${property.county || ""}, ${property.state || ""}`.trim() || "[County, State]";
+
+      let paymentTermsHtml = "";
+      if (paymentType === "cash") {
+        paymentTermsHtml = `
+          <p><strong>Payment Terms:</strong> Cash at closing</p>
+          <p><strong>Purchase Price:</strong> $${salePrice.toLocaleString()}</p>
+          <p><strong>Closing Date:</strong> Within 30 days of contract execution</p>
+        `;
+      } else {
+        const dp = downPayment || 0;
+        const mp = monthlyPayment || 0;
+        const term = termMonths || 60;
+        paymentTermsHtml = `
+          <p><strong>Payment Terms:</strong> Owner Financing</p>
+          <p><strong>Purchase Price:</strong> $${salePrice.toLocaleString()}</p>
+          <p><strong>Down Payment:</strong> $${dp.toLocaleString()} (due at closing)</p>
+          <p><strong>Financed Amount:</strong> $${(salePrice - dp).toLocaleString()}</p>
+          <p><strong>Monthly Payment:</strong> $${mp.toLocaleString()}</p>
+          <p><strong>Term:</strong> ${term} months</p>
+        `;
+      }
+
+      const contractHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Land Purchase Agreement</title>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; max-width: 800px; margin: 0 auto; padding: 20px; }
+    h1 { text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; }
+    .section { margin: 20px 0; }
+    .signature-line { border-top: 1px solid #333; width: 250px; margin-top: 50px; padding-top: 5px; }
+  </style>
+</head>
+<body>
+  <h1>LAND PURCHASE AGREEMENT</h1>
+  
+  <div class="section">
+    <p><strong>Date:</strong> ${today}</p>
+    <p><strong>Seller:</strong> ${companyName}</p>
+    <p><strong>Buyer:</strong> ${buyerName}</p>
+  </div>
+
+  <div class="section">
+    <h2>Property Description</h2>
+    <p><strong>Address:</strong> ${propertyAddress}</p>
+    <p><strong>Location:</strong> ${countyState}</p>
+    <p><strong>Legal Description:</strong> ${propertyLegal}</p>
+    <p><strong>Acreage:</strong> ${property.sizeAcres || "N/A"} acres</p>
+  </div>
+
+  <div class="section">
+    <h2>Purchase Terms</h2>
+    ${paymentTermsHtml}
+  </div>
+
+  <div class="section">
+    <h2>Terms and Conditions</h2>
+    <ol>
+      <li>Buyer agrees to purchase the property "as-is" in its current condition.</li>
+      <li>Seller agrees to provide clear and marketable title.</li>
+      <li>This agreement is contingent upon title verification.</li>
+      <li>All closing costs shall be split equally unless otherwise agreed.</li>
+      ${paymentType === "terms" ? "<li>Buyer agrees to maintain property insurance during the term of financing.</li>" : ""}
+    </ol>
+  </div>
+
+  <div class="section">
+    <h2>Signatures</h2>
+    <div style="display: flex; justify-content: space-between;">
+      <div>
+        <div class="signature-line">Seller Signature</div>
+        <p>${companyName}</p>
+      </div>
+      <div>
+        <div class="signature-line">Buyer Signature</div>
+        <p>${buyerName}</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+      `.trim();
+
+      const summary = {
+        propertyId,
+        buyerId,
+        buyerName,
+        propertyAddress,
+        salePrice,
+        paymentType,
+        downPayment: downPayment || 0,
+        monthlyPayment: monthlyPayment || 0,
+        termMonths: termMonths || 0,
+        generatedAt: new Date().toISOString(),
+      };
+
+      return {
+        success: true,
+        data: {
+          contractHtml,
+          summary,
+        },
+        message: `Contract prepared for ${buyerName} - $${salePrice.toLocaleString()} (${paymentType})`,
+      };
+    } catch (error: any) {
+      return { success: false, error: error.message || "Contract preparation failed" };
+    }
+  },
+};
+
+const generateClosingPacketInputSchema = z.object({
+  dealId: z.number().describe("Deal ID to generate closing packet for"),
+  includeDocuments: z.array(z.string()).optional().describe("List of documents to include: deed, contract, disclosure, etc."),
+});
+
+const generateClosingPacketSkill: Skill = {
+  id: "generateClosingPacket",
+  name: "Generate Closing Packet",
+  description: "Creates a complete closing packet with all required documents for a deal",
+  agentTypes: ["deals"],
+  inputSchema: generateClosingPacketInputSchema,
+  costEstimate: "low",
+  examples: [
+    'generateClosingPacket({ dealId: 123 })',
+    'generateClosingPacket({ dealId: 456, includeDocuments: ["deed", "contract", "disclosure"] })',
+  ],
+  execute: async (params, context) => {
+    try {
+      const { dealId, includeDocuments } = generateClosingPacketInputSchema.parse(params);
+
+      const deal = await storage.getDeal(context.organizationId, dealId);
+      if (!deal) {
+        return { success: false, error: "Deal not found" };
+      }
+
+      const defaultDocuments = ["deed", "contract", "disclosure", "affidavit", "closing_statement"];
+      const documentsToInclude = includeDocuments && includeDocuments.length > 0 
+        ? includeDocuments 
+        : defaultDocuments;
+
+      const documentList = documentsToInclude.map(doc => ({
+        type: doc,
+        name: doc.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase()),
+        status: "pending" as const,
+        required: ["deed", "contract"].includes(doc),
+      }));
+
+      const documents = documentsToInclude.map(doc => ({
+        name: doc.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase()),
+        type: doc,
+      }));
+
+      const packet = await storage.createClosingPacket({
+        organizationId: context.organizationId,
+        dealId,
+        type: "standard",
+        status: "pending",
+        documents,
+      });
+
+      return {
+        success: true,
+        data: {
+          packetId: packet.id,
+          dealId,
+          documentList,
+          status: "pending",
+          createdAt: packet.createdAt,
+        },
+        message: `Closing packet created for deal ${dealId} with ${documentList.length} documents`,
+      };
+    } catch (error: any) {
+      return { success: false, error: error.message || "Failed to generate closing packet" };
+    }
+  },
+};
+
+const processPayoffInputSchema = z.object({
+  noteId: z.number().describe("Note ID to calculate payoff for"),
+  effectiveDate: z.string().optional().describe("Effective date for payoff calculation (ISO date string)"),
+  includeEarlyPayoffDiscount: z.boolean().optional().describe("Whether to apply early payoff discount"),
+});
+
+const processPayoffSkill: Skill = {
+  id: "processPayoff",
+  name: "Process Payoff Quote",
+  description: "Calculates payoff amount and generates a payoff quote for a note",
+  agentTypes: ["operations"],
+  inputSchema: processPayoffInputSchema,
+  costEstimate: "free",
+  examples: [
+    'processPayoff({ noteId: 123 })',
+    'processPayoff({ noteId: 456, effectiveDate: "2026-02-01", includeEarlyPayoffDiscount: true })',
+  ],
+  execute: async (params, context) => {
+    try {
+      const { noteId, effectiveDate, includeEarlyPayoffDiscount } = processPayoffInputSchema.parse(params);
+
+      const note = await storage.getNote(context.organizationId, noteId);
+      if (!note) {
+        return { success: false, error: "Note not found" };
+      }
+
+      const effective = effectiveDate ? new Date(effectiveDate) : new Date();
+      const remainingPrincipal = note.currentBalance ? parseFloat(note.currentBalance) : 0;
+      const annualRate = note.interestRate ? parseFloat(note.interestRate) : 0;
+      const dailyRate = annualRate / 100 / 365;
+
+      const baseDate = note.nextPaymentDate ? new Date(note.nextPaymentDate) : new Date(note.startDate || Date.now());
+      const daysSinceBase = Math.max(0, Math.floor((effective.getTime() - baseDate.getTime()) / (1000 * 60 * 60 * 24)));
+      const accruedInterest = remainingPrincipal * dailyRate * daysSinceBase;
+
+      let discountAmount = 0;
+      if (includeEarlyPayoffDiscount) {
+        const monthlyPayment = note.monthlyPayment ? parseFloat(note.monthlyPayment) : 0;
+        const estimatedPaymentsRemaining = monthlyPayment > 0 ? Math.ceil(remainingPrincipal / monthlyPayment) : 0;
+        if (estimatedPaymentsRemaining > 12) {
+          discountAmount = remainingPrincipal * 0.03;
+        } else if (estimatedPaymentsRemaining > 6) {
+          discountAmount = remainingPrincipal * 0.02;
+        }
+      }
+
+      const payoffAmount = remainingPrincipal + accruedInterest - discountAmount;
+      const goodThroughDate = new Date(effective);
+      goodThroughDate.setDate(goodThroughDate.getDate() + 30);
+
+      const quote = await storage.createPayoffQuote({
+        organizationId: context.organizationId,
+        noteId,
+        principalBalance: remainingPrincipal.toFixed(2),
+        accruedInterest: accruedInterest.toFixed(2),
+        totalPayoff: payoffAmount.toFixed(2),
+        goodThroughDate,
+        status: "pending",
+      });
+
+      return {
+        success: true,
+        data: {
+          quoteId: quote.id,
+          noteId,
+          payoffAmount: Math.round(payoffAmount * 100) / 100,
+          breakdown: {
+            remainingPrincipal: Math.round(remainingPrincipal * 100) / 100,
+            accruedInterest: Math.round(accruedInterest * 100) / 100,
+            daysSinceBase,
+            earlyPayoffDiscount: Math.round(discountAmount * 100) / 100,
+          },
+          effectiveDate: effective.toISOString(),
+          expiryDate: goodThroughDate.toISOString(),
+        },
+        message: `Payoff quote generated: $${payoffAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      };
+    } catch (error: any) {
+      return { success: false, error: error.message || "Payoff calculation failed" };
+    }
+  },
+};
+
+const escalateDelinquencyInputSchema = z.object({
+  noteId: z.number().describe("Note ID to escalate"),
+  escalationType: z.enum(["reminder", "warning", "demand", "legal"]).describe("Type of escalation step"),
+  sendNotification: z.boolean().optional().describe("Whether to send notification to borrower"),
+});
+
+const escalateDelinquencySkill: Skill = {
+  id: "escalateDelinquency",
+  name: "Escalate Delinquency",
+  description: "Escalates a delinquent note to the next collection step",
+  agentTypes: ["operations"],
+  inputSchema: escalateDelinquencyInputSchema,
+  costEstimate: "low",
+  examples: [
+    'escalateDelinquency({ noteId: 123, escalationType: "reminder" })',
+    'escalateDelinquency({ noteId: 456, escalationType: "warning", sendNotification: true })',
+  ],
+  execute: async (params, context) => {
+    try {
+      const { noteId, escalationType, sendNotification } = escalateDelinquencyInputSchema.parse(params);
+
+      const note = await storage.getNote(context.organizationId, noteId);
+      if (!note) {
+        return { success: false, error: "Note not found" };
+      }
+
+      const escalationTypeToLevel: Record<string, number> = {
+        reminder: 1,
+        warning: 2,
+        demand: 3,
+        legal: 4,
+      };
+      const escalationLevelToType: Record<number, string> = {
+        0: "none",
+        1: "reminder",
+        2: "warning",
+        3: "demand",
+        4: "legal",
+      };
+
+      const existingEscalation = await storage.getDelinquencyEscalationByNote(context.organizationId, noteId);
+      const previousLevel = existingEscalation?.escalationLevel || 0;
+      const previousStep = escalationLevelToType[previousLevel] || "none";
+      const newLevel = escalationTypeToLevel[escalationType] || 1;
+
+      if (newLevel <= previousLevel && existingEscalation?.status === "active") {
+        return { 
+          success: false, 
+          error: `Cannot escalate to ${escalationType} - already at ${previousStep}` 
+        };
+      }
+
+      const nextActionMap: Record<string, string> = {
+        reminder: "Send follow-up reminder in 7 days if no response",
+        warning: "Issue demand letter in 14 days if no payment",
+        demand: "Refer to legal counsel in 30 days if no resolution",
+        legal: "Initiate foreclosure proceedings per state law",
+      };
+
+      if (existingEscalation) {
+        await storage.updateDelinquencyEscalation(existingEscalation.id, context.organizationId, {
+          status: "superseded",
+        });
+      }
+
+      const escalation = await storage.createDelinquencyEscalation({
+        organizationId: context.organizationId,
+        noteId,
+        escalationLevel: newLevel,
+        status: "active",
+        daysDelinquent: note.daysDelinquent || 0,
+        amountDue: note.currentBalance || "0",
+        lastContactMethod: sendNotification ? "notification" : undefined,
+        lastContactDate: sendNotification ? new Date() : undefined,
+        nextAction: nextActionMap[escalationType],
+      });
+
+      return {
+        success: true,
+        data: {
+          escalationId: escalation.id,
+          noteId,
+          previousStep,
+          currentStep: escalationType,
+          nextAction: nextActionMap[escalationType],
+          notificationSent: sendNotification || false,
+        },
+        message: `Note ${noteId} escalated from ${previousStep} to ${escalationType}`,
+      };
+    } catch (error: any) {
+      return { success: false, error: error.message || "Escalation failed" };
+    }
+  },
+};
+
+const generateSwotReportInputSchema = z.object({
+  propertyId: z.number().describe("Property ID to analyze"),
+  includeMarketData: z.boolean().optional().describe("Include market comparable data in analysis"),
+  includeEnvironmental: z.boolean().optional().describe("Include environmental risk assessment"),
+});
+
+const generateSwotReportSkill: Skill = {
+  id: "generateSwotReport",
+  name: "Generate SWOT Report",
+  description: "Generates a SWOT analysis report for a property investment",
+  agentTypes: ["research"],
+  inputSchema: generateSwotReportInputSchema,
+  costEstimate: "medium",
+  examples: [
+    'generateSwotReport({ propertyId: 123 })',
+    'generateSwotReport({ propertyId: 456, includeMarketData: true, includeEnvironmental: true })',
+  ],
+  execute: async (params, context) => {
+    try {
+      const { propertyId, includeMarketData, includeEnvironmental } = generateSwotReportInputSchema.parse(params);
+
+      const property = await storage.getProperty(context.organizationId, propertyId);
+      if (!property) {
+        return { success: false, error: "Property not found" };
+      }
+
+      const strengths: string[] = [];
+      const weaknesses: string[] = [];
+      const opportunities: string[] = [];
+      const threats: string[] = [];
+
+      const acreage = property.sizeAcres ? parseFloat(property.sizeAcres) : 0;
+      if (acreage >= 5) strengths.push("Good lot size for development or recreational use");
+      if (acreage < 1) weaknesses.push("Small lot size may limit use cases");
+      
+      if (property.roadAccess === "paved") strengths.push("Paved road access");
+      else if (property.roadAccess === "gravel") strengths.push("Gravel road access");
+      else if (property.roadAccess === "none" || !property.roadAccess) weaknesses.push("Limited or no road access");
+
+      if (property.utilities?.electric) strengths.push("Electric utilities available");
+      else weaknesses.push("No electric utilities on site");
+      
+      if (property.utilities?.water) strengths.push("Water utilities available");
+      if (property.utilities?.sewer) strengths.push("Sewer connection available");
+
+      if (property.zoning) {
+        if (property.zoning.toLowerCase().includes("residential")) {
+          opportunities.push("Residential development potential");
+        }
+        if (property.zoning.toLowerCase().includes("agricultural")) {
+          opportunities.push("Agricultural or hobby farm use");
+        }
+      }
+
+      opportunities.push("Owner financing can attract wider buyer pool");
+      opportunities.push("Land values typically appreciate over time");
+
+      threats.push("Market conditions can affect resale timeline");
+      threats.push("Property tax increases over time");
+
+      let marketData = null;
+      if (includeMarketData && property.latitude && property.longitude) {
+        try {
+          const lat = parseFloat(property.latitude);
+          const lng = parseFloat(property.longitude);
+          const compsResult = await getPropertyComps(lat, lng, acreage, 5, {}, undefined, context.organizationId);
+          if (compsResult.success && compsResult.marketAnalysis) {
+            marketData = compsResult.marketAnalysis;
+            if (compsResult.marketAnalysis.averagePricePerAcre) {
+              opportunities.push(`Market avg: $${compsResult.marketAnalysis.averagePricePerAcre.toLocaleString()}/acre`);
+            }
+          }
+        } catch {
+          // Continue without market data
+        }
+      }
+
+      let environmentalData = null;
+      if (includeEnvironmental && property.latitude && property.longitude) {
+        try {
+          const lat = parseFloat(property.latitude);
+          const lng = parseFloat(property.longitude);
+          const categories: LookupCategory[] = ["flood_zone", "wetlands"];
+          
+          for (const category of categories) {
+            try {
+              const result = await dataSourceBroker.lookup(category, {
+                latitude: lat,
+                longitude: lng,
+                state: property.state || undefined,
+                county: property.county || undefined,
+              });
+              if (result.success && result.data) {
+                if (category === "flood_zone" && result.data.riskLevel === "high") {
+                  threats.push("Located in high-risk flood zone");
+                } else if (category === "flood_zone" && result.data.riskLevel === "low") {
+                  strengths.push("Low flood risk");
+                }
+                if (category === "wetlands" && result.data.hasWetlands) {
+                  weaknesses.push("Wetlands may restrict development");
+                }
+              }
+            } catch {
+              // Continue with other lookups
+            }
+          }
+          environmentalData = { analyzed: true };
+        } catch {
+          // Continue without environmental data
+        }
+      }
+
+      let recommendation = "Hold for appreciation";
+      if (strengths.length > weaknesses.length + 1) {
+        recommendation = "Strong buy - property has significant advantages";
+      } else if (weaknesses.length > strengths.length + 1) {
+        recommendation = "Proceed with caution - address weaknesses before acquisition";
+      } else {
+        recommendation = "Neutral - standard investment with balanced risk/reward";
+      }
+
+      const report = await storage.createSwotReport({
+        organizationId: context.organizationId,
+        propertyId,
+        strengths,
+        weaknesses,
+        opportunities,
+        threats,
+        recommendation,
+        aiGenerated: true,
+        notes: `Analysis included: ${marketData ? 'market data' : ''}${marketData && environmentalData ? ', ' : ''}${environmentalData ? 'environmental' : ''}`.trim() || undefined,
+      });
+
+      return {
+        success: true,
+        data: {
+          reportId: report.id,
+          propertyId,
+          strengths,
+          weaknesses,
+          opportunities,
+          threats,
+          recommendation,
+          marketData,
+          environmentalData,
+          generatedAt: report.createdAt,
+        },
+        message: `SWOT report generated for property ${propertyId}: ${recommendation}`,
+      };
+    } catch (error: any) {
+      return { success: false, error: error.message || "SWOT report generation failed" };
+    }
+  },
+};
+
 export class SkillRegistry {
   private skills: Map<string, Skill> = new Map();
 
@@ -1207,6 +1765,12 @@ export class SkillRegistry {
     this.registerSkill(generateAdCopySkill);
     this.registerSkill(startCollectionSequenceSkill);
     this.registerSkill(researchCountySkill);
+    // Phase 4 skills
+    this.registerSkill(prepareContractSkill);
+    this.registerSkill(generateClosingPacketSkill);
+    this.registerSkill(processPayoffSkill);
+    this.registerSkill(escalateDelinquencySkill);
+    this.registerSkill(generateSwotReportSkill);
   }
 
   registerSkill(skill: Skill): void {
