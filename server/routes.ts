@@ -1805,8 +1805,13 @@ export async function registerRoutes(
       const numericFields = ["sizeAcres", "assessedValue", "marketValue", "purchasePrice", "listPrice", "soldPrice"];
       const sanitizedBody = { ...req.body };
       for (const field of numericFields) {
-        if (sanitizedBody[field] === "" || sanitizedBody[field] === null) {
+        if (sanitizedBody[field] === "" || sanitizedBody[field] === null || sanitizedBody[field] === undefined) {
           delete sanitizedBody[field];
+        } else if (typeof sanitizedBody[field] === "string") {
+          const parsed = parseFloat(sanitizedBody[field]);
+          if (!isNaN(parsed)) {
+            sanitizedBody[field] = String(parsed);
+          }
         }
       }
       
@@ -1844,8 +1849,13 @@ export async function registerRoutes(
     const numericFields = ["sizeAcres", "assessedValue", "marketValue", "purchasePrice", "listPrice", "soldPrice"];
     const sanitizedBody = { ...req.body };
     for (const field of numericFields) {
-      if (sanitizedBody[field] === "") {
+      if (sanitizedBody[field] === "" || sanitizedBody[field] === null) {
         sanitizedBody[field] = null;
+      } else if (sanitizedBody[field] !== undefined && typeof sanitizedBody[field] === "string") {
+        const parsed = parseFloat(sanitizedBody[field]);
+        if (!isNaN(parsed)) {
+          sanitizedBody[field] = String(parsed);
+        }
       }
     }
     

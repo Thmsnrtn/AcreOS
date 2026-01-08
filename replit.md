@@ -101,3 +101,27 @@ Preferred communication style: Simple, everyday language.
 - **Development Tools**: Vite, Replit Plugins.
 - **Future Integrations (configured but not fully connected)**: SendGrid (Email), Twilio (SMS).
 - **BYOK (Bring Your Own Key)**: Support for users to configure their own API keys for Lob, Regrid, SendGrid, and Twilio, bypassing platform credit usage.
+
+## Recent Changes (Phase 1 Completion - January 2026)
+
+### UX Polish
+- **Floating Action Button (FAB)**: Quick access to create Lead, Property, Deal, or Task from any page
+- **Touch-Optimized UI**: 52px tap targets on mobile, swipe gestures for navigation
+- **Bulk Actions**: Shift+click range selection in Lead/Property tables
+- **CSV Import**: Row-by-row validation feedback with detailed error messages
+
+### Mobile Experience
+- **PWA Hardening**: Enhanced service worker with separate static/API caching
+- **Push Notifications**: Infrastructure ready (requires VAPID keys configuration)
+- **Mobile Bottom Nav**: Touch-friendly navigation with haptic feedback support
+- **Offline Indicator**: Reconnection feedback with dismissible banner
+
+### Testing & Reliability
+- **E2E Test Suite**: Playwright tests for login, lead/property/deal creation, bulk actions
+- **Bug Fix**: Property creation now handles empty string numeric fields correctly
+
+### Technical Files Added
+- `client/src/components/floating-action-button.tsx` - FAB component
+- `client/src/hooks/use-swipe-gesture.tsx` - Swipe navigation hook
+- `client/src/hooks/use-push-notifications.tsx` - Push notification hook
+- `client/public/sw.js` - Enhanced service worker
