@@ -7,16 +7,20 @@ import { CheckCircle2, XCircle, Loader2 } from "lucide-react";
 interface BackgroundModeProps {
   actions: Action[];
   taskName: string;
+  speed?: 0.5 | 1 | 2;
   onComplete?: (results: ActionResult[]) => void;
   onError?: (error: string) => void;
+  onExecutorCreated?: (executor: ActionExecutor) => void;
   isActive: boolean;
 }
 
 export function BackgroundMode({ 
   actions, 
-  taskName, 
+  taskName,
+  speed = 2,
   onComplete, 
   onError,
+  onExecutorCreated,
   isActive 
 }: BackgroundModeProps) {
   const [progress, setProgress] = useState(0);
@@ -35,11 +39,12 @@ export function BackgroundMode({
     if (!isActive || actions.length === 0) return;
 
     const executor = new ActionExecutor({
-      speed: 2,
+      speed,
       onActionComplete: handleActionComplete,
     });
 
     executorRef.current = executor;
+    onExecutorCreated?.(executor);
     setIsExecuting(true);
     setProgress(0);
 
@@ -52,16 +57,19 @@ export function BackgroundMode({
     executor.executeActions(actions).then((results) => {
       setIsExecuting(false);
       
-      const failed = results.find(r => !r.success);
+      const failedResults = results.filter(r => !r.success);
       
-      if (failed) {
+      if (failedResults.length > 0) {
+        const errorDetails = failedResults
+          .map(r => `${r.action.description || r.action.type}: ${r.error || "Unknown error"}`)
+          .join("; ");
         toast({
           title: "Task Failed",
-          description: failed.error || "An error occurred during execution",
+          description: errorDetails.slice(0, 100) + (errorDetails.length > 100 ? "..." : ""),
           variant: "destructive",
           duration: 5000,
         });
-        onError?.(failed.error || "Unknown error");
+        onComplete?.(results);
       } else {
         toast({
           title: "Task Completed",
@@ -75,7 +83,7 @@ export function BackgroundMode({
     return () => {
       executor.cancel();
     };
-  }, [isActive, actions, taskName, handleActionComplete, onComplete, onError, toast]);
+  }, [isActive, actions, taskName, speed, handleActionComplete, onComplete, onExecutorCreated, toast]);
 
   if (!isActive || !isExecuting) return null;
 

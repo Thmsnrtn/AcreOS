@@ -14,8 +14,11 @@ import { Action, ActionResult, ActionExecutor } from "@/lib/action-executor";
 
 interface LiveDemoModeProps {
   actions: Action[];
+  speed?: 0.5 | 1 | 2;
   onComplete?: (results: ActionResult[]) => void;
   onCancel?: () => void;
+  onExecutorCreated?: (executor: ActionExecutor) => void;
+  onSpeedChange?: (speed: 0.5 | 1 | 2) => void;
   isActive: boolean;
 }
 
@@ -27,10 +30,19 @@ const SPEED_LABELS: Record<SpeedOption, string> = {
   2: "2x",
 };
 
-export function LiveDemoMode({ actions, onComplete, onCancel, isActive }: LiveDemoModeProps) {
+export function LiveDemoMode({ 
+  actions, 
+  speed: initialSpeed = 1,
+  onComplete, 
+  onCancel,
+  onExecutorCreated,
+  onSpeedChange,
+  isActive 
+}: LiveDemoModeProps) {
   const [currentActionIndex, setCurrentActionIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
-  const [speed, setSpeed] = useState<SpeedOption>(1);
+  const [speed, setSpeed] = useState<SpeedOption>(initialSpeed);
+  const prevIsActiveRef = useRef(isActive);
   const [narration, setNarration] = useState<string>("");
   const [highlightedElement, setHighlightedElement] = useState<Element | null>(null);
   const [orbPosition, setOrbPosition] = useState({ x: 0, y: 0 });
@@ -85,6 +97,7 @@ export function LiveDemoMode({ actions, onComplete, onCancel, isActive }: LiveDe
     });
 
     executorRef.current = executor;
+    onExecutorCreated?.(executor);
     setIsExecuting(true);
     setCurrentActionIndex(0);
 
@@ -99,13 +112,22 @@ export function LiveDemoMode({ actions, onComplete, onCancel, isActive }: LiveDe
     return () => {
       executor.cancel();
     };
-  }, [isActive, actions, handleActionStart, handleActionComplete, handleHighlight, handleNarration, onComplete]);
+  }, [isActive, actions, handleActionStart, handleActionComplete, handleHighlight, handleNarration, onComplete, onExecutorCreated]);
 
   useEffect(() => {
     if (executorRef.current) {
       executorRef.current.setSpeed(speed);
     }
   }, [speed]);
+
+  useEffect(() => {
+    const wasActive = prevIsActiveRef.current;
+    prevIsActiveRef.current = isActive;
+    
+    if (isActive && !wasActive) {
+      setSpeed(initialSpeed);
+    }
+  }, [isActive, initialSpeed]);
 
   const handlePauseResume = () => {
     if (!executorRef.current) return;
@@ -134,7 +156,9 @@ export function LiveDemoMode({ actions, onComplete, onCancel, isActive }: LiveDe
     const speeds: SpeedOption[] = [0.5, 1, 2];
     const currentIdx = speeds.indexOf(speed);
     const nextIdx = (currentIdx + 1) % speeds.length;
-    setSpeed(speeds[nextIdx]);
+    const newSpeed = speeds[nextIdx];
+    setSpeed(newSpeed);
+    onSpeedChange?.(newSpeed);
   };
 
   if (!isActive || !isExecuting) return null;

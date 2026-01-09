@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
@@ -27,7 +28,9 @@ import {
   Megaphone,
   Wallet,
   Search,
-  ChevronDown
+  ChevronDown,
+  MapPin,
+  Gauge
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -38,7 +41,70 @@ import {
 import { cn } from "@/lib/utils";
 import { LiveDemoMode } from "@/components/live-demo-mode";
 import { BackgroundMode } from "@/components/background-mode";
-import { Action, ActionResult, parseActionsFromText } from "@/lib/action-executor";
+import { Action, ActionResult, ActionExecutor, parseActionsFromText } from "@/lib/action-executor";
+
+interface PageContextInfo {
+  name: string;
+  entityType?: string;
+  actions: string[];
+}
+
+interface CurrentContext {
+  name: string;
+  entityType?: string;
+  entityId?: string;
+  actions: string[];
+}
+
+const PAGE_CONTEXTS: Record<string, PageContextInfo> = {
+  "/": { name: "Dashboard", actions: ["View stats", "Check notifications", "Go to leads"] },
+  "/leads": { name: "Leads", entityType: "lead", actions: ["Add new lead", "Filter leads", "Export leads"] },
+  "/leads/:id": { name: "Lead Details", entityType: "lead", actions: ["Update lead status", "Add note", "Send message"] },
+  "/properties": { name: "Properties", entityType: "property", actions: ["Add property", "Search properties", "View on map"] },
+  "/properties/:id": { name: "Property Details", entityType: "property", actions: ["Edit property", "Analyze property", "Create deal"] },
+  "/deals": { name: "Deals", entityType: "deal", actions: ["Create deal", "View pipeline", "Filter deals"] },
+  "/notes": { name: "Finance Notes", entityType: "note", actions: ["Create note", "View payments", "Schedule reminder"] },
+  "/campaigns": { name: "Marketing", entityType: "campaign", actions: ["Create campaign", "View metrics", "Send mail"] },
+  "/settings": { name: "Settings", actions: ["Update profile", "Manage API keys", "View usage"] },
+  "/analytics": { name: "Analytics", actions: ["View reports", "Export data", "Set date range"] },
+  "/inbox": { name: "Inbox", entityType: "message", actions: ["View messages", "Send reply", "Archive"] },
+  "/tasks": { name: "Tasks", entityType: "task", actions: ["Create task", "Mark complete", "Filter by status"] },
+  "/documents": { name: "Documents", entityType: "document", actions: ["Upload document", "Generate contract", "Share"] },
+  "/finance": { name: "Finance", entityType: "payment", actions: ["View payments", "Create invoice", "Export report"] },
+};
+
+function getPageContext(path: string): CurrentContext {
+  if (PAGE_CONTEXTS[path]) {
+    return { ...PAGE_CONTEXTS[path], entityId: undefined };
+  }
+  
+  const detailPatterns = [
+    { regex: /^\/leads\/(\d+)$/, template: "/leads/:id" },
+    { regex: /^\/properties\/(\d+)$/, template: "/properties/:id" },
+    { regex: /^\/deals\/(\d+)$/, template: "/deals/:id" },
+    { regex: /^\/notes\/(\d+)$/, template: "/notes/:id" },
+    { regex: /^\/campaigns\/(\d+)$/, template: "/campaigns/:id" },
+    { regex: /^\/tasks\/(\d+)$/, template: "/tasks/:id" },
+  ];
+  
+  for (const pattern of detailPatterns) {
+    const match = path.match(pattern.regex);
+    if (match) {
+      const contextInfo = PAGE_CONTEXTS[pattern.template];
+      if (contextInfo) {
+        return {
+          ...contextInfo,
+          entityId: match[1],
+        };
+      }
+    }
+  }
+  
+  return {
+    name: "Page",
+    actions: ["Ask a question", "Get help", "View overview"],
+  };
+}
 
 interface Attachment {
   id: string;
@@ -95,6 +161,7 @@ const AGENTS = [
 type AgentId = typeof AGENTS[number]["id"];
 
 export function FloatingAssistant() {
+  const [location] = useLocation();
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -112,6 +179,7 @@ export function FloatingAssistant() {
   const [isImageMode, setIsImageMode] = useState(false);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [executionMode, setExecutionMode] = useState<"live" | "background">("background");
+  const [executionSpeed, setExecutionSpeed] = useState<0.5 | 1 | 2>(1);
   const [pendingActions, setPendingActions] = useState<Action[]>([]);
   const [isExecutingActions, setIsExecutingActions] = useState(false);
   const [currentTaskName, setCurrentTaskName] = useState("");
@@ -120,6 +188,16 @@ export function FloatingAssistant() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const dragCounterRef = useRef(0);
+  const executorRef = useRef<ActionExecutor | null>(null);
+  
+  const currentContext = useMemo(() => getPageContext(location), [location]);
+  
+  const contextLabel = useMemo(() => {
+    if (currentContext.entityId) {
+      return `${currentContext.name} #${currentContext.entityId}`;
+    }
+    return currentContext.name;
+  }, [currentContext]);
 
   useEffect(() => {
     if (isOpen && !isMinimized) {
@@ -348,6 +426,11 @@ export function FloatingAssistant() {
           conversationId: isTemporaryChat ? undefined : activeConversationId,
           agentRole: selectedAgent,
           images: imageContents.length > 0 ? imageContents : undefined,
+          context: {
+            page: currentContext.name,
+            entityType: currentContext.entityType,
+            entityId: currentContext.entityId,
+          },
         }),
         signal: abortControllerRef.current.signal,
       });
@@ -500,23 +583,45 @@ export function FloatingAssistant() {
     }
   };
 
+  const cancelCurrentExecution = useCallback(() => {
+    if (executorRef.current) {
+      executorRef.current.cancel();
+      executorRef.current = null;
+    }
+  }, []);
+
+  const registerExecutor = useCallback((executor: ActionExecutor) => {
+    executorRef.current = executor;
+  }, []);
+
   const handleExecuteActions = (actions: Action[], taskName?: string) => {
     if (actions.length === 0 || isExecutingActions) return;
+    cancelCurrentExecution();
     setPendingActions(actions);
     setCurrentTaskName(taskName || `Executing ${actions.length} actions`);
     setIsExecutingActions(true);
   };
 
   const handleActionsComplete = (results: ActionResult[]) => {
+    executorRef.current = null;
     const successCount = results.filter(r => r.success).length;
-    const failedCount = results.filter(r => !r.success).length;
+    const failedResults = results.filter(r => !r.success);
+    const failedCount = failedResults.length;
+    
+    let content: string;
+    if (failedCount > 0) {
+      const errorDetails = failedResults
+        .map(r => `• ${r.action.description || r.action.type}: ${r.error || "Unknown error"}`)
+        .join("\n");
+      content = `Completed ${successCount} of ${results.length} actions. ${failedCount} action(s) failed:\n\n${errorDetails}`;
+    } else {
+      content = `Successfully completed all ${successCount} actions.`;
+    }
     
     const statusMessage: Message = {
       id: `system-${Date.now()}`,
-      role: "assistant",
-      content: failedCount > 0
-        ? `Completed ${successCount} of ${results.length} actions. ${failedCount} action(s) failed.`
-        : `Successfully completed all ${successCount} actions.`,
+      role: failedCount > 0 ? "error" : "assistant",
+      content,
       timestamp: new Date(),
     };
     
@@ -527,6 +632,7 @@ export function FloatingAssistant() {
   };
 
   const handleActionsCancel = () => {
+    cancelCurrentExecution();
     setPendingActions([]);
     setIsExecutingActions(false);
     setCurrentTaskName("");
@@ -541,6 +647,7 @@ export function FloatingAssistant() {
   };
 
   const handleActionsError = (error: string) => {
+    executorRef.current = null;
     setPendingActions([]);
     setIsExecutingActions(false);
     setCurrentTaskName("");
@@ -552,6 +659,13 @@ export function FloatingAssistant() {
       timestamp: new Date(),
     };
     setMessages((prev) => [...prev, errorMessage]);
+  };
+
+  const handleSuggestedAction = (action: string) => {
+    setInputValue(action);
+    if (inputRef.current) {
+      inputRef.current.focus();
+    }
   };
 
   const openImageModal = (imageSrc: string) => {
@@ -918,6 +1032,12 @@ export function FloatingAssistant() {
                     <span className="text-[10px] text-muted-foreground">Temporary</span>
                   </div>
                 )}
+                <div className="flex items-center gap-1">
+                  <MapPin className="w-3 h-3 text-muted-foreground" />
+                  <span className="text-[10px] text-muted-foreground" data-testid="context-indicator">
+                    On: {contextLabel}
+                  </span>
+                </div>
               </div>
             </div>
             <div className="flex items-center gap-1">
@@ -959,6 +1079,27 @@ export function FloatingAssistant() {
                   {executionMode === "live" 
                     ? "Live Demo: Watch the AI perform actions step-by-step with visual feedback" 
                     : "Background: AI performs actions silently in the background"}
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7"
+                    onClick={() => {
+                      const speeds: (0.5 | 1 | 2)[] = [0.5, 1, 2];
+                      const currentIdx = speeds.indexOf(executionSpeed);
+                      setExecutionSpeed(speeds[(currentIdx + 1) % speeds.length]);
+                    }}
+                    disabled={isExecutingActions}
+                    data-testid="button-execution-speed"
+                  >
+                    <span className="text-[10px] font-medium">{executionSpeed}x</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  Execution Speed: {executionSpeed}x (click to change)
                 </TooltipContent>
               </Tooltip>
               <Tooltip>
@@ -1050,6 +1191,25 @@ export function FloatingAssistant() {
                         <Ghost className="w-3 h-3" />
                         Temporary Mode
                       </Badge>
+                    )}
+                    {currentContext.actions.length > 0 && (
+                      <div className="mt-4 w-full">
+                        <p className="text-muted-foreground text-[10px] mb-2 uppercase tracking-wide">
+                          Suggested for {currentContext.name}
+                        </p>
+                        <div className="flex flex-wrap justify-center gap-1.5">
+                          {currentContext.actions.map((action, idx) => (
+                            <button
+                              key={idx}
+                              onClick={() => handleSuggestedAction(action)}
+                              className="px-2.5 py-1 text-xs rounded-full bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors"
+                              data-testid={`button-suggested-action-${idx}`}
+                            >
+                              {action}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     )}
                   </div>
                 );
@@ -1343,16 +1503,21 @@ export function FloatingAssistant() {
 
       <LiveDemoMode
         actions={pendingActions}
+        speed={executionSpeed}
         onComplete={handleActionsComplete}
         onCancel={handleActionsCancel}
+        onExecutorCreated={registerExecutor}
+        onSpeedChange={(newSpeed) => setExecutionSpeed(newSpeed)}
         isActive={executionMode === "live" && isExecutingActions && pendingActions.length > 0}
       />
 
       <BackgroundMode
         actions={pendingActions}
         taskName={currentTaskName}
+        speed={executionSpeed}
         onComplete={handleActionsComplete}
         onError={handleActionsError}
+        onExecutorCreated={registerExecutor}
         isActive={executionMode === "background" && isExecutingActions && pendingActions.length > 0}
       />
 
