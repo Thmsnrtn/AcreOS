@@ -17117,5 +17117,112 @@ Seller Signature (if applicable)
     }
   });
 
+  // ============================================
+  // SMS MESSAGING
+  // ============================================
+
+  const smsServiceModule = await import("./services/smsService");
+
+  api.get("/api/sms/config", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const config = await smsServiceModule.checkTwilioConfiguration(org.id);
+      res.json(config);
+    } catch (error: any) {
+      console.error("Check SMS config error:", error);
+      res.status(500).json({ message: error.message || "Failed to check SMS configuration" });
+    }
+  });
+
+  api.post("/api/sms/config", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { accountSid, authToken, fromPhoneNumber } = req.body;
+      
+      if (!accountSid || !authToken || !fromPhoneNumber) {
+        return res.status(400).json({ message: "Account SID, Auth Token, and Phone Number are required" });
+      }
+
+      const result = await smsServiceModule.saveTwilioCredentials(
+        org.id,
+        accountSid,
+        authToken,
+        fromPhoneNumber
+      );
+      
+      if (!result.success) {
+        return res.status(400).json({ message: result.error });
+      }
+      
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Save SMS config error:", error);
+      res.status(400).json({ message: error.message || "Failed to save SMS configuration" });
+    }
+  });
+
+  api.post("/api/sms/send", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { to, message } = req.body;
+      
+      if (!to || !message) {
+        return res.status(400).json({ message: "Phone number and message are required" });
+      }
+
+      const result = await smsServiceModule.sendOrgSMS(org.id, to, message);
+      
+      if (!result.success) {
+        return res.status(400).json({ message: result.error });
+      }
+      
+      res.json(result);
+    } catch (error: any) {
+      console.error("Send SMS error:", error);
+      res.status(400).json({ message: error.message || "Failed to send SMS" });
+    }
+  });
+
+  api.post("/api/leads/:leadId/sms", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = (req as any).user;
+      const leadId = parseInt(req.params.leadId);
+      const { message } = req.body;
+      
+      if (!message) {
+        return res.status(400).json({ message: "Message is required" });
+      }
+
+      const result = await smsServiceModule.sendSMSToLead(org.id, leadId, message, user.id);
+      
+      if (!result.success) {
+        return res.status(400).json({ message: result.error });
+      }
+      
+      res.json(result);
+    } catch (error: any) {
+      console.error("Send SMS to lead error:", error);
+      res.status(400).json({ message: error.message || "Failed to send SMS to lead" });
+    }
+  });
+
+  api.post("/api/webhooks/twilio/sms", async (req, res) => {
+    try {
+      const { From, To, Body, MessageSid } = req.body;
+      
+      if (!From || !Body || !MessageSid) {
+        return res.status(400).send("Invalid webhook payload");
+      }
+
+      console.log(`[Twilio Webhook] Incoming SMS from ${From}: ${Body.substring(0, 50)}...`);
+      
+      res.status(200).send("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response></Response>");
+    } catch (error: any) {
+      console.error("Twilio webhook error:", error);
+      res.status(500).send("Webhook processing error");
+    }
+  });
+
   return httpServer;
 }
