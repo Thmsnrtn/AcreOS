@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useMemo } from "react";
-import type { InboxMessage, Lead } from "@shared/schema";
+import type { InboxMessage, Lead, Conversation, Message } from "@shared/schema";
 import { format } from "date-fns";
 
 import { Button } from "@/components/ui/button";
@@ -26,11 +26,24 @@ import {
   MailOpen,
   Loader2,
   User,
-  ExternalLink
+  ExternalLink,
+  MessageSquare,
+  Phone
 } from "lucide-react";
 import { Link } from "wouter";
 
-type FilterTab = "all" | "unread" | "starred" | "archived";
+type ChannelFilter = "all" | "email" | "sms";
+type StatusFilter = "all" | "unread" | "starred" | "archived";
+
+type UnifiedItem = {
+  type: "email";
+  data: InboxMessage;
+  timestamp: Date;
+} | {
+  type: "sms";
+  data: Conversation;
+  timestamp: Date;
+};
 
 function getInitials(name?: string | null, email?: string | null): string {
   if (name) {
@@ -63,7 +76,24 @@ function formatMessageDate(date: Date | string | null): string {
   }
 }
 
-function MessageRow({ 
+function ChannelBadge({ channel }: { channel: "email" | "sms" }) {
+  if (channel === "sms") {
+    return (
+      <Badge variant="outline" className="text-xs flex items-center gap-1" data-testid="badge-channel-sms">
+        <Phone className="h-3 w-3" />
+        SMS
+      </Badge>
+    );
+  }
+  return (
+    <Badge variant="outline" className="text-xs flex items-center gap-1" data-testid="badge-channel-email">
+      <Mail className="h-3 w-3" />
+      Email
+    </Badge>
+  );
+}
+
+function EmailMessageRow({ 
   message, 
   isSelected, 
   onSelect,
@@ -116,9 +146,10 @@ function MessageRow({
           {message.subject || "(No subject)"}
         </div>
         
-        <div className="flex items-center gap-2 mt-1">
+        <div className="flex items-center gap-2 mt-1 flex-wrap">
+          <ChannelBadge channel="email" />
           {leadName && (
-            <Badge variant="outline" className="text-xs">
+            <Badge variant="secondary" className="text-xs">
               {leadName}
             </Badge>
           )}
@@ -131,7 +162,7 @@ function MessageRow({
       <Button
         size="icon"
         variant="ghost"
-        data-testid={`button-star-${message.id}`}
+        data-testid={`button-star-email-${message.id}`}
         onClick={(e) => {
           e.stopPropagation();
           starMutation.mutate();
@@ -144,7 +175,61 @@ function MessageRow({
   );
 }
 
-function MessageDetail({ 
+function SMSConversationRow({ 
+  conversation, 
+  isSelected, 
+  onSelect,
+  lead
+}: { 
+  conversation: Conversation; 
+  isSelected: boolean; 
+  onSelect: () => void;
+  lead?: Lead;
+}) {
+  const leadName = lead ? `${lead.firstName} ${lead.lastName}` : undefined;
+  
+  return (
+    <div
+      data-testid={`sms-conversation-row-${conversation.id}`}
+      onClick={onSelect}
+      className={`flex items-start gap-3 p-3 cursor-pointer border-b transition-colors ${
+        isSelected ? "bg-accent" : "hover-elevate"
+      }`}
+    >
+      <Avatar className="h-9 w-9 flex-shrink-0">
+        <AvatarFallback className="text-xs">
+          {getInitials(leadName, lead?.phone)}
+        </AvatarFallback>
+      </Avatar>
+      
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-sm truncate font-medium">
+            {leadName || lead?.phone || "Unknown"}
+          </span>
+          <span className="text-xs text-muted-foreground flex-shrink-0">
+            {formatMessageDate(conversation.lastMessageAt)}
+          </span>
+        </div>
+        
+        <div className="text-sm truncate text-muted-foreground">
+          SMS Conversation
+        </div>
+        
+        <div className="flex items-center gap-2 mt-1 flex-wrap">
+          <ChannelBadge channel="sms" />
+          {lead?.phone && (
+            <Badge variant="secondary" className="text-xs">
+              {lead.phone}
+            </Badge>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EmailMessageDetail({ 
   message,
   lead,
   onBack
@@ -247,6 +332,7 @@ function MessageDetail({
         </Button>
         
         <div className="flex items-center gap-2 flex-wrap flex-1">
+          <ChannelBadge channel="email" />
           <Button
             size="sm"
             variant="outline"
@@ -400,29 +486,194 @@ function MessageDetail({
   );
 }
 
-export default function InboxPage() {
-  const [activeTab, setActiveTab] = useState<FilterTab>("all");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedMessageId, setSelectedMessageId] = useState<number | null>(null);
+function SMSConversationDetail({ 
+  conversation,
+  lead,
+  onBack
+}: { 
+  conversation: Conversation;
+  lead?: Lead;
+  onBack: () => void;
+}) {
+  const { toast } = useToast();
+  const [newMessage, setNewMessage] = useState("");
 
-  const queryParams = useMemo(() => {
+  const { data: messages = [], isLoading: isLoadingMessages } = useQuery<Message[]>({
+    queryKey: ["/api/conversations", conversation.id, "messages"],
+  });
+
+  const sendSmsMutation = useMutation({
+    mutationFn: async () => {
+      if (!lead?.id) throw new Error("No lead associated with this conversation");
+      const res = await apiRequest("POST", `/api/leads/${lead.id}/sms`, {
+        message: newMessage,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "SMS sent",
+        description: "Your message has been sent successfully.",
+      });
+      setNewMessage("");
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversation.id, "messages"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to send SMS",
+        description: error.message || "Could not send your message. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const leadName = lead ? `${lead.firstName} ${lead.lastName}` : "Unknown";
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center gap-2 p-4 border-b flex-wrap">
+        <Button 
+          size="icon" 
+          variant="ghost" 
+          onClick={onBack}
+          className="md:hidden"
+          data-testid="button-back-to-list-sms"
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </Button>
+        
+        <div className="flex items-center gap-3 flex-1">
+          <Avatar className="h-10 w-10">
+            <AvatarFallback>
+              {getInitials(leadName, lead?.phone)}
+            </AvatarFallback>
+          </Avatar>
+          <div>
+            <div className="font-medium flex items-center gap-2">
+              {leadName}
+              <ChannelBadge channel="sms" />
+            </div>
+            <div className="text-sm text-muted-foreground">
+              {lead?.phone || "No phone number"}
+            </div>
+          </div>
+        </div>
+        
+        {lead && (
+          <Link 
+            href={`/leads?id=${lead.id}`}
+            data-testid="link-to-lead-sms"
+          >
+            <Button size="sm" variant="outline">
+              <User className="h-4 w-4 mr-1" />
+              View Lead
+            </Button>
+          </Link>
+        )}
+      </div>
+
+      <ScrollArea className="flex-1 p-4">
+        {isLoadingMessages ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : messages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+            <MessageSquare className="h-12 w-12 mb-2 opacity-50" />
+            <p>No messages yet</p>
+            <p className="text-sm">Send a message to start the conversation</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {messages.map((msg) => (
+              <div
+                key={msg.id}
+                data-testid={`sms-message-${msg.id}`}
+                className={`flex ${msg.direction === "outbound" ? "justify-end" : "justify-start"}`}
+              >
+                <div
+                  className={`max-w-[80%] p-3 rounded-lg ${
+                    msg.direction === "outbound"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted"
+                  }`}
+                >
+                  <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                  <p className={`text-xs mt-1 ${
+                    msg.direction === "outbound" ? "text-primary-foreground/70" : "text-muted-foreground"
+                  }`}>
+                    {formatMessageDate(msg.createdAt)}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </ScrollArea>
+
+      <div className="border-t p-4">
+        <div className="flex gap-2">
+          <Textarea
+            placeholder="Type your message..."
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            rows={2}
+            className="resize-none"
+            data-testid="input-sms-message"
+          />
+          <Button
+            onClick={() => sendSmsMutation.mutate()}
+            disabled={!newMessage.trim() || sendSmsMutation.isPending || !lead?.id}
+            data-testid="button-send-sms"
+          >
+            {sendSmsMutation.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Send className="h-4 w-4" />
+            )}
+          </Button>
+        </div>
+        {!lead?.id && (
+          <p className="text-xs text-muted-foreground mt-2">
+            Cannot send SMS - no lead associated with this conversation
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default function InboxPage() {
+  const [channelFilter, setChannelFilter] = useState<ChannelFilter>("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedItem, setSelectedItem] = useState<UnifiedItem | null>(null);
+
+  const emailQueryParams = useMemo(() => {
     const params: Record<string, string> = {};
-    if (activeTab === "unread") {
+    if (statusFilter === "unread") {
       params.isRead = "false";
       params.isArchived = "false";
-    } else if (activeTab === "starred") {
+    } else if (statusFilter === "starred") {
       params.isStarred = "true";
       params.isArchived = "false";
-    } else if (activeTab === "archived") {
+    } else if (statusFilter === "archived") {
       params.isArchived = "true";
     } else {
       params.isArchived = "false";
     }
     return params;
-  }, [activeTab]);
+  }, [statusFilter]);
 
-  const { data: messages = [], isLoading } = useQuery<InboxMessage[]>({
-    queryKey: ["/api/inbox", queryParams],
+  const { data: emailMessages = [], isLoading: isLoadingEmail } = useQuery<InboxMessage[]>({
+    queryKey: ["/api/inbox", emailQueryParams],
+    enabled: channelFilter === "all" || channelFilter === "email",
+  });
+
+  const { data: smsConversations = [], isLoading: isLoadingSms } = useQuery<Conversation[]>({
+    queryKey: ["/api/conversations", { channel: "sms" }],
+    enabled: channelFilter === "all" || channelFilter === "sms",
   });
 
   const { data: unreadCountData } = useQuery<{ count: number }>({
@@ -434,6 +685,7 @@ export default function InboxPage() {
   });
 
   const unreadCount = unreadCountData?.count ?? 0;
+  const isLoading = isLoadingEmail || isLoadingSms;
 
   const leadsMap = useMemo(() => {
     const map = new Map<number, Lead>();
@@ -441,26 +693,66 @@ export default function InboxPage() {
     return map;
   }, [leads]);
 
-  const filteredMessages = useMemo(() => {
-    if (!searchQuery.trim()) return messages;
-    const query = searchQuery.toLowerCase();
-    return messages.filter(m => 
-      m.senderName?.toLowerCase().includes(query) ||
-      m.senderEmail?.toLowerCase().includes(query) ||
-      m.subject?.toLowerCase().includes(query) ||
-      m.bodyText?.toLowerCase().includes(query)
-    );
-  }, [messages, searchQuery]);
+  const unifiedItems = useMemo(() => {
+    const items: UnifiedItem[] = [];
+    
+    if (channelFilter === "all" || channelFilter === "email") {
+      emailMessages.forEach(msg => {
+        items.push({
+          type: "email",
+          data: msg,
+          timestamp: msg.receivedAt ? new Date(msg.receivedAt) : new Date(0),
+        });
+      });
+    }
+    
+    if (channelFilter === "all" || channelFilter === "sms") {
+      smsConversations.forEach(conv => {
+        items.push({
+          type: "sms",
+          data: conv,
+          timestamp: conv.lastMessageAt ? new Date(conv.lastMessageAt) : new Date(0),
+        });
+      });
+    }
+    
+    items.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+    
+    return items;
+  }, [emailMessages, smsConversations, channelFilter]);
 
-  const selectedMessage = useMemo(() => {
-    if (!selectedMessageId) return null;
-    return messages.find(m => m.id === selectedMessageId) || null;
-  }, [messages, selectedMessageId]);
+  const filteredItems = useMemo(() => {
+    if (!searchQuery.trim()) return unifiedItems;
+    const query = searchQuery.toLowerCase();
+    return unifiedItems.filter(item => {
+      if (item.type === "email") {
+        const msg = item.data;
+        return (
+          msg.senderName?.toLowerCase().includes(query) ||
+          msg.senderEmail?.toLowerCase().includes(query) ||
+          msg.subject?.toLowerCase().includes(query) ||
+          msg.bodyText?.toLowerCase().includes(query)
+        );
+      } else {
+        const conv = item.data;
+        const lead = leadsMap.get(conv.leadId);
+        const leadName = lead ? `${lead.firstName} ${lead.lastName}`.toLowerCase() : "";
+        const phone = lead?.phone?.toLowerCase() || "";
+        return leadName.includes(query) || phone.includes(query);
+      }
+    });
+  }, [unifiedItems, searchQuery, leadsMap]);
 
   const selectedLead = useMemo(() => {
-    if (!selectedMessage?.leadId) return undefined;
-    return leadsMap.get(selectedMessage.leadId);
-  }, [selectedMessage, leadsMap]);
+    if (!selectedItem) return undefined;
+    if (selectedItem.type === "email" && selectedItem.data.leadId) {
+      return leadsMap.get(selectedItem.data.leadId);
+    }
+    if (selectedItem.type === "sms") {
+      return leadsMap.get(selectedItem.data.leadId);
+    }
+    return undefined;
+  }, [selectedItem, leadsMap]);
 
   const markReadMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -473,15 +765,18 @@ export default function InboxPage() {
     },
   });
 
-  const handleSelectMessage = (message: InboxMessage) => {
-    setSelectedMessageId(message.id);
-    if (!message.isRead) {
-      markReadMutation.mutate(message.id);
+  const handleSelectItem = (item: UnifiedItem) => {
+    setSelectedItem(item);
+    if (item.type === "email" && !item.data.isRead) {
+      markReadMutation.mutate(item.data.id);
     }
   };
 
   const getEmptyMessage = () => {
-    switch (activeTab) {
+    if (channelFilter === "sms") {
+      return { title: "No SMS conversations", description: "SMS conversations will appear here." };
+    }
+    switch (statusFilter) {
       case "unread":
         return { title: "No unread messages", description: "You're all caught up!" };
       case "starred":
@@ -520,87 +815,141 @@ export default function InboxPage() {
           </div>
         </div>
 
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as FilterTab)} className="border-b">
+        <Tabs value={channelFilter} onValueChange={(v) => setChannelFilter(v as ChannelFilter)} className="border-b">
           <TabsList className="w-full justify-start rounded-none border-none h-12 p-0 bg-transparent">
             <TabsTrigger 
               value="all" 
               className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none"
-              data-testid="tab-all"
+              data-testid="tab-channel-all"
             >
-              All
+              <MessageSquare className="h-4 w-4 mr-1" />
+              All Channels
             </TabsTrigger>
             <TabsTrigger 
-              value="unread"
+              value="email"
               className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none"
-              data-testid="tab-unread"
+              data-testid="tab-channel-email"
             >
-              Unread
-              {unreadCount > 0 && (
+              <Mail className="h-4 w-4 mr-1" />
+              Email
+              {unreadCount > 0 && channelFilter !== "email" && (
                 <Badge variant="secondary" className="ml-1 text-xs">
                   {unreadCount}
                 </Badge>
               )}
             </TabsTrigger>
             <TabsTrigger 
-              value="starred"
+              value="sms"
               className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none"
-              data-testid="tab-starred"
+              data-testid="tab-channel-sms"
             >
-              Starred
-            </TabsTrigger>
-            <TabsTrigger 
-              value="archived"
-              className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none"
-              data-testid="tab-archived"
-            >
-              Archived
+              <Phone className="h-4 w-4 mr-1" />
+              SMS
             </TabsTrigger>
           </TabsList>
         </Tabs>
 
+        {channelFilter !== "sms" && (
+          <Tabs value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)} className="border-b">
+            <TabsList className="w-full justify-start rounded-none border-none h-10 p-0 bg-transparent">
+              <TabsTrigger 
+                value="all" 
+                className="text-sm data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none"
+                data-testid="tab-status-all"
+              >
+                All
+              </TabsTrigger>
+              <TabsTrigger 
+                value="unread"
+                className="text-sm data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none"
+                data-testid="tab-status-unread"
+              >
+                Unread
+                {unreadCount > 0 && (
+                  <Badge variant="secondary" className="ml-1 text-xs">
+                    {unreadCount}
+                  </Badge>
+                )}
+              </TabsTrigger>
+              <TabsTrigger 
+                value="starred"
+                className="text-sm data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none"
+                data-testid="tab-status-starred"
+              >
+                Starred
+              </TabsTrigger>
+              <TabsTrigger 
+                value="archived"
+                className="text-sm data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none"
+                data-testid="tab-status-archived"
+              >
+                Archived
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        )}
+
         <div className="flex-1 flex overflow-hidden">
-          <div className={`${selectedMessage ? "hidden md:block" : ""} w-full md:w-96 border-r overflow-hidden flex flex-col`}>
+          <div className={`${selectedItem ? "hidden md:block" : ""} w-full md:w-96 border-r overflow-hidden flex flex-col`}>
             {isLoading ? (
               <ListSkeleton count={5} />
-            ) : filteredMessages.length === 0 ? (
+            ) : filteredItems.length === 0 ? (
               <div className="flex-1 flex items-center justify-center p-4">
                 <EmptyState 
-                  icon={Mail}
+                  icon={channelFilter === "sms" ? Phone : Mail}
                   {...getEmptyMessage()}
                 />
               </div>
             ) : (
               <ScrollArea className="flex-1">
-                {filteredMessages.map((message) => (
-                  <MessageRow
-                    key={message.id}
-                    message={message}
-                    isSelected={selectedMessageId === message.id}
-                    onSelect={() => handleSelectMessage(message)}
-                    leadName={message.leadId ? 
-                      (() => {
-                        const lead = leadsMap.get(message.leadId!);
-                        return lead ? `${lead.firstName} ${lead.lastName}` : undefined;
-                      })() : undefined
-                    }
-                  />
+                {filteredItems.map((item) => (
+                  item.type === "email" ? (
+                    <EmailMessageRow
+                      key={`email-${item.data.id}`}
+                      message={item.data}
+                      isSelected={selectedItem?.type === "email" && selectedItem.data.id === item.data.id}
+                      onSelect={() => handleSelectItem(item)}
+                      leadName={item.data.leadId ? 
+                        (() => {
+                          const lead = leadsMap.get(item.data.leadId!);
+                          return lead ? `${lead.firstName} ${lead.lastName}` : undefined;
+                        })() : undefined
+                      }
+                    />
+                  ) : (
+                    <SMSConversationRow
+                      key={`sms-${item.data.id}`}
+                      conversation={item.data}
+                      isSelected={selectedItem?.type === "sms" && selectedItem.data.id === item.data.id}
+                      onSelect={() => handleSelectItem(item)}
+                      lead={leadsMap.get(item.data.leadId)}
+                    />
+                  )
                 ))}
               </ScrollArea>
             )}
           </div>
 
-          <div className={`${selectedMessage ? "" : "hidden md:flex"} flex-1 flex flex-col`}>
-            {selectedMessage ? (
-              <MessageDetail
-                message={selectedMessage}
-                lead={selectedLead}
-                onBack={() => setSelectedMessageId(null)}
-              />
+          <div className={`${selectedItem ? "" : "hidden md:flex"} flex-1 flex flex-col`}>
+            {selectedItem ? (
+              selectedItem.type === "email" ? (
+                <EmailMessageDetail
+                  message={selectedItem.data}
+                  lead={selectedLead}
+                  onBack={() => setSelectedItem(null)}
+                />
+              ) : (
+                <SMSConversationDetail
+                  conversation={selectedItem.data}
+                  lead={selectedLead}
+                  onBack={() => setSelectedItem(null)}
+                />
+              )
             ) : (
               <div className="flex-1 flex items-center justify-center text-muted-foreground">
                 <div className="text-center">
-                  <Mail className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>Select a message to read</p>
+                  <MessageSquare className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>Select a conversation to view</p>
                 </div>
               </div>
             )}

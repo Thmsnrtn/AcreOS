@@ -279,40 +279,43 @@ export async function handleIncomingSMS(
   toPhone: string,
   body: string,
   messageSid: string
-): Promise<{ success: boolean; conversationId?: number; dbMessageId?: number; error?: string }> {
+): Promise<{ success: boolean; conversationId?: number; dbMessageId?: number; leadId?: number; error?: string }> {
   const cleanPhone = fromPhone.replace(/\D/g, "");
+  const last10Digits = cleanPhone.slice(-10);
   
   const allLeads = await db
     .select()
     .from(leads)
-    .where(eq(leads.organizationId, organizationId))
-    .limit(100);
+    .where(eq(leads.organizationId, organizationId));
   
   const matchedLead = allLeads.find(l => {
     const leadPhone = l.phone?.replace(/\D/g, "") || "";
-    return leadPhone.length > 6 && (leadPhone.includes(cleanPhone.slice(-10)) || cleanPhone.includes(leadPhone.slice(-10)));
+    if (leadPhone.length < 7) return false;
+    const leadLast10 = leadPhone.slice(-10);
+    return leadLast10 === last10Digits || leadPhone.includes(last10Digits) || last10Digits.includes(leadLast10);
   });
 
   const leadId = matchedLead?.id;
 
-  if (!leadId) {
-    return { success: false, error: "No matching lead found for this phone number" };
+  let existingConversation: typeof conversations.$inferSelect | undefined;
+
+  if (leadId) {
+    const convos = await db
+      .select()
+      .from(conversations)
+      .where(
+        and(
+          eq(conversations.organizationId, organizationId),
+          eq(conversations.leadId, leadId),
+          eq(conversations.channel, "sms")
+        )
+      )
+      .orderBy(desc(conversations.lastMessageAt))
+      .limit(1);
+    existingConversation = convos[0];
   }
 
-  let [existingConversation] = await db
-    .select()
-    .from(conversations)
-    .where(
-      and(
-        eq(conversations.organizationId, organizationId),
-        eq(conversations.leadId, leadId),
-        eq(conversations.channel, "sms")
-      )
-    )
-    .orderBy(desc(conversations.lastMessageAt))
-    .limit(1);
-
-  if (!existingConversation) {
+  if (!existingConversation && leadId) {
     const [newConversation] = await db
       .insert(conversations)
       .values({
@@ -324,6 +327,14 @@ export async function handleIncomingSMS(
       })
       .returning();
     existingConversation = newConversation;
+  }
+
+  if (!existingConversation) {
+    console.log(`[SMS] No matching lead found for phone ${fromPhone} in org ${organizationId}. Message not stored.`);
+    return { 
+      success: false, 
+      error: `No matching lead found for phone number ${fromPhone}. Consider creating a lead first.` 
+    };
   }
 
   const [newMessage] = await db
@@ -351,6 +362,7 @@ export async function handleIncomingSMS(
     success: true,
     conversationId: existingConversation.id,
     dbMessageId: newMessage.id,
+    leadId,
   };
 }
 

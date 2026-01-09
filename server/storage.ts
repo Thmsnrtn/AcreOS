@@ -329,7 +329,7 @@ export interface IStorage {
   updateAgentTask(id: number, updates: Partial<InsertAgentTask>): Promise<AgentTask>;
   
   // Conversations & Messages
-  getConversations(orgId: number, leadId?: number): Promise<Conversation[]>;
+  getConversations(orgId: number, filters?: { leadId?: number; channel?: string }): Promise<Conversation[]>;
   getConversation(orgId: number, id: number): Promise<Conversation | undefined>;
   createConversation(conv: InsertConversation): Promise<Conversation>;
   getMessages(conversationId: number): Promise<Message[]>;
@@ -1683,14 +1683,18 @@ export class DatabaseStorage implements IStorage {
   }
   
   // Conversations & Messages
-  async getConversations(orgId: number, leadId?: number) {
-    if (leadId) {
-      return await db.select().from(conversations)
-        .where(and(eq(conversations.organizationId, orgId), eq(conversations.leadId, leadId)))
-        .orderBy(desc(conversations.lastMessageAt));
+  async getConversations(orgId: number, filters?: { leadId?: number; channel?: string }) {
+    const conditions = [eq(conversations.organizationId, orgId)];
+    
+    if (filters?.leadId) {
+      conditions.push(eq(conversations.leadId, filters.leadId));
     }
+    if (filters?.channel) {
+      conditions.push(eq(conversations.channel, filters.channel));
+    }
+    
     return await db.select().from(conversations)
-      .where(eq(conversations.organizationId, orgId))
+      .where(and(...conditions))
       .orderBy(desc(conversations.lastMessageAt));
   }
   

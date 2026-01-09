@@ -6,8 +6,8 @@ interface EmptyStateProps {
   icon: LucideIcon;
   title: string;
   description: string;
-  actionLabel: string;
-  onAction: () => void;
+  actionLabel?: string;
+  onAction?: () => void;
   className?: string;
   secondaryDescription?: string;
   learnMoreUrl?: string;
@@ -63,10 +63,12 @@ export function EmptyState({
           <ExternalLink className="w-3 h-3" />
         </a>
       )}
-      <Button onClick={onAction} data-testid="empty-state-action" className="mt-2">
-        <Plus className="w-4 h-4 mr-2" />
-        {actionLabel}
-      </Button>
+      {actionLabel && onAction && (
+        <Button onClick={onAction} data-testid="empty-state-action" className="mt-2">
+          <Plus className="w-4 h-4 mr-2" />
+          {actionLabel}
+        </Button>
+      )}
     </div>
   );
 }

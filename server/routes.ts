@@ -22,7 +22,7 @@ import {
   insertMarketingListSchema, insertOfferBatchSchema, insertOfferSchema,
   insertSellerCommunicationSchema, insertAdPostingSchema, insertBuyerPrequalificationSchema,
   insertCollectionSequenceSchema, insertCollectionEnrollmentSchema, insertCountyResearchSchema,
-  offers,
+  offers, organizationIntegrations,
 } from "@shared/schema";
 import { 
   workflowEngine, 
@@ -5805,8 +5805,14 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   
   api.get("/api/conversations", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = (req as any).organization;
-    const leadId = req.query.leadId ? Number(req.query.leadId) : undefined;
-    const conversations = await storage.getConversations(org.id, leadId);
+    const filters: { leadId?: number; channel?: string } = {};
+    if (req.query.leadId) {
+      filters.leadId = Number(req.query.leadId);
+    }
+    if (req.query.channel && typeof req.query.channel === 'string') {
+      filters.channel = req.query.channel;
+    }
+    const conversations = await storage.getConversations(org.id, filters);
     res.json(conversations);
   });
   
@@ -16635,7 +16641,7 @@ Seller Signature (if applicable)
   api.post("/api/dd-assignments", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = (req as any).organization;
-      const assignment = await storage.createDdAssignment({
+      const assignment = await storage.createDDAssignment({
         ...req.body,
         organizationId: org.id,
       });
@@ -16654,7 +16660,7 @@ Seller Signature (if applicable)
       if (!existing) {
         return res.status(404).json({ message: "DD assignment not found" });
       }
-      const assignment = await storage.updateDdAssignment(org.id, id, req.body);
+      const assignment = await storage.updateDDAssignment(org.id, id, req.body);
       res.json(assignment);
     } catch (error: any) {
       console.error("Update DD assignment error:", error);
@@ -16666,7 +16672,7 @@ Seller Signature (if applicable)
     try {
       const org = (req as any).organization;
       const id = parseInt(req.params.id);
-      const success = await storage.deleteDdAssignment(org.id, id);
+      const success = await storage.deleteDDAssignment(org.id, id);
       if (!success) {
         return res.status(404).json({ message: "DD assignment not found" });
       }
@@ -17209,13 +17215,48 @@ Seller Signature (if applicable)
 
   api.post("/api/webhooks/twilio/sms", async (req, res) => {
     try {
-      const { From, To, Body, MessageSid } = req.body;
+      const { From, To, Body, MessageSid, AccountSid } = req.body;
       
       if (!From || !Body || !MessageSid) {
         return res.status(400).send("Invalid webhook payload");
       }
 
-      console.log(`[Twilio Webhook] Incoming SMS from ${From}: ${Body.substring(0, 50)}...`);
+      console.log(`[Twilio Webhook] Incoming SMS from ${From} to ${To}: ${Body.substring(0, 50)}...`);
+      
+      const orgIntegrations = await db
+        .select()
+        .from(organizationIntegrations)
+        .where(
+          and(
+            eq(organizationIntegrations.provider, "twilio"),
+            eq(organizationIntegrations.isEnabled, true)
+          )
+        );
+      
+      const cleanTo = To?.replace(/\D/g, "") || "";
+      const matchingOrg = orgIntegrations.find(integration => {
+        const creds = integration.credentials as any;
+        if (!creds?.fromPhoneNumber) return false;
+        const configuredPhone = creds.fromPhoneNumber.replace(/\D/g, "");
+        return cleanTo.includes(configuredPhone) || configuredPhone.includes(cleanTo.slice(-10));
+      });
+
+      if (matchingOrg) {
+        try {
+          await smsServiceModule.handleIncomingSMS(
+            matchingOrg.organizationId,
+            From,
+            To,
+            Body,
+            MessageSid
+          );
+          console.log(`[Twilio Webhook] Inbound SMS stored for org ${matchingOrg.organizationId}`);
+        } catch (inboundError: any) {
+          console.error("[Twilio Webhook] Error storing inbound SMS:", inboundError.message);
+        }
+      } else {
+        console.log("[Twilio Webhook] No matching organization found for phone:", To);
+      }
       
       res.status(200).send("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response></Response>");
     } catch (error: any) {
