@@ -2,16 +2,33 @@ import { useAuth } from "@/hooks/use-auth";
 import { Redirect } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Loader2, AlertTriangle, Moon, Sun } from "lucide-react";
-import { useMemo, useRef, useEffect } from "react";
+import { Loader2, AlertTriangle, Moon, Sun, RefreshCw } from "lucide-react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import { useTheme } from "@/contexts/theme-context";
-import lightVideoUrl from "@assets/sora-video-7c27f502-4e29-4fd0-a9fd-8d3c01e00976_1767815815459.mp4";
-import darkVideoUrl from "@assets/sora-video-2b175e72-0fc2-49dd-a55d-53d010076426_1767815815461.mp4";
+
+const EARTH_VIEW_IDS = [
+  1003, 1004, 1006, 1008, 1012, 1018, 1019, 1028, 1030, 1031,
+  1036, 1038, 1040, 1048, 1049, 1054, 1055, 1060, 1065, 1067,
+  1069, 1071, 1090, 1096, 1108, 1110, 1116, 1120, 1127, 1140,
+  1150, 1172, 1182, 1186, 1201, 1202, 1206, 1211, 1222, 1247,
+  1260, 1278, 1290, 1295, 1323, 1341, 1347, 1375, 1376, 1387,
+  1419, 1451, 1478, 1492, 1504, 1507, 1514, 1525, 1541, 1574,
+  1595, 1605, 1623, 1643, 1680, 1705, 1732, 1759, 1775, 1798,
+  1824, 1858, 1861, 1878, 1907, 1916, 1941, 1975, 2000, 2007,
+  5765, 5826, 5856, 5967, 6000, 6015, 6068, 6175, 6225, 6296,
+  6335, 6442, 6489, 6541, 6612, 6686, 6713, 6785, 6804, 6871
+];
+
+const getRandomEarthViewUrl = () => {
+  const randomId = EARTH_VIEW_IDS[Math.floor(Math.random() * EARTH_VIEW_IDS.length)];
+  return `https://earthview.withgoogle.com/download/${randomId}.jpg`;
+};
 
 export default function AuthPage() {
   const { user, isLoading } = useAuth();
   const { theme, toggleTheme } = useTheme();
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const [imageUrl, setImageUrl] = useState<string>("");
+  const [imageLoaded, setImageLoaded] = useState(false);
   
   const isSafari = useMemo(() => {
     if (typeof navigator === 'undefined') return false;
@@ -19,12 +36,14 @@ export default function AuthPage() {
     return ua.includes('safari') && !ua.includes('chrome') && !ua.includes('chromium');
   }, []);
 
+  const refreshImage = useCallback(() => {
+    setImageLoaded(false);
+    setImageUrl(getRandomEarthViewUrl());
+  }, []);
+
   useEffect(() => {
-    if (videoRef.current) {
-      videoRef.current.load();
-      videoRef.current.play().catch(() => {});
-    }
-  }, [theme]);
+    setImageUrl(getRandomEarthViewUrl());
+  }, []);
 
   if (isLoading) {
     return (
@@ -42,24 +61,37 @@ export default function AuthPage() {
     window.location.href = "/api/login";
   };
 
-  const videoSrc = theme === "dark" ? darkVideoUrl : lightVideoUrl;
-
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
-      <video
-        ref={videoRef}
-        className="absolute inset-0 w-full h-full object-cover"
-        autoPlay
-        loop
-        muted
-        playsInline
-        data-testid="video-background"
-      >
-        <source src={videoSrc} type="video/mp4" />
-      </video>
-      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/30 to-transparent" />
+    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-slate-900">
+      {imageUrl && (
+        <img
+          src={imageUrl}
+          alt="Earth View satellite imagery"
+          className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 ${
+            imageLoaded ? "opacity-100" : "opacity-0"
+          }`}
+          onLoad={() => setImageLoaded(true)}
+          data-testid="image-earth-view-background"
+        />
+      )}
+      {!imageLoaded && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <Loader2 className="w-8 h-8 animate-spin text-white/50" />
+        </div>
+      )}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/40 to-black/20" />
       
-      <div className="absolute top-4 right-4 z-20">
+      <div className="absolute top-4 right-4 z-20 flex gap-2">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={refreshImage}
+          className="bg-black/30 backdrop-blur-sm border border-white/20 text-white hover:bg-white/20"
+          data-testid="button-refresh-earth-view"
+          title="Load new Earth View"
+        >
+          <RefreshCw className="w-5 h-5" />
+        </Button>
         <Button
           variant="ghost"
           size="icon"
