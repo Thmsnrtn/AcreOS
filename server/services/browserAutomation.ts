@@ -5,6 +5,76 @@ import {
   browserSessionCredentials 
 } from "@shared/schema";
 import { eq, and, desc, isNull } from "drizzle-orm";
+import puppeteer, { Browser, Page } from "puppeteer-core";
+import { execSync } from "child_process";
+
+let chromiumPath: string | null = null;
+
+function getChromiumPath(): string {
+  if (chromiumPath) return chromiumPath;
+  
+  try {
+    const nixProfileBin = process.env.HOME + "/.nix-profile/bin/chromium";
+    try {
+      execSync(`test -f "${nixProfileBin}"`, { stdio: "ignore" });
+      chromiumPath = nixProfileBin;
+      return chromiumPath;
+    } catch {
+      // Not in nix profile
+    }
+    
+    const result = execSync("which chromium 2>/dev/null || which chromium-browser 2>/dev/null || echo ''", { 
+      encoding: "utf8" 
+    }).trim();
+    
+    if (result) {
+      chromiumPath = result;
+      return chromiumPath;
+    }
+    
+    const commonPaths = [
+      "/nix/store/*/bin/chromium",
+      "/usr/bin/chromium",
+      "/usr/bin/chromium-browser",
+      "/usr/bin/google-chrome",
+    ];
+    
+    for (const pattern of commonPaths) {
+      try {
+        const found = execSync(`ls ${pattern} 2>/dev/null | head -1`, { encoding: "utf8" }).trim();
+        if (found) {
+          chromiumPath = found;
+          return chromiumPath;
+        }
+      } catch {
+        continue;
+      }
+    }
+    
+    throw new Error("Chromium not found in system. Please ensure chromium is installed.");
+  } catch (error) {
+    console.error("[browser-automation] Failed to find Chromium:", error);
+    throw error;
+  }
+}
+
+async function launchBrowser(): Promise<Browser> {
+  const executablePath = getChromiumPath();
+  console.log(`[browser-automation] Launching browser from: ${executablePath}`);
+  
+  return puppeteer.launch({
+    executablePath,
+    headless: true,
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--single-process",
+      "--no-zygote",
+    ],
+  });
+}
 
 export interface AutomationStep {
   order: number;
@@ -401,4 +471,304 @@ export async function seedSystemTemplates(): Promise<void> {
   }
   
   console.log("[browser-automation] Seeded system templates");
+}
+
+function interpolateVariables(
+  value: string,
+  inputData: Record<string, any>
+): string {
+  return value.replace(/\{\{(\w+)\}\}/g, (match, key) => {
+    return inputData[key] !== undefined ? String(inputData[key]) : match;
+  });
+}
+
+export interface ExecutionResult {
+  success: boolean;
+  outputData: Record<string, any>;
+  screenshots: { name: string; data: string; capturedAt: string }[];
+  error?: string;
+  errorDetails?: { step?: number; selector?: string; message: string; stack?: string };
+  executionTimeMs: number;
+}
+
+async function executeStep(
+  page: Page,
+  step: AutomationStep,
+  inputData: Record<string, any>,
+  extractedData: Record<string, any>,
+  screenshots: { name: string; data: string; capturedAt: string }[]
+): Promise<void> {
+  const interpolatedSelector = step.selector 
+    ? interpolateVariables(step.selector, inputData) 
+    : undefined;
+  const interpolatedValue = step.value 
+    ? interpolateVariables(step.value, inputData) 
+    : undefined;
+
+  switch (step.action) {
+    case "navigate":
+      if (!interpolatedValue) throw new Error("Navigate action requires a URL");
+      await page.goto(interpolatedValue, { waitUntil: "networkidle0", timeout: 30000 });
+      break;
+
+    case "click":
+      if (!interpolatedSelector) throw new Error("Click action requires a selector");
+      await page.waitForSelector(interpolatedSelector, { timeout: 10000 });
+      await page.click(interpolatedSelector);
+      break;
+
+    case "type":
+      if (!interpolatedSelector) throw new Error("Type action requires a selector");
+      if (interpolatedValue === undefined) throw new Error("Type action requires a value");
+      await page.waitForSelector(interpolatedSelector, { timeout: 10000 });
+      await page.type(interpolatedSelector, interpolatedValue);
+      break;
+
+    case "select":
+      if (!interpolatedSelector) throw new Error("Select action requires a selector");
+      if (interpolatedValue === undefined) throw new Error("Select action requires a value");
+      await page.waitForSelector(interpolatedSelector, { timeout: 10000 });
+      await page.select(interpolatedSelector, interpolatedValue);
+      break;
+
+    case "wait":
+      const waitTime = step.waitTime || 1000;
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+      break;
+
+    case "screenshot":
+      const screenshotName = interpolatedValue || `screenshot_${screenshots.length + 1}`;
+      const screenshotData = await page.screenshot({ encoding: "base64", fullPage: false });
+      screenshots.push({
+        name: screenshotName,
+        data: `data:image/png;base64,${screenshotData}`,
+        capturedAt: new Date().toISOString(),
+      });
+      break;
+
+    case "extract":
+      if (!interpolatedSelector) throw new Error("Extract action requires a selector");
+      const extractAs = step.extractAs || `extracted_${Object.keys(extractedData).length + 1}`;
+      try {
+        await page.waitForSelector(interpolatedSelector, { timeout: 10000 });
+        const element = await page.$(interpolatedSelector);
+        if (element) {
+          const text = await page.evaluate(el => el.textContent || "", element);
+          extractedData[extractAs] = text.trim();
+        }
+      } catch {
+        extractedData[extractAs] = null;
+      }
+      break;
+
+    case "scroll":
+      const scrollAmount = parseInt(interpolatedValue || "0", 10);
+      await page.evaluate((y) => window.scrollTo(0, y), scrollAmount);
+      break;
+
+    default:
+      throw new Error(`Unknown action: ${step.action}`);
+  }
+}
+
+export async function executeJob(jobId: number): Promise<ExecutionResult> {
+  const startTime = Date.now();
+  const outputData: Record<string, any> = {};
+  const screenshots: { name: string; data: string; capturedAt: string }[] = [];
+  
+  let browser: Browser | null = null;
+  
+  try {
+    const job = await getJobById(jobId);
+    if (!job) {
+      throw new Error(`Job not found: ${jobId}`);
+    }
+    
+    await updateJobStatus(jobId, "running");
+    
+    let steps: AutomationStep[] = [];
+    let inputData = job.inputData || {};
+    
+    if (job.templateId) {
+      const [template] = await db
+        .select()
+        .from(browserAutomationTemplates)
+        .where(eq(browserAutomationTemplates.id, job.templateId))
+        .limit(1);
+      
+      if (!template) {
+        throw new Error(`Template not found: ${job.templateId}`);
+      }
+      
+      steps = template.steps as AutomationStep[];
+    } else if (inputData.steps) {
+      steps = inputData.steps as AutomationStep[];
+    } else {
+      throw new Error("No steps defined for job");
+    }
+    
+    steps.sort((a, b) => a.order - b.order);
+    
+    browser = await launchBrowser();
+    const page = await browser.newPage();
+    
+    await page.setViewport({ width: 1280, height: 800 });
+    await page.setUserAgent(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    );
+    
+    for (const step of steps) {
+      try {
+        console.log(`[browser-automation] Executing step ${step.order}: ${step.description}`);
+        await executeStep(page, step, inputData, outputData, screenshots);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorStack = error instanceof Error ? error.stack : undefined;
+        
+        await browser.close();
+        
+        const result: ExecutionResult = {
+          success: false,
+          outputData,
+          screenshots,
+          error: errorMessage,
+          errorDetails: {
+            step: step.order,
+            selector: step.selector,
+            message: errorMessage,
+            stack: errorStack,
+          },
+          executionTimeMs: Date.now() - startTime,
+        };
+        
+        await updateJobStatus(jobId, "failed", {
+          outputData: result.outputData,
+          screenshots: result.screenshots.map(s => ({ ...s, url: s.data })),
+          error: result.error,
+          errorDetails: result.errorDetails,
+          executionTimeMs: result.executionTimeMs,
+        });
+        
+        return result;
+      }
+    }
+    
+    await browser.close();
+    
+    const result: ExecutionResult = {
+      success: true,
+      outputData,
+      screenshots,
+      executionTimeMs: Date.now() - startTime,
+    };
+    
+    await updateJobStatus(jobId, "completed", {
+      outputData: result.outputData,
+      screenshots: result.screenshots.map(s => ({ ...s, url: s.data })),
+      executionTimeMs: result.executionTimeMs,
+    });
+    
+    console.log(`[browser-automation] Job ${jobId} completed in ${result.executionTimeMs}ms`);
+    
+    return result;
+  } catch (error) {
+    if (browser) {
+      await browser.close().catch(() => {});
+    }
+    
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    
+    const result: ExecutionResult = {
+      success: false,
+      outputData,
+      screenshots,
+      error: errorMessage,
+      errorDetails: {
+        message: errorMessage,
+        stack: errorStack,
+      },
+      executionTimeMs: Date.now() - startTime,
+    };
+    
+    await updateJobStatus(jobId, "failed", {
+      outputData: result.outputData,
+      error: result.error,
+      errorDetails: result.errorDetails,
+      executionTimeMs: result.executionTimeMs,
+    });
+    
+    return result;
+  }
+}
+
+export async function processJobQueue(): Promise<number> {
+  const jobs = await getQueuedJobs(1);
+  
+  if (jobs.length === 0) {
+    return 0;
+  }
+  
+  for (const job of jobs) {
+    console.log(`[browser-automation] Processing job: ${job.id} - ${job.name}`);
+    await executeJob(job.id);
+  }
+  
+  return jobs.length;
+}
+
+let isProcessingQueue = false;
+
+export async function startJobProcessor(intervalMs: number = 30000): Promise<void> {
+  console.log(`[browser-automation] Starting job processor (interval: ${intervalMs}ms)`);
+  
+  setInterval(async () => {
+    if (isProcessingQueue) {
+      console.log("[browser-automation] Queue processor already running, skipping");
+      return;
+    }
+    
+    isProcessingQueue = true;
+    try {
+      const processed = await processJobQueue();
+      if (processed > 0) {
+        console.log(`[browser-automation] Processed ${processed} job(s)`);
+      }
+    } catch (error) {
+      console.error("[browser-automation] Error processing queue:", error);
+    } finally {
+      isProcessingQueue = false;
+    }
+  }, intervalMs);
+}
+
+export async function executeAdHocAutomation(
+  organizationId: number,
+  params: {
+    name: string;
+    url: string;
+    actions?: AutomationStep[];
+    captureScreenshot?: boolean;
+  }
+): Promise<ExecutionResult> {
+  const defaultSteps: AutomationStep[] = params.actions || [
+    { order: 1, action: "navigate", value: params.url, description: "Navigate to URL" },
+    { order: 2, action: "wait", waitTime: 2000, description: "Wait for page load" },
+  ];
+  
+  if (params.captureScreenshot !== false) {
+    defaultSteps.push({
+      order: defaultSteps.length + 1,
+      action: "screenshot",
+      value: "page_screenshot",
+      description: "Capture page screenshot",
+    });
+  }
+  
+  const job = await createJob(organizationId, {
+    name: params.name,
+    inputData: { steps: defaultSteps },
+  });
+  
+  return executeJob(job.id);
 }
