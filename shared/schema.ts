@@ -559,6 +559,48 @@ export const deals = pgTable("deals", {
     calculatedAt: string;
   }>(),
   
+  // Property enrichment data (flood zones, hazards, demographics, etc.)
+  enrichmentData: jsonb("enrichment_data").$type<{
+    enrichedAt?: string;
+    lookupTimeMs?: number;
+    hazards?: {
+      floodZone?: string;
+      floodRisk?: "low" | "medium" | "high";
+      wetlandsPresent?: boolean;
+      wetlandsPercentage?: number;
+      earthquakeRisk?: "low" | "medium" | "high";
+      wildfireRisk?: "low" | "medium" | "high";
+      overallRiskScore?: number;
+      overallRiskLevel?: "low" | "medium" | "high";
+    };
+    environment?: {
+      soilType?: string;
+      soilSuitability?: string;
+      epaFacilitiesNearby?: number;
+      epaRiskLevel?: "low" | "medium" | "high";
+    };
+    infrastructure?: {
+      nearestHospitalMiles?: number;
+      nearestFireStationMiles?: number;
+      nearestSchoolMiles?: number;
+      accessScore?: number;
+    };
+    demographics?: {
+      population?: number;
+      medianIncome?: number;
+      medianHomeValue?: number;
+    };
+    scores?: {
+      investmentScore?: number;
+      developmentScore?: number;
+      riskScore?: number;
+      overallScore?: number;
+    };
+    errors?: Record<string, string>;
+  }>(),
+  enrichmentStatus: text("enrichment_status"), // pending, completed, failed
+  enrichedAt: timestamp("enriched_at"),
+  
   notes: text("notes"),
   assignedTo: integer("assigned_to"),
   createdAt: timestamp("created_at").defaultNow(),

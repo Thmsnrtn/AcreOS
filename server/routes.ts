@@ -81,6 +81,9 @@ import { financeAgentService } from "./services/financeAgent";
 // Onboarding
 import { onboardingService, type BusinessType } from "./services/onboarding";
 
+// Property Enrichment
+import { propertyEnrichmentService } from "./services/propertyEnrichment";
+
 // AI Offer Generation
 import { 
   generateOfferSuggestions, 
@@ -114,6 +117,76 @@ const logger = {
 
 // Server start time for uptime calculation
 const serverStartTime = Date.now();
+
+// Helper function to trigger deal enrichment asynchronously (non-blocking)
+async function triggerDealEnrichmentAsync(
+  organizationId: number,
+  dealId: number,
+  propertyId: number
+): Promise<void> {
+  // Fire and forget - don't await this in the main request flow
+  Promise.resolve().then(async () => {
+    try {
+      // Get the property to find coordinates
+      const property = await storage.getProperty(organizationId, propertyId);
+      if (!property) {
+        logger.warn("Deal enrichment: Property not found", { dealId, propertyId, organizationId });
+        return;
+      }
+      
+      const lat = property.latitude ? parseFloat(String(property.latitude)) : null;
+      const lng = property.longitude ? parseFloat(String(property.longitude)) : null;
+      
+      if (!lat || !lng) {
+        logger.warn("Deal enrichment: Property missing coordinates", { dealId, propertyId });
+        await storage.updateDeal(dealId, { 
+          enrichmentStatus: "failed",
+          enrichmentData: { errors: { coordinates: "Property missing coordinates" } } as any
+        });
+        return;
+      }
+      
+      // Mark as pending
+      await storage.updateDeal(dealId, { enrichmentStatus: "pending" });
+      
+      // Perform enrichment
+      const enrichmentResult = await propertyEnrichmentService.enrichByCoordinates(lat, lng, {
+        propertyId,
+        state: property.state || undefined,
+        county: property.county || undefined,
+        apn: property.apn || undefined,
+      });
+      
+      // Save enrichment data to deal
+      await storage.updateDeal(dealId, {
+        enrichmentStatus: "completed",
+        enrichedAt: new Date(),
+        enrichmentData: {
+          enrichedAt: enrichmentResult.enrichedAt.toISOString(),
+          lookupTimeMs: enrichmentResult.lookupTimeMs,
+          hazards: enrichmentResult.hazards,
+          environment: enrichmentResult.environment,
+          infrastructure: enrichmentResult.infrastructure,
+          demographics: enrichmentResult.demographics,
+          scores: enrichmentResult.scores,
+          errors: enrichmentResult.errors,
+        } as any,
+      });
+      
+      logger.info("Deal enrichment completed", { dealId, propertyId, lookupTimeMs: enrichmentResult.lookupTimeMs });
+    } catch (err) {
+      logger.error("Deal enrichment failed", { dealId, propertyId, error: String(err) });
+      try {
+        await storage.updateDeal(dealId, { 
+          enrichmentStatus: "failed",
+          enrichmentData: { errors: { enrichment: String(err) } } as any
+        });
+      } catch (updateErr) {
+        logger.error("Failed to update deal enrichment status", { dealId, error: String(updateErr) });
+      }
+    }
+  });
+}
 
 // Helper function to calculate distance in miles between two coordinates
 function calculateDistanceMiles(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -1142,6 +1215,22 @@ export async function registerRoutes(
         userAgent: req.headers["user-agent"],
       });
       
+      const { latitude, longitude } = req.body;
+      if (latitude && longitude) {
+        Promise.resolve().then(async () => {
+          try {
+            await propertyEnrichmentService.enrichLead(
+              org.id,
+              lead.id,
+              { latitude: parseFloat(latitude), longitude: parseFloat(longitude) }
+            );
+            logger.info("Lead enrichment completed", { leadId: lead.id, organizationId: org.id });
+          } catch (err) {
+            logger.error("Lead enrichment failed", { leadId: lead.id, error: (err as Error).message });
+          }
+        });
+      }
+      
       res.status(201).json(lead);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -1178,6 +1267,22 @@ export async function registerRoutes(
     
     await storage.updateLeadScore(leadId, score, factors);
     
+    const { latitude, longitude } = req.body;
+    if (latitude && longitude) {
+      Promise.resolve().then(async () => {
+        try {
+          await propertyEnrichmentService.enrichLead(
+            org.id,
+            leadId,
+            { latitude: parseFloat(latitude), longitude: parseFloat(longitude) }
+          );
+          logger.info("Lead enrichment completed", { leadId, organizationId: org.id });
+        } catch (err) {
+          logger.error("Lead enrichment failed", { leadId, error: (err as Error).message });
+        }
+      });
+    }
+    
     res.json({
       ...lead,
       score,
@@ -1209,6 +1314,50 @@ export async function registerRoutes(
     }
     
     res.status(204).send();
+  });
+  
+  api.post("/api/leads/:id/enrich", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const leadId = Number(req.params.id);
+      
+      if (isNaN(leadId)) {
+        return res.status(400).json({ message: "Invalid lead ID" });
+      }
+      
+      const lead = await storage.getLead(org.id, leadId);
+      if (!lead) {
+        return res.status(404).json({ message: "Lead not found" });
+      }
+      
+      const { latitude, longitude, forceRefresh } = req.body;
+      
+      if (!latitude || !longitude) {
+        return res.status(400).json({ message: "latitude and longitude are required" });
+      }
+      
+      const result = await propertyEnrichmentService.enrichLead(
+        org.id,
+        leadId,
+        { latitude: parseFloat(latitude), longitude: parseFloat(longitude) },
+        forceRefresh === true
+      );
+      
+      if (!result) {
+        return res.status(400).json({ message: "Enrichment failed - coordinates required" });
+      }
+      
+      logger.info("Manual lead enrichment completed", { leadId, organizationId: org.id });
+      
+      res.json({
+        success: true,
+        message: "Lead enriched successfully",
+        enrichment: result,
+      });
+    } catch (err) {
+      logger.error("Manual lead enrichment failed", { error: (err as Error).message });
+      res.status(500).json({ message: (err as Error).message || "Enrichment failed" });
+    }
   });
   
   api.post("/api/leads/bulk-delete", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteLeads"), async (req, res) => {
@@ -2439,6 +2588,11 @@ export async function registerRoutes(
         userAgent: req.headers["user-agent"],
       });
       
+      // Trigger async enrichment if deal has a propertyId (non-blocking)
+      if (deal.propertyId) {
+        triggerDealEnrichmentAsync(org.id, deal.id, deal.propertyId);
+      }
+      
       res.status(201).json(deal);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -2469,6 +2623,12 @@ export async function registerRoutes(
       userAgent: req.headers["user-agent"],
     });
     
+    // Trigger async enrichment if propertyId was added or changed (non-blocking)
+    const propertyChanged = req.body.propertyId && req.body.propertyId !== existingDeal.propertyId;
+    if (propertyChanged && deal.propertyId) {
+      triggerDealEnrichmentAsync(org.id, deal.id, deal.propertyId);
+    }
+    
     // Track conversion when deal is closed (for lead scoring feedback loop)
     if (req.body.status === "closed" && existingDeal.status !== "closed") {
       try {
@@ -2487,6 +2647,76 @@ export async function registerRoutes(
     }
     
     res.json(deal);
+  });
+  
+  // Manual deal enrichment trigger endpoint
+  api.post("/api/deals/:id/enrich", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const dealId = Number(req.params.id);
+      const forceRefresh = req.body.forceRefresh === true;
+      
+      const deal = await storage.getDeal(org.id, dealId);
+      if (!deal) {
+        return res.status(404).json({ message: "Deal not found" });
+      }
+      
+      if (!deal.propertyId) {
+        return res.status(400).json({ message: "Deal has no associated property" });
+      }
+      
+      // Get the property to find coordinates
+      const property = await storage.getProperty(org.id, deal.propertyId);
+      if (!property) {
+        return res.status(400).json({ message: "Property not found" });
+      }
+      
+      const lat = property.latitude ? parseFloat(String(property.latitude)) : null;
+      const lng = property.longitude ? parseFloat(String(property.longitude)) : null;
+      
+      if (!lat || !lng) {
+        return res.status(400).json({ message: "Property missing coordinates" });
+      }
+      
+      // Mark as pending
+      await storage.updateDeal(dealId, { enrichmentStatus: "pending" });
+      
+      // Perform enrichment synchronously for manual trigger (so user can see result)
+      const enrichmentResult = await propertyEnrichmentService.enrichByCoordinates(lat, lng, {
+        propertyId: deal.propertyId,
+        state: property.state || undefined,
+        county: property.county || undefined,
+        apn: property.apn || undefined,
+        forceRefresh,
+      });
+      
+      // Save enrichment data to deal
+      const updatedDeal = await storage.updateDeal(dealId, {
+        enrichmentStatus: "completed",
+        enrichedAt: new Date(),
+        enrichmentData: {
+          enrichedAt: enrichmentResult.enrichedAt.toISOString(),
+          lookupTimeMs: enrichmentResult.lookupTimeMs,
+          hazards: enrichmentResult.hazards,
+          environment: enrichmentResult.environment,
+          infrastructure: enrichmentResult.infrastructure,
+          demographics: enrichmentResult.demographics,
+          scores: enrichmentResult.scores,
+          errors: enrichmentResult.errors,
+        } as any,
+      });
+      
+      logger.info("Manual deal enrichment completed", { dealId, propertyId: deal.propertyId, lookupTimeMs: enrichmentResult.lookupTimeMs });
+      
+      res.json({
+        message: "Enrichment completed",
+        deal: updatedDeal,
+        enrichmentResult,
+      });
+    } catch (err) {
+      logger.error("Manual deal enrichment failed", { dealId: req.params.id, error: String(err) });
+      res.status(500).json({ message: "Enrichment failed", error: String(err) });
+    }
   });
   
   // ============================================
