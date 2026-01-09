@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
@@ -18,9 +18,14 @@ import {
   Paperclip,
   FileText,
   Image as ImageIcon,
-  Palette
+  Palette,
+  Eye,
+  Play
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { LiveDemoMode } from "@/components/live-demo-mode";
+import { BackgroundMode } from "@/components/background-mode";
+import { Action, ActionResult, parseActionsFromText } from "@/lib/action-executor";
 
 interface Attachment {
   id: string;
@@ -81,6 +86,10 @@ export function FloatingAssistant() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [isImageMode, setIsImageMode] = useState(false);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [executionMode, setExecutionMode] = useState<"live" | "background">("background");
+  const [pendingActions, setPendingActions] = useState<Action[]>([]);
+  const [isExecutingActions, setIsExecutingActions] = useState(false);
+  const [currentTaskName, setCurrentTaskName] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -466,6 +475,60 @@ export function FloatingAssistant() {
     }
   };
 
+  const handleExecuteActions = (actions: Action[], taskName?: string) => {
+    if (actions.length === 0 || isExecutingActions) return;
+    setPendingActions(actions);
+    setCurrentTaskName(taskName || `Executing ${actions.length} actions`);
+    setIsExecutingActions(true);
+  };
+
+  const handleActionsComplete = (results: ActionResult[]) => {
+    const successCount = results.filter(r => r.success).length;
+    const failedCount = results.filter(r => !r.success).length;
+    
+    const statusMessage: Message = {
+      id: `system-${Date.now()}`,
+      role: "assistant",
+      content: failedCount > 0
+        ? `Completed ${successCount} of ${results.length} actions. ${failedCount} action(s) failed.`
+        : `Successfully completed all ${successCount} actions.`,
+      timestamp: new Date(),
+    };
+    
+    setMessages((prev) => [...prev, statusMessage]);
+    setPendingActions([]);
+    setIsExecutingActions(false);
+    setCurrentTaskName("");
+  };
+
+  const handleActionsCancel = () => {
+    setPendingActions([]);
+    setIsExecutingActions(false);
+    setCurrentTaskName("");
+    
+    const cancelMessage: Message = {
+      id: `system-${Date.now()}`,
+      role: "assistant",
+      content: "Action execution was cancelled.",
+      timestamp: new Date(),
+    };
+    setMessages((prev) => [...prev, cancelMessage]);
+  };
+
+  const handleActionsError = (error: string) => {
+    setPendingActions([]);
+    setIsExecutingActions(false);
+    setCurrentTaskName("");
+    
+    const errorMessage: Message = {
+      id: `error-${Date.now()}`,
+      role: "error",
+      content: `Action execution failed: ${error}`,
+      timestamp: new Date(),
+    };
+    setMessages((prev) => [...prev, errorMessage]);
+  };
+
   const openImageModal = (imageSrc: string) => {
     setSelectedImage(imageSrc);
     setImageModalOpen(true);
@@ -811,6 +874,32 @@ export function FloatingAssistant() {
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant={executionMode === "live" ? "default" : "ghost"}
+                    className={cn(
+                      "h-7 w-7",
+                      executionMode === "live" && "bg-primary text-primary-foreground"
+                    )}
+                    onClick={() => setExecutionMode(executionMode === "live" ? "background" : "live")}
+                    disabled={isExecutingActions}
+                    data-testid="button-toggle-execution-mode"
+                  >
+                    {executionMode === "live" ? (
+                      <Eye className="w-3.5 h-3.5" />
+                    ) : (
+                      <Play className="w-3.5 h-3.5" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-[200px] text-center">
+                  {executionMode === "live" 
+                    ? "Live Demo: Watch the AI perform actions step-by-step with visual feedback" 
+                    : "Background: AI performs actions silently in the background"}
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
                   <div className="flex items-center gap-1.5 px-2">
                     <Ghost className={cn("w-3.5 h-3.5", isTemporaryChat ? "text-primary" : "text-muted-foreground")} />
                     <Switch
@@ -931,6 +1020,29 @@ export function FloatingAssistant() {
                         ))}
                       </div>
                     )}
+                    {message.role === "assistant" && !message.isStreaming && (() => {
+                      const parsedActions = parseActionsFromText(message.content);
+                      if (parsedActions.length === 0) return null;
+                      return (
+                        <div className="mt-3">
+                          <Button
+                            size="sm"
+                            variant={executionMode === "live" ? "default" : "secondary"}
+                            onClick={() => handleExecuteActions(parsedActions, `Executing ${parsedActions.length} actions`)}
+                            disabled={isExecutingActions}
+                            className="gap-1.5"
+                            data-testid={`button-execute-actions-${message.id}`}
+                          >
+                            {executionMode === "live" ? (
+                              <Eye className="w-3.5 h-3.5" />
+                            ) : (
+                              <Play className="w-3.5 h-3.5" />
+                            )}
+                            Execute {parsedActions.length} Action{parsedActions.length > 1 ? "s" : ""}
+                          </Button>
+                        </div>
+                      );
+                    })()}
                     <div 
                       className={cn(
                         "text-[10px] mt-1 opacity-60",
@@ -1124,6 +1236,21 @@ export function FloatingAssistant() {
           </Button>
         </div>
       )}
+
+      <LiveDemoMode
+        actions={pendingActions}
+        onComplete={handleActionsComplete}
+        onCancel={handleActionsCancel}
+        isActive={executionMode === "live" && isExecutingActions && pendingActions.length > 0}
+      />
+
+      <BackgroundMode
+        actions={pendingActions}
+        taskName={currentTaskName}
+        onComplete={handleActionsComplete}
+        onError={handleActionsError}
+        isActive={executionMode === "background" && isExecutingActions && pendingActions.length > 0}
+      />
 
       <button
         onClick={() => isOpen ? (isMinimized ? handleRestore() : handleClose()) : setIsOpen(true)}
