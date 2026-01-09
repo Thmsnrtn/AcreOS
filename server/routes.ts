@@ -157,23 +157,34 @@ async function triggerDealEnrichmentAsync(
         apn: property.apn || undefined,
       });
       
-      // Save enrichment data to deal
+      // Save ALL enrichment data to deal (including parcel, publicLands, transportation, water)
+      const enrichmentPayload = {
+        enrichedAt: enrichmentResult.enrichedAt.toISOString(),
+        lookupTimeMs: enrichmentResult.lookupTimeMs,
+        parcel: enrichmentResult.parcel,
+        hazards: enrichmentResult.hazards,
+        environment: enrichmentResult.environment,
+        infrastructure: enrichmentResult.infrastructure,
+        demographics: enrichmentResult.demographics,
+        publicLands: enrichmentResult.publicLands,
+        transportation: enrichmentResult.transportation,
+        water: enrichmentResult.water,
+        scores: enrichmentResult.scores,
+        errors: enrichmentResult.errors,
+      };
+      
       await storage.updateDeal(dealId, {
         enrichmentStatus: "completed",
         enrichedAt: new Date(),
-        enrichmentData: {
-          enrichedAt: enrichmentResult.enrichedAt.toISOString(),
-          lookupTimeMs: enrichmentResult.lookupTimeMs,
-          hazards: enrichmentResult.hazards,
-          environment: enrichmentResult.environment,
-          infrastructure: enrichmentResult.infrastructure,
-          demographics: enrichmentResult.demographics,
-          scores: enrichmentResult.scores,
-          errors: enrichmentResult.errors,
-        } as any,
+        enrichmentData: enrichmentPayload as any,
       });
       
-      logger.info("Deal enrichment completed", { dealId, propertyId, lookupTimeMs: enrichmentResult.lookupTimeMs });
+      logger.info("Deal enrichment persisted", { 
+        dealId, 
+        propertyId, 
+        lookupTimeMs: enrichmentResult.lookupTimeMs,
+        categoriesSaved: Object.keys(enrichmentPayload).filter(k => enrichmentPayload[k as keyof typeof enrichmentPayload] !== undefined)
+      });
     } catch (err) {
       logger.error("Deal enrichment failed", { dealId, propertyId, error: String(err) });
       try {
@@ -9256,10 +9267,18 @@ Seller Signature (if applicable)
 
       const { propertyEnrichmentService } = await import('./services/propertyEnrichment');
       const result = await propertyEnrichmentService.enrichProperty(org.id, propertyId, forceRefresh);
+      
+      logger.info("Property enrichment completed and persisted", {
+        propertyId,
+        organizationId: org.id,
+        lookupTimeMs: result.lookupTimeMs,
+        hasScores: !!result.scores,
+        categoriesEnriched: Object.keys(result).filter(k => result[k as keyof typeof result] !== undefined && k !== 'propertyId' && k !== 'latitude' && k !== 'longitude'),
+      });
 
       res.json(result);
     } catch (err: any) {
-      console.error("Property enrichment error:", err);
+      logger.error("Property enrichment error", { error: err.message, propertyId: req.body?.propertyId });
       res.status(500).json({ message: err.message });
     }
   });

@@ -394,6 +394,12 @@ export class PropertyEnrichmentService {
           lastEnrichedAt: new Date().toISOString(),
         } as any,
       });
+      
+      const categoriesEnriched = Object.keys(enrichment).filter(
+        k => enrichment[k as keyof EnrichmentResult] !== undefined && 
+             !['propertyId', 'latitude', 'longitude', 'enrichedAt', 'lookupTimeMs'].includes(k)
+      );
+      console.log(`[PropertyEnrichment] Property enrichment persisted for propertyId=${propertyId}, orgId=${organizationId}, categories: ${categoriesEnriched.join(', ')}`);
     } catch (error) {
       console.error("Failed to save property enrichment:", error);
     }
@@ -401,12 +407,29 @@ export class PropertyEnrichmentService {
   
   private async saveLeadEnrichment(leadId: number, enrichment: EnrichmentResult): Promise<void> {
     try {
+      const allLeads = await storage.getLeads(undefined);
+      const lead = allLeads.find(l => l.id === leadId);
+      
+      let existingScoreFactors: Record<string, any> = {};
+      if (lead?.scoreFactors && typeof lead.scoreFactors === 'object') {
+        existingScoreFactors = lead.scoreFactors as Record<string, any>;
+      }
+      
+      const mergedScoreFactors = {
+        ...existingScoreFactors,
+        gisEnrichment: enrichment,
+        lastEnrichedAt: new Date().toISOString(),
+      };
+      
       await storage.updateLead(leadId, {
-        scoreFactors: {
-          gisEnrichment: enrichment,
-          lastEnrichedAt: new Date().toISOString(),
-        } as any,
+        scoreFactors: mergedScoreFactors as any,
       });
+      
+      const categoriesEnriched = Object.keys(enrichment).filter(
+        k => enrichment[k as keyof EnrichmentResult] !== undefined && 
+             !['leadId', 'latitude', 'longitude', 'enrichedAt', 'lookupTimeMs'].includes(k)
+      );
+      console.log(`[PropertyEnrichment] Lead enrichment persisted for leadId=${leadId}, categories: ${categoriesEnriched.join(', ')}`);
     } catch (error) {
       console.error("Failed to save lead enrichment:", error);
     }
