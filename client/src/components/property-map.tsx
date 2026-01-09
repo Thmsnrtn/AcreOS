@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState, useCallback } from "react";
 import mapboxgl from "mapbox-gl";
-import { MapPin, Maximize2, Minimize2, Mountain, Satellite, Map as MapIcon, Play, Pause, Layers, ChevronDown, ChevronUp, Loader2, Ruler, Square, Camera, Download, X, Clipboard, MapPinned, BarChart3, CircleDot } from "lucide-react";
+import { MapPin, Maximize2, Minimize2, Mountain, Satellite, Map as MapIcon, Play, Pause, Layers, ChevronDown, ChevronUp, Loader2, Ruler, Square, Camera, Download, X, Clipboard, MapPinned, BarChart3, CircleDot, Database } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -11,8 +11,11 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { useDynamicMapLayers, buildArcGISRasterTileUrl, isArcGISMapServerUrl, type MapLayer } from "@/hooks/use-dynamic-map-layers";
 import "mapbox-gl/dist/mapbox-gl.css";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
@@ -299,8 +302,21 @@ export function PropertyMap({
   const [compsPanelOpen, setCompsPanelOpen] = useState(false);
   
   const compMarkersRef = useRef<mapboxgl.Marker[]>([]);
+  const dynamicLayerIdsRef = useRef<Set<string>>(new Set());
   
   const { toast } = useToast();
+  
+  const {
+    layersByCategory: dynamicLayersByCategory,
+    enabledLayers: dynamicEnabledLayers,
+    isLoading: dynamicLayersLoading,
+    toggleLayer: toggleDynamicLayer,
+    setLayerOpacity: setDynamicLayerOpacity,
+    isLayerEnabled: isDynamicLayerEnabled,
+    getLayerOpacity: getDynamicLayerOpacity,
+  } = useDynamicMapLayers();
+  
+  const [dynamicLayersSectionOpen, setDynamicLayersSectionOpen] = useState(false);
 
   const updateLayerState = useCallback((updates: Partial<LayerState>) => {
     setLayerState(prev => {
@@ -592,6 +608,92 @@ export function PropertyMap({
     compMarkersRef.current.forEach(m => m.remove());
     compMarkersRef.current = [];
   }, []);
+
+  const addDynamicLayer = useCallback((layer: MapLayer, opacity: number) => {
+    if (!map.current || !layer.apiUrl) return;
+    
+    const sourceId = `dynamic-layer-${layer.id}`;
+    const layerId = `dynamic-layer-${layer.id}-raster`;
+    
+    if (map.current.getLayer(layerId)) {
+      map.current.setPaintProperty(layerId, "raster-opacity", opacity);
+      return;
+    }
+    
+    if (map.current.getSource(sourceId)) {
+      map.current.removeSource(sourceId);
+    }
+    
+    if (isArcGISMapServerUrl(layer.apiUrl)) {
+      const tileUrl = buildArcGISRasterTileUrl(layer.apiUrl);
+      
+      map.current.addSource(sourceId, {
+        type: "raster",
+        tiles: [tileUrl],
+        tileSize: 256,
+        attribution: layer.title,
+      });
+      
+      const firstSymbolId = map.current.getStyle()?.layers?.find(l => l.type === "symbol")?.id;
+      
+      map.current.addLayer({
+        id: layerId,
+        type: "raster",
+        source: sourceId,
+        paint: {
+          "raster-opacity": opacity,
+          "raster-fade-duration": 0,
+        },
+      }, firstSymbolId);
+      
+      dynamicLayerIdsRef.current.add(layerId);
+    }
+  }, []);
+
+  const removeDynamicLayer = useCallback((layerId: number) => {
+    if (!map.current) return;
+    
+    const sourceId = `dynamic-layer-${layerId}`;
+    const rasterLayerId = `dynamic-layer-${layerId}-raster`;
+    
+    if (map.current.getLayer(rasterLayerId)) {
+      map.current.removeLayer(rasterLayerId);
+      dynamicLayerIdsRef.current.delete(rasterLayerId);
+    }
+    
+    if (map.current.getSource(sourceId)) {
+      map.current.removeSource(sourceId);
+    }
+  }, []);
+
+  const updateDynamicLayerOpacity = useCallback((layerId: number, opacity: number) => {
+    if (!map.current) return;
+    
+    const rasterLayerId = `dynamic-layer-${layerId}-raster`;
+    
+    if (map.current.getLayer(rasterLayerId)) {
+      map.current.setPaintProperty(rasterLayerId, "raster-opacity", opacity);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!mapLoaded || !map.current) return;
+    
+    dynamicEnabledLayers.forEach(layer => {
+      const opacity = getDynamicLayerOpacity(layer.id);
+      addDynamicLayer(layer, opacity);
+    });
+    
+    dynamicLayerIdsRef.current.forEach(layerId => {
+      const match = layerId.match(/^dynamic-layer-(\d+)-raster$/);
+      if (match) {
+        const id = parseInt(match[1], 10);
+        if (!dynamicEnabledLayers.some(l => l.id === id)) {
+          removeDynamicLayer(id);
+        }
+      }
+    });
+  }, [mapLoaded, dynamicEnabledLayers, addDynamicLayer, removeDynamicLayer, getDynamicLayerOpacity]);
 
   useEffect(() => {
     if (showNearbyParcels && nearbyParcels.length > 0 && mapLoaded) {
@@ -1530,6 +1632,113 @@ export function PropertyMap({
                           Zoning Districts
                         </Label>
                       </div>
+
+                      <Separator className="my-3" />
+
+                      <Collapsible open={dynamicLayersSectionOpen} onOpenChange={setDynamicLayersSectionOpen}>
+                        <CollapsibleTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="w-full justify-between gap-2 px-0 h-8"
+                            data-testid="button-toggle-dynamic-layers"
+                          >
+                            <div className="flex items-center gap-2">
+                              <Database className="h-4 w-4" />
+                              <span className="text-sm font-medium">GIS Data Layers</span>
+                              {dynamicLayersLoading && <Loader2 className="h-3 w-3 animate-spin" data-testid="loader-dynamic-layers" />}
+                              {dynamicEnabledLayers.length > 0 && (
+                                <Badge variant="secondary" className="h-5 px-1.5 text-xs" data-testid="badge-enabled-layers-count">
+                                  {dynamicEnabledLayers.length}
+                                </Badge>
+                              )}
+                            </div>
+                            {dynamicLayersSectionOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                          </Button>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent>
+                          <ScrollArea className="h-[200px] mt-2" data-testid="dynamic-layers-scroll-area">
+                            <div className="space-y-3 pr-3">
+                              {Object.keys(dynamicLayersByCategory).length === 0 && !dynamicLayersLoading && (
+                                <div className="text-xs text-muted-foreground text-center py-2" data-testid="text-no-dynamic-layers">
+                                  No GIS layers available
+                                </div>
+                              )}
+                              {Object.entries(dynamicLayersByCategory).map(([category, layers]) => (
+                                <div key={category} className="space-y-2" data-testid={`dynamic-layer-category-${category.toLowerCase().replace(/\s+/g, "-")}`}>
+                                  <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                                    {category}
+                                  </div>
+                                  {layers.slice(0, 10).map((layer) => (
+                                    <div key={layer.id} className="space-y-1" data-testid={`dynamic-layer-item-${layer.id}`}>
+                                      <div className="flex items-center gap-2">
+                                        <Checkbox
+                                          id={`dynamic-layer-${layer.id}`}
+                                          checked={isDynamicLayerEnabled(layer.id)}
+                                          onCheckedChange={() => toggleDynamicLayer(layer.id)}
+                                          disabled={!isArcGISMapServerUrl(layer.apiUrl)}
+                                          data-testid={`checkbox-dynamic-layer-${layer.id}`}
+                                        />
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <Label
+                                              htmlFor={`dynamic-layer-${layer.id}`}
+                                              className={cn(
+                                                "text-xs cursor-pointer truncate max-w-[150px]",
+                                                !isArcGISMapServerUrl(layer.apiUrl) && "text-muted-foreground"
+                                              )}
+                                              data-testid={`label-dynamic-layer-${layer.id}`}
+                                            >
+                                              {layer.title}
+                                            </Label>
+                                          </TooltipTrigger>
+                                          <TooltipContent side="right" className="max-w-[250px]">
+                                            <div className="space-y-1">
+                                              <p className="font-medium">{layer.title}</p>
+                                              {layer.description && <p className="text-xs text-muted-foreground">{layer.description}</p>}
+                                              {layer.coverage && <p className="text-xs text-muted-foreground">Coverage: {layer.coverage}</p>}
+                                              {!isArcGISMapServerUrl(layer.apiUrl) && (
+                                                <p className="text-xs text-yellow-500">Not a compatible MapServer layer</p>
+                                              )}
+                                            </div>
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      </div>
+                                      {isDynamicLayerEnabled(layer.id) && (
+                                        <div className="pl-6 space-y-1">
+                                          <div className="flex items-center justify-between">
+                                            <span className="text-[10px] text-muted-foreground">Opacity</span>
+                                            <span className="text-[10px] text-muted-foreground" data-testid={`text-dynamic-layer-opacity-${layer.id}`}>
+                                              {Math.round(getDynamicLayerOpacity(layer.id) * 100)}%
+                                            </span>
+                                          </div>
+                                          <Slider
+                                            value={[getDynamicLayerOpacity(layer.id)]}
+                                            onValueChange={([value]) => {
+                                              setDynamicLayerOpacity(layer.id, value);
+                                              updateDynamicLayerOpacity(layer.id, value);
+                                            }}
+                                            min={0.1}
+                                            max={1}
+                                            step={0.05}
+                                            className="w-full"
+                                            data-testid={`slider-dynamic-layer-opacity-${layer.id}`}
+                                          />
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                  {layers.length > 10 && (
+                                    <div className="text-[10px] text-muted-foreground pl-6">
+                                      +{layers.length - 10} more layers
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </ScrollArea>
+                        </CollapsibleContent>
+                      </Collapsible>
                     </div>
                   </div>
                 </CollapsibleContent>

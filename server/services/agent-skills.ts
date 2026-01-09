@@ -5,6 +5,7 @@ import { lookupParcelByAPN } from "./parcel";
 import { getPropertyComps, calculateMarketValue, calculateOfferPrices, calculateDesirabilityScore } from "./comps";
 import { emailService } from "./emailService";
 import { generateOfferLetter as generateOfferDocument } from "./documents";
+import { PropertyEnrichmentService } from "./propertyEnrichment";
 
 export type CoreAgentType = "research" | "deals" | "communications" | "operations";
 
@@ -1744,6 +1745,320 @@ const generateSwotReportSkill: Skill = {
   },
 };
 
+// ============================================
+// GIS DATA LOOKUP SKILLS
+// ============================================
+
+const propertyEnrichmentService = new PropertyEnrichmentService();
+
+const gisPropertyEnrichmentInputSchema = z.object({
+  latitude: z.number().describe("Property latitude"),
+  longitude: z.number().describe("Property longitude"),
+  state: z.string().optional().describe("Two-letter state code"),
+  county: z.string().optional().describe("County name"),
+  categories: z.array(z.enum([
+    "flood_zone", "wetlands", "soil", "environmental", 
+    "infrastructure", "natural_hazards", "demographics",
+    "public_lands", "transportation", "water_resources"
+  ])).optional().describe("Specific data categories to lookup"),
+});
+
+const gisPropertyEnrichmentSkill: Skill = {
+  id: "gis_property_enrichment",
+  name: "GIS Property Enrichment",
+  description: "Get comprehensive property intelligence using coordinates - includes flood zones, wetlands, soil, environmental hazards, infrastructure, demographics, and more from 6,797+ GIS sources",
+  agentTypes: ["research"],
+  inputSchema: gisPropertyEnrichmentInputSchema,
+  costEstimate: "free",
+  examples: [
+    'gis_property_enrichment({ latitude: 30.2672, longitude: -97.7431 })',
+    'gis_property_enrichment({ latitude: 30.2672, longitude: -97.7431, state: "TX", county: "Travis", categories: ["flood_zone", "infrastructure"] })',
+  ],
+  execute: async (params, context) => {
+    try {
+      const { latitude, longitude, state, county, categories } = gisPropertyEnrichmentInputSchema.parse(params);
+      
+      const result = await propertyEnrichmentService.enrichByCoordinates(latitude, longitude, {
+        state,
+        county,
+        categories: categories as LookupCategory[] | undefined,
+        forceRefresh: false,
+      });
+      
+      return {
+        success: true,
+        data: result,
+        message: `Property enrichment complete for (${latitude}, ${longitude}) in ${result.lookupTimeMs}ms`,
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.message || "GIS property enrichment failed",
+      };
+    }
+  },
+};
+
+const gisFloodLookupInputSchema = z.object({
+  latitude: z.number().describe("Property latitude"),
+  longitude: z.number().describe("Property longitude"),
+  state: z.string().optional().describe("Two-letter state code"),
+  county: z.string().optional().describe("County name"),
+});
+
+const gisFloodLookupSkill: Skill = {
+  id: "gis_flood_lookup",
+  name: "GIS Flood Zone Lookup",
+  description: "Check FEMA flood zones for a location - returns flood zone designation, risk level, and insurance requirements",
+  agentTypes: ["research"],
+  inputSchema: gisFloodLookupInputSchema,
+  costEstimate: "free",
+  examples: [
+    'gis_flood_lookup({ latitude: 30.2672, longitude: -97.7431 })',
+    'gis_flood_lookup({ latitude: 29.7604, longitude: -95.3698, state: "TX", county: "Harris" })',
+  ],
+  execute: async (params, context) => {
+    try {
+      const { latitude, longitude, state, county } = gisFloodLookupInputSchema.parse(params);
+      
+      const result = await dataSourceBroker.lookup("flood_zone", {
+        latitude,
+        longitude,
+        state,
+        county,
+      });
+      
+      if (!result.success) {
+        return {
+          success: false,
+          error: "Flood zone lookup failed",
+          data: { fallbacksUsed: result.fallbacksUsed },
+        };
+      }
+      
+      return {
+        success: true,
+        data: {
+          floodZone: result.data.zone,
+          riskLevel: result.data.riskLevel,
+          insuranceRequired: result.data.riskLevel === "high",
+          source: result.source.title,
+          fromCache: result.fromCache,
+          lookupTimeMs: result.lookupTimeMs,
+          rawData: result.data,
+        },
+        message: `Flood zone: ${result.data.zone || "Unknown"}, Risk: ${result.data.riskLevel || "Unknown"}`,
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.message || "Flood zone lookup failed",
+      };
+    }
+  },
+};
+
+const gisEnvironmentalLookupInputSchema = z.object({
+  latitude: z.number().describe("Property latitude"),
+  longitude: z.number().describe("Property longitude"),
+  state: z.string().optional().describe("Two-letter state code"),
+  county: z.string().optional().describe("County name"),
+});
+
+const gisEnvironmentalLookupSkill: Skill = {
+  id: "gis_environmental_lookup",
+  name: "GIS Environmental Lookup",
+  description: "Check EPA environmental data including Superfund sites, air quality, brownfields, and other environmental hazards near a location",
+  agentTypes: ["research"],
+  inputSchema: gisEnvironmentalLookupInputSchema,
+  costEstimate: "free",
+  examples: [
+    'gis_environmental_lookup({ latitude: 30.2672, longitude: -97.7431 })',
+    'gis_environmental_lookup({ latitude: 40.7128, longitude: -74.0060, state: "NY", county: "New York" })',
+  ],
+  execute: async (params, context) => {
+    try {
+      const { latitude, longitude, state, county } = gisEnvironmentalLookupInputSchema.parse(params);
+      
+      const result = await dataSourceBroker.lookup("environmental", {
+        latitude,
+        longitude,
+        state,
+        county,
+      });
+      
+      if (!result.success) {
+        return {
+          success: false,
+          error: "Environmental lookup failed",
+          data: { fallbacksUsed: result.fallbacksUsed },
+        };
+      }
+      
+      const superfundCount = result.data.superfundSites?.length || 0;
+      const riskLevel = result.data.riskLevel || "unknown";
+      
+      return {
+        success: true,
+        data: {
+          riskLevel,
+          superfundSites: result.data.superfundSites || [],
+          superfundCount,
+          airQuality: result.data.airQuality,
+          brownfields: result.data.brownfields || [],
+          source: result.source.title,
+          fromCache: result.fromCache,
+          lookupTimeMs: result.lookupTimeMs,
+          rawData: result.data,
+        },
+        message: `Environmental risk: ${riskLevel}, ${superfundCount} Superfund site(s) nearby`,
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.message || "Environmental lookup failed",
+      };
+    }
+  },
+};
+
+const gisInfrastructureLookupInputSchema = z.object({
+  latitude: z.number().describe("Property latitude"),
+  longitude: z.number().describe("Property longitude"),
+  state: z.string().optional().describe("Two-letter state code"),
+  county: z.string().optional().describe("County name"),
+});
+
+const gisInfrastructureLookupSkill: Skill = {
+  id: "gis_infrastructure_lookup",
+  name: "GIS Infrastructure Lookup",
+  description: "Find nearby hospitals, fire stations, schools, airports, and other critical infrastructure from HIFLD and other federal sources",
+  agentTypes: ["research"],
+  inputSchema: gisInfrastructureLookupInputSchema,
+  costEstimate: "free",
+  examples: [
+    'gis_infrastructure_lookup({ latitude: 30.2672, longitude: -97.7431 })',
+    'gis_infrastructure_lookup({ latitude: 34.0522, longitude: -118.2437, state: "CA", county: "Los Angeles" })',
+  ],
+  execute: async (params, context) => {
+    try {
+      const { latitude, longitude, state, county } = gisInfrastructureLookupInputSchema.parse(params);
+      
+      const result = await dataSourceBroker.lookup("infrastructure", {
+        latitude,
+        longitude,
+        state,
+        county,
+      });
+      
+      if (!result.success) {
+        return {
+          success: false,
+          error: "Infrastructure lookup failed",
+          data: { fallbacksUsed: result.fallbacksUsed },
+        };
+      }
+      
+      const infrastructure = {
+        hospitals: result.data.hospitals || { count: 0 },
+        fireStations: result.data.fireStations || { count: 0 },
+        schools: result.data.schools || { count: 0 },
+        airports: result.data.airports || { count: 0 },
+        policeStations: result.data.policeStations || { count: 0 },
+      };
+      
+      return {
+        success: true,
+        data: {
+          ...infrastructure,
+          source: result.source.title,
+          fromCache: result.fromCache,
+          lookupTimeMs: result.lookupTimeMs,
+          rawData: result.data,
+        },
+        message: `Found ${infrastructure.hospitals.count} hospitals, ${infrastructure.fireStations.count} fire stations, ${infrastructure.schools.count} schools nearby`,
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.message || "Infrastructure lookup failed",
+      };
+    }
+  },
+};
+
+const gisHazardsLookupInputSchema = z.object({
+  latitude: z.number().describe("Property latitude"),
+  longitude: z.number().describe("Property longitude"),
+  state: z.string().optional().describe("Two-letter state code"),
+  county: z.string().optional().describe("County name"),
+});
+
+const gisHazardsLookupSkill: Skill = {
+  id: "gis_hazards_lookup",
+  name: "GIS Natural Hazards Lookup",
+  description: "Check natural hazards including earthquake risk, wildfire zones, tornado frequency, hurricane exposure, and other natural disaster risks",
+  agentTypes: ["research"],
+  inputSchema: gisHazardsLookupInputSchema,
+  costEstimate: "free",
+  examples: [
+    'gis_hazards_lookup({ latitude: 34.0522, longitude: -118.2437 })',
+    'gis_hazards_lookup({ latitude: 37.7749, longitude: -122.4194, state: "CA", county: "San Francisco" })',
+  ],
+  execute: async (params, context) => {
+    try {
+      const { latitude, longitude, state, county } = gisHazardsLookupInputSchema.parse(params);
+      
+      const result = await dataSourceBroker.lookup("natural_hazards", {
+        latitude,
+        longitude,
+        state,
+        county,
+      });
+      
+      if (!result.success) {
+        return {
+          success: false,
+          error: "Natural hazards lookup failed",
+          data: { fallbacksUsed: result.fallbacksUsed },
+        };
+      }
+      
+      const hazards = {
+        earthquakeRisk: result.data.earthquake?.riskLevel || "unknown",
+        wildfireRisk: result.data.wildfire?.riskLevel || "unknown",
+        tornadoRisk: result.data.tornado?.riskLevel || "unknown",
+        hurricaneRisk: result.data.hurricane?.riskLevel || "unknown",
+        landslideRisk: result.data.landslide?.riskLevel || "unknown",
+      };
+      
+      const highRisks = Object.entries(hazards)
+        .filter(([_, level]) => level === "high")
+        .map(([hazard, _]) => hazard.replace("Risk", ""));
+      
+      return {
+        success: true,
+        data: {
+          ...hazards,
+          highRiskHazards: highRisks,
+          source: result.source.title,
+          fromCache: result.fromCache,
+          lookupTimeMs: result.lookupTimeMs,
+          rawData: result.data,
+        },
+        message: highRisks.length > 0 
+          ? `High risk for: ${highRisks.join(", ")}`
+          : "No high-risk natural hazards identified",
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.message || "Natural hazards lookup failed",
+      };
+    }
+  },
+};
+
 export class SkillRegistry {
   private skills: Map<string, Skill> = new Map();
 
@@ -1771,6 +2086,12 @@ export class SkillRegistry {
     this.registerSkill(processPayoffSkill);
     this.registerSkill(escalateDelinquencySkill);
     this.registerSkill(generateSwotReportSkill);
+    // GIS Data Lookup Skills
+    this.registerSkill(gisPropertyEnrichmentSkill);
+    this.registerSkill(gisFloodLookupSkill);
+    this.registerSkill(gisEnvironmentalLookupSkill);
+    this.registerSkill(gisInfrastructureLookupSkill);
+    this.registerSkill(gisHazardsLookupSkill);
   }
 
   registerSkill(skill: Skill): void {
