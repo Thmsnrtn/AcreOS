@@ -93,5 +93,27 @@ Preferred communication style: Simple, everyday language.
   - **Import Scripts**: 5 reusable TypeScript scripts with MD5 deduplication for database updates
 - **Direct Mail**: Lob API (for sending physical mail).
 - **Development Tools**: Vite, Replit Plugins.
-- **Future Integrations (configured but not fully connected)**: SendGrid (Email), Twilio (SMS).
+- **SMS/Communications**: Twilio SMS integration (BYOK via organizationIntegrations) with unified multi-channel inbox.
+- **Browser Automation**: Puppeteer-core with Chromium for backend web automation (county research, document download, property listing screenshots).
+- **Future Integrations (configured but not fully connected)**: SendGrid (Email).
 - **BYOK (Bring Your Own Key)**: Support for users to configure their own API keys for Lob, Regrid, SendGrid, and Twilio.
+
+## Recent Updates (January 2026)
+
+### Writing Style & AI Communication
+- **Writing Style Profiles**: User-specific tone analysis, phrase patterns, and sample message collection for AI to communicate in user's voice
+- **Style-Aware Response Generator**: Generates messages matching user's communication style with confidence scoring and alternatives
+
+### Unified Communications
+- **Twilio SMS Integration**: BYOK approach via organizationIntegrations table, supports outbound/inbound SMS
+- **Unified Inbox UI**: Multi-channel inbox at `/inbox` showing emails and SMS with channel filter tabs (All/Email/SMS), conversation threads, and send capability
+
+### Lead Intelligence
+- **Lead Qualification Scoring**: Analyzes conversations for buyer readiness signals (urgency, budget mentions, timeline, decision authority)
+- **Escalation Alerts**: Automatic notifications when leads show hot signals (high buyer intent score)
+
+### Browser Automation Engine
+- **Puppeteer Foundation**: Headless browser automation with comprehensive step execution (navigate, click, type, extract, screenshot, scroll, wait)
+- **Job Queue System**: browserAutomationJobs table with status tracking, createJob/executeJob/processJobQueue functions
+- **System Templates**: County Assessor Lookup, Document Download, Property Listing Screenshot templates
+- **AI Integration**: browserResearchSkill added to SkillRegistry enabling Research agent to execute ad-hoc automation or use templates, returns full screenshot data URLs and extracted data
