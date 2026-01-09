@@ -5,44 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Loader2, AlertTriangle, Moon, Sun, RefreshCw } from "lucide-react";
 import { useMemo, useState, useEffect, useCallback } from "react";
 import { useTheme } from "@/contexts/theme-context";
-
-import earth1 from "@assets/stock_images/aerial_view_earth_la_ebbb258b.jpg";
-import earth2 from "@assets/stock_images/aerial_view_earth_la_61c8b979.jpg";
-import earth3 from "@assets/stock_images/aerial_view_earth_la_d6daf7fc.jpg";
-import earth4 from "@assets/stock_images/aerial_view_earth_la_e6027f79.jpg";
-import earth5 from "@assets/stock_images/aerial_view_earth_la_1032d15d.jpg";
-import coast1 from "@assets/stock_images/aerial_view_coastlin_7795e651.jpg";
-import coast2 from "@assets/stock_images/aerial_view_coastlin_b90c3dc1.jpg";
-import coast3 from "@assets/stock_images/aerial_view_coastlin_c6b40269.jpg";
-import coast4 from "@assets/stock_images/aerial_view_coastlin_e0e1413a.jpg";
-import coast5 from "@assets/stock_images/aerial_view_coastlin_e5546ed2.jpg";
-import farm1 from "@assets/stock_images/aerial_view_farmland_488b10bb.jpg";
-import farm2 from "@assets/stock_images/aerial_view_farmland_7a839a84.jpg";
-import farm3 from "@assets/stock_images/aerial_view_farmland_dd0949a9.jpg";
-import farm4 from "@assets/stock_images/aerial_view_farmland_7eb11372.jpg";
-import farm5 from "@assets/stock_images/aerial_view_farmland_be764c5d.jpg";
-import river1 from "@assets/stock_images/aerial_view_river_de_2bfec7d9.jpg";
-import river2 from "@assets/stock_images/aerial_view_river_de_40f28854.jpg";
-import river3 from "@assets/stock_images/aerial_view_river_de_ac8981ce.jpg";
-import river4 from "@assets/stock_images/aerial_view_river_de_f5ebb64d.jpg";
-import river5 from "@assets/stock_images/aerial_view_river_de_a2bbef0b.jpg";
-import forest1 from "@assets/stock_images/aerial_view_forest_w_acbc4b43.jpg";
-import forest2 from "@assets/stock_images/aerial_view_forest_w_20580d10.jpg";
-import forest3 from "@assets/stock_images/aerial_view_forest_w_88e7e04f.jpg";
-import forest4 from "@assets/stock_images/aerial_view_forest_w_403b4f9f.jpg";
-import forest5 from "@assets/stock_images/aerial_view_forest_w_04e65f84.jpg";
-
-const AERIAL_IMAGES = [
-  earth1, earth2, earth3, earth4, earth5,
-  coast1, coast2, coast3, coast4, coast5,
-  farm1, farm2, farm3, farm4, farm5,
-  river1, river2, river3, river4, river5,
-  forest1, forest2, forest3, forest4, forest5,
-];
-
-const getRandomImage = () => {
-  return AERIAL_IMAGES[Math.floor(Math.random() * AERIAL_IMAGES.length)];
-};
+import { getRandomImage } from "@/lib/aerial-images";
 
 export default function AuthPage() {
   const { user, isLoading } = useAuth();
