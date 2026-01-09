@@ -6,22 +6,42 @@ import { Loader2, AlertTriangle, Moon, Sun, RefreshCw } from "lucide-react";
 import { useMemo, useState, useEffect, useCallback } from "react";
 import { useTheme } from "@/contexts/theme-context";
 
-const EARTH_VIEW_IDS = [
-  1003, 1004, 1006, 1008, 1012, 1018, 1019, 1028, 1030, 1031,
-  1036, 1038, 1040, 1048, 1049, 1054, 1055, 1060, 1065, 1067,
-  1069, 1071, 1090, 1096, 1108, 1110, 1116, 1120, 1127, 1140,
-  1150, 1172, 1182, 1186, 1201, 1202, 1206, 1211, 1222, 1247,
-  1260, 1278, 1290, 1295, 1323, 1341, 1347, 1375, 1376, 1387,
-  1419, 1451, 1478, 1492, 1504, 1507, 1514, 1525, 1541, 1574,
-  1595, 1605, 1623, 1643, 1680, 1705, 1732, 1759, 1775, 1798,
-  1824, 1858, 1861, 1878, 1907, 1916, 1941, 1975, 2000, 2007,
-  5765, 5826, 5856, 5967, 6000, 6015, 6068, 6175, 6225, 6296,
-  6335, 6442, 6489, 6541, 6612, 6686, 6713, 6785, 6804, 6871
+import earth1 from "@assets/stock_images/aerial_view_earth_la_ebbb258b.jpg";
+import earth2 from "@assets/stock_images/aerial_view_earth_la_61c8b979.jpg";
+import earth3 from "@assets/stock_images/aerial_view_earth_la_d6daf7fc.jpg";
+import earth4 from "@assets/stock_images/aerial_view_earth_la_e6027f79.jpg";
+import earth5 from "@assets/stock_images/aerial_view_earth_la_1032d15d.jpg";
+import coast1 from "@assets/stock_images/aerial_view_coastlin_7795e651.jpg";
+import coast2 from "@assets/stock_images/aerial_view_coastlin_b90c3dc1.jpg";
+import coast3 from "@assets/stock_images/aerial_view_coastlin_c6b40269.jpg";
+import coast4 from "@assets/stock_images/aerial_view_coastlin_e0e1413a.jpg";
+import coast5 from "@assets/stock_images/aerial_view_coastlin_e5546ed2.jpg";
+import farm1 from "@assets/stock_images/aerial_view_farmland_488b10bb.jpg";
+import farm2 from "@assets/stock_images/aerial_view_farmland_7a839a84.jpg";
+import farm3 from "@assets/stock_images/aerial_view_farmland_dd0949a9.jpg";
+import farm4 from "@assets/stock_images/aerial_view_farmland_7eb11372.jpg";
+import farm5 from "@assets/stock_images/aerial_view_farmland_be764c5d.jpg";
+import river1 from "@assets/stock_images/aerial_view_river_de_2bfec7d9.jpg";
+import river2 from "@assets/stock_images/aerial_view_river_de_40f28854.jpg";
+import river3 from "@assets/stock_images/aerial_view_river_de_ac8981ce.jpg";
+import river4 from "@assets/stock_images/aerial_view_river_de_f5ebb64d.jpg";
+import river5 from "@assets/stock_images/aerial_view_river_de_a2bbef0b.jpg";
+import forest1 from "@assets/stock_images/aerial_view_forest_w_acbc4b43.jpg";
+import forest2 from "@assets/stock_images/aerial_view_forest_w_20580d10.jpg";
+import forest3 from "@assets/stock_images/aerial_view_forest_w_88e7e04f.jpg";
+import forest4 from "@assets/stock_images/aerial_view_forest_w_403b4f9f.jpg";
+import forest5 from "@assets/stock_images/aerial_view_forest_w_04e65f84.jpg";
+
+const AERIAL_IMAGES = [
+  earth1, earth2, earth3, earth4, earth5,
+  coast1, coast2, coast3, coast4, coast5,
+  farm1, farm2, farm3, farm4, farm5,
+  river1, river2, river3, river4, river5,
+  forest1, forest2, forest3, forest4, forest5,
 ];
 
-const getRandomEarthViewUrl = () => {
-  const randomId = EARTH_VIEW_IDS[Math.floor(Math.random() * EARTH_VIEW_IDS.length)];
-  return `https://earthview.withgoogle.com/download/${randomId}.jpg`;
+const getRandomImage = () => {
+  return AERIAL_IMAGES[Math.floor(Math.random() * AERIAL_IMAGES.length)];
 };
 
 export default function AuthPage() {
@@ -40,11 +60,11 @@ export default function AuthPage() {
   const refreshImage = useCallback(() => {
     setImageLoaded(false);
     setImageError(false);
-    setImageUrl(getRandomEarthViewUrl());
+    setImageUrl(getRandomImage());
   }, []);
 
   useEffect(() => {
-    setImageUrl(getRandomEarthViewUrl());
+    setImageUrl(getRandomImage());
   }, []);
 
   if (isLoading) {
@@ -69,14 +89,13 @@ export default function AuthPage() {
       {imageUrl && !imageError && (
         <img
           src={imageUrl}
-          alt="Earth View satellite imagery"
-          crossOrigin="anonymous"
+          alt="Aerial landscape"
           className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 ${
             imageLoaded ? "opacity-100" : "opacity-0"
           }`}
           onLoad={() => setImageLoaded(true)}
           onError={() => setImageError(true)}
-          data-testid="image-earth-view-background"
+          data-testid="image-aerial-background"
         />
       )}
       {!imageLoaded && !imageError && (
