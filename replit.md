@@ -72,20 +72,25 @@ Preferred communication style: Simple, everyday language.
 - **Payment Processing**: Stripe (subscription billing, one-time credit purchases via Replit Stripe connector).
 - **AI Services**: OpenAI (via Replit AI Integrations for chat completions and image generation).
 - **Mapping/Comps**: Tiered parcel lookup system using County GIS Endpoints (free) and Regrid API (paid fallback).
-- **Data Source Broker**: Intelligent tiered data lookup system with 6,567+ sources across various categories:
-  - Regional GIS (2,616): Multi-county, water district, utility, and regional organization endpoints
-  - County GIS Portals (2,063): Parcel data for land investing across all 50 states
-  - State GIS (1,179): State-level GIS endpoints for all 50 states
-  - City GIS (432): Municipal GIS servers for major cities
-  - Real Estate Market (61): Comparative market analysis endpoints
-  - Real Estate (61): Property data and ownership information
-  - Advanced Analytics (20): AI-powered property analysis
-  - Environmental (18): EPA, wetlands, water quality data
-  - Public Lands (15): BLM endpoints for 12 western states + national
-  - Census Boundaries (13): TIGERweb Census Bureau data (tracts, blocks, legislative districts)
-  - Natural Hazards (9): FEMA flood zones, earthquake, wildfire
-  - Federal agencies: USDA, USGS, NOAA, HUD, DOT, NPS, USFWS
+- **Data Source Broker**: Intelligent tiered data lookup system with **6,797+ sources** across 48 categories:
+  - **Regional GIS (2,616)**: Multi-county, water district, utility, and regional organization endpoints
+  - **County GIS Portals (2,104)**: Parcel data for land investing across all 50 states + 40 major metro counties
+  - **State GIS (1,227)**: State-level GIS endpoints for all 50 states
+  - **City GIS (432)**: Municipal GIS servers for major cities
+  - **Real Estate Market (61)**: Comparative market analysis endpoints
+  - **Real Estate (61)**: Property data and ownership information
+  - **Infrastructure (34)**: HIFLD hospitals, fire stations, utilities, communications
+  - **Environmental (33)**: EPA Superfund, brownfields, air quality, toxics, EJScreen
+  - **Natural Hazards (32)**: FEMA flood zones, earthquakes, wildfires, weather alerts
+  - **Public Lands (27)**: BLM, USFS, NPS protected areas, wilderness, minerals
+  - **Advanced Analytics (20)**: AI-powered property analysis
+  - **Census/Demographics (22)**: ACS, Decennial, TIGERweb boundaries, tracts, blocks
+  - **Transportation (17)**: DOT highways, FAA aviation, rail networks
+  - **Water Resources (9)**: USGS streamflow, groundwater, NOAA tides
+  - **Basemaps/Topographic (8)**: USGS National Map services
+  - Federal agencies: USDA, USGS, NOAA, HUD, DOT, NPS, USFWS, EPA, FAA, FCC, CDC
   - Address Validation, Zoning, Utilities, Agricultural, Mineral/Subsurface data
+  - **Import Scripts**: 5 reusable TypeScript scripts with MD5 deduplication for database updates
 - **Direct Mail**: Lob API (for sending physical mail).
 - **Development Tools**: Vite, Replit Plugins.
 - **Future Integrations (configured but not fully connected)**: SendGrid (Email), Twilio (SMS).
