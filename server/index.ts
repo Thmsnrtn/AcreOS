@@ -1,4 +1,5 @@
 import express, { type Request, Response, NextFunction } from "express";
+import path from "path";
 import { runMigrations } from 'stripe-replit-sync';
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
@@ -142,6 +143,9 @@ app.use(
 );
 
 app.use(express.urlencoded({ extended: false }));
+
+// Serve attached_assets directory for static images
+app.use('/attached_assets', express.static(path.resolve(process.cwd(), 'attached_assets')));
 
 app.use(requestLoggingMiddleware);
 
