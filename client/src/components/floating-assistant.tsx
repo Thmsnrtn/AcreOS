@@ -17,7 +17,8 @@ import {
   AlertCircle,
   Paperclip,
   FileText,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Palette
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -37,6 +38,11 @@ interface MessageAttachment {
   base64?: string;
 }
 
+interface GeneratedImage {
+  url: string;
+  prompt: string;
+}
+
 interface Message {
   id: string;
   role: "user" | "assistant" | "error";
@@ -44,6 +50,7 @@ interface Message {
   timestamp: Date;
   isStreaming?: boolean;
   attachments?: MessageAttachment[];
+  generatedImages?: GeneratedImage[];
 }
 
 const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
@@ -72,6 +79,8 @@ export function FloatingAssistant() {
   const [isDragging, setIsDragging] = useState(false);
   const [imageModalOpen, setImageModalOpen] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [isImageMode, setIsImageMode] = useState(false);
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -232,7 +241,12 @@ export function FloatingAssistant() {
   };
 
   const handleSendMessage = async () => {
-    if ((!inputValue.trim() && attachments.length === 0) || isLoading || isStreaming) return;
+    if ((!inputValue.trim() && attachments.length === 0) || isLoading || isStreaming || isGeneratingImage) return;
+    
+    if (isImageMode || (attachments.length === 0 && detectImageGenerationIntent(inputValue))) {
+      await generateImage(inputValue);
+      return;
+    }
 
     const messageAttachments: MessageAttachment[] = [];
     
@@ -438,6 +452,8 @@ export function FloatingAssistant() {
     setIsStreaming(false);
     setIsLoading(false);
     setAttachments([]);
+    setIsImageMode(false);
+    setIsGeneratingImage(false);
     if (inputRef.current) {
       inputRef.current.focus();
     }
@@ -453,6 +469,118 @@ export function FloatingAssistant() {
   const openImageModal = (imageSrc: string) => {
     setSelectedImage(imageSrc);
     setImageModalOpen(true);
+  };
+
+  const detectImageGenerationIntent = (message: string): boolean => {
+    const lowerMessage = message.toLowerCase();
+    const imageKeywords = [
+      "generate image",
+      "generate an image",
+      "generate a image",
+      "create image",
+      "create an image",
+      "create a image",
+      "make image",
+      "make an image",
+      "make a image",
+      "draw",
+      "make a picture",
+      "make picture",
+      "create a picture",
+      "generate a picture",
+      "paint",
+      "sketch",
+      "illustrate",
+      "design an image",
+      "create artwork",
+      "generate artwork"
+    ];
+    return imageKeywords.some(keyword => lowerMessage.includes(keyword));
+  };
+
+  const generateImage = async (prompt: string): Promise<void> => {
+    if (!prompt.trim() || isGeneratingImage) return;
+
+    const userMessage: Message = {
+      id: `user-${Date.now()}`,
+      role: "user",
+      content: prompt.trim(),
+      timestamp: new Date(),
+    };
+
+    setMessages((prev) => [...prev, userMessage]);
+    setInputValue("");
+    setIsImageMode(false);
+    setIsGeneratingImage(true);
+    setHasActivity(true);
+
+    const assistantMessageId = `assistant-${Date.now()}`;
+    
+    setMessages((prev) => [...prev, {
+      id: assistantMessageId,
+      role: "assistant",
+      content: "Generating image...",
+      timestamp: new Date(),
+      isStreaming: true,
+    }]);
+
+    try {
+      const response = await fetch("/api/generate-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          prompt: prompt.trim(),
+          size: "1024x1024",
+        }),
+      });
+
+      if (!response.ok) {
+        let errorMessage = "Failed to generate image. Please try again.";
+        
+        if (response.status === 402) {
+          const data = await response.json().catch(() => ({}));
+          const balance = data.balance?.toFixed(2) || "0.00";
+          errorMessage = `Insufficient credits (balance: $${balance}). Please add credits to generate images.`;
+        } else if (response.status === 401) {
+          errorMessage = "Please sign in to generate images.";
+        } else if (response.status === 500) {
+          errorMessage = "Image generation failed. Please try again with a different prompt.";
+        }
+        
+        setMessages((prev) => prev.map((msg) =>
+          msg.id === assistantMessageId
+            ? { ...msg, role: "error" as const, content: errorMessage, isStreaming: false }
+            : msg
+        ));
+        return;
+      }
+
+      const data = await response.json();
+      const imageUrl = data.b64_json 
+        ? `data:image/png;base64,${data.b64_json}` 
+        : data.url;
+
+      setMessages((prev) => prev.map((msg) =>
+        msg.id === assistantMessageId
+          ? { 
+              ...msg, 
+              content: "Here's your generated image:", 
+              isStreaming: false,
+              generatedImages: [{ url: imageUrl, prompt: prompt.trim() }]
+            }
+          : msg
+      ));
+    } catch (error) {
+      setMessages((prev) => prev.map((msg) =>
+        msg.id === assistantMessageId
+          ? { ...msg, role: "error" as const, content: "Connection failed. Please check your internet and try again.", isStreaming: false }
+          : msg
+      ));
+    } finally {
+      setIsGeneratingImage(false);
+      setTimeout(() => setHasActivity(false), 3000);
+    }
   };
 
   const renderMarkdown = (content: string) => {
@@ -781,6 +909,28 @@ export function FloatingAssistant() {
                     {message.role === "user" && message.attachments && (
                       renderMessageAttachments(message.attachments)
                     )}
+                    {message.role === "assistant" && message.generatedImages && message.generatedImages.length > 0 && (
+                      <div className="mt-3 space-y-2">
+                        {message.generatedImages.map((img, idx) => (
+                          <div key={idx} className="space-y-1">
+                            <button
+                              onClick={() => openImageModal(img.url)}
+                              className="block w-full rounded-lg overflow-hidden border border-border/50 hover:opacity-90 transition-opacity"
+                              data-testid={`generated-image-${idx}`}
+                            >
+                              <img
+                                src={img.url}
+                                alt={img.prompt}
+                                className="w-full h-auto max-h-[200px] object-contain bg-muted"
+                              />
+                            </button>
+                            <p className="text-[10px] text-muted-foreground italic truncate" title={img.prompt}>
+                              "{img.prompt}"
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     <div 
                       className={cn(
                         "text-[10px] mt-1 opacity-60",
@@ -848,6 +998,15 @@ export function FloatingAssistant() {
               </div>
             )}
             
+            {isImageMode && (
+              <div className="flex items-center gap-1.5 mb-2">
+                <Badge variant="secondary" className="gap-1 text-xs">
+                  <Palette className="w-3 h-3" />
+                  Image Mode
+                </Badge>
+                <span className="text-[10px] text-muted-foreground">Your message will generate an image</span>
+              </div>
+            )}
             <div className="flex items-end gap-2">
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -855,7 +1014,7 @@ export function FloatingAssistant() {
                     size="icon"
                     variant="ghost"
                     onClick={handleAttachClick}
-                    disabled={attachments.length >= MAX_ATTACHMENTS}
+                    disabled={attachments.length >= MAX_ATTACHMENTS || isImageMode}
                     className="h-[44px] w-[44px] rounded-xl shrink-0"
                     data-testid="button-attach-file"
                   >
@@ -863,9 +1022,31 @@ export function FloatingAssistant() {
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="top">
-                  {attachments.length >= MAX_ATTACHMENTS 
-                    ? `Max ${MAX_ATTACHMENTS} attachments` 
-                    : "Attach files"}
+                  {isImageMode 
+                    ? "Disable image mode to attach files"
+                    : attachments.length >= MAX_ATTACHMENTS 
+                      ? `Max ${MAX_ATTACHMENTS} attachments` 
+                      : "Attach files"}
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant={isImageMode ? "default" : "ghost"}
+                    onClick={() => setIsImageMode(!isImageMode)}
+                    disabled={isGeneratingImage || isLoading || isStreaming}
+                    className={cn(
+                      "h-[44px] w-[44px] rounded-xl shrink-0",
+                      isImageMode && "bg-primary text-primary-foreground"
+                    )}
+                    data-testid="button-toggle-image-mode"
+                  >
+                    <Palette className="w-4 h-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  {isImageMode ? "Disable image generation mode" : "Enable image generation mode"}
                 </TooltipContent>
               </Tooltip>
               <Textarea
@@ -873,7 +1054,11 @@ export function FloatingAssistant() {
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={isTemporaryChat ? "Ask anything (not saved)..." : "Ask me anything..."}
+                placeholder={isImageMode 
+                  ? "Describe the image you want to generate..." 
+                  : isTemporaryChat 
+                    ? "Ask anything (not saved)..." 
+                    : "Ask me anything..."}
                 className="min-h-[44px] max-h-[120px] resize-none rounded-xl border-border/50 bg-background/80 text-sm"
                 rows={1}
                 data-testid="input-assistant-message"
@@ -881,11 +1066,11 @@ export function FloatingAssistant() {
               <Button
                 size="icon"
                 onClick={handleSendMessage}
-                disabled={(!inputValue.trim() && attachments.length === 0) || isLoading || isStreaming}
+                disabled={(!inputValue.trim() && attachments.length === 0) || isLoading || isStreaming || isGeneratingImage}
                 className="h-[44px] w-[44px] rounded-xl shrink-0"
                 data-testid="button-send-assistant-message"
               >
-                {isLoading || isStreaming ? (
+                {isLoading || isStreaming || isGeneratingImage ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
                   <Send className="w-4 h-4" />
