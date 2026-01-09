@@ -5517,3 +5517,715 @@ export const insertEscalationAlertSchema = createInsertSchema(escalationAlerts).
 });
 export type InsertEscalationAlert = z.infer<typeof insertEscalationAlertSchema>;
 export type EscalationAlert = typeof escalationAlerts.$inferSelect;
+
+// ============================================
+// ACQUISITION RADAR - OPPORTUNITY SCORING
+// ============================================
+
+// Opportunity types for acquisition radar
+export const OPPORTUNITY_TYPES = {
+  undervalued: { name: "Undervalued", description: "Listed well below market value", color: "green" },
+  motivated_seller: { name: "Motivated Seller", description: "Signs of urgency (estate, divorce, tax issues)", color: "orange" },
+  off_market: { name: "Off-Market", description: "Not listed but shows potential (tax delinquent, inherited)", color: "purple" },
+  market_shift: { name: "Market Shift", description: "Area experiencing value growth", color: "blue" },
+} as const;
+
+export type OpportunityType = keyof typeof OPPORTUNITY_TYPES;
+
+// Radar configuration per organization
+export const radarConfigs = pgTable("radar_configs", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  
+  name: text("name").notNull().default("Default"),
+  isActive: boolean("is_active").default(true),
+  
+  // Scoring weights (sum to 100)
+  weights: jsonb("weights").$type<{
+    priceVsAssessed: number; // Weight for price vs assessed value comparison
+    daysOnMarket: number; // Weight for DOM scoring
+    sellerMotivation: number; // Weight for motivation signals
+    marketVelocity: number; // Weight for market activity
+    comparableSpreads: number; // Weight for comp analysis
+    environmentalRisk: number; // Negative weight for flood/wetland risk
+    ownerSignals: number; // Weight for out-of-state, inherited, corporate
+  }>().default({
+    priceVsAssessed: 25,
+    daysOnMarket: 15,
+    sellerMotivation: 20,
+    marketVelocity: 15,
+    comparableSpreads: 15,
+    environmentalRisk: -10,
+    ownerSignals: 20,
+  }),
+  
+  // Thresholds
+  thresholds: jsonb("thresholds").$type<{
+    hotOpportunity: number; // Score threshold for "hot" opportunities (default 80)
+    goodOpportunity: number; // Score threshold for "good" opportunities (default 60)
+    minimumScore: number; // Minimum score to surface (default 40)
+    maxDaysOnMarket: number; // Maximum DOM to consider (default 365)
+    minPriceDiscount: number; // Minimum discount % below assessed (default 10)
+    maxFloodRisk: number; // Maximum flood risk score to accept (default 50)
+  }>().default({
+    hotOpportunity: 80,
+    goodOpportunity: 60,
+    minimumScore: 40,
+    maxDaysOnMarket: 365,
+    minPriceDiscount: 10,
+    maxFloodRisk: 50,
+  }),
+  
+  // Target criteria
+  targetCriteria: jsonb("target_criteria").$type<{
+    states?: string[];
+    counties?: string[];
+    minAcres?: number;
+    maxAcres?: number;
+    minPrice?: number;
+    maxPrice?: number;
+    zoning?: string[];
+    opportunityTypes?: OpportunityType[];
+  }>(),
+  
+  // Alert settings
+  alertSettings: jsonb("alert_settings").$type<{
+    enabled: boolean;
+    topNPerMarket: number; // How many top opportunities to alert on per market
+    autoTriggerDueDiligence: boolean;
+    notifyOnHotOnly: boolean; // Only alert for hot opportunities
+    digestFrequency: "realtime" | "hourly" | "daily" | "weekly";
+  }>().default({
+    enabled: true,
+    topNPerMarket: 10,
+    autoTriggerDueDiligence: false,
+    notifyOnHotOnly: false,
+    digestFrequency: "daily",
+  }),
+  
+  // Scanner settings
+  scannerSettings: jsonb("scanner_settings").$type<{
+    batchSize: number; // Parcels to process per batch
+    scanIntervalMinutes: number; // How often to scan
+    priorityCounties?: string[]; // Counties to scan more frequently
+  }>().default({
+    batchSize: 100,
+    scanIntervalMinutes: 60,
+  }),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertRadarConfigSchema = createInsertSchema(radarConfigs).omit({ 
+  id: true, 
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertRadarConfig = z.infer<typeof insertRadarConfigSchema>;
+export type RadarConfig = typeof radarConfigs.$inferSelect;
+
+// Opportunity scores - stored scored opportunities with explanation
+export const opportunityScores = pgTable("opportunity_scores", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  radarConfigId: integer("radar_config_id").references(() => radarConfigs.id),
+  
+  // Property reference
+  propertyId: integer("property_id").references(() => properties.id),
+  apn: text("apn"),
+  county: text("county"),
+  state: text("state"),
+  
+  // Opportunity classification
+  opportunityType: text("opportunity_type").notNull(), // undervalued, motivated_seller, off_market, market_shift
+  
+  // Overall score (0-100)
+  score: integer("score").notNull(),
+  previousScore: integer("previous_score"),
+  scoreChange: integer("score_change"),
+  rank: integer("rank"), // Rank within market/county
+  
+  // Score breakdown with explainability
+  scoreFactors: jsonb("score_factors").$type<{
+    priceVsAssessed?: {
+      score: number;
+      weight: number;
+      contribution: number;
+      details: {
+        listPrice?: number;
+        assessedValue?: number;
+        discountPercent?: number;
+        explanation: string;
+      };
+    };
+    daysOnMarket?: {
+      score: number;
+      weight: number;
+      contribution: number;
+      details: {
+        dom: number;
+        averageDom?: number;
+        explanation: string;
+      };
+    };
+    sellerMotivation?: {
+      score: number;
+      weight: number;
+      contribution: number;
+      details: {
+        signals: string[];
+        explanation: string;
+      };
+    };
+    marketVelocity?: {
+      score: number;
+      weight: number;
+      contribution: number;
+      details: {
+        recentSales?: number;
+        absorptionRate?: number;
+        priceChangePercent?: number;
+        explanation: string;
+      };
+    };
+    comparableSpreads?: {
+      score: number;
+      weight: number;
+      contribution: number;
+      details: {
+        avgCompPrice?: number;
+        pricePerAcre?: number;
+        spreadPercent?: number;
+        explanation: string;
+      };
+    };
+    environmentalRisk?: {
+      score: number;
+      weight: number;
+      contribution: number;
+      details: {
+        floodZone?: string;
+        wetlandsPercent?: number;
+        riskLevel: "low" | "medium" | "high";
+        explanation: string;
+      };
+    };
+    ownerSignals?: {
+      score: number;
+      weight: number;
+      contribution: number;
+      details: {
+        isOutOfState?: boolean;
+        isInherited?: boolean;
+        isTaxDelinquent?: boolean;
+        isCorporate?: boolean;
+        ownershipYears?: number;
+        explanation: string;
+      };
+    };
+  }>(),
+  
+  // Human-readable explanation
+  explanation: text("explanation"), // AI-generated summary of why this is an opportunity
+  
+  // Data sources used
+  dataSources: jsonb("data_sources").$type<{
+    sourceId: number;
+    sourceName: string;
+    fetchedAt: string;
+    dataType: string;
+  }[]>(),
+  
+  // Enrichment data snapshot
+  enrichmentData: jsonb("enrichment_data").$type<{
+    parcelData?: any;
+    marketData?: any;
+    ownerData?: any;
+    environmentalData?: any;
+    lastEnriched?: string;
+  }>(),
+  
+  // Action tracking
+  status: text("status").notNull().default("new"), // new, reviewed, contacted, in_progress, acquired, passed, expired
+  alertSent: boolean("alert_sent").default(false),
+  alertSentAt: timestamp("alert_sent_at"),
+  dueDiligenceTriggered: boolean("due_diligence_triggered").default(false),
+  reviewedBy: text("reviewed_by"),
+  reviewedAt: timestamp("reviewed_at"),
+  reviewNotes: text("review_notes"),
+  
+  // Validity
+  expiresAt: timestamp("expires_at"), // When this score should be recalculated
+  isStale: boolean("is_stale").default(false),
+  
+  scoredAt: timestamp("scored_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertOpportunityScoreSchema = createInsertSchema(opportunityScores).omit({ 
+  id: true, 
+  createdAt: true,
+  updatedAt: true,
+  scoredAt: true,
+});
+export type InsertOpportunityScore = z.infer<typeof insertOpportunityScoreSchema>;
+export type OpportunityScore = typeof opportunityScores.$inferSelect;
+
+// ============================================
+// MARKET INTELLIGENCE - METRICS & PREDICTIONS
+// ============================================
+
+// Market health status types
+export const MARKET_STATUS = {
+  heating: { name: "Heating", description: "Prices rising, high demand", color: "red" },
+  stable: { name: "Stable", description: "Balanced market conditions", color: "green" },
+  cooling: { name: "Cooling", description: "Prices declining, low demand", color: "blue" },
+  volatile: { name: "Volatile", description: "Unpredictable market fluctuations", color: "orange" },
+} as const;
+
+export type MarketStatus = keyof typeof MARKET_STATUS;
+
+// Historical market metrics - store market data points over time
+export const marketMetrics = pgTable("market_metrics", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id),
+  
+  // Location
+  county: text("county").notNull(),
+  state: text("state").notNull(),
+  
+  // Time period
+  metricDate: timestamp("metric_date").notNull(),
+  periodType: text("period_type").notNull().default("monthly"), // daily, weekly, monthly, quarterly, yearly
+  
+  // Sales velocity metrics
+  salesVolume: integer("sales_volume"), // Number of sales in period
+  averageDaysOnMarket: numeric("average_days_on_market"),
+  medianDaysOnMarket: numeric("median_days_on_market"),
+  inventoryCount: integer("inventory_count"), // Active listings
+  absorptionRate: numeric("absorption_rate"), // Months of inventory
+  
+  // Price metrics
+  medianPricePerAcre: numeric("median_price_per_acre"),
+  averagePricePerAcre: numeric("average_price_per_acre"),
+  medianSalePrice: numeric("median_sale_price"),
+  averageSalePrice: numeric("average_sale_price"),
+  priceChangePercent: numeric("price_change_percent"), // Period over period
+  yearOverYearChangePercent: numeric("year_over_year_change_percent"),
+  
+  // Listing metrics
+  newListingsCount: integer("new_listings_count"),
+  priceReductionsCount: integer("price_reductions_count"),
+  withdrawnListingsCount: integer("withdrawn_listings_count"),
+  expiredListingsCount: integer("expired_listings_count"),
+  
+  // Growth indicators
+  permitData: jsonb("permit_data").$type<{
+    residentialPermits?: number;
+    commercialPermits?: number;
+    totalPermitValue?: number;
+    permitTrend?: "increasing" | "stable" | "decreasing";
+  }>(),
+  
+  populationData: jsonb("population_data").$type<{
+    currentPopulation?: number;
+    populationChange?: number;
+    populationChangePercent?: number;
+    migrationRate?: number;
+  }>(),
+  
+  infrastructureData: jsonb("infrastructure_data").$type<{
+    newRoadsPlanned?: boolean;
+    utilityExpansion?: boolean;
+    publicTransitProjects?: boolean;
+    majorDevelopments?: string[];
+    infrastructureScore?: number;
+  }>(),
+  
+  economicData: jsonb("economic_data").$type<{
+    unemploymentRate?: number;
+    medianHouseholdIncome?: number;
+    jobGrowthRate?: number;
+    majorEmployers?: string[];
+  }>(),
+  
+  // Computed scores
+  marketHealthScore: integer("market_health_score"), // 0-100
+  growthPotentialScore: integer("growth_potential_score"), // 0-100
+  investmentScore: integer("investment_score"), // 0-100
+  marketStatus: text("market_status"), // heating, cooling, stable, volatile
+  
+  // Data sources used
+  dataSources: jsonb("data_sources").$type<{
+    sourceId: number;
+    sourceName: string;
+    fetchedAt: string;
+  }[]>(),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertMarketMetricSchema = createInsertSchema(marketMetrics).omit({ 
+  id: true, 
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertMarketMetric = z.infer<typeof insertMarketMetricSchema>;
+export type MarketMetric = typeof marketMetrics.$inferSelect;
+
+// Market predictions - store predictions with accuracy tracking
+export const marketPredictions = pgTable("market_predictions", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id),
+  
+  // Location
+  county: text("county").notNull(),
+  state: text("state").notNull(),
+  
+  // Prediction details
+  predictionType: text("prediction_type").notNull(), // price_direction, market_status, growth_potential
+  predictionDate: timestamp("prediction_date").notNull().defaultNow(),
+  targetDate: timestamp("target_date").notNull(), // When prediction is for
+  horizonMonths: integer("horizon_months").notNull(), // 3, 6, 12 months
+  
+  // Predictions
+  predictedValue: numeric("predicted_value"), // Numeric prediction (e.g., price per acre)
+  predictedDirection: text("predicted_direction"), // up, down, stable
+  predictedChangePercent: numeric("predicted_change_percent"),
+  predictedMarketStatus: text("predicted_market_status"), // heating, cooling, stable
+  confidenceScore: integer("confidence_score"), // 0-100
+  
+  // Prediction factors
+  predictionFactors: jsonb("prediction_factors").$type<{
+    historicalTrend?: {
+      weight: number;
+      value: number;
+      direction: string;
+    };
+    salesVelocity?: {
+      weight: number;
+      value: number;
+      trend: string;
+    };
+    inventoryLevels?: {
+      weight: number;
+      value: number;
+      trend: string;
+    };
+    pricePerAcreTrend?: {
+      weight: number;
+      value: number;
+      trend: string;
+    };
+    growthIndicators?: {
+      weight: number;
+      permitScore: number;
+      populationScore: number;
+      infrastructureScore: number;
+    };
+    economicFactors?: {
+      weight: number;
+      unemploymentTrend: string;
+      incomeGrowth: number;
+    };
+    seasonalAdjustment?: {
+      weight: number;
+      factor: number;
+    };
+  }>(),
+  
+  // Model info
+  modelVersion: text("model_version").default("v1"),
+  algorithmUsed: text("algorithm_used"), // weighted_average, regression, ml_ensemble
+  
+  // Accuracy tracking (filled in when prediction period ends)
+  actualValue: numeric("actual_value"),
+  actualDirection: text("actual_direction"),
+  actualChangePercent: numeric("actual_change_percent"),
+  predictionError: numeric("prediction_error"), // Difference between predicted and actual
+  accuracyScore: integer("accuracy_score"), // 0-100 accuracy rating
+  
+  // Status
+  status: text("status").notNull().default("active"), // active, expired, verified
+  verifiedAt: timestamp("verified_at"),
+  
+  // Alert tracking
+  alertTriggered: boolean("alert_triggered").default(false),
+  alertTriggeredAt: timestamp("alert_triggered_at"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertMarketPredictionSchema = createInsertSchema(marketPredictions).omit({ 
+  id: true, 
+  createdAt: true,
+  updatedAt: true,
+  verifiedAt: true,
+});
+export type InsertMarketPrediction = z.infer<typeof insertMarketPredictionSchema>;
+export type MarketPrediction = typeof marketPredictions.$inferSelect;
+
+// ============================================
+// TAX SALE RESEARCH
+// ============================================
+
+// Tax Sale Types
+export const TAX_SALE_TYPES = {
+  lien: { name: "Tax Lien", description: "Purchase of tax debt, property may be redeemed" },
+  deed: { name: "Tax Deed", description: "Direct property ownership after foreclosure" },
+  redeemable_deed: { name: "Redeemable Tax Deed", description: "Deed purchase with redemption period" },
+  hybrid: { name: "Hybrid", description: "State with both lien and deed options" },
+} as const;
+
+export type TaxSaleType = keyof typeof TAX_SALE_TYPES;
+
+// Redemption risk levels
+export const REDEMPTION_RISK_LEVELS = {
+  very_low: { name: "Very Low", description: "Owner unlikely to redeem", score: [0, 20] },
+  low: { name: "Low", description: "Low chance of redemption", score: [21, 40] },
+  moderate: { name: "Moderate", description: "Moderate redemption chance", score: [41, 60] },
+  high: { name: "High", description: "High chance owner will redeem", score: [61, 80] },
+  very_high: { name: "Very High", description: "Owner very likely to redeem", score: [81, 100] },
+} as const;
+
+export type RedemptionRiskLevel = keyof typeof REDEMPTION_RISK_LEVELS;
+
+// Tax Sale Auctions - store auction calendar data
+export const taxSaleAuctions = pgTable("tax_sale_auctions", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id),
+  
+  county: text("county").notNull(),
+  state: text("state").notNull(),
+  
+  auctionType: text("auction_type").notNull(), // lien, deed, redeemable_deed
+  auctionDate: timestamp("auction_date").notNull(),
+  auctionEndDate: timestamp("auction_end_date"),
+  registrationDeadline: timestamp("registration_deadline"),
+  
+  auctionFormat: text("auction_format").notNull().default("in_person"), // in_person, online, sealed_bid
+  auctionUrl: text("auction_url"),
+  venueAddress: text("venue_address"),
+  venueName: text("venue_name"),
+  
+  minimumBid: numeric("minimum_bid"),
+  depositRequired: numeric("deposit_required"),
+  premiumRate: numeric("premium_rate"),
+  interestRate: numeric("interest_rate"),
+  redemptionPeriodMonths: integer("redemption_period_months"),
+  
+  parcelCount: integer("parcel_count"),
+  totalTaxOwed: numeric("total_tax_owed"),
+  
+  contactInfo: jsonb("contact_info").$type<{
+    name?: string;
+    phone?: string;
+    email?: string;
+    website?: string;
+  }>(),
+  
+  requirements: jsonb("requirements").$type<{
+    registrationRequired?: boolean;
+    depositAmount?: number;
+    acceptedPaymentMethods?: string[];
+    residencyRequired?: boolean;
+    disclaimers?: string[];
+  }>(),
+  
+  sourceUrl: text("source_url"),
+  lastScrapedAt: timestamp("last_scraped_at"),
+  scrapeStatus: text("scrape_status").default("pending"), // pending, success, failed, stale
+  
+  status: text("status").notNull().default("scheduled"), // scheduled, in_progress, completed, cancelled, postponed
+  notes: text("notes"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Tax Sale Listings - store individual tax sale opportunities
+export const taxSaleListings = pgTable("tax_sale_listings", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id),
+  auctionId: integer("auction_id").references(() => taxSaleAuctions.id),
+  propertyId: integer("property_id").references(() => properties.id),
+  
+  apn: text("apn").notNull(),
+  county: text("county").notNull(),
+  state: text("state").notNull(),
+  
+  address: text("address"),
+  city: text("city"),
+  zip: text("zip"),
+  legalDescription: text("legal_description"),
+  
+  saleType: text("sale_type").notNull(), // lien, deed, redeemable_deed
+  
+  taxYearsDelinquent: text("tax_years_delinquent").array(),
+  totalTaxOwed: numeric("total_tax_owed").notNull(),
+  penalties: numeric("penalties"),
+  interest: numeric("interest"),
+  fees: numeric("fees"),
+  totalAmountDue: numeric("total_amount_due"),
+  
+  minimumBid: numeric("minimum_bid"),
+  openingBid: numeric("opening_bid"),
+  winningBid: numeric("winning_bid"),
+  
+  assessedValue: numeric("assessed_value"),
+  marketValue: numeric("market_value"),
+  acreage: numeric("acreage"),
+  propertyType: text("property_type"), // vacant_land, residential, commercial, agricultural
+  zoning: text("zoning"),
+  
+  ownerName: text("owner_name"),
+  ownerAddress: text("owner_address"),
+  ownerIsOutOfState: boolean("owner_is_out_of_state"),
+  ownerIsCorporate: boolean("owner_is_corporate"),
+  
+  redemptionPeriodMonths: integer("redemption_period_months"),
+  redemptionDeadline: timestamp("redemption_deadline"),
+  interestRate: numeric("interest_rate"),
+  
+  redemptionRiskScore: integer("redemption_risk_score"), // 0-100
+  redemptionRiskLevel: text("redemption_risk_level"), // very_low, low, moderate, high, very_high
+  redemptionFactors: jsonb("redemption_factors").$type<{
+    propertyValueVsTax?: { score: number; ratio: number; explanation: string };
+    ownerIndicators?: { score: number; signals: string[]; explanation: string };
+    propertyType?: { score: number; type: string; explanation: string };
+    countyRedemptionRate?: { score: number; rate: number; explanation: string };
+    timeRemaining?: { score: number; months: number; explanation: string };
+    overallExplanation: string;
+  }>(),
+  
+  estimatedRoi: numeric("estimated_roi"),
+  roiCalculation: jsonb("roi_calculation").$type<{
+    investmentAmount: number;
+    interestIfRedeemed: number;
+    propertyValueIfNotRedeemed: number;
+    estimatedHoldingCosts: number;
+    bestCaseRoi: number;
+    worstCaseRoi: number;
+    expectedRoi: number;
+    assumptions: string[];
+  }>(),
+  
+  opportunityScore: integer("opportunity_score"), // 0-100 overall score
+  opportunityFactors: jsonb("opportunity_factors").$type<{
+    roiPotential?: { score: number; explanation: string };
+    riskLevel?: { score: number; explanation: string };
+    propertyQuality?: { score: number; explanation: string };
+    marketConditions?: { score: number; explanation: string };
+  }>(),
+  
+  status: text("status").notNull().default("available"), // available, watching, bid_placed, won, lost, redeemed, acquired
+  watchlistAddedAt: timestamp("watchlist_added_at"),
+  bidAmount: numeric("bid_amount"),
+  bidDate: timestamp("bid_date"),
+  
+  sourceUrl: text("source_url"),
+  certificateNumber: text("certificate_number"),
+  
+  latitude: numeric("latitude"),
+  longitude: numeric("longitude"),
+  
+  notes: text("notes"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Tax Sale Alerts - subscription to tax sale opportunities
+export const taxSaleAlerts = pgTable("tax_sale_alerts", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  
+  name: text("name").notNull(),
+  isActive: boolean("is_active").default(true),
+  
+  criteria: jsonb("criteria").$type<{
+    states?: string[];
+    counties?: string[];
+    saleTypes?: TaxSaleType[];
+    minAssessedValue?: number;
+    maxAssessedValue?: number;
+    maxTaxOwed?: number;
+    minAcreage?: number;
+    maxAcreage?: number;
+    propertyTypes?: string[];
+    maxRedemptionRisk?: RedemptionRiskLevel;
+    minEstimatedRoi?: number;
+    auctionDateRange?: { start: string; end: string };
+  }>(),
+  
+  notificationPreferences: jsonb("notification_preferences").$type<{
+    email?: boolean;
+    sms?: boolean;
+    inApp?: boolean;
+    frequency?: "immediate" | "daily" | "weekly";
+  }>(),
+  
+  lastTriggeredAt: timestamp("last_triggered_at"),
+  triggerCount: integer("trigger_count").default(0),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Historical redemption rates by county - for prediction
+export const countyRedemptionRates = pgTable("county_redemption_rates", {
+  id: serial("id").primaryKey(),
+  
+  county: text("county").notNull(),
+  state: text("state").notNull(),
+  year: integer("year").notNull(),
+  
+  saleType: text("sale_type").notNull(), // lien, deed
+  
+  totalSales: integer("total_sales"),
+  totalRedemptions: integer("total_redemptions"),
+  redemptionRate: numeric("redemption_rate"),
+  
+  averageRedemptionMonths: numeric("average_redemption_months"),
+  averageTaxAmount: numeric("average_tax_amount"),
+  averagePropertyValue: numeric("average_property_value"),
+  
+  dataSource: text("data_source"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertTaxSaleAuctionSchema = createInsertSchema(taxSaleAuctions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertTaxSaleAuction = z.infer<typeof insertTaxSaleAuctionSchema>;
+export type TaxSaleAuction = typeof taxSaleAuctions.$inferSelect;
+
+export const insertTaxSaleListingSchema = createInsertSchema(taxSaleListings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertTaxSaleListing = z.infer<typeof insertTaxSaleListingSchema>;
+export type TaxSaleListing = typeof taxSaleListings.$inferSelect;
+
+export const insertTaxSaleAlertSchema = createInsertSchema(taxSaleAlerts).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertTaxSaleAlert = z.infer<typeof insertTaxSaleAlertSchema>;
+export type TaxSaleAlert = typeof taxSaleAlerts.$inferSelect;
+
+export const insertCountyRedemptionRateSchema = createInsertSchema(countyRedemptionRates).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertCountyRedemptionRate = z.infer<typeof insertCountyRedemptionRateSchema>;
+export type CountyRedemptionRate = typeof countyRedemptionRates.$inferSelect;
