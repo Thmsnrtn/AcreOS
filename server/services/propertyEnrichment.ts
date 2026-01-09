@@ -297,7 +297,7 @@ export class PropertyEnrichmentService {
       forceRefresh,
     });
     
-    await this.saveLeadEnrichment(leadId, result);
+    await this.saveLeadEnrichment(leadId, lead, result);
     
     return result;
   }
@@ -405,11 +405,8 @@ export class PropertyEnrichmentService {
     }
   }
   
-  private async saveLeadEnrichment(leadId: number, enrichment: EnrichmentResult): Promise<void> {
+  private async saveLeadEnrichment(leadId: number, lead: any, enrichment: EnrichmentResult): Promise<void> {
     try {
-      const allLeads = await storage.getLeads(undefined);
-      const lead = allLeads.find(l => l.id === leadId);
-      
       let existingScoreFactors: Record<string, any> = {};
       if (lead?.scoreFactors && typeof lead.scoreFactors === 'object') {
         existingScoreFactors = lead.scoreFactors as Record<string, any>;

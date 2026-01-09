@@ -127,37 +127,16 @@ async function triggerDealEnrichmentAsync(
   // Fire and forget - don't await this in the main request flow
   Promise.resolve().then(async () => {
     try {
-      // Get the property to find coordinates
-      const property = await storage.getProperty(organizationId, propertyId);
-      if (!property) {
-        logger.warn("Deal enrichment: Property not found", { dealId, propertyId, organizationId });
-        return;
-      }
-      
-      const lat = property.latitude ? parseFloat(String(property.latitude)) : null;
-      const lng = property.longitude ? parseFloat(String(property.longitude)) : null;
-      
-      if (!lat || !lng) {
-        logger.warn("Deal enrichment: Property missing coordinates", { dealId, propertyId });
-        await storage.updateDeal(dealId, { 
-          enrichmentStatus: "failed",
-          enrichmentData: { errors: { coordinates: "Property missing coordinates" } } as any
-        });
-        return;
-      }
-      
-      // Mark as pending
+      // Mark deal as pending before enrichment
       await storage.updateDeal(dealId, { enrichmentStatus: "pending" });
       
-      // Perform enrichment
-      const enrichmentResult = await propertyEnrichmentService.enrichByCoordinates(lat, lng, {
-        propertyId,
-        state: property.state || undefined,
-        county: property.county || undefined,
-        apn: property.apn || undefined,
-      });
+      // Use PropertyEnrichmentService.enrichProperty which handles:
+      // 1. Fetching property coordinates
+      // 2. Performing enrichment across all GIS categories
+      // 3. Saving to property's dueDiligenceData (via savePropertyEnrichment)
+      const enrichmentResult = await propertyEnrichmentService.enrichProperty(organizationId, propertyId);
       
-      // Save ALL enrichment data to deal (including parcel, publicLands, transportation, water)
+      // Save enrichment data to deal's enrichmentData field as well
       const enrichmentPayload = {
         enrichedAt: enrichmentResult.enrichedAt.toISOString(),
         lookupTimeMs: enrichmentResult.lookupTimeMs,
@@ -179,14 +158,15 @@ async function triggerDealEnrichmentAsync(
         enrichmentData: enrichmentPayload as any,
       });
       
-      logger.info("Deal enrichment persisted", { 
+      logger.info("Deal and property enrichment completed", { 
         dealId, 
         propertyId, 
+        organizationId,
         lookupTimeMs: enrichmentResult.lookupTimeMs,
         categoriesSaved: Object.keys(enrichmentPayload).filter(k => enrichmentPayload[k as keyof typeof enrichmentPayload] !== undefined)
       });
     } catch (err) {
-      logger.error("Deal enrichment failed", { dealId, propertyId, error: String(err) });
+      logger.error("Deal enrichment failed", { dealId, propertyId, organizationId, error: String(err) });
       try {
         await storage.updateDeal(dealId, { 
           enrichmentStatus: "failed",
