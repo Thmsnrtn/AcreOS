@@ -2059,6 +2059,135 @@ const gisHazardsLookupSkill: Skill = {
   },
 };
 
+// Browser Automation Skill for Research Agent
+const browserAutomationInputSchema = z.object({
+  templateName: z.string().optional().describe("Name of automation template to use (e.g., 'County Assessor Lookup')"),
+  url: z.string().optional().describe("Direct URL to navigate to for simple research"),
+  actions: z.array(z.object({
+    action: z.enum(["navigate", "click", "type", "screenshot", "extract", "wait", "scroll"]),
+    selector: z.string().optional(),
+    value: z.string().optional(),
+    waitTime: z.number().optional(),
+    extractAs: z.string().optional(),
+    description: z.string(),
+  })).optional().describe("Custom automation steps to execute"),
+  inputData: z.record(z.any()).optional().describe("Template input variables (e.g., apn, county)"),
+  captureScreenshot: z.boolean().optional().default(true).describe("Whether to capture a screenshot"),
+});
+
+const browserResearchSkill: Skill = {
+  id: "browserResearch",
+  name: "Browser Research",
+  description: "Performs automated web research by navigating county websites, public records, and other sources that require browser interaction",
+  agentTypes: ["research"],
+  inputSchema: browserAutomationInputSchema,
+  costEstimate: "medium",
+  examples: [
+    'browserResearch({ url: "https://assessor.county.gov/search", captureScreenshot: true })',
+    'browserResearch({ templateName: "County Assessor Lookup", inputData: { apn: "123-456", assessorUrl: "https://..." } })',
+  ],
+  execute: async (params, context) => {
+    try {
+      const { templateName, url, actions, inputData, captureScreenshot } = browserAutomationInputSchema.parse(params);
+      
+      const browserAutomation = await import("./browserAutomation");
+      
+      if (url && !templateName) {
+        const result = await browserAutomation.executeAdHocAutomation(context.organizationId, {
+          name: `AI Research: ${url.substring(0, 50)}...`,
+          url,
+          actions: actions?.map((a, i) => ({
+            order: i + 1,
+            action: a.action as any,
+            selector: a.selector,
+            value: a.value,
+            waitTime: a.waitTime,
+            extractAs: a.extractAs,
+            description: a.description,
+          })),
+          captureScreenshot: captureScreenshot !== false,
+        });
+        
+        return {
+          success: result.success,
+          data: {
+            outputData: result.outputData,
+            screenshotCount: result.screenshots.length,
+            executionTimeMs: result.executionTimeMs,
+            screenshots: result.screenshots.slice(0, 3).map(s => ({
+              name: s.name,
+              capturedAt: s.capturedAt,
+              dataUrl: s.data,
+            })),
+          },
+          error: result.error,
+          message: result.success 
+            ? `Research completed in ${result.executionTimeMs}ms with ${result.screenshots.length} screenshot(s). Screenshot data is available in the screenshots array.`
+            : `Research failed: ${result.error}`,
+        };
+      }
+      
+      if (templateName) {
+        const templates = await browserAutomation.getSystemTemplates();
+        const orgTemplates = await browserAutomation.getOrganizationTemplates(context.organizationId);
+        const allTemplates = [...templates, ...orgTemplates];
+        
+        const matchedTemplate = allTemplates.find(
+          t => t.name.toLowerCase().includes(templateName.toLowerCase())
+        );
+        
+        if (!matchedTemplate) {
+          return {
+            success: false,
+            error: `Template not found: ${templateName}. Available: ${allTemplates.map(t => t.name).join(", ")}`,
+          };
+        }
+        
+        const job = await browserAutomation.createJob(context.organizationId, {
+          templateId: matchedTemplate.id,
+          name: `AI Research: ${matchedTemplate.name}`,
+          inputData: inputData || {},
+          triggeredByUserId: context.userId,
+        });
+        
+        const result = await browserAutomation.executeJob(job.id);
+        
+        return {
+          success: result.success,
+          data: {
+            jobId: job.id,
+            templateUsed: matchedTemplate.name,
+            outputData: result.outputData,
+            extractedData: result.outputData,
+            screenshotCount: result.screenshots.length,
+            executionTimeMs: result.executionTimeMs,
+            screenshots: result.screenshots.slice(0, 3).map(s => ({
+              name: s.name,
+              capturedAt: s.capturedAt,
+              dataUrl: s.data,
+            })),
+          },
+          error: result.error,
+          errorDetails: result.errorDetails,
+          message: result.success 
+            ? `Template "${matchedTemplate.name}" executed successfully in ${result.executionTimeMs}ms. Extracted data and screenshots are available.`
+            : `Template execution failed: ${result.error}`,
+        };
+      }
+      
+      return {
+        success: false,
+        error: "Either 'url' or 'templateName' must be provided",
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.message || "Browser research failed",
+      };
+    }
+  },
+};
+
 export class SkillRegistry {
   private skills: Map<string, Skill> = new Map();
 
@@ -2069,6 +2198,7 @@ export class SkillRegistry {
   private registerDefaultSkills(): void {
     this.registerSkill(lookupParcelSkill);
     this.registerSkill(lookupEnvironmentalSkill);
+    this.registerSkill(browserResearchSkill);
     this.registerSkill(generateOfferSkill);
     this.registerSkill(sendEmailSkill);
     this.registerSkill(calculateFinancingSkill);
