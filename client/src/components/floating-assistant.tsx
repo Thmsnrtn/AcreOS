@@ -20,8 +20,21 @@ import {
   Image as ImageIcon,
   Palette,
   Eye,
-  Play
+  Play,
+  Briefcase,
+  Users,
+  ShoppingCart,
+  Megaphone,
+  Wallet,
+  Search,
+  ChevronDown
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { LiveDemoMode } from "@/components/live-demo-mode";
 import { BackgroundMode } from "@/components/background-mode";
@@ -70,6 +83,17 @@ const ACCEPTED_EXTENSIONS = ".jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.txt,.cs
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const MAX_ATTACHMENTS = 5;
 
+const AGENTS = [
+  { id: "executive", name: "Evelyn", description: "Chief of Staff - Daily briefings, task routing", icon: Briefcase },
+  { id: "sales", name: "Samantha", description: "Sales - Buyer relationships, lead qualification", icon: Users },
+  { id: "acquisitions", name: "Alex", description: "Acquisitions - Purchasing negotiations", icon: ShoppingCart },
+  { id: "marketing", name: "Maya", description: "Marketing - Campaign execution", icon: Megaphone },
+  { id: "collections", name: "Charlie", description: "Collections - Payment collection", icon: Wallet },
+  { id: "research", name: "Riley", description: "Research - Property research", icon: Search },
+] as const;
+
+type AgentId = typeof AGENTS[number]["id"];
+
 export function FloatingAssistant() {
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
@@ -80,6 +104,7 @@ export function FloatingAssistant() {
   const [hasActivity, setHasActivity] = useState(false);
   const [conversationId, setConversationId] = useState<number | null>(null);
   const [isTemporaryChat, setIsTemporaryChat] = useState(false);
+  const [selectedAgent, setSelectedAgent] = useState<AgentId>("executive");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [imageModalOpen, setImageModalOpen] = useState(false);
@@ -124,7 +149,7 @@ export function FloatingAssistant() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ agentRole: "executive" }),
+        body: JSON.stringify({ agentRole: selectedAgent }),
       });
       
       if (response.ok) {
@@ -135,7 +160,7 @@ export function FloatingAssistant() {
     } catch {
       return null;
     }
-  }, []);
+  }, [selectedAgent]);
 
   const formatFileSize = (bytes: number): string => {
     if (bytes < 1024) return `${bytes} B`;
@@ -321,7 +346,7 @@ export function FloatingAssistant() {
         body: JSON.stringify({
           message: userMessage.content,
           conversationId: isTemporaryChat ? undefined : activeConversationId,
-          agentRole: "executive",
+          agentRole: selectedAgent,
           images: imageContents.length > 0 ? imageContents : undefined,
         }),
         signal: abortControllerRef.current.signal,
@@ -840,15 +865,53 @@ export function FloatingAssistant() {
           <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-border/50 bg-background/50 backdrop-blur-sm">
             <div className="flex items-center gap-2">
               <div className="relative">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-white via-primary/20 to-primary/40 flex items-center justify-center shadow-lg">
-                  <Sparkles className="w-4 h-4 text-primary" />
-                </div>
+                {(() => {
+                  const currentAgent = AGENTS.find(a => a.id === selectedAgent) || AGENTS[0];
+                  const AgentIcon = currentAgent.icon;
+                  return (
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-white via-primary/20 to-primary/40 flex items-center justify-center shadow-lg">
+                      <AgentIcon className="w-4 h-4 text-primary" />
+                    </div>
+                  );
+                })()}
                 {isStreaming && (
                   <div className="absolute inset-0 rounded-full bg-primary/30 animate-ping" />
                 )}
               </div>
               <div className="flex flex-col">
-                <h3 className="font-semibold text-foreground text-sm leading-tight">AI Assistant</h3>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button 
+                      className="flex items-center gap-1 font-semibold text-foreground text-sm leading-tight hover:text-primary transition-colors"
+                      data-testid="dropdown-agent-selector"
+                    >
+                      {AGENTS.find(a => a.id === selectedAgent)?.name || "AI Assistant"}
+                      <ChevronDown className="w-3 h-3 opacity-60" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-64">
+                    {AGENTS.map((agent) => {
+                      const AgentIcon = agent.icon;
+                      return (
+                        <DropdownMenuItem
+                          key={agent.id}
+                          onClick={() => setSelectedAgent(agent.id)}
+                          className={cn(
+                            "flex items-start gap-2 py-2 cursor-pointer",
+                            selectedAgent === agent.id && "bg-primary/10"
+                          )}
+                          data-testid={`dropdown-item-agent-${agent.id}`}
+                        >
+                          <AgentIcon className="w-4 h-4 mt-0.5 shrink-0 text-primary" />
+                          <div className="flex flex-col">
+                            <span className="font-medium text-sm">{agent.name}</span>
+                            <span className="text-xs text-muted-foreground">{agent.description}</span>
+                          </div>
+                        </DropdownMenuItem>
+                      );
+                    })}
+                  </DropdownMenuContent>
+                </DropdownMenu>
                 {isTemporaryChat && (
                   <div className="flex items-center gap-1">
                     <Ghost className="w-3 h-3 text-muted-foreground" />
@@ -937,29 +1000,60 @@ export function FloatingAssistant() {
 
           <ScrollArea className="flex-1 px-4 py-3">
             <div className="space-y-4">
-              {messages.length === 0 && (
-                <div className="flex flex-col items-center justify-center h-[300px] text-center px-4">
-                  <div className="relative mb-4">
-                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-white via-primary/10 to-primary/30 flex items-center justify-center shadow-xl">
-                      <Sparkles className="w-8 h-8 text-primary" />
+              {messages.length === 0 && (() => {
+                const currentAgent = AGENTS.find(a => a.id === selectedAgent) || AGENTS[0];
+                const AgentIcon = currentAgent.icon;
+                const greetings: Record<AgentId, { title: string; description: string }> = {
+                  executive: { 
+                    title: `Hi, I'm ${currentAgent.name}!`, 
+                    description: "I'm your Chief of Staff. I can provide daily briefings, route tasks to the right team members, and keep your business running smoothly." 
+                  },
+                  sales: { 
+                    title: `Hi, I'm ${currentAgent.name}!`, 
+                    description: "I specialize in buyer relationships and lead qualification. Let me help you connect with potential buyers and close deals." 
+                  },
+                  acquisitions: { 
+                    title: `Hi, I'm ${currentAgent.name}!`, 
+                    description: "I'm your acquisitions specialist. I can help with seller leads, comp research, offer drafting, and purchase negotiations." 
+                  },
+                  marketing: { 
+                    title: `Hi, I'm ${currentAgent.name}!`, 
+                    description: "I handle marketing and campaign execution. Let me help you design mail campaigns and reach the right audience." 
+                  },
+                  collections: { 
+                    title: `Hi, I'm ${currentAgent.name}!`, 
+                    description: "I manage payment collections and borrower relationships. I can help with reminders, payment plans, and account monitoring." 
+                  },
+                  research: { 
+                    title: `Hi, I'm ${currentAgent.name}!`, 
+                    description: "I'm your research specialist. I can conduct property due diligence, market analysis, and zoning research." 
+                  },
+                };
+                const greeting = greetings[selectedAgent];
+                return (
+                  <div className="flex flex-col items-center justify-center h-[300px] text-center px-4">
+                    <div className="relative mb-4">
+                      <div className="w-16 h-16 rounded-full bg-gradient-to-br from-white via-primary/10 to-primary/30 flex items-center justify-center shadow-xl">
+                        <AgentIcon className="w-8 h-8 text-primary" />
+                      </div>
+                      <div className="absolute inset-0 rounded-full bg-white/20 animate-pulse" />
                     </div>
-                    <div className="absolute inset-0 rounded-full bg-white/20 animate-pulse" />
+                    <h4 className="font-semibold text-lg mb-2">{greeting.title}</h4>
+                    <p className="text-muted-foreground text-sm max-w-[280px]">
+                      {greeting.description}
+                    </p>
+                    <p className="text-muted-foreground text-xs mt-2">
+                      Attach images or documents for visual analysis
+                    </p>
+                    {isTemporaryChat && (
+                      <Badge variant="secondary" className="mt-3 gap-1">
+                        <Ghost className="w-3 h-3" />
+                        Temporary Mode
+                      </Badge>
+                    )}
                   </div>
-                  <h4 className="font-semibold text-lg mb-2">Welcome to AI Assistant</h4>
-                  <p className="text-muted-foreground text-sm max-w-[280px]">
-                    I can help you with land investing, property analysis, lead management, and navigating AcreOS.
-                  </p>
-                  <p className="text-muted-foreground text-xs mt-2">
-                    Attach images or documents for visual analysis
-                  </p>
-                  {isTemporaryChat && (
-                    <Badge variant="secondary" className="mt-3 gap-1">
-                      <Ghost className="w-3 h-3" />
-                      Temporary Mode
-                    </Badge>
-                  )}
-                </div>
-              )}
+                );
+              })()}
               
               {messages.map((message) => (
                 <div
@@ -986,6 +1080,16 @@ export function FloatingAssistant() {
                         <span className="text-xs font-medium">Error</span>
                       </div>
                     )}
+                    {message.role === "assistant" && (() => {
+                      const currentAgent = AGENTS.find(a => a.id === selectedAgent) || AGENTS[0];
+                      const AgentIcon = currentAgent.icon;
+                      return (
+                        <div className="flex items-center gap-1 mb-1.5 text-muted-foreground">
+                          <AgentIcon className="w-3 h-3" />
+                          <span className="text-[10px] font-medium">{currentAgent.name}</span>
+                        </div>
+                      );
+                    })()}
                     <div className="text-sm leading-relaxed">
                       {message.role === "assistant" || message.role === "error"
                         ? renderMarkdown(message.content)
