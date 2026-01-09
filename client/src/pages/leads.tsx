@@ -69,6 +69,7 @@ import { SavedViewsSelector } from "@/components/saved-views-selector";
 import { CustomFieldValuesEditor } from "@/components/custom-fields";
 import { SkipTracePanel } from "@/components/skip-trace-panel";
 import { TaxDelinquentImporter } from "@/components/tax-delinquent-importer";
+import { GisFilters, type GisFilterState, defaultGisFilters, countActiveGisFilters, applyGisFiltersToLead } from "@/components/gis-filters";
 import { format } from "date-fns";
 import type { SavedView } from "@shared/schema";
 
@@ -630,6 +631,7 @@ export default function LeadsPage() {
   const [stageFilter, setStageFilter] = useState(stageFromUrl);
   const [assigneeFilter, setAssigneeFilter] = useState<string>("all");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc" | null>(null);
+  const [gisFilters, setGisFilters] = useState<GisFilterState>(defaultGisFilters);
   const { data: teamMembers } = useTeamMembers();
   const { data: userPermissions } = useUserPermissions();
   const [isExporting, setIsExporting] = useState(false);
@@ -910,6 +912,16 @@ export default function LeadsPage() {
       }
     }
     
+    // Apply GIS-based filters
+    const hasActiveGisFilters = gisFilters.excludeFloodZones || 
+      gisFilters.nearInfrastructure || 
+      gisFilters.lowHazardRiskOnly || 
+      gisFilters.minimumInvestmentScore > 0;
+    
+    if (hasActiveGisFilters) {
+      result = result.filter(lead => applyGisFiltersToLead(lead, gisFilters));
+    }
+    
     // Apply score sorting
     if (sortOrder) {
       result = [...result].sort((a, b) => {
@@ -920,7 +932,7 @@ export default function LeadsPage() {
     }
     
     return result;
-  }, [leads, search, stageFilter, assigneeFilter, sortOrder]);
+  }, [leads, search, stageFilter, assigneeFilter, gisFilters, sortOrder]);
 
   const handleDelete = () => {
     if (deletingLead) {
@@ -1064,6 +1076,11 @@ export default function LeadsPage() {
                       </SelectContent>
                     </Select>
                   )}
+                  <GisFilters
+                    filters={gisFilters}
+                    onChange={setGisFilters}
+                    activeFilterCount={countActiveGisFilters(gisFilters)}
+                  />
                 </div>
 
                 {selectedLeadIds.size > 0 && (

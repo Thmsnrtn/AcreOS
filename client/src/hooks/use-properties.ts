@@ -50,3 +50,26 @@ export function useDeleteProperty() {
     },
   });
 }
+
+export function useEnrichProperty() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ propertyId, forceRefresh = false }: { propertyId: number; forceRefresh?: boolean }) => {
+      const res = await fetch("/api/broker/enrich-property", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ propertyId, forceRefresh }),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({ message: "Failed to enrich property" }));
+        throw new Error(error.message || "Failed to enrich property");
+      }
+      return res.json();
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: [api.properties.list.path] });
+      queryClient.invalidateQueries({ queryKey: ['/api/properties', variables.propertyId] });
+    },
+  });
+}

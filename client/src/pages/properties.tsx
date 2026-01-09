@@ -1,9 +1,9 @@
 import { Sidebar } from "@/components/layout-sidebar";
-import { useProperties, useCreateProperty, useDeleteProperty } from "@/hooks/use-properties";
+import { useProperties, useCreateProperty, useDeleteProperty, useEnrichProperty } from "@/hooks/use-properties";
 import { queryClient } from "@/lib/queryClient";
 import { ListSkeleton } from "@/components/list-skeleton";
 import { useFetchPropertyParcel } from "@/hooks/use-parcels";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
@@ -62,7 +62,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, MapPin, Ruler, DollarSign, Trash2, Loader2, Map as MapIcon, RefreshCw, FileText, Download, Upload, CheckCircle, AlertCircle, ClipboardCheck, Printer, Calculator, BarChart2, X, CheckSquare } from "lucide-react";
+import { Plus, MapPin, Ruler, DollarSign, Trash2, Loader2, Map as MapIcon, RefreshCw, FileText, Download, Upload, CheckCircle, AlertCircle, ClipboardCheck, Printer, Calculator, BarChart2, X, CheckSquare, Droplets, Leaf, Building2, Flame, Users, Brain, Shield, Zap, Mountain, TreePine, Car, TrendingUp } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { DealCalculator } from "@/components/deal-calculator";
@@ -82,6 +82,7 @@ import { AIOfferGenerator } from "@/components/ai-offer-generator";
 import { CustomFieldValuesEditor } from "@/components/custom-fields";
 import { DueDiligencePanel } from "@/components/due-diligence-panel";
 import { PropertyAnalysisChat } from "@/components/property-analysis-chat";
+import { GisFilters, type GisFilterState, defaultGisFilters, countActiveGisFilters, applyGisFiltersToProperty } from "@/components/gis-filters";
 import { Bot } from "lucide-react";
 
 export default function PropertiesPage() {
@@ -114,11 +115,31 @@ export default function PropertiesPage() {
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+  const [gisFilters, setGisFilters] = useState<GisFilterState>(defaultGisFilters);
   const { toast } = useToast();
 
+  const filteredProperties = useMemo(() => {
+    if (!properties) return [];
+    
+    let result = properties;
+    
+    const hasActiveGisFilters = gisFilters.excludeFloodZones || 
+      gisFilters.nearInfrastructure || 
+      gisFilters.lowHazardRiskOnly || 
+      gisFilters.minimumInvestmentScore > 0;
+    
+    if (hasActiveGisFilters) {
+      result = result.filter(property => 
+        applyGisFiltersToProperty(property, property.dueDiligenceData as Record<string, any> | null, gisFilters)
+      );
+    }
+    
+    return result;
+  }, [properties, gisFilters]);
+
   const handleSelectAll = (checked: boolean) => {
-    if (checked && properties) {
-      setSelectedPropertyIds(new Set(properties.map(p => p.id)));
+    if (checked && filteredProperties.length > 0) {
+      setSelectedPropertyIds(new Set(filteredProperties.map(p => p.id)));
     } else {
       setSelectedPropertyIds(new Set());
     }
@@ -368,13 +389,25 @@ export default function PropertiesPage() {
           )}
 
           {!isLoading && properties && properties.length > 0 && (
-            <div className="flex items-center gap-2 p-2 bg-muted/30 rounded-md">
-              <Checkbox
-                checked={properties.length > 0 && selectedPropertyIds.size === properties.length}
-                onCheckedChange={(checked) => handleSelectAll(checked === true)}
-                data-testid="checkbox-select-all-properties"
+            <div className="flex flex-wrap items-center gap-3 p-2 bg-muted/30 rounded-md">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  checked={filteredProperties.length > 0 && selectedPropertyIds.size === filteredProperties.length}
+                  onCheckedChange={(checked) => handleSelectAll(checked === true)}
+                  data-testid="checkbox-select-all-properties"
+                />
+                <span className="text-sm text-muted-foreground">Select All</span>
+              </div>
+              <GisFilters
+                filters={gisFilters}
+                onChange={setGisFilters}
+                activeFilterCount={countActiveGisFilters(gisFilters)}
               />
-              <span className="text-sm text-muted-foreground">Select All</span>
+              {filteredProperties.length !== properties.length && (
+                <span className="text-sm text-muted-foreground" data-testid="text-filtered-count">
+                  Showing {filteredProperties.length} of {properties.length} properties
+                </span>
+              )}
             </div>
           )}
 
@@ -384,7 +417,7 @@ export default function PropertiesPage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {properties?.map((property) => (
+              {filteredProperties.map((property) => (
                 <div key={property.id} className="relative">
                   <div className="absolute top-3 left-3 z-10">
                     <Checkbox
@@ -400,6 +433,11 @@ export default function PropertiesPage() {
                   />
                 </div>
               ))}
+              {filteredProperties.length === 0 && properties && properties.length > 0 && (
+                <div className="col-span-full text-center py-12 text-muted-foreground">
+                  No properties match the current GIS filters. Try adjusting your filter criteria.
+                </div>
+              )}
               {properties?.length === 0 && (
                 <div className="col-span-full">
                   <EmptyState
@@ -978,8 +1016,12 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
         </DialogHeader>
         
         <Tabs defaultValue="overview" className="mt-4">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="overview" data-testid="tab-overview">Overview</TabsTrigger>
+            <TabsTrigger value="intelligence" data-testid="tab-intelligence">
+              <Brain className="w-3.5 h-3.5 mr-1" />
+              Intelligence
+            </TabsTrigger>
             <TabsTrigger value="comps" data-testid="tab-comps">
               <BarChart2 className="w-3.5 h-3.5 mr-1" />
               Comps
@@ -1189,6 +1231,10 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
             <div className="pt-4 border-t">
               <CustomFieldValuesEditor entityType="property" entityId={currentProperty.id} />
             </div>
+          </TabsContent>
+          
+          <TabsContent value="intelligence" className="mt-4">
+            <PropertyIntelligenceTab property={currentProperty} />
           </TabsContent>
           
           <TabsContent value="comps" className="mt-4">
@@ -1409,6 +1455,500 @@ function DueDiligenceTab({ propertyId }: { propertyId: number }) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+interface EnrichmentData {
+  enrichedAt?: Date | string;
+  lookupTimeMs?: number;
+  lastEnrichedAt?: string;
+  hazards?: {
+    floodZone?: string;
+    floodRisk?: "low" | "medium" | "high";
+    wetlandsPresent?: boolean;
+    wetlandsPercentage?: number;
+    earthquakeRisk?: "low" | "medium" | "high";
+    wildfireRisk?: "low" | "medium" | "high";
+    nearbySuperfundSites?: number;
+    overallRiskScore?: number;
+    overallRiskLevel?: "low" | "medium" | "high";
+  };
+  environment?: {
+    soilType?: string;
+    soilSuitability?: string;
+    epaFacilitiesNearby?: number;
+    epaRiskLevel?: "low" | "medium" | "high";
+  };
+  infrastructure?: {
+    nearestHospitalMiles?: number;
+    nearestFireStationMiles?: number;
+    nearestSchoolMiles?: number;
+    nearbyHospitals?: number;
+    nearbyFireStations?: number;
+    nearbySchools?: number;
+    accessScore?: number;
+  };
+  demographics?: {
+    population?: number;
+    medianIncome?: number;
+    medianHomeValue?: number;
+    povertyRate?: number;
+    collegeEducated?: number;
+  };
+  publicLands?: {
+    nearBLM?: boolean;
+    nearUSFS?: boolean;
+    nearNPS?: boolean;
+    federalLandWithinMiles?: number;
+  };
+  transportation?: {
+    nearestHighwayMiles?: number;
+    nearestBridgeMiles?: number;
+    nearestRailMiles?: number;
+    roadAccessScore?: number;
+  };
+  water?: {
+    nearestStreamMiles?: number;
+    nearestWaterBodyMiles?: number;
+    waterAvailabilityScore?: number;
+  };
+  scores?: {
+    investmentScore?: number;
+    developmentScore?: number;
+    riskScore?: number;
+    overallScore?: number;
+  };
+  errors?: Record<string, string>;
+}
+
+function getRiskBadgeVariant(risk?: "low" | "medium" | "high"): "default" | "secondary" | "destructive" {
+  switch (risk) {
+    case "low": return "default";
+    case "medium": return "secondary";
+    case "high": return "destructive";
+    default: return "secondary";
+  }
+}
+
+function getRiskColor(risk?: "low" | "medium" | "high"): string {
+  switch (risk) {
+    case "low": return "text-green-600";
+    case "medium": return "text-yellow-600";
+    case "high": return "text-red-600";
+    default: return "text-muted-foreground";
+  }
+}
+
+function formatDistance(miles?: number): string {
+  if (miles === undefined || miles === null) return "N/A";
+  if (miles < 1) return `${Math.round(miles * 5280)} ft`;
+  return `${miles.toFixed(1)} mi`;
+}
+
+function PropertyIntelligenceTab({ property }: { property: Property }) {
+  const { mutate: enrichProperty, isPending: isEnriching } = useEnrichProperty();
+  const { toast } = useToast();
+  
+  const enrichmentData = property.dueDiligenceData as EnrichmentData | null;
+  const hasData = enrichmentData && (
+    enrichmentData.hazards ||
+    enrichmentData.environment ||
+    enrichmentData.infrastructure ||
+    enrichmentData.demographics ||
+    enrichmentData.scores
+  );
+  
+  const lastEnrichedAt = enrichmentData?.lastEnrichedAt || 
+    (enrichmentData?.enrichedAt ? new Date(enrichmentData.enrichedAt).toISOString() : null);
+
+  const handleRefresh = () => {
+    enrichProperty(
+      { propertyId: property.id, forceRefresh: true },
+      {
+        onSuccess: () => {
+          toast({
+            title: "Property Enriched",
+            description: "Property intelligence data has been updated successfully.",
+          });
+        },
+        onError: (error: any) => {
+          toast({
+            title: "Enrichment Failed",
+            description: error.message || "Failed to enrich property. Please try again.",
+            variant: "destructive",
+          });
+        },
+      }
+    );
+  };
+
+  return (
+    <div className="space-y-6" data-testid="property-intelligence-panel">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div>
+          <h3 className="text-lg font-semibold flex items-center gap-2">
+            <Brain className="w-5 h-5" />
+            Property Intelligence
+          </h3>
+          {lastEnrichedAt && (
+            <p className="text-xs text-muted-foreground" data-testid="text-last-enriched">
+              Last updated: {new Date(lastEnrichedAt).toLocaleDateString()} at {new Date(lastEnrichedAt).toLocaleTimeString()}
+            </p>
+          )}
+        </div>
+        <Button 
+          onClick={handleRefresh}
+          disabled={isEnriching || !property.latitude || !property.longitude}
+          data-testid="button-refresh-intelligence"
+        >
+          {isEnriching ? (
+            <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Enriching...</>
+          ) : (
+            <><RefreshCw className="w-4 h-4 mr-2" /> Refresh Intelligence</>
+          )}
+        </Button>
+      </div>
+
+      {!property.latitude || !property.longitude ? (
+        <Card className="border-dashed">
+          <CardContent className="py-8 text-center">
+            <MapPin className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+            <h4 className="font-medium mb-2">Missing Coordinates</h4>
+            <p className="text-sm text-muted-foreground">
+              This property needs GPS coordinates to fetch intelligence data.
+              Fetch the parcel data first to get coordinates.
+            </p>
+          </CardContent>
+        </Card>
+      ) : !hasData ? (
+        <Card className="border-dashed">
+          <CardContent className="py-8 text-center">
+            <Brain className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+            <h4 className="font-medium mb-2">No Intelligence Data</h4>
+            <p className="text-sm text-muted-foreground mb-4">
+              Click "Refresh Intelligence" to fetch environmental, hazard, and demographic data for this property.
+            </p>
+            <Button 
+              onClick={handleRefresh}
+              disabled={isEnriching}
+              data-testid="button-fetch-intelligence"
+            >
+              {isEnriching ? (
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Fetching...</>
+              ) : (
+                <><Brain className="w-4 h-4 mr-2" /> Fetch Intelligence</>
+              )}
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2">
+          {enrichmentData?.scores && (
+            <Card data-testid="card-scores">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <TrendingUp className="w-4 h-4 text-primary" />
+                  <h4 className="font-semibold">Investment Scores</h4>
+                </div>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div className="space-y-1" data-testid="score-overall">
+                    <span className="text-muted-foreground text-xs">Overall Score</span>
+                    <p className="font-bold text-xl">{enrichmentData.scores.overallScore ?? "N/A"}<span className="text-sm font-normal text-muted-foreground">/100</span></p>
+                  </div>
+                  <div className="space-y-1" data-testid="score-investment">
+                    <span className="text-muted-foreground text-xs">Investment</span>
+                    <p className="font-medium text-lg">{enrichmentData.scores.investmentScore ?? "N/A"}</p>
+                  </div>
+                  <div className="space-y-1" data-testid="score-development">
+                    <span className="text-muted-foreground text-xs">Development</span>
+                    <p className="font-medium">{enrichmentData.scores.developmentScore ?? "N/A"}</p>
+                  </div>
+                  <div className="space-y-1" data-testid="score-risk">
+                    <span className="text-muted-foreground text-xs">Risk Score</span>
+                    <p className={`font-medium ${(enrichmentData.scores.riskScore ?? 0) > 50 ? "text-red-600" : (enrichmentData.scores.riskScore ?? 0) > 25 ? "text-yellow-600" : "text-green-600"}`}>
+                      {enrichmentData.scores.riskScore ?? "N/A"}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {enrichmentData?.hazards && (
+            <Card data-testid="card-flood-zone">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Droplets className="w-4 h-4 text-blue-500" />
+                  <h4 className="font-semibold">Flood & Water Risk</h4>
+                </div>
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center justify-between" data-testid="flood-zone-code">
+                    <span className="text-muted-foreground">Flood Zone</span>
+                    <Badge variant="outline">{enrichmentData.hazards.floodZone || "Unknown"}</Badge>
+                  </div>
+                  <div className="flex items-center justify-between" data-testid="flood-risk-level">
+                    <span className="text-muted-foreground">Flood Risk</span>
+                    <Badge variant={getRiskBadgeVariant(enrichmentData.hazards.floodRisk)} className="capitalize">
+                      {enrichmentData.hazards.floodRisk || "Unknown"}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center justify-between" data-testid="wetlands-present">
+                    <span className="text-muted-foreground">Wetlands Present</span>
+                    <span className={enrichmentData.hazards.wetlandsPresent ? "text-yellow-600" : "text-green-600"}>
+                      {enrichmentData.hazards.wetlandsPresent ? `Yes (${enrichmentData.hazards.wetlandsPercentage}%)` : "No"}
+                    </span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {enrichmentData?.hazards && (
+            <Card data-testid="card-natural-hazards">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Flame className="w-4 h-4 text-orange-500" />
+                  <h4 className="font-semibold">Natural Hazards</h4>
+                </div>
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center justify-between" data-testid="earthquake-risk">
+                    <span className="text-muted-foreground flex items-center gap-1">
+                      <Mountain className="w-3 h-3" /> Earthquake
+                    </span>
+                    <Badge variant={getRiskBadgeVariant(enrichmentData.hazards.earthquakeRisk)} className="capitalize">
+                      {enrichmentData.hazards.earthquakeRisk || "Unknown"}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center justify-between" data-testid="wildfire-risk">
+                    <span className="text-muted-foreground flex items-center gap-1">
+                      <Flame className="w-3 h-3" /> Wildfire
+                    </span>
+                    <Badge variant={getRiskBadgeVariant(enrichmentData.hazards.wildfireRisk)} className="capitalize">
+                      {enrichmentData.hazards.wildfireRisk || "Unknown"}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center justify-between" data-testid="overall-risk">
+                    <span className="text-muted-foreground">Overall Risk</span>
+                    <span className={getRiskColor(enrichmentData.hazards.overallRiskLevel)}>
+                      {enrichmentData.hazards.overallRiskScore !== undefined 
+                        ? `${enrichmentData.hazards.overallRiskScore}/100 (${enrichmentData.hazards.overallRiskLevel})`
+                        : "N/A"}
+                    </span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {enrichmentData?.environment && (
+            <Card data-testid="card-environmental">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Leaf className="w-4 h-4 text-green-600" />
+                  <h4 className="font-semibold">Environmental Factors</h4>
+                </div>
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center justify-between" data-testid="superfund-sites">
+                    <span className="text-muted-foreground">EPA Sites Nearby</span>
+                    <span className={enrichmentData.environment.epaFacilitiesNearby && enrichmentData.environment.epaFacilitiesNearby > 0 ? "text-yellow-600" : "text-green-600"}>
+                      {enrichmentData.environment.epaFacilitiesNearby ?? 0}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between" data-testid="epa-risk">
+                    <span className="text-muted-foreground">EPA Risk Level</span>
+                    <Badge variant={getRiskBadgeVariant(enrichmentData.environment.epaRiskLevel)} className="capitalize">
+                      {enrichmentData.environment.epaRiskLevel || "Unknown"}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center justify-between" data-testid="soil-type">
+                    <span className="text-muted-foreground">Soil Type</span>
+                    <span>{enrichmentData.environment.soilType || "Unknown"}</span>
+                  </div>
+                  <div className="flex items-center justify-between" data-testid="soil-suitability">
+                    <span className="text-muted-foreground">Soil Suitability</span>
+                    <span className="capitalize">{enrichmentData.environment.soilSuitability || "Unknown"}</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {enrichmentData?.infrastructure && (
+            <Card data-testid="card-infrastructure">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Building2 className="w-4 h-4 text-slate-600" />
+                  <h4 className="font-semibold">Infrastructure</h4>
+                </div>
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center justify-between" data-testid="nearest-hospital">
+                    <span className="text-muted-foreground">Nearest Hospital</span>
+                    <span>{formatDistance(enrichmentData.infrastructure.nearestHospitalMiles)}</span>
+                  </div>
+                  <div className="flex items-center justify-between" data-testid="nearest-fire-station">
+                    <span className="text-muted-foreground">Nearest Fire Station</span>
+                    <span>{formatDistance(enrichmentData.infrastructure.nearestFireStationMiles)}</span>
+                  </div>
+                  <div className="flex items-center justify-between" data-testid="nearest-school">
+                    <span className="text-muted-foreground">Nearest School</span>
+                    <span>{formatDistance(enrichmentData.infrastructure.nearestSchoolMiles)}</span>
+                  </div>
+                  {enrichmentData.infrastructure.accessScore !== undefined && (
+                    <div className="flex items-center justify-between" data-testid="access-score">
+                      <span className="text-muted-foreground">Access Score</span>
+                      <span className="font-medium">{enrichmentData.infrastructure.accessScore}/100</span>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {enrichmentData?.demographics && (
+            <Card data-testid="card-demographics">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Users className="w-4 h-4 text-indigo-500" />
+                  <h4 className="font-semibold">Demographics</h4>
+                </div>
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center justify-between" data-testid="population">
+                    <span className="text-muted-foreground">Population</span>
+                    <span>{enrichmentData.demographics.population?.toLocaleString() || "N/A"}</span>
+                  </div>
+                  <div className="flex items-center justify-between" data-testid="median-income">
+                    <span className="text-muted-foreground">Median Income</span>
+                    <span>{enrichmentData.demographics.medianIncome 
+                      ? `$${enrichmentData.demographics.medianIncome.toLocaleString()}` 
+                      : "N/A"}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between" data-testid="median-home-value">
+                    <span className="text-muted-foreground">Median Home Value</span>
+                    <span>{enrichmentData.demographics.medianHomeValue 
+                      ? `$${enrichmentData.demographics.medianHomeValue.toLocaleString()}` 
+                      : "N/A"}
+                    </span>
+                  </div>
+                  {enrichmentData.demographics.povertyRate !== undefined && (
+                    <div className="flex items-center justify-between" data-testid="poverty-rate">
+                      <span className="text-muted-foreground">Poverty Rate</span>
+                      <span>{enrichmentData.demographics.povertyRate.toFixed(1)}%</span>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {enrichmentData?.transportation && (
+            <Card data-testid="card-transportation">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Car className="w-4 h-4 text-slate-600" />
+                  <h4 className="font-semibold">Transportation</h4>
+                </div>
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center justify-between" data-testid="nearest-highway">
+                    <span className="text-muted-foreground">Nearest Highway</span>
+                    <span>{formatDistance(enrichmentData.transportation.nearestHighwayMiles)}</span>
+                  </div>
+                  {enrichmentData.transportation.nearestBridgeMiles !== undefined && (
+                    <div className="flex items-center justify-between" data-testid="nearest-bridge">
+                      <span className="text-muted-foreground">Nearest Bridge</span>
+                      <span>{formatDistance(enrichmentData.transportation.nearestBridgeMiles)}</span>
+                    </div>
+                  )}
+                  {enrichmentData.transportation.nearestRailMiles !== undefined && (
+                    <div className="flex items-center justify-between" data-testid="nearest-rail">
+                      <span className="text-muted-foreground">Nearest Rail</span>
+                      <span>{formatDistance(enrichmentData.transportation.nearestRailMiles)}</span>
+                    </div>
+                  )}
+                  {enrichmentData.transportation.roadAccessScore !== undefined && (
+                    <div className="flex items-center justify-between" data-testid="road-access-score">
+                      <span className="text-muted-foreground">Road Access Score</span>
+                      <span className="font-medium">{enrichmentData.transportation.roadAccessScore}/100</span>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {enrichmentData?.publicLands && (
+            <Card data-testid="card-public-lands">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <TreePine className="w-4 h-4 text-green-700" />
+                  <h4 className="font-semibold">Public Lands</h4>
+                </div>
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center justify-between" data-testid="near-blm">
+                    <span className="text-muted-foreground">Near BLM Land</span>
+                    <span>{enrichmentData.publicLands.nearBLM ? "Yes" : "No"}</span>
+                  </div>
+                  <div className="flex items-center justify-between" data-testid="near-usfs">
+                    <span className="text-muted-foreground">Near US Forest Service</span>
+                    <span>{enrichmentData.publicLands.nearUSFS ? "Yes" : "No"}</span>
+                  </div>
+                  <div className="flex items-center justify-between" data-testid="near-nps">
+                    <span className="text-muted-foreground">Near National Parks</span>
+                    <span>{enrichmentData.publicLands.nearNPS ? "Yes" : "No"}</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {enrichmentData?.water && (
+            <Card data-testid="card-water-resources">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Droplets className="w-4 h-4 text-cyan-500" />
+                  <h4 className="font-semibold">Water Resources</h4>
+                </div>
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center justify-between" data-testid="nearest-stream">
+                    <span className="text-muted-foreground">Nearest Stream</span>
+                    <span>{formatDistance(enrichmentData.water.nearestStreamMiles)}</span>
+                  </div>
+                  <div className="flex items-center justify-between" data-testid="nearest-water-body">
+                    <span className="text-muted-foreground">Nearest Water Body</span>
+                    <span>{formatDistance(enrichmentData.water.nearestWaterBodyMiles)}</span>
+                  </div>
+                  {enrichmentData.water.waterAvailabilityScore !== undefined && (
+                    <div className="flex items-center justify-between" data-testid="water-availability-score">
+                      <span className="text-muted-foreground">Water Availability</span>
+                      <span className="font-medium">{enrichmentData.water.waterAvailabilityScore}/100</span>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {enrichmentData?.errors && Object.keys(enrichmentData.errors).length > 0 && (
+        <Card className="border-yellow-200 dark:border-yellow-800" data-testid="card-errors">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <AlertCircle className="w-4 h-4 text-yellow-600" />
+              <h4 className="font-semibold text-yellow-700 dark:text-yellow-400">Some data could not be fetched</h4>
+            </div>
+            <ul className="text-sm text-muted-foreground space-y-1">
+              {Object.entries(enrichmentData.errors).map(([category, error]) => (
+                <li key={category} className="flex gap-2">
+                  <span className="font-medium capitalize">{category.replace(/_/g, " ")}:</span>
+                  <span>{error}</span>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
