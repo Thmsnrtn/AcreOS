@@ -1,21 +1,29 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { 
   Minus, 
   X, 
   Send, 
   Loader2,
-  Sparkles
+  Sparkles,
+  Plus,
+  Ghost,
+  AlertCircle,
+  ExternalLink
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Message {
   id: string;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "error";
   content: string;
   timestamp: Date;
+  isStreaming?: boolean;
 }
 
 export function FloatingAssistant() {
@@ -24,9 +32,13 @@ export function FloatingAssistant() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
   const [hasActivity, setHasActivity] = useState(false);
+  const [conversationId, setConversationId] = useState<number | null>(null);
+  const [isTemporaryChat, setIsTemporaryChat] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (isOpen && !isMinimized) {
@@ -40,8 +52,27 @@ export function FloatingAssistant() {
     }
   }, [isOpen, isMinimized]);
 
+  const createConversation = useCallback(async (): Promise<number | null> => {
+    try {
+      const response = await fetch("/api/ai/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ agentRole: "executive" }),
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        return data.id;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }, []);
+
   const handleSendMessage = async () => {
-    if (!inputValue.trim() || isLoading) return;
+    if (!inputValue.trim() || isLoading || isStreaming) return;
 
     const userMessage: Message = {
       id: `user-${Date.now()}`,
@@ -55,42 +86,138 @@ export function FloatingAssistant() {
     setIsLoading(true);
     setHasActivity(true);
 
+    let activeConversationId = conversationId;
+
+    if (!isTemporaryChat && !conversationId) {
+      activeConversationId = await createConversation();
+      if (activeConversationId) {
+        setConversationId(activeConversationId);
+      }
+    }
+
+    const assistantMessageId = `assistant-${Date.now()}`;
+    
+    setMessages((prev) => [...prev, {
+      id: assistantMessageId,
+      role: "assistant",
+      content: "",
+      timestamp: new Date(),
+      isStreaming: true,
+    }]);
+    
+    setIsLoading(false);
+    setIsStreaming(true);
+
     try {
-      const response = await fetch("/api/ai/chat", {
+      abortControllerRef.current = new AbortController();
+      
+      const response = await fetch("/api/ai/chat/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ message: userMessage.content }),
+        body: JSON.stringify({
+          message: userMessage.content,
+          conversationId: isTemporaryChat ? undefined : activeConversationId,
+          agentRole: "executive",
+        }),
+        signal: abortControllerRef.current.signal,
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        const assistantMessage: Message = {
-          id: `assistant-${Date.now()}`,
-          role: "assistant",
-          content: data.response || data.message || "I'm here to help! What would you like to know?",
-          timestamp: new Date(),
-        };
-        setMessages((prev) => [...prev, assistantMessage]);
-      } else {
-        const assistantMessage: Message = {
-          id: `assistant-${Date.now()}`,
-          role: "assistant",
-          content: "I'm your AI assistant for AcreOS. I can help you with land investing questions, property analysis, lead management, and more. How can I assist you today?",
-          timestamp: new Date(),
-        };
-        setMessages((prev) => [...prev, assistantMessage]);
+      if (!response.ok) {
+        let errorMessage = "Something went wrong. Please try again.";
+        
+        if (response.status === 429) {
+          const data = await response.json().catch(() => ({}));
+          errorMessage = data.message || "You've reached your daily AI request limit. Please upgrade your plan for more requests.";
+        } else if (response.status === 402) {
+          const data = await response.json().catch(() => ({}));
+          const balance = data.balance?.toFixed(2) || "0.00";
+          errorMessage = `Insufficient credits (balance: $${balance}). Please add credits to continue using AI features.`;
+        } else if (response.status === 401) {
+          errorMessage = "Please sign in to use the AI assistant.";
+        }
+        
+        setMessages((prev) => prev.map((msg) =>
+          msg.id === assistantMessageId
+            ? { ...msg, role: "error" as const, content: errorMessage, isStreaming: false }
+            : msg
+        ));
+        setIsStreaming(false);
+        setTimeout(() => setHasActivity(false), 3000);
+        return;
       }
-    } catch (error) {
-      const assistantMessage: Message = {
-        id: `assistant-${Date.now()}`,
-        role: "assistant",
-        content: "I'm your AI assistant for AcreOS. I can help you with land investing questions, property analysis, lead management, and more. How can I assist you today?",
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, assistantMessage]);
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let accumulatedContent = "";
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split("\n");
+
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              try {
+                const data = JSON.parse(line.slice(6));
+                
+                if (data.type === "content" && data.chunk) {
+                  accumulatedContent += data.chunk;
+                  setMessages((prev) => prev.map((msg) =>
+                    msg.id === assistantMessageId
+                      ? { ...msg, content: accumulatedContent }
+                      : msg
+                  ));
+                } else if (data.type === "done") {
+                  setMessages((prev) => prev.map((msg) =>
+                    msg.id === assistantMessageId
+                      ? { ...msg, isStreaming: false }
+                      : msg
+                  ));
+                } else if (data.type === "error") {
+                  setMessages((prev) => prev.map((msg) =>
+                    msg.id === assistantMessageId
+                      ? { ...msg, role: "error" as const, content: data.error || "An error occurred", isStreaming: false }
+                      : msg
+                  ));
+                }
+              } catch {
+                // Ignore parsing errors for incomplete chunks
+              }
+            }
+          }
+        }
+      }
+
+      if (!accumulatedContent) {
+        setMessages((prev) => prev.map((msg) =>
+          msg.id === assistantMessageId
+            ? { ...msg, content: "I'm here to help! What would you like to know?", isStreaming: false }
+            : msg
+        ));
+      } else {
+        setMessages((prev) => prev.map((msg) =>
+          msg.id === assistantMessageId
+            ? { ...msg, isStreaming: false }
+            : msg
+        ));
+      }
+    } catch (error: any) {
+      if (error.name === "AbortError") {
+        setMessages((prev) => prev.filter((msg) => msg.id !== assistantMessageId));
+      } else {
+        setMessages((prev) => prev.map((msg) =>
+          msg.id === assistantMessageId
+            ? { ...msg, role: "error" as const, content: "Connection failed. Please check your internet and try again.", isStreaming: false }
+            : msg
+        ));
+      }
     } finally {
-      setIsLoading(false);
+      setIsStreaming(false);
+      abortControllerRef.current = null;
       setTimeout(() => setHasActivity(false), 3000);
     }
   };
@@ -103,6 +230,9 @@ export function FloatingAssistant() {
   };
 
   const handleClose = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
     setIsOpen(false);
     setIsMinimized(false);
   };
@@ -119,26 +249,128 @@ export function FloatingAssistant() {
     }
   };
 
+  const handleNewChat = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    setMessages([]);
+    setConversationId(null);
+    setIsStreaming(false);
+    setIsLoading(false);
+    if (inputRef.current) {
+      inputRef.current.focus();
+    }
+  };
+
+  const handleTemporaryToggle = (checked: boolean) => {
+    setIsTemporaryChat(checked);
+    if (checked) {
+      setConversationId(null);
+    }
+  };
+
   const renderMarkdown = (content: string) => {
+    const blocks: JSX.Element[] = [];
+    let blockIndex = 0;
+    
+    const codeBlockRegex = /```(\w+)?\n?([\s\S]*?)```/g;
+    let lastIndex = 0;
+    let match;
+    
+    while ((match = codeBlockRegex.exec(content)) !== null) {
+      if (match.index > lastIndex) {
+        const textBefore = content.slice(lastIndex, match.index);
+        blocks.push(
+          <span key={blockIndex++}>
+            {renderInlineContent(textBefore)}
+          </span>
+        );
+      }
+      
+      const language = match[1] || "";
+      const code = match[2].trim();
+      blocks.push(
+        <pre 
+          key={blockIndex++}
+          className="bg-background/80 border border-border/50 rounded-lg p-3 my-2 overflow-x-auto text-xs font-mono"
+        >
+          {language && (
+            <div className="text-muted-foreground text-[10px] mb-2 uppercase tracking-wide">
+              {language}
+            </div>
+          )}
+          <code>{code}</code>
+        </pre>
+      );
+      
+      lastIndex = match.index + match[0].length;
+    }
+    
+    if (lastIndex < content.length) {
+      blocks.push(
+        <span key={blockIndex++}>
+          {renderInlineContent(content.slice(lastIndex))}
+        </span>
+      );
+    }
+    
+    return blocks;
+  };
+  
+  const renderInlineContent = (content: string) => {
     const lines = content.split('\n');
     return lines.map((line, i) => {
-      let processedLine = line
-        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-        .replace(/\*(.*?)\*/g, '<em>$1</em>')
-        .replace(/`(.*?)`/g, '<code class="px-1 py-0.5 bg-muted rounded text-sm">$1</code>');
+      if (/^#{1,3}\s/.test(line)) {
+        const level = line.match(/^#+/)?.[0].length || 1;
+        const text = line.replace(/^#+\s/, '');
+        const className = level === 1 
+          ? "text-base font-bold mt-3 mb-1.5" 
+          : level === 2 
+            ? "text-sm font-semibold mt-2 mb-1" 
+            : "text-sm font-medium mt-1.5 mb-0.5";
+        return (
+          <span key={i} className={cn("block", className)}>
+            {processInlineFormatting(text)}
+          </span>
+        );
+      }
+      
+      if (/^\d+\.\s/.test(line)) {
+        const text = line.replace(/^\d+\.\s/, '');
+        const number = line.match(/^\d+/)?.[0] || "1";
+        return (
+          <span key={i} className="block pl-4 relative">
+            <span className="absolute left-0 text-muted-foreground">{number}.</span>
+            {processInlineFormatting(text)}
+          </span>
+        );
+      }
       
       if (line.startsWith('- ') || line.startsWith('• ')) {
-        processedLine = `<span class="inline-block w-4">•</span>${processedLine.slice(2)}`;
+        return (
+          <span key={i} className="block pl-4 relative">
+            <span className="absolute left-0">•</span>
+            {processInlineFormatting(line.slice(2))}
+          </span>
+        );
       }
       
       return (
-        <span 
-          key={i} 
-          dangerouslySetInnerHTML={{ __html: processedLine }} 
-          className="block"
-        />
+        <span key={i} className="block">
+          {processInlineFormatting(line) || <br />}
+        </span>
       );
     });
+  };
+  
+  const processInlineFormatting = (text: string) => {
+    let processed = text
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.*?)\*/g, '<em>$1</em>')
+      .replace(/`([^`]+)`/g, '<code class="px-1 py-0.5 bg-muted rounded text-xs font-mono">$1</code>')
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-primary underline underline-offset-2 hover:opacity-80 inline-flex items-center gap-0.5">$1<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg></a>');
+    
+    return <span dangerouslySetInnerHTML={{ __html: processed }} />;
   };
 
   return (
@@ -160,11 +392,51 @@ export function FloatingAssistant() {
                 <div className="w-8 h-8 rounded-full bg-gradient-to-br from-white via-primary/20 to-primary/40 flex items-center justify-center shadow-lg">
                   <Sparkles className="w-4 h-4 text-primary" />
                 </div>
-                <div className="absolute inset-0 rounded-full bg-white/30 animate-ping opacity-30" />
+                {isStreaming && (
+                  <div className="absolute inset-0 rounded-full bg-primary/30 animate-ping" />
+                )}
               </div>
-              <h3 className="font-semibold text-foreground">AI Assistant</h3>
+              <div className="flex flex-col">
+                <h3 className="font-semibold text-foreground text-sm leading-tight">AI Assistant</h3>
+                {isTemporaryChat && (
+                  <div className="flex items-center gap-1">
+                    <Ghost className="w-3 h-3 text-muted-foreground" />
+                    <span className="text-[10px] text-muted-foreground">Temporary</span>
+                  </div>
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-1">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7"
+                    onClick={handleNewChat}
+                    data-testid="button-new-chat"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">New Chat</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="flex items-center gap-1.5 px-2">
+                    <Ghost className={cn("w-3.5 h-3.5", isTemporaryChat ? "text-primary" : "text-muted-foreground")} />
+                    <Switch
+                      checked={isTemporaryChat}
+                      onCheckedChange={handleTemporaryToggle}
+                      className="scale-75"
+                      data-testid="switch-temporary-chat"
+                    />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  {isTemporaryChat ? "Temporary mode: Messages won't be saved" : "Enable temporary chat"}
+                </TooltipContent>
+              </Tooltip>
               <Button
                 size="icon"
                 variant="ghost"
@@ -200,6 +472,12 @@ export function FloatingAssistant() {
                   <p className="text-muted-foreground text-sm max-w-[280px]">
                     I can help you with land investing, property analysis, lead management, and navigating AcreOS.
                   </p>
+                  {isTemporaryChat && (
+                    <Badge variant="secondary" className="mt-3 gap-1">
+                      <Ghost className="w-3 h-3" />
+                      Temporary Mode
+                    </Badge>
+                  )}
                 </div>
               )}
               
@@ -216,15 +494,26 @@ export function FloatingAssistant() {
                       "max-w-[85%] rounded-2xl px-4 py-2.5",
                       message.role === "user"
                         ? "bg-primary text-primary-foreground rounded-br-md"
-                        : "bg-muted text-foreground rounded-bl-md"
+                        : message.role === "error"
+                          ? "bg-destructive/10 border border-destructive/30 text-foreground rounded-bl-md"
+                          : "bg-muted text-foreground rounded-bl-md"
                     )}
                     data-testid={`message-${message.role}-${message.id}`}
                   >
+                    {message.role === "error" && (
+                      <div className="flex items-center gap-1.5 mb-1.5 text-destructive">
+                        <AlertCircle className="w-3.5 h-3.5" />
+                        <span className="text-xs font-medium">Error</span>
+                      </div>
+                    )}
                     <div className="text-sm leading-relaxed">
-                      {message.role === "assistant" 
+                      {message.role === "assistant" || message.role === "error"
                         ? renderMarkdown(message.content)
                         : message.content
                       }
+                      {message.isStreaming && (
+                        <span className="inline-block w-1.5 h-4 bg-foreground/60 animate-pulse ml-0.5 align-middle" />
+                      )}
                     </div>
                     <div 
                       className={cn(
@@ -243,7 +532,7 @@ export function FloatingAssistant() {
                   <div className="bg-muted rounded-2xl rounded-bl-md px-4 py-3">
                     <div className="flex items-center gap-2">
                       <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-                      <span className="text-sm text-muted-foreground">Thinking...</span>
+                      <span className="text-sm text-muted-foreground">Connecting...</span>
                     </div>
                   </div>
                 </div>
@@ -260,7 +549,7 @@ export function FloatingAssistant() {
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Ask me anything..."
+                placeholder={isTemporaryChat ? "Ask anything (not saved)..." : "Ask me anything..."}
                 className="min-h-[44px] max-h-[120px] resize-none rounded-xl border-border/50 bg-background/80 text-sm"
                 rows={1}
                 data-testid="input-assistant-message"
@@ -268,11 +557,11 @@ export function FloatingAssistant() {
               <Button
                 size="icon"
                 onClick={handleSendMessage}
-                disabled={!inputValue.trim() || isLoading}
+                disabled={!inputValue.trim() || isLoading || isStreaming}
                 className="h-[44px] w-[44px] rounded-xl shrink-0"
                 data-testid="button-send-assistant-message"
               >
-                {isLoading ? (
+                {isLoading || isStreaming ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
                   <Send className="w-4 h-4" />
@@ -299,6 +588,9 @@ export function FloatingAssistant() {
               <Sparkles className="w-3 h-3 text-primary" />
             </div>
             <span className="text-sm font-medium">AI Assistant</span>
+            {isTemporaryChat && (
+              <Ghost className="w-3.5 h-3.5 text-muted-foreground" />
+            )}
             {messages.length > 0 && (
               <span className="text-xs text-muted-foreground">
                 ({messages.length} messages)
