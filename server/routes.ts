@@ -16821,5 +16821,301 @@ Seller Signature (if applicable)
     }
   });
 
+  // ============================================
+  // WRITING STYLE PROFILES
+  // ============================================
+
+  const writingStyleService = await import("./services/writingStyle");
+
+  api.get("/api/writing-styles", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const profiles = await writingStyleService.getAllStyleProfiles(org.id);
+      res.json(profiles);
+    } catch (error: any) {
+      console.error("Get writing styles error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch writing styles" });
+    }
+  });
+
+  api.get("/api/writing-styles/current", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = (req as any).user;
+      let profile = await writingStyleService.getWritingStyleProfile(org.id, user.id);
+      if (!profile) {
+        profile = await writingStyleService.createWritingStyleProfile(org.id, user.id);
+      }
+      res.json(profile);
+    } catch (error: any) {
+      console.error("Get current writing style error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch writing style" });
+    }
+  });
+
+  api.post("/api/writing-styles", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = (req as any).user;
+      const { name } = req.body;
+      const profile = await writingStyleService.createWritingStyleProfile(org.id, user.id, name);
+      res.status(201).json(profile);
+    } catch (error: any) {
+      console.error("Create writing style error:", error);
+      res.status(400).json({ message: error.message || "Failed to create writing style" });
+    }
+  });
+
+  api.post("/api/writing-styles/:id/samples", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { context, content } = req.body;
+      await writingStyleService.addSampleMessage(id, context || "general", content);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Add sample message error:", error);
+      res.status(400).json({ message: error.message || "Failed to add sample message" });
+    }
+  });
+
+  api.post("/api/writing-styles/:id/analyze", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const analysis = await writingStyleService.analyzeWritingStyle(id);
+      res.json(analysis);
+    } catch (error: any) {
+      console.error("Analyze writing style error:", error);
+      res.status(400).json({ message: error.message || "Failed to analyze writing style" });
+    }
+  });
+
+  api.post("/api/writing-styles/:id/generate", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { recipientName, topic, intent, propertyDetails, previousMessages } = req.body;
+      const result = await writingStyleService.generateStyledResponse(id, {
+        recipientName,
+        topic,
+        intent: intent || "general",
+        propertyDetails,
+        previousMessages,
+      });
+      res.json(result);
+    } catch (error: any) {
+      console.error("Generate styled response error:", error);
+      res.status(400).json({ message: error.message || "Failed to generate response" });
+    }
+  });
+
+  api.post("/api/writing-styles/:id/import", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = (req as any).user;
+      const id = parseInt(req.params.id);
+      const { limit } = req.body;
+      const count = await writingStyleService.importMessagesFromConversations(
+        org.id,
+        user.id,
+        id,
+        limit || 20
+      );
+      res.json({ imported: count });
+    } catch (error: any) {
+      console.error("Import messages error:", error);
+      res.status(400).json({ message: error.message || "Failed to import messages" });
+    }
+  });
+
+  api.delete("/api/writing-styles/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await writingStyleService.deleteStyleProfile(id);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Delete writing style error:", error);
+      res.status(500).json({ message: error.message || "Failed to delete writing style" });
+    }
+  });
+
+  // ============================================
+  // LEAD QUALIFICATION & ALERTS
+  // ============================================
+
+  const leadQualificationService = await import("./services/leadQualification");
+
+  api.get("/api/alerts", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { priority, limit } = req.query;
+      const alerts = await leadQualificationService.getPendingAlerts(org.id, {
+        priority: priority as string,
+        limit: limit ? parseInt(limit as string) : undefined,
+      });
+      res.json(alerts);
+    } catch (error: any) {
+      console.error("Get alerts error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch alerts" });
+    }
+  });
+
+  api.post("/api/alerts/:id/acknowledge", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      const id = parseInt(req.params.id);
+      const { actionTaken } = req.body;
+      await leadQualificationService.acknowledgeAlert(id, user.id, actionTaken);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Acknowledge alert error:", error);
+      res.status(400).json({ message: error.message || "Failed to acknowledge alert" });
+    }
+  });
+
+  api.post("/api/alerts/:id/dismiss", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await leadQualificationService.dismissAlert(id);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Dismiss alert error:", error);
+      res.status(400).json({ message: error.message || "Failed to dismiss alert" });
+    }
+  });
+
+  api.get("/api/leads/:id/intent-score", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const leadId = parseInt(req.params.id);
+      const score = await leadQualificationService.calculateLeadIntentScore(org.id, leadId);
+      res.json(score);
+    } catch (error: any) {
+      console.error("Get lead intent score error:", error);
+      res.status(500).json({ message: error.message || "Failed to calculate intent score" });
+    }
+  });
+
+  api.post("/api/leads/:id/analyze-message", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const leadId = parseInt(req.params.id);
+      const { message, conversationId } = req.body;
+      const signals = await leadQualificationService.analyzeMessageForSignals(
+        org.id,
+        leadId,
+        conversationId,
+        message
+      );
+      res.json(signals);
+    } catch (error: any) {
+      console.error("Analyze message error:", error);
+      res.status(400).json({ message: error.message || "Failed to analyze message" });
+    }
+  });
+
+  api.get("/api/leads/:id/suggested-response", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const leadId = parseInt(req.params.id);
+      const { propertyId } = req.query;
+      const response = await leadQualificationService.generateSuggestedResponse(
+        org.id,
+        leadId,
+        propertyId ? parseInt(propertyId as string) : undefined
+      );
+      res.json({ response });
+    } catch (error: any) {
+      console.error("Generate suggested response error:", error);
+      res.status(400).json({ message: error.message || "Failed to generate response" });
+    }
+  });
+
+  api.post("/api/check-hot-leads", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const hotLeadIds = await leadQualificationService.checkForHotLeads(org.id);
+      res.json({ hotLeads: hotLeadIds.length, leadIds: hotLeadIds });
+    } catch (error: any) {
+      console.error("Check hot leads error:", error);
+      res.status(500).json({ message: error.message || "Failed to check hot leads" });
+    }
+  });
+
+  // ============================================
+  // BROWSER AUTOMATION
+  // ============================================
+
+  const browserAutomationService = await import("./services/browserAutomation");
+
+  api.get("/api/browser-automation/templates", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const systemTemplates = await browserAutomationService.getSystemTemplates();
+      const orgTemplates = await browserAutomationService.getOrganizationTemplates(org.id);
+      res.json({ system: systemTemplates, organization: orgTemplates });
+    } catch (error: any) {
+      console.error("Get automation templates error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch templates" });
+    }
+  });
+
+  api.get("/api/browser-automation/jobs", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { status, limit } = req.query;
+      const jobs = await browserAutomationService.getOrganizationJobs(org.id, {
+        status: status as string,
+        limit: limit ? parseInt(limit as string) : undefined,
+      });
+      res.json(jobs);
+    } catch (error: any) {
+      console.error("Get automation jobs error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch jobs" });
+    }
+  });
+
+  api.get("/api/browser-automation/jobs/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const job = await browserAutomationService.getJobById(id);
+      if (!job) {
+        return res.status(404).json({ message: "Job not found" });
+      }
+      res.json(job);
+    } catch (error: any) {
+      console.error("Get automation job error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch job" });
+    }
+  });
+
+  api.post("/api/browser-automation/jobs", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = (req as any).user;
+      const { templateId, name, inputData, priority } = req.body;
+      const job = await browserAutomationService.createJob(org.id, {
+        templateId,
+        name,
+        inputData,
+        priority,
+        triggeredByUserId: user.id,
+      });
+      res.status(201).json(job);
+    } catch (error: any) {
+      console.error("Create automation job error:", error);
+      res.status(400).json({ message: error.message || "Failed to create job" });
+    }
+  });
+
+  api.post("/api/browser-automation/jobs/:id/cancel", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await browserAutomationService.cancelJob(id);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Cancel automation job error:", error);
+      res.status(400).json({ message: error.message || "Failed to cancel job" });
+    }
+  });
+
   return httpServer;
 }

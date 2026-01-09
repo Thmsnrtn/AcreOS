@@ -5068,3 +5068,278 @@ export const goNogoMemos = pgTable("go_nogo_memos", {
 export const insertGoNogoMemoSchema = createInsertSchema(goNogoMemos).omit({ id: true, createdAt: true });
 export type InsertGoNogoMemo = z.infer<typeof insertGoNogoMemoSchema>;
 export type GoNogoMemo = typeof goNogoMemos.$inferSelect;
+
+// ============================================
+// WRITING STYLE PROFILES
+// ============================================
+
+// User writing style profiles - stores learned communication patterns
+export const writingStyleProfiles = pgTable("writing_style_profiles", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  userId: text("user_id").notNull(), // Replit user ID
+  name: text("name").notNull().default("Default Style"),
+  isDefault: boolean("is_default").default(true),
+  
+  // Tone and style characteristics (analyzed from samples)
+  toneAnalysis: jsonb("tone_analysis").$type<{
+    formality: "casual" | "semi-formal" | "formal"; // detected formality level
+    warmth: number; // 0-100 warmth score
+    directness: number; // 0-100 how direct vs indirect
+    enthusiasm: number; // 0-100 enthusiasm level
+    humor: boolean; // uses humor
+    empathy: number; // 0-100 empathy level
+  }>(),
+  
+  // Common phrases and patterns
+  patterns: jsonb("patterns").$type<{
+    greetings: string[]; // common greetings used
+    closings: string[]; // common sign-offs
+    transitionPhrases: string[]; // how they move between topics
+    emphasisStyle: string; // how they emphasize (caps, exclamation, etc.)
+    questionStyle: string; // how they ask questions
+    commonPhrases: string[]; // frequently used expressions
+  }>(),
+  
+  // Sample messages for few-shot learning
+  sampleMessages: jsonb("sample_messages").$type<{
+    id: string;
+    context: string; // what kind of message (initial outreach, follow-up, negotiation, etc.)
+    content: string;
+    sentiment: "positive" | "neutral" | "negative";
+    addedAt: string;
+  }[]>(),
+  
+  // Preferences
+  preferences: jsonb("preferences").$type<{
+    maxLength?: number; // preferred message length
+    usesEmoji: boolean;
+    signatureLine?: string;
+    preferredChannels?: string[];
+  }>(),
+  
+  // Training metadata
+  totalSamples: integer("total_samples").default(0),
+  lastTrainedAt: timestamp("last_trained_at"),
+  confidenceScore: numeric("confidence_score").default("0"), // 0-1 how confident in style match
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertWritingStyleProfileSchema = createInsertSchema(writingStyleProfiles).omit({ 
+  id: true, 
+  createdAt: true, 
+  updatedAt: true 
+});
+export type InsertWritingStyleProfile = z.infer<typeof insertWritingStyleProfileSchema>;
+export type WritingStyleProfile = typeof writingStyleProfiles.$inferSelect;
+
+// ============================================
+// BROWSER AUTOMATION
+// ============================================
+
+// Browser automation job templates - reusable automation recipes
+export const browserAutomationTemplates = pgTable("browser_automation_templates", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id"), // null = system template
+  name: text("name").notNull(),
+  description: text("description"),
+  category: text("category").notNull(), // county_research, listings, public_records, data_entry
+  targetDomain: text("target_domain"), // e.g., "recorder.maricopa.gov"
+  
+  // Step definitions
+  steps: jsonb("steps").$type<{
+    order: number;
+    action: "navigate" | "click" | "type" | "select" | "wait" | "screenshot" | "extract" | "scroll";
+    selector?: string;
+    value?: string;
+    waitTime?: number;
+    extractAs?: string; // variable name to store extracted data
+    description: string;
+  }[]>(),
+  
+  // Input/output schema
+  inputSchema: jsonb("input_schema").$type<{
+    name: string;
+    type: "string" | "number" | "boolean";
+    required: boolean;
+    description: string;
+  }[]>(),
+  outputSchema: jsonb("output_schema").$type<{
+    name: string;
+    type: "string" | "number" | "boolean" | "array" | "object";
+    description: string;
+  }[]>(),
+  
+  // Settings
+  requiresAuth: boolean("requires_auth").default(false),
+  estimatedDurationMs: integer("estimated_duration_ms"),
+  isPublic: boolean("is_public").default(false),
+  isEnabled: boolean("is_enabled").default(true),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertBrowserAutomationTemplateSchema = createInsertSchema(browserAutomationTemplates).omit({ 
+  id: true, 
+  createdAt: true, 
+  updatedAt: true 
+});
+export type InsertBrowserAutomationTemplate = z.infer<typeof insertBrowserAutomationTemplateSchema>;
+export type BrowserAutomationTemplate = typeof browserAutomationTemplates.$inferSelect;
+
+// Browser automation jobs - queued/running automation tasks
+export const browserAutomationJobs = pgTable("browser_automation_jobs", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  templateId: integer("template_id").references(() => browserAutomationTemplates.id),
+  
+  // Job details
+  name: text("name").notNull(),
+  status: text("status").notNull().default("queued"), // queued, running, completed, failed, cancelled
+  priority: integer("priority").default(5), // 1-10, lower is higher priority
+  
+  // Input/output
+  inputData: jsonb("input_data").$type<Record<string, any>>(),
+  outputData: jsonb("output_data").$type<Record<string, any>>(),
+  screenshots: jsonb("screenshots").$type<{
+    name: string;
+    url: string;
+    capturedAt: string;
+  }[]>(),
+  
+  // Error handling
+  error: text("error"),
+  errorDetails: jsonb("error_details").$type<{
+    step?: number;
+    selector?: string;
+    message: string;
+    stack?: string;
+  }>(),
+  retryCount: integer("retry_count").default(0),
+  maxRetries: integer("max_retries").default(3),
+  
+  // Execution
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  executionTimeMs: integer("execution_time_ms"),
+  
+  // Agent integration
+  triggeredByAgentTaskId: integer("triggered_by_agent_task_id").references(() => agentTasks.id),
+  triggeredByUserId: text("triggered_by_user_id"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertBrowserAutomationJobSchema = createInsertSchema(browserAutomationJobs).omit({ 
+  id: true, 
+  createdAt: true 
+});
+export type InsertBrowserAutomationJob = z.infer<typeof insertBrowserAutomationJobSchema>;
+export type BrowserAutomationJob = typeof browserAutomationJobs.$inferSelect;
+
+// Browser session credentials - securely stored credentials for automation
+export const browserSessionCredentials = pgTable("browser_session_credentials", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  domain: text("domain").notNull(), // e.g., "facebook.com"
+  name: text("name").notNull(), // friendly name
+  
+  // Encrypted credential storage
+  encryptedData: text("encrypted_data"), // encrypted JSON with login details
+  
+  // Session state
+  lastValidatedAt: timestamp("last_validated_at"),
+  isValid: boolean("is_valid").default(true),
+  validationError: text("validation_error"),
+  
+  // Usage tracking
+  lastUsedAt: timestamp("last_used_at"),
+  usageCount: integer("usage_count").default(0),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertBrowserSessionCredentialSchema = createInsertSchema(browserSessionCredentials).omit({ 
+  id: true, 
+  createdAt: true, 
+  updatedAt: true 
+});
+export type InsertBrowserSessionCredential = z.infer<typeof insertBrowserSessionCredentialSchema>;
+export type BrowserSessionCredential = typeof browserSessionCredentials.$inferSelect;
+
+// ============================================
+// LEAD QUALIFICATION & ESCALATION
+// ============================================
+
+// Lead qualification signals - tracks buyer readiness indicators
+export const leadQualificationSignals = pgTable("lead_qualification_signals", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  leadId: integer("lead_id").references(() => leads.id).notNull(),
+  conversationId: integer("conversation_id").references(() => conversations.id),
+  
+  // Signal details
+  signalType: text("signal_type").notNull(), // price_inquiry, timeline_mention, financing_question, viewing_request, comparison_shopping, urgency, objection, negotiation
+  confidence: numeric("confidence").notNull(), // 0-1 confidence score
+  extractedText: text("extracted_text"), // the text that triggered this signal
+  
+  // Buyer intent scoring
+  intentScore: integer("intent_score"), // 0-100 how ready to buy
+  
+  metadata: jsonb("metadata").$type<{
+    mentionedPrice?: number;
+    mentionedTimeline?: string;
+    propertyId?: number;
+    channel?: string;
+  }>(),
+  
+  detectedAt: timestamp("detected_at").defaultNow(),
+});
+
+export const insertLeadQualificationSignalSchema = createInsertSchema(leadQualificationSignals).omit({ 
+  id: true, 
+  detectedAt: true 
+});
+export type InsertLeadQualificationSignal = z.infer<typeof insertLeadQualificationSignalSchema>;
+export type LeadQualificationSignal = typeof leadQualificationSignals.$inferSelect;
+
+// Escalation alerts - notifies user when action needed
+export const escalationAlerts = pgTable("escalation_alerts", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  leadId: integer("lead_id").references(() => leads.id),
+  conversationId: integer("conversation_id").references(() => conversations.id),
+  propertyId: integer("property_id").references(() => properties.id),
+  
+  // Alert details
+  alertType: text("alert_type").notNull(), // hot_lead, ready_to_buy, price_negotiation, urgent_response, escalation_requested
+  priority: text("priority").notNull().default("medium"), // low, medium, high, urgent
+  title: text("title").notNull(),
+  description: text("description"),
+  
+  // Recommended action
+  suggestedAction: text("suggested_action"),
+  suggestedResponse: text("suggested_response"), // AI-drafted response
+  
+  // Status
+  status: text("status").notNull().default("pending"), // pending, acknowledged, actioned, dismissed
+  acknowledgedAt: timestamp("acknowledged_at"),
+  acknowledgedBy: text("acknowledged_by"),
+  actionTaken: text("action_taken"),
+  
+  // Auto-dismiss rules
+  expiresAt: timestamp("expires_at"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertEscalationAlertSchema = createInsertSchema(escalationAlerts).omit({ 
+  id: true, 
+  createdAt: true 
+});
+export type InsertEscalationAlert = z.infer<typeof insertEscalationAlertSchema>;
+export type EscalationAlert = typeof escalationAlerts.$inferSelect;
