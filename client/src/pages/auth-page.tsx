@@ -29,6 +29,7 @@ export default function AuthPage() {
   const { theme, toggleTheme } = useTheme();
   const [imageUrl, setImageUrl] = useState<string>("");
   const [imageLoaded, setImageLoaded] = useState(false);
+  const [imageError, setImageError] = useState(false);
   
   const isSafari = useMemo(() => {
     if (typeof navigator === 'undefined') return false;
@@ -38,6 +39,7 @@ export default function AuthPage() {
 
   const refreshImage = useCallback(() => {
     setImageLoaded(false);
+    setImageError(false);
     setImageUrl(getRandomEarthViewUrl());
   }, []);
 
@@ -62,19 +64,22 @@ export default function AuthPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-slate-900">
-      {imageUrl && (
+    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
+      <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-blue-950 to-slate-800" />
+      {imageUrl && !imageError && (
         <img
           src={imageUrl}
           alt="Earth View satellite imagery"
+          crossOrigin="anonymous"
           className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 ${
             imageLoaded ? "opacity-100" : "opacity-0"
           }`}
           onLoad={() => setImageLoaded(true)}
+          onError={() => setImageError(true)}
           data-testid="image-earth-view-background"
         />
       )}
-      {!imageLoaded && (
+      {!imageLoaded && !imageError && (
         <div className="absolute inset-0 flex items-center justify-center">
           <Loader2 className="w-8 h-8 animate-spin text-white/50" />
         </div>
