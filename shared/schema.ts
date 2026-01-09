@@ -977,6 +977,180 @@ export const insertAgentFeedbackSchema = createInsertSchema(agentFeedback).omit(
 export type InsertAgentFeedback = z.infer<typeof insertAgentFeedbackSchema>;
 export type AgentFeedback = typeof agentFeedback.$inferSelect;
 
+// ============================================
+// MULTI-AGENT ORCHESTRATION
+// ============================================
+
+// Agent Sessions - Multi-agent collaboration sessions
+export const agentSessions = pgTable("agent_sessions", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  name: text("name").notNull(),
+  sessionType: text("session_type").notNull(), // due_diligence_pod, acquisition_research, deal_analysis, etc.
+  status: text("status").notNull().default("active"), // active, completed, failed, cancelled
+  
+  // Shared context that all agents in this session can access
+  sharedContext: jsonb("shared_context").$type<{
+    targetEntity?: { type: string; id: number };
+    inputs?: Record<string, any>;
+    intermediateResults?: Record<string, any>;
+    decisions?: Array<{ agentType: string; decision: string; reasoning: string; timestamp: string }>;
+  }>().default({}),
+  
+  // Session configuration
+  config: jsonb("config").$type<{
+    maxSteps?: number;
+    timeout?: number;
+    requireHumanApproval?: string[];
+    participatingAgents?: string[];
+  }>(),
+  
+  // Tracking
+  initiatedBy: text("initiated_by"), // user ID or 'system'
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertAgentSessionSchema = createInsertSchema(agentSessions).omit({
+  id: true,
+  createdAt: true,
+  completedAt: true,
+});
+export type InsertAgentSession = z.infer<typeof insertAgentSessionSchema>;
+export type AgentSession = typeof agentSessions.$inferSelect;
+
+// Agent Session Steps - Steps within a multi-agent session
+export const agentSessionSteps = pgTable("agent_session_steps", {
+  id: serial("id").primaryKey(),
+  sessionId: integer("session_id").references(() => agentSessions.id).notNull(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  
+  stepNumber: integer("step_number").notNull(),
+  agentType: text("agent_type").notNull(),
+  skillUsed: text("skill_used"),
+  
+  status: text("status").notNull().default("pending"), // pending, running, completed, failed, skipped
+  input: jsonb("input"),
+  output: jsonb("output"),
+  error: text("error"),
+  
+  // Execution tracking
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  executionTimeMs: integer("execution_time_ms"),
+  
+  // Dependencies
+  dependsOnSteps: integer("depends_on_steps").array(),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertAgentSessionStepSchema = createInsertSchema(agentSessionSteps).omit({
+  id: true,
+  createdAt: true,
+  startedAt: true,
+  completedAt: true,
+  executionTimeMs: true,
+});
+export type InsertAgentSessionStep = z.infer<typeof insertAgentSessionStepSchema>;
+export type AgentSessionStep = typeof agentSessionSteps.$inferSelect;
+
+// Event Subscriptions - Agent event subscriptions
+export const eventSubscriptions = pgTable("event_subscriptions", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  
+  subscriberType: text("subscriber_type").notNull(), // agent, workflow, webhook
+  subscriberId: text("subscriber_id").notNull(), // agent type or workflow ID
+  
+  eventType: text("event_type").notNull(), // property_value_change, lead_created, deadline_approaching, market_shift, etc.
+  eventFilter: jsonb("event_filter").$type<{
+    entityType?: string;
+    entityId?: number;
+    conditions?: Record<string, any>;
+  }>(),
+  
+  isActive: boolean("is_active").notNull().default(true),
+  lastTriggeredAt: timestamp("last_triggered_at"),
+  triggerCount: integer("trigger_count").default(0),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertEventSubscriptionSchema = createInsertSchema(eventSubscriptions).omit({
+  id: true,
+  createdAt: true,
+  lastTriggeredAt: true,
+  triggerCount: true,
+});
+export type InsertEventSubscription = z.infer<typeof insertEventSubscriptionSchema>;
+export type EventSubscription = typeof eventSubscriptions.$inferSelect;
+
+// Agent Events - Event log for agent system
+export const agentEvents = pgTable("agent_events", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  
+  eventType: text("event_type").notNull(),
+  eventSource: text("event_source").notNull(), // system, user, agent, external
+  
+  payload: jsonb("payload").$type<Record<string, any>>().notNull(),
+  
+  // Related entities
+  relatedEntityType: text("related_entity_type"), // lead, property, deal, etc.
+  relatedEntityId: integer("related_entity_id"),
+  
+  processedAt: timestamp("processed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertAgentEventSchema = createInsertSchema(agentEvents).omit({
+  id: true,
+  createdAt: true,
+  processedAt: true,
+});
+export type InsertAgentEvent = z.infer<typeof insertAgentEventSchema>;
+export type AgentEvent = typeof agentEvents.$inferSelect;
+
+// Outcome Telemetry - Track outcomes for AI learning
+export const outcomeTelemetry = pgTable("outcome_telemetry", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  
+  outcomeType: text("outcome_type").notNull(), // deal_won, deal_lost, lead_converted, offer_accepted, etc.
+  
+  // What happened
+  outcome: jsonb("outcome").$type<{
+    success: boolean;
+    value?: number;
+    details?: Record<string, any>;
+  }>().notNull(),
+  
+  // What led to this outcome (for learning)
+  contributingFactors: jsonb("contributing_factors").$type<{
+    agentActions?: Array<{ agentType: string; action: string; timestamp: string }>;
+    messagesSent?: number;
+    offerAmount?: number;
+    responseTime?: number;
+    sequenceUsed?: string;
+    marketConditions?: Record<string, any>;
+  }>(),
+  
+  // Related entities
+  relatedLeadId: integer("related_lead_id").references(() => leads.id),
+  relatedPropertyId: integer("related_property_id").references(() => properties.id),
+  relatedDealId: integer("related_deal_id").references(() => deals.id),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertOutcomeTelemetrySchema = createInsertSchema(outcomeTelemetry).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertOutcomeTelemetry = z.infer<typeof insertOutcomeTelemetrySchema>;
+export type OutcomeTelemetry = typeof outcomeTelemetry.$inferSelect;
+
 // Conversations (for buyer communication agent)
 export const conversations = pgTable("conversations", {
   id: serial("id").primaryKey(),
