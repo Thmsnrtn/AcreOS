@@ -144,9 +144,6 @@ app.use(
 
 app.use(express.urlencoded({ extended: false }));
 
-// Serve attached_assets directory for static images
-app.use('/attached_assets', express.static(path.resolve(process.cwd(), 'attached_assets')));
-
 app.use(requestLoggingMiddleware);
 
 (async () => {
