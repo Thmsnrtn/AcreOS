@@ -72,7 +72,15 @@ Preferred communication style: Simple, everyday language.
 - **Payment Processing**: Stripe (subscription billing, one-time credit purchases via Replit Stripe connector).
 - **AI Services**: OpenAI (via Replit AI Integrations for chat completions and image generation).
 - **Mapping/Comps**: Tiered parcel lookup system using County GIS Endpoints (free) and Regrid API (paid fallback).
-- **Data Source Broker**: Intelligent tiered data lookup system with 563+ sources across various categories (Environmental, Natural Resources, Government Housing, Real Estate Market, County GIS Portals, Advanced Analytics, Address Validation, Natural Hazards).
+- **Data Source Broker**: Intelligent tiered data lookup system with 710+ sources across various categories:
+  - County GIS Portals (358): Parcel data for land investing
+  - State GIS (74): All 50 states with state-level GIS endpoints
+  - Census Boundaries (13): TIGERweb Census Bureau data (tracts, blocks, legislative districts)
+  - Public Lands (15): BLM endpoints for 12 western states + national
+  - Environmental (18): EPA, wetlands, water quality data
+  - Natural Hazards (9): FEMA flood zones, earthquake, wildfire
+  - Federal agencies: USDA, USGS, NOAA, HUD, DOT, NPS, USFWS
+  - Real Estate Market, Advanced Analytics, Address Validation
 - **Direct Mail**: Lob API (for sending physical mail).
 - **Development Tools**: Vite, Replit Plugins.
 - **Future Integrations (configured but not fully connected)**: SendGrid (Email), Twilio (SMS).
