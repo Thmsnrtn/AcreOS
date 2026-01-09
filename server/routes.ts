@@ -9018,50 +9018,71 @@ Seller Signature (if applicable)
   api.post("/api/broker/enrich-property", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = (req as any).organization;
-      const { propertyId, categories } = req.body;
+      const { propertyId, forceRefresh } = req.body;
 
       if (!propertyId) {
         return res.status(400).json({ message: "propertyId is required" });
       }
 
-      const property = await storage.getProperty(org.id, propertyId);
-      if (!property) {
-        return res.status(404).json({ message: "Property not found" });
-      }
+      const { propertyEnrichmentService } = await import('./services/propertyEnrichment');
+      const result = await propertyEnrichmentService.enrichProperty(org.id, propertyId, forceRefresh);
 
-      const lat = property.latitude ? parseFloat(property.latitude) : null;
-      const lng = property.longitude ? parseFloat(property.longitude) : null;
-
-      if (!lat || !lng) {
-        return res.status(400).json({ message: "Property must have latitude and longitude" });
-      }
-
-      const { dataSourceBroker } = await import('./services/data-source-broker');
-      
-      const categoriesToEnrich = categories || ["flood_zone", "wetlands", "soil", "environmental"];
-      const results: Record<string, any> = {};
-
-      for (const category of categoriesToEnrich) {
-        try {
-          const result = await dataSourceBroker.lookup(category, {
-            latitude: lat,
-            longitude: lng,
-            state: property.state || undefined,
-            county: property.county || undefined,
-          });
-          results[category] = result;
-        } catch (err: any) {
-          results[category] = { success: false, error: err.message };
-        }
-      }
-
-      res.json({
-        propertyId,
-        enrichments: results,
-        timestamp: new Date().toISOString(),
-      });
+      res.json(result);
     } catch (err: any) {
       console.error("Property enrichment error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.post("/api/enrichment/coordinates", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { latitude, longitude, categories, state, county, apn, forceRefresh } = req.body;
+
+      if (!latitude || !longitude) {
+        return res.status(400).json({ message: "latitude and longitude are required" });
+      }
+
+      const { propertyEnrichmentService } = await import('./services/propertyEnrichment');
+      const result = await propertyEnrichmentService.enrichByCoordinates(latitude, longitude, {
+        categories,
+        state,
+        county,
+        apn,
+        forceRefresh,
+      });
+
+      res.json(result);
+    } catch (err: any) {
+      console.error("Coordinates enrichment error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.get("/api/map-layers", isAuthenticated, async (req, res) => {
+    try {
+      const category = req.query.category as string | undefined;
+      const state = req.query.state as string | undefined;
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+
+      const { dataSourceBroker } = await import('./services/data-source-broker');
+      const layers = await dataSourceBroker.getAvailableLayersForMap({ category, state, limit });
+
+      res.json(layers);
+    } catch (err: any) {
+      console.error("Get map layers error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.get("/api/map-layers/categories", isAuthenticated, async (req, res) => {
+    try {
+      const categories = await db.selectDistinct({ 
+        category: sql`${sql.raw('category')}` 
+      }).from(sql`data_sources`).where(sql`is_enabled = true`);
+      
+      res.json(categories.map((c: any) => c.category).filter(Boolean));
+    } catch (err: any) {
+      console.error("Get map layer categories error:", err);
       res.status(500).json({ message: err.message });
     }
   });

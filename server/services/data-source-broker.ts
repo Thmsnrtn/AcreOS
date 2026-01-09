@@ -395,44 +395,26 @@ export class DataSourceBroker {
 
   async getAvailableLayersForMap(options?: { 
     category?: string; 
-    geometryType?: string;
     state?: string;
     limit?: number;
   }): Promise<MapLayer[]> {
     try {
-      let query = db.select({
-        id: dataSources.id,
-        title: dataSources.title,
-        category: dataSources.category,
-        subcategory: dataSources.subcategory,
-        geometryType: dataSources.geometryType,
-        apiUrl: dataSources.apiUrl,
-        portalUrl: dataSources.portalUrl,
-        accessLevel: dataSources.accessLevel,
-        description: dataSources.description,
-      }).from(dataSources)
-        .where(eq(dataSources.isEnabled, true));
-
       const conditions: any[] = [eq(dataSources.isEnabled, true)];
 
       if (options?.category) {
         conditions.push(
           or(
-            ilike(dataSources.category, `%${options.category}%`),
-            ilike(dataSources.subcategory, `%${options.category}%`)
+            sql`${dataSources.category} ILIKE ${'%' + options.category + '%'}`,
+            sql`${dataSources.subcategory} ILIKE ${'%' + options.category + '%'}`
           )
         );
-      }
-
-      if (options?.geometryType) {
-        conditions.push(ilike(dataSources.geometryType, `%${options.geometryType}%`));
       }
 
       if (options?.state) {
         conditions.push(
           or(
-            eq(dataSources.state, options.state),
-            eq(dataSources.state, null)
+            sql`${dataSources.coverage} ILIKE ${'%' + options.state + '%'}`,
+            eq(dataSources.coverage, 'US')
           )
         );
       }
@@ -442,21 +424,36 @@ export class DataSourceBroker {
         title: dataSources.title,
         category: dataSources.category,
         subcategory: dataSources.subcategory,
-        geometryType: dataSources.geometryType,
         apiUrl: dataSources.apiUrl,
         portalUrl: dataSources.portalUrl,
         accessLevel: dataSources.accessLevel,
         description: dataSources.description,
+        coverage: dataSources.coverage,
       }).from(dataSources)
         .where(and(...conditions))
         .orderBy(dataSources.priority)
         .limit(options?.limit || 100);
 
-      return sources.filter(s => s.apiUrl || s.portalUrl);
+      return sources.filter(s => s.apiUrl || s.portalUrl).map(s => ({
+        ...s,
+        geometryType: this.inferGeometryType(s.category, s.subcategory),
+      }));
     } catch (error: any) {
       console.error("Error fetching map layers:", error.message);
       return [];
     }
+  }
+
+  private inferGeometryType(category: string | null, subcategory: string | null): string {
+    const cat = (category || '').toLowerCase();
+    const sub = (subcategory || '').toLowerCase();
+    
+    if (cat.includes('parcel') || cat.includes('boundary') || sub.includes('boundary')) return 'polygon';
+    if (cat.includes('flood') || cat.includes('wetland') || cat.includes('zone')) return 'polygon';
+    if (cat.includes('infrastructure') || sub.includes('hospital') || sub.includes('school')) return 'point';
+    if (cat.includes('transportation') || sub.includes('highway') || sub.includes('rail')) return 'line';
+    if (cat.includes('water') || sub.includes('stream')) return 'line';
+    return 'unknown';
   }
 
   private async executeSourceLookup(source: DataSource, category: LookupCategory, options: BrokerLookupOptions): Promise<any> {
