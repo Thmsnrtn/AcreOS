@@ -5,6 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { 
   Minus, 
   X, 
@@ -14,9 +15,27 @@ import {
   Plus,
   Ghost,
   AlertCircle,
-  ExternalLink
+  Paperclip,
+  FileText,
+  Image as ImageIcon
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+interface Attachment {
+  id: string;
+  file: File;
+  preview?: string;
+  type: "image" | "file";
+}
+
+interface MessageAttachment {
+  id: string;
+  name: string;
+  size: number;
+  type: "image" | "file";
+  preview?: string;
+  base64?: string;
+}
 
 interface Message {
   id: string;
@@ -24,7 +43,20 @@ interface Message {
   content: string;
   timestamp: Date;
   isStreaming?: boolean;
+  attachments?: MessageAttachment[];
 }
+
+const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+const ACCEPTED_FILE_TYPES = [
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "text/plain",
+  "text/csv"
+];
+const ACCEPTED_EXTENSIONS = ".jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.txt,.csv";
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
+const MAX_ATTACHMENTS = 5;
 
 export function FloatingAssistant() {
   const [isOpen, setIsOpen] = useState(false);
@@ -36,9 +68,15 @@ export function FloatingAssistant() {
   const [hasActivity, setHasActivity] = useState(false);
   const [conversationId, setConversationId] = useState<number | null>(null);
   const [isTemporaryChat, setIsTemporaryChat] = useState(false);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
+  const [imageModalOpen, setImageModalOpen] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const dragCounterRef = useRef(0);
 
   useEffect(() => {
     if (isOpen && !isMinimized) {
@@ -51,6 +89,16 @@ export function FloatingAssistant() {
       inputRef.current.focus();
     }
   }, [isOpen, isMinimized]);
+
+  useEffect(() => {
+    return () => {
+      attachments.forEach((att) => {
+        if (att.preview) {
+          URL.revokeObjectURL(att.preview);
+        }
+      });
+    };
+  }, []);
 
   const createConversation = useCallback(async (): Promise<number | null> => {
     try {
@@ -71,18 +119,146 @@ export function FloatingAssistant() {
     }
   }, []);
 
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const isValidFileType = (file: File): boolean => {
+    return ACCEPTED_IMAGE_TYPES.includes(file.type) || ACCEPTED_FILE_TYPES.includes(file.type);
+  };
+
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        resolve(result);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const processFiles = async (files: FileList | File[]) => {
+    const fileArray = Array.from(files);
+    const remainingSlots = MAX_ATTACHMENTS - attachments.length;
+    
+    if (remainingSlots <= 0) {
+      return;
+    }
+
+    const newAttachments: Attachment[] = [];
+    
+    for (const file of fileArray.slice(0, remainingSlots)) {
+      if (!isValidFileType(file)) {
+        continue;
+      }
+      
+      if (file.size > MAX_FILE_SIZE) {
+        continue;
+      }
+
+      const isImage = ACCEPTED_IMAGE_TYPES.includes(file.type);
+      const attachment: Attachment = {
+        id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+        file,
+        type: isImage ? "image" : "file",
+        preview: isImage ? URL.createObjectURL(file) : undefined,
+      };
+      
+      newAttachments.push(attachment);
+    }
+
+    setAttachments((prev) => [...prev, ...newAttachments]);
+  };
+
+  const removeAttachment = (id: string) => {
+    setAttachments((prev) => {
+      const attachment = prev.find((a) => a.id === id);
+      if (attachment?.preview) {
+        URL.revokeObjectURL(attachment.preview);
+      }
+      return prev.filter((a) => a.id !== id);
+    });
+  };
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current += 1;
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      setIsDragging(true);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current -= 1;
+    if (dragCounterRef.current === 0) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    dragCounterRef.current = 0;
+    
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      processFiles(e.dataTransfer.files);
+    }
+  };
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      processFiles(e.target.files);
+    }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const handleAttachClick = () => {
+    fileInputRef.current?.click();
+  };
+
   const handleSendMessage = async () => {
-    if (!inputValue.trim() || isLoading || isStreaming) return;
+    if ((!inputValue.trim() && attachments.length === 0) || isLoading || isStreaming) return;
+
+    const messageAttachments: MessageAttachment[] = [];
+    
+    for (const att of attachments) {
+      const base64 = att.type === "image" ? await fileToBase64(att.file) : undefined;
+      messageAttachments.push({
+        id: att.id,
+        name: att.file.name,
+        size: att.file.size,
+        type: att.type,
+        preview: att.preview,
+        base64,
+      });
+    }
 
     const userMessage: Message = {
       id: `user-${Date.now()}`,
       role: "user",
       content: inputValue.trim(),
       timestamp: new Date(),
+      attachments: messageAttachments.length > 0 ? messageAttachments : undefined,
     };
 
     setMessages((prev) => [...prev, userMessage]);
     setInputValue("");
+    setAttachments([]);
     setIsLoading(true);
     setHasActivity(true);
 
@@ -111,6 +287,10 @@ export function FloatingAssistant() {
     try {
       abortControllerRef.current = new AbortController();
       
+      const imageContents = messageAttachments
+        .filter((a) => a.type === "image" && a.base64)
+        .map((a) => a.base64);
+      
       const response = await fetch("/api/ai/chat/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -119,6 +299,7 @@ export function FloatingAssistant() {
           message: userMessage.content,
           conversationId: isTemporaryChat ? undefined : activeConversationId,
           agentRole: "executive",
+          images: imageContents.length > 0 ? imageContents : undefined,
         }),
         signal: abortControllerRef.current.signal,
       });
@@ -185,7 +366,6 @@ export function FloatingAssistant() {
                   ));
                 }
               } catch {
-                // Ignore parsing errors for incomplete chunks
               }
             }
           }
@@ -257,6 +437,7 @@ export function FloatingAssistant() {
     setConversationId(null);
     setIsStreaming(false);
     setIsLoading(false);
+    setAttachments([]);
     if (inputRef.current) {
       inputRef.current.focus();
     }
@@ -267,6 +448,11 @@ export function FloatingAssistant() {
     if (checked) {
       setConversationId(null);
     }
+  };
+
+  const openImageModal = (imageSrc: string) => {
+    setSelectedImage(imageSrc);
+    setImageModalOpen(true);
   };
 
   const renderMarkdown = (content: string) => {
@@ -373,8 +559,65 @@ export function FloatingAssistant() {
     return <span dangerouslySetInnerHTML={{ __html: processed }} />;
   };
 
+  const renderMessageAttachments = (messageAttachments: MessageAttachment[]) => {
+    if (!messageAttachments || messageAttachments.length === 0) return null;
+    
+    return (
+      <div className="flex flex-wrap gap-1.5 mt-2">
+        {messageAttachments.map((att) => (
+          att.type === "image" && (att.preview || att.base64) ? (
+            <button
+              key={att.id}
+              onClick={() => openImageModal(att.base64 || att.preview || "")}
+              className="relative w-16 h-16 rounded-lg overflow-hidden border border-white/20 hover:opacity-90 transition-opacity"
+              data-testid={`message-attachment-image-${att.id}`}
+            >
+              <img
+                src={att.base64 || att.preview}
+                alt={att.name}
+                className="w-full h-full object-cover"
+              />
+            </button>
+          ) : (
+            <div
+              key={att.id}
+              className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-white/10 text-xs"
+              data-testid={`message-attachment-file-${att.id}`}
+            >
+              <FileText className="w-3 h-3" />
+              <span className="max-w-[80px] truncate">{att.name}</span>
+            </div>
+          )
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div className="fixed z-50 bottom-36 right-4 md:bottom-24 md:right-6" data-testid="floating-assistant-container">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept={ACCEPTED_EXTENSIONS}
+        multiple
+        onChange={handleFileInputChange}
+        className="hidden"
+        data-testid="input-file-upload"
+      />
+      
+      <Dialog open={imageModalOpen} onOpenChange={setImageModalOpen}>
+        <DialogContent className="max-w-4xl p-2 bg-background/95 backdrop-blur-sm">
+          {selectedImage && (
+            <img
+              src={selectedImage}
+              alt="Full size preview"
+              className="w-full h-auto max-h-[80vh] object-contain rounded-lg"
+              data-testid="image-modal-preview"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
       {isOpen && !isMinimized && (
         <div 
           className={cn(
@@ -382,10 +625,27 @@ export function FloatingAssistant() {
             "w-[360px] md:w-[400px] h-[500px] md:h-[600px]",
             "glass-panel floating-window rounded-2xl overflow-hidden",
             "flex flex-col",
-            "animate-in slide-in-from-bottom-4 fade-in duration-300"
+            "animate-in slide-in-from-bottom-4 fade-in duration-300",
+            isDragging && "ring-2 ring-primary ring-offset-2 ring-offset-background"
           )}
+          onDragEnter={handleDragEnter}
+          onDragLeave={handleDragLeave}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
           data-testid="assistant-chat-panel"
         >
+          {isDragging && (
+            <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm pointer-events-none">
+              <div className="flex flex-col items-center gap-2 text-primary">
+                <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
+                  <ImageIcon className="w-8 h-8" />
+                </div>
+                <span className="font-medium">Drop files here</span>
+                <span className="text-xs text-muted-foreground">Images and documents up to 10MB</span>
+              </div>
+            </div>
+          )}
+          
           <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-border/50 bg-background/50 backdrop-blur-sm">
             <div className="flex items-center gap-2">
               <div className="relative">
@@ -472,6 +732,9 @@ export function FloatingAssistant() {
                   <p className="text-muted-foreground text-sm max-w-[280px]">
                     I can help you with land investing, property analysis, lead management, and navigating AcreOS.
                   </p>
+                  <p className="text-muted-foreground text-xs mt-2">
+                    Attach images or documents for visual analysis
+                  </p>
                   {isTemporaryChat && (
                     <Badge variant="secondary" className="mt-3 gap-1">
                       <Ghost className="w-3 h-3" />
@@ -515,6 +778,9 @@ export function FloatingAssistant() {
                         <span className="inline-block w-1.5 h-4 bg-foreground/60 animate-pulse ml-0.5 align-middle" />
                       )}
                     </div>
+                    {message.role === "user" && message.attachments && (
+                      renderMessageAttachments(message.attachments)
+                    )}
                     <div 
                       className={cn(
                         "text-[10px] mt-1 opacity-60",
@@ -543,7 +809,65 @@ export function FloatingAssistant() {
           </ScrollArea>
 
           <div className="p-3 border-t border-border/50 bg-background/50 backdrop-blur-sm">
+            {attachments.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-2" data-testid="attachments-preview">
+                {attachments.map((att) => (
+                  <div
+                    key={att.id}
+                    className="relative group"
+                    data-testid={`attachment-preview-${att.id}`}
+                  >
+                    {att.type === "image" && att.preview ? (
+                      <div className="w-14 h-14 rounded-lg overflow-hidden border border-border/50 bg-muted">
+                        <img
+                          src={att.preview}
+                          alt={att.file.name}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-border/50 bg-muted text-xs">
+                        <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
+                        <div className="flex flex-col min-w-0">
+                          <span className="truncate max-w-[80px]">{att.file.name}</span>
+                          <span className="text-muted-foreground text-[10px]">
+                            {formatFileSize(att.file.size)}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                    <button
+                      onClick={() => removeAttachment(att.id)}
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                      data-testid={`button-remove-attachment-${att.id}`}
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            
             <div className="flex items-end gap-2">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={handleAttachClick}
+                    disabled={attachments.length >= MAX_ATTACHMENTS}
+                    className="h-[44px] w-[44px] rounded-xl shrink-0"
+                    data-testid="button-attach-file"
+                  >
+                    <Paperclip className="w-4 h-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  {attachments.length >= MAX_ATTACHMENTS 
+                    ? `Max ${MAX_ATTACHMENTS} attachments` 
+                    : "Attach files"}
+                </TooltipContent>
+              </Tooltip>
               <Textarea
                 ref={inputRef}
                 value={inputValue}
@@ -557,7 +881,7 @@ export function FloatingAssistant() {
               <Button
                 size="icon"
                 onClick={handleSendMessage}
-                disabled={!inputValue.trim() || isLoading || isStreaming}
+                disabled={(!inputValue.trim() && attachments.length === 0) || isLoading || isStreaming}
                 className="h-[44px] w-[44px] rounded-xl shrink-0"
                 data-testid="button-send-assistant-message"
               >
@@ -568,6 +892,11 @@ export function FloatingAssistant() {
                 )}
               </Button>
             </div>
+            {attachments.length > 0 && (
+              <div className="text-[10px] text-muted-foreground mt-1.5 text-center">
+                {attachments.length}/{MAX_ATTACHMENTS} files attached
+              </div>
+            )}
           </div>
         </div>
       )}
