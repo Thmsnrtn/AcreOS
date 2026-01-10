@@ -6878,6 +6878,9 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       res.json(status);
     } catch (err: any) {
       console.error("Stripe Connect status error:", err);
+      if (err.message?.includes("not configured")) {
+        return res.status(503).json({ message: err.message });
+      }
       res.status(500).json({ message: err.message });
     }
   });
@@ -6899,6 +6902,9 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       res.json(status);
     } catch (err: any) {
       console.error("Stripe Connect refresh error:", err);
+      if (err.message?.includes("not configured")) {
+        return res.status(503).json({ message: err.message });
+      }
       res.status(500).json({ message: err.message });
     }
   });
@@ -6912,6 +6918,9 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       res.json({ success: true });
     } catch (err: any) {
       console.error("Stripe Connect disconnect error:", err);
+      if (err.message?.includes("not configured")) {
+        return res.status(503).json({ message: err.message });
+      }
       res.status(500).json({ message: err.message });
     }
   });
@@ -6944,6 +6953,9 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       });
     } catch (err: any) {
       console.error("Stripe payment intent error:", err);
+      if (err.message?.includes("not configured")) {
+        return res.status(503).json({ message: err.message });
+      }
       res.status(500).json({ message: err.message });
     }
   });
@@ -6965,6 +6977,9 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       res.json({ paymentLink, amount });
     } catch (err: any) {
       console.error("Stripe payment link error:", err);
+      if (err.message?.includes("not configured")) {
+        return res.status(503).json({ message: err.message });
+      }
       res.status(500).json({ message: err.message });
     }
   });
