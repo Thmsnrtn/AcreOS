@@ -352,6 +352,20 @@ export function registerAIOperationsRoutes(app: Express): void {
     }
   });
 
+  router.post("/portfolio/scan", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      
+      const { portfolioSentinelService } = await import("./services/portfolioSentinel");
+      const results = await portfolioSentinelService.monitorPortfolio(org.id);
+      
+      res.json({ success: true, results, alertsGenerated: results.reduce((sum, r) => sum + r.alertsCreated, 0) });
+    } catch (error: any) {
+      console.error("Portfolio scan error:", error);
+      res.status(500).json({ message: error.message || "Failed to scan portfolio" });
+    }
+  });
+
   // ============================================
   // DOCUMENT INTELLIGENCE - /api/ai/documents
   // ============================================
