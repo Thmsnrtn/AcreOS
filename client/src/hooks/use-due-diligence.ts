@@ -1,6 +1,35 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import type { DueDiligenceTemplate, DueDiligenceItem, InsertDueDiligenceTemplate, InsertDueDiligenceItem, DueDiligenceChecklist } from "@shared/schema";
+import type { DueDiligenceTemplate, DueDiligenceItem, InsertDueDiligenceTemplate, InsertDueDiligenceItem, DueDiligenceChecklist, DueDiligenceDossier } from "@shared/schema";
+
+// AI Dossier hooks - Phase 3 dueDiligencePods service
+export function useRequestAIDossier() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (propertyId: number): Promise<{ success: boolean; dossierId: number }> => {
+      const res = await apiRequest("POST", `/api/ai/due-diligence/request`, { propertyId });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ai/due-diligence"] });
+    },
+  });
+}
+
+export function useAIDossier(dossierId: number | null, options?: { enabled?: boolean; refetchInterval?: number | false }) {
+  return useQuery<DueDiligenceDossier>({
+    queryKey: ["/api/ai/due-diligence", dossierId],
+    queryFn: async () => {
+      const res = await fetch(`/api/ai/due-diligence/${dossierId}`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to fetch dossier");
+      return res.json();
+    },
+    enabled: !!dossierId && (options?.enabled !== false),
+    refetchInterval: options?.refetchInterval,
+  });
+}
 
 // Enhanced Due Diligence Checklist hooks
 export function useDueDiligenceChecklist(propertyId: number) {
