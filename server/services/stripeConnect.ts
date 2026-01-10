@@ -1,7 +1,16 @@
 import Stripe from "stripe";
 import { storage } from "../storage";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
+function isStripeConfigured(): boolean {
+  return !!process.env.STRIPE_SECRET_KEY;
+}
+
+function getStripeClient(): Stripe | null {
+  if (!isStripeConfigured()) {
+    return null;
+  }
+  return new Stripe(process.env.STRIPE_SECRET_KEY!);
+}
 
 export interface StripeConnectStatus {
   isConnected: boolean;
@@ -42,6 +51,11 @@ export class StripeConnectService {
     email: string,
     businessName?: string
   ): Promise<{ accountId: string; onboardingUrl: string }> {
+    const stripe = getStripeClient();
+    if (!stripe) {
+      throw new Error("Stripe is not configured. Please contact support to enable payment processing.");
+    }
+    
     const account = await stripe.accounts.create({
       type: "express",
       email,
@@ -74,6 +88,11 @@ export class StripeConnectService {
   }
 
   async createOnboardingLink(accountId: string): Promise<Stripe.AccountLink> {
+    const stripe = getStripeClient();
+    if (!stripe) {
+      throw new Error("Stripe is not configured. Please contact support to enable payment processing.");
+    }
+    
     const baseUrl = process.env.REPLIT_DEV_DOMAIN 
       ? `https://${process.env.REPLIT_DEV_DOMAIN}`
       : process.env.APP_URL || "http://localhost:5000";
@@ -87,6 +106,16 @@ export class StripeConnectService {
   }
 
   async getAccountStatus(accountId: string): Promise<StripeConnectStatus> {
+    const stripe = getStripeClient();
+    if (!stripe) {
+      return {
+        isConnected: false,
+        chargesEnabled: false,
+        payoutsEnabled: false,
+        detailsSubmitted: false,
+      };
+    }
+    
     try {
       const account = await stripe.accounts.retrieve(accountId);
 
@@ -217,6 +246,11 @@ export class StripeConnectService {
     if (metadata.noteId) paymentMetadata.noteId = String(metadata.noteId);
     if (metadata.propertyId) paymentMetadata.propertyId = String(metadata.propertyId);
 
+    const stripe = getStripeClient();
+    if (!stripe) {
+      throw new Error("Stripe is not configured. Please contact support to enable payment processing.");
+    }
+    
     return stripe.paymentIntents.create({
       amount,
       currency,
@@ -239,6 +273,11 @@ export class StripeConnectService {
       throw new Error("Stripe Connect account not configured");
     }
 
+    const stripe = getStripeClient();
+    if (!stripe) {
+      throw new Error("Stripe is not configured. Please contact support to enable payment processing.");
+    }
+    
     return stripe.setupIntents.create(
       {
         customer: customerId,
@@ -266,6 +305,11 @@ export class StripeConnectService {
     if (metadata?.leadId) customerMetadata.leadId = String(metadata.leadId);
     if (metadata?.noteId) customerMetadata.noteId = String(metadata.noteId);
 
+    const stripe = getStripeClient();
+    if (!stripe) {
+      throw new Error("Stripe is not configured. Please contact support to enable payment processing.");
+    }
+    
     return stripe.customers.create(
       {
         email,

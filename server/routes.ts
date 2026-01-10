@@ -6862,6 +6862,9 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       res.json(result);
     } catch (err: any) {
       console.error("Stripe Connect link error:", err);
+      if (err.message?.includes("not configured")) {
+        return res.status(503).json({ message: err.message });
+      }
       res.status(500).json({ message: err.message });
     }
   });
