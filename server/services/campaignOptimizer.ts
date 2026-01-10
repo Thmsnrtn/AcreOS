@@ -315,7 +315,7 @@ Respond in JSON format:
       for (const campaign of campaignsToProcess.slice(0, limit)) {
         const usageResult = await usageMeteringService.recordUsage(
           organizationId,
-          "ai_response",
+          "ai_chat",
           1,
           { feature: "campaign_optimization", campaignId: campaign.id }
         );

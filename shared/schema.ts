@@ -6229,3 +6229,1161 @@ export const insertCountyRedemptionRateSchema = createInsertSchema(countyRedempt
 });
 export type InsertCountyRedemptionRate = z.infer<typeof insertCountyRedemptionRateSchema>;
 export type CountyRedemptionRate = typeof countyRedemptionRates.$inferSelect;
+
+// ============================================
+// PHASE 3: DUE DILIGENCE, INTENT, PRICING, PATTERNS
+// ============================================
+
+// Due Diligence Dossiers - investor-ready property reports
+export const dueDiligenceDossiers = pgTable("due_diligence_dossiers", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  propertyId: integer("property_id").references(() => properties.id).notNull(),
+  
+  // Request details
+  requestedBy: integer("requested_by"), // team member who requested
+  priority: text("priority").notNull().default("normal"), // urgent, high, normal, low
+  
+  // Pod execution tracking
+  status: text("status").notNull().default("queued"), // queued, running, completed, failed
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  
+  // Multi-agent pod assignment
+  agentsAssigned: jsonb("agents_assigned").$type<{
+    titleSearch?: { agentId: string; status: string; startedAt?: string; completedAt?: string };
+    taxAnalysis?: { agentId: string; status: string; startedAt?: string; completedAt?: string };
+    environmentalCheck?: { agentId: string; status: string; startedAt?: string; completedAt?: string };
+    zoningReview?: { agentId: string; status: string; startedAt?: string; completedAt?: string };
+    accessAnalysis?: { agentId: string; status: string; startedAt?: string; completedAt?: string };
+    marketComps?: { agentId: string; status: string; startedAt?: string; completedAt?: string };
+    ownerResearch?: { agentId: string; status: string; startedAt?: string; completedAt?: string };
+  }>(),
+  
+  // Aggregated findings
+  findings: jsonb("findings").$type<{
+    titleStatus?: { clear: boolean; issues?: string[]; liens?: string[]; encumbrances?: string[] };
+    taxStatus?: { current: boolean; amountDue?: number; yearsDelinquent?: number; specialAssessments?: string[] };
+    environmental?: { clean: boolean; concerns?: string[]; wetlands?: boolean; floodZone?: string };
+    zoning?: { current: string; allowedUses?: string[]; restrictions?: string[]; overlays?: string[] };
+    access?: { type: string; legal: boolean; easements?: string[]; roadMaintenance?: string };
+    comps?: { medianPrice?: number; pricePerAcre?: number; salesCount?: number; trend?: string };
+    owner?: { name: string; type: string; contactInfo?: string; motivationSignals?: string[] };
+  }>(),
+  
+  // Scores and recommendations
+  investabilityScore: integer("investability_score"), // 0-100 overall score
+  riskScore: integer("risk_score"), // 0-100 (higher = more risky)
+  
+  scoreBreakdown: jsonb("score_breakdown").$type<{
+    titleScore: number;
+    taxScore: number;
+    environmentalScore: number;
+    zoningScore: number;
+    accessScore: number;
+    marketScore: number;
+    ownerScore: number;
+  }>(),
+  
+  recommendation: text("recommendation"), // strong_buy, buy, hold, pass, avoid
+  recommendationReasoning: text("recommendation_reasoning"),
+  
+  // Red flags and highlights
+  redFlags: jsonb("red_flags").$type<string[]>(),
+  greenFlags: jsonb("green_flags").$type<string[]>(),
+  
+  // AI-generated summary
+  executiveSummary: text("executive_summary"),
+  detailedReport: text("detailed_report"),
+  
+  // Cost tracking
+  apiCostsIncurred: numeric("api_costs_incurred"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Seller Intent Predictions - score likelihood of accepting offers
+export const sellerIntentPredictions = pgTable("seller_intent_predictions", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  leadId: integer("lead_id").references(() => leads.id).notNull(),
+  propertyId: integer("property_id").references(() => properties.id),
+  
+  // Overall intent score
+  intentScore: integer("intent_score").notNull(), // 0-100
+  intentLevel: text("intent_level").notNull(), // very_high, high, moderate, low, very_low
+  
+  // Prediction confidence
+  confidence: numeric("confidence").notNull(), // 0-1
+  
+  // Signal breakdown
+  signals: jsonb("signals").$type<{
+    // Urgency signals
+    urgency?: {
+      score: number;
+      indicators: string[];
+      mentions?: string[]; // "need to sell fast", "relocating", etc.
+    };
+    // Financial motivation
+    financial?: {
+      score: number;
+      indicators: string[];
+      taxDelinquent?: boolean;
+      estimatedEquity?: number;
+    };
+    // Emotional/personal signals
+    emotional?: {
+      score: number;
+      indicators: string[];
+      lifeEvent?: string; // divorce, inheritance, retirement
+    };
+    // Engagement signals
+    engagement?: {
+      score: number;
+      responseRate?: number;
+      responseSpeed?: number; // avg hours to respond
+      questionTypes?: string[];
+    };
+    // Price flexibility signals
+    priceFlexibility?: {
+      score: number;
+      hasCountered?: boolean;
+      counterPattern?: string;
+      anchorAcceptance?: number;
+    };
+    // Competitive signals
+    competition?: {
+      score: number;
+      otherOffersmentioned?: boolean;
+      marketingProperty?: boolean;
+    };
+  }>(),
+  
+  // Historical accuracy (for learning)
+  actualOutcome: text("actual_outcome"), // accepted, rejected, countered, no_response, withdrew
+  outcomeRecordedAt: timestamp("outcome_recorded_at"),
+  predictionAccurate: boolean("prediction_accurate"),
+  
+  // Recommended approach
+  recommendedApproach: text("recommended_approach"), // aggressive, standard, patient, walk_away
+  approachReasoning: text("approach_reasoning"),
+  suggestedOfferRange: jsonb("suggested_offer_range").$type<{
+    min: number;
+    optimal: number;
+    max: number;
+  }>(),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Price Recommendations - optimal offer/list price suggestions
+export const priceRecommendations = pgTable("price_recommendations", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  propertyId: integer("property_id").references(() => properties.id).notNull(),
+  
+  // Type of recommendation
+  recommendationType: text("recommendation_type").notNull(), // acquisition_offer, disposition_list, counter_offer
+  
+  // Price recommendations
+  recommendedPrice: numeric("recommended_price").notNull(),
+  priceRangeMin: numeric("price_range_min").notNull(),
+  priceRangeMax: numeric("price_range_max").notNull(),
+  
+  // Confidence
+  confidence: numeric("confidence").notNull(), // 0-1
+  
+  // Analysis inputs
+  comparablesSummary: jsonb("comparables_summary").$type<{
+    count: number;
+    medianPricePerAcre: number;
+    avgDaysOnMarket?: number;
+    recentTrend?: string;
+    comps?: Array<{
+      apn: string;
+      salePrice: number;
+      acres: number;
+      pricePerAcre: number;
+      saleDate: string;
+      distance?: number;
+      similarityScore?: number;
+    }>;
+  }>(),
+  
+  // Adjustment factors
+  adjustments: jsonb("adjustments").$type<{
+    sizeAdjustment?: { factor: number; reason: string };
+    accessAdjustment?: { factor: number; reason: string };
+    zoningAdjustment?: { factor: number; reason: string };
+    utilitiesAdjustment?: { factor: number; reason: string };
+    terrainAdjustment?: { factor: number; reason: string };
+    marketTrendAdjustment?: { factor: number; reason: string };
+    sellerMotivationAdjustment?: { factor: number; reason: string };
+    holdingCostAdjustment?: { factor: number; reason: string };
+  }>(),
+  
+  // Strategic factors
+  strategy: jsonb("strategy").$type<{
+    targetMargin?: number; // desired profit margin
+    competitionLevel?: string;
+    marketTiming?: string;
+    negotiationRoom?: number; // % buffer for negotiation
+    quickSaleDiscount?: number; // discount for faster sale
+  }>(),
+  
+  // AI reasoning
+  reasoning: text("reasoning"),
+  
+  // Outcome tracking
+  actualPrice: numeric("actual_price"),
+  priceAccepted: boolean("price_accepted"),
+  outcomeRecordedAt: timestamp("outcome_recorded_at"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Deal Patterns - historical patterns for similarity matching
+export const dealPatterns = pgTable("deal_patterns", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  dealId: integer("deal_id").references(() => deals.id).notNull(),
+  
+  // Pattern fingerprint for similarity matching
+  fingerprint: jsonb("fingerprint").$type<{
+    // Property characteristics
+    property: {
+      acreage: number;
+      county: string;
+      state: string;
+      zoning?: string;
+      terrain?: string;
+      roadAccess?: string;
+      utilities?: string[];
+    };
+    // Deal metrics
+    deal: {
+      type: string; // acquisition/disposition
+      offerToAskRatio?: number;
+      daysToClose?: number;
+      negotiationRounds?: number;
+      finalMargin?: number;
+    };
+    // Seller characteristics
+    seller?: {
+      type?: string; // individual, corporate, estate
+      motivation?: string[];
+      responsePattern?: string;
+    };
+    // Market context
+    market?: {
+      pricePerAcre: number;
+      marketTrend?: string;
+      competitionLevel?: string;
+    };
+  }>(),
+  
+  // Outcome
+  outcome: text("outcome").notNull(), // success, partial_success, failure
+  profitAmount: numeric("profit_amount"),
+  roiPercent: numeric("roi_percent"),
+  daysToComplete: integer("days_to_complete"),
+  
+  // Lessons learned
+  successFactors: jsonb("success_factors").$type<string[]>(),
+  challengesFaced: jsonb("challenges_faced").$type<string[]>(),
+  lessonsLearned: jsonb("lessons_learned").$type<string[]>(),
+  
+  // Pattern usage tracking
+  timesMatched: integer("times_matched").default(0),
+  matchSuccessRate: numeric("match_success_rate"),
+  
+  // Embedding for similarity search (vector representation)
+  embeddingVector: jsonb("embedding_vector").$type<number[]>(),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Deal Pattern Matches - when we find similar deals
+export const dealPatternMatches = pgTable("deal_pattern_matches", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  
+  // Current property/deal being analyzed
+  targetPropertyId: integer("target_property_id").references(() => properties.id),
+  targetDealId: integer("target_deal_id").references(() => deals.id),
+  
+  // Matched historical pattern
+  patternId: integer("pattern_id").references(() => dealPatterns.id).notNull(),
+  
+  // Similarity metrics
+  similarityScore: numeric("similarity_score").notNull(), // 0-1
+  matchedDimensions: jsonb("matched_dimensions").$type<{
+    propertyMatch: number;
+    dealMatch: number;
+    sellerMatch: number;
+    marketMatch: number;
+  }>(),
+  
+  // Insights derived
+  insights: jsonb("insights").$type<{
+    recommendedOffer?: number;
+    expectedNegotiationRounds?: number;
+    estimatedDaysToClose?: number;
+    suggestedApproach?: string;
+    watchOutFor?: string[];
+    leveragePoints?: string[];
+  }>(),
+  
+  // Outcome tracking
+  insightsApplied: boolean("insights_applied").default(false),
+  actualOutcome: text("actual_outcome"),
+  insightHelpful: boolean("insight_helpful"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertDueDiligenceDossierSchema = createInsertSchema(dueDiligenceDossiers).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertDueDiligenceDossier = z.infer<typeof insertDueDiligenceDossierSchema>;
+export type DueDiligenceDossier = typeof dueDiligenceDossiers.$inferSelect;
+
+export const insertSellerIntentPredictionSchema = createInsertSchema(sellerIntentPredictions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertSellerIntentPrediction = z.infer<typeof insertSellerIntentPredictionSchema>;
+export type SellerIntentPrediction = typeof sellerIntentPredictions.$inferSelect;
+
+export const insertPriceRecommendationSchema = createInsertSchema(priceRecommendations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertPriceRecommendation = z.infer<typeof insertPriceRecommendationSchema>;
+export type PriceRecommendation = typeof priceRecommendations.$inferSelect;
+
+export const insertDealPatternSchema = createInsertSchema(dealPatterns).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertDealPattern = z.infer<typeof insertDealPatternSchema>;
+export type DealPattern = typeof dealPatterns.$inferSelect;
+
+export const insertDealPatternMatchSchema = createInsertSchema(dealPatternMatches).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertDealPatternMatch = z.infer<typeof insertDealPatternMatchSchema>;
+export type DealPatternMatch = typeof dealPatternMatches.$inferSelect;
+
+// ============================================
+// PHASE 4: NEGOTIATION, SEQUENCES, VOICE/CALL AI
+// ============================================
+
+// Negotiation Sessions - AI-assisted negotiation tracking
+export const negotiationSessions = pgTable("negotiation_sessions", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  dealId: integer("deal_id").references(() => deals.id).notNull(),
+  leadId: integer("lead_id").references(() => leads.id).notNull(),
+  
+  status: text("status").notNull().default("active"), // active, paused, won, lost, stalled
+  
+  // Current negotiation state
+  currentOfferAmount: numeric("current_offer_amount"),
+  sellerAskAmount: numeric("seller_ask_amount"),
+  lastCounterAmount: numeric("last_counter_amount"),
+  negotiationRound: integer("negotiation_round").default(1),
+  
+  // Objection handling
+  objections: jsonb("objections").$type<Array<{
+    id: string;
+    text: string;
+    category: string; // price, timing, trust, emotional, competitive
+    detectedAt: string;
+    responseUsed?: string;
+    resolved: boolean;
+    effectiveness?: number;
+  }>>(),
+  
+  // AI-generated responses
+  suggestedResponses: jsonb("suggested_responses").$type<Array<{
+    id: string;
+    text: string;
+    strategy: string; // empathy, logic, urgency, anchor, silence
+    confidence: number;
+    generatedAt: string;
+    used: boolean;
+    outcome?: string;
+  }>>(),
+  
+  // Counter-offer history
+  counterOfferHistory: jsonb("counter_offer_history").$type<Array<{
+    round: number;
+    ourOffer: number;
+    theirCounter?: number;
+    timestamp: string;
+    notes?: string;
+  }>>(),
+  
+  // Sentiment tracking
+  sentimentHistory: jsonb("sentiment_history").$type<Array<{
+    timestamp: string;
+    score: number; // -1 to 1
+    indicators: string[];
+  }>>(),
+  
+  // Outcome tracking
+  outcome: text("outcome"), // accepted, rejected, walked_away, ghosted
+  finalAmount: numeric("final_amount"),
+  profitMargin: numeric("profit_margin"),
+  lessonsLearned: text("lessons_learned"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Message Sequence Performance - which messages work best
+export const sequencePerformance = pgTable("sequence_performance", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  
+  // Sequence identification
+  sequenceId: integer("sequence_id"), // links to marketingSequences if applicable
+  sequenceName: text("sequence_name").notNull(),
+  channel: text("channel").notNull(), // email, sms, mail
+  
+  // Message details
+  messagePosition: integer("message_position").notNull(), // 1st, 2nd, 3rd etc.
+  templateContent: text("template_content"),
+  subjectLine: text("subject_line"),
+  
+  // Performance metrics
+  totalSent: integer("total_sent").default(0),
+  delivered: integer("delivered").default(0),
+  opened: integer("opened").default(0),
+  clicked: integer("clicked").default(0),
+  replied: integer("replied").default(0),
+  converted: integer("converted").default(0),
+  unsubscribed: integer("unsubscribed").default(0),
+  bounced: integer("bounced").default(0),
+  
+  // Calculated rates
+  openRate: numeric("open_rate"),
+  clickRate: numeric("click_rate"),
+  replyRate: numeric("reply_rate"),
+  conversionRate: numeric("conversion_rate"),
+  
+  // A/B testing
+  variant: text("variant"), // A, B, control
+  isWinner: boolean("is_winner"),
+  
+  // AI optimization suggestions
+  optimizationSuggestions: jsonb("optimization_suggestions").$type<{
+    subjectLineSuggestions?: string[];
+    timingSuggestions?: string[];
+    contentSuggestions?: string[];
+    segmentSuggestions?: string[];
+    confidence?: number;
+    lastOptimizedAt?: string;
+  }>(),
+  
+  // Best performing segments
+  bestPerformingSegments: jsonb("best_performing_segments").$type<Array<{
+    segment: string;
+    replyRate: number;
+    sampleSize: number;
+  }>>(),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Call Transcripts - voice/call AI integration
+export const callTranscripts = pgTable("call_transcripts", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  leadId: integer("lead_id").references(() => leads.id).notNull(),
+  dealId: integer("deal_id").references(() => deals.id),
+  
+  // Call metadata
+  callId: text("call_id"), // external call system ID
+  direction: text("direction").notNull(), // inbound, outbound
+  callType: text("call_type").notNull(), // initial_contact, follow_up, negotiation, closing
+  callerPhone: text("caller_phone"),
+  duration: integer("duration"), // seconds
+  callStartedAt: timestamp("call_started_at"),
+  callEndedAt: timestamp("call_ended_at"),
+  
+  // Transcription
+  transcriptRaw: text("transcript_raw"),
+  transcriptFormatted: jsonb("transcript_formatted").$type<Array<{
+    speaker: string;
+    text: string;
+    startTime: number;
+    endTime: number;
+    confidence?: number;
+  }>>(),
+  transcriptionProvider: text("transcription_provider"), // whisper, assembly, deepgram
+  transcriptionConfidence: numeric("transcription_confidence"),
+  
+  // AI Analysis
+  summary: text("summary"),
+  sentiment: text("sentiment"), // positive, negative, neutral, mixed
+  sentimentScore: numeric("sentiment_score"), // -1 to 1
+  
+  // Action items extracted
+  actionItems: jsonb("action_items").$type<Array<{
+    id: string;
+    description: string;
+    assignedTo?: string;
+    dueDate?: string;
+    priority: string;
+    completed: boolean;
+    completedAt?: string;
+    createdFromCall: boolean;
+  }>>(),
+  
+  // Key information extracted
+  extractedData: jsonb("extracted_data").$type<{
+    pricesMentioned?: number[];
+    datesMentioned?: string[];
+    namesMentioned?: string[];
+    objectionsRaised?: string[];
+    commitmentsMade?: string[];
+    questionsAsked?: string[];
+    nextSteps?: string[];
+  }>(),
+  
+  // Coaching insights
+  coachingInsights: jsonb("coaching_insights").$type<{
+    talkToListenRatio?: number;
+    questionCount?: number;
+    objectionHandlingScore?: number;
+    rapportScore?: number;
+    closingEffectiveness?: number;
+    improvementAreas?: string[];
+    strengths?: string[];
+  }>(),
+  
+  // CRM updates made
+  crmUpdatesApplied: jsonb("crm_updates_applied").$type<Array<{
+    field: string;
+    oldValue: string;
+    newValue: string;
+    appliedAt: string;
+    automated: boolean;
+  }>>(),
+  
+  // Audio storage
+  audioUrl: text("audio_url"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertNegotiationSessionSchema = createInsertSchema(negotiationSessions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertNegotiationSession = z.infer<typeof insertNegotiationSessionSchema>;
+export type NegotiationSession = typeof negotiationSessions.$inferSelect;
+
+export const insertSequencePerformanceSchema = createInsertSchema(sequencePerformance).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertSequencePerformance = z.infer<typeof insertSequencePerformanceSchema>;
+export type SequencePerformance = typeof sequencePerformance.$inferSelect;
+
+export const insertCallTranscriptSchema = createInsertSchema(callTranscripts).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertCallTranscript = z.infer<typeof insertCallTranscriptSchema>;
+export type CallTranscript = typeof callTranscripts.$inferSelect;
+
+// ============================================
+// PHASE 5: PORTFOLIO, DOCUMENTS, CASH FLOW, COMPLIANCE
+// ============================================
+
+// Portfolio Monitoring Alerts - proactive alerts for owned properties
+export const portfolioAlerts = pgTable("portfolio_alerts", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  propertyId: integer("property_id").references(() => properties.id).notNull(),
+  
+  alertType: text("alert_type").notNull(), // tax_due, market_change, competitor_activity, maintenance, document_expiring, compliance
+  severity: text("severity").notNull().default("medium"), // low, medium, high, critical
+  
+  title: text("title").notNull(),
+  description: text("description"),
+  
+  // Alert details
+  triggeredBy: text("triggered_by"), // system, scheduled, market_event
+  triggerData: jsonb("trigger_data").$type<{
+    previousValue?: any;
+    currentValue?: any;
+    threshold?: any;
+    changePercent?: number;
+    source?: string;
+  }>(),
+  
+  // Status
+  status: text("status").notNull().default("active"), // active, acknowledged, resolved, dismissed
+  acknowledgedAt: timestamp("acknowledged_at"),
+  acknowledgedBy: integer("acknowledged_by"),
+  resolvedAt: timestamp("resolved_at"),
+  resolution: text("resolution"),
+  
+  // Suggested actions
+  suggestedActions: jsonb("suggested_actions").$type<Array<{
+    action: string;
+    priority: string;
+    estimatedImpact?: string;
+  }>>(),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Document Intelligence - parsed documents
+export const documentAnalysis = pgTable("document_analysis", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  propertyId: integer("property_id").references(() => properties.id),
+  dealId: integer("deal_id").references(() => deals.id),
+  
+  // Document info
+  documentType: text("document_type").notNull(), // deed, contract, title_report, survey, note, mortgage, tax_bill, closing_statement
+  documentName: text("document_name").notNull(),
+  fileUrl: text("file_url"),
+  fileHash: text("file_hash"), // for deduplication
+  
+  // Extraction status
+  status: text("status").notNull().default("pending"), // pending, processing, completed, failed
+  processedAt: timestamp("processed_at"),
+  
+  // Raw content
+  rawText: text("raw_text"),
+  ocrConfidence: numeric("ocr_confidence"),
+  
+  // Extracted data (varies by document type)
+  extractedData: jsonb("extracted_data").$type<{
+    // For deeds
+    grantorName?: string;
+    granteeName?: string;
+    legalDescription?: string;
+    recordingInfo?: { book?: string; page?: string; date?: string };
+    considerationAmount?: number;
+    
+    // For contracts
+    buyerName?: string;
+    sellerName?: string;
+    purchasePrice?: number;
+    closingDate?: string;
+    contingencies?: string[];
+    deadlines?: Array<{ name: string; date: string }>;
+    
+    // For notes/mortgages
+    principalAmount?: number;
+    interestRate?: number;
+    term?: number;
+    paymentAmount?: number;
+    maturityDate?: string;
+    collateralDescription?: string;
+    
+    // For tax bills
+    taxYear?: number;
+    assessedValue?: number;
+    taxAmount?: number;
+    dueDate?: string;
+    exemptions?: string[];
+    
+    // Common
+    parties?: Array<{ name: string; role: string }>;
+    dates?: Array<{ label: string; date: string }>;
+    amounts?: Array<{ label: string; amount: number }>;
+    signatures?: string[];
+  }>(),
+  
+  // Key terms/clauses extracted
+  keyTerms: jsonb("key_terms").$type<Array<{
+    term: string;
+    value: string;
+    importance: string;
+    pageNumber?: number;
+  }>>(),
+  
+  // Risk analysis
+  riskFlags: jsonb("risk_flags").$type<Array<{
+    issue: string;
+    severity: string;
+    recommendation: string;
+  }>>(),
+  
+  // Version tracking
+  version: integer("version").default(1),
+  previousVersionId: integer("previous_version_id"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Cash Flow Forecasts - projected income/expenses
+export const cashFlowForecasts = pgTable("cash_flow_forecasts", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  noteId: integer("note_id").references(() => notes.id),
+  propertyId: integer("property_id").references(() => properties.id),
+  
+  // Forecast period
+  forecastDate: timestamp("forecast_date").notNull(),
+  forecastPeriodMonths: integer("forecast_period_months").notNull().default(12),
+  
+  // Income projections
+  projectedIncome: jsonb("projected_income").$type<Array<{
+    month: string;
+    expectedAmount: number;
+    probability: number;
+    source: string; // note_payment, interest, sale_proceeds
+    notes?: string;
+  }>>(),
+  
+  // Expense projections
+  projectedExpenses: jsonb("projected_expenses").$type<Array<{
+    month: string;
+    amount: number;
+    category: string; // taxes, insurance, maintenance, legal, marketing
+    notes?: string;
+  }>>(),
+  
+  // Summary metrics
+  totalProjectedIncome: numeric("total_projected_income"),
+  totalProjectedExpenses: numeric("total_projected_expenses"),
+  netCashFlow: numeric("net_cash_flow"),
+  
+  // Risk analysis
+  paymentRiskScore: integer("payment_risk_score"), // 0-100 (higher = more risky)
+  riskFactors: jsonb("risk_factors").$type<Array<{
+    factor: string;
+    impact: string;
+    mitigation?: string;
+  }>>(),
+  
+  // Payment health for notes
+  paymentHealth: jsonb("payment_health").$type<{
+    onTimePayments: number;
+    latePayments: number;
+    missedPayments: number;
+    averageDaysLate?: number;
+    paymentPattern?: string; // consistent, declining, improving, erratic
+    defaultProbability?: number;
+  }>(),
+  
+  // AI insights
+  insights: jsonb("insights").$type<Array<{
+    type: string;
+    message: string;
+    urgency: string;
+  }>>(),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Compliance Rules - county-specific regulations
+export const complianceRules = pgTable("compliance_rules", {
+  id: serial("id").primaryKey(),
+  
+  // Jurisdiction
+  state: text("state").notNull(),
+  county: text("county"),
+  municipality: text("municipality"),
+  
+  // Rule details
+  ruleType: text("rule_type").notNull(), // subdivision, building, zoning, environmental, disclosure, recording, tax
+  ruleName: text("rule_name").notNull(),
+  ruleDescription: text("rule_description"),
+  
+  // Requirements
+  requirements: jsonb("requirements").$type<Array<{
+    requirement: string;
+    mandatory: boolean;
+    deadline?: string;
+    fee?: number;
+    authority?: string;
+  }>>(),
+  
+  // Thresholds and triggers
+  triggers: jsonb("triggers").$type<{
+    acreageMin?: number;
+    acreageMax?: number;
+    transactionType?: string[];
+    propertyType?: string[];
+    useType?: string[];
+    priceThreshold?: number;
+  }>(),
+  
+  // Penalties
+  penalties: jsonb("penalties").$type<{
+    description: string;
+    fineRange?: { min: number; max: number };
+    otherConsequences?: string[];
+  }>(),
+  
+  // References
+  sourceUrl: text("source_url"),
+  lastVerified: timestamp("last_verified"),
+  effectiveDate: timestamp("effective_date"),
+  expirationDate: timestamp("expiration_date"),
+  
+  isActive: boolean("is_active").default(true),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Compliance Checks - property-specific compliance status
+export const complianceChecks = pgTable("compliance_checks", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  propertyId: integer("property_id").references(() => properties.id).notNull(),
+  ruleId: integer("rule_id").references(() => complianceRules.id),
+  
+  // Check details
+  checkType: text("check_type").notNull(),
+  checkDescription: text("check_description"),
+  
+  // Status
+  status: text("status").notNull().default("pending"), // pending, compliant, non_compliant, not_applicable, needs_review
+  
+  // Findings
+  findings: jsonb("findings").$type<{
+    isCompliant: boolean;
+    issues?: string[];
+    requiredActions?: string[];
+    estimatedCost?: number;
+    deadline?: string;
+  }>(),
+  
+  // Resolution
+  resolvedAt: timestamp("resolved_at"),
+  resolutionNotes: text("resolution_notes"),
+  
+  // Review info
+  lastCheckedAt: timestamp("last_checked_at"),
+  nextCheckDue: timestamp("next_check_due"),
+  checkedBy: text("checked_by"), // system or user id
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertPortfolioAlertSchema = createInsertSchema(portfolioAlerts).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertPortfolioAlert = z.infer<typeof insertPortfolioAlertSchema>;
+export type PortfolioAlert = typeof portfolioAlerts.$inferSelect;
+
+export const insertDocumentAnalysisSchema = createInsertSchema(documentAnalysis).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertDocumentAnalysis = z.infer<typeof insertDocumentAnalysisSchema>;
+export type DocumentAnalysis = typeof documentAnalysis.$inferSelect;
+
+export const insertCashFlowForecastSchema = createInsertSchema(cashFlowForecasts).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertCashFlowForecast = z.infer<typeof insertCashFlowForecastSchema>;
+export type CashFlowForecast = typeof cashFlowForecasts.$inferSelect;
+
+export const insertComplianceRuleSchema = createInsertSchema(complianceRules).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertComplianceRule = z.infer<typeof insertComplianceRuleSchema>;
+export type ComplianceRule = typeof complianceRules.$inferSelect;
+
+export const insertComplianceCheckSchema = createInsertSchema(complianceChecks).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertComplianceCheck = z.infer<typeof insertComplianceCheckSchema>;
+export type ComplianceCheck = typeof complianceChecks.$inferSelect;
+
+// ============================================
+// PHASE 6: BUYER MATCHING, QUALIFICATION, DISPOSITION
+// ============================================
+
+// Buyer Profiles - ideal buyer characteristics for matching
+export const buyerProfiles = pgTable("buyer_profiles", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  leadId: integer("lead_id").references(() => leads.id),
+  
+  // Profile type
+  profileType: text("profile_type").notNull().default("individual"), // individual, investor, developer, builder
+  
+  // Property preferences
+  preferences: jsonb("preferences").$type<{
+    minAcreage?: number;
+    maxAcreage?: number;
+    minPrice?: number;
+    maxPrice?: number;
+    states?: string[];
+    counties?: string[];
+    zoningTypes?: string[];
+    useTypes?: string[]; // residential, commercial, agricultural, recreational
+    roadAccess?: string[];
+    utilities?: string[];
+    terrainTypes?: string[];
+    waterFeatures?: boolean;
+  }>(),
+  
+  // Financial capacity
+  financialInfo: jsonb("financial_info").$type<{
+    budget?: number;
+    preApproved?: boolean;
+    preApprovalAmount?: number;
+    financingType?: string; // cash, owner_finance, conventional, hard_money
+    downPaymentCapacity?: number;
+    monthlyPaymentCapacity?: number;
+    creditScoreRange?: string;
+  }>(),
+  
+  // Buyer intent
+  intent: jsonb("intent").$type<{
+    purchaseTimeline?: string; // immediate, 1_month, 3_months, 6_months, just_looking
+    primaryUse?: string;
+    investmentGoal?: string; // flip, hold, develop, recreation
+    urgency?: number; // 1-10
+    previousPurchases?: number;
+  }>(),
+  
+  // Engagement history
+  engagement: jsonb("engagement").$type<{
+    propertiesViewed?: number[];
+    propertiesFavorited?: number[];
+    inquiriesMade?: number;
+    lastContactDate?: string;
+    preferredContactMethod?: string;
+    responsiveness?: string; // high, medium, low
+  }>(),
+  
+  // AI-computed scores
+  qualificationScore: integer("qualification_score"), // 0-100
+  matchConfidence: integer("match_confidence"), // 0-100 overall match quality
+  
+  isActive: boolean("is_active").default(true),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Buyer-Property Matches - AI-generated matches
+export const buyerPropertyMatches = pgTable("buyer_property_matches", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  buyerProfileId: integer("buyer_profile_id").references(() => buyerProfiles.id).notNull(),
+  propertyId: integer("property_id").references(() => properties.id).notNull(),
+  
+  // Match quality
+  matchScore: integer("match_score").notNull(), // 0-100
+  matchFactors: jsonb("match_factors").$type<{
+    priceMatch: number; // 0-100
+    sizeMatch: number;
+    locationMatch: number;
+    zoningMatch: number;
+    featureMatch: number;
+    financingMatch: number;
+  }>(),
+  
+  // Match details
+  matchReasons: jsonb("match_reasons").$type<string[]>(),
+  potentialConcerns: jsonb("potential_concerns").$type<string[]>(),
+  suggestedPitch: text("suggested_pitch"),
+  
+  // Status
+  status: text("status").notNull().default("pending"), // pending, presented, interested, not_interested, purchased
+  presentedAt: timestamp("presented_at"),
+  buyerResponse: text("buyer_response"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Buyer Qualifications - pre-screening results
+export const buyerQualifications = pgTable("buyer_qualifications", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  buyerProfileId: integer("buyer_profile_id").references(() => buyerProfiles.id).notNull(),
+  
+  // Qualification checks
+  checks: jsonb("checks").$type<{
+    financialVerified?: boolean;
+    identityVerified?: boolean;
+    proofOfFunds?: boolean;
+    preApprovalLetter?: boolean;
+    references?: boolean;
+    backgroundCheck?: boolean;
+  }>(),
+  
+  // Financing readiness
+  financingReadiness: jsonb("financing_readiness").$type<{
+    cashAvailable?: number;
+    preApprovalStatus?: string;
+    creditStatus?: string;
+    debtToIncome?: number;
+    downPaymentReady?: boolean;
+    ownerFinanceEligible?: boolean;
+  }>(),
+  
+  // AI assessment
+  assessment: jsonb("assessment").$type<{
+    overallScore: number;
+    strengths: string[];
+    concerns: string[];
+    recommendations: string[];
+    riskLevel: string;
+    closingProbability: number;
+  }>(),
+  
+  // Qualification status
+  status: text("status").notNull().default("pending"), // pending, qualified, conditionally_qualified, not_qualified
+  qualifiedAt: timestamp("qualified_at"),
+  qualifiedBy: text("qualified_by"), // system or user
+  
+  notes: text("notes"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Disposition Recommendations - optimal selling strategies
+export const dispositionRecommendations = pgTable("disposition_recommendations", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  propertyId: integer("property_id").references(() => properties.id).notNull(),
+  
+  // Recommended strategy
+  strategy: text("strategy").notNull(), // list_retail, sell_wholesale, owner_finance, auction, hold
+  confidence: integer("confidence").notNull(), // 0-100
+  
+  // Price recommendations
+  pricing: jsonb("pricing").$type<{
+    recommendedPrice: number;
+    priceRange: { min: number; max: number };
+    marketComps: Array<{ address: string; price: number; soldDate?: string }>;
+    pricePerAcre: number;
+    daysToSellEstimate: number;
+  }>(),
+  
+  // Channel recommendations
+  channels: jsonb("channels").$type<Array<{
+    channel: string; // mls, facebook, craigslist, landwatch, direct_mail, buyer_list
+    priority: number;
+    estimatedReach: number;
+    estimatedCost: number;
+    notes?: string;
+  }>>(),
+  
+  // Timing recommendations
+  timing: jsonb("timing").$type<{
+    optimalListDate: string;
+    seasonality: string;
+    marketTrend: string;
+    urgencyScore: number;
+    holdRecommendation?: string;
+  }>(),
+  
+  // Target buyer profile
+  targetBuyer: jsonb("target_buyer").$type<{
+    profileType: string;
+    likelyUseCase: string;
+    financingPreference: string;
+    keyFeaturesToHighlight: string[];
+  }>(),
+  
+  // Owner financing terms if recommended
+  ownerFinanceTerms: jsonb("owner_finance_terms").$type<{
+    downPaymentPercent: number;
+    interestRate: number;
+    termMonths: number;
+    monthlyPayment: number;
+    totalValue: number;
+  }>(),
+  
+  // ROI analysis
+  roiAnalysis: jsonb("roi_analysis").$type<{
+    acquisitionCost: number;
+    holdingCosts: number;
+    sellingCosts: number;
+    netProfit: number;
+    roi: number;
+    annualizedReturn: number;
+  }>(),
+  
+  // Alternative strategies
+  alternatives: jsonb("alternatives").$type<Array<{
+    strategy: string;
+    expectedValue: number;
+    pros: string[];
+    cons: string[];
+  }>>(),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertBuyerProfileSchema = createInsertSchema(buyerProfiles).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertBuyerProfile = z.infer<typeof insertBuyerProfileSchema>;
+export type BuyerProfile = typeof buyerProfiles.$inferSelect;
+
+export const insertBuyerPropertyMatchSchema = createInsertSchema(buyerPropertyMatches).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertBuyerPropertyMatch = z.infer<typeof insertBuyerPropertyMatchSchema>;
+export type BuyerPropertyMatch = typeof buyerPropertyMatches.$inferSelect;
+
+export const insertBuyerQualificationSchema = createInsertSchema(buyerQualifications).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertBuyerQualification = z.infer<typeof insertBuyerQualificationSchema>;
+export type BuyerQualification = typeof buyerQualifications.$inferSelect;
+
+export const insertDispositionRecommendationSchema = createInsertSchema(dispositionRecommendations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertDispositionRecommendation = z.infer<typeof insertDispositionRecommendationSchema>;
+export type DispositionRecommendation = typeof dispositionRecommendations.$inferSelect;

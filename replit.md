@@ -117,3 +117,43 @@ Preferred communication style: Simple, everyday language.
 - **Job Queue System**: browserAutomationJobs table with status tracking, createJob/executeJob/processJobQueue functions
 - **System Templates**: County Assessor Lookup, Document Download, Property Listing Screenshot templates
 - **AI Integration**: browserResearchSkill added to SkillRegistry enabling Research agent to execute ad-hoc automation or use templates, returns full screenshot data URLs and extracted data
+
+### Autonomous AI Operations (19 Capabilities - 6 Phases)
+
+**Phase 1: Agent Foundation** (Complete)
+- **Multi-Agent Orchestration Bus**: Shared context/state for agent collaboration with approval gates and event triggers
+- **Event Subscription Framework**: Agents subscribe to GIS updates, market feeds, deadlines with condition matching
+- **Outcome Telemetry System**: recordOutcome/analyzeOutcomes for AI feedback loops and learning
+
+**Phase 2: Acquisition Research** (Complete)
+- **Acquisition Radar** (`server/services/acquisitionRadar.ts`): Auto-surface undervalued parcels with 7-factor opportunity scoring
+- **Market Intelligence Engine** (`server/services/marketIntelligence.ts`): Predict value trends from permits, population, infrastructure
+- **Tax Lien/Deed Researcher** (`server/services/taxResearcher.ts`): Scan auction calendars, assess redemption risk, calculate ROI
+
+**Phase 3: Due Diligence & Pricing** (Complete)
+- **Due Diligence Pods** (`server/services/dueDiligencePods.ts`): Multi-agent teams generating investor-ready dossiers with 7 research dimensions
+- **Seller Intent Predictor** (`server/services/sellerIntentPredictor.ts`): 6-signal scoring for offer acceptance likelihood
+- **Price Optimizer** (`server/services/priceOptimizer.ts`): Comps-based pricing with market/motivation adjustments
+- **Deal Pattern Cloning** (`server/services/dealPatternCloning.ts`): Similarity matching with embeddings for deal replication
+
+**Phase 4: Negotiation & Communication** (Complete)
+- **Negotiation Copilot** (`server/services/negotiationCopilot.ts`): Objection handling with AI response generation, counter-offers
+- **Smart Sequence Optimizer** (`server/services/sequenceOptimizer.ts`): Message performance tracking with A/B testing variants
+- **Voice/Call AI** (`server/services/voiceCallAI.ts`): Whisper transcription with action item extraction and coaching insights
+
+**Phase 5: Portfolio & Compliance** (Complete)
+- **Portfolio Sentinel** (`server/services/portfolioSentinel.ts`): Proactive monitoring with 5 alert types (tax, market, competitor, document, compliance)
+- **Document Intelligence** (`server/services/documentIntelligence.ts`): AI parsing of deeds/contracts/notes with key term extraction
+- **Cash Flow Forecaster** (`server/services/cashFlowForecaster.ts`): 12-month projections with payment risk scoring and pattern analysis
+- **Compliance Guardian** (`server/services/complianceGuardian.ts`): County-specific rules engine with automated checks
+
+**Phase 6: Disposition** (Complete)
+- **Buyer Matching AI** (`server/services/buyerMatchingAI.ts`): Match inventory to ideal buyer profiles with 6-factor scoring
+- **Buyer Qualification Bot** (`server/services/buyerQualificationBot.ts`): Pre-screen leads, assess financing readiness, risk levels
+- **Disposition Optimizer** (`server/services/dispositionOptimizer.ts`): Best channel/price/timing recommendations with ROI analysis
+
+### AI Services Schema (Phase 3-6)
+- **Phase 5 Tables**: portfolioAlerts, documentAnalysis, cashFlowForecasts, complianceRules, complianceChecks
+- **Phase 6 Tables**: buyerProfiles, buyerPropertyMatches, buyerQualifications, dispositionRecommendations
+- All services follow singleton pattern with lazy OpenAI initialization (Replit AI Integrations)
+- Event telemetry via agentEvents table for orchestration bus visibility
