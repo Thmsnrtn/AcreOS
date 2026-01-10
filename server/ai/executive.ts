@@ -3,11 +3,23 @@ import { db } from "../db";
 import { eq, desc } from "drizzle-orm";
 import { toolDefinitions, executeTool, getOpenAITools, getToolsForRole } from "./tools";
 import { aiConversations, aiMessages, type Organization, type AiConversation, type AiMessage } from "@shared/schema";
+import { 
+  selectProviderAndModel, 
+  classifyFromMessages, 
+  TaskComplexity, 
+  AIProvider,
+} from "../services/aiRouter";
 
-const openai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-});
+function getChatProviderAndModel(complexity: TaskComplexity): { client: OpenAI; provider: AIProvider; model: string } {
+  try {
+    const result = selectProviderAndModel(complexity);
+    console.log(`[AI Chat] Selected provider: ${result.provider}/${result.model}`);
+    return result;
+  } catch (error: any) {
+    console.error('[AI Chat] Failed to get AI provider:', error.message);
+    throw new Error("AI service not available. Please check configuration.");
+  }
+}
 
 export const agentProfiles = {
   executive: {
@@ -160,7 +172,7 @@ export async function processChat(
   org: Organization,
   userId: string,
   options: ChatOptions = {}
-): Promise<{ response: string; toolCalls?: any[]; conversationId: number }> {
+): Promise<{ response: string; toolCalls?: any[]; conversationId: number; model?: string }> {
   const { agentRole = "executive" } = options;
   const profile = agentProfiles[agentRole];
   const tools = getToolsForRole(agentRole);
@@ -182,27 +194,57 @@ export async function processChat(
     }))
   ];
 
-  let response = await openai.chat.completions.create({
-    model: "gpt-4o",
-    messages: chatMessages,
-    tools: tools.length > 0 ? tools : undefined,
-    max_tokens: 2048
-  });
+  const complexity = classifyFromMessages("chat", chatMessages.map(m => ({ 
+    role: m.role as string, 
+    content: typeof m.content === 'string' ? m.content : '' 
+  })));
+  
+  let client: OpenAI;
+  let provider: AIProvider;
+  let model: string;
+  
+  try {
+    const result = getChatProviderAndModel(complexity);
+    client = result.client;
+    provider = result.provider;
+    model = result.model;
+  } catch (error: any) {
+    console.error('[AI Chat] Failed to get AI provider:', error.message);
+    throw new Error("AI service temporarily unavailable. Please try again.");
+  }
+  
+  console.log(`[AI Chat] Routing chat (${complexity}) -> ${provider}/${model}`);
+
+  let response: OpenAI.ChatCompletion;
+  try {
+    response = await client.chat.completions.create({
+      model,
+      messages: chatMessages,
+      tools: tools.length > 0 ? tools : undefined,
+      max_tokens: 2048
+    });
+  } catch (error: any) {
+    console.error(`[AI Chat] ${provider} API error:`, error.message, error.status, error.code);
+    throw new Error("AI request failed. Please try again in a moment.");
+  }
   
   try {
     const { storage } = await import('../storage');
     const estimatedTokens = JSON.stringify(chatMessages).length / 4;
-    const estimatedCostCents = Math.ceil(estimatedTokens * 0.002 / 10);
+    const costMultiplier = model.includes('gpt-4o') ? 0.002 : 
+                          model.includes('gpt-4o-mini') ? 0.00015 : 
+                          model.includes('deepseek') ? 0.00014 : 0.001;
+    const estimatedCostCents = Math.ceil(estimatedTokens * costMultiplier / 10);
     await storage.logApiUsage({
       organizationId: org.id,
-      service: 'openai',
+      service: provider,
       action: 'chat_completion',
       count: 1,
       estimatedCostCents,
-      metadata: { model: 'gpt-4o', estimatedTokens: Math.round(estimatedTokens) },
+      metadata: { model, complexity, provider, estimatedTokens: Math.round(estimatedTokens) },
     });
   } catch (error) {
-    console.error('[AI Executive] Failed to log API usage:', error);
+    console.error('[AI Chat] Failed to log API usage:', error);
   }
 
   let assistantMessage = response.choices[0].message;
@@ -233,12 +275,17 @@ export async function processChat(
     chatMessages.push(assistantMessage as any);
     chatMessages.push(...toolResults);
 
-    response = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: chatMessages,
-      tools: tools.length > 0 ? tools : undefined,
-      max_tokens: 2048
-    });
+    try {
+      response = await client.chat.completions.create({
+        model,
+        messages: chatMessages,
+        tools: tools.length > 0 ? tools : undefined,
+        max_tokens: 2048
+      });
+    } catch (error: any) {
+      console.error(`[AI Chat] ${provider} API error during tool loop:`, error.message);
+      throw new Error("AI request failed during processing. Please try again.");
+    }
 
     assistantMessage = response.choices[0].message;
   }
@@ -260,7 +307,8 @@ export async function processChat(
   return {
     response: finalContent,
     toolCalls: toolCallsExecuted.length > 0 ? toolCallsExecuted : undefined,
-    conversationId: conversation.id
+    conversationId: conversation.id,
+    model
   };
 }
 
@@ -269,7 +317,7 @@ export async function* processChatStream(
   org: Organization,
   userId: string,
   options: ChatOptions = {}
-): AsyncGenerator<{ type: string; content?: string; toolCall?: any; done?: boolean }> {
+): AsyncGenerator<{ type: string; content?: string; toolCall?: any; done?: boolean; model?: string }> {
   const { agentRole = "executive" } = options;
   const profile = agentProfiles[agentRole];
   const tools = getToolsForRole(agentRole);
@@ -291,18 +339,47 @@ export async function* processChatStream(
     }))
   ];
 
+  const complexity = classifyFromMessages("chat", chatMessages.map(m => ({ 
+    role: m.role as string, 
+    content: typeof m.content === 'string' ? m.content : '' 
+  })));
+  
+  let client: OpenAI;
+  let provider: AIProvider;
+  let model: string;
+  
+  try {
+    const result = getChatProviderAndModel(complexity);
+    client = result.client;
+    provider = result.provider;
+    model = result.model;
+  } catch (error: any) {
+    console.error('[AI Stream] Failed to get AI provider:', error.message);
+    yield { type: "error", content: "AI service temporarily unavailable. Please try again." };
+    return;
+  }
+  
+  console.log(`[AI Stream] Routing chat stream (${complexity}) -> ${provider}/${model}`);
+
   let fullResponse = "";
   const toolCallsExecuted: any[] = [];
   let continueLoop = true;
 
   while (continueLoop) {
-    const stream = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: chatMessages,
-      tools: tools.length > 0 ? tools : undefined,
-      max_tokens: 2048,
-      stream: true
-    });
+    let stream;
+    try {
+      stream = await client.chat.completions.create({
+        model,
+        messages: chatMessages,
+        tools: tools.length > 0 ? tools : undefined,
+        max_tokens: 2048,
+        stream: true
+      });
+    } catch (error: any) {
+      console.error(`[AI Stream] ${provider} API error:`, error.message);
+      yield { type: "error", content: "AI request failed. Please try again." };
+      return;
+    }
 
     let currentToolCalls: any[] = [];
     let currentContent = "";
