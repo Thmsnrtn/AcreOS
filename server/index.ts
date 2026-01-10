@@ -202,6 +202,9 @@ app.use(requestLoggingMiddleware);
       // Start scheduled task runner background job (every minute)
       startScheduledTaskRunnerJob();
       
+      // Start job queue worker (every 10 seconds)
+      startJobQueueWorker();
+      
       // Auto-seed county GIS endpoints for free parcel lookups
       seedCountyGisEndpointsOnStartup();
       
@@ -498,4 +501,91 @@ function startScheduledTaskRunnerJob() {
       log(`Scheduled task runner run failed: ${err}`, 'task-runner');
     });
   }, ONE_MINUTE);
+}
+
+// Job queue worker
+function startJobQueueWorker() {
+  const TEN_SECONDS = 10 * 1000;
+  
+  import('./services/jobQueue').then(({ jobQueueService }) => {
+    // Register default job handlers
+    
+    // Email job handler
+    jobQueueService.registerHandler('email', async (job) => {
+      try {
+        const { emailService } = await import('./services/emailService');
+        const { to, subject, html, text, organizationId } = job.payload;
+        const result = await emailService.sendEmail({
+          to,
+          subject,
+          html,
+          text,
+          organizationId,
+        });
+        
+        if (!result.success) {
+          throw new Error(result.error || 'Email send failed');
+        }
+        
+        return { messageId: result.messageId };
+      } catch (err) {
+        throw new Error(`Email job failed: ${err}`);
+      }
+    });
+    
+    // Webhook job handler
+    jobQueueService.registerHandler('webhook', async (job) => {
+      try {
+        const { url, method = 'POST', payload } = job.payload;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10000);
+        
+        const response = await fetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        });
+        
+        clearTimeout(timeout);
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        return { statusCode: response.status };
+      } catch (err) {
+        throw new Error(`Webhook job failed: ${err}`);
+      }
+    });
+    
+    // Payment sync job handler
+    jobQueueService.registerHandler('payment_sync', async (job) => {
+      try {
+        const { organizationId, paymentId } = job.payload;
+        // Placeholder for payment sync logic
+        log(`Processing payment sync for payment ${paymentId}`, 'jobQueue');
+        return { synced: true };
+      } catch (err) {
+        throw new Error(`Payment sync job failed: ${err}`);
+      }
+    });
+    
+    // Notification job handler
+    jobQueueService.registerHandler('notification', async (job) => {
+      try {
+        const { organizationId, userId, title, message } = job.payload;
+        // Placeholder for notification logic (could be push, SMS, etc.)
+        log(`Sending notification to user ${userId}: ${title}`, 'jobQueue');
+        return { notified: true };
+      } catch (err) {
+        throw new Error(`Notification job failed: ${err}`);
+      }
+    });
+    
+    // Start the worker
+    jobQueueService.startWorker(TEN_SECONDS);
+  }).catch(err => {
+    log(`Failed to start job queue worker: ${err}`, 'jobQueue');
+  });
 }

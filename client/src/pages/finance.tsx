@@ -8,10 +8,13 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertNoteSchema, type Note, type Lead, type Property } from "@shared/schema";
 import { z } from "zod";
+import { useQuery } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
+import { Link } from "wouter";
 
 // Client-side form schema that omits organizationId (added by server)
 const noteFormSchema = insertNoteSchema.omit({ organizationId: true });
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -19,13 +22,21 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
-import { Plus, DollarSign, Calendar, TrendingUp, AlertTriangle, CheckCircle, Clock, User, MapPin, FileText, CreditCard, X, Eye, Receipt, Calculator, Trash2, Loader2, Download, RefreshCw, Send, ArrowUpRight, Phone, Mail } from "lucide-react";
+import { Plus, DollarSign, Calendar, TrendingUp, AlertTriangle, CheckCircle, Clock, User, MapPin, FileText, CreditCard, X, Eye, Receipt, Calculator, Trash2, Loader2, Download, RefreshCw, Send, ArrowUpRight, Phone, Mail, Link2, Copy, ExternalLink, Settings } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format, addMonths } from "date-fns";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { DisclaimerBanner } from "@/components/disclaimer-banner";
+
+interface StripeConnectStatus {
+  isConnected: boolean;
+  accountId?: string;
+  chargesEnabled: boolean;
+  payoutsEnabled: boolean;
+  detailsSubmitted: boolean;
+}
 
 type NoteWithDetails = Note & {
   borrower?: Lead;
@@ -336,11 +347,43 @@ export default function FinancePage() {
 function NoteDetailDrawer({ note, onClose, onDelete }: { note: NoteWithDetails; onClose: () => void; onDelete: () => void }) {
   const { data: payments, isLoading: paymentsLoading } = usePayments(note.id);
   const [showRecordPayment, setShowRecordPayment] = useState(false);
+  const [showAcceptPayment, setShowAcceptPayment] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [dunningData, setDunningData] = useState<any>(null);
   const [isDunningLoading, setIsDunningLoading] = useState(false);
   const [isSendingReminder, setIsSendingReminder] = useState(false);
+  const [isGeneratingLink, setIsGeneratingLink] = useState(false);
+  const [paymentLink, setPaymentLink] = useState<string | null>(null);
+  const { toast } = useToast();
+
+  const { data: stripeConnectStatus, isLoading: isStripeStatusLoading } = useQuery<StripeConnectStatus>({
+    queryKey: ['/api/stripe/connect/status'],
+    staleTime: 1000 * 60 * 5,
+  });
+
+  const handleGeneratePaymentLink = async () => {
+    setIsGeneratingLink(true);
+    try {
+      const res = await fetch(`/api/stripe/connect/payment-link/${note.id}`, { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to generate payment link');
+      const data = await res.json();
+      setPaymentLink(data.paymentLink);
+      toast({ title: "Payment link generated", description: "You can now share this link with the borrower." });
+    } catch (err) {
+      console.error('Failed to generate payment link:', err);
+      toast({ title: "Error", description: "Failed to generate payment link", variant: "destructive" });
+    } finally {
+      setIsGeneratingLink(false);
+    }
+  };
+
+  const handleCopyPaymentLink = async () => {
+    if (paymentLink) {
+      await navigator.clipboard.writeText(paymentLink);
+      toast({ title: "Copied!", description: "Payment link copied to clipboard" });
+    }
+  };
 
   const fetchDunningData = async () => {
     setIsDunningLoading(true);
@@ -507,6 +550,97 @@ function NoteDetailDrawer({ note, onClose, onDelete }: { note: NoteWithDetails; 
                 <span>Total Paid: ${totalPaid.toLocaleString()}</span>
                 <span>Remaining: ${Number(note.currentBalance || 0).toLocaleString()}</span>
               </div>
+            </CardContent>
+          </Card>
+
+          <Card className="glass-panel">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <CreditCard className="w-4 h-4" />
+                Payment Collection
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {isStripeStatusLoading ? (
+                <div className="flex items-center justify-center py-4">
+                  <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                </div>
+              ) : !stripeConnectStatus?.isConnected || !stripeConnectStatus?.chargesEnabled ? (
+                <div className="text-center py-4">
+                  <div className="p-3 rounded-full bg-muted/50 w-fit mx-auto mb-3">
+                    <Settings className="w-6 h-6 text-muted-foreground" />
+                  </div>
+                  <p className="text-sm text-muted-foreground mb-3">
+                    Connect Stripe to accept payments
+                  </p>
+                  <Link href="/settings?tab=payments">
+                    <Button variant="outline" size="sm">
+                      <ExternalLink className="w-4 h-4 mr-2" />
+                      Settings &gt; Payments
+                    </Button>
+                  </Link>
+                </div>
+              ) : (
+                <>
+                  <div className="bg-muted/50 rounded-lg p-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-muted-foreground">Monthly Payment</span>
+                      <span className="font-bold font-mono text-emerald-600">
+                        ${Number(note.monthlyPayment || 0).toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <Button 
+                      onClick={handleGeneratePaymentLink} 
+                      disabled={isGeneratingLink}
+                      className="flex-1"
+                      data-testid="button-generate-payment-link"
+                    >
+                      {isGeneratingLink ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <Link2 className="w-4 h-4 mr-2" />
+                      )}
+                      Generate Payment Link
+                    </Button>
+                    <Button 
+                      onClick={() => setShowAcceptPayment(true)}
+                      variant="outline"
+                      data-testid="button-accept-payment"
+                    >
+                      <DollarSign className="w-4 h-4 mr-2" />
+                      Accept Payment
+                    </Button>
+                  </div>
+
+                  {paymentLink && (
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Payment Link</label>
+                      <div className="flex gap-2">
+                        <Input 
+                          value={paymentLink} 
+                          readOnly 
+                          className="font-mono text-xs"
+                          data-testid="text-payment-link"
+                        />
+                        <Button 
+                          size="icon" 
+                          variant="outline"
+                          onClick={handleCopyPaymentLink}
+                          data-testid="button-copy-payment-link"
+                        >
+                          <Copy className="w-4 h-4" />
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Share this link with the borrower to collect payment.
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
             </CardContent>
           </Card>
 
@@ -862,7 +996,145 @@ function NoteDetailDrawer({ note, onClose, onDelete }: { note: NoteWithDetails; 
             onClose={() => setShowRecordPayment(false)}
           />
         )}
+
+        {showAcceptPayment && (
+          <AcceptPaymentModal
+            note={note}
+            onClose={() => setShowAcceptPayment(false)}
+          />
+        )}
       </div>
+    </div>
+  );
+}
+
+function AcceptPaymentModal({ note, onClose }: { note: NoteWithDetails; onClose: () => void }) {
+  const [amount, setAmount] = useState(note.monthlyPayment?.toString() || '');
+  const [paymentType, setPaymentType] = useState<string>('monthly_payment');
+  const [isCreating, setIsCreating] = useState(false);
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const { toast } = useToast();
+
+  const handleCreatePaymentIntent = async () => {
+    setIsCreating(true);
+    try {
+      const res = await fetch('/api/stripe/connect/payment-intent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          noteId: note.id,
+          amount: Math.round(Number(amount) * 100),
+          paymentType: paymentType === 'monthly_payment' ? 'note_payment' : 
+                       paymentType === 'down_payment' ? 'down_payment' : 'note_payment',
+          description: `${paymentType.replace(/_/g, ' ')} for Note #${note.id}`,
+        }),
+      });
+
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || 'Failed to create payment intent');
+      }
+
+      const data = await res.json();
+      setClientSecret(data.clientSecret);
+      toast({ title: "Payment intent created", description: "Ready to process payment." });
+    } catch (err: any) {
+      console.error('Failed to create payment intent:', err);
+      toast({ title: "Error", description: err.message || "Failed to create payment intent", variant: "destructive" });
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-60 bg-black/50 flex items-center justify-center" onClick={onClose}>
+      <Card className="w-full max-w-md floating-window" onClick={e => e.stopPropagation()}>
+        <CardHeader>
+          <CardTitle>Accept Payment</CardTitle>
+          <CardDescription>Create a payment intent for Note #{note.id}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Payment Amount ($)</label>
+            <Input
+              type="number"
+              value={amount}
+              onChange={e => setAmount(e.target.value)}
+              placeholder={String(Number(note.monthlyPayment || 0))}
+              data-testid="input-payment-amount"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Payment Type</label>
+            <Select value={paymentType} onValueChange={setPaymentType}>
+              <SelectTrigger data-testid="select-payment-type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="monthly_payment">Monthly Payment</SelectItem>
+                <SelectItem value="down_payment">Down Payment</SelectItem>
+                <SelectItem value="extra_payment">Extra Payment</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {clientSecret ? (
+            <div className="space-y-3">
+              <div className="bg-emerald-50 dark:bg-emerald-900/30 rounded-lg p-4 border border-emerald-200 dark:border-emerald-800">
+                <div className="flex items-center gap-2 mb-2">
+                  <CheckCircle className="w-5 h-5 text-emerald-600" />
+                  <span className="font-medium text-emerald-800 dark:text-emerald-200">Payment Intent Created</span>
+                </div>
+                <p className="text-sm text-muted-foreground mb-2">
+                  Amount: <span className="font-mono font-bold">${Number(amount).toFixed(2)}</span>
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Use the client secret below with Stripe.js to complete the payment.
+                </p>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Client Secret</label>
+                <div className="font-mono text-xs bg-muted p-2 rounded break-all select-all">
+                  {clientSecret}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-muted/50 rounded-lg p-4">
+              <p className="text-sm text-muted-foreground">
+                This will create a Stripe payment intent that can be used to process the payment via Stripe.js or the Stripe dashboard.
+              </p>
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={onClose} className="flex-1">
+              {clientSecret ? 'Close' : 'Cancel'}
+            </Button>
+            {!clientSecret && (
+              <Button 
+                onClick={handleCreatePaymentIntent} 
+                disabled={isCreating || !amount} 
+                className="flex-1"
+              >
+                {isCreating ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <CreditCard className="w-4 h-4 mr-2" />
+                    Create Payment Intent
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

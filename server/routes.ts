@@ -1,4 +1,5 @@
 import type { Express, Request, Response, NextFunction } from "express";
+import express from "express";
 import type { Server } from "http";
 import crypto from "crypto";
 import { storage, calculateMonthlyPayment, db } from "./storage";
@@ -17526,6 +17527,86 @@ Seller Signature (if applicable)
     } catch (error: any) {
       console.error("Twilio webhook error:", error);
       res.status(500).send("Webhook processing error");
+    }
+  });
+
+  // ============================================
+  // JOB QUEUE
+  // ============================================
+  
+  // Create a new job
+  api.post("/api/jobs", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { jobQueueService } = await import("./services/jobQueue");
+      const { type, payload, maxAttempts, scheduledFor } = req.body;
+      
+      // Validate job type
+      const validTypes = ["email", "webhook", "payment_sync", "notification"];
+      if (!validTypes.includes(type)) {
+        return res.status(400).json({ 
+          message: `Invalid job type. Supported types: ${validTypes.join(", ")}` 
+        });
+      }
+      
+      // Validate payload is provided
+      if (!payload || typeof payload !== "object") {
+        return res.status(400).json({ message: "Payload is required and must be an object" });
+      }
+      
+      // Create job
+      const job = jobQueueService.addJob(type, payload, {
+        maxAttempts,
+        scheduledFor: scheduledFor ? new Date(scheduledFor) : undefined,
+      });
+      
+      res.json(job);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to create job" });
+    }
+  });
+  
+  // Get job status by ID
+  api.get("/api/jobs/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { jobQueueService } = await import("./services/jobQueue");
+      const job = jobQueueService.getJobStatus(req.params.id);
+      
+      if (!job) {
+        return res.status(404).json({ message: "Job not found" });
+      }
+      
+      res.json(job);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to get job" });
+    }
+  });
+  
+  // Get recent jobs (admin only)
+  api.get("/api/jobs", isAuthenticated, getOrCreateOrg, requireAdminOrAbove, async (req, res) => {
+    try {
+      const { jobQueueService } = await import("./services/jobQueue");
+      const limit = Math.min(parseInt(req.query.limit as string) || 50, 500);
+      const jobs = jobQueueService.getRecentJobs(limit);
+      
+      res.json({
+        total: jobs.length,
+        jobs,
+        stats: jobQueueService.getStats(),
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to get jobs" });
+    }
+  });
+  
+  // Get job queue statistics (admin only)
+  api.get("/api/jobs/stats", isAuthenticated, getOrCreateOrg, requireAdminOrAbove, async (req, res) => {
+    try {
+      const { jobQueueService } = await import("./services/jobQueue");
+      const stats = jobQueueService.getStats();
+      
+      res.json(stats);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to get job statistics" });
     }
   });
 
