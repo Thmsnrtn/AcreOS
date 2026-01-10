@@ -208,9 +208,9 @@ export default function PortfolioPage() {
   });
 
   const { data: complianceRules, isLoading: rulesLoading } = useQuery<ComplianceRule[]>({
-    queryKey: ["/api/ai/compliance/rules", "all"],
+    queryKey: ["/api/ai/compliance/rules"],
     queryFn: async () => {
-      const res = await fetch("/api/ai/compliance/rules?state=all", { credentials: "include" });
+      const res = await fetch("/api/ai/compliance/rules", { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch compliance rules");
       return res.json();
     },

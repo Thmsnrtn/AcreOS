@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, MapPin, DollarSign, Calendar, Building, TrendingUp, CheckCircle, X, GripVertical, FileText, Trash2, Loader2, Briefcase, Calculator, ClipboardCheck, Upload, AlertTriangle, CheckSquare, Square, Clock, Download, Package, Play, Eye, FolderPlus } from "lucide-react";
+import { Plus, MapPin, DollarSign, Calendar, Building, TrendingUp, CheckCircle, X, GripVertical, FileText, Trash2, Loader2, Briefcase, Calculator, ClipboardCheck, Upload, AlertTriangle, CheckSquare, Square, Clock, Download, Package, Play, Eye, FolderPlus, Sparkles, Flame, Snowflake, Minus } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
@@ -29,6 +29,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ActivityTimeline } from "@/components/activity-timeline";
 import { CustomFieldValuesEditor } from "@/components/custom-fields";
 import { DisclaimerBanner } from "@/components/disclaimer-banner";
@@ -343,6 +344,18 @@ function DealCard({ deal, onSelect }: { deal: DealWithProperty; onSelect: () => 
   );
 }
 
+interface PricingRecommendation {
+  suggestedOffer: number;
+  confidence: number;
+  pricePerAcre: number;
+  priceRangeMin: number;
+  priceRangeMax: number;
+  comparables: any;
+  marketCondition: 'hot' | 'neutral' | 'cold';
+  reasoning: string;
+  propertyAcres: number;
+}
+
 function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty; onClose: () => void; onDelete: () => void }) {
   const { mutate: updateDeal, isPending } = useUpdateDeal();
   const { mutate: saveAnalysis, isPending: isSavingAnalysis } = useSaveDealAnalysis();
@@ -352,6 +365,75 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
   const { mutate: updateChecklistItem, isPending: isUpdatingItem } = useUpdateChecklistItem(deal.id);
   const { data: stageGate } = useStageGate(deal.id);
   const { toast } = useToast();
+  
+  const [pricingRecommendation, setPricingRecommendation] = useState<PricingRecommendation | null>(null);
+  const [isPricingPopoverOpen, setIsPricingPopoverOpen] = useState(false);
+  
+  const pricingMutation = useMutation({
+    mutationFn: async () => {
+      if (!deal.propertyId) throw new Error("No property associated with this deal");
+      const response = await apiRequest("POST", "/api/ai/pricing/optimize", {
+        propertyId: deal.propertyId,
+        sellerAskingPrice: deal.property?.assessedValue || null,
+        dealType: deal.type,
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || "Failed to get pricing recommendation");
+      }
+      return response.json() as Promise<PricingRecommendation>;
+    },
+    onSuccess: (data) => {
+      setPricingRecommendation(data);
+      setIsPricingPopoverOpen(true);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to get pricing recommendation",
+        description: error.message || "Please try again later",
+        variant: "destructive",
+      });
+    },
+  });
+  
+  const handleApplyPricingSuggestion = () => {
+    if (pricingRecommendation) {
+      updateDeal({ 
+        id: deal.id, 
+        offerAmount: pricingRecommendation.suggestedOffer.toString() 
+      }, {
+        onSuccess: () => {
+          toast({
+            title: "Offer amount updated",
+            description: `Set to $${pricingRecommendation.suggestedOffer.toLocaleString()}`,
+          });
+          setIsPricingPopoverOpen(false);
+        },
+      });
+    }
+  };
+  
+  const getConfidenceBadgeColor = (confidence: number) => {
+    if (confidence >= 80) return "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400";
+    if (confidence >= 50) return "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400";
+    return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400";
+  };
+  
+  const getMarketConditionIcon = (condition: 'hot' | 'neutral' | 'cold') => {
+    switch (condition) {
+      case 'hot': return <Flame className="w-4 h-4 text-orange-500" />;
+      case 'cold': return <Snowflake className="w-4 h-4 text-blue-500" />;
+      default: return <Minus className="w-4 h-4 text-gray-500" />;
+    }
+  };
+  
+  const getMarketConditionLabel = (condition: 'hot' | 'neutral' | 'cold') => {
+    switch (condition) {
+      case 'hot': return "Hot Market";
+      case 'cold': return "Cold Market";
+      default: return "Neutral Market";
+    }
+  };
 
   const { data: dealPackages, isLoading: packagesLoading } = useQuery<DocumentPackage[]>({
     queryKey: ["/api/document-packages", "deal", deal.id],
@@ -499,7 +581,103 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
               <div className="grid grid-cols-2 gap-4">
                 <Card className="glass-panel">
                   <CardContent className="p-4">
-                    <p className="text-sm text-muted-foreground">Offer Amount</p>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm text-muted-foreground">Offer Amount</p>
+                      <Popover open={isPricingPopoverOpen} onOpenChange={setIsPricingPopoverOpen}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => pricingMutation.mutate()}
+                            disabled={pricingMutation.isPending || !deal.propertyId}
+                            data-testid="button-ai-pricing"
+                          >
+                            {pricingMutation.isPending ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Sparkles className="w-4 h-4" />
+                            )}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-80 p-0" align="end">
+                          {pricingRecommendation && (
+                            <div className="glass-panel rounded-lg overflow-hidden">
+                              <div className="bg-gradient-to-r from-violet-500/10 to-purple-500/10 p-4 border-b">
+                                <div className="flex items-center gap-2">
+                                  <Sparkles className="w-5 h-5 text-violet-500" />
+                                  <h3 className="font-semibold">AI Price Recommendation</h3>
+                                </div>
+                              </div>
+                              <div className="p-4 space-y-4">
+                                <div className="text-center">
+                                  <p className="text-sm text-muted-foreground mb-1">Suggested Offer</p>
+                                  <p className="text-3xl font-bold font-mono text-primary" data-testid="text-suggested-offer">
+                                    ${pricingRecommendation.suggestedOffer.toLocaleString()}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground mt-1">
+                                    Range: ${pricingRecommendation.priceRangeMin.toLocaleString()} - ${pricingRecommendation.priceRangeMax.toLocaleString()}
+                                  </p>
+                                </div>
+                                
+                                <div className="flex items-center justify-center gap-3">
+                                  <Badge className={getConfidenceBadgeColor(pricingRecommendation.confidence)} data-testid="badge-confidence">
+                                    {pricingRecommendation.confidence.toFixed(0)}% confidence
+                                  </Badge>
+                                  <div className="flex items-center gap-1.5">
+                                    {getMarketConditionIcon(pricingRecommendation.marketCondition)}
+                                    <span className="text-xs text-muted-foreground">
+                                      {getMarketConditionLabel(pricingRecommendation.marketCondition)}
+                                    </span>
+                                  </div>
+                                </div>
+                                
+                                <div className="bg-muted/50 rounded-lg p-3 space-y-2">
+                                  <div className="flex justify-between text-sm">
+                                    <span className="text-muted-foreground">Price per Acre</span>
+                                    <span className="font-mono font-medium">${pricingRecommendation.pricePerAcre.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                                  </div>
+                                  <div className="flex justify-between text-sm">
+                                    <span className="text-muted-foreground">Property Size</span>
+                                    <span className="font-medium">{pricingRecommendation.propertyAcres} acres</span>
+                                  </div>
+                                  {pricingRecommendation.comparables?.count > 0 && (
+                                    <div className="flex justify-between text-sm">
+                                      <span className="text-muted-foreground">Comparables Used</span>
+                                      <span className="font-medium">{pricingRecommendation.comparables.count} properties</span>
+                                    </div>
+                                  )}
+                                </div>
+                                
+                                {pricingRecommendation.reasoning && (
+                                  <p className="text-xs text-muted-foreground italic">
+                                    {pricingRecommendation.reasoning}
+                                  </p>
+                                )}
+                                
+                                <Button 
+                                  className="w-full" 
+                                  onClick={handleApplyPricingSuggestion}
+                                  disabled={isPending}
+                                  data-testid="button-apply-suggestion"
+                                >
+                                  {isPending ? (
+                                    <>
+                                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                      Applying...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <CheckCircle className="w-4 h-4 mr-2" />
+                                      Apply Suggestion
+                                    </>
+                                  )}
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+                        </PopoverContent>
+                      </Popover>
+                    </div>
                     <p className="text-xl font-bold font-mono">
                       ${Number(deal.offerAmount || 0).toLocaleString()}
                     </p>

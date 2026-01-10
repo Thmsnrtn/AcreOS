@@ -141,6 +141,70 @@ export function registerAIOperationsRoutes(app: Express): void {
     }
   });
 
+  router.post("/pricing/optimize", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { propertyId, sellerAskingPrice, dealType } = req.body;
+      
+      if (!propertyId) {
+        return res.status(400).json({ message: "propertyId is required" });
+      }
+      
+      const { priceOptimizerService } = await import("./services/priceOptimizer");
+      const { properties } = await import("@shared/schema");
+      const { db } = await import("./db");
+      const { eq, and } = await import("drizzle-orm");
+      
+      const [property] = await db.select().from(properties)
+        .where(and(eq(properties.id, propertyId), eq(properties.organizationId, org.id)));
+      
+      if (!property) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+      
+      const isDisposition = dealType === 'disposition';
+      let recommendation;
+      
+      if (isDisposition) {
+        recommendation = await priceOptimizerService.recommendDispositionPrice(org.id, propertyId, false);
+      } else {
+        recommendation = await priceOptimizerService.recommendAcquisitionPrice(org.id, propertyId);
+      }
+      
+      const acres = property.sizeAcres ? Number(property.sizeAcres) : 1;
+      const suggestedOffer = Number(recommendation.recommendedPrice);
+      const pricePerAcre = suggestedOffer / acres;
+      
+      const confidence = Number(recommendation.confidence) * 100;
+      const comparables = recommendation.comparablesSummary || {};
+      
+      let marketCondition: 'hot' | 'neutral' | 'cold' = 'neutral';
+      const strategy = recommendation.strategy as any;
+      if (strategy?.marketTiming) {
+        if (strategy.marketTiming.toLowerCase().includes('strong') || strategy.marketTiming.toLowerCase().includes('hot')) {
+          marketCondition = 'hot';
+        } else if (strategy.marketTiming.toLowerCase().includes('weak') || strategy.marketTiming.toLowerCase().includes('slow')) {
+          marketCondition = 'cold';
+        }
+      }
+      
+      res.json({
+        suggestedOffer,
+        confidence,
+        pricePerAcre,
+        priceRangeMin: Number(recommendation.priceRangeMin),
+        priceRangeMax: Number(recommendation.priceRangeMax),
+        comparables,
+        marketCondition,
+        reasoning: recommendation.reasoning || "Based on comparable sales and market analysis.",
+        propertyAcres: acres,
+      });
+    } catch (error: any) {
+      console.error("Pricing optimization error:", error);
+      res.status(500).json({ message: error.message || "Failed to optimize pricing" });
+    }
+  });
+
   // ============================================
   // DEAL PATTERN CLONING - /api/ai/patterns
   // ============================================

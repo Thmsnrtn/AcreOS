@@ -110,10 +110,12 @@ export function DueDiligencePanel({ propertyId }: DueDiligencePanelProps) {
   });
   
   useEffect(() => {
-    if (dossier) {
+    if (dossierError) {
+      setShouldPollDossier(false);
+    } else if (dossier) {
       setShouldPollDossier(dossier.status === "running" || dossier.status === "queued");
     }
-  }, [dossier]);
+  }, [dossier, dossierError]);
 
   const handleGenerateDossier = async () => {
     try {
