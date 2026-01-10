@@ -116,6 +116,9 @@ import {
 // AI Operations Routes
 import { registerAIOperationsRoutes } from "./routes-ai-operations";
 
+// Rate limiting middleware
+import { rateLimiters, createAuthenticatedRateLimiter, createRateLimiter, RATE_LIMIT_CONFIGS } from "./middleware/rateLimit";
+
 // ============================================
 // STRUCTURED LOGGER
 // ============================================
@@ -201,51 +204,17 @@ function calculateDistanceMiles(lat1: number, lng1: number, lat2: number, lng2: 
   return R * c;
 }
 
-// ============================================
-// RATE LIMITER (In-memory for portal endpoints)
-// ============================================
-interface RateLimitEntry {
-  count: number;
-  resetAt: number;
-}
+// Note: Rate limiting is now handled by the middleware imported above
+// Rate limiters are configured as:
+// - default: 100 requests per minute for authenticated users
+// - strict: 20 requests per minute for expensive operations (AI, Stripe)
+// - auth: 10 requests per minute for login/register endpoints
+// - public: 50 requests per minute for public endpoints
+// - portalPayment: 5 requests per minute for portal payment endpoints
+// - deprecatedPayment: 2 requests per minute for deprecated payment endpoints
 
-const rateLimitStore = new Map<string, RateLimitEntry>();
-
-function createRateLimiter(maxRequests: number, windowMs: number) {
-  return (req: Request, res: Response, next: NextFunction) => {
-    const ip = req.ip || req.socket.remoteAddress || 'unknown';
-    const key = `${ip}:${req.path}`;
-    const now = Date.now();
-    
-    const entry = rateLimitStore.get(key);
-    
-    if (!entry || now >= entry.resetAt) {
-      rateLimitStore.set(key, { count: 1, resetAt: now + windowMs });
-      return next();
-    }
-    
-    if (entry.count >= maxRequests) {
-      const retryAfter = Math.ceil((entry.resetAt - now) / 1000);
-      res.setHeader('Retry-After', retryAfter.toString());
-      return res.status(429).json({ 
-        message: `Rate limit exceeded. Try again in ${retryAfter} seconds.`,
-        retryAfter 
-      });
-    }
-    
-    entry.count++;
-    return next();
-  };
-}
-
-// Rate limiter for portal payment endpoints: 5 requests per minute per IP
-const portalPaymentRateLimiter = createRateLimiter(5, 60 * 1000);
-
-// Stricter rate limiter for deprecated access-token payment endpoint: 2 requests per minute per IP
-const deprecatedPaymentRateLimiter = createRateLimiter(2, 60 * 1000);
-
-// Global rate limiter: 100 requests per 15 seconds per IP
-const globalRateLimiter = createRateLimiter(100, 15 * 1000);
+const portalPaymentRateLimiter = createRateLimiter(RATE_LIMIT_CONFIGS.public, (req) => req.ip || req.socket.remoteAddress || 'unknown');
+const deprecatedPaymentRateLimiter = createRateLimiter({ maxRequests: 2, windowMs: 60 * 1000 }, (req) => req.ip || req.socket.remoteAddress || 'unknown');
 
 // ============================================
 // JOB LOCKING FOR MULTI-INSTANCE DEPLOYMENT
@@ -272,16 +241,7 @@ async function withJobLock<T>(
   }
 }
 
-// Clean up old rate limit entries every 5 minutes
-setInterval(() => {
-  const now = Date.now();
-  const entries = Array.from(rateLimitStore.entries());
-  for (const [key, entry] of entries) {
-    if (now >= entry.resetAt) {
-      rateLimitStore.delete(key);
-    }
-  }
-}, 5 * 60 * 1000);
+// Rate limit cleanup is now handled automatically by the middleware (runs every minute)
 
 // Clean expired borrower sessions every hour (with job lock)
 setInterval(async () => {
@@ -445,14 +405,27 @@ export async function registerRoutes(
   });
   
   // ============================================
-  // GLOBAL RATE LIMITING (excludes health check above)
+  // RATE LIMITING MIDDLEWARE (excludes health check)
   // ============================================
+  // Applied in order of specificity, from most strict to least strict
+  
+  // Strict rate limit for expensive operations (AI, Stripe, Stripe Connect)
+  app.use("/api/ai", rateLimiters.strict);
+  app.use("/api/stripe", rateLimiters.strict);
+  
+  // Auth rate limit for login/register endpoints
+  app.use("/api/auth", rateLimiters.auth);
+  
+  // Public rate limit for borrower portal
+  app.use("/api/borrower", rateLimiters.public);
+  
+  // Default rate limit for all other /api routes
   app.use("/api", (req, res, next) => {
-    // Skip rate limiting for health check endpoint
-    if (req.path === "/health") {
+    // Skip rate limiting for health check endpoints
+    if (req.path.startsWith("/health")) {
       return next();
     }
-    return globalRateLimiter(req, res, next);
+    return rateLimiters.default(req, res, next);
   });
   
   // ============================================
