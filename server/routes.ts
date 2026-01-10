@@ -6855,6 +6855,144 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   });
 
   // ============================================
+  // STRIPE CONNECT (User Payment Acceptance)
+  // ============================================
+
+  api.post("/api/stripe/connect/link", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { stripeConnectService } = await import("./services/stripeConnect");
+      const org = (req as any).organization;
+      const user = req.user as any;
+      
+      const email = user?.claims?.email || req.body.email;
+      const businessName = org.name || req.body.businessName;
+      
+      if (!email) {
+        return res.status(400).json({ message: "Email is required" });
+      }
+      
+      const existing = await storage.getOrganizationIntegration(org.id, "stripe_connect");
+      
+      if (existing?.credentials?.stripeConnectAccountId) {
+        const accountLink = await stripeConnectService.createOnboardingLink(
+          existing.credentials.stripeConnectAccountId
+        );
+        return res.json({ 
+          accountId: existing.credentials.stripeConnectAccountId,
+          onboardingUrl: accountLink.url,
+          isExisting: true 
+        });
+      }
+      
+      const result = await stripeConnectService.createConnectedAccount(org.id, email, businessName);
+      res.json(result);
+    } catch (err: any) {
+      console.error("Stripe Connect link error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.get("/api/stripe/connect/status", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { stripeConnectService } = await import("./services/stripeConnect");
+      const org = (req as any).organization;
+      
+      const status = await stripeConnectService.getOrganizationConnectStatus(org.id);
+      res.json(status);
+    } catch (err: any) {
+      console.error("Stripe Connect status error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.post("/api/stripe/connect/refresh", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { stripeConnectService } = await import("./services/stripeConnect");
+      const org = (req as any).organization;
+      
+      const integration = await storage.getOrganizationIntegration(org.id, "stripe_connect");
+      
+      if (!integration?.credentials?.stripeConnectAccountId) {
+        return res.status(400).json({ message: "No Stripe Connect account found" });
+      }
+      
+      await stripeConnectService.updateAccountStatus(org.id, integration.credentials.stripeConnectAccountId);
+      const status = await stripeConnectService.getOrganizationConnectStatus(org.id);
+      
+      res.json(status);
+    } catch (err: any) {
+      console.error("Stripe Connect refresh error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.post("/api/stripe/connect/disconnect", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { stripeConnectService } = await import("./services/stripeConnect");
+      const org = (req as any).organization;
+      
+      await stripeConnectService.disconnectAccount(org.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("Stripe Connect disconnect error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.post("/api/stripe/connect/payment-intent", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { stripeConnectService } = await import("./services/stripeConnect");
+      const org = (req as any).organization;
+      const { amount, noteId, propertyId, paymentType, description } = req.body;
+      
+      if (!amount || amount <= 0) {
+        return res.status(400).json({ message: "Valid amount is required" });
+      }
+      
+      if (!paymentType || !["note_payment", "cash_sale", "down_payment"].includes(paymentType)) {
+        return res.status(400).json({ message: "Valid payment type is required" });
+      }
+      
+      const paymentIntent = await stripeConnectService.createPaymentIntent(
+        org.id,
+        Math.round(amount * 100),
+        "usd",
+        { noteId, propertyId, paymentType, description }
+      );
+      
+      res.json({
+        clientSecret: paymentIntent.client_secret,
+        paymentIntentId: paymentIntent.id,
+        amount: paymentIntent.amount,
+      });
+    } catch (err: any) {
+      console.error("Stripe payment intent error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.get("/api/stripe/connect/payment-link/:noteId", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { stripeConnectService } = await import("./services/stripeConnect");
+      const org = (req as any).organization;
+      const noteId = Number(req.params.noteId);
+      
+      const note = await storage.getNote(org.id, noteId);
+      if (!note) {
+        return res.status(404).json({ message: "Note not found" });
+      }
+      
+      const amount = Number(note.monthlyPayment);
+      const paymentLink = await stripeConnectService.getPaymentLink(org.id, noteId, amount);
+      
+      res.json({ paymentLink, amount });
+    } catch (err: any) {
+      console.error("Stripe payment link error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
   // BORROWER PORTAL (Public)
   // ============================================
   

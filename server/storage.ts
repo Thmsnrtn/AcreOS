@@ -3008,6 +3008,20 @@ export class DatabaseStorage implements IStorage {
       ));
   }
 
+  async findOrganizationIntegrationByCredential(
+    provider: string, 
+    credentialKey: string, 
+    credentialValue: string
+  ): Promise<OrganizationIntegration | undefined> {
+    const integrations = await db.select().from(organizationIntegrations)
+      .where(eq(organizationIntegrations.provider, provider));
+    
+    return integrations.find(integration => {
+      const credentials = integration.credentials as Record<string, unknown> | null;
+      return credentials && credentials[credentialKey] === credentialValue;
+    });
+  }
+
   async updateIntegrationValidation(orgId: number, provider: string, validatedAt: Date | null, error: string | null): Promise<void> {
     await db.update(organizationIntegrations)
       .set({

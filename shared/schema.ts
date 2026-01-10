@@ -167,7 +167,7 @@ export type ProvisionedPhoneNumber = typeof provisionedPhoneNumbers.$inferSelect
 export const organizationIntegrations = pgTable("organization_integrations", {
   id: serial("id").primaryKey(),
   organizationId: integer("organization_id").references(() => organizations.id).notNull(),
-  provider: text("provider").notNull(), // sendgrid, twilio, lob
+  provider: text("provider").notNull(), // sendgrid, twilio, lob, stripe_connect
   isEnabled: boolean("is_enabled").default(true),
   credentials: jsonb("credentials").$type<{
     encrypted?: string; // Encrypted JSON blob containing apiKey and other secrets
@@ -177,11 +177,26 @@ export const organizationIntegrations = pgTable("organization_integrations", {
     fromEmail?: string; // SendGrid default sender
     fromName?: string; // SendGrid default sender name
     fromPhoneNumber?: string; // Twilio default sender
+    // Stripe Connect fields
+    stripeConnectAccountId?: string; // Connected account ID (acct_xxx)
+    stripeConnectAccessToken?: string; // OAuth access token (if using OAuth flow)
+    stripeConnectRefreshToken?: string; // OAuth refresh token
   }>(),
   settings: jsonb("settings").$type<{
     testMode?: boolean;
     webhookSecret?: string;
     defaultTemplateId?: string;
+    // Stripe Connect settings
+    stripeConnectCapabilities?: {
+      cardPayments?: boolean;
+      transfers?: boolean;
+      achPayments?: boolean;
+    };
+    stripeConnectOnboardingComplete?: boolean;
+    stripeConnectPayoutsEnabled?: boolean;
+    stripeConnectChargesEnabled?: boolean;
+    stripeConnectDefaultCurrency?: string;
+    stripeApplicationFeePercent?: number; // Platform fee percentage (e.g., 2.5)
   }>(),
   lastValidatedAt: timestamp("last_validated_at"),
   validationError: text("validation_error"),
@@ -196,6 +211,43 @@ export const insertOrganizationIntegrationSchema = createInsertSchema(organizati
 });
 export type InsertOrganizationIntegration = z.infer<typeof insertOrganizationIntegrationSchema>;
 export type OrganizationIntegration = typeof organizationIntegrations.$inferSelect;
+
+// Borrower payment profiles - maps borrowers to Stripe Customer IDs for connected accounts
+export const borrowerPaymentProfiles = pgTable("borrower_payment_profiles", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  leadId: integer("lead_id").references(() => leads.id), // Borrower/buyer lead
+  noteId: integer("note_id"), // Associated note (if for note payments)
+  
+  // Stripe Customer on the connected account
+  stripeCustomerId: text("stripe_customer_id").notNull(), // cus_xxx on connected account
+  stripeConnectAccountId: text("stripe_connect_account_id").notNull(), // acct_xxx
+  
+  // Payment method storage
+  defaultPaymentMethodId: text("default_payment_method_id"), // pm_xxx
+  paymentMethodType: text("payment_method_type"), // card, us_bank_account
+  paymentMethodLast4: text("payment_method_last4"),
+  paymentMethodBrand: text("payment_method_brand"), // visa, mastercard, etc.
+  
+  // Autopay settings
+  autopayEnabled: boolean("autopay_enabled").default(false),
+  autopayDay: integer("autopay_day"), // Day of month for autopay (1-28)
+  
+  // Contact info for payment notifications
+  email: text("email"),
+  phone: text("phone"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertBorrowerPaymentProfileSchema = createInsertSchema(borrowerPaymentProfiles).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertBorrowerPaymentProfile = z.infer<typeof insertBorrowerPaymentProfileSchema>;
+export type BorrowerPaymentProfile = typeof borrowerPaymentProfiles.$inferSelect;
 
 // ============================================
 // CRM: LEADS & CONTACTS
