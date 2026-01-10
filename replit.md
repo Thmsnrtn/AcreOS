@@ -37,6 +37,8 @@ Preferred communication style: Simple, everyday language.
 - **Saved Views**: Reusable filtered views with sorting and column visibility.
 - **AI Agents**: Four core agents (Research & Intelligence, Deals & Acquisition, Communications, Operations) using DataSourceBroker and OpenAI (gpt-4o).
 - **AI Section**: Conversational AI interface (`/command-center` or `/ai`) with task management and real-time status.
+- **AI Context Aggregator**: Real-time system snapshot service providing full awareness across all modules (leads, properties, deals, tasks, campaigns) with 60-second caching and automatic invalidation on writes.
+- **Cross-Module AI Operations**: Executive assistant (Atlas) can create/update properties, deals, and tasks from any page, with background job execution support.
 - **Founder Dashboard**: Analytics for revenue, system health, agent status, user analytics, bulk alerts, and data endpoint health.
 - **Team Performance Dashboard**: Aggregated metrics for leads, deals, tasks, and activity.
 - **Navigation**: Consolidated sidebar and tabbed hub pages with URL hash.
