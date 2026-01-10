@@ -7,6 +7,24 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
   res.setHeader("Permissions-Policy", "geolocation=(), microphone=(), camera=()");
   
+  // CSP directives - Note: 'unsafe-inline'/'unsafe-eval' required for React/Vite apps
+  // Consider nonce-based CSP in future for stricter policy
+  const cspDirectives = [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://api.mapbox.com",
+    "style-src 'self' 'unsafe-inline' https://api.mapbox.com",
+    "img-src 'self' data: blob: https: http:",
+    "font-src 'self' data:",
+    "connect-src 'self' https://api.stripe.com https://api.mapbox.com https://events.mapbox.com wss: ws:",
+    "frame-src 'self' https://js.stripe.com https://hooks.stripe.com",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+    "upgrade-insecure-requests"
+  ];
+  res.setHeader("Content-Security-Policy", cspDirectives.join("; "));
+  
   if (process.env.NODE_ENV === "production") {
     res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
   }

@@ -210,7 +210,16 @@ The API includes the following security headers:
 - `X-Frame-Options: DENY`
 - `X-XSS-Protection: 1; mode=block`
 - `Referrer-Policy: strict-origin-when-cross-origin`
+- `Permissions-Policy: geolocation=(), microphone=(), camera=()`
 - `Strict-Transport-Security: max-age=31536000` (production only)
+
+### Content Security Policy
+The API enforces a Content Security Policy (CSP) that:
+- Restricts scripts to 'self' and trusted domains (Stripe, Mapbox)
+- Prevents clickjacking via `frame-ancestors 'none'`
+- Blocks object embeds via `object-src 'none'`
+- Restricts form submissions to 'self'
+- Upgrades insecure requests in production
 
 ### Input Validation
 All inputs are validated using Zod schemas. Invalid inputs return a 400 error with field-level error messages.
