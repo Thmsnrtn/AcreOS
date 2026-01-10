@@ -319,6 +319,9 @@ const upload = multer({
   },
 });
 
+// Founder email - gets unlimited credits and enterprise access
+const FOUNDER_EMAIL = "mark@acretrader.io";
+
 // Middleware to get/create organization for authenticated user
 async function getOrCreateOrg(req: Request, res: Response, next: NextFunction) {
   if (!req.user) {
@@ -328,11 +331,15 @@ async function getOrCreateOrg(req: Request, res: Response, next: NextFunction) {
   // Get user ID from Replit Auth claims
   const user = req.user as any;
   const userId = user.claims?.sub || user.id;
+  const userEmail = user.claims?.email || user.email;
   
   if (!userId) {
     console.error("No user ID found in session:", user);
     return res.status(401).json({ message: "Invalid user session" });
   }
+  
+  // Check if this is the founder account
+  const isFounderAccount = userEmail?.toLowerCase() === FOUNDER_EMAIL.toLowerCase();
   
   let org = await storage.getOrganizationByOwner(userId);
   
@@ -342,15 +349,18 @@ async function getOrCreateOrg(req: Request, res: Response, next: NextFunction) {
     const slug = `org-${userId}-${Date.now()}`;
     const now = new Date();
     const trialEnds = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days from now
+    
+    // Founders get enterprise tier and unlimited access
     org = await storage.createOrganization({
       name: `${displayName}'s Organization`,
       slug,
       ownerId: userId,
-      subscriptionTier: "free",
+      subscriptionTier: isFounderAccount ? "enterprise" : "free",
       subscriptionStatus: "active",
-      trialStartedAt: now,
-      trialEndsAt: trialEnds,
-      trialUsed: false,
+      trialStartedAt: isFounderAccount ? null : now,
+      trialEndsAt: isFounderAccount ? null : trialEnds,
+      trialUsed: isFounderAccount ? true : false,
+      isFounder: isFounderAccount,
     });
     
     // Add user as owner team member
@@ -361,6 +371,19 @@ async function getOrCreateOrg(req: Request, res: Response, next: NextFunction) {
       role: "owner",
       isActive: true,
     });
+    
+    if (isFounderAccount) {
+      console.log(`[Founder] Created founder organization for ${userEmail}`);
+    }
+  } else if (isFounderAccount && !org.isFounder) {
+    // Update existing org to founder status if they're the founder
+    await db.update(organizations).set({ 
+      isFounder: true,
+      subscriptionTier: "enterprise",
+      subscriptionStatus: "active"
+    }).where(eq(organizations.id, org.id));
+    org = { ...org, isFounder: true, subscriptionTier: "enterprise", subscriptionStatus: "active" };
+    console.log(`[Founder] Upgraded existing organization to founder status for ${userEmail}`);
   }
   
   (req as any).organization = org;

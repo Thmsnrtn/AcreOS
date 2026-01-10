@@ -5,10 +5,20 @@
  * Founders have unrestricted access to all features, bypassing tier/usage limits
  */
 
-const FOUNDER_EMAILS = (process.env.FOUNDER_EMAILS || "")
+// Hardcoded founder email - always has founder access
+const PRIMARY_FOUNDER_EMAIL = "mark@acretrader.io";
+
+// Additional founder emails from environment variable
+const ADDITIONAL_FOUNDER_EMAILS = (process.env.FOUNDER_EMAILS || "")
   .split(",")
   .map((email) => email.trim().toLowerCase())
   .filter(Boolean);
+
+// Combined list of all founder emails
+const FOUNDER_EMAILS = [
+  PRIMARY_FOUNDER_EMAIL.toLowerCase(),
+  ...ADDITIONAL_FOUNDER_EMAILS
+];
 
 /**
  * Check if an email belongs to a founder account
