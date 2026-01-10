@@ -106,6 +106,9 @@ import {
   type UserPermissionContext
 } from "./utils/permissions";
 
+// AI Operations Routes
+import { registerAIOperationsRoutes } from "./routes-ai-operations";
+
 // ============================================
 // STRUCTURED LOGGER
 // ============================================
@@ -17264,6 +17267,8 @@ Seller Signature (if applicable)
       res.status(500).send("Webhook processing error");
     }
   });
+
+  registerAIOperationsRoutes(api);
 
   return httpServer;
 }
