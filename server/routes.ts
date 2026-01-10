@@ -536,6 +536,40 @@ export async function registerRoutes(
     }
   });
   
+  // Get provider status (AI, SMS, Mail providers)
+  api.get("/api/organization/providers", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { getProviderStatus } = await import("./services/aiRouter");
+      const { getProviderInfo: getSmsProviderInfo } = await import("./services/smsProvider");
+      const { getProviderInfo: getMailProviderInfo } = await import("./services/mailProvider");
+      
+      const aiStatus = getProviderStatus();
+      const smsInfo = getSmsProviderInfo();
+      const mailInfo = getMailProviderInfo();
+      
+      res.json({
+        ai: {
+          openai: aiStatus.openai,
+          openrouter: aiStatus.openrouter,
+          defaultTier: aiStatus.openrouter ? "economy" : "premium",
+        },
+        sms: {
+          available: smsInfo.available,
+          default: smsInfo.default,
+          costs: smsInfo.costs,
+        },
+        mail: {
+          available: mailInfo.available,
+          default: mailInfo.default,
+          costs: mailInfo.costs,
+        },
+      });
+    } catch (error: any) {
+      console.error("Get provider status error:", error);
+      res.status(500).json({ message: error.message || "Failed to get provider status" });
+    }
+  });
+  
   // Get seat information for the organization
   api.get("/api/organization/seats", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
@@ -8501,6 +8535,151 @@ Seller Signature (if applicable)
       res.json(stats);
     } catch (err: any) {
       console.error("API usage stats error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GIS Data Source Health Dashboard
+  api.get("/api/founder/gis-health", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { getEndpointStats } = await import("./services/gisValidation");
+      const stats = await getEndpointStats();
+      res.json(stats);
+    } catch (err: any) {
+      console.error("GIS health stats error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Run sample GIS validation (quick test of 20 random endpoints)
+  api.post("/api/founder/gis-validate-sample", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { validateSampleEndpoints } = await import("./services/gisValidation");
+      const sampleSize = Math.min(req.body.sampleSize || 20, 50);
+      const result = await validateSampleEndpoints(sampleSize);
+      res.json(result);
+    } catch (err: any) {
+      console.error("GIS sample validation error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Run full GIS validation (test all endpoints - runs as background job for large datasets)
+  api.post("/api/founder/gis-validate-all", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { validateAllEndpoints, getEndpointStats, startValidationJob } = await import("./services/gisValidation");
+      const { stateFilter, maxConcurrent = 10, async: runAsync = false } = req.body;
+      
+      const stats = await getEndpointStats();
+      const estimatedCount = stateFilter ? Math.ceil(stats.activeEndpoints / stats.statesCovered) : stats.activeEndpoints;
+      
+      if (estimatedCount > 100 && !stateFilter) {
+        const jobResult = await startValidationJob({ stateFilter, maxConcurrent: Math.min(maxConcurrent, 15) });
+        return res.json({
+          ...jobResult,
+          async: true,
+          estimatedTimeMinutes: Math.ceil(estimatedCount / 10 / 6),
+        });
+      }
+      
+      if (runAsync) {
+        const jobResult = await startValidationJob({ stateFilter, maxConcurrent: Math.min(maxConcurrent, 15) });
+        return res.json({
+          ...jobResult,
+          async: true,
+        });
+      }
+      
+      const result = await validateAllEndpoints({ 
+        stateFilter, 
+        maxConcurrent: Math.min(maxConcurrent, 15),
+        timeoutMs: 8000,
+      });
+      res.json(result);
+    } catch (err: any) {
+      console.error("GIS full validation error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Get GIS validation job status
+  api.get("/api/founder/gis-job/:jobId", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { getValidationJob } = await import("./services/gisValidation");
+      const job = getValidationJob(req.params.jobId);
+      
+      if (!job) {
+        return res.status(404).json({ message: "Job not found" });
+      }
+      
+      const includeFullResults = req.query.full === "true" || job.status === "completed";
+      
+      res.json({
+        id: job.id,
+        status: job.status,
+        startedAt: job.startedAt,
+        completedAt: job.completedAt,
+        progress: {
+          completed: job.completed,
+          total: job.total,
+          percent: job.total > 0 ? Math.round((job.completed / job.total) * 100) : 0,
+        },
+        stateFilter: job.stateFilter,
+        summary: job.summary,
+        error: job.error,
+        results: includeFullResults ? job.results : undefined,
+        resultsPreview: !includeFullResults ? job.results.slice(-10) : undefined,
+      });
+    } catch (err: any) {
+      console.error("GIS job status error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // List recent GIS validation jobs
+  api.get("/api/founder/gis-jobs", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { getAllValidationJobs } = await import("./services/gisValidation");
+      const jobs = getAllValidationJobs().map(job => ({
+        id: job.id,
+        status: job.status,
+        startedAt: job.startedAt,
+        completedAt: job.completedAt,
+        total: job.total,
+        completed: job.completed,
+        stateFilter: job.stateFilter,
+        onlineCount: job.summary?.online,
+      }));
+      res.json(jobs);
+    } catch (err: any) {
+      console.error("GIS jobs list error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Get county GIS endpoints with their status
+  api.get("/api/founder/gis-endpoints", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { state } = req.query;
+      const endpoints = await db.select().from(countyGisEndpoints);
+      
+      const filtered = state 
+        ? endpoints.filter(e => e.state.toUpperCase() === String(state).toUpperCase())
+        : endpoints;
+      
+      const grouped = filtered.reduce((acc, e) => {
+        if (!acc[e.state]) acc[e.state] = [];
+        acc[e.state].push(e);
+        return acc;
+      }, {} as Record<string, typeof endpoints>);
+      
+      res.json({
+        total: filtered.length,
+        byState: grouped,
+        states: Object.keys(grouped).sort(),
+      });
+    } catch (err: any) {
+      console.error("GIS endpoints error:", err);
       res.status(500).json({ message: err.message });
     }
   });
