@@ -1,7 +1,175 @@
 import type { Express, Request, Response, NextFunction, Router } from "express";
 import { Router as createRouter } from "express";
+import { z } from "zod";
 import { isAuthenticated } from "./replit_integrations/auth";
 import { storage } from "./storage";
+
+// ============================================
+// VALIDATION SCHEMAS
+// ============================================
+
+// Due Diligence
+const dueDiligenceRequestSchema = z.object({
+  propertyId: z.number({ required_error: "propertyId is required" }),
+  leadId: z.number().optional(),
+  priorityLevel: z.enum(["normal", "high", "urgent"]).optional(),
+});
+
+// Intent
+const intentPredictSchema = z.object({
+  leadId: z.number({ required_error: "leadId is required" }),
+  propertyId: z.number().optional(),
+});
+
+// Pricing
+const pricingAcquisitionSchema = z.object({
+  propertyId: z.number({ required_error: "propertyId is required" }),
+  targetMargin: z.number().optional(),
+});
+
+const pricingDispositionSchema = z.object({
+  propertyId: z.number({ required_error: "propertyId is required" }),
+  quickSale: z.boolean().optional(),
+});
+
+const pricingOptimizeSchema = z.object({
+  propertyId: z.number({ required_error: "propertyId is required" }),
+  sellerAskingPrice: z.number().optional(),
+  dealType: z.enum(["acquisition", "disposition"]).optional(),
+});
+
+// Patterns
+const patternAnalyzeSchema = z.object({
+  dealId: z.number({ required_error: "dealId is required" }),
+});
+
+// Negotiation
+const negotiationSessionSchema = z.object({
+  dealId: z.number({ required_error: "dealId is required" }),
+  leadId: z.number().optional(),
+  initialOffer: z.number().optional(),
+  sellerAsk: z.number().optional(),
+});
+
+const negotiationObjectionSchema = z.object({
+  sessionId: z.number({ required_error: "sessionId is required" }),
+  objectionText: z.string({ required_error: "objectionText is required" }),
+});
+
+// Sequences
+const sequencePerformanceSchema = z.object({
+  messageId: z.number().optional(),
+  templateId: z.number().optional(),
+  opened: z.boolean().optional(),
+  clicked: z.boolean().optional(),
+  replied: z.boolean().optional(),
+  sentAt: z.string().optional(),
+});
+
+// Voice
+const voiceRecordSchema = z.object({
+  leadId: z.number({ required_error: "leadId is required" }),
+  audioUrl: z.string().optional(),
+  transcriptText: z.string().optional(),
+  callDuration: z.number().optional(),
+});
+
+// Portfolio
+const portfolioMonitorSchema = z.object({
+  propertyId: z.number({ required_error: "propertyId is required" }),
+});
+
+const portfolioAlertUpdateSchema = z.object({
+  action: z.enum(["acknowledge", "resolve", "dismiss"], { required_error: "action is required" }),
+  resolution: z.string().optional(),
+  userId: z.string().optional(),
+});
+
+// Documents
+const documentAnalyzeSchema = z.object({
+  propertyId: z.number().optional(),
+  documentType: z.string().optional(),
+  content: z.string().optional(),
+  sourceUrl: z.string().optional(),
+});
+
+// Cashflow
+const cashflowForecastSchema = z.object({
+  noteIds: z.array(z.number()).optional(),
+  months: z.number().optional().default(12),
+});
+
+// Compliance
+const complianceRuleSchema = z.object({
+  state: z.string({ required_error: "state is required" }),
+  county: z.string().optional(),
+  ruleType: z.enum(["document_requirements", "disclosure_rules", "timing_restrictions", "recording_requirements", "tax_rules"], { required_error: "ruleType is required" }),
+  description: z.string({ required_error: "description is required" }),
+  requirements: z.array(z.string()).optional(),
+  penalties: z.string().optional(),
+});
+
+const complianceCheckSchema = z.object({
+  propertyId: z.number({ required_error: "propertyId is required" }),
+});
+
+// Buyer Matching
+const buyerProfileSchema = z.object({
+  leadId: z.number().optional(),
+  targetCounties: z.array(z.string()).optional(),
+  priceRangeMin: z.number().optional(),
+  priceRangeMax: z.number().optional(),
+  acreageMin: z.number().optional(),
+  acreageMax: z.number().optional(),
+  financing: z.boolean().optional(),
+});
+
+const buyerMatchSchema = z.object({
+  propertyId: z.number({ required_error: "propertyId is required" }),
+});
+
+// Buyer Qualification
+const buyerQualifySchema = z.object({
+  buyerProfileId: z.number({ required_error: "buyerProfileId is required" }),
+});
+
+// Disposition
+const dispositionRecommendSchema = z.object({
+  propertyId: z.number({ required_error: "propertyId is required" }),
+});
+
+// ============================================
+// VALIDATION HELPERS
+// ============================================
+
+function validateRequest<T extends z.ZodSchema>(schema: T) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const result = schema.safeParse(req.body);
+    if (!result.success) {
+      const errors = result.error.issues.map((issue) => ({
+        field: issue.path.join("."),
+        message: issue.message,
+      }));
+      return res.status(400).json({ message: "Validation failed", errors });
+    }
+    req.body = result.data;
+    next();
+  };
+}
+
+function validateNumericParam(paramName: string) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const value = req.params[paramName];
+    const parsed = parseInt(value, 10);
+    if (isNaN(parsed)) {
+      return res.status(400).json({
+        message: "Validation failed",
+        errors: [{ field: paramName, message: `${paramName} must be a valid number` }],
+      });
+    }
+    next();
+  };
+}
 
 function generateSlug(name: string): string {
   const baseSlug = name
@@ -43,7 +211,7 @@ export function registerAIOperationsRoutes(app: Express): void {
   // ============================================
   // DUE DILIGENCE PODS - /api/ai/due-diligence
   // ============================================
-  router.post("/due-diligence/request", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  router.post("/due-diligence/request", isAuthenticated, getOrCreateOrg, validateRequest(dueDiligenceRequestSchema), async (req, res) => {
     try {
       const org = (req as any).organization;
       const { propertyId, leadId, priorityLevel } = req.body;
@@ -58,7 +226,7 @@ export function registerAIOperationsRoutes(app: Express): void {
     }
   });
 
-  router.get("/due-diligence/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  router.get("/due-diligence/:id", isAuthenticated, getOrCreateOrg, validateNumericParam("id"), async (req, res) => {
     try {
       const dossierId = parseInt(req.params.id);
       
@@ -78,7 +246,7 @@ export function registerAIOperationsRoutes(app: Express): void {
   // ============================================
   // SELLER INTENT PREDICTOR - /api/ai/intent
   // ============================================
-  router.post("/intent/predict", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  router.post("/intent/predict", isAuthenticated, getOrCreateOrg, validateRequest(intentPredictSchema), async (req, res) => {
     try {
       const org = (req as any).organization;
       const { leadId, propertyId } = req.body;
@@ -93,7 +261,7 @@ export function registerAIOperationsRoutes(app: Express): void {
     }
   });
 
-  router.get("/intent/lead/:leadId", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  router.get("/intent/lead/:leadId", isAuthenticated, getOrCreateOrg, validateNumericParam("leadId"), async (req, res) => {
     try {
       const org = (req as any).organization;
       const leadId = parseInt(req.params.leadId);
@@ -111,7 +279,7 @@ export function registerAIOperationsRoutes(app: Express): void {
   // ============================================
   // PRICE OPTIMIZER - /api/ai/pricing
   // ============================================
-  router.post("/pricing/acquisition", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  router.post("/pricing/acquisition", isAuthenticated, getOrCreateOrg, validateRequest(pricingAcquisitionSchema), async (req, res) => {
     try {
       const org = (req as any).organization;
       const { propertyId, targetMargin } = req.body;
@@ -126,7 +294,7 @@ export function registerAIOperationsRoutes(app: Express): void {
     }
   });
 
-  router.post("/pricing/disposition", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  router.post("/pricing/disposition", isAuthenticated, getOrCreateOrg, validateRequest(pricingDispositionSchema), async (req, res) => {
     try {
       const org = (req as any).organization;
       const { propertyId, quickSale } = req.body;
@@ -141,14 +309,10 @@ export function registerAIOperationsRoutes(app: Express): void {
     }
   });
 
-  router.post("/pricing/optimize", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  router.post("/pricing/optimize", isAuthenticated, getOrCreateOrg, validateRequest(pricingOptimizeSchema), async (req, res) => {
     try {
       const org = (req as any).organization;
       const { propertyId, sellerAskingPrice, dealType } = req.body;
-      
-      if (!propertyId) {
-        return res.status(400).json({ message: "propertyId is required" });
-      }
       
       const { priceOptimizerService } = await import("./services/priceOptimizer");
       const { properties } = await import("@shared/schema");
@@ -208,7 +372,7 @@ export function registerAIOperationsRoutes(app: Express): void {
   // ============================================
   // DEAL PATTERN CLONING - /api/ai/patterns
   // ============================================
-  router.post("/patterns/analyze", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  router.post("/patterns/analyze", isAuthenticated, getOrCreateOrg, validateRequest(patternAnalyzeSchema), async (req, res) => {
     try {
       const org = (req as any).organization;
       const { dealId } = req.body;
@@ -223,7 +387,7 @@ export function registerAIOperationsRoutes(app: Express): void {
     }
   });
 
-  router.get("/patterns/match/:propertyId", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  router.get("/patterns/match/:propertyId", isAuthenticated, getOrCreateOrg, validateNumericParam("propertyId"), async (req, res) => {
     try {
       const org = (req as any).organization;
       const propertyId = parseInt(req.params.propertyId);
@@ -241,7 +405,7 @@ export function registerAIOperationsRoutes(app: Express): void {
   // ============================================
   // NEGOTIATION COPILOT - /api/ai/negotiation
   // ============================================
-  router.post("/negotiation/session", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  router.post("/negotiation/session", isAuthenticated, getOrCreateOrg, validateRequest(negotiationSessionSchema), async (req, res) => {
     try {
       const org = (req as any).organization;
       const { dealId, leadId, initialOffer, sellerAsk } = req.body;
@@ -256,7 +420,7 @@ export function registerAIOperationsRoutes(app: Express): void {
     }
   });
 
-  router.post("/negotiation/objection", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  router.post("/negotiation/objection", isAuthenticated, getOrCreateOrg, validateRequest(negotiationObjectionSchema), async (req, res) => {
     try {
       const org = (req as any).organization;
       const { sessionId, objectionText } = req.body;
@@ -271,7 +435,7 @@ export function registerAIOperationsRoutes(app: Express): void {
     }
   });
 
-  router.get("/negotiation/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  router.get("/negotiation/:id", isAuthenticated, getOrCreateOrg, validateNumericParam("id"), async (req, res) => {
     try {
       const org = (req as any).organization;
       const dealId = parseInt(req.params.id);
@@ -289,7 +453,7 @@ export function registerAIOperationsRoutes(app: Express): void {
   // ============================================
   // SEQUENCE OPTIMIZER - /api/ai/sequences
   // ============================================
-  router.post("/sequences/performance", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  router.post("/sequences/performance", isAuthenticated, getOrCreateOrg, validateRequest(sequencePerformanceSchema), async (req, res) => {
     try {
       const org = (req as any).organization;
       const performanceData = req.body;
@@ -304,7 +468,7 @@ export function registerAIOperationsRoutes(app: Express): void {
     }
   });
 
-  router.get("/sequences/:sequenceId/analysis", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  router.get("/sequences/:sequenceId/analysis", isAuthenticated, getOrCreateOrg, validateNumericParam("sequenceId"), async (req, res) => {
     try {
       const org = (req as any).organization;
       const sequenceId = parseInt(req.params.sequenceId);
@@ -322,7 +486,7 @@ export function registerAIOperationsRoutes(app: Express): void {
   // ============================================
   // VOICE CALL AI - /api/ai/voice
   // ============================================
-  router.post("/voice/record", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  router.post("/voice/record", isAuthenticated, getOrCreateOrg, validateRequest(voiceRecordSchema), async (req, res) => {
     try {
       const org = (req as any).organization;
       const callData = req.body;
@@ -337,7 +501,7 @@ export function registerAIOperationsRoutes(app: Express): void {
     }
   });
 
-  router.get("/voice/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  router.get("/voice/:id", isAuthenticated, getOrCreateOrg, validateNumericParam("id"), async (req, res) => {
     try {
       const org = (req as any).organization;
       const leadId = parseInt(req.params.id);
@@ -355,7 +519,7 @@ export function registerAIOperationsRoutes(app: Express): void {
   // ============================================
   // PORTFOLIO SENTINEL - /api/ai/portfolio
   // ============================================
-  router.post("/portfolio/monitor", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  router.post("/portfolio/monitor", isAuthenticated, getOrCreateOrg, validateRequest(portfolioMonitorSchema), async (req, res) => {
     try {
       const org = (req as any).organization;
       const { propertyId } = req.body;
@@ -390,7 +554,7 @@ export function registerAIOperationsRoutes(app: Express): void {
     }
   });
 
-  router.patch("/portfolio/alerts/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  router.patch("/portfolio/alerts/:id", isAuthenticated, getOrCreateOrg, validateNumericParam("id"), validateRequest(portfolioAlertUpdateSchema), async (req, res) => {
     try {
       const org = (req as any).organization;
       const alertId = parseInt(req.params.id);
@@ -433,7 +597,7 @@ export function registerAIOperationsRoutes(app: Express): void {
   // ============================================
   // DOCUMENT INTELLIGENCE - /api/ai/documents
   // ============================================
-  router.post("/documents/analyze", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  router.post("/documents/analyze", isAuthenticated, getOrCreateOrg, validateRequest(documentAnalyzeSchema), async (req, res) => {
     try {
       const org = (req as any).organization;
       const documentData = req.body;
@@ -448,7 +612,7 @@ export function registerAIOperationsRoutes(app: Express): void {
     }
   });
 
-  router.get("/documents/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  router.get("/documents/:id", isAuthenticated, getOrCreateOrg, validateNumericParam("id"), async (req, res) => {
     try {
       const org = (req as any).organization;
       const propertyId = parseInt(req.params.id);
@@ -466,7 +630,7 @@ export function registerAIOperationsRoutes(app: Express): void {
   // ============================================
   // CASH FLOW FORECASTER - /api/ai/cashflow
   // ============================================
-  router.post("/cashflow/forecast", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  router.post("/cashflow/forecast", isAuthenticated, getOrCreateOrg, validateRequest(cashflowForecastSchema), async (req, res) => {
     try {
       const org = (req as any).organization;
       const forecastParams = req.body;
@@ -498,7 +662,7 @@ export function registerAIOperationsRoutes(app: Express): void {
   // ============================================
   // COMPLIANCE GUARDIAN - /api/ai/compliance
   // ============================================
-  router.post("/compliance/rules", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  router.post("/compliance/rules", isAuthenticated, getOrCreateOrg, validateRequest(complianceRuleSchema), async (req, res) => {
     try {
       const ruleData = req.body;
       
@@ -528,7 +692,7 @@ export function registerAIOperationsRoutes(app: Express): void {
     }
   });
 
-  router.post("/compliance/check", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  router.post("/compliance/check", isAuthenticated, getOrCreateOrg, validateRequest(complianceCheckSchema), async (req, res) => {
     try {
       const org = (req as any).organization;
       const { propertyId } = req.body;
@@ -546,7 +710,7 @@ export function registerAIOperationsRoutes(app: Express): void {
   // ============================================
   // BUYER MATCHING AI - /api/ai/buyer-matching
   // ============================================
-  router.post("/buyer-matching/profile", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  router.post("/buyer-matching/profile", isAuthenticated, getOrCreateOrg, validateRequest(buyerProfileSchema), async (req, res) => {
     try {
       const org = (req as any).organization;
       const params = req.body;
@@ -561,7 +725,7 @@ export function registerAIOperationsRoutes(app: Express): void {
     }
   });
 
-  router.post("/buyer-matching/match", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  router.post("/buyer-matching/match", isAuthenticated, getOrCreateOrg, validateRequest(buyerMatchSchema), async (req, res) => {
     try {
       const org = (req as any).organization;
       const { propertyId } = req.body;
@@ -579,7 +743,7 @@ export function registerAIOperationsRoutes(app: Express): void {
   // ============================================
   // BUYER QUALIFICATION BOT - /api/ai/buyer-qualification
   // ============================================
-  router.post("/buyer-qualification/qualify", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  router.post("/buyer-qualification/qualify", isAuthenticated, getOrCreateOrg, validateRequest(buyerQualifySchema), async (req, res) => {
     try {
       const org = (req as any).organization;
       const { buyerProfileId } = req.body;
@@ -594,7 +758,7 @@ export function registerAIOperationsRoutes(app: Express): void {
     }
   });
 
-  router.get("/buyer-qualification/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  router.get("/buyer-qualification/:id", isAuthenticated, getOrCreateOrg, validateNumericParam("id"), async (req, res) => {
     try {
       const qualificationId = parseInt(req.params.id);
       
@@ -614,7 +778,7 @@ export function registerAIOperationsRoutes(app: Express): void {
   // ============================================
   // DISPOSITION OPTIMIZER - /api/ai/disposition
   // ============================================
-  router.post("/disposition/recommend", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  router.post("/disposition/recommend", isAuthenticated, getOrCreateOrg, validateRequest(dispositionRecommendSchema), async (req, res) => {
     try {
       const org = (req as any).organization;
       const { propertyId } = req.body;
@@ -629,7 +793,7 @@ export function registerAIOperationsRoutes(app: Express): void {
     }
   });
 
-  router.get("/disposition/property/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  router.get("/disposition/property/:id", isAuthenticated, getOrCreateOrg, validateNumericParam("id"), async (req, res) => {
     try {
       const org = (req as any).organization;
       const propertyId = parseInt(req.params.id);

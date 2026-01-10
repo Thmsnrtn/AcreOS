@@ -24,6 +24,12 @@ import {
   insertCollectionSequenceSchema, insertCollectionEnrollmentSchema, insertCountyResearchSchema,
   offers, organizationIntegrations,
 } from "@shared/schema";
+
+// Partial update schemas for PUT endpoints
+const updateLeadSchema = insertLeadSchema.partial().omit({ organizationId: true });
+const updatePropertySchema = insertPropertySchema.partial().omit({ organizationId: true });
+const updateDealSchema = insertDealSchema.partial().omit({ organizationId: true });
+
 import { 
   workflowEngine, 
   emitLeadEvent, 
@@ -413,29 +419,28 @@ export async function registerRoutes(
   // HEALTH CHECK (Public endpoint for monitoring - no rate limiting)
   // ============================================
   app.get("/api/health", async (req, res) => {
-    const uptimeSeconds = Math.floor((Date.now() - serverStartTime) / 1000);
-    let dbStatus: "connected" | "disconnected" = "disconnected";
-    
-    try {
-      await db.execute(sql`SELECT 1`);
-      dbStatus = "connected";
-    } catch (error: any) {
-      logger.error("Health check database connection failed", { error: error.message });
+    const { healthCheckService } = await import("./services/healthCheck");
+    const result = await healthCheckService.checkAll();
+    res.json(result);
+  });
+  
+  app.get("/api/health/cached", async (req, res) => {
+    const { healthCheckService } = await import("./services/healthCheck");
+    const result = healthCheckService.getLastResults();
+    if (!result) {
+      const freshResult = await healthCheckService.checkAll();
+      return res.json(freshResult);
     }
-    
-    const healthResponse = {
-      status: dbStatus === "connected" ? "healthy" : "unhealthy",
-      timestamp: new Date().toISOString(),
-      uptime: uptimeSeconds,
-      database: dbStatus,
-      version: "1.0.0",
-    };
-    
-    if (dbStatus === "disconnected") {
-      return res.status(503).json(healthResponse);
+    res.json(result);
+  });
+  
+  app.get("/api/health/:service", async (req, res) => {
+    const { healthCheckService } = await import("./services/healthCheck");
+    const service = await healthCheckService.checkService(req.params.service);
+    if (!service) {
+      return res.status(404).json({ message: "Unknown service" });
     }
-    
-    res.json(healthResponse);
+    res.json(service);
   });
   
   // ============================================
@@ -1228,61 +1233,75 @@ export async function registerRoutes(
       res.status(201).json(lead);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json({ 
+          message: "Validation failed", 
+          errors: err.errors.map(e => ({ field: e.path.join('.'), message: e.message }))
+        });
       }
       throw err;
     }
   });
   
   api.put("/api/leads/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
-    const leadId = Number(req.params.id);
-    
-    const existingLead = await storage.getLead(org.id, leadId);
-    if (!existingLead) return res.status(404).json({ message: "Lead not found" });
-    
-    const lead = await storage.updateLead(leadId, req.body);
-    
-    const user = req.user as any;
-    const userId = user?.claims?.sub || user?.id;
-    await storage.createAuditLogEntry({
-      organizationId: org.id,
-      userId,
-      action: "update",
-      entityType: "lead",
-      entityId: leadId,
-      changes: { before: existingLead, after: lead, fields: Object.keys(req.body) },
-      ipAddress: req.ip || req.socket?.remoteAddress,
-      userAgent: req.headers["user-agent"],
-    });
-    
-    const { score, factors } = leadNurturerService.calculateLeadScore(lead!);
-    const nurturingStage = leadNurturerService.segmentLead(score);
-    
-    await storage.updateLeadScore(leadId, score, factors);
-    
-    const { latitude, longitude } = req.body;
-    if (latitude && longitude) {
-      Promise.resolve().then(async () => {
-        try {
-          await propertyEnrichmentService.enrichLead(
-            org.id,
-            leadId,
-            { latitude: parseFloat(latitude), longitude: parseFloat(longitude) }
-          );
-          logger.info("Lead enrichment completed", { leadId, organizationId: org.id });
-        } catch (err) {
-          logger.error("Lead enrichment failed", { leadId, error: (err as Error).message });
-        }
+    try {
+      const org = (req as any).organization;
+      const leadId = Number(req.params.id);
+      
+      const existingLead = await storage.getLead(org.id, leadId);
+      if (!existingLead) return res.status(404).json({ message: "Lead not found" });
+      
+      const validated = updateLeadSchema.parse(req.body);
+      const lead = await storage.updateLead(leadId, validated);
+      
+      const user = req.user as any;
+      const userId = user?.claims?.sub || user?.id;
+      await storage.createAuditLogEntry({
+        organizationId: org.id,
+        userId,
+        action: "update",
+        entityType: "lead",
+        entityId: leadId,
+        changes: { before: existingLead, after: lead, fields: Object.keys(validated) },
+        ipAddress: req.ip || req.socket?.remoteAddress,
+        userAgent: req.headers["user-agent"],
       });
+      
+      const { score, factors } = leadNurturerService.calculateLeadScore(lead!);
+      const nurturingStage = leadNurturerService.segmentLead(score);
+      
+      await storage.updateLeadScore(leadId, score, factors);
+      
+      const { latitude, longitude } = validated;
+      if (latitude && longitude) {
+        Promise.resolve().then(async () => {
+          try {
+            await propertyEnrichmentService.enrichLead(
+              org.id,
+              leadId,
+              { latitude: parseFloat(latitude), longitude: parseFloat(longitude) }
+            );
+            logger.info("Lead enrichment completed", { leadId, organizationId: org.id });
+          } catch (err) {
+            logger.error("Lead enrichment failed", { leadId, error: (err as Error).message });
+          }
+        });
+      }
+      
+      res.json({
+        ...lead,
+        score,
+        scoreFactors: factors,
+        nurturingStage,
+      });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Validation failed", 
+          errors: err.errors.map(e => ({ field: e.path.join('.'), message: e.message }))
+        });
+      }
+      throw err;
     }
-    
-    res.json({
-      ...lead,
-      score,
-      scoreFactors: factors,
-      nurturingStage,
-    });
   });
   
   api.delete("/api/leads/:id", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteLeads"), async (req, res) => {
@@ -2001,47 +2020,61 @@ export async function registerRoutes(
       res.status(201).json(property);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json({ 
+          message: "Validation failed", 
+          errors: err.errors.map(e => ({ field: e.path.join('.'), message: e.message }))
+        });
       }
       throw err;
     }
   });
   
   api.put("/api/properties/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
-    const propertyId = Number(req.params.id);
-    const existingProperty = await storage.getProperty(org.id, propertyId);
-    if (!existingProperty) return res.status(404).json({ message: "Property not found" });
-    
-    const numericFields = ["sizeAcres", "assessedValue", "marketValue", "purchasePrice", "listPrice", "soldPrice"];
-    const sanitizedBody = { ...req.body };
-    for (const field of numericFields) {
-      if (sanitizedBody[field] === "" || sanitizedBody[field] === null) {
-        sanitizedBody[field] = null;
-      } else if (sanitizedBody[field] !== undefined && typeof sanitizedBody[field] === "string") {
-        const parsed = parseFloat(sanitizedBody[field]);
-        if (!isNaN(parsed)) {
-          sanitizedBody[field] = String(parsed);
+    try {
+      const org = (req as any).organization;
+      const propertyId = Number(req.params.id);
+      const existingProperty = await storage.getProperty(org.id, propertyId);
+      if (!existingProperty) return res.status(404).json({ message: "Property not found" });
+      
+      const numericFields = ["sizeAcres", "assessedValue", "marketValue", "purchasePrice", "listPrice", "soldPrice"];
+      const sanitizedBody = { ...req.body };
+      for (const field of numericFields) {
+        if (sanitizedBody[field] === "" || sanitizedBody[field] === null) {
+          sanitizedBody[field] = null;
+        } else if (sanitizedBody[field] !== undefined && typeof sanitizedBody[field] === "string") {
+          const parsed = parseFloat(sanitizedBody[field]);
+          if (!isNaN(parsed)) {
+            sanitizedBody[field] = String(parsed);
+          }
         }
       }
+      
+      const validated = updatePropertySchema.parse(sanitizedBody);
+      const property = await storage.updateProperty(propertyId, validated);
+      
+      const user = req.user as any;
+      const userId = user?.claims?.sub || user?.id;
+      await storage.createAuditLogEntry({
+        organizationId: org.id,
+        userId,
+        action: "update",
+        entityType: "property",
+        entityId: propertyId,
+        changes: { before: existingProperty, after: property, fields: Object.keys(validated) },
+        ipAddress: req.ip || req.socket?.remoteAddress,
+        userAgent: req.headers["user-agent"],
+      });
+      
+      res.json(property);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Validation failed", 
+          errors: err.errors.map(e => ({ field: e.path.join('.'), message: e.message }))
+        });
+      }
+      throw err;
     }
-    
-    const property = await storage.updateProperty(propertyId, sanitizedBody);
-    
-    const user = req.user as any;
-    const userId = user?.claims?.sub || user?.id;
-    await storage.createAuditLogEntry({
-      organizationId: org.id,
-      userId,
-      action: "update",
-      entityType: "property",
-      entityId: propertyId,
-      changes: { before: existingProperty, after: property, fields: Object.keys(req.body) },
-      ipAddress: req.ip || req.socket?.remoteAddress,
-      userAgent: req.headers["user-agent"],
-    });
-    
-    res.json(property);
   });
   
   api.delete("/api/properties/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
@@ -2590,57 +2623,71 @@ export async function registerRoutes(
       res.status(201).json(deal);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return res.status(400).json({ 
+          message: "Validation failed", 
+          errors: err.errors.map(e => ({ field: e.path.join('.'), message: e.message }))
+        });
       }
       throw err;
     }
   });
   
   api.put("/api/deals/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
-    const dealId = Number(req.params.id);
-    const existingDeal = await storage.getDeal(org.id, dealId);
-    if (!existingDeal) return res.status(404).json({ message: "Deal not found" });
-    
-    const deal = await storage.updateDeal(dealId, req.body);
-    
-    const user = req.user as any;
-    const userId = user?.claims?.sub || user?.id;
-    await storage.createAuditLogEntry({
-      organizationId: org.id,
-      userId,
-      action: "update",
-      entityType: "deal",
-      entityId: dealId,
-      changes: { before: existingDeal, after: deal, fields: Object.keys(req.body) },
-      ipAddress: req.ip || req.socket?.remoteAddress,
-      userAgent: req.headers["user-agent"],
-    });
-    
-    // Trigger async enrichment if propertyId was added or changed (non-blocking)
-    const propertyChanged = req.body.propertyId && req.body.propertyId !== existingDeal.propertyId;
-    if (propertyChanged && deal.propertyId) {
-      triggerDealEnrichmentAsync(org.id, deal.id, deal.propertyId);
-    }
-    
-    // Track conversion when deal is closed (for lead scoring feedback loop)
-    if (req.body.status === "closed" && existingDeal.status !== "closed") {
-      try {
-        // Get the property to find associated lead
-        const property = await storage.getProperty(org.id, deal.propertyId);
-        if (property && property.leadId) {
-          const dealValue = deal.acceptedAmount ? parseFloat(String(deal.acceptedAmount)) : undefined;
-          await leadScoringService.recordConversion(property.leadId, org.id, "deal_closed", {
-            dealValue,
-            profitMargin: deal.analysisResults?.netProfit,
-          });
-        }
-      } catch (conversionErr) {
-        console.error("Failed to record conversion:", conversionErr);
+    try {
+      const org = (req as any).organization;
+      const dealId = Number(req.params.id);
+      const existingDeal = await storage.getDeal(org.id, dealId);
+      if (!existingDeal) return res.status(404).json({ message: "Deal not found" });
+      
+      const validated = updateDealSchema.parse(req.body);
+      const deal = await storage.updateDeal(dealId, validated);
+      
+      const user = req.user as any;
+      const userId = user?.claims?.sub || user?.id;
+      await storage.createAuditLogEntry({
+        organizationId: org.id,
+        userId,
+        action: "update",
+        entityType: "deal",
+        entityId: dealId,
+        changes: { before: existingDeal, after: deal, fields: Object.keys(validated) },
+        ipAddress: req.ip || req.socket?.remoteAddress,
+        userAgent: req.headers["user-agent"],
+      });
+      
+      // Trigger async enrichment if propertyId was added or changed (non-blocking)
+      const propertyChanged = validated.propertyId && validated.propertyId !== existingDeal.propertyId;
+      if (propertyChanged && deal.propertyId) {
+        triggerDealEnrichmentAsync(org.id, deal.id, deal.propertyId);
       }
+      
+      // Track conversion when deal is closed (for lead scoring feedback loop)
+      if (validated.status === "closed" && existingDeal.status !== "closed") {
+        try {
+          // Get the property to find associated lead
+          const property = await storage.getProperty(org.id, deal.propertyId);
+          if (property && property.leadId) {
+            const dealValue = deal.acceptedAmount ? parseFloat(String(deal.acceptedAmount)) : undefined;
+            await leadScoringService.recordConversion(property.leadId, org.id, "deal_closed", {
+              dealValue,
+              profitMargin: deal.analysisResults?.netProfit,
+            });
+          }
+        } catch (conversionErr) {
+          console.error("Failed to record conversion:", conversionErr);
+        }
+      }
+      
+      res.json(deal);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Validation failed", 
+          errors: err.errors.map(e => ({ field: e.path.join('.'), message: e.message }))
+        });
+      }
+      throw err;
     }
-    
-    res.json(deal);
   });
   
   // Manual deal enrichment trigger endpoint
@@ -3592,11 +3639,21 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
         );
       }
       
+      // Convert date strings to Date objects
+      const startDate = req.body.startDate ? new Date(req.body.startDate) : new Date();
+      const firstPaymentDate = req.body.firstPaymentDate ? new Date(req.body.firstPaymentDate) : new Date();
+      const maturityDate = req.body.maturityDate ? new Date(req.body.maturityDate) : undefined;
+      const nextPaymentDate = req.body.nextPaymentDate ? new Date(req.body.nextPaymentDate) : firstPaymentDate;
+      
       const input = insertNoteSchema.parse({ 
         ...req.body, 
         organizationId: org.id,
         monthlyPayment: String(monthlyPayment),
         currentBalance: req.body.originalPrincipal,
+        startDate,
+        firstPaymentDate,
+        maturityDate,
+        nextPaymentDate,
       });
       const note = await storage.createNote(input);
       
@@ -4535,29 +4592,39 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   api.post("/api/payments", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = (req as any).organization;
-      const { noteId, amount, paymentDate, type = "regular", paymentMethod } = req.body;
+      const { noteId, amount, paymentDate, dueDate, paymentMethod, principalAmount, interestAmount, status } = req.body;
       
-      // Get the note to calculate interest and principal split
+      // Get the note to calculate interest and principal split if not provided
       const note = await storage.getNote(org.id, noteId);
       if (!note) {
         return res.status(404).json({ message: "Note not found" });
       }
       
-      const currentBalance = Number(note.currentBalance || note.originalPrincipal);
-      const monthlyRate = Number(note.interestRate) / 100 / 12;
-      const interestPortion = currentBalance * monthlyRate;
-      const principalPortion = Math.max(0, Number(amount) - interestPortion);
-      const newBalance = Math.max(0, currentBalance - principalPortion);
+      // Calculate principal and interest if not provided by frontend
+      let principalPortion: number;
+      let interestPortion: number;
+      
+      if (principalAmount !== undefined && interestAmount !== undefined) {
+        principalPortion = Number(principalAmount);
+        interestPortion = Number(interestAmount);
+      } else {
+        const currentBalance = Number(note.currentBalance || note.originalPrincipal);
+        const monthlyRate = Number(note.interestRate) / 100 / 12;
+        interestPortion = currentBalance * monthlyRate;
+        principalPortion = Math.max(0, Number(amount) - interestPortion);
+      }
+      
+      const newBalance = Math.max(0, Number(note.currentBalance || note.originalPrincipal) - principalPortion);
       
       const input = insertPaymentSchema.parse({ 
         noteId,
         organizationId: org.id,
         amount: String(amount),
-        principal: String(principalPortion),
-        interest: String(interestPortion),
+        principalAmount: String(principalPortion),
+        interestAmount: String(interestPortion),
         paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
-        type,
-        status: "completed",
+        dueDate: dueDate ? new Date(dueDate) : note.nextPaymentDate || new Date(),
+        status: status || "completed",
         paymentMethod
       });
       

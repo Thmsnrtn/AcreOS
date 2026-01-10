@@ -157,3 +157,11 @@ Preferred communication style: Simple, everyday language.
 - **Phase 6 Tables**: buyerProfiles, buyerPropertyMatches, buyerQualifications, dispositionRecommendations
 - All services follow singleton pattern with lazy OpenAI initialization (Replit AI Integrations)
 - Event telemetry via agentEvents table for orchestration bus visibility
+
+### Production Hardening (January 2026)
+- **Input Validation**: Comprehensive Zod validation across AI operations, CRM (leads/properties/deals), and finance (notes/payments) endpoints with field-level error messages
+- **Health Check System**: External service monitoring for Stripe, OpenAI, Twilio, SendGrid, Lob, and database with periodic checks (60s intervals), status API at `/api/health`, SystemHealth UI component on Founder Dashboard
+- **Finance API Fixes**:
+  - POST /api/payments: Fixed field name mismatch (principalAmount/interestAmount), added dueDate handling, accepts frontend-provided or server-calculated values
+  - POST /api/notes: Added date string conversion (ISO strings to Date objects) for startDate, firstPaymentDate, maturityDate, nextPaymentDate
+- **E2E Testing Coverage**: Lead management, deal pipeline, and finance workflows verified with Playwright-based tests

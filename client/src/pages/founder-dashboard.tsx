@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { SystemHealth } from "@/components/system-health";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -1269,6 +1270,9 @@ export default function FounderDashboard() {
               </CardContent>
             </Card>
           </div>
+
+          {/* External Services Health */}
+          <SystemHealth />
 
           {/* Feature Requests Section */}
           <Card data-testid="card-feature-requests">

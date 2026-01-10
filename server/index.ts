@@ -204,6 +204,11 @@ app.use(requestLoggingMiddleware);
       
       // Auto-seed county GIS endpoints for free parcel lookups
       seedCountyGisEndpointsOnStartup();
+      
+      // Start periodic health checks
+      import("./services/healthCheck").then(({ healthCheckService }) => {
+        healthCheckService.startPeriodicChecks(60000); // Check every minute
+      });
     },
   );
 })();
