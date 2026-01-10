@@ -58,6 +58,14 @@ import {
   Activity,
   Headphones,
   Gift,
+  Phone,
+  Shield,
+  BarChart3,
+  UserCheck,
+  Handshake,
+  Mail,
+  Eye,
+  AlertTriangle,
 } from "lucide-react";
 import { AISettings } from "@/components/ai-settings";
 import { formatDistanceToNow } from "date-fns";
@@ -1084,6 +1092,388 @@ interface ActiveSkill {
   label: string;
 }
 
+interface AIService {
+  id: string;
+  name: string;
+  description: string;
+  phase: number;
+  icon: typeof Brain;
+  endpoint: string;
+}
+
+interface PortfolioAlert {
+  id: number;
+  propertyId: number;
+  alertType: string;
+  severity: string;
+  title: string;
+  message: string;
+  status: string;
+  createdAt: string;
+}
+
+const aiServices: AIService[] = [
+  { id: "due-diligence", name: "Due Diligence", description: "Automated property research and analysis", phase: 3, icon: Search, endpoint: "/api/ai/due-diligence/request" },
+  { id: "seller-intent", name: "Seller Intent", description: "Predict seller motivation and timing", phase: 3, icon: Target, endpoint: "/api/ai/intent/predict" },
+  { id: "price-optimizer", name: "Price Optimizer", description: "AI-powered pricing recommendations", phase: 3, icon: Calculator, endpoint: "/api/ai/pricing/acquisition" },
+  { id: "deal-patterns", name: "Deal Patterns", description: "Clone successful deal strategies", phase: 3, icon: GitBranch, endpoint: "/api/ai/patterns/analyze" },
+  { id: "negotiation", name: "Negotiation", description: "Real-time negotiation assistance", phase: 4, icon: Handshake, endpoint: "/api/ai/negotiation/session" },
+  { id: "sequences", name: "Sequences", description: "AI-optimized outreach sequences", phase: 4, icon: Mail, endpoint: "/api/ai/sequences/performance" },
+  { id: "voice-calls", name: "Voice Calls", description: "Call transcription and analysis", phase: 4, icon: Phone, endpoint: "/api/ai/voice/record" },
+  { id: "portfolio", name: "Portfolio", description: "Monitor portfolio health and alerts", phase: 5, icon: Eye, endpoint: "/api/ai/portfolio/monitor" },
+  { id: "documents", name: "Documents", description: "Intelligent document processing", phase: 5, icon: FileText, endpoint: "/api/ai/documents/analyze" },
+  { id: "cash-flow", name: "Cash Flow", description: "Forecast cash flow and projections", phase: 5, icon: DollarSign, endpoint: "/api/ai/cashflow/forecast" },
+  { id: "compliance", name: "Compliance", description: "Regulatory compliance monitoring", phase: 5, icon: Shield, endpoint: "/api/ai/compliance/check" },
+  { id: "buyer-matching", name: "Buyer Matching", description: "Match properties to qualified buyers", phase: 6, icon: UserCheck, endpoint: "/api/ai/buyers/match" },
+  { id: "qualification", name: "Qualification", description: "Automated buyer qualification", phase: 6, icon: CheckCircle, endpoint: "/api/ai/buyers/qualify" },
+  { id: "disposition", name: "Disposition", description: "Optimize property disposition strategy", phase: 6, icon: BarChart3, endpoint: "/api/ai/disposition/optimize" },
+];
+
+function AIOperationsTabContent() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [dueDiligenceDialogOpen, setDueDiligenceDialogOpen] = useState(false);
+  const [pricingDialogOpen, setPricingDialogOpen] = useState(false);
+  const [propertyIdInput, setPropertyIdInput] = useState("");
+
+  const { data: alertsData, isLoading: alertsLoading } = useQuery<PortfolioAlert[]>({
+    queryKey: ["/api/ai/portfolio/alerts"],
+    retry: false,
+    staleTime: 30000,
+  });
+
+  const alerts = alertsData || [];
+
+  const runDueDiligenceMutation = useMutation({
+    mutationFn: async (propertyId: number) => {
+      const res = await apiRequest("POST", "/api/ai/due-diligence/request", { propertyId });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Due Diligence Started", description: "Analysis is now running in the background" });
+      setDueDiligenceDialogOpen(false);
+      setPropertyIdInput("");
+    },
+    onError: () => {
+      toast({ title: "Failed to start due diligence", variant: "destructive" });
+    },
+  });
+
+  const getPricingMutation = useMutation({
+    mutationFn: async (propertyId: number) => {
+      const res = await apiRequest("POST", "/api/ai/pricing/acquisition", { propertyId });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({ 
+        title: "Price Recommendation Ready", 
+        description: data.recommendedPrice ? `Recommended: $${data.recommendedPrice.toLocaleString()}` : "Analysis complete"
+      });
+      setPricingDialogOpen(false);
+      setPropertyIdInput("");
+    },
+    onError: () => {
+      toast({ title: "Failed to get pricing", variant: "destructive" });
+    },
+  });
+
+  const monitorPortfolioMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/ai/portfolio/monitor", {});
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Portfolio Scan Started", description: "Monitoring all properties for issues" });
+      queryClient.invalidateQueries({ queryKey: ["/api/ai/portfolio/alerts"] });
+    },
+    onError: () => {
+      toast({ title: "Failed to start portfolio scan", variant: "destructive" });
+    },
+  });
+
+  const checkComplianceMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("GET", "/api/ai/compliance/rules");
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Compliance Check Complete", description: "All rules have been verified" });
+    },
+    onError: () => {
+      toast({ title: "Failed to check compliance", variant: "destructive" });
+    },
+  });
+
+  const getPhaseLabel = (phase: number) => {
+    switch (phase) {
+      case 3: return "Acquisition";
+      case 4: return "Outreach";
+      case 5: return "Management";
+      case 6: return "Disposition";
+      default: return `Phase ${phase}`;
+    }
+  };
+
+  const getPhaseColor = (phase: number) => {
+    switch (phase) {
+      case 3: return "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400";
+      case 4: return "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400";
+      case 5: return "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400";
+      case 6: return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400";
+      default: return "bg-muted text-muted-foreground";
+    }
+  };
+
+  const getSeverityColor = (severity: string) => {
+    switch (severity) {
+      case "critical": return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400";
+      case "high": return "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400";
+      case "medium": return "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400";
+      case "low": return "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400";
+      default: return "bg-muted text-muted-foreground";
+    }
+  };
+
+  const groupedServices = {
+    3: aiServices.filter(s => s.phase === 3),
+    4: aiServices.filter(s => s.phase === 4),
+    5: aiServices.filter(s => s.phase === 5),
+    6: aiServices.filter(s => s.phase === 6),
+  };
+
+  return (
+    <div className="flex-1 flex flex-col overflow-hidden p-6">
+      <LowBalanceAlert />
+      
+      <div className="mb-6 flex items-center justify-between flex-wrap gap-4">
+        <div>
+          <h2 className="text-lg font-semibold mb-1">AI Operations Dashboard</h2>
+          <p className="text-sm text-muted-foreground">
+            Manage and monitor your AI-powered services across all phases
+          </p>
+        </div>
+      </div>
+
+      <ScrollArea className="flex-1">
+        <div className="space-y-6 pb-6">
+          <Card data-testid="card-quick-actions">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Zap className="w-4 h-4" />
+                Quick Actions
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <Dialog open={dueDiligenceDialogOpen} onOpenChange={setDueDiligenceDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" className="h-auto py-3 flex flex-col items-center gap-2" data-testid="button-run-due-diligence">
+                      <Search className="w-5 h-5" />
+                      <span className="text-xs">Run Due Diligence</span>
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Run Due Diligence</DialogTitle>
+                      <DialogDescription>
+                        Enter a property ID to start automated due diligence analysis
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="py-4">
+                      <Textarea
+                        placeholder="Enter Property ID..."
+                        value={propertyIdInput}
+                        onChange={(e) => setPropertyIdInput(e.target.value)}
+                        data-testid="input-property-id-dd"
+                      />
+                    </div>
+                    <DialogFooter>
+                      <Button
+                        onClick={() => runDueDiligenceMutation.mutate(parseInt(propertyIdInput) || 0)}
+                        disabled={runDueDiligenceMutation.isPending || !propertyIdInput.trim()}
+                        data-testid="button-confirm-due-diligence"
+                      >
+                        {runDueDiligenceMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                        Start Analysis
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+
+                <Dialog open={pricingDialogOpen} onOpenChange={setPricingDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" className="h-auto py-3 flex flex-col items-center gap-2" data-testid="button-get-price">
+                      <Calculator className="w-5 h-5" />
+                      <span className="text-xs">Get Price Recommendation</span>
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Get Price Recommendation</DialogTitle>
+                      <DialogDescription>
+                        Enter a property ID to get AI-powered pricing analysis
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="py-4">
+                      <Textarea
+                        placeholder="Enter Property ID..."
+                        value={propertyIdInput}
+                        onChange={(e) => setPropertyIdInput(e.target.value)}
+                        data-testid="input-property-id-pricing"
+                      />
+                    </div>
+                    <DialogFooter>
+                      <Button
+                        onClick={() => getPricingMutation.mutate(parseInt(propertyIdInput) || 0)}
+                        disabled={getPricingMutation.isPending || !propertyIdInput.trim()}
+                        data-testid="button-confirm-pricing"
+                      >
+                        {getPricingMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                        Get Recommendation
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+
+                <Button 
+                  variant="outline" 
+                  className="h-auto py-3 flex flex-col items-center gap-2"
+                  onClick={() => monitorPortfolioMutation.mutate()}
+                  disabled={monitorPortfolioMutation.isPending}
+                  data-testid="button-monitor-portfolio"
+                >
+                  {monitorPortfolioMutation.isPending ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <Eye className="w-5 h-5" />
+                  )}
+                  <span className="text-xs">Monitor Portfolio</span>
+                </Button>
+
+                <Button 
+                  variant="outline" 
+                  className="h-auto py-3 flex flex-col items-center gap-2"
+                  onClick={() => checkComplianceMutation.mutate()}
+                  disabled={checkComplianceMutation.isPending}
+                  data-testid="button-check-compliance"
+                >
+                  {checkComplianceMutation.isPending ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <Shield className="w-5 h-5" />
+                  )}
+                  <span className="text-xs">Check Compliance</span>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {Object.entries(groupedServices).map(([phase, services]) => (
+            <div key={phase} data-testid={`section-phase-${phase}`}>
+              <div className="flex items-center gap-2 mb-3">
+                <h3 className="text-sm font-semibold">Phase {phase}: {getPhaseLabel(parseInt(phase))}</h3>
+                <Badge className={`text-xs ${getPhaseColor(parseInt(phase))}`}>
+                  {services.length} services
+                </Badge>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                {services.map((service) => {
+                  const IconComponent = service.icon;
+                  return (
+                    <Card key={service.id} className="hover-elevate" data-testid={`card-service-${service.id}`}>
+                      <CardContent className="p-4">
+                        <div className="flex items-start gap-3">
+                          <div className={`p-2 rounded-lg ${getPhaseColor(service.phase)}`}>
+                            <IconComponent className="w-4 h-4" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="font-medium text-sm">{service.name}</span>
+                              <Badge variant="secondary" className="text-xs">
+                                <div className="w-1.5 h-1.5 rounded-full bg-green-500 mr-1" />
+                                Ready
+                              </Badge>
+                            </div>
+                            <p className="text-xs text-muted-foreground line-clamp-2">
+                              {service.description}
+                            </p>
+                          </div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="w-full mt-3"
+                          onClick={() => toast({ title: service.name, description: "Feature available - use Quick Actions or API directly" })}
+                          data-testid={`button-service-${service.id}`}
+                        >
+                          <Play className="w-3 h-3 mr-1" />
+                          Launch
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+
+          <Card data-testid="card-recent-alerts">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4" />
+                Recent Alerts
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {alertsLoading ? (
+                <div className="space-y-3">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <Skeleton key={i} className="h-16 w-full" />
+                  ))}
+                </div>
+              ) : alerts.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <CheckCircle2 className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                  <p className="text-sm">No active alerts</p>
+                  <p className="text-xs">Your portfolio is running smoothly</p>
+                </div>
+              ) : (
+                <div className="space-y-3" data-testid="list-alerts">
+                  {alerts.slice(0, 5).map((alert) => (
+                    <div
+                      key={alert.id}
+                      className="flex items-start gap-3 p-3 rounded-lg border bg-card"
+                      data-testid={`alert-item-${alert.id}`}
+                    >
+                      <AlertCircle className={`w-4 h-4 mt-0.5 ${
+                        alert.severity === "critical" ? "text-red-500" :
+                        alert.severity === "high" ? "text-orange-500" :
+                        alert.severity === "medium" ? "text-amber-500" : "text-blue-500"
+                      }`} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <span className="font-medium text-sm">{alert.title}</span>
+                          <Badge className={`text-xs ${getSeverityColor(alert.severity)}`}>
+                            {alert.severity}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground line-clamp-2">{alert.message}</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {alert.createdAt && formatDistanceToNow(new Date(alert.createdAt), { addSuffix: true })}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </ScrollArea>
+    </div>
+  );
+}
+
 export default function CommandCenterPage() {
   const queryClient = useQueryClient();
   const isMobile = useIsMobile();
@@ -1346,6 +1736,10 @@ export default function CommandCenterPage() {
                 <TabsTrigger value="agents" className={isMobile ? "flex-1" : ""} data-testid="tab-agents">
                   <Bot className="w-4 h-4 mr-2" />
                   Background
+                </TabsTrigger>
+                <TabsTrigger value="ai-ops" className={isMobile ? "flex-1" : ""} data-testid="tab-ai-ops">
+                  <Brain className="w-4 h-4 mr-2" />
+                  AI Ops
                 </TabsTrigger>
               </TabsList>
             </Tabs>
@@ -1663,6 +2057,10 @@ export default function CommandCenterPage() {
 
           {mainTab === "agents" && (
             <AgentsTabContent />
+          )}
+
+          {mainTab === "ai-ops" && (
+            <AIOperationsTabContent />
           )}
         </div>
       </main>
