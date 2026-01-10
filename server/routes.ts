@@ -320,7 +320,7 @@ const upload = multer({
 });
 
 // Founder email - gets unlimited credits and enterprise access
-const FOUNDER_EMAIL = "mark@acretrader.io";
+const FOUNDER_EMAIL = "thmsnrtn@gmail.com";
 
 // Middleware to get/create organization for authenticated user
 async function getOrCreateOrg(req: Request, res: Response, next: NextFunction) {

@@ -6,7 +6,7 @@
  */
 
 // Hardcoded founder email - always has founder access
-const PRIMARY_FOUNDER_EMAIL = "mark@acretrader.io";
+const PRIMARY_FOUNDER_EMAIL = "thmsnrtn@gmail.com";
 
 // Additional founder emails from environment variable
 const ADDITIONAL_FOUNDER_EMAILS = (process.env.FOUNDER_EMAILS || "")
