@@ -1,8 +1,15 @@
 import { storage } from "../storage";
 import type { Organization } from "@shared/schema";
+import { getSystemContext, formatContextForAI, invalidateContextCache } from "../services/aiContextAggregator";
 
 // Tool parameter schemas (OpenAI function calling format)
 export const toolDefinitions = {
+  // System Context Tools
+  get_system_context: {
+    name: "get_system_context",
+    description: "Get a comprehensive overview of the entire system including leads, properties, deals, notes, tasks, campaigns, and finance. Use this to understand the current state of the business before taking actions across any module.",
+    parameters: { type: "object", properties: {} }
+  },
   // CRM Tools
   get_leads: {
     name: "get_leads",
@@ -146,6 +153,173 @@ export const toolDefinitions = {
     name: "get_pipeline_summary", 
     description: "Get CRM pipeline summary with lead counts by status.",
     parameters: { type: "object", properties: {} }
+  },
+  
+  // Property CRUD Tools
+  create_property: {
+    name: "create_property",
+    description: "Create a new property in the inventory. Can add properties from any page - works in background.",
+    parameters: {
+      type: "object",
+      properties: {
+        apn: { type: "string", description: "Assessor's Parcel Number (required)" },
+        address: { type: "string", description: "Property street address" },
+        city: { type: "string", description: "City" },
+        county: { type: "string", description: "County name (required)" },
+        state: { type: "string", description: "State (2-letter code, required)" },
+        zip: { type: "string", description: "ZIP code" },
+        sizeAcres: { type: "number", description: "Property size in acres (required)" },
+        listPrice: { type: "number", description: "List/asking price" },
+        marketValue: { type: "number", description: "Estimated market value" },
+        status: { 
+          type: "string", 
+          enum: ["prospect", "due_diligence", "offer_sent", "under_contract", "owned", "listed", "sold"],
+          description: "Property status (default: prospect)"
+        },
+        notes: { type: "string", description: "Notes about the property" }
+      },
+      required: ["apn", "county", "state", "sizeAcres"]
+    }
+  },
+  update_property: {
+    name: "update_property",
+    description: "Update an existing property's details or status.",
+    parameters: {
+      type: "object",
+      properties: {
+        property_id: { type: "number", description: "The property ID to update" },
+        status: { 
+          type: "string", 
+          enum: ["prospect", "due_diligence", "offer_sent", "under_contract", "owned", "listed", "sold"],
+          description: "New status"
+        },
+        listPrice: { type: "number", description: "Updated list price" },
+        marketValue: { type: "number", description: "Updated market value" },
+        notes: { type: "string", description: "Updated notes" }
+      },
+      required: ["property_id"]
+    }
+  },
+
+  // Deal CRUD Tools
+  get_deals: {
+    name: "get_deals",
+    description: "Get all deals in the pipeline with their status and amounts.",
+    parameters: {
+      type: "object",
+      properties: {
+        type: { type: "string", enum: ["acquisition", "disposition"], description: "Filter by deal type" },
+        status: { type: "string", description: "Filter by deal status" },
+        limit: { type: "number", description: "Maximum deals to return" }
+      }
+    }
+  },
+  create_deal: {
+    name: "create_deal",
+    description: "Create a new deal in the pipeline. Works from any page. Requires a property ID.",
+    parameters: {
+      type: "object",
+      properties: {
+        type: { type: "string", enum: ["acquisition", "disposition"], description: "Deal type" },
+        propertyId: { type: "number", description: "Associated property ID (required)" },
+        offerAmount: { type: "number", description: "Offer amount in dollars" },
+        status: { 
+          type: "string",
+          enum: ["negotiating", "offer_sent", "countered", "accepted", "in_escrow", "closed", "cancelled"],
+          description: "Deal status (default: negotiating)"
+        },
+        notes: { type: "string", description: "Deal notes" }
+      },
+      required: ["type", "propertyId"]
+    }
+  },
+  update_deal: {
+    name: "update_deal",
+    description: "Update a deal's status, amount, or details.",
+    parameters: {
+      type: "object",
+      properties: {
+        deal_id: { type: "number", description: "The deal ID to update" },
+        status: { type: "string", description: "New deal status" },
+        offerAmount: { type: "number", description: "Updated offer amount" },
+        notes: { type: "string", description: "Updated notes" }
+      },
+      required: ["deal_id"]
+    }
+  },
+
+  // Task CRUD Tools
+  get_tasks: {
+    name: "get_tasks",
+    description: "Get tasks with optional filtering. Works from any page.",
+    parameters: {
+      type: "object",
+      properties: {
+        status: { type: "string", enum: ["pending", "in_progress", "completed", "cancelled"], description: "Filter by status" },
+        priority: { type: "string", enum: ["low", "medium", "high", "urgent"], description: "Filter by priority" },
+        limit: { type: "number", description: "Maximum tasks to return" }
+      }
+    }
+  },
+  create_task: {
+    name: "create_task",
+    description: "Create a new task. Can be used from any page to add tasks.",
+    parameters: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Task title" },
+        description: { type: "string", description: "Task description" },
+        priority: { type: "string", enum: ["low", "medium", "high", "urgent"], description: "Priority level (default: medium)" },
+        dueDate: { type: "string", description: "Due date in ISO format (YYYY-MM-DD)" },
+        entityType: { type: "string", enum: ["lead", "property", "deal", "none"], description: "Type of related entity (default: none)" },
+        entityId: { type: "number", description: "ID of related entity" }
+      },
+      required: ["title"]
+    }
+  },
+  update_task: {
+    name: "update_task",
+    description: "Update a task's status, priority, or details.",
+    parameters: {
+      type: "object",
+      properties: {
+        task_id: { type: "number", description: "The task ID to update" },
+        status: { type: "string", enum: ["pending", "in_progress", "completed", "cancelled"], description: "New status" },
+        priority: { type: "string", enum: ["low", "medium", "high", "urgent"], description: "New priority" },
+        dueDate: { type: "string", description: "Updated due date" }
+      },
+      required: ["task_id"]
+    }
+  },
+  complete_task: {
+    name: "complete_task",
+    description: "Mark a task as completed.",
+    parameters: {
+      type: "object",
+      properties: {
+        task_id: { type: "number", description: "The task ID to complete" }
+      },
+      required: ["task_id"]
+    }
+  },
+
+  // Background Job Tools
+  schedule_background_job: {
+    name: "schedule_background_job",
+    description: "Schedule a background job that runs independently. Use for bulk operations or long-running tasks.",
+    parameters: {
+      type: "object",
+      properties: {
+        job_type: { 
+          type: "string", 
+          enum: ["bulk_property_import", "bulk_lead_import", "campaign_send", "report_generation"],
+          description: "Type of background job" 
+        },
+        data: { type: "object", description: "Job-specific data" },
+        description: { type: "string", description: "Human-readable description of what this job does" }
+      },
+      required: ["job_type", "description"]
+    }
   }
 };
 
@@ -326,6 +500,148 @@ export async function executeTool(
         }, {} as Record<string, number>);
         return { success: true, data: { totalLeads: leads.length, byStatus: summary, byType } };
       }
+
+      // System Context
+      case "get_system_context": {
+        const context = await getSystemContext(org.id);
+        const formatted = formatContextForAI(context);
+        return { success: true, data: { summary: formatted, raw: context } };
+      }
+
+      // Property CRUD
+      case "create_property": {
+        const property = await storage.createProperty({
+          organizationId: org.id,
+          apn: args.apn,
+          address: args.address || null,
+          city: args.city || null,
+          county: args.county,
+          state: args.state,
+          zip: args.zip || null,
+          sizeAcres: String(args.sizeAcres),
+          listPrice: args.listPrice ? String(args.listPrice) : null,
+          marketValue: args.marketValue ? String(args.marketValue) : null,
+          status: args.status || "prospect",
+          notes: args.notes || null,
+        });
+        invalidateContextCache(org.id);
+        return { success: true, data: { message: "Property created successfully", property } };
+      }
+
+      case "update_property": {
+        const updates: Record<string, any> = {};
+        if (args.status) updates.status = args.status;
+        if (args.listPrice !== undefined) updates.listPrice = String(args.listPrice);
+        if (args.marketValue !== undefined) updates.marketValue = String(args.marketValue);
+        if (args.notes) updates.notes = args.notes;
+        
+        const property = await storage.updateProperty(args.property_id, updates);
+        invalidateContextCache(org.id);
+        return { success: true, data: { message: "Property updated successfully", property } };
+      }
+
+      // Deal CRUD
+      case "get_deals": {
+        const deals = await storage.getDeals(org.id);
+        let filtered = deals;
+        if (args.type) filtered = filtered.filter(d => d.type === args.type);
+        if (args.status) filtered = filtered.filter(d => d.status === args.status);
+        if (args.limit) filtered = filtered.slice(0, args.limit);
+        return { success: true, data: filtered.map(d => ({
+          id: d.id,
+          type: d.type,
+          status: d.status,
+          offerAmount: d.offerAmount,
+          propertyId: d.propertyId,
+        })) };
+      }
+
+      case "create_deal": {
+        const deal = await storage.createDeal({
+          organizationId: org.id,
+          type: args.type,
+          propertyId: args.propertyId,
+          offerAmount: args.offerAmount ? String(args.offerAmount) : null,
+          status: args.status || "negotiating",
+          notes: args.notes || null,
+        });
+        invalidateContextCache(org.id);
+        return { success: true, data: { message: "Deal created successfully", deal } };
+      }
+
+      case "update_deal": {
+        const dealUpdates: Record<string, any> = {};
+        if (args.status) dealUpdates.status = args.status;
+        if (args.offerAmount !== undefined) dealUpdates.offerAmount = String(args.offerAmount);
+        if (args.notes) dealUpdates.notes = args.notes;
+        
+        const deal = await storage.updateDeal(args.deal_id, dealUpdates);
+        invalidateContextCache(org.id);
+        return { success: true, data: { message: "Deal updated successfully", deal } };
+      }
+
+      // Task CRUD
+      case "get_tasks": {
+        const tasks = await storage.getTasks(org.id);
+        let filtered = tasks;
+        if (args.status) filtered = filtered.filter(t => t.status === args.status);
+        if (args.priority) filtered = filtered.filter(t => t.priority === args.priority);
+        if (args.limit) filtered = filtered.slice(0, args.limit);
+        return { success: true, data: filtered.map(t => ({
+          id: t.id,
+          title: t.title,
+          description: t.description,
+          status: t.status,
+          priority: t.priority,
+          dueDate: t.dueDate,
+        })) };
+      }
+
+      case "create_task": {
+        const task = await storage.createTask({
+          organizationId: org.id,
+          title: args.title,
+          description: args.description || null,
+          priority: args.priority || "medium",
+          status: "pending",
+          dueDate: args.dueDate ? new Date(args.dueDate) : null,
+          entityType: args.entityType || "none",
+          entityId: args.entityId || null,
+          createdBy: "ai-assistant",
+        });
+        invalidateContextCache(org.id);
+        return { success: true, data: { message: "Task created successfully", task } };
+      }
+
+      case "update_task": {
+        const taskUpdates: Record<string, any> = {};
+        if (args.status) taskUpdates.status = args.status;
+        if (args.priority) taskUpdates.priority = args.priority;
+        if (args.dueDate) taskUpdates.dueDate = new Date(args.dueDate);
+        
+        const task = await storage.updateTask(args.task_id, taskUpdates);
+        invalidateContextCache(org.id);
+        return { success: true, data: { message: "Task updated successfully", task } };
+      }
+
+      case "complete_task": {
+        const task = await storage.updateTask(args.task_id, { status: "completed" });
+        invalidateContextCache(org.id);
+        return { success: true, data: { message: "Task marked as completed", task } };
+      }
+
+      case "schedule_background_job": {
+        // For now, log the job request - in production this would queue to the job system
+        console.log(`[AI Tools] Background job scheduled: ${args.job_type} - ${args.description}`);
+        return { 
+          success: true, 
+          data: { 
+            message: `Background job scheduled: ${args.description}`,
+            jobType: args.job_type,
+            status: "queued"
+          } 
+        };
+      }
       
       default:
         return { success: false, error: `Unknown tool: ${toolName}` };
@@ -345,13 +661,17 @@ export function getOpenAITools() {
 
 // Get tools for a specific agent role
 export function getToolsForRole(role: string) {
+  const allTools = Object.keys(toolDefinitions);
+  const coreTools = ["get_system_context", "get_dashboard_stats"];
+  
   const roleToolMap: Record<string, string[]> = {
-    executive: Object.keys(toolDefinitions),
-    acquisitions: ["get_leads", "get_lead_details", "update_lead_status", "create_lead", "get_properties", "get_pipeline_summary"],
-    underwriting: ["get_properties", "get_property_details", "get_notes", "calculate_amortization", "get_cashflow_summary"],
-    marketing: ["get_leads", "get_properties", "get_pipeline_summary"],
-    research: ["get_properties", "get_property_details", "get_leads"],
-    documents: ["get_leads", "get_lead_details", "get_properties", "get_property_details", "get_notes"]
+    executive: allTools,
+    acquisitions: [...coreTools, "get_leads", "get_lead_details", "update_lead_status", "create_lead", "get_properties", "create_property", "get_deals", "create_deal", "get_tasks", "create_task", "get_pipeline_summary"],
+    underwriting: [...coreTools, "get_properties", "get_property_details", "update_property", "get_notes", "calculate_amortization", "get_cashflow_summary", "get_deals", "update_deal"],
+    marketing: [...coreTools, "get_leads", "get_properties", "get_pipeline_summary", "create_task"],
+    research: [...coreTools, "get_properties", "get_property_details", "get_leads", "create_property", "update_property"],
+    documents: [...coreTools, "get_leads", "get_lead_details", "get_properties", "get_property_details", "get_notes", "get_deals"],
+    assistant: allTools // Full access for the main assistant
   };
   
   const allowedTools = roleToolMap[role] || roleToolMap.executive;
