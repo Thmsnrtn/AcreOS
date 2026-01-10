@@ -150,7 +150,7 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const MAX_ATTACHMENTS = 5;
 
 const AGENTS = [
-  { id: "executive", name: "Evelyn", description: "Chief of Staff - Daily briefings, task routing", icon: Briefcase },
+  { id: "executive", name: "Atlas", description: "Chief of Staff - Daily briefings, task routing", icon: Briefcase },
   { id: "sales", name: "Samantha", description: "Sales - Buyer relationships, lead qualification", icon: Users },
   { id: "acquisitions", name: "Alex", description: "Acquisitions - Purchasing negotiations", icon: ShoppingCart },
   { id: "marketing", name: "Maya", description: "Marketing - Campaign execution", icon: Megaphone },
