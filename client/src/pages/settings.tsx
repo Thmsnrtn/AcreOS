@@ -785,12 +785,17 @@ export default function Settings() {
                         <div className="flex items-center gap-2 flex-wrap">
                           <Badge 
                             variant="outline" 
-                            className={`${getTierColor(organization.subscriptionTier)}`}
+                            className={`${organization.isFounder ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white border-purple-500' : getTierColor(organization.subscriptionTier)}`}
                             data-testid="badge-current-tier"
                           >
                             <Crown className="w-3 h-3 mr-1" />
-                            {organization.subscriptionTier.charAt(0).toUpperCase() + organization.subscriptionTier.slice(1)}
+                            {organization.isFounder ? 'Enterprise (Founder)' : organization.subscriptionTier.charAt(0).toUpperCase() + organization.subscriptionTier.slice(1)}
                           </Badge>
+                          {organization.isFounder && (
+                            <Badge variant="outline" className="bg-gradient-to-r from-amber-500 to-orange-500 text-white border-amber-500" data-testid="badge-unlimited">
+                              Unlimited
+                            </Badge>
+                          )}
                           <Badge variant="outline" data-testid="badge-subscription-status">
                             {organization.subscriptionStatus}
                           </Badge>

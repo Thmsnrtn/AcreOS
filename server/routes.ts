@@ -16,7 +16,7 @@ import {
   insertPropertyListingSchema,
   insertMailSenderIdentitySchema, insertMailingOrderSchema,
   insertFeatureRequestSchema,
-  SUBSCRIPTION_TIERS, payments, notes, deals, properties, leads, activityLog,
+  SUBSCRIPTION_TIERS, payments, notes, deals, properties, leads, activityLog, organizations,
   teamConversations, teamMessages, teamMemberPresence,
   insertTeamConversationSchema, insertTeamMessageSchema, insertTeamMemberPresenceSchema,
   insertWorkflowSchema, WORKFLOW_TRIGGER_EVENTS, WORKFLOW_ACTION_TYPES,
@@ -8478,6 +8478,40 @@ Seller Signature (if applicable)
       res.json(stats);
     } catch (err: any) {
       console.error("API usage stats error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Set founder status for an organization (founder admin only)
+  api.post("/api/admin/set-founder", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { organizationId, isFounder } = req.body;
+      
+      // If no organizationId provided, use the current user's organization
+      const org = (req as any).organization;
+      const targetOrgId = organizationId || org?.id;
+      
+      if (!targetOrgId) {
+        return res.status(400).json({ message: "Organization ID is required" });
+      }
+      
+      const [updated] = await db
+        .update(organizations)
+        .set({ isFounder: isFounder ?? true })
+        .where(eq(organizations.id, targetOrgId))
+        .returning();
+      
+      if (!updated) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      res.json({ 
+        success: true, 
+        message: isFounder === false ? "Founder status removed" : "Founder status granted",
+        organization: updated 
+      });
+    } catch (err: any) {
+      console.error("Set founder status error:", err);
       res.status(500).json({ message: err.message });
     }
   });

@@ -8,6 +8,10 @@ const LOW_BALANCE_THRESHOLD = 200; // $2.00 in cents
 const DISMISS_KEY = "lowBalanceAlertDismissed";
 const DISMISS_DURATION = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 
+interface Organization {
+  isFounder?: boolean;
+}
+
 export function LowBalanceAlert() {
   const [purchaseModalOpen, setPurchaseModalOpen] = useState(false);
   const [isDismissed, setIsDismissed] = useState(true); // Start hidden, check localStorage
@@ -34,10 +38,16 @@ export function LowBalanceAlert() {
     queryKey: ["/api/credits/balance"],
   });
 
+  const { data: organization } = useQuery<Organization>({
+    queryKey: ["/api/organization"],
+  });
+
   const balance = balanceData?.balance ?? 0;
   const isLowBalance = balance < LOW_BALANCE_THRESHOLD;
+  const isFounder = organization?.isFounder ?? false;
 
-  if (!isLowBalance || isDismissed) {
+  // Never show low balance warning for founders - they have unlimited credits
+  if (isFounder || !isLowBalance || isDismissed) {
     return null;
   }
 
