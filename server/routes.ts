@@ -6993,6 +6993,62 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   });
 
   // ============================================
+  // STRIPE CONNECT WEBHOOK
+  // ============================================
+  
+  api.post("/api/stripe/connect/webhook", express.raw({ type: "application/json" }), async (req, res) => {
+    try {
+      const { stripeConnectService } = await import("./services/stripeConnect");
+      const Stripe = require("stripe").default;
+      
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
+      const sig = req.headers["stripe-signature"] as string;
+      const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+      
+      if (!webhookSecret) {
+        logger.warn("Stripe webhook secret not configured", {});
+        return res.status(400).json({ message: "Webhook secret not configured" });
+      }
+      
+      if (!sig) {
+        logger.warn("Missing Stripe signature header", {});
+        return res.status(400).json({ message: "Missing Stripe signature" });
+      }
+      
+      let event: Stripe.Event;
+      
+      try {
+        const rawBody = typeof req.body === "string" ? req.body : JSON.stringify(req.body);
+        event = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret);
+      } catch (err: any) {
+        logger.error("Webhook signature verification failed", { error: err.message });
+        return res.status(400).json({ message: `Webhook Error: ${err.message}` });
+      }
+      
+      logger.info("Stripe webhook event received", {
+        eventType: event.type,
+        eventId: event.id,
+        timestamp: event.created,
+      });
+      
+      await stripeConnectService.handleWebhookEvent(event);
+      
+      logger.info("Stripe webhook event processed", {
+        eventType: event.type,
+        eventId: event.id,
+      });
+      
+      res.status(200).json({ received: true });
+    } catch (err: any) {
+      logger.error("Stripe webhook processing error", {
+        error: err.message,
+        stack: err.stack,
+      });
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
   // BORROWER PORTAL (Public)
   // ============================================
   

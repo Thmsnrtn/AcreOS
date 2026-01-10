@@ -21,7 +21,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, Crown, Check, ExternalLink, CreditCard, Loader2, Lightbulb, RotateCcw, Database, Trash2, BarChart3, Users, Home, FileText, Sparkles, TrendingUp, Coins, Shield, Mail, Phone, Bell, Code, Settings as SettingsIcon, Gift } from "lucide-react";
+import { Building2, Crown, Check, ExternalLink, CreditCard, Loader2, Lightbulb, RotateCcw, Database, Trash2, BarChart3, Users, Home, FileText, Sparkles, TrendingUp, Coins, Shield, Mail, Phone, Bell, Code, Settings as SettingsIcon, Gift, Link2, AlertCircle, CheckCircle2, Clock, RefreshCw, Unlink, Wallet } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Progress } from "@/components/ui/progress";
@@ -69,8 +69,300 @@ interface SeatPricing {
   yearly?: { id: string; amount: number; currency: string } | null;
 }
 
-const VALID_TABS = ["general", "team", "communications", "notifications", "ai", "data", "developer"] as const;
+const VALID_TABS = ["general", "team", "payments", "communications", "notifications", "ai", "data", "developer"] as const;
 type TabValue = typeof VALID_TABS[number];
+
+interface StripeConnectStatusResponse {
+  isConnected: boolean;
+  accountId?: string;
+  chargesEnabled: boolean;
+  payoutsEnabled: boolean;
+  detailsSubmitted: boolean;
+  capabilities?: {
+    cardPayments?: string;
+    transfers?: string;
+    usBankAccountAchPayments?: string;
+  };
+  requirements?: {
+    currentlyDue: string[];
+    eventuallyDue: string[];
+    pastDue: string[];
+  };
+  businessProfile?: {
+    name?: string;
+    url?: string;
+  };
+}
+
+function StripeConnectSettings() {
+  const { toast } = useToast();
+  
+  const { data: connectStatus, isLoading: statusLoading, refetch } = useQuery<StripeConnectStatusResponse>({
+    queryKey: ["/api/stripe/connect/status"],
+  });
+  
+  const connectMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/stripe/connect/link", {});
+      if (!res.ok) throw new Error("Failed to start Stripe onboarding");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      if (data.onboardingUrl) {
+        window.location.href = data.onboardingUrl;
+      }
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to start Stripe onboarding",
+        variant: "destructive",
+      });
+    },
+  });
+  
+  const refreshMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/stripe/connect/refresh", {});
+      if (!res.ok) throw new Error("Failed to refresh status");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/stripe/connect/status"] });
+      toast({
+        title: "Status refreshed",
+        description: "Your Stripe account status has been updated.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to refresh status",
+        variant: "destructive",
+      });
+    },
+  });
+  
+  const disconnectMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/stripe/connect/disconnect", {});
+      if (!res.ok) throw new Error("Failed to disconnect account");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/stripe/connect/status"] });
+      toast({
+        title: "Stripe disconnected",
+        description: "Your Stripe account has been disconnected.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to disconnect Stripe account",
+        variant: "destructive",
+      });
+    },
+  });
+  
+  const getStatusDisplay = () => {
+    if (!connectStatus) return { label: "Not Connected", icon: AlertCircle, color: "text-muted-foreground" };
+    
+    if (!connectStatus.isConnected) {
+      return { label: "Not Connected", icon: AlertCircle, color: "text-muted-foreground" };
+    }
+    
+    if (!connectStatus.detailsSubmitted) {
+      return { label: "Onboarding Required", icon: Clock, color: "text-amber-500" };
+    }
+    
+    if (!connectStatus.chargesEnabled) {
+      return { label: "Pending Verification", icon: Clock, color: "text-amber-500" };
+    }
+    
+    return { label: "Active", icon: CheckCircle2, color: "text-green-500" };
+  };
+  
+  const status = getStatusDisplay();
+  const StatusIcon = status.icon;
+
+  if (statusLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Wallet className="w-5 h-5" />
+            Stripe Connect
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Skeleton className="h-24 w-full" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Wallet className="w-5 h-5" />
+          Stripe Connect
+        </CardTitle>
+        <CardDescription>
+          Connect your Stripe account to receive payments from borrowers and buyers.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div className="flex items-center gap-3">
+            <StatusIcon className={`w-5 h-5 ${status.color}`} />
+            <div>
+              <p className="font-medium">Connection Status</p>
+              <p className={`text-sm ${status.color}`} data-testid="text-stripe-status">
+                {status.label}
+              </p>
+            </div>
+          </div>
+          
+          {connectStatus?.isConnected && connectStatus.accountId && (
+            <div className="text-right">
+              <p className="text-sm text-muted-foreground">Account ID</p>
+              <p className="font-mono text-sm" data-testid="text-stripe-account-id">
+                {connectStatus.accountId}
+              </p>
+            </div>
+          )}
+        </div>
+        
+        {connectStatus?.isConnected && (
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 pt-4 border-t">
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">Charges</p>
+              <div className="flex items-center gap-1">
+                {connectStatus.chargesEnabled ? (
+                  <CheckCircle2 className="w-4 h-4 text-green-500" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-amber-500" />
+                )}
+                <span className="text-sm font-medium">
+                  {connectStatus.chargesEnabled ? "Enabled" : "Pending"}
+                </span>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">Payouts</p>
+              <div className="flex items-center gap-1">
+                {connectStatus.payoutsEnabled ? (
+                  <CheckCircle2 className="w-4 h-4 text-green-500" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-amber-500" />
+                )}
+                <span className="text-sm font-medium">
+                  {connectStatus.payoutsEnabled ? "Enabled" : "Pending"}
+                </span>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">Onboarding</p>
+              <div className="flex items-center gap-1">
+                {connectStatus.detailsSubmitted ? (
+                  <CheckCircle2 className="w-4 h-4 text-green-500" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-amber-500" />
+                )}
+                <span className="text-sm font-medium">
+                  {connectStatus.detailsSubmitted ? "Complete" : "Incomplete"}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {connectStatus?.requirements && connectStatus.requirements.currentlyDue.length > 0 && (
+          <div className="p-4 rounded-md bg-amber-500/10 border border-amber-500/20">
+            <p className="font-medium text-amber-500 flex items-center gap-2">
+              <AlertCircle className="w-4 h-4" />
+              Action Required
+            </p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Complete your Stripe onboarding to enable payments. Click "Complete Onboarding" below.
+            </p>
+          </div>
+        )}
+        
+        <div className="flex flex-wrap gap-3 pt-4 border-t">
+          {!connectStatus?.isConnected ? (
+            <Button
+              onClick={() => connectMutation.mutate()}
+              disabled={connectMutation.isPending}
+              data-testid="button-connect-stripe"
+            >
+              {connectMutation.isPending ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Link2 className="w-4 h-4 mr-2" />
+              )}
+              Connect Stripe Account
+            </Button>
+          ) : (
+            <>
+              {!connectStatus.detailsSubmitted && (
+                <Button
+                  onClick={() => connectMutation.mutate()}
+                  disabled={connectMutation.isPending}
+                  data-testid="button-complete-onboarding"
+                >
+                  {connectMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <ExternalLink className="w-4 h-4 mr-2" />
+                  )}
+                  Complete Onboarding
+                </Button>
+              )}
+              
+              <Button
+                variant="outline"
+                onClick={() => refreshMutation.mutate()}
+                disabled={refreshMutation.isPending}
+                data-testid="button-refresh-stripe-status"
+              >
+                {refreshMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                )}
+                Refresh Status
+              </Button>
+              
+              <Button
+                variant="outline"
+                onClick={() => disconnectMutation.mutate()}
+                disabled={disconnectMutation.isPending}
+                data-testid="button-disconnect-stripe"
+              >
+                {disconnectMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Unlink className="w-4 h-4 mr-2" />
+                )}
+                Disconnect
+              </Button>
+            </>
+          )}
+        </div>
+        
+        <div className="pt-4 border-t">
+          <p className="text-sm text-muted-foreground">
+            <strong>Platform Fee:</strong> A 2.5% platform fee is applied to all payments processed through AcreOS. 
+            This covers payment processing, automated payment collection, and platform infrastructure.
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 function SeatManagement() {
   const { toast } = useToast();
@@ -435,6 +727,10 @@ export default function Settings() {
                 <TabsTrigger value="team" data-testid="tab-team" className="gap-1">
                   <Users className="w-4 h-4 hidden sm:inline" />
                   Team
+                </TabsTrigger>
+                <TabsTrigger value="payments" data-testid="tab-payments" className="gap-1">
+                  <Wallet className="w-4 h-4 hidden sm:inline" />
+                  Payments
                 </TabsTrigger>
                 <TabsTrigger value="communications" data-testid="tab-communications" className="gap-1">
                   <Mail className="w-4 h-4 hidden sm:inline" />
@@ -988,6 +1284,10 @@ export default function Settings() {
                   )}
                 </CardContent>
               </Card>
+            </TabsContent>
+
+            <TabsContent value="payments" className="space-y-8 mt-6" data-testid="tab-content-payments">
+              <StripeConnectSettings />
             </TabsContent>
 
             <TabsContent value="communications" className="space-y-8 mt-6" data-testid="tab-content-communications">
