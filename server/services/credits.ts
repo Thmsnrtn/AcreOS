@@ -19,10 +19,19 @@ import {
 } from "@shared/schema";
 
 export class CreditService {
+  async isFounder(organizationId: number): Promise<boolean> {
+    const org = await db.query.organizations.findFirst({
+      where: eq(organizations.id, organizationId),
+      columns: { isFounder: true }
+    });
+    return org?.isFounder || false;
+  }
+
   async getBalance(organizationId: number): Promise<number> {
     const org = await db.query.organizations.findFirst({
       where: eq(organizations.id, organizationId),
     });
+    if (org?.isFounder) return 999999999;
     return Number(org?.creditBalance || 0);
   }
 
@@ -64,6 +73,21 @@ export class CreditService {
     description: string,
     metadata?: InsertCreditTransaction["metadata"]
   ): Promise<CreditTransaction | null> {
+    if (await this.isFounder(organizationId)) {
+      const [transaction] = await db
+        .insert(creditTransactions)
+        .values({
+          organizationId,
+          type: "debit",
+          amountCents: 0,
+          balanceAfterCents: 999999999,
+          description: `[Founder] ${description}`,
+          metadata: { ...metadata, founderBypass: true },
+        })
+        .returning();
+      return transaction;
+    }
+
     const [updated] = await db
       .update(organizations)
       .set({ 
@@ -97,6 +121,7 @@ export class CreditService {
   }
 
   async hasEnoughCredits(organizationId: number, requiredCents: number): Promise<boolean> {
+    if (await this.isFounder(organizationId)) return true;
     const balance = await this.getBalance(organizationId);
     return balance >= requiredCents;
   }

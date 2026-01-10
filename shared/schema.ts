@@ -32,6 +32,8 @@ export const organizations = pgTable("organizations", {
   autoTopUpAmountCents: integer("auto_top_up_amount_cents").default(2500), // Add $25
   // Seat management
   additionalSeats: integer("additional_seats").default(0), // Extra seats purchased beyond tier limit
+  // Founder status - bypasses all limits and credit checks
+  isFounder: boolean("is_founder").default(false),
   // Onboarding wizard state
   onboardingCompleted: boolean("onboarding_completed").default(false),
   onboardingStep: integer("onboarding_step").default(0),

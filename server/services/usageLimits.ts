@@ -90,14 +90,20 @@ function normalizeTier(tier: string): SubscriptionTier {
   return "free";
 }
 
-async function getOrganizationTier(organizationId: number): Promise<SubscriptionTier> {
+async function getOrganizationTierAndFounderStatus(organizationId: number): Promise<{ tier: SubscriptionTier; isFounder: boolean }> {
   const [org] = await db
-    .select({ subscriptionTier: organizations.subscriptionTier })
+    .select({ 
+      subscriptionTier: organizations.subscriptionTier,
+      isFounder: organizations.isFounder 
+    })
     .from(organizations)
     .where(eq(organizations.id, organizationId));
   
-  if (!org) return "free";
-  return normalizeTier(org.subscriptionTier);
+  if (!org) return { tier: "free", isFounder: false };
+  return { 
+    tier: normalizeTier(org.subscriptionTier),
+    isFounder: org.isFounder || false
+  };
 }
 
 async function getLeadCount(organizationId: number): Promise<number> {
@@ -151,10 +157,11 @@ export async function checkUsageLimit(
   resourceType: ResourceType,
   options: UsageLimitOptions = {}
 ): Promise<UsageLimitResult> {
-  const tier = await getOrganizationTier(organizationId);
+  const { tier, isFounder: orgIsFounder } = await getOrganizationTierAndFounderStatus(organizationId);
+  const isFounder = options.isFounder ?? orgIsFounder;
   
   // Founders have unlimited access
-  const limits = options.isFounder ? FOUNDER_TIER_LIMITS : TIER_LIMITS[tier];
+  const limits = isFounder ? FOUNDER_TIER_LIMITS : TIER_LIMITS[tier];
   const limit = limits[resourceType];
   
   let current: number;
@@ -177,14 +184,14 @@ export async function checkUsageLimit(
   }
   
   // Founders are always allowed
-  const allowed = options.isFounder || limit === null || current < limit;
+  const allowed = isFounder || limit === null || current < limit;
   
   return {
     allowed,
     current,
     limit,
     resourceType,
-    tier: options.isFounder ? "enterprise" : tier, // Show enterprise tier for founders
+    tier: isFounder ? "enterprise" : tier, // Show enterprise tier for founders
   };
 }
 
@@ -196,8 +203,9 @@ export async function getAllUsageLimits(
   usage: Record<ResourceType, { current: number; limit: number | null; percentage: number | null }>;
   isFounder?: boolean;
 }> {
-  const tier = await getOrganizationTier(organizationId);
-  const limits = options.isFounder ? FOUNDER_TIER_LIMITS : TIER_LIMITS[tier];
+  const { tier, isFounder: orgIsFounder } = await getOrganizationTierAndFounderStatus(organizationId);
+  const isFounder = options.isFounder ?? orgIsFounder;
+  const limits = isFounder ? FOUNDER_TIER_LIMITS : TIER_LIMITS[tier];
   
   const [leadCount, propertyCount, noteCount, aiRequestCount] = await Promise.all([
     getLeadCount(organizationId),
@@ -212,8 +220,8 @@ export async function getAllUsageLimits(
   };
   
   return {
-    tier: options.isFounder ? "enterprise" : tier,
-    isFounder: options.isFounder,
+    tier: isFounder ? "enterprise" : tier,
+    isFounder,
     usage: {
       leads: {
         current: leadCount,
@@ -283,19 +291,22 @@ export interface SeatInfo {
 async function getOrganizationSeatData(organizationId: number): Promise<{
   tier: SubscriptionTier;
   additionalSeats: number;
+  isFounder: boolean;
 }> {
   const [org] = await db
     .select({ 
       subscriptionTier: organizations.subscriptionTier,
-      additionalSeats: organizations.additionalSeats 
+      additionalSeats: organizations.additionalSeats,
+      isFounder: organizations.isFounder 
     })
     .from(organizations)
     .where(eq(organizations.id, organizationId));
   
-  if (!org) return { tier: "free", additionalSeats: 0 };
+  if (!org) return { tier: "free", additionalSeats: 0, isFounder: false };
   return {
     tier: normalizeTier(org.subscriptionTier),
     additionalSeats: org.additionalSeats || 0,
+    isFounder: org.isFounder || false,
   };
 }
 
@@ -312,8 +323,11 @@ export async function getSeatInfo(
   organizationId: number,
   options: UsageLimitOptions = {}
 ): Promise<SeatInfo & { isFounder?: boolean }> {
+  const { tier, additionalSeats, isFounder: orgIsFounder } = await getOrganizationSeatData(organizationId);
+  const isFounder = options.isFounder ?? orgIsFounder;
+  
   // Founders have unlimited access
-  if (options.isFounder) {
+  if (isFounder) {
     const usedSeats = await getTeamMemberCount(organizationId);
     return {
       tier: "enterprise",
@@ -330,7 +344,6 @@ export async function getSeatInfo(
     };
   }
   
-  const { tier, additionalSeats } = await getOrganizationSeatData(organizationId);
   const limits = TIER_LIMITS[tier];
   const usedSeats = await getTeamMemberCount(organizationId);
   
@@ -361,10 +374,8 @@ export async function checkTeamMessagingAccess(
   organizationId: number,
   options: UsageLimitOptions = {}
 ): Promise<boolean> {
-  // Founders always have team messaging access
-  if (options.isFounder) return true;
-  
-  const seatInfo = await getSeatInfo(organizationId);
+  const seatInfo = await getSeatInfo(organizationId, options);
+  // Founders always have team messaging access (handled in getSeatInfo)
   return seatInfo.hasTeamMessaging;
 }
 
