@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, numeric, varchar, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, numeric, varchar, jsonb, index } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -308,7 +308,12 @@ export const leads = pgTable("leads", {
   
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("leads_org_idx").on(table.organizationId),
+  index("leads_status_idx").on(table.status),
+  index("leads_created_at_idx").on(table.createdAt),
+  index("leads_email_idx").on(table.email),
+]);
 
 // Lead activity/interactions log
 export const leadActivities = pgTable("lead_activities", {
@@ -560,7 +565,12 @@ export const properties = pgTable("properties", {
   // Timestamps
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("properties_org_idx").on(table.organizationId),
+  index("properties_status_idx").on(table.status),
+  index("properties_apn_idx").on(table.apn),
+  index("properties_created_at_idx").on(table.createdAt),
+]);
 
 // Deals/Transactions (acquisition or disposition)
 export const deals = pgTable("deals", {
@@ -657,7 +667,11 @@ export const deals = pgTable("deals", {
   assignedTo: integer("assigned_to"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("deals_org_idx").on(table.organizationId),
+  index("deals_status_idx").on(table.status),
+  index("deals_created_at_idx").on(table.createdAt),
+]);
 
 // ============================================
 // FINANCE: NOTES & PAYMENTS
@@ -727,7 +741,11 @@ export const notes = pgTable("notes", {
   notes: text("notes_text"), // Renamed to avoid conflict with table name
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("notes_org_idx").on(table.organizationId),
+  index("notes_status_idx").on(table.status),
+  index("notes_borrower_idx").on(table.borrowerId),
+]);
 
 // Payment transactions
 export const payments = pgTable("payments", {
@@ -755,7 +773,11 @@ export const payments = pgTable("payments", {
   failureReason: text("failure_reason"),
   processedAt: timestamp("processed_at"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("payments_note_idx").on(table.noteId),
+  index("payments_status_idx").on(table.status),
+  index("payments_due_date_idx").on(table.dueDate),
+]);
 
 // Payment reminders for automated delinquency management
 export const paymentReminders = pgTable("payment_reminders", {
@@ -834,7 +856,10 @@ export const campaigns = pgTable("campaigns", {
   createdBy: integer("created_by"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("campaigns_org_idx").on(table.organizationId),
+  index("campaigns_status_idx").on(table.status),
+]);
 
 // Campaign optimizations (AI-powered suggestions)
 export const campaignOptimizations = pgTable("campaign_optimizations", {
@@ -972,7 +997,11 @@ export const agentTasks = pgTable("agent_tasks", {
   reviewNotes: text("review_notes"),
   
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("agent_tasks_org_idx").on(table.organizationId),
+  index("agent_tasks_status_idx").on(table.status),
+  index("agent_tasks_created_at_idx").on(table.createdAt),
+]);
 
 // Background Agent Runs (tracking status of automated agents)
 export const agentRuns = pgTable("agent_runs", {

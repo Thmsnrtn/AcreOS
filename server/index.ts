@@ -11,6 +11,7 @@ import { db, storage } from "./storage";
 import { eq, sql } from "drizzle-orm";
 import { organizations } from "@shared/schema";
 import { logger, requestLoggingMiddleware, errorLoggingMiddleware } from "./utils/logger";
+import { securityHeaders, corsMiddleware, requestTimeout, validateContentType, sanitizeQueryParams } from "./middleware/security";
 import crypto from "crypto";
 
 const app = express();
@@ -106,6 +107,11 @@ async function initStripe() {
   }
 }
 
+app.use(securityHeaders);
+app.use(corsMiddleware);
+app.use(requestTimeout);
+app.use(sanitizeQueryParams);
+
 app.post(
   '/api/stripe/webhook',
   express.raw({ type: 'application/json' }),
@@ -144,6 +150,7 @@ app.use(
 
 app.use(express.urlencoded({ extended: false }));
 
+app.use(validateContentType);
 app.use(requestLoggingMiddleware);
 
 (async () => {
