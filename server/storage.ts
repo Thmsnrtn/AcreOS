@@ -1402,6 +1402,13 @@ export class DatabaseStorage implements IStorage {
   }
   
   async deleteProperty(id: number) {
+    // Delete all related records first to avoid foreign key constraints
+    await db.delete(dueDiligenceChecklists).where(eq(dueDiligenceChecklists.propertyId, id));
+    await db.delete(dueDiligenceItems).where(eq(dueDiligenceItems.propertyId, id));
+    await db.delete(propertyListings).where(eq(propertyListings.propertyId, id));
+    await db.delete(deals).where(eq(deals.propertyId, id));
+    
+    // Now delete the property itself
     await db.delete(properties).where(eq(properties.id, id));
   }
   
@@ -1412,6 +1419,14 @@ export class DatabaseStorage implements IStorage {
   
   async bulkDeleteProperties(orgId: number, ids: number[]): Promise<number> {
     if (ids.length === 0) return 0;
+    
+    // Delete all related records first to avoid foreign key constraints
+    await db.delete(dueDiligenceChecklists).where(inArray(dueDiligenceChecklists.propertyId, ids));
+    await db.delete(dueDiligenceItems).where(inArray(dueDiligenceItems.propertyId, ids));
+    await db.delete(propertyListings).where(inArray(propertyListings.propertyId, ids));
+    await db.delete(deals).where(inArray(deals.propertyId, ids));
+    
+    // Now delete the properties
     await db.delete(properties)
       .where(and(eq(properties.organizationId, orgId), inArray(properties.id, ids)));
     return ids.length;
