@@ -8,7 +8,7 @@ import {
   messages, activityLog, usageEvents,
   aiAgentProfiles, aiToolDefinitions, aiExecutionRuns, aiMemory,
   vaAgents, vaActions, vaBriefings, vaCalendarEvents, vaTemplates,
-  dueDiligenceTemplates, dueDiligenceItems, dueDiligenceChecklists,
+  dueDiligenceTemplates, dueDiligenceItems, dueDiligenceChecklists, dueDiligenceDossiers,
   checklistTemplates, dealChecklists,
   usageRecords, creditTransactions,
   supportCases, supportMessages, supportActions, supportPlaybooks,
@@ -1403,6 +1403,7 @@ export class DatabaseStorage implements IStorage {
   
   async deleteProperty(id: number) {
     // Delete all related records first to avoid foreign key constraints
+    await db.delete(dueDiligenceDossiers).where(eq(dueDiligenceDossiers.propertyId, id));
     await db.delete(dueDiligenceChecklists).where(eq(dueDiligenceChecklists.propertyId, id));
     await db.delete(dueDiligenceItems).where(eq(dueDiligenceItems.propertyId, id));
     await db.delete(propertyListings).where(eq(propertyListings.propertyId, id));
@@ -1421,6 +1422,7 @@ export class DatabaseStorage implements IStorage {
     if (ids.length === 0) return 0;
     
     // Delete all related records first to avoid foreign key constraints
+    await db.delete(dueDiligenceDossiers).where(inArray(dueDiligenceDossiers.propertyId, ids));
     await db.delete(dueDiligenceChecklists).where(inArray(dueDiligenceChecklists.propertyId, ids));
     await db.delete(dueDiligenceItems).where(inArray(dueDiligenceItems.propertyId, ids));
     await db.delete(propertyListings).where(inArray(propertyListings.propertyId, ids));
