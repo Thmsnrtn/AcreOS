@@ -1653,16 +1653,22 @@ export default function CommandCenterPage() {
         }
       }
 
-      // Process attachments to base64
-      const processedAttachments = await Promise.all(
-        currentAttachments.map(async (att) => ({
-          name: att.file.name,
-          type: att.type,
-          mimeType: att.file.type,
-          size: att.file.size,
-          base64: await fileToBase64(att.file),
-        }))
-      );
+      // Process attachments to base64 - separate images and files
+      const imageContents: string[] = [];
+      const fileAttachments: { name: string; content: string; size: number }[] = [];
+      
+      for (const att of currentAttachments) {
+        const base64 = await fileToBase64(att.file);
+        if (att.type === "image") {
+          imageContents.push(base64);
+        } else {
+          fileAttachments.push({
+            name: att.file.name,
+            content: base64,
+            size: att.file.size,
+          });
+        }
+      }
 
       const response = await fetch("/api/ai/chat/stream", {
         method: "POST",
@@ -1671,7 +1677,8 @@ export default function CommandCenterPage() {
           message,
           conversationId,
           agentRole: "assistant",
-          attachments: processedAttachments.length > 0 ? processedAttachments : undefined,
+          images: imageContents.length > 0 ? imageContents : undefined,
+          files: fileAttachments.length > 0 ? fileAttachments : undefined,
         }),
         credentials: "include",
       });
