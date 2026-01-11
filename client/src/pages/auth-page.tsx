@@ -86,8 +86,8 @@ export default function AuthPage() {
           size="icon"
           onClick={refreshImage}
           className="bg-black/30 backdrop-blur-sm border border-white/20 text-white hover:bg-white/20"
-          data-testid="button-refresh-earth-view"
-          title="Load new Earth View"
+          data-testid="button-refresh-image"
+          title="Load new image"
         >
           <RefreshCw className="w-5 h-5" />
         </Button>
