@@ -38,9 +38,9 @@ const propertyFormSchema = insertPropertySchema.omit({ organizationId: true }).e
       { message: "Please enter a valid 2-letter state code (e.g., CA, TX)" }
     ),
   sizeAcres: z.string()
-    .optional()
+    .min(1, "Acreage is required")
     .refine(
-      (val) => !val || (!isNaN(Number(val)) && Number(val) > 0),
+      (val) => !isNaN(Number(val)) && Number(val) > 0,
       { message: "Please enter a valid acreage (e.g., 5.0)" }
     ),
   purchasePrice: z.string()
@@ -313,7 +313,7 @@ export default function PropertiesPage() {
   return (
     <div className="flex min-h-screen bg-background desert-gradient">
       <Sidebar />
-      <main className="flex-1 md:ml-[17rem] p-4 pt-16 md:pt-8 md:p-8 pb-24 md:pb-8 overflow-x-hidden">
+      <main className="flex-1 md:ml-[17rem] p-4 pt-16 md:pt-8 md:p-8 pb-8 overflow-x-hidden">
         <div className="max-w-7xl mx-auto space-y-6 md:space-y-8">
           
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -326,23 +326,25 @@ export default function PropertiesPage() {
                 variant="outline" 
                 onClick={handleExport} 
                 disabled={isExporting}
+                className="min-h-[44px] md:min-h-9"
                 data-testid="button-export-properties"
               >
-                {isExporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
-                Export CSV
+                {isExporting ? <Loader2 className="w-4 h-4 md:mr-2 animate-spin" /> : <Download className="w-4 h-4 md:mr-2" />}
+                <span className="hidden md:inline">Export CSV</span>
               </Button>
               <Button 
                 variant="outline" 
                 onClick={() => setIsImportOpen(true)}
+                className="min-h-[44px] md:min-h-9"
                 data-testid="button-import-properties"
               >
-                <Upload className="w-4 h-4 mr-2" />
-                Import CSV
+                <Upload className="w-4 h-4 md:mr-2" />
+                <span className="hidden md:inline">Import CSV</span>
               </Button>
               <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
                 <DialogTrigger asChild>
-                  <Button className="shadow-lg hover:shadow-primary/25" data-testid="button-add-property">
-                    <Plus className="w-4 h-4 mr-2" /> Add Property
+                  <Button className="shadow-lg hover:shadow-primary/25 min-h-[44px] md:min-h-9" data-testid="button-add-property">
+                    <Plus className="w-4 h-4 mr-2" /> <span className="hidden sm:inline">Add</span> Property
                   </Button>
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-[500px]">
@@ -356,18 +358,21 @@ export default function PropertiesPage() {
           </div>
 
           {selectedPropertyIds.size > 0 && (
-            <div className="p-3 bg-muted/50 border rounded-md flex flex-wrap items-center gap-3" data-testid="bulk-actions-toolbar-properties">
+            <div className="p-3 bg-muted/50 border rounded-md space-y-3 md:space-y-0 md:flex md:flex-wrap md:items-center md:gap-3" data-testid="bulk-actions-toolbar-properties">
               <div className="flex items-center gap-2">
                 <CheckSquare className="w-4 h-4" />
                 <span className="text-sm font-medium" data-testid="text-selected-properties-count">{selectedPropertyIds.size} propert{selectedPropertyIds.size !== 1 ? "ies" : "y"} selected</span>
+                <Button variant="ghost" size="icon" className="md:hidden min-h-[44px] min-w-[44px] ml-auto" onClick={() => setSelectedPropertyIds(new Set())} data-testid="button-clear-selection-properties-mobile">
+                  <X className="w-4 h-4" />
+                </Button>
               </div>
-              <div className="flex flex-wrap items-center gap-2 ml-auto">
-                <Button variant="outline" size="sm" onClick={handleBulkExportProperties} data-testid="button-bulk-export-properties">
+              <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap md:items-center md:gap-2 md:ml-auto">
+                <Button variant="outline" className="min-h-[44px] md:min-h-8" onClick={handleBulkExportProperties} data-testid="button-bulk-export-properties">
                   <Download className="w-4 h-4 mr-1" /> Export
                 </Button>
                 <Select onValueChange={handleBulkStatusChange} disabled={isBulkUpdating}>
-                  <SelectTrigger className="w-[150px]" data-testid="select-bulk-status-properties">
-                    <SelectValue placeholder={isBulkUpdating ? "Updating..." : "Change Status"} />
+                  <SelectTrigger className="min-h-[44px] md:min-h-8 w-full md:w-[150px]" data-testid="select-bulk-status-properties">
+                    <SelectValue placeholder={isBulkUpdating ? "Updating..." : "Status"} />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="available">Available</SelectItem>
@@ -378,10 +383,10 @@ export default function PropertiesPage() {
                     <SelectItem value="listed">Listed</SelectItem>
                   </SelectContent>
                 </Select>
-                <Button variant="destructive" size="sm" onClick={() => setShowBulkDeleteConfirm(true)} disabled={isBulkDeleting} data-testid="button-bulk-delete-properties">
+                <Button variant="destructive" className="min-h-[44px] md:min-h-8 col-span-2 md:col-span-1" onClick={() => setShowBulkDeleteConfirm(true)} disabled={isBulkDeleting} data-testid="button-bulk-delete-properties">
                   <Trash2 className="w-4 h-4 mr-1" /> Delete
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => setSelectedPropertyIds(new Set())} data-testid="button-clear-selection-properties">
+                <Button variant="ghost" size="sm" className="hidden md:flex" onClick={() => setSelectedPropertyIds(new Set())} data-testid="button-clear-selection-properties">
                   <X className="w-4 h-4" />
                 </Button>
               </div>
@@ -389,14 +394,22 @@ export default function PropertiesPage() {
           )}
 
           {!isLoading && properties && properties.length > 0 && (
-            <div className="flex flex-wrap items-center gap-3 p-2 bg-muted/30 rounded-md">
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  checked={filteredProperties.length > 0 && selectedPropertyIds.size === filteredProperties.length}
-                  onCheckedChange={(checked) => handleSelectAll(checked === true)}
-                  data-testid="checkbox-select-all-properties"
-                />
-                <span className="text-sm text-muted-foreground">Select All</span>
+            <div className="space-y-2 md:space-y-0 md:flex md:flex-wrap md:items-center md:gap-3 p-2 bg-muted/30 rounded-md">
+              <div className="flex items-center justify-between gap-2 md:justify-start">
+                <div className="flex items-center gap-2 min-h-[44px] md:min-h-0">
+                  <Checkbox
+                    checked={filteredProperties.length > 0 && selectedPropertyIds.size === filteredProperties.length}
+                    onCheckedChange={(checked) => handleSelectAll(checked === true)}
+                    className="h-5 w-5 md:h-4 md:w-4"
+                    data-testid="checkbox-select-all-properties"
+                  />
+                  <span className="text-sm text-muted-foreground">Select All</span>
+                </div>
+                {filteredProperties.length !== properties.length && (
+                  <span className="text-xs md:hidden text-muted-foreground" data-testid="text-filtered-count-mobile">
+                    {filteredProperties.length}/{properties.length}
+                  </span>
+                )}
               </div>
               <GisFilters
                 filters={gisFilters}
@@ -404,7 +417,7 @@ export default function PropertiesPage() {
                 activeFilterCount={countActiveGisFilters(gisFilters)}
               />
               {filteredProperties.length !== properties.length && (
-                <span className="text-sm text-muted-foreground" data-testid="text-filtered-count">
+                <span className="hidden md:inline text-sm text-muted-foreground" data-testid="text-filtered-count">
                   Showing {filteredProperties.length} of {properties.length} properties
                 </span>
               )}
@@ -668,13 +681,13 @@ function PropertyCard({ property, onDelete }: { property: Property; onDelete: ()
 
   return (
     <Card className="card-hover border-border/50 group" data-testid={`card-property-${property.id}`}>
-      <div className="h-40 bg-slate-100 dark:bg-slate-900 relative overflow-hidden">
+      <div className="h-44 sm:h-40 bg-slate-100 dark:bg-slate-900 relative overflow-hidden">
         {hasMapData ? (
           <SinglePropertyMap
             boundary={property.parcelBoundary}
             centroid={property.parcelCentroid}
             apn={property.apn}
-            height="160px"
+            height="100%"
             state={property.state}
             county={property.county}
             showNearbyParcels={true}
@@ -685,7 +698,7 @@ function PropertyCard({ property, onDelete }: { property: Property; onDelete: ()
               <MapPin className="w-8 h-8 text-slate-300 dark:text-slate-700 mx-auto mb-2" />
               <Button
                 variant="outline"
-                size="sm"
+                className="min-h-[44px] sm:min-h-8"
                 onClick={(e) => {
                   e.stopPropagation();
                   fetchParcel(property.id);
@@ -694,9 +707,9 @@ function PropertyCard({ property, onDelete }: { property: Property; onDelete: ()
                 data-testid={`button-fetch-parcel-${property.id}`}
               >
                 {isFetchingParcel ? (
-                  <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Fetching...</>
+                  <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Fetching...</>
                 ) : (
-                  <><MapIcon className="w-3 h-3 mr-1" /> Fetch Map</>
+                  <><MapIcon className="w-4 h-4 mr-1" /> Fetch Map</>
                 )}
               </Button>
             </div>
@@ -707,34 +720,34 @@ function PropertyCard({ property, onDelete }: { property: Property; onDelete: ()
             {property.status.replace('_', ' ')}
           </Badge>
         </div>
-        <div className="absolute top-2 left-2 flex gap-1 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="absolute top-2 left-2 flex gap-1 z-10 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
           <Button 
             variant="destructive" 
             size="icon"
-            className="h-7 w-7"
+            className="h-10 w-10 sm:h-7 sm:w-7"
             onClick={(e) => {
               e.stopPropagation();
               onDelete();
             }}
             data-testid={`button-delete-property-${property.id}`}
           >
-            <Trash2 className="w-3 h-3" />
+            <Trash2 className="w-4 h-4 sm:w-3 sm:h-3" />
           </Button>
           <Button 
             variant="secondary" 
             size="icon"
-            className="h-7 w-7"
+            className="h-10 w-10 sm:h-7 sm:w-7"
             onClick={handleDownloadDeed}
             disabled={isDownloading}
             data-testid={`button-download-deed-${property.id}`}
           >
-            {isDownloading ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
+            {isDownloading ? <Loader2 className="w-4 h-4 sm:w-3 sm:h-3 animate-spin" /> : <FileText className="w-4 h-4 sm:w-3 sm:h-3" />}
           </Button>
           {hasMapData && (
             <Button 
               variant="secondary" 
               size="icon"
-              className="h-7 w-7"
+              className="h-10 w-10 sm:h-7 sm:w-7"
               onClick={(e) => {
                 e.stopPropagation();
                 fetchParcel(property.id);
@@ -742,7 +755,7 @@ function PropertyCard({ property, onDelete }: { property: Property; onDelete: ()
               disabled={isFetchingParcel}
               data-testid={`button-refresh-parcel-${property.id}`}
             >
-              <RefreshCw className={`w-3 h-3 ${isFetchingParcel ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-4 h-4 sm:w-3 sm:h-3 ${isFetchingParcel ? 'animate-spin' : ''}`} />
             </Button>
           )}
         </div>
@@ -766,21 +779,21 @@ function PropertyCard({ property, onDelete }: { property: Property; onDelete: ()
         <div className="mt-3 pt-3 border-t flex items-center justify-between gap-2">
           <Button 
             variant="outline" 
-            size="sm"
             onClick={() => setIsDetailOpen(true)}
-            className="flex-1"
+            className="flex-1 min-h-[44px] sm:min-h-8"
             data-testid={`button-view-details-${property.id}`}
           >
-            <ClipboardCheck className="w-3.5 h-3.5 mr-1.5" />
-            Due Diligence
+            <ClipboardCheck className="w-4 h-4 sm:w-3.5 sm:h-3.5 mr-1.5" />
+            <span className="text-sm">Due Diligence</span>
           </Button>
           <Button 
             variant="outline" 
-            size="sm"
+            size="icon"
+            className="min-h-[44px] min-w-[44px] sm:min-h-8 sm:min-w-8"
             onClick={() => setIsCalculatorOpen(true)}
             data-testid={`button-calculator-${property.id}`}
           >
-            <Calculator className="w-3.5 h-3.5" />
+            <Calculator className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
           </Button>
         </div>
       </CardContent>
@@ -991,16 +1004,16 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
-          <div className="flex items-center justify-between gap-4 flex-wrap">
-            <DialogTitle className="flex items-center gap-2">
-              <MapPin className="w-5 h-5" />
-              {currentProperty.address || `${currentProperty.county}, ${currentProperty.state}`}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4">
+            <DialogTitle className="flex items-center gap-2 text-lg sm:text-xl">
+              <MapPin className="w-5 h-5 flex-shrink-0" />
+              <span className="truncate">{currentProperty.address || `${currentProperty.county}, ${currentProperty.state}`}</span>
             </DialogTitle>
             <Button 
               variant="default" 
-              size="sm" 
+              className="min-h-[44px] sm:min-h-8 w-full sm:w-auto"
               onClick={() => setIsAnalysisChatOpen(true)}
               data-testid="button-analyze-with-ai"
             >
@@ -1008,7 +1021,7 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
               Analyze with AI
             </Button>
           </div>
-          <DialogDescription className="flex items-center gap-4 flex-wrap">
+          <DialogDescription className="flex items-center gap-2 sm:gap-4 flex-wrap text-xs sm:text-sm">
             <span>APN: {currentProperty.apn}</span>
             <span>{currentProperty.sizeAcres} Acres</span>
             <Badge variant="outline" className="capitalize">{currentProperty.status.replace('_', ' ')}</Badge>
@@ -1016,36 +1029,40 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
         </DialogHeader>
         
         <Tabs defaultValue="overview" className="mt-4">
-          <TabsList className="grid w-full grid-cols-5">
-            <TabsTrigger value="overview" data-testid="tab-overview">Overview</TabsTrigger>
-            <TabsTrigger value="intelligence" data-testid="tab-intelligence">
-              <Brain className="w-3.5 h-3.5 mr-1" />
-              Intelligence
-            </TabsTrigger>
-            <TabsTrigger value="comps" data-testid="tab-comps">
-              <BarChart2 className="w-3.5 h-3.5 mr-1" />
-              Comps
-            </TabsTrigger>
-            <TabsTrigger value="ai-offer" data-testid="tab-ai-offer">
-              <Calculator className="w-3.5 h-3.5 mr-1" />
-              AI Offer
-            </TabsTrigger>
-            <TabsTrigger value="due-diligence" data-testid="tab-due-diligence">Due Diligence</TabsTrigger>
-          </TabsList>
+          <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
+            <TabsList className="inline-flex w-auto min-w-full sm:grid sm:w-full sm:grid-cols-5 gap-1">
+              <TabsTrigger value="overview" className="min-h-[40px] px-3 sm:px-2 whitespace-nowrap" data-testid="tab-overview">Overview</TabsTrigger>
+              <TabsTrigger value="intelligence" className="min-h-[40px] px-3 sm:px-2 whitespace-nowrap" data-testid="tab-intelligence">
+                <Brain className="w-3.5 h-3.5 mr-1 hidden sm:inline" />
+                Intel
+              </TabsTrigger>
+              <TabsTrigger value="comps" className="min-h-[40px] px-3 sm:px-2 whitespace-nowrap" data-testid="tab-comps">
+                <BarChart2 className="w-3.5 h-3.5 mr-1 hidden sm:inline" />
+                Comps
+              </TabsTrigger>
+              <TabsTrigger value="ai-offer" className="min-h-[40px] px-3 sm:px-2 whitespace-nowrap" data-testid="tab-ai-offer">
+                <Calculator className="w-3.5 h-3.5 mr-1 hidden sm:inline" />
+                AI Offer
+              </TabsTrigger>
+              <TabsTrigger value="due-diligence" className="min-h-[40px] px-3 sm:px-2 whitespace-nowrap" data-testid="tab-due-diligence">DD</TabsTrigger>
+            </TabsList>
+          </div>
           
           <TabsContent value="overview" className="space-y-6 mt-4">
             {hasMapData && (
-              <div className="rounded-md overflow-hidden border">
-                <SinglePropertyMap
-                  boundary={currentProperty.parcelBoundary as { type: "Polygon" | "MultiPolygon"; coordinates: number[][][] | number[][][][]; }}
-                  centroid={currentProperty.parcelCentroid as { lat: number; lng: number }}
-                  apn={currentProperty.apn}
-                  height="350px"
-                  enable3DTerrain={true}
-                  state={currentProperty.state}
-                  county={currentProperty.county}
-                  showNearbyParcels={true}
-                />
+              <div className="rounded-md overflow-hidden border -mx-4 sm:mx-0">
+                <div className="h-[250px] sm:h-[350px]">
+                  <SinglePropertyMap
+                    boundary={currentProperty.parcelBoundary as { type: "Polygon" | "MultiPolygon"; coordinates: number[][][] | number[][][][]; }}
+                    centroid={currentProperty.parcelCentroid as { lat: number; lng: number }}
+                    apn={currentProperty.apn}
+                    height="100%"
+                    enable3DTerrain={true}
+                    state={currentProperty.state}
+                    county={currentProperty.county}
+                    showNearbyParcels={true}
+                  />
+                </div>
               </div>
             )}
 

@@ -924,7 +924,7 @@ export function FloatingAssistant() {
   };
 
   return (
-    <div className="fixed z-50 bottom-36 right-4 md:bottom-24 md:right-6" data-testid="floating-assistant-container">
+    <div className="fixed z-50 bottom-20 right-4 md:bottom-24 md:right-6 safe-area-bottom" data-testid="floating-assistant-container">
       <input
         ref={fileInputRef}
         type="file"
@@ -951,9 +951,9 @@ export function FloatingAssistant() {
       {isOpen && !isMinimized && (
         <div 
           className={cn(
-            "absolute bottom-16 right-0 mb-2",
-            "w-[360px] md:w-[400px] h-[500px] md:h-[600px]",
-            "glass-panel floating-window rounded-2xl overflow-hidden",
+            "fixed md:absolute bottom-0 md:bottom-16 right-0 left-0 md:left-auto mb-0 md:mb-2",
+            "w-full md:w-[400px] h-[85vh] md:h-[600px]",
+            "glass-panel floating-window rounded-t-2xl md:rounded-2xl overflow-hidden",
             "flex flex-col",
             "animate-in slide-in-from-bottom-4 fade-in duration-300",
             isDragging && "ring-2 ring-primary ring-offset-2 ring-offset-background"

@@ -52,57 +52,59 @@ export function GisFilters({ filters, onChange, activeFilterCount = 0 }: GisFilt
     filters.minimumInvestmentScore > 0;
 
   return (
-    <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+    <Collapsible open={isOpen} onOpenChange={setIsOpen} className="w-full sm:w-auto">
       <CollapsibleTrigger asChild>
         <Button 
           variant="outline" 
-          size="sm" 
-          className="gap-2"
+          className="gap-2 min-h-[44px] sm:min-h-8 w-full sm:w-auto justify-between sm:justify-center"
           data-testid="button-toggle-gis-filters"
         >
-          <MapPin className="w-4 h-4" />
-          GIS Filters
-          {hasActiveFilters && (
-            <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-xs" data-testid="badge-gis-filter-count">
-              {activeFilterCount}
-            </Badge>
-          )}
-          {isOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+          <div className="flex items-center gap-2">
+            <MapPin className="w-4 h-4" />
+            <span>GIS Filters</span>
+            {hasActiveFilters && (
+              <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-xs" data-testid="badge-gis-filter-count">
+                {activeFilterCount}
+              </Badge>
+            )}
+          </div>
+          {isOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
         </Button>
       </CollapsibleTrigger>
       
       <CollapsibleContent className="mt-3">
         <div 
-          className="p-4 bg-muted/30 border rounded-lg space-y-4"
+          className="p-3 sm:p-4 bg-muted/30 border rounded-lg space-y-4"
           data-testid="section-gis-filters"
         >
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <h4 className="text-sm font-medium flex items-center gap-2">
               <MapPin className="w-4 h-4 text-primary" />
-              GIS-Based Filters
+              <span className="hidden sm:inline">GIS-Based Filters</span>
+              <span className="sm:hidden">Filters</span>
             </h4>
             {hasActiveFilters && (
               <Button 
                 variant="ghost" 
-                size="sm" 
                 onClick={handleClearFilters}
-                className="text-xs h-7"
+                className="text-xs min-h-[44px] sm:min-h-7 px-3"
                 data-testid="button-clear-gis-filters"
               >
-                <X className="w-3 h-3 mr-1" />
+                <X className="w-4 h-4 sm:w-3 sm:h-3 mr-1" />
                 Clear
               </Button>
             )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="flex items-start gap-3 p-3 bg-background rounded-md border">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
+            <div className="flex items-start gap-3 p-3 bg-background rounded-md border min-h-[60px]">
               <Checkbox
                 id="exclude-flood-zones"
                 checked={filters.excludeFloodZones}
                 onCheckedChange={(checked) => 
                   handleFilterChange("excludeFloodZones", checked === true)
                 }
+                className="h-5 w-5 sm:h-4 sm:w-4 mt-0.5"
                 data-testid="checkbox-exclude-flood-zones"
               />
               <div className="flex-1 space-y-1">
@@ -128,13 +130,14 @@ export function GisFilters({ filters, onChange, activeFilterCount = 0 }: GisFilt
               </div>
             </div>
 
-            <div className="flex items-start gap-3 p-3 bg-background rounded-md border">
+            <div className="flex items-start gap-3 p-3 bg-background rounded-md border min-h-[60px]">
               <Checkbox
                 id="low-hazard-risk"
                 checked={filters.lowHazardRiskOnly}
                 onCheckedChange={(checked) => 
                   handleFilterChange("lowHazardRiskOnly", checked === true)
                 }
+                className="h-5 w-5 sm:h-4 sm:w-4 mt-0.5"
                 data-testid="checkbox-low-hazard-risk"
               />
               <div className="flex-1 space-y-1">
@@ -160,13 +163,14 @@ export function GisFilters({ filters, onChange, activeFilterCount = 0 }: GisFilt
               </div>
             </div>
 
-            <div className="flex items-start gap-3 p-3 bg-background rounded-md border">
+            <div className="flex items-start gap-3 p-3 bg-background rounded-md border min-h-[60px]">
               <Checkbox
                 id="near-infrastructure"
                 checked={filters.nearInfrastructure}
                 onCheckedChange={(checked) => 
                   handleFilterChange("nearInfrastructure", checked === true)
                 }
+                className="h-5 w-5 sm:h-4 sm:w-4 mt-0.5"
                 data-testid="checkbox-near-infrastructure"
               />
               <div className="flex-1 space-y-1">
@@ -185,7 +189,7 @@ export function GisFilters({ filters, onChange, activeFilterCount = 0 }: GisFilt
                     </TooltipContent>
                   </Tooltip>
                 </div>
-                <div className="flex items-center gap-2 mt-2">
+                <div className="flex items-center gap-2 mt-2 flex-wrap">
                   <Building2 className="w-3 h-3 text-muted-foreground" />
                   <span className="text-xs text-muted-foreground">Within</span>
                   <Input
@@ -197,10 +201,10 @@ export function GisFilters({ filters, onChange, activeFilterCount = 0 }: GisFilt
                       handleFilterChange("infrastructureDistanceMiles", Number(e.target.value) || 10)
                     }
                     disabled={!filters.nearInfrastructure}
-                    className="w-16 h-7 text-xs"
+                    className="w-20 h-10 sm:w-16 sm:h-7 text-sm sm:text-xs"
                     data-testid="input-infrastructure-distance"
                   />
-                  <span className="text-xs text-muted-foreground">miles of hospital/school</span>
+                  <span className="text-xs text-muted-foreground">mi</span>
                 </div>
               </div>
             </div>

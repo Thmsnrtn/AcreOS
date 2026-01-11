@@ -852,7 +852,7 @@ export default function FounderDashboard() {
     return (
       <div className="flex min-h-screen bg-background">
         <Sidebar />
-        <main className="flex-1 md:ml-[17rem] p-4 pt-16 md:pt-8 md:p-8 pb-24 md:pb-8">
+        <main className="flex-1 md:ml-[17rem] p-4 pt-16 md:pt-8 md:p-8 pb-8">
           <div className="max-w-7xl mx-auto space-y-6">
             <Skeleton className="h-10 w-64" />
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -869,7 +869,7 @@ export default function FounderDashboard() {
   return (
     <div className="flex min-h-screen bg-background desert-gradient">
       <Sidebar />
-      <main className="flex-1 md:ml-[17rem] p-4 pt-16 md:pt-8 md:p-8 pb-24 md:pb-8 overflow-x-hidden">
+      <main className="flex-1 md:ml-[17rem] p-4 pt-16 md:pt-8 md:p-8 pb-8 overflow-x-hidden">
         <div className="max-w-7xl mx-auto space-y-6">
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <div>

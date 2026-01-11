@@ -13,6 +13,7 @@ import { insertDealSchema, type Deal, type Property, type DealChecklistItem, typ
 import { z } from "zod";
 import { DealCalculator, type AnalysisResults } from "@/components/deal-calculator";
 import { useToast } from "@/hooks/use-toast";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const dealFormSchema = insertDealSchema.omit({ organizationId: true });
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
@@ -20,7 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, MapPin, DollarSign, Calendar, Building, TrendingUp, CheckCircle, X, GripVertical, FileText, Trash2, Loader2, Briefcase, Calculator, ClipboardCheck, Upload, AlertTriangle, CheckSquare, Square, Clock, Download, Package, Play, Eye, FolderPlus, Sparkles, Flame, Snowflake, Minus } from "lucide-react";
+import { Plus, MapPin, DollarSign, Calendar, Building, TrendingUp, CheckCircle, X, GripVertical, FileText, Trash2, Loader2, Briefcase, Calculator, ClipboardCheck, Upload, AlertTriangle, CheckSquare, Square, Clock, Download, Package, Play, Eye, FolderPlus, Sparkles, Flame, Snowflake, Minus, LayoutGrid, List, ChevronLeft, ChevronRight } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
@@ -61,12 +62,15 @@ export default function DealsPage() {
   const searchString = useSearch();
   const urlParams = new URLSearchParams(searchString);
   const actionFromUrl = urlParams.get("action");
+  const isMobile = useIsMobile();
   
   const [isCreateOpen, setIsCreateOpen] = useState(actionFromUrl === "new");
   const [selectedDeal, setSelectedDeal] = useState<DealWithProperty | null>(null);
   const [deletingDeal, setDeletingDeal] = useState<DealWithProperty | null>(null);
   const { mutate: deleteDeal, isPending: isDeleting } = useDeleteDeal();
   const [isExporting, setIsExporting] = useState(false);
+  const [mobileViewMode, setMobileViewMode] = useState<'kanban' | 'list'>('kanban');
+  const [selectedStageIndex, setSelectedStageIndex] = useState(0);
 
   const handleExport = async () => {
     setIsExporting(true);
@@ -120,7 +124,7 @@ export default function DealsPage() {
   return (
     <div className="flex min-h-screen bg-background desert-gradient">
       <Sidebar />
-      <main className="flex-1 md:ml-[17rem] p-4 pt-16 md:pt-8 md:p-8 pb-24 md:pb-8 overflow-x-hidden">
+      <main className="flex-1 md:ml-[17rem] p-4 pt-16 md:pt-8 md:p-8 pb-8 overflow-x-hidden">
         <div className="max-w-7xl mx-auto space-y-6 md:space-y-8">
           
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -159,42 +163,42 @@ export default function DealsPage() {
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
             <Card className="glass-panel">
-              <CardContent className="p-6">
-                <div className="flex items-center gap-3">
-                  <div className="p-3 rounded-xl bg-blue-500/10">
-                    <Building className="w-5 h-5 text-blue-600" />
+              <CardContent className="p-4 md:p-6">
+                <div className="flex items-center gap-2 md:gap-3">
+                  <div className="p-2 md:p-3 rounded-xl bg-blue-500/10 flex-shrink-0">
+                    <Building className="w-4 h-4 md:w-5 md:h-5 text-blue-600" />
                   </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Acquisitions</p>
-                    <p className="text-2xl font-bold" data-testid="text-acquisitions">{acquisitions.length}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="glass-panel">
-              <CardContent className="p-6">
-                <div className="flex items-center gap-3">
-                  <div className="p-3 rounded-xl bg-emerald-500/10">
-                    <TrendingUp className="w-5 h-5 text-emerald-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Dispositions</p>
-                    <p className="text-2xl font-bold" data-testid="text-dispositions">{dispositions.length}</p>
+                  <div className="min-w-0">
+                    <p className="text-xs md:text-sm text-muted-foreground truncate">Acquisitions</p>
+                    <p className="text-xl md:text-2xl font-bold" data-testid="text-acquisitions">{acquisitions.length}</p>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
             <Card className="glass-panel">
-              <CardContent className="p-6">
-                <div className="flex items-center gap-3">
-                  <div className="p-3 rounded-xl bg-primary/10">
-                    <DollarSign className="w-5 h-5 text-primary" />
+              <CardContent className="p-4 md:p-6">
+                <div className="flex items-center gap-2 md:gap-3">
+                  <div className="p-2 md:p-3 rounded-xl bg-emerald-500/10 flex-shrink-0">
+                    <TrendingUp className="w-4 h-4 md:w-5 md:h-5 text-emerald-600" />
                   </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Pipeline Value</p>
-                    <p className="text-2xl font-bold font-mono" data-testid="text-pipeline-value">
+                  <div className="min-w-0">
+                    <p className="text-xs md:text-sm text-muted-foreground truncate">Dispositions</p>
+                    <p className="text-xl md:text-2xl font-bold" data-testid="text-dispositions">{dispositions.length}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="glass-panel">
+              <CardContent className="p-4 md:p-6">
+                <div className="flex items-center gap-2 md:gap-3">
+                  <div className="p-2 md:p-3 rounded-xl bg-primary/10 flex-shrink-0">
+                    <DollarSign className="w-4 h-4 md:w-5 md:h-5 text-primary" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs md:text-sm text-muted-foreground truncate">Pipeline</p>
+                    <p className="text-lg md:text-2xl font-bold font-mono truncate" data-testid="text-pipeline-value">
                       ${totalPipelineValue.toLocaleString()}
                     </p>
                   </div>
@@ -203,14 +207,14 @@ export default function DealsPage() {
             </Card>
 
             <Card className="glass-panel">
-              <CardContent className="p-6">
-                <div className="flex items-center gap-3">
-                  <div className="p-3 rounded-xl bg-green-500/10">
-                    <CheckCircle className="w-5 h-5 text-green-600" />
+              <CardContent className="p-4 md:p-6">
+                <div className="flex items-center gap-2 md:gap-3">
+                  <div className="p-2 md:p-3 rounded-xl bg-green-500/10 flex-shrink-0">
+                    <CheckCircle className="w-4 h-4 md:w-5 md:h-5 text-green-600" />
                   </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Closed Value</p>
-                    <p className="text-2xl font-bold font-mono text-green-600" data-testid="text-closed-value">
+                  <div className="min-w-0">
+                    <p className="text-xs md:text-sm text-muted-foreground truncate">Closed</p>
+                    <p className="text-lg md:text-2xl font-bold font-mono text-green-600 truncate" data-testid="text-closed-value">
                       ${closedValue.toLocaleString()}
                     </p>
                   </div>
@@ -234,44 +238,200 @@ export default function DealsPage() {
               onAction={() => setIsCreateOpen(true)}
             />
           ) : (
-            <div className="overflow-x-auto pb-4">
-              <div className="flex gap-4 min-w-max">
-                {dealStages.map((stage) => {
-                  const stageDeals = enrichedDeals.filter(d => d.status === stage.value);
-                  return (
-                    <div key={stage.value} className="w-72 flex-shrink-0">
-                      <div className={`rounded-t-xl px-4 py-3 ${stage.color}`}>
-                        <div className="flex items-center justify-between">
-                          <h3 className="font-medium">{stage.label}</h3>
-                          <Badge variant="secondary" className="font-mono">
-                            {stageDeals.length}
-                          </Badge>
+            <>
+              {isMobile && (
+                <div className="flex items-center justify-between gap-2 mb-4">
+                  <div className="flex items-center gap-1 bg-muted/50 rounded-lg p-1">
+                    <Button
+                      size="sm"
+                      variant={mobileViewMode === 'kanban' ? 'secondary' : 'ghost'}
+                      onClick={() => setMobileViewMode('kanban')}
+                      className="min-h-[44px] min-w-[44px]"
+                      data-testid="button-view-kanban"
+                    >
+                      <LayoutGrid className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={mobileViewMode === 'list' ? 'secondary' : 'ghost'}
+                      onClick={() => setMobileViewMode('list')}
+                      className="min-h-[44px] min-w-[44px]"
+                      data-testid="button-view-list"
+                    >
+                      <List className="w-4 h-4" />
+                    </Button>
+                  </div>
+                  
+                  {mobileViewMode === 'kanban' && (
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="icon"
+                        variant="outline"
+                        onClick={() => setSelectedStageIndex(Math.max(0, selectedStageIndex - 1))}
+                        disabled={selectedStageIndex === 0}
+                        className="min-h-[44px] min-w-[44px]"
+                        data-testid="button-prev-stage"
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                      </Button>
+                      <Select 
+                        value={String(selectedStageIndex)} 
+                        onValueChange={(val) => setSelectedStageIndex(Number(val))}
+                      >
+                        <SelectTrigger className="min-w-[140px] min-h-[44px]" data-testid="select-mobile-stage">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {dealStages.map((stage, idx) => {
+                            const count = enrichedDeals.filter(d => d.status === stage.value).length;
+                            return (
+                              <SelectItem key={stage.value} value={String(idx)}>
+                                {stage.label} ({count})
+                              </SelectItem>
+                            );
+                          })}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        size="icon"
+                        variant="outline"
+                        onClick={() => setSelectedStageIndex(Math.min(dealStages.length - 1, selectedStageIndex + 1))}
+                        disabled={selectedStageIndex === dealStages.length - 1}
+                        className="min-h-[44px] min-w-[44px]"
+                        data-testid="button-next-stage"
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {isMobile && mobileViewMode === 'list' ? (
+                <div className="space-y-4">
+                  {dealStages.map((stage) => {
+                    const stageDeals = enrichedDeals.filter(d => d.status === stage.value);
+                    if (stageDeals.length === 0) return null;
+                    return (
+                      <div key={stage.value}>
+                        <div className={`rounded-xl px-4 py-3 mb-2 ${stage.color}`}>
+                          <div className="flex items-center justify-between gap-2">
+                            <h3 className="font-medium">{stage.label}</h3>
+                            <Badge variant="secondary" className="font-mono">
+                              {stageDeals.length}
+                            </Badge>
+                          </div>
                         </div>
-                      </div>
-                      <div className="bg-muted/30 rounded-b-xl p-2 min-h-[400px] space-y-2">
-                        {isLoading ? (
-                          <div data-testid={`skeleton-deals-${stage.value}`}>
-                            <ListSkeleton count={2} variant="compact" />
-                          </div>
-                        ) : stageDeals.length === 0 ? (
-                          <div className="text-center py-8 text-muted-foreground text-sm">
-                            No deals
-                          </div>
-                        ) : (
-                          stageDeals.map((deal) => (
+                        <div className="space-y-2">
+                          {stageDeals.map((deal) => (
                             <DealCard 
                               key={deal.id} 
                               deal={deal} 
                               onSelect={() => setSelectedDeal(deal)}
                             />
-                          ))
-                        )}
+                          ))}
+                        </div>
                       </div>
+                    );
+                  })}
+                </div>
+              ) : isMobile && mobileViewMode === 'kanban' ? (
+                <div className="space-y-2">
+                  {(() => {
+                    const stage = dealStages[selectedStageIndex];
+                    const stageDeals = enrichedDeals.filter(d => d.status === stage.value);
+                    return (
+                      <div>
+                        <div className={`rounded-t-xl px-4 py-3 ${stage.color}`}>
+                          <div className="flex items-center justify-between gap-2">
+                            <h3 className="font-medium">{stage.label}</h3>
+                            <Badge variant="secondary" className="font-mono">
+                              {stageDeals.length}
+                            </Badge>
+                          </div>
+                        </div>
+                        <div className="bg-muted/30 rounded-b-xl p-3 min-h-[300px] space-y-3">
+                          {isLoading ? (
+                            <div data-testid={`skeleton-deals-${stage.value}`}>
+                              <ListSkeleton count={2} variant="compact" />
+                            </div>
+                          ) : stageDeals.length === 0 ? (
+                            <div className="text-center py-8 text-muted-foreground text-sm">
+                              No deals in {stage.label}
+                            </div>
+                          ) : (
+                            stageDeals.map((deal) => (
+                              <DealCard 
+                                key={deal.id} 
+                                deal={deal} 
+                                onSelect={() => setSelectedDeal(deal)}
+                              />
+                            ))
+                          )}
+                        </div>
+                        <div className="flex justify-center gap-1.5 mt-3">
+                          {dealStages.map((s, idx) => (
+                            <button
+                              key={s.value}
+                              onClick={() => setSelectedStageIndex(idx)}
+                              className={`w-2 h-2 rounded-full transition-colors ${
+                                idx === selectedStageIndex 
+                                  ? 'bg-primary' 
+                                  : 'bg-muted-foreground/30 hover:bg-muted-foreground/50'
+                              }`}
+                              data-testid={`dot-stage-${s.value}`}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              ) : (
+                <div className="relative">
+                  <div className="overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent">
+                    <div className="flex gap-4 min-w-max px-1">
+                      {dealStages.map((stage) => {
+                        const stageDeals = enrichedDeals.filter(d => d.status === stage.value);
+                        return (
+                          <div key={stage.value} className="w-72 flex-shrink-0">
+                            <div className={`rounded-t-xl px-4 py-3 ${stage.color}`}>
+                              <div className="flex items-center justify-between gap-2">
+                                <h3 className="font-medium">{stage.label}</h3>
+                                <Badge variant="secondary" className="font-mono">
+                                  {stageDeals.length}
+                                </Badge>
+                              </div>
+                            </div>
+                            <div className="bg-muted/30 rounded-b-xl p-2 min-h-[400px] space-y-2">
+                              {isLoading ? (
+                                <div data-testid={`skeleton-deals-${stage.value}`}>
+                                  <ListSkeleton count={2} variant="compact" />
+                                </div>
+                              ) : stageDeals.length === 0 ? (
+                                <div className="text-center py-8 text-muted-foreground text-sm">
+                                  No deals
+                                </div>
+                              ) : (
+                                stageDeals.map((deal) => (
+                                  <DealCard 
+                                    key={deal.id} 
+                                    deal={deal} 
+                                    onSelect={() => setSelectedDeal(deal)}
+                                  />
+                                ))
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                  );
-                })}
-              </div>
-            </div>
+                  </div>
+                  <div className="hidden md:block absolute left-0 top-0 bottom-4 w-4 bg-gradient-to-r from-background to-transparent pointer-events-none" />
+                  <div className="hidden md:block absolute right-0 top-0 bottom-4 w-4 bg-gradient-to-l from-background to-transparent pointer-events-none" />
+                </div>
+              )}
+            </>
           )}
         </div>
       </main>
@@ -301,15 +461,15 @@ export default function DealsPage() {
 function DealCard({ deal, onSelect }: { deal: DealWithProperty; onSelect: () => void }) {
   return (
     <Card 
-      className="floating-window cursor-pointer hover-elevate"
+      className="floating-window cursor-pointer hover-elevate active:scale-[0.98] transition-transform touch-manipulation"
       onClick={onSelect}
       data-testid={`card-deal-${deal.id}`}
     >
-      <CardContent className="p-3">
-        <div className="flex items-start gap-2">
-          <GripVertical className="w-4 h-4 text-muted-foreground/50 mt-0.5 flex-shrink-0" />
+      <CardContent className="p-4 min-h-[88px]">
+        <div className="flex items-start gap-3">
+          <GripVertical className="w-4 h-4 text-muted-foreground/50 mt-1 flex-shrink-0 hidden md:block" />
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <Badge variant={deal.type === 'acquisition' ? 'default' : 'secondary'} className="text-xs">
                 {deal.type === 'acquisition' ? 'Buy' : 'Sell'}
               </Badge>
@@ -317,8 +477,8 @@ function DealCard({ deal, onSelect }: { deal: DealWithProperty; onSelect: () => 
             <div className="mt-2">
               {deal.property ? (
                 <div className="flex items-start gap-1.5">
-                  <MapPin className="w-3.5 h-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
-                  <div className="text-sm font-medium truncate">
+                  <MapPin className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                  <div className="text-sm font-medium line-clamp-2">
                     {deal.property.county}, {deal.property.state}
                   </div>
                 </div>
@@ -326,13 +486,13 @@ function DealCard({ deal, onSelect }: { deal: DealWithProperty; onSelect: () => 
                 <p className="text-sm text-muted-foreground">Property #{deal.propertyId}</p>
               )}
               {deal.property?.sizeAcres && (
-                <p className="text-xs text-muted-foreground mt-0.5">{deal.property.sizeAcres} acres</p>
+                <p className="text-xs text-muted-foreground mt-1 ml-5">{deal.property.sizeAcres} acres</p>
               )}
             </div>
             {(deal.offerAmount || deal.acceptedAmount) && (
               <div className="mt-2 flex items-center gap-1.5">
-                <DollarSign className="w-3.5 h-3.5 text-emerald-600" />
-                <span className="text-sm font-mono font-medium text-emerald-600">
+                <DollarSign className="w-4 h-4 text-emerald-600" />
+                <span className="text-base font-mono font-medium text-emerald-600">
                   ${Number(deal.acceptedAmount || deal.offerAmount || 0).toLocaleString()}
                 </span>
               </div>
@@ -493,12 +653,12 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
   return (
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" onClick={onClose}>
       <div 
-        className="fixed right-0 top-0 h-full w-full max-w-2xl bg-background shadow-2xl overflow-y-auto"
+        className="fixed right-0 top-0 h-full w-full md:max-w-2xl bg-background shadow-2xl overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
-        <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b p-6">
-          <div className="flex items-center justify-between gap-4">
-            <div>
+        <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b p-4 md:p-6">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 flex-wrap">
                 <Badge variant={deal.type === 'acquisition' ? 'default' : 'secondary'}>
                   {deal.type === 'acquisition' ? 'Acquisition' : 'Disposition'}
@@ -507,43 +667,43 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                   {deal.status?.replace('_', ' ')}
                 </Badge>
               </div>
-              <h2 className="text-xl font-bold mt-2" data-testid="text-deal-title">
+              <h2 className="text-lg md:text-xl font-bold mt-2 line-clamp-2" data-testid="text-deal-title">
                 {deal.property ? `${deal.property.county}, ${deal.property.state}` : `Deal #${deal.id}`}
               </h2>
             </div>
-            <div className="flex items-center gap-2">
-              <Button size="icon" variant="ghost" onClick={onDelete} data-testid="button-delete-deal">
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <Button size="icon" variant="ghost" onClick={onDelete} className="min-h-[44px] min-w-[44px]" data-testid="button-delete-deal">
                 <Trash2 className="w-5 h-5 text-destructive" />
               </Button>
-              <Button size="icon" variant="ghost" onClick={onClose}>
+              <Button size="icon" variant="ghost" onClick={onClose} className="min-h-[44px] min-w-[44px]">
                 <X className="w-5 h-5" />
               </Button>
             </div>
           </div>
         </div>
 
-        <div className="p-6">
-          <Tabs defaultValue="details" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-5">
-              <TabsTrigger value="details" data-testid="tab-deal-details">
-                <FileText className="w-4 h-4 mr-2" />
-                Details
+        <div className="p-4 md:p-6">
+          <Tabs defaultValue="details" className="space-y-4 md:space-y-6">
+            <TabsList className="grid w-full grid-cols-5 h-auto p-1">
+              <TabsTrigger value="details" className="min-h-[44px] flex-col gap-1 md:flex-row md:gap-2 text-xs md:text-sm px-1 md:px-3" data-testid="tab-deal-details">
+                <FileText className="w-4 h-4" />
+                <span className="hidden sm:inline">Details</span>
               </TabsTrigger>
-              <TabsTrigger value="documents" data-testid="tab-deal-documents">
-                <Package className="w-4 h-4 mr-2" />
-                Documents
+              <TabsTrigger value="documents" className="min-h-[44px] flex-col gap-1 md:flex-row md:gap-2 text-xs md:text-sm px-1 md:px-3" data-testid="tab-deal-documents">
+                <Package className="w-4 h-4" />
+                <span className="hidden sm:inline">Docs</span>
               </TabsTrigger>
-              <TabsTrigger value="timeline" data-testid="tab-deal-timeline">
-                <Clock className="w-4 h-4 mr-2" />
-                Timeline
+              <TabsTrigger value="timeline" className="min-h-[44px] flex-col gap-1 md:flex-row md:gap-2 text-xs md:text-sm px-1 md:px-3" data-testid="tab-deal-timeline">
+                <Clock className="w-4 h-4" />
+                <span className="hidden sm:inline">Timeline</span>
               </TabsTrigger>
-              <TabsTrigger value="checklist" data-testid="tab-deal-checklist">
-                <ClipboardCheck className="w-4 h-4 mr-2" />
-                Checklist
+              <TabsTrigger value="checklist" className="min-h-[44px] flex-col gap-1 md:flex-row md:gap-2 text-xs md:text-sm px-1 md:px-3" data-testid="tab-deal-checklist">
+                <ClipboardCheck className="w-4 h-4" />
+                <span className="hidden sm:inline">Tasks</span>
               </TabsTrigger>
-              <TabsTrigger value="analysis" data-testid="tab-deal-analysis">
-                <Calculator className="w-4 h-4 mr-2" />
-                ROI
+              <TabsTrigger value="analysis" className="min-h-[44px] flex-col gap-1 md:flex-row md:gap-2 text-xs md:text-sm px-1 md:px-3" data-testid="tab-deal-analysis">
+                <Calculator className="w-4 h-4" />
+                <span className="hidden sm:inline">ROI</span>
               </TabsTrigger>
             </TabsList>
 
@@ -798,23 +958,24 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                 </CardContent>
               </Card>
 
-              <div className="flex gap-2">
-                <Button variant="outline" className="flex-1">
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Button variant="outline" className="flex-1 min-h-[44px]">
                   Generate Documents
                 </Button>
-                <Button className="flex-1">
+                <Button className="flex-1 min-h-[44px]">
                   View Property
                 </Button>
               </div>
             </TabsContent>
 
-            <TabsContent value="documents" className="space-y-6">
-              <div className="flex items-center justify-between gap-4">
-                <h3 className="font-medium">Document Packages</h3>
+            <TabsContent value="documents" className="space-y-4 md:space-y-6">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="font-medium text-sm md:text-base">Document Packages</h3>
                 <Link href={`/documents?action=create-package&dealId=${deal.id}`}>
-                  <Button size="sm" data-testid="button-create-package-from-deal">
+                  <Button size="sm" className="min-h-[44px]" data-testid="button-create-package-from-deal">
                     <FolderPlus className="w-4 h-4 mr-2" />
-                    Create Package
+                    <span className="hidden sm:inline">Create Package</span>
+                    <span className="sm:hidden">New</span>
                   </Button>
                 </Link>
               </div>
@@ -853,14 +1014,14 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
 
                     return (
                       <Card key={pkg.id} className="glass-panel" data-testid={`card-deal-package-${pkg.id}`}>
-                        <CardContent className="p-4">
-                          <div className="flex items-center justify-between gap-4">
+                        <CardContent className="p-3 md:p-4">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                             <div className="flex items-center gap-3 flex-1 min-w-0">
-                              <div className="p-2 rounded-lg bg-muted">
+                              <div className="p-2 rounded-lg bg-muted flex-shrink-0">
                                 <Package className="w-4 h-4 text-muted-foreground" />
                               </div>
                               <div className="flex-1 min-w-0">
-                                <h4 className="font-medium truncate" data-testid={`text-deal-package-name-${pkg.id}`}>
+                                <h4 className="font-medium truncate text-sm md:text-base" data-testid={`text-deal-package-name-${pkg.id}`}>
                                   {pkg.name}
                                 </h4>
                                 <div className="flex items-center gap-2 mt-1 flex-wrap">
@@ -873,26 +1034,27 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                                 </div>
                               </div>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 ml-9 sm:ml-0">
                               <Link href={`/documents?packageId=${pkg.id}`}>
-                                <Button variant="outline" size="sm" data-testid={`button-view-deal-package-${pkg.id}`}>
-                                  <Eye className="w-3 h-3 mr-1" />
-                                  View
+                                <Button variant="outline" size="sm" className="min-h-[44px]" data-testid={`button-view-deal-package-${pkg.id}`}>
+                                  <Eye className="w-4 h-4 sm:mr-1" />
+                                  <span className="hidden sm:inline">View</span>
                                 </Button>
                               </Link>
                               {pkg.status === "draft" && docsCount > 0 && (
                                 <Button 
                                   size="sm"
+                                  className="min-h-[44px]"
                                   onClick={() => generateAllMutation.mutate({ id: pkg.id })}
                                   disabled={generateAllMutation.isPending}
                                   data-testid={`button-generate-deal-package-${pkg.id}`}
                                 >
                                   {generateAllMutation.isPending ? (
-                                    <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                                    <Loader2 className="w-4 h-4 sm:mr-1 animate-spin" />
                                   ) : (
-                                    <Play className="w-3 h-3 mr-1" />
+                                    <Play className="w-4 h-4 sm:mr-1" />
                                   )}
-                                  Generate
+                                  <span className="hidden sm:inline">Generate</span>
                                 </Button>
                               )}
                             </div>
@@ -992,7 +1154,7 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                         className={`glass-panel transition-colors ${item.checkedAt ? 'bg-emerald-500/5' : ''}`}
                         data-testid={`checklist-item-${item.id}`}
                       >
-                        <CardContent className="p-4">
+                        <CardContent className="p-3 md:p-4">
                           <div className="flex items-start gap-3">
                             <button
                               onClick={() => updateChecklistItem({ 
@@ -1000,29 +1162,29 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                                 checked: !item.checkedAt 
                               })}
                               disabled={isUpdatingItem}
-                              className="mt-0.5 shrink-0"
+                              className="shrink-0 p-2 -m-2 touch-manipulation"
                               data-testid={`checkbox-item-${item.id}`}
                             >
                               {item.checkedAt ? (
-                                <CheckSquare className="w-5 h-5 text-emerald-500" />
+                                <CheckSquare className="w-6 h-6 text-emerald-500" />
                               ) : (
-                                <Square className="w-5 h-5 text-muted-foreground" />
+                                <Square className="w-6 h-6 text-muted-foreground" />
                               )}
                             </button>
-                            <div className="flex-1 min-w-0">
+                            <div className="flex-1 min-w-0 pt-0.5">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <span className={`font-medium ${item.checkedAt ? 'line-through text-muted-foreground' : ''}`}>
+                                <span className={`font-medium text-sm md:text-base ${item.checkedAt ? 'line-through text-muted-foreground' : ''}`}>
                                   {item.title}
                                 </span>
                                 {item.required && (
                                   <Badge variant="outline" className="text-xs">Required</Badge>
                                 )}
                                 {item.documentRequired && (
-                                  <Badge variant="outline" className="text-xs">Doc Required</Badge>
+                                  <Badge variant="outline" className="text-xs hidden sm:inline-flex">Doc Required</Badge>
                                 )}
                               </div>
                               {item.description && (
-                                <p className="text-sm text-muted-foreground mt-1">{item.description}</p>
+                                <p className="text-xs md:text-sm text-muted-foreground mt-1">{item.description}</p>
                               )}
                               {item.checkedAt && item.checkedBy && (
                                 <p className="text-xs text-muted-foreground mt-2">
@@ -1035,6 +1197,7 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                                 size="icon" 
                                 variant="ghost"
                                 disabled={isUpdatingItem}
+                                className="min-h-[44px] min-w-[44px] flex-shrink-0"
                                 data-testid={`button-upload-doc-${item.id}`}
                               >
                                 <Upload className="w-4 h-4" />
@@ -1106,7 +1269,7 @@ function DealForm({ onSuccess }: { onSuccess: () => void }) {
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FormField
             control={form.control}
             name="type"
@@ -1115,7 +1278,7 @@ function DealForm({ onSuccess }: { onSuccess: () => void }) {
                 <FormLabel>Deal Type</FormLabel>
                 <Select onValueChange={field.onChange} value={field.value || "acquisition"}>
                   <FormControl>
-                    <SelectTrigger data-testid="select-deal-type">
+                    <SelectTrigger className="min-h-[44px]" data-testid="select-deal-type">
                       <SelectValue />
                     </SelectTrigger>
                   </FormControl>
@@ -1137,7 +1300,7 @@ function DealForm({ onSuccess }: { onSuccess: () => void }) {
                 <FormLabel>Property</FormLabel>
                 <Select onValueChange={(val) => field.onChange(parseInt(val))}>
                   <FormControl>
-                    <SelectTrigger data-testid="select-deal-property">
+                    <SelectTrigger className="min-h-[44px]" data-testid="select-deal-property">
                       <SelectValue placeholder="Select property" />
                     </SelectTrigger>
                   </FormControl>
@@ -1155,7 +1318,7 @@ function DealForm({ onSuccess }: { onSuccess: () => void }) {
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FormField
             control={form.control}
             name="offerAmount"
@@ -1167,7 +1330,8 @@ function DealForm({ onSuccess }: { onSuccess: () => void }) {
                     {...field}
                     value={field.value ?? ""}
                     type="number" 
-                    placeholder="5000" 
+                    placeholder="5000"
+                    className="min-h-[44px]"
                     data-testid="input-offer-amount"
                   />
                 </FormControl>
@@ -1183,7 +1347,8 @@ function DealForm({ onSuccess }: { onSuccess: () => void }) {
                 <FormLabel>Offer Date</FormLabel>
                 <FormControl>
                   <Input 
-                    type="date" 
+                    type="date"
+                    className="min-h-[44px]"
                     onChange={(e) => field.onChange(new Date(e.target.value))} 
                     data-testid="input-offer-date"
                   />
@@ -1194,7 +1359,7 @@ function DealForm({ onSuccess }: { onSuccess: () => void }) {
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FormField
             control={form.control}
             name="titleCompany"
@@ -1205,7 +1370,8 @@ function DealForm({ onSuccess }: { onSuccess: () => void }) {
                   <Input 
                     {...field}
                     value={field.value ?? ""}
-                    placeholder="ABC Title Co" 
+                    placeholder="ABC Title Co"
+                    className="min-h-[44px]"
                     data-testid="input-title-company"
                   />
                 </FormControl>
@@ -1221,7 +1387,8 @@ function DealForm({ onSuccess }: { onSuccess: () => void }) {
                 <FormLabel>Target Closing</FormLabel>
                 <FormControl>
                   <Input 
-                    type="date" 
+                    type="date"
+                    className="min-h-[44px]"
                     onChange={(e) => field.onChange(new Date(e.target.value))} 
                     data-testid="input-closing-date"
                   />
@@ -1233,7 +1400,7 @@ function DealForm({ onSuccess }: { onSuccess: () => void }) {
         </div>
 
         <div className="pt-2">
-          <Button type="submit" className="w-full" disabled={isPending} data-testid="button-create-deal-submit">
+          <Button type="submit" className="w-full min-h-[44px]" disabled={isPending} data-testid="button-create-deal-submit">
             {isPending ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />

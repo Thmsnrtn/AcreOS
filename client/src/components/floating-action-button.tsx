@@ -99,7 +99,7 @@ export function FloatingActionButton() {
   return (
     <div
       ref={containerRef}
-      className="fixed z-50 bottom-20 right-4 md:bottom-6 md:right-6"
+      className="fixed z-50 bottom-4 right-4 md:bottom-6 md:right-6 safe-area-bottom"
       data-testid="floating-action-button-container"
     >
       {isOpen && (

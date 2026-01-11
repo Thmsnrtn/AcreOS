@@ -53,7 +53,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, Mail, Phone, Trash2, Edit, Loader2, Users, FileText, Download, Upload, CheckCircle, XCircle, AlertCircle, Flame, Sun, Snowflake, Skull, ArrowUpDown, ArrowUp, ArrowDown, X, Clock, Eye, User, Calendar, MapPin, StickyNote, PhoneOff, Shield, CheckSquare, RefreshCw, TrendingUp, TrendingDown, Minus, History } from "lucide-react";
+import { Plus, Search, Mail, Phone, Trash2, Edit, Loader2, Users, FileText, Download, Upload, CheckCircle, XCircle, AlertCircle, Flame, Sun, Snowflake, Skull, ArrowUpDown, ArrowUp, ArrowDown, X, Clock, Eye, User, Calendar, MapPin, StickyNote, PhoneOff, Shield, CheckSquare, RefreshCw, TrendingUp, TrendingDown, Minus, History, Filter, ChevronDown, MoreVertical } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState } from "@/components/empty-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -63,7 +63,8 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { FocusList } from "@/components/focus-list";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ActivityTimeline } from "@/components/activity-timeline";
 import { SavedViewsSelector } from "@/components/saved-views-selector";
 import { CustomFieldValuesEditor } from "@/components/custom-fields";
@@ -657,6 +658,7 @@ export default function LeadsPage() {
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+  const [isFiltersOpen, setIsFiltersOpen] = useState(false);
   const { toast } = useToast();
 
   const handleSelectAll = (checked: boolean) => {
@@ -945,7 +947,7 @@ export default function LeadsPage() {
   return (
     <div className="flex min-h-screen bg-background desert-gradient">
       <Sidebar />
-      <main className="flex-1 md:ml-[17rem] p-4 pt-16 md:pt-8 md:p-8 pb-24 md:pb-8 overflow-x-hidden">
+      <main className="flex-1 md:ml-[17rem] p-4 pt-16 md:pt-8 md:p-8 pb-8 overflow-x-hidden">
         <div className="max-w-7xl mx-auto space-y-6 md:space-y-8">
           
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -954,10 +956,12 @@ export default function LeadsPage() {
               <p className="text-muted-foreground">Manage your potential buyers and sellers.</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              {/* Desktop: show all buttons */}
               <Button 
                 variant="outline" 
                 onClick={handleExport} 
                 disabled={isExporting}
+                className="hidden md:inline-flex"
                 data-testid="button-export-leads"
               >
                 {isExporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
@@ -966,6 +970,7 @@ export default function LeadsPage() {
               <Button 
                 variant="outline" 
                 onClick={() => setIsImportOpen(true)}
+                className="hidden md:inline-flex"
                 data-testid="button-import-leads"
               >
                 <Upload className="w-4 h-4 mr-2" />
@@ -974,14 +979,57 @@ export default function LeadsPage() {
               <Button 
                 variant="outline" 
                 onClick={() => setIsTaxDelinquentImportOpen(true)}
+                className="hidden md:inline-flex"
                 data-testid="button-import-tax-delinquent"
               >
                 <FileText className="w-4 h-4 mr-2" />
                 Import Tax List
               </Button>
+              
+              {/* Mobile: show actions in dropdown menu */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button 
+                    variant="outline" 
+                    size="icon" 
+                    className="md:hidden min-h-[44px] min-w-[44px]"
+                    data-testid="button-more-actions-mobile"
+                  >
+                    <MoreVertical className="w-5 h-5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem 
+                    onClick={handleExport} 
+                    disabled={isExporting}
+                    className="min-h-[44px]"
+                    data-testid="button-export-leads-mobile"
+                  >
+                    {isExporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
+                    Export CSV
+                  </DropdownMenuItem>
+                  <DropdownMenuItem 
+                    onClick={() => setIsImportOpen(true)}
+                    className="min-h-[44px]"
+                    data-testid="button-import-leads-mobile"
+                  >
+                    <Upload className="w-4 h-4 mr-2" />
+                    Import CSV
+                  </DropdownMenuItem>
+                  <DropdownMenuItem 
+                    onClick={() => setIsTaxDelinquentImportOpen(true)}
+                    className="min-h-[44px]"
+                    data-testid="button-import-tax-delinquent-mobile"
+                  >
+                    <FileText className="w-4 h-4 mr-2" />
+                    Import Tax List
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              
               <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
                 <DialogTrigger asChild>
-                  <Button className="shadow-lg hover:shadow-primary/25" data-testid="button-add-lead">
+                  <Button className="shadow-lg hover:shadow-primary/25 min-h-[44px]" data-testid="button-add-lead">
                     <Plus className="w-4 h-4 mr-2" /> Add New Lead
                   </Button>
                 </DialogTrigger>
@@ -998,7 +1046,8 @@ export default function LeadsPage() {
           <div className="flex flex-col lg:flex-row gap-6">
             <div className="flex-1 min-w-0">
               <div className="bg-white dark:bg-card rounded-2xl shadow-sm border overflow-hidden">
-                <div className="p-4 border-b flex flex-wrap items-center gap-3">
+                {/* Desktop filters - always visible */}
+                <div className="hidden md:flex p-4 border-b flex-wrap items-center gap-3">
                   <SavedViewsSelector
                     entityType="lead"
                     currentFilters={{ stage: stageFilter }}
@@ -1059,7 +1108,6 @@ export default function LeadsPage() {
                       </SelectItem>
                     </SelectContent>
                   </Select>
-                  {/* Assignee Filter - only show for admins+ who can see all leads */}
                   {userPermissions && !userPermissions.permissions.viewOnlyAssignedLeads && teamMembers && teamMembers.length > 0 && (
                     <Select value={assigneeFilter} onValueChange={setAssigneeFilter}>
                       <SelectTrigger className="w-[180px]" data-testid="select-assignee-filter">
@@ -1081,6 +1129,112 @@ export default function LeadsPage() {
                     onChange={setGisFilters}
                     activeFilterCount={countActiveGisFilters(gisFilters)}
                   />
+                </div>
+
+                {/* Mobile filters - collapsible */}
+                <div className="md:hidden border-b">
+                  <Collapsible open={isFiltersOpen} onOpenChange={setIsFiltersOpen}>
+                    <div className="p-3 flex items-center gap-2">
+                      <div className="relative flex-1">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                        <Input 
+                          placeholder="Search leads..." 
+                          className="pl-9 bg-slate-50 dark:bg-slate-900 border-none min-h-[44px]"
+                          value={search}
+                          onChange={(e) => setSearch(e.target.value)}
+                          data-testid="input-search-leads-mobile"
+                        />
+                      </div>
+                      <CollapsibleTrigger asChild>
+                        <Button 
+                          variant="outline" 
+                          size="icon" 
+                          className="min-h-[44px] min-w-[44px] shrink-0"
+                          data-testid="button-toggle-filters"
+                        >
+                          <Filter className="w-4 h-4" />
+                          {(stageFilter !== "all" || assigneeFilter !== "all" || countActiveGisFilters(gisFilters) > 0) && (
+                            <span className="absolute -top-1 -right-1 w-2 h-2 bg-primary rounded-full" />
+                          )}
+                        </Button>
+                      </CollapsibleTrigger>
+                    </div>
+                    <CollapsibleContent>
+                      <div className="p-3 pt-0 space-y-3 border-t">
+                        <SavedViewsSelector
+                          entityType="lead"
+                          currentFilters={{ stage: stageFilter }}
+                          currentSort={sortOrder ? { field: "score", order: sortOrder } : undefined}
+                          onApplyView={(view: SavedView) => {
+                            if (view.filters && Array.isArray(view.filters)) {
+                              const stageFilterDef = view.filters.find((f: any) => f.field === "stage");
+                              if (stageFilterDef) {
+                                setStageFilter(String(stageFilterDef.value));
+                              } else {
+                                setStageFilter("all");
+                              }
+                            } else {
+                              setStageFilter("all");
+                            }
+                            if (view.sortBy === "score" && view.sortOrder) {
+                              setSortOrder(view.sortOrder as "asc" | "desc");
+                            } else {
+                              setSortOrder(null);
+                            }
+                          }}
+                        />
+                        <Select value={stageFilter} onValueChange={handleStageFilterChange}>
+                          <SelectTrigger className="w-full min-h-[44px]" data-testid="select-stage-filter-mobile">
+                            <SelectValue placeholder="Filter by stage" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Leads</SelectItem>
+                            <SelectItem value="hot">
+                              <span className="flex items-center gap-2">
+                                <Flame className="w-3 h-3 text-orange-500" /> Hot Leads
+                              </span>
+                            </SelectItem>
+                            <SelectItem value="warm">
+                              <span className="flex items-center gap-2">
+                                <Sun className="w-3 h-3 text-yellow-500" /> Warm Leads
+                              </span>
+                            </SelectItem>
+                            <SelectItem value="cold">
+                              <span className="flex items-center gap-2">
+                                <Snowflake className="w-3 h-3 text-blue-500" /> Cold Leads
+                              </span>
+                            </SelectItem>
+                            <SelectItem value="dead">
+                              <span className="flex items-center gap-2">
+                                <Skull className="w-3 h-3 text-slate-500" /> Dead Leads
+                              </span>
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {userPermissions && !userPermissions.permissions.viewOnlyAssignedLeads && teamMembers && teamMembers.length > 0 && (
+                          <Select value={assigneeFilter} onValueChange={setAssigneeFilter}>
+                            <SelectTrigger className="w-full min-h-[44px]" data-testid="select-assignee-filter-mobile">
+                              <SelectValue placeholder="Filter by assignee" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">All Assignees</SelectItem>
+                              <SelectItem value="unassigned">Unassigned</SelectItem>
+                              {teamMembers.map((member) => (
+                                <SelectItem key={member.userId} value={member.userId}>
+                                  {member.displayName || member.email || member.userId}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                        <GisFilters
+                          filters={gisFilters}
+                          onChange={setGisFilters}
+                          activeFilterCount={countActiveGisFilters(gisFilters)}
+                        />
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
                 </div>
 
                 {selectedLeadIds.size > 0 && (
@@ -1120,126 +1274,267 @@ export default function LeadsPage() {
                     <ListSkeleton count={8} variant="table" />
                   </div>
                 ) : (
-                  <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="bg-slate-50/50 dark:bg-slate-900/50">
-                          <TableHead className="w-[50px]">
-                            <Checkbox
-                              checked={filteredLeads && filteredLeads.length > 0 && selectedLeadIds.size === filteredLeads.length}
-                              onCheckedChange={(checked) => handleSelectAll(checked === true)}
-                              data-testid="checkbox-select-all-leads"
-                            />
-                          </TableHead>
-                          <TableHead className="min-w-[120px]">Name</TableHead>
-                          <TableHead className="min-w-[100px]">
-                            <button
-                              type="button"
-                              onClick={handleSortByScore}
-                              className="flex items-center hover-elevate rounded px-1 -ml-1"
-                              data-testid="button-sort-score"
-                            >
-                              Score
-                              {getSortIcon()}
-                            </button>
-                          </TableHead>
-                          <TableHead className="min-w-[180px]">Contact</TableHead>
-                          <TableHead className="min-w-[100px]">Status</TableHead>
-                          <TableHead className="text-right min-w-[80px]">Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {filteredLeads?.length === 0 && leads?.length === 0 && (
-                          <TableRow>
-                            <TableCell colSpan={6} className="p-0">
-                              <EmptyState
-                                icon={Users}
-                                title="No leads yet"
-                                description="Leads are your potential sellers and buyers. Import from CSV or add manually to start building your pipeline."
-                                secondaryDescription="A strong lead database is the foundation of your land investing business."
-                                tips={[
-                                  "Import leads in bulk from county records or data providers",
-                                  "Add leads manually as you find motivated sellers",
-                                  "Track lead status from cold to hot to closed"
-                                ]}
-                                actionLabel="Add Your First Lead"
-                                onAction={() => setIsCreateOpen(true)}
+                  <>
+                    {/* Desktop Table View */}
+                    <div className="hidden md:block overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-slate-50/50 dark:bg-slate-900/50">
+                            <TableHead className="w-[50px]">
+                              <Checkbox
+                                checked={filteredLeads && filteredLeads.length > 0 && selectedLeadIds.size === filteredLeads.length}
+                                onCheckedChange={(checked) => handleSelectAll(checked === true)}
+                                data-testid="checkbox-select-all-leads"
                               />
-                            </TableCell>
+                            </TableHead>
+                            <TableHead className="min-w-[120px]">Name</TableHead>
+                            <TableHead className="min-w-[100px]">
+                              <button
+                                type="button"
+                                onClick={handleSortByScore}
+                                className="flex items-center hover-elevate rounded px-1 -ml-1"
+                                data-testid="button-sort-score"
+                              >
+                                Score
+                                {getSortIcon()}
+                              </button>
+                            </TableHead>
+                            <TableHead className="min-w-[180px]">Contact</TableHead>
+                            <TableHead className="min-w-[100px]">Status</TableHead>
+                            <TableHead className="text-right min-w-[80px]">Actions</TableHead>
                           </TableRow>
-                        )}
-                        {filteredLeads?.length === 0 && leads && leads.length > 0 && (
-                          <TableRow>
-                            <TableCell colSpan={6} className="text-center h-32 text-muted-foreground">
-                              No leads found matching your search or filter.
-                            </TableCell>
-                          </TableRow>
-                        )}
+                        </TableHeader>
+                        <TableBody>
+                          {filteredLeads?.length === 0 && leads?.length === 0 && (
+                            <TableRow>
+                              <TableCell colSpan={6} className="p-0">
+                                <EmptyState
+                                  icon={Users}
+                                  title="No leads yet"
+                                  description="Leads are your potential sellers and buyers. Import from CSV or add manually to start building your pipeline."
+                                  secondaryDescription="A strong lead database is the foundation of your land investing business."
+                                  tips={[
+                                    "Import leads in bulk from county records or data providers",
+                                    "Add leads manually as you find motivated sellers",
+                                    "Track lead status from cold to hot to closed"
+                                  ]}
+                                  actionLabel="Add Your First Lead"
+                                  onAction={() => setIsCreateOpen(true)}
+                                />
+                              </TableCell>
+                            </TableRow>
+                          )}
+                          {filteredLeads?.length === 0 && leads && leads.length > 0 && (
+                            <TableRow>
+                              <TableCell colSpan={6} className="text-center h-32 text-muted-foreground">
+                                No leads found matching your search or filter.
+                              </TableCell>
+                            </TableRow>
+                          )}
+                          {filteredLeads?.map((lead) => (
+                            <TableRow key={lead.id} className="group" data-testid={`row-lead-${lead.id}`}>
+                              <TableCell>
+                                <Checkbox
+                                  checked={selectedLeadIds.has(lead.id)}
+                                  onCheckedChange={(checked) => handleSelectLead(lead.id, checked === true)}
+                                  data-testid={`checkbox-lead-${lead.id}`}
+                                />
+                              </TableCell>
+                              <TableCell className="font-medium">
+                                {lead.firstName} {lead.lastName}
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <LeadScoreBadge lead={lead} />
+                                  <ContactAgeBadge lead={lead} />
+                                  <TcpaConsentBadge lead={lead} />
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex flex-col gap-1 text-sm text-muted-foreground">
+                                  {lead.email && <div className="flex items-center gap-2"><Mail className="w-3 h-3" /> {lead.email}</div>}
+                                  {lead.phone && <div className="flex items-center gap-2"><Phone className="w-3 h-3" /> {lead.phone}</div>}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <LeadStatusBadge status={lead.status} />
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="sm" data-testid={`button-actions-lead-${lead.id}`}>
+                                      Actions
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem onClick={() => setViewingLead(lead)} data-testid={`button-view-lead-${lead.id}`}>
+                                      <Eye className="w-4 h-4 mr-2" />
+                                      View Details
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => setEditingLead(lead)} data-testid={`button-edit-lead-${lead.id}`}>
+                                      <Edit className="w-4 h-4 mr-2" />
+                                      Edit
+                                    </DropdownMenuItem>
+                                    <RescoreMenuItem leadId={lead.id} />
+                                    <DropdownMenuItem onClick={() => setOfferLetterLead(lead)} data-testid={`button-offer-letter-${lead.id}`}>
+                                      <FileText className="w-4 h-4 mr-2" />
+                                      Generate Offer Letter
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem 
+                                      onClick={() => setDeletingLead(lead)} 
+                                      className="text-destructive"
+                                      data-testid={`button-delete-lead-${lead.id}`}
+                                    >
+                                      <Trash2 className="w-4 h-4 mr-2" />
+                                      Delete
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+
+                    {/* Mobile Card View */}
+                    <div className="block md:hidden">
+                      {filteredLeads?.length === 0 && leads?.length === 0 && (
+                        <EmptyState
+                          icon={Users}
+                          title="No leads yet"
+                          description="Leads are your potential sellers and buyers. Import from CSV or add manually to start building your pipeline."
+                          secondaryDescription="A strong lead database is the foundation of your land investing business."
+                          tips={[
+                            "Import leads in bulk from county records or data providers",
+                            "Add leads manually as you find motivated sellers",
+                            "Track lead status from cold to hot to closed"
+                          ]}
+                          actionLabel="Add Your First Lead"
+                          onAction={() => setIsCreateOpen(true)}
+                        />
+                      )}
+                      {filteredLeads?.length === 0 && leads && leads.length > 0 && (
+                        <div className="text-center py-12 text-muted-foreground">
+                          No leads found matching your search or filter.
+                        </div>
+                      )}
+                      {filteredLeads && filteredLeads.length > 0 && (
+                        <div className="p-3 border-b flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Checkbox
+                              checked={filteredLeads.length > 0 && selectedLeadIds.size === filteredLeads.length}
+                              onCheckedChange={(checked) => handleSelectAll(checked === true)}
+                              className="min-h-[20px] min-w-[20px]"
+                              data-testid="checkbox-select-all-leads-mobile"
+                            />
+                            <span className="text-sm text-muted-foreground">Select all</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={handleSortByScore}
+                            className="flex items-center text-sm text-muted-foreground hover-elevate rounded px-2 py-1 min-h-[44px]"
+                            data-testid="button-sort-score-mobile"
+                          >
+                            Sort by Score
+                            {getSortIcon()}
+                          </button>
+                        </div>
+                      )}
+                      <div className="divide-y">
                         {filteredLeads?.map((lead) => (
-                          <TableRow key={lead.id} className="group" data-testid={`row-lead-${lead.id}`}>
-                            <TableCell>
+                          <div 
+                            key={lead.id} 
+                            className="p-4 hover-elevate"
+                            data-testid={`card-lead-${lead.id}`}
+                          >
+                            <div className="flex items-start gap-3">
                               <Checkbox
                                 checked={selectedLeadIds.has(lead.id)}
                                 onCheckedChange={(checked) => handleSelectLead(lead.id, checked === true)}
-                                data-testid={`checkbox-lead-${lead.id}`}
+                                className="mt-1 min-h-[20px] min-w-[20px]"
+                                data-testid={`checkbox-lead-mobile-${lead.id}`}
                               />
-                            </TableCell>
-                            <TableCell className="font-medium">
-                              {lead.firstName} {lead.lastName}
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <LeadScoreBadge lead={lead} />
-                                <ContactAgeBadge lead={lead} />
-                                <TcpaConsentBadge lead={lead} />
+                              <div className="flex-1 min-w-0" onClick={() => setViewingLead(lead)}>
+                                <div className="flex items-center justify-between gap-2">
+                                  <h3 className="font-medium truncate" data-testid={`text-lead-name-${lead.id}`}>
+                                    {lead.firstName} {lead.lastName}
+                                  </h3>
+                                  <LeadStatusBadge status={lead.status} />
+                                </div>
+                                <div className="flex items-center gap-2 mt-2 flex-wrap">
+                                  <LeadScoreBadge lead={lead} />
+                                  <ContactAgeBadge lead={lead} />
+                                  <TcpaConsentBadge lead={lead} />
+                                </div>
+                                <div className="mt-3 space-y-1 text-sm text-muted-foreground">
+                                  {lead.email && (
+                                    <div className="flex items-center gap-2 truncate">
+                                      <Mail className="w-3 h-3 shrink-0" />
+                                      <span className="truncate">{lead.email}</span>
+                                    </div>
+                                  )}
+                                  {lead.phone && (
+                                    <div className="flex items-center gap-2">
+                                      <Phone className="w-3 h-3 shrink-0" />
+                                      <span>{lead.phone}</span>
+                                    </div>
+                                  )}
+                                </div>
                               </div>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex flex-col gap-1 text-sm text-muted-foreground">
-                                {lead.email && <div className="flex items-center gap-2"><Mail className="w-3 h-3" /> {lead.email}</div>}
-                                {lead.phone && <div className="flex items-center gap-2"><Phone className="w-3 h-3" /> {lead.phone}</div>}
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <LeadStatusBadge status={lead.status} />
-                            </TableCell>
-                            <TableCell className="text-right">
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" size="sm" data-testid={`button-actions-lead-${lead.id}`}>
-                                    Actions
+                                  <Button 
+                                    variant="ghost" 
+                                    size="icon" 
+                                    className="min-h-[44px] min-w-[44px] shrink-0"
+                                    data-testid={`button-actions-lead-mobile-${lead.id}`}
+                                  >
+                                    <MoreVertical className="w-5 h-5" />
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
-                                  <DropdownMenuItem onClick={() => setViewingLead(lead)} data-testid={`button-view-lead-${lead.id}`}>
+                                  <DropdownMenuItem 
+                                    onClick={() => setViewingLead(lead)}
+                                    className="min-h-[44px]"
+                                    data-testid={`button-view-lead-mobile-${lead.id}`}
+                                  >
                                     <Eye className="w-4 h-4 mr-2" />
                                     View Details
                                   </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => setEditingLead(lead)} data-testid={`button-edit-lead-${lead.id}`}>
+                                  <DropdownMenuItem 
+                                    onClick={() => setEditingLead(lead)}
+                                    className="min-h-[44px]"
+                                    data-testid={`button-edit-lead-mobile-${lead.id}`}
+                                  >
                                     <Edit className="w-4 h-4 mr-2" />
                                     Edit
                                   </DropdownMenuItem>
                                   <RescoreMenuItem leadId={lead.id} />
-                                  <DropdownMenuItem onClick={() => setOfferLetterLead(lead)} data-testid={`button-offer-letter-${lead.id}`}>
+                                  <DropdownMenuItem 
+                                    onClick={() => setOfferLetterLead(lead)}
+                                    className="min-h-[44px]"
+                                    data-testid={`button-offer-letter-mobile-${lead.id}`}
+                                  >
                                     <FileText className="w-4 h-4 mr-2" />
                                     Generate Offer Letter
                                   </DropdownMenuItem>
                                   <DropdownMenuItem 
                                     onClick={() => setDeletingLead(lead)} 
-                                    className="text-destructive"
-                                    data-testid={`button-delete-lead-${lead.id}`}
+                                    className="text-destructive min-h-[44px]"
+                                    data-testid={`button-delete-lead-mobile-${lead.id}`}
                                   >
                                     <Trash2 className="w-4 h-4 mr-2" />
                                     Delete
                                   </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
-                            </TableCell>
-                          </TableRow>
+                            </div>
+                          </div>
                         ))}
-                      </TableBody>
-                    </Table>
-                  </div>
+                      </div>
+                    </div>
+                  </>
                 )}
               </div>
             </div>

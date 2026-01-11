@@ -45,7 +45,6 @@ import TermsOfService from "@/pages/terms";
 import PrivacyPolicy from "@/pages/privacy";
 import NotFound from "@/pages/not-found";
 import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
-import { MobileBottomNav } from "@/components/mobile-bottom-nav";
 import { ConversationTray } from "@/components/conversation-tray";
 import { FloatingAssistant } from "@/components/floating-assistant";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -214,7 +213,6 @@ function AppContent() {
   return (
     <>
       <Router />
-      {user && <MobileBottomNav />}
       {user && <FloatingActionButton />}
       {user && <ConversationTray />}
       {user && <FloatingAssistant />}
