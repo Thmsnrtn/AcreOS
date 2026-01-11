@@ -2109,13 +2109,22 @@ export async function registerRoutes(
   });
   
   api.delete("/api/properties/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
-    const propertyId = Number(req.params.id);
-    const existingProperty = await storage.getProperty(org.id, propertyId);
-    
-    await storage.deleteProperty(propertyId);
-    
-    if (existingProperty) {
+    try {
+      const org = (req as any).organization;
+      const propertyId = Number(req.params.id);
+      
+      if (isNaN(propertyId)) {
+        return res.status(400).json({ message: "Invalid property ID" });
+      }
+      
+      const existingProperty = await storage.getProperty(org.id, propertyId);
+      
+      if (!existingProperty) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+      
+      await storage.deleteProperty(propertyId);
+      
       const user = req.user as any;
       const userId = user?.claims?.sub || user?.id;
       await storage.createAuditLogEntry({
@@ -2128,9 +2137,12 @@ export async function registerRoutes(
         ipAddress: req.ip || req.socket?.remoteAddress,
         userAgent: req.headers["user-agent"],
       });
+      
+      res.status(204).send();
+    } catch (error: any) {
+      console.error("Delete property error:", error);
+      res.status(500).json({ message: error.message || "Failed to delete property" });
     }
-    
-    res.status(204).send();
   });
   
   api.post("/api/properties/bulk-delete", isAuthenticated, getOrCreateOrg, async (req, res) => {
