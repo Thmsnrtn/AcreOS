@@ -488,15 +488,15 @@ export function FloatingAssistant() {
                   const toolDisplay = toolName.replace(/_/g, ' ');
                   setMessages((prev) => prev.map((msg) =>
                     msg.id === assistantMessageId
-                      ? { ...msg, content: accumulatedContent + `\n\n🔧 *Executing: ${toolDisplay}...*` }
+                      ? { ...msg, content: accumulatedContent + `\n\n[Executing: ${toolDisplay}...]` }
                       : msg
                   ));
                 } else if (data.type === "tool_result") {
                   const toolName = data.toolCall?.name || "action";
                   const toolDisplay = toolName.replace(/_/g, ' ');
-                  const statusLine = `\n✓ Completed: ${toolDisplay}`;
+                  const statusLine = `\n[Done: ${toolDisplay}]`;
                   if (!accumulatedContent.includes(statusLine)) {
-                    accumulatedContent = accumulatedContent.replace(/\n\n🔧 \*Executing:.*\*$/g, '') + statusLine + '\n';
+                    accumulatedContent = accumulatedContent.replace(/\n\n\[Executing:.*\]$/g, '') + statusLine + '\n';
                   }
                   setMessages((prev) => prev.map((msg) =>
                     msg.id === assistantMessageId
