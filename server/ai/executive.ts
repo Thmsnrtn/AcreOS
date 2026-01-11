@@ -155,21 +155,73 @@ function decodeBase64ToText(base64: string): string {
   }
 }
 
+function parseCSV(content: string): { headers: string[]; rows: string[][]; totalRows: number } {
+  const lines = content.split('\n').filter(line => line.trim());
+  if (lines.length === 0) return { headers: [], rows: [], totalRows: 0 };
+  
+  const parseRow = (line: string): string[] => {
+    const result: string[] = [];
+    let current = '';
+    let inQuotes = false;
+    
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      if (char === '"') {
+        inQuotes = !inQuotes;
+      } else if (char === ',' && !inQuotes) {
+        result.push(current.trim());
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    result.push(current.trim());
+    return result;
+  };
+  
+  const headers = parseRow(lines[0]);
+  const rows = lines.slice(1, 31).map(parseRow); // Limit to 30 data rows for context
+  
+  return { headers, rows, totalRows: lines.length - 1 };
+}
+
 function formatFileContent(file: FileAttachment): string {
   const content = decodeBase64ToText(file.content);
   const extension = file.name.split('.').pop()?.toLowerCase() || '';
   
-  // For CSV files, format as a table description
+  // For CSV files, parse into structured format
   if (extension === 'csv') {
-    const lines = content.split('\n').filter(line => line.trim());
-    const preview = lines.slice(0, 50).join('\n'); // Limit to first 50 rows
-    const totalRows = lines.length;
-    return `--- File: ${file.name} (CSV, ${totalRows} rows) ---\n${preview}${totalRows > 50 ? '\n[...truncated...]' : ''}\n--- End of ${file.name} ---`;
+    const { headers, rows, totalRows } = parseCSV(content);
+    
+    if (headers.length === 0) {
+      return `--- File: ${file.name} (CSV, empty) ---\nNo data found.\n--- End of ${file.name} ---`;
+    }
+    
+    let result = `--- File: ${file.name} (CSV with ${totalRows} records) ---\n`;
+    result += `COLUMNS: ${headers.join(', ')}\n\n`;
+    result += `DATA (showing ${Math.min(rows.length, 30)} of ${totalRows} records):\n`;
+    
+    // Format as readable records
+    for (let i = 0; i < rows.length; i++) {
+      result += `\nRecord ${i + 1}:\n`;
+      for (let j = 0; j < headers.length; j++) {
+        const value = rows[i][j] || '';
+        if (value) {
+          result += `  ${headers[j]}: ${value}\n`;
+        }
+      }
+    }
+    
+    if (totalRows > 30) {
+      result += `\n[...${totalRows - 30} more records not shown...]\n`;
+    }
+    result += `--- End of ${file.name} ---`;
+    return result;
   }
   
   // For text files
   if (['txt', 'text', 'md', 'json'].includes(extension)) {
-    const preview = content.slice(0, 10000); // Limit to ~10k chars
+    const preview = content.slice(0, 10000);
     return `--- File: ${file.name} ---\n${preview}${content.length > 10000 ? '\n[...truncated...]' : ''}\n--- End of ${file.name} ---`;
   }
   
@@ -226,16 +278,24 @@ export async function processChat(
   userId: string,
   options: ChatOptions = {}
 ): Promise<{ response: string; toolCalls?: any[]; conversationId: number; model?: string }> {
-  const { agentRole = "executive" } = options;
+  const { agentRole = "executive", files } = options;
   const profile = agentProfiles[agentRole];
   const tools = getToolsForRole(agentRole);
 
   const conversation = await getOrCreateConversation(org.id, userId, options.conversationId);
 
+  // Build the full message including file contents
+  let fullMessage = message;
+  if (files && files.length > 0) {
+    const fileContents = files.map(f => formatFileContent(f)).join('\n\n');
+    fullMessage = `${message}\n\nThe user has attached the following file(s). Please analyze and process them according to their request:\n\n${fileContents}`;
+    console.log(`[AI Chat] Processing ${files.length} file attachment(s)`);
+  }
+
   await createMessage({
     conversationId: conversation.id,
     role: "user",
-    content: message
+    content: fullMessage
   });
 
   const messages = await getMessages(conversation.id);
