@@ -476,8 +476,28 @@ export function FloatingAssistant() {
               try {
                 const data = JSON.parse(line.slice(6));
                 
-                if (data.type === "content" && data.chunk) {
-                  accumulatedContent += data.chunk;
+                if (data.type === "content" && data.content) {
+                  accumulatedContent += data.content;
+                  setMessages((prev) => prev.map((msg) =>
+                    msg.id === assistantMessageId
+                      ? { ...msg, content: accumulatedContent }
+                      : msg
+                  ));
+                } else if (data.type === "tool_start") {
+                  const toolName = data.toolCall?.name || "action";
+                  const toolDisplay = toolName.replace(/_/g, ' ');
+                  setMessages((prev) => prev.map((msg) =>
+                    msg.id === assistantMessageId
+                      ? { ...msg, content: accumulatedContent + `\n\n🔧 *Executing: ${toolDisplay}...*` }
+                      : msg
+                  ));
+                } else if (data.type === "tool_result") {
+                  const toolName = data.toolCall?.name || "action";
+                  const toolDisplay = toolName.replace(/_/g, ' ');
+                  const statusLine = `\n✓ Completed: ${toolDisplay}`;
+                  if (!accumulatedContent.includes(statusLine)) {
+                    accumulatedContent = accumulatedContent.replace(/\n\n🔧 \*Executing:.*\*$/g, '') + statusLine + '\n';
+                  }
                   setMessages((prev) => prev.map((msg) =>
                     msg.id === assistantMessageId
                       ? { ...msg, content: accumulatedContent }
@@ -492,7 +512,7 @@ export function FloatingAssistant() {
                 } else if (data.type === "error") {
                   setMessages((prev) => prev.map((msg) =>
                     msg.id === assistantMessageId
-                      ? { ...msg, role: "error" as const, content: data.error || "An error occurred", isStreaming: false }
+                      ? { ...msg, role: "error" as const, content: data.error || data.content || "An error occurred", isStreaming: false }
                       : msg
                   ));
                 }
