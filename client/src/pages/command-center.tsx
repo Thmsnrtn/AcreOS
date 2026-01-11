@@ -66,6 +66,8 @@ import {
   Mail,
   Eye,
   AlertTriangle,
+  Paperclip,
+  Image as ImageIcon,
 } from "lucide-react";
 import { AISettings } from "@/components/ai-settings";
 import { formatDistanceToNow } from "date-fns";
@@ -1474,6 +1476,19 @@ function AIOperationsTabContent() {
   );
 }
 
+interface Attachment {
+  id: string;
+  file: File;
+  preview?: string;
+  type: "image" | "file";
+}
+
+const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+const ACCEPTED_FILE_TYPES = ["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "text/plain", "text/csv"];
+const ACCEPTED_EXTENSIONS = ".jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.txt,.csv";
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
+const MAX_ATTACHMENTS = 5;
+
 export default function CommandCenterPage() {
   const queryClient = useQueryClient();
   const isMobile = useIsMobile();
@@ -1485,8 +1500,12 @@ export default function CommandCenterPage() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [pendingToolCalls, setPendingToolCalls] = useState<Array<{ name: string; result?: any }>>([]);
   const [activeSkill, setActiveSkill] = useState<ActiveSkill | null>(null);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [isImageMode, setIsImageMode] = useState(false);
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: suggestionsData } = useQuery<SuggestionsResponse>({
     queryKey: ["/api/assistant/suggestions"],
@@ -1545,11 +1564,65 @@ export default function CommandCenterPage() {
     scrollToBottom();
   }, [currentConversation?.messages, streamingContent]);
 
+  const isValidFileType = (file: File): boolean => {
+    return ACCEPTED_IMAGE_TYPES.includes(file.type) || ACCEPTED_FILE_TYPES.includes(file.type);
+  };
+
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const processFiles = async (files: FileList | File[]) => {
+    const fileArray = Array.from(files);
+    const remainingSlots = MAX_ATTACHMENTS - attachments.length;
+    if (remainingSlots <= 0) return;
+
+    const newAttachments: Attachment[] = [];
+    for (const file of fileArray.slice(0, remainingSlots)) {
+      if (!isValidFileType(file)) continue;
+      if (file.size > MAX_FILE_SIZE) continue;
+      const isImage = ACCEPTED_IMAGE_TYPES.includes(file.type);
+      newAttachments.push({
+        id: crypto.randomUUID(),
+        file,
+        type: isImage ? "image" : "file",
+        preview: isImage ? URL.createObjectURL(file) : undefined,
+      });
+    }
+    setAttachments((prev) => [...prev, ...newAttachments]);
+  };
+
+  const removeAttachment = (id: string) => {
+    setAttachments((prev) => {
+      const att = prev.find((a) => a.id === id);
+      if (att?.preview) URL.revokeObjectURL(att.preview);
+      return prev.filter((a) => a.id !== id);
+    });
+  };
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      processFiles(e.target.files);
+    }
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleAttachClick = () => {
+    fileInputRef.current?.click();
+  };
+
   const sendMessage = async () => {
-    if (!input.trim() || isStreaming) return;
+    if ((!input.trim() && attachments.length === 0) || isStreaming || isGeneratingImage) return;
 
     const message = input.trim();
+    const currentAttachments = [...attachments];
     setInput("");
+    setAttachments([]);
     setStreamingContent("");
     setPendingToolCalls([]);
     setIsStreaming(true);
@@ -1574,10 +1647,22 @@ export default function CommandCenterPage() {
             variant: "destructive",
           });
           setInput(message);
+          setAttachments(currentAttachments);
           setIsStreaming(false);
           return;
         }
       }
+
+      // Process attachments to base64
+      const processedAttachments = await Promise.all(
+        currentAttachments.map(async (att) => ({
+          name: att.file.name,
+          type: att.type,
+          mimeType: att.file.type,
+          size: att.file.size,
+          base64: await fileToBase64(att.file),
+        }))
+      );
 
       const response = await fetch("/api/ai/chat/stream", {
         method: "POST",
@@ -1586,6 +1671,7 @@ export default function CommandCenterPage() {
           message,
           conversationId,
           agentRole: "assistant",
+          attachments: processedAttachments.length > 0 ? processedAttachments : undefined,
         }),
         credentials: "include",
       });
@@ -2016,21 +2102,84 @@ export default function CommandCenterPage() {
                 </ScrollArea>
 
                 <div className="p-4 border-t border-border">
-                  <div className="max-w-3xl mx-auto flex flex-col gap-1">
-                    <div className="flex gap-3">
+                  <div className="max-w-3xl mx-auto flex flex-col gap-2">
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleFileInputChange}
+                      accept={ACCEPTED_EXTENSIONS}
+                      multiple
+                      className="hidden"
+                      data-testid="input-file-upload"
+                    />
+                    
+                    {attachments.length > 0 && (
+                      <div className="flex flex-wrap gap-2 p-2 bg-muted/30 rounded-lg">
+                        {attachments.map((att) => (
+                          <div
+                            key={att.id}
+                            className="relative group flex items-center gap-2 bg-background rounded-md p-2 pr-7 border"
+                          >
+                            {att.type === "image" && att.preview ? (
+                              <img
+                                src={att.preview}
+                                alt={att.file.name}
+                                className="w-8 h-8 object-cover rounded"
+                              />
+                            ) : (
+                              <FileText className="w-5 h-5 text-muted-foreground" />
+                            )}
+                            <span className="text-xs truncate max-w-[100px]">{att.file.name}</span>
+                            <button
+                              onClick={() => removeAttachment(att.id)}
+                              className="absolute right-1 top-1/2 -translate-y-1/2 p-1 rounded-full hover:bg-muted"
+                              data-testid={`button-remove-attachment-${att.id}`}
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    
+                    <div className="flex gap-2 items-end">
+                      <div className="flex gap-1">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={handleAttachClick}
+                          disabled={isStreaming || attachments.length >= MAX_ATTACHMENTS}
+                          className="h-10 w-10"
+                          data-testid="button-attach-file"
+                        >
+                          <Paperclip className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant={isImageMode ? "default" : "ghost"}
+                          size="icon"
+                          onClick={() => setIsImageMode(!isImageMode)}
+                          disabled={isStreaming}
+                          className="h-10 w-10"
+                          data-testid="button-image-mode"
+                        >
+                          <ImageIcon className="w-4 h-4" />
+                        </Button>
+                      </div>
                       <Textarea
                         ref={textareaRef}
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
                         onKeyDown={handleKeyDown}
-                        placeholder="Ask me anything about your land investments..."
+                        placeholder={isImageMode ? "Describe the image you want to generate..." : "Ask me anything about your land investments..."}
                         className="flex-1 min-h-[48px] max-h-32 resize-none"
                         disabled={isStreaming}
                         data-testid="input-message"
                       />
                       <Button
                         onClick={sendMessage}
-                        disabled={!input.trim() || isStreaming}
+                        disabled={(!input.trim() && attachments.length === 0) || isStreaming}
                         data-testid="button-send-message"
                       >
                         {isStreaming ? (
@@ -2040,7 +2189,10 @@ export default function CommandCenterPage() {
                         )}
                       </Button>
                     </div>
-                    <span className="text-xs text-muted-foreground text-center" data-testid="text-cost-ai-chat">$0.02 per message</span>
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span>{isImageMode ? "Image generation mode" : ""}</span>
+                      <span data-testid="text-cost-ai-chat">$0.02 per message</span>
+                    </div>
                   </div>
                 </div>
               </div>
