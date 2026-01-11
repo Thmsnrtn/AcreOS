@@ -284,18 +284,26 @@ export async function processChat(
 
   const conversation = await getOrCreateConversation(org.id, userId, options.conversationId);
 
-  // Build the full message including file contents
+  // Build the full message including file contents for AI, but store only original message in DB
   let fullMessage = message;
+  let displayMessage = message; // What we show in DB and chat history
+  
   if (files && files.length > 0) {
+    // Add file names to display message for reference
+    const fileNames = files.map(f => f.name).join(', ');
+    displayMessage = `${message}\n\n[Attached files: ${fileNames}]`;
+    
+    // Full message with content for AI processing
     const fileContents = files.map(f => formatFileContent(f)).join('\n\n');
     fullMessage = `${message}\n\nThe user has attached the following file(s). Please analyze and process them according to their request:\n\n${fileContents}`;
     console.log(`[AI Chat] Processing ${files.length} file attachment(s)`);
   }
 
+  // Store only the display message (without binary content) in the database
   await createMessage({
     conversationId: conversation.id,
     role: "user",
-    content: fullMessage
+    content: displayMessage
   });
 
   const messages = await getMessages(conversation.id);
@@ -306,6 +314,11 @@ export async function processChat(
       content: m.content
     }))
   ];
+  
+  // Replace the last message with full content (including file data) for AI processing
+  if (files && files.length > 0 && chatMessages.length > 1) {
+    chatMessages[chatMessages.length - 1] = { role: "user", content: fullMessage };
+  }
 
   const complexity = classifyFromMessages("chat", chatMessages.map(m => ({ 
     role: m.role as string, 
@@ -437,18 +450,26 @@ export async function* processChatStream(
 
   const conversation = await getOrCreateConversation(org.id, userId, options.conversationId);
 
-  // Build the full message including file contents
+  // Build the full message including file contents for AI, but store only original message in DB
   let fullMessage = message;
+  let displayMessage = message; // What we show in DB and chat history
+  
   if (files && files.length > 0) {
+    // Add file names to display message for reference
+    const fileNames = files.map(f => f.name).join(', ');
+    displayMessage = `${message}\n\n[Attached files: ${fileNames}]`;
+    
+    // Full message with content for AI processing
     const fileContents = files.map(f => formatFileContent(f)).join('\n\n');
     fullMessage = `${message}\n\nThe user has attached the following file(s). Please analyze and process them according to their request:\n\n${fileContents}`;
     console.log(`[AI Stream] Processing ${files.length} file attachment(s)`);
   }
 
+  // Store only the display message (without binary content) in the database
   await createMessage({
     conversationId: conversation.id,
     role: "user",
-    content: fullMessage
+    content: displayMessage
   });
 
   const messages = await getMessages(conversation.id);
@@ -459,6 +480,11 @@ export async function* processChatStream(
       content: m.content
     }))
   ];
+  
+  // Replace the last message with full content (including file data) for AI processing
+  if (files && files.length > 0 && chatMessages.length > 1) {
+    chatMessages[chatMessages.length - 1] = { role: "user", content: fullMessage };
+  }
 
   const complexity = classifyFromMessages("chat", chatMessages.map(m => ({ 
     role: m.role as string, 
