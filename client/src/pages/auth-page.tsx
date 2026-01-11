@@ -14,10 +14,28 @@ export default function AuthPage() {
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
   
-  const isSafari = useMemo(() => {
-    if (typeof navigator === 'undefined') return false;
+  const browserWarning = useMemo(() => {
+    if (typeof navigator === 'undefined') return null;
     const ua = navigator.userAgent.toLowerCase();
-    return ua.includes('safari') && !ua.includes('chrome') && !ua.includes('chromium');
+    
+    const isIOS = /iphone|ipad|ipod/.test(ua);
+    const isMacSafari = ua.includes('safari') && !ua.includes('chrome') && !ua.includes('chromium') && !isIOS;
+    
+    if (isIOS) {
+      return {
+        title: "iOS Browser Detected",
+        message: "Replit authentication may have issues on iOS browsers. If sign-in fails, please try on a desktop browser."
+      };
+    }
+    
+    if (isMacSafari) {
+      return {
+        title: "Safari Not Supported", 
+        message: "Due to a known issue with Replit authentication in Safari, please use Chrome, Firefox, or Edge to sign in."
+      };
+    }
+    
+    return null;
   }, []);
 
   const refreshImage = useCallback(() => {
@@ -105,14 +123,14 @@ export default function AuthPage() {
             </p>
           </div>
 
-          {isSafari && (
+          {browserWarning && (
             <div className="bg-amber-500/20 border border-amber-500/50 rounded-md p-3 text-left">
               <div className="flex items-start gap-2">
                 <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-sm font-medium text-amber-200">Safari Not Supported</p>
+                  <p className="text-sm font-medium text-amber-200">{browserWarning.title}</p>
                   <p className="text-xs text-amber-200/70 mt-1">
-                    Due to a known issue with Replit authentication in Safari, please use Chrome, Firefox, or Edge to sign in.
+                    {browserWarning.message}
                   </p>
                 </div>
               </div>
@@ -125,7 +143,7 @@ export default function AuthPage() {
               className="w-full font-bold"
               onClick={handleLogin}
               data-testid="button-login"
-              disabled={isSafari}
+              disabled={browserWarning?.title === "Safari Not Supported"}
             >
               Sign In with Replit
             </Button>
