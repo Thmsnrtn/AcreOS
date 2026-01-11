@@ -43,7 +43,10 @@ export function useDeleteProperty() {
         method: "DELETE",
         credentials: "include",
       });
-      if (!res.ok) throw new Error("Failed to delete property");
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({ message: "Failed to delete property" }));
+        throw new Error(error.message || "Failed to delete property");
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.properties.list.path] });

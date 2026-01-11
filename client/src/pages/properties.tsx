@@ -305,7 +305,18 @@ export default function PropertiesPage() {
   const handleDelete = () => {
     if (deletingProperty) {
       deleteProperty(deletingProperty.id, {
-        onSuccess: () => setDeletingProperty(null),
+        onSuccess: () => {
+          toast({ title: "Success", description: "Property deleted successfully." });
+          setDeletingProperty(null);
+        },
+        onError: (error: Error) => {
+          toast({ 
+            title: "Error", 
+            description: error.message || "Failed to delete property", 
+            variant: "destructive" 
+          });
+          setDeletingProperty(null);
+        },
       });
     }
   };
