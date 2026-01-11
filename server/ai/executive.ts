@@ -9,6 +9,7 @@ import {
   TaskComplexity, 
   AIProvider,
 } from "../services/aiRouter";
+import mammoth from "mammoth";
 
 function getChatProviderAndModel(complexity: TaskComplexity): { client: OpenAI; provider: AIProvider; model: string } {
   try {
@@ -185,9 +186,25 @@ function parseCSV(content: string): { headers: string[]; rows: string[][]; total
   return { headers, rows, totalRows: lines.length - 1 };
 }
 
-function formatFileContent(file: FileAttachment): string {
-  const content = decodeBase64ToText(file.content);
+async function formatFileContentAsync(file: FileAttachment): Promise<string> {
   const extension = file.name.split('.').pop()?.toLowerCase() || '';
+  
+  // For DOCX files, use mammoth to extract text
+  if (extension === 'docx') {
+    try {
+      const base64Data = file.content.includes(',') ? file.content.split(',')[1] : file.content;
+      const buffer = Buffer.from(base64Data, 'base64');
+      const result = await mammoth.extractRawText({ buffer });
+      const text = result.value;
+      const preview = text.slice(0, 15000);
+      return `--- File: ${file.name} (Word Document) ---\n${preview}${text.length > 15000 ? '\n[...truncated...]' : ''}\n--- End of ${file.name} ---`;
+    } catch (err: any) {
+      console.error(`[AI] Error parsing DOCX file ${file.name}:`, err.message);
+      return `--- File: ${file.name} ---\n[Error: Could not parse DOCX file. The file may be corrupted or in an unsupported format.]\n--- End of ${file.name} ---`;
+    }
+  }
+  
+  const content = decodeBase64ToText(file.content);
   
   // For CSV files, parse into structured format
   if (extension === 'csv') {
@@ -202,6 +219,56 @@ function formatFileContent(file: FileAttachment): string {
     result += `DATA (showing ${Math.min(rows.length, 30)} of ${totalRows} records):\n`;
     
     // Format as readable records
+    for (let i = 0; i < rows.length; i++) {
+      result += `\nRecord ${i + 1}:\n`;
+      for (let j = 0; j < headers.length; j++) {
+        const value = rows[i][j] || '';
+        if (value) {
+          result += `  ${headers[j]}: ${value}\n`;
+        }
+      }
+    }
+    
+    if (totalRows > 30) {
+      result += `\n[...${totalRows - 30} more records not shown...]\n`;
+    }
+    result += `--- End of ${file.name} ---`;
+    return result;
+  }
+  
+  // For text files
+  if (['txt', 'text', 'md', 'json'].includes(extension)) {
+    const preview = content.slice(0, 10000);
+    return `--- File: ${file.name} ---\n${preview}${content.length > 10000 ? '\n[...truncated...]' : ''}\n--- End of ${file.name} ---`;
+  }
+  
+  // For other files, show what we can
+  return `--- File: ${file.name} ---\n${content.slice(0, 5000)}${content.length > 5000 ? '\n[...truncated...]' : ''}\n--- End of ${file.name} ---`;
+}
+
+// Sync wrapper for backward compatibility
+function formatFileContent(file: FileAttachment): string {
+  const extension = file.name.split('.').pop()?.toLowerCase() || '';
+  
+  // For DOCX files, return a placeholder - use formatFileContentAsync instead
+  if (extension === 'docx') {
+    return `--- File: ${file.name} (Word Document) ---\n[Processing DOCX...]\n--- End of ${file.name} ---`;
+  }
+  
+  const content = decodeBase64ToText(file.content);
+  
+  // For CSV files, parse into structured format
+  if (extension === 'csv') {
+    const { headers, rows, totalRows } = parseCSV(content);
+    
+    if (headers.length === 0) {
+      return `--- File: ${file.name} (CSV, empty) ---\nNo data found.\n--- End of ${file.name} ---`;
+    }
+    
+    let result = `--- File: ${file.name} (CSV with ${totalRows} records) ---\n`;
+    result += `COLUMNS: ${headers.join(', ')}\n\n`;
+    result += `DATA (showing ${Math.min(rows.length, 30)} of ${totalRows} records):\n`;
+    
     for (let i = 0; i < rows.length; i++) {
       result += `\nRecord ${i + 1}:\n`;
       for (let j = 0; j < headers.length; j++) {
@@ -293,8 +360,9 @@ export async function processChat(
     const fileNames = files.map(f => f.name).join(', ');
     displayMessage = `${message}\n\n[Attached files: ${fileNames}]`;
     
-    // Full message with content for AI processing
-    const fileContents = files.map(f => formatFileContent(f)).join('\n\n');
+    // Full message with content for AI processing (async for DOCX support)
+    const fileContentsArray = await Promise.all(files.map(f => formatFileContentAsync(f)));
+    const fileContents = fileContentsArray.join('\n\n');
     fullMessage = `${message}\n\nThe user has attached the following file(s). Please analyze and process them according to their request:\n\n${fileContents}`;
     console.log(`[AI Chat] Processing ${files.length} file attachment(s)`);
   }
@@ -459,8 +527,9 @@ export async function* processChatStream(
     const fileNames = files.map(f => f.name).join(', ');
     displayMessage = `${message}\n\n[Attached files: ${fileNames}]`;
     
-    // Full message with content for AI processing
-    const fileContents = files.map(f => formatFileContent(f)).join('\n\n');
+    // Full message with content for AI processing (async for DOCX support)
+    const fileContentsArray = await Promise.all(files.map(f => formatFileContentAsync(f)));
+    const fileContents = fileContentsArray.join('\n\n');
     fullMessage = `${message}\n\nThe user has attached the following file(s). Please analyze and process them according to their request:\n\n${fileContents}`;
     console.log(`[AI Stream] Processing ${files.length} file attachment(s)`);
   }

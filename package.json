@@ -70,6 +70,7 @@
     "jspdf": "^3.0.4",
     "lob": "^6.6.3",
     "lucide-react": "^0.453.0",
+    "mammoth": "^1.11.0",
     "mapbox-gl": "^3.17.0",
     "memoizee": "^0.4.17",
     "memorystore": "^1.6.7",
