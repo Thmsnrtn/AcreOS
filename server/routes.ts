@@ -6030,7 +6030,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       const org = (req as any).organization;
       const user = req.user as any;
       const userId = user.claims?.sub || user.id;
-      const { message, conversationId, agentRole } = req.body;
+      const { message, conversationId, agentRole, files } = req.body;
       
       if (!message) {
         return res.status(400).json({ message: "Message is required" });
@@ -6068,7 +6068,8 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       
       const stream = processChatStream(message, org, userId, {
         conversationId,
-        agentRole
+        agentRole,
+        files
       });
       
       let streamCompleted = false;

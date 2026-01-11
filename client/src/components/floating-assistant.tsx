@@ -363,7 +363,7 @@ export function FloatingAssistant() {
     const messageAttachments: MessageAttachment[] = [];
     
     for (const att of attachments) {
-      const base64 = att.type === "image" ? await fileToBase64(att.file) : undefined;
+      const base64 = await fileToBase64(att.file);
       messageAttachments.push({
         id: att.id,
         name: att.file.name,
@@ -417,6 +417,14 @@ export function FloatingAssistant() {
         .filter((a) => a.type === "image" && a.base64)
         .map((a) => a.base64);
       
+      const fileAttachments = messageAttachments
+        .filter((a) => a.type === "file" && a.base64)
+        .map((a) => ({
+          name: a.name,
+          content: a.base64,
+          size: a.size,
+        }));
+      
       const response = await fetch("/api/ai/chat/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -426,6 +434,7 @@ export function FloatingAssistant() {
           conversationId: isTemporaryChat ? undefined : activeConversationId,
           agentRole: selectedAgent,
           images: imageContents.length > 0 ? imageContents : undefined,
+          files: fileAttachments.length > 0 ? fileAttachments : undefined,
           context: {
             page: currentContext.name,
             entityType: currentContext.entityType,

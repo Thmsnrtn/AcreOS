@@ -132,10 +132,49 @@ Focus on professional, legally-sound document creation.`,
 
 export type AgentRole = keyof typeof agentProfiles;
 
+interface FileAttachment {
+  name: string;
+  content: string; // base64 encoded
+  size: number;
+}
+
 interface ChatOptions {
   conversationId?: number;
   agentRole?: AgentRole;
   stream?: boolean;
+  files?: FileAttachment[];
+}
+
+function decodeBase64ToText(base64: string): string {
+  try {
+    // Handle data URLs (e.g., data:text/csv;base64,...)
+    const base64Data = base64.includes(',') ? base64.split(',')[1] : base64;
+    return Buffer.from(base64Data, 'base64').toString('utf-8');
+  } catch {
+    return '[Unable to decode file content]';
+  }
+}
+
+function formatFileContent(file: FileAttachment): string {
+  const content = decodeBase64ToText(file.content);
+  const extension = file.name.split('.').pop()?.toLowerCase() || '';
+  
+  // For CSV files, format as a table description
+  if (extension === 'csv') {
+    const lines = content.split('\n').filter(line => line.trim());
+    const preview = lines.slice(0, 50).join('\n'); // Limit to first 50 rows
+    const totalRows = lines.length;
+    return `--- File: ${file.name} (CSV, ${totalRows} rows) ---\n${preview}${totalRows > 50 ? '\n[...truncated...]' : ''}\n--- End of ${file.name} ---`;
+  }
+  
+  // For text files
+  if (['txt', 'text', 'md', 'json'].includes(extension)) {
+    const preview = content.slice(0, 10000); // Limit to ~10k chars
+    return `--- File: ${file.name} ---\n${preview}${content.length > 10000 ? '\n[...truncated...]' : ''}\n--- End of ${file.name} ---`;
+  }
+  
+  // For other files, show what we can
+  return `--- File: ${file.name} ---\n${content.slice(0, 5000)}${content.length > 5000 ? '\n[...truncated...]' : ''}\n--- End of ${file.name} ---`;
 }
 
 async function getConversation(id: number): Promise<AiConversation | undefined> {
@@ -332,16 +371,24 @@ export async function* processChatStream(
   userId: string,
   options: ChatOptions = {}
 ): AsyncGenerator<{ type: string; content?: string; toolCall?: any; done?: boolean; model?: string }> {
-  const { agentRole = "executive" } = options;
+  const { agentRole = "executive", files } = options;
   const profile = agentProfiles[agentRole];
   const tools = getToolsForRole(agentRole);
 
   const conversation = await getOrCreateConversation(org.id, userId, options.conversationId);
 
+  // Build the full message including file contents
+  let fullMessage = message;
+  if (files && files.length > 0) {
+    const fileContents = files.map(f => formatFileContent(f)).join('\n\n');
+    fullMessage = `${message}\n\nThe user has attached the following file(s). Please analyze and process them according to their request:\n\n${fileContents}`;
+    console.log(`[AI Stream] Processing ${files.length} file attachment(s)`);
+  }
+
   await createMessage({
     conversationId: conversation.id,
     role: "user",
-    content: message
+    content: fullMessage
   });
 
   const messages = await getMessages(conversation.id);
