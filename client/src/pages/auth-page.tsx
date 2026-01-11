@@ -18,15 +18,9 @@ export default function AuthPage() {
     if (typeof navigator === 'undefined') return null;
     const ua = navigator.userAgent.toLowerCase();
     
+    // Only warn on desktop Safari - iOS browsers should just try
     const isIOS = /iphone|ipad|ipod/.test(ua);
     const isMacSafari = ua.includes('safari') && !ua.includes('chrome') && !ua.includes('chromium') && !isIOS;
-    
-    if (isIOS) {
-      return {
-        title: "iOS Browser Detected",
-        message: "Replit authentication may have issues on iOS browsers. If sign-in fails, please try on a desktop browser."
-      };
-    }
     
     if (isMacSafari) {
       return {
