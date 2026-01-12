@@ -61,7 +61,7 @@ export function LeadsEmptyState({ onAddLead, onImportLeads }: LeadsEmptyStatePro
         
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
           {onAddLead && (
-            <Button onClick={onAddLead} data-testid="button-add-lead">
+            <Button onClick={onAddLead} data-testid="button-add-lead-empty">
               <Plus className="w-4 h-4 mr-2" />
               Add Your First Lead
             </Button>
