@@ -386,7 +386,7 @@ export async function processChat(
   org: Organization,
   userId: string,
   options: ChatOptions = {}
-): Promise<{ response: string; toolCalls?: any[]; conversationId: number; model?: string }> {
+): Promise<{ response: string; toolCalls?: any[]; conversationId: number; model?: string; provider?: string; estimatedCost?: number }> {
   const { agentRole = "executive", files } = options;
   // Map "assistant" to "executive" and fallback to executive for unknown roles
   const roleStr = agentRole as string;
@@ -546,11 +546,26 @@ export async function processChat(
     await updateConversation(conversation.id, { title });
   }
 
+  const usage = response.usage;
+  let estimatedCost: number | undefined;
+  if (usage) {
+    const COST_PER_MILLION_TOKENS: Record<string, { input: number; output: number }> = {
+      "deepseek/deepseek-chat": { input: 0.14, output: 0.28 },
+      "deepseek/deepseek-reasoner": { input: 0.55, output: 2.19 },
+      "gpt-4o": { input: 2.50, output: 10.00 },
+      "gpt-4o-mini": { input: 0.15, output: 0.60 },
+    };
+    const costs = COST_PER_MILLION_TOKENS[model] || { input: 1, output: 3 };
+    estimatedCost = (usage.prompt_tokens * costs.input + usage.completion_tokens * costs.output) / 1_000_000;
+  }
+
   return {
     response: finalContent,
     toolCalls: toolCallsExecuted.length > 0 ? toolCallsExecuted : undefined,
     conversationId: conversation.id,
-    model
+    model,
+    provider,
+    estimatedCost
   };
 }
 
@@ -559,7 +574,7 @@ export async function* processChatStream(
   org: Organization,
   userId: string,
   options: ChatOptions = {}
-): AsyncGenerator<{ type: string; content?: string; toolCall?: any; done?: boolean; model?: string }> {
+): AsyncGenerator<{ type: string; content?: string; toolCall?: any; done?: boolean; model?: string; provider?: string; estimatedCost?: number }> {
   const { agentRole = "executive", files } = options;
   // Map "assistant" to "executive" and fallback to executive for unknown roles
   const roleStr = agentRole as string;
@@ -724,7 +739,7 @@ export async function* processChatStream(
     await updateConversation(conversation.id, { title });
   }
 
-  yield { type: "done", done: true };
+  yield { type: "done", done: true, model, provider };
 }
 
 export { agentProfiles as agents };

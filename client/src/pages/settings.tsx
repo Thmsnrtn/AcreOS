@@ -41,6 +41,7 @@ import { ImportExportManager } from "@/components/import-export";
 import { ComplianceSettings } from "@/components/compliance-settings";
 import { AISettings } from "@/components/ai-settings";
 import { ProviderSettings } from "@/components/provider-settings";
+import { AICostDashboard } from "@/components/ai-cost-dashboard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
@@ -1353,6 +1354,7 @@ export default function Settings() {
             </TabsContent>
 
             <TabsContent value="ai" className="space-y-8 mt-6" data-testid="tab-content-ai">
+              <AICostDashboard />
               <AISettings />
               <div className="pt-4 border-t">
                 <h3 className="text-lg font-semibold mb-4">Service Providers</h3>

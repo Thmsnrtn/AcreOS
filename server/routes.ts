@@ -6085,10 +6085,13 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
         agentRole
       });
       
-      // Record usage after successful AI chat
+      // Record usage after successful AI chat with provider/model info
       await usageMeteringService.recordUsage(org.id, "ai_chat", 1, {
         conversationId,
         agentRole,
+        provider: result.provider || "openai",
+        model: result.model || "gpt-4o",
+        estimatedCost: result.estimatedCost,
       });
       
       res.json(result);
@@ -6147,18 +6150,24 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       });
       
       let streamCompleted = false;
+      let streamProvider: string | undefined;
+      let streamModel: string | undefined;
       for await (const event of stream) {
         res.write(`data: ${JSON.stringify(event)}\n\n`);
         if ((event as any).type === "done") {
           streamCompleted = true;
+          streamProvider = (event as any).provider;
+          streamModel = (event as any).model;
         }
       }
       
-      // Record usage only after successful stream completion
+      // Record usage only after successful stream completion with provider/model info
       if (streamCompleted) {
         await usageMeteringService.recordUsage(org.id, "ai_chat", 1, {
           conversationId,
           agentRole,
+          provider: streamProvider || "openai",
+          model: streamModel || "gpt-4o",
         });
       }
       
@@ -6182,6 +6191,91 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
     
     await storage.deleteAiConversation(conversationId);
     res.json({ success: true });
+  });
+
+  // GET /api/ai/cost-savings - Get AI cost savings summary
+  api.get("/api/ai/cost-savings", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      
+      // Cost per million tokens for each model
+      const COST_PER_MILLION_TOKENS: Record<string, { input: number; output: number; avgPerCall: number }> = {
+        "deepseek/deepseek-chat": { input: 0.14, output: 0.28, avgPerCall: 0.0004 },
+        "deepseek/deepseek-reasoner": { input: 0.55, output: 2.19, avgPerCall: 0.003 },
+        "gpt-4o-mini": { input: 0.15, output: 0.60, avgPerCall: 0.0008 },
+        "gpt-4o": { input: 2.50, output: 10.00, avgPerCall: 0.015 },
+      };
+      
+      // Average cost per call for GPT-4o (what we would have paid without routing)
+      const GPT4O_AVG_COST_PER_CALL = 0.015; // $0.015 per call average
+      
+      // Get ai_chat usage records for this month
+      const startOfMonth = new Date();
+      startOfMonth.setDate(1);
+      startOfMonth.setHours(0, 0, 0, 0);
+      
+      const { usageRecords } = await import("@shared/schema");
+      const records = await db
+        .select()
+        .from(usageRecords)
+        .where(
+          and(
+            eq(usageRecords.organizationId, org.id),
+            eq(usageRecords.actionType, "ai_chat"),
+            sql`${usageRecords.createdAt} >= ${startOfMonth}`
+          )
+        );
+      
+      // Aggregate by provider and model
+      const byProvider: Record<string, { calls: number; actualCost: number; potentialCost: number }> = {};
+      let totalCalls = 0;
+      let totalActualCost = 0;
+      let totalPotentialCost = 0;
+      
+      for (const record of records) {
+        const metadata = (record.metadata || {}) as { provider?: string; model?: string; estimatedCost?: number };
+        const provider = metadata.provider || "openai";
+        const model = metadata.model || "gpt-4o";
+        const estimatedCost = metadata.estimatedCost || COST_PER_MILLION_TOKENS[model]?.avgPerCall || GPT4O_AVG_COST_PER_CALL;
+        
+        const potentialCost = GPT4O_AVG_COST_PER_CALL * record.quantity;
+        const actualCost = estimatedCost * record.quantity;
+        
+        if (!byProvider[provider]) {
+          byProvider[provider] = { calls: 0, actualCost: 0, potentialCost: 0 };
+        }
+        
+        byProvider[provider].calls += record.quantity;
+        byProvider[provider].actualCost += actualCost;
+        byProvider[provider].potentialCost += potentialCost;
+        
+        totalCalls += record.quantity;
+        totalActualCost += actualCost;
+        totalPotentialCost += potentialCost;
+      }
+      
+      const totalSavings = totalPotentialCost - totalActualCost;
+      const savingsPercent = totalPotentialCost > 0 ? (totalSavings / totalPotentialCost) * 100 : 0;
+      
+      res.json({
+        totalCalls,
+        totalActualCost: Math.round(totalActualCost * 10000) / 10000,
+        totalPotentialCost: Math.round(totalPotentialCost * 10000) / 10000,
+        totalSavings: Math.round(totalSavings * 10000) / 10000,
+        savingsPercent: Math.round(savingsPercent * 10) / 10,
+        byProvider: Object.entries(byProvider).map(([provider, data]) => ({
+          provider,
+          calls: data.calls,
+          actualCost: Math.round(data.actualCost * 10000) / 10000,
+          potentialCost: Math.round(data.potentialCost * 10000) / 10000,
+          savings: Math.round((data.potentialCost - data.actualCost) * 10000) / 10000,
+        })),
+        monthStart: startOfMonth.toISOString(),
+      });
+    } catch (error: any) {
+      console.error("AI Cost Savings error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch AI cost savings" });
+    }
   });
 
   // ============================================
