@@ -386,7 +386,7 @@ export async function processChat(
   org: Organization,
   userId: string,
   options: ChatOptions = {}
-): Promise<{ response: string; toolCalls?: any[]; conversationId: number; model?: string; provider?: string; estimatedCost?: number }> {
+): Promise<{ response: string; toolCalls?: any[]; conversationId: number; model?: string; provider?: string; estimatedCost?: number; promptTokens?: number; completionTokens?: number }> {
   const { agentRole = "executive", files } = options;
   // Map "assistant" to "executive" and fallback to executive for unknown roles
   const roleStr = agentRole as string;
@@ -565,7 +565,9 @@ export async function processChat(
     conversationId: conversation.id,
     model,
     provider,
-    estimatedCost
+    estimatedCost,
+    promptTokens: usage?.prompt_tokens,
+    completionTokens: usage?.completion_tokens
   };
 }
 
@@ -574,7 +576,7 @@ export async function* processChatStream(
   org: Organization,
   userId: string,
   options: ChatOptions = {}
-): AsyncGenerator<{ type: string; content?: string; toolCall?: any; done?: boolean; model?: string; provider?: string; estimatedCost?: number }> {
+): AsyncGenerator<{ type: string; content?: string; toolCall?: any; done?: boolean; model?: string; provider?: string; estimatedCost?: number; promptTokens?: number; completionTokens?: number }> {
   const { agentRole = "executive", files } = options;
   // Map "assistant" to "executive" and fallback to executive for unknown roles
   const roleStr = agentRole as string;
@@ -650,6 +652,9 @@ export async function* processChatStream(
   const toolCallsExecuted: any[] = [];
   let continueLoop = true;
 
+  let totalPromptTokens = 0;
+  let totalCompletionTokens = 0;
+
   while (continueLoop) {
     let stream;
     try {
@@ -658,7 +663,8 @@ export async function* processChatStream(
         messages: chatMessages,
         tools: tools.length > 0 ? tools : undefined,
         max_tokens: 2048,
-        stream: true
+        stream: true,
+        stream_options: { include_usage: true }
       });
     } catch (error: any) {
       console.error(`[AI Stream] ${provider} API error:`, error.message);
@@ -688,6 +694,11 @@ export async function* processChatStream(
             if (tc.function?.arguments) currentToolCalls[tc.index].function.arguments += tc.function.arguments;
           }
         }
+      }
+      
+      if (chunk.usage) {
+        totalPromptTokens += chunk.usage.prompt_tokens || 0;
+        totalCompletionTokens += chunk.usage.completion_tokens || 0;
       }
     }
 
@@ -739,7 +750,27 @@ export async function* processChatStream(
     await updateConversation(conversation.id, { title });
   }
 
-  yield { type: "done", done: true, model, provider };
+  let estimatedCost: number | undefined;
+  if (totalPromptTokens > 0 || totalCompletionTokens > 0) {
+    const COST_PER_MILLION_TOKENS: Record<string, { input: number; output: number }> = {
+      "deepseek/deepseek-chat": { input: 0.14, output: 0.28 },
+      "deepseek/deepseek-reasoner": { input: 0.55, output: 2.19 },
+      "gpt-4o": { input: 2.50, output: 10.00 },
+      "gpt-4o-mini": { input: 0.15, output: 0.60 },
+    };
+    const costs = COST_PER_MILLION_TOKENS[model] || { input: 1, output: 3 };
+    estimatedCost = (totalPromptTokens * costs.input + totalCompletionTokens * costs.output) / 1_000_000;
+  }
+
+  yield { 
+    type: "done", 
+    done: true, 
+    model, 
+    provider, 
+    estimatedCost,
+    promptTokens: totalPromptTokens,
+    completionTokens: totalCompletionTokens
+  };
 }
 
 export { agentProfiles as agents };

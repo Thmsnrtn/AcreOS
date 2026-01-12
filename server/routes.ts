@@ -6085,13 +6085,15 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
         agentRole
       });
       
-      // Record usage after successful AI chat with provider/model info
+      // Record usage after successful AI chat with provider/model/token info
       await usageMeteringService.recordUsage(org.id, "ai_chat", 1, {
         conversationId,
         agentRole,
         provider: result.provider || "openai",
         model: result.model || "gpt-4o",
         estimatedCost: result.estimatedCost,
+        promptTokens: result.promptTokens,
+        completionTokens: result.completionTokens,
       });
       
       res.json(result);
@@ -6152,22 +6154,31 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       let streamCompleted = false;
       let streamProvider: string | undefined;
       let streamModel: string | undefined;
+      let streamEstimatedCost: number | undefined;
+      let streamPromptTokens: number | undefined;
+      let streamCompletionTokens: number | undefined;
       for await (const event of stream) {
         res.write(`data: ${JSON.stringify(event)}\n\n`);
         if ((event as any).type === "done") {
           streamCompleted = true;
           streamProvider = (event as any).provider;
           streamModel = (event as any).model;
+          streamEstimatedCost = (event as any).estimatedCost;
+          streamPromptTokens = (event as any).promptTokens;
+          streamCompletionTokens = (event as any).completionTokens;
         }
       }
       
-      // Record usage only after successful stream completion with provider/model info
+      // Record usage only after successful stream completion with provider/model/cost info
       if (streamCompleted) {
         await usageMeteringService.recordUsage(org.id, "ai_chat", 1, {
           conversationId,
           agentRole,
           provider: streamProvider || "openai",
           model: streamModel || "gpt-4o",
+          estimatedCost: streamEstimatedCost,
+          promptTokens: streamPromptTokens,
+          completionTokens: streamCompletionTokens,
         });
       }
       
@@ -6198,16 +6209,17 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
     try {
       const org = (req as any).organization;
       
-      // Cost per million tokens for each model
-      const COST_PER_MILLION_TOKENS: Record<string, { input: number; output: number; avgPerCall: number }> = {
-        "deepseek/deepseek-chat": { input: 0.14, output: 0.28, avgPerCall: 0.0004 },
-        "deepseek/deepseek-reasoner": { input: 0.55, output: 2.19, avgPerCall: 0.003 },
-        "gpt-4o-mini": { input: 0.15, output: 0.60, avgPerCall: 0.0008 },
-        "gpt-4o": { input: 2.50, output: 10.00, avgPerCall: 0.015 },
+      // Cost per million tokens for each model (blended input/output rate)
+      // Using weighted average: assume 1:1 input:output ratio for simplicity
+      const MODEL_COSTS: Record<string, number> = {
+        "deepseek/deepseek-chat": 0.21,      // (0.14 + 0.28) / 2
+        "deepseek/deepseek-reasoner": 1.37,  // (0.55 + 2.19) / 2
+        "gpt-4o-mini": 0.375,                // (0.15 + 0.60) / 2
+        "gpt-4o": 6.25,                      // (2.50 + 10.00) / 2
       };
       
-      // Average cost per call for GPT-4o (what we would have paid without routing)
-      const GPT4O_AVG_COST_PER_CALL = 0.015; // $0.015 per call average
+      // GPT-4o blended rate as baseline
+      const GPT4O_RATE = 6.25;
       
       // Get ai_chat usage records for this month
       const startOfMonth = new Date();
@@ -6233,25 +6245,47 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       let totalPotentialCost = 0;
       
       for (const record of records) {
-        const metadata = (record.metadata || {}) as { provider?: string; model?: string; estimatedCost?: number };
+        const metadata = (record.metadata || {}) as { provider?: string; model?: string; estimatedCost?: number; promptTokens?: number; completionTokens?: number };
         const provider = metadata.provider || "openai";
         const model = metadata.model || "gpt-4o";
-        const estimatedCost = metadata.estimatedCost || COST_PER_MILLION_TOKENS[model]?.avgPerCall || GPT4O_AVG_COST_PER_CALL;
         
-        const potentialCost = GPT4O_AVG_COST_PER_CALL * record.quantity;
-        const actualCost = estimatedCost * record.quantity;
+        let actualCost: number;
+        let potentialCost: number;
+        
+        if (metadata.estimatedCost !== undefined && metadata.estimatedCost > 0) {
+          // We have actual cost from the AI call - use it
+          actualCost = metadata.estimatedCost;
+          
+          // Calculate what GPT-4o would have cost for same tokens
+          // Use cost ratio: potentialCost = actualCost * (gpt4o_rate / model_rate)
+          const modelRate = MODEL_COSTS[model] || GPT4O_RATE;
+          const costMultiplier = GPT4O_RATE / modelRate;
+          potentialCost = actualCost * costMultiplier;
+        } else if (metadata.promptTokens !== undefined && metadata.completionTokens !== undefined) {
+          // We have token counts - calculate costs directly
+          const totalTokens = metadata.promptTokens + metadata.completionTokens;
+          const modelRate = MODEL_COSTS[model] || GPT4O_RATE;
+          actualCost = (totalTokens * modelRate) / 1_000_000;
+          potentialCost = (totalTokens * GPT4O_RATE) / 1_000_000;
+        } else {
+          // Fallback: use average costs per call (less accurate)
+          const AVG_TOKENS_PER_CALL = 1000; // Conservative estimate
+          const modelRate = MODEL_COSTS[model] || GPT4O_RATE;
+          actualCost = (AVG_TOKENS_PER_CALL * modelRate) / 1_000_000;
+          potentialCost = (AVG_TOKENS_PER_CALL * GPT4O_RATE) / 1_000_000;
+        }
         
         if (!byProvider[provider]) {
           byProvider[provider] = { calls: 0, actualCost: 0, potentialCost: 0 };
         }
         
         byProvider[provider].calls += record.quantity;
-        byProvider[provider].actualCost += actualCost;
-        byProvider[provider].potentialCost += potentialCost;
+        byProvider[provider].actualCost += actualCost * record.quantity;
+        byProvider[provider].potentialCost += potentialCost * record.quantity;
         
         totalCalls += record.quantity;
-        totalActualCost += actualCost;
-        totalPotentialCost += potentialCost;
+        totalActualCost += actualCost * record.quantity;
+        totalPotentialCost += potentialCost * record.quantity;
       }
       
       const totalSavings = totalPotentialCost - totalActualCost;
