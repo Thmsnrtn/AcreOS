@@ -97,16 +97,30 @@ interface ArcGISResponse {
   error?: { message: string };
 }
 
-function calculateCentroid(geometry: RegridParcel["geometry"]): { lat: number; lng: number } {
+function calculateCentroid(geometry: GeoJSON.Geometry | RegridParcel["geometry"]): { lat: number; lng: number } {
+  // Handle Point geometry - return the point itself as centroid
+  if (geometry.type === "Point") {
+    const coords = geometry.coordinates as number[];
+    return { lng: coords[0], lat: coords[1] };
+  }
+  
+  // Handle LineString - use midpoint
+  if (geometry.type === "LineString") {
+    const coords = geometry.coordinates as number[][];
+    if (coords.length === 0) return { lat: 0, lng: 0 };
+    const mid = Math.floor(coords.length / 2);
+    return { lng: coords[mid][0], lat: coords[mid][1] };
+  }
+  
   let coords: number[][] = [];
   
   if (geometry.type === "Polygon") {
-    coords = geometry.coordinates[0] as number[][];
+    coords = (geometry.coordinates as number[][][])[0] as number[][];
   } else if (geometry.type === "MultiPolygon") {
-    coords = (geometry.coordinates[0] as number[][][])[0];
+    coords = ((geometry.coordinates as number[][][][])[0] as number[][][])[0];
   }
   
-  if (coords.length === 0) {
+  if (!coords || coords.length === 0) {
     return { lat: 0, lng: 0 };
   }
   
