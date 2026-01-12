@@ -52,7 +52,7 @@ import { OfflineIndicator } from "@/components/offline-indicator";
 import { FloatingActionButton } from "@/components/floating-action-button";
 import { useSwipeNavigation } from "@/hooks/use-swipe-gesture";
 
-// Protected Route Wrapper
+// Protected Route Wrapper with Error Boundary
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
 
@@ -68,10 +68,14 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
     return <Redirect to="/auth" />;
   }
 
-  return <Component />;
+  return (
+    <ErrorBoundary>
+      <Component />
+    </ErrorBoundary>
+  );
 }
 
-// Founder-only Route Wrapper (shows 404 for non-founders)
+// Founder-only Route Wrapper with Error Boundary (shows 404 for non-founders)
 function FounderProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading, isFounder } = useAuth();
 
@@ -92,7 +96,11 @@ function FounderProtectedRoute({ component: Component }: { component: React.Comp
     return <NotFound />;
   }
 
-  return <Component />;
+  return (
+    <ErrorBoundary>
+      <Component />
+    </ErrorBoundary>
+  );
 }
 
 function Router() {
