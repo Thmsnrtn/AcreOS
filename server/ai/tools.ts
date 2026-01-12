@@ -2,6 +2,12 @@ import { storage } from "../storage";
 import type { Organization } from "@shared/schema";
 import { getSystemContext, formatContextForAI, invalidateContextCache } from "../services/aiContextAggregator";
 import { lookupParcelByAPN } from "../services/parcel";
+import { generateOfferSuggestions, generateOfferLetter } from "../services/aiOfferService";
+import { emailService } from "../services/emailService";
+import { smsService, sendOrgSMS } from "../services/smsService";
+import { getComparableProperties } from "../services/comps";
+import { checkTcpaConsentFromLead } from "../services/tcpaCompliance";
+import { DataSourceBroker } from "../services/data-source-broker";
 
 // Tool parameter schemas (OpenAI function calling format)
 export const toolDefinitions = {
@@ -369,6 +375,142 @@ export const toolDefinitions = {
         }
       },
       required: ["properties"]
+    }
+  },
+
+  generate_offer: {
+    name: "generate_offer",
+    description: "Generate offer suggestions for a property including market analysis, pricing strategies, and AI reasoning. Uses comparable sales data to determine fair offer prices.",
+    parameters: {
+      type: "object",
+      properties: {
+        property_id: { type: "number", description: "The property ID to generate offer suggestions for" }
+      },
+      required: ["property_id"]
+    }
+  },
+
+  generate_offer_letter: {
+    name: "generate_offer_letter",
+    description: "Generate a professional offer letter for a property purchase. Creates personalized letter text and subject line based on property details and buyer information.",
+    parameters: {
+      type: "object",
+      properties: {
+        property_id: { type: "number", description: "The property ID for the offer" },
+        offer_amount: { type: "number", description: "The offer amount in dollars" },
+        buyer_name: { type: "string", description: "Full name of the buyer" },
+        buyer_company: { type: "string", description: "Buyer's company name (optional)" },
+        buyer_email: { type: "string", description: "Buyer's email address (optional)" },
+        buyer_phone: { type: "string", description: "Buyer's phone number (optional)" },
+        tone: { type: "string", enum: ["professional", "friendly", "urgent"], description: "Tone of the letter (default: professional)" },
+        seller_name: { type: "string", description: "Name of the seller (optional)" },
+        earnest_money: { type: "number", description: "Earnest money deposit amount (optional)" },
+        closing_days: { type: "number", description: "Number of days to close (optional)" }
+      },
+      required: ["property_id", "offer_amount", "buyer_name"]
+    }
+  },
+
+  send_email: {
+    name: "send_email",
+    description: "Send an email to a lead or any email address. Checks TCPA compliance when sending to leads. Use for follow-ups, offer letters, or general communication.",
+    parameters: {
+      type: "object",
+      properties: {
+        lead_id: { type: "number", description: "Lead ID to send email to (uses lead's email)" },
+        email: { type: "string", description: "Direct email address (used if lead_id not provided)" },
+        subject: { type: "string", description: "Email subject line" },
+        message: { type: "string", description: "Email body content (can include HTML)" }
+      },
+      required: ["subject", "message"]
+    }
+  },
+
+  send_sms: {
+    name: "send_sms",
+    description: "Send an SMS text message to a lead or phone number. Checks TCPA compliance before sending. Use for quick follow-ups or time-sensitive communications.",
+    parameters: {
+      type: "object",
+      properties: {
+        lead_id: { type: "number", description: "Lead ID to send SMS to (uses lead's phone)" },
+        phone_number: { type: "string", description: "Direct phone number (used if lead_id not provided)" },
+        message: { type: "string", description: "SMS message content (max 160 chars recommended)" }
+      },
+      required: ["message"]
+    }
+  },
+
+  run_comps_analysis: {
+    name: "run_comps_analysis",
+    description: "Run a comparable sales analysis for a property. Finds nearby sold properties to estimate market value and provide pricing insights.",
+    parameters: {
+      type: "object",
+      properties: {
+        property_id: { type: "number", description: "The property ID to analyze" },
+        radius_miles: { type: "number", description: "Search radius in miles (default: 5)" },
+        max_results: { type: "number", description: "Maximum comparable properties to return (default: 10)" }
+      },
+      required: ["property_id"]
+    }
+  },
+
+  calculate_roi: {
+    name: "calculate_roi",
+    description: "Calculate ROI and financial metrics for a potential investment. Computes profit, ROI percentage, annualized return, and cash-on-cash return.",
+    parameters: {
+      type: "object",
+      properties: {
+        purchase_price: { type: "number", description: "Property purchase price in dollars" },
+        estimated_sale_price: { type: "number", description: "Expected sale price in dollars" },
+        holding_costs: { type: "number", description: "Monthly holding costs (taxes, insurance, etc.)" },
+        improvement_costs: { type: "number", description: "Total improvement/renovation costs" },
+        holding_months: { type: "number", description: "Expected holding period in months" }
+      },
+      required: ["purchase_price", "estimated_sale_price"]
+    }
+  },
+
+  calculate_payment_schedule: {
+    name: "calculate_payment_schedule",
+    description: "Generate an amortization schedule for seller financing or loan analysis. Shows monthly payment, total interest, and payment breakdown.",
+    parameters: {
+      type: "object",
+      properties: {
+        principal: { type: "number", description: "Loan principal amount in dollars" },
+        interest_rate: { type: "number", description: "Annual interest rate as percentage (e.g., 9.5)" },
+        term_months: { type: "number", description: "Loan term in months" },
+        down_payment: { type: "number", description: "Down payment amount (optional)" }
+      },
+      required: ["principal", "interest_rate", "term_months"]
+    }
+  },
+
+  research_property: {
+    name: "research_property",
+    description: "Research comprehensive property data using multiple data sources. Returns tax info, ownership details, assessments, liens, and other available records.",
+    parameters: {
+      type: "object",
+      properties: {
+        property_id: { type: "number", description: "The property ID to research" }
+      },
+      required: ["property_id"]
+    }
+  },
+
+  schedule_followup: {
+    name: "schedule_followup",
+    description: "Create a follow-up task linked to a lead, property, or deal. Use for scheduling callbacks, site visits, or reminder tasks.",
+    parameters: {
+      type: "object",
+      properties: {
+        entity_type: { type: "string", enum: ["lead", "property", "deal"], description: "Type of entity to link the follow-up to" },
+        entity_id: { type: "number", description: "ID of the entity to link to" },
+        title: { type: "string", description: "Title of the follow-up task" },
+        description: { type: "string", description: "Detailed description of the follow-up (optional)" },
+        due_date: { type: "string", description: "Due date in ISO format (YYYY-MM-DD)" },
+        priority: { type: "string", enum: ["low", "medium", "high", "urgent"], description: "Priority level (default: medium)" }
+      },
+      required: ["entity_type", "entity_id", "title", "due_date"]
     }
   }
 };
@@ -868,6 +1010,336 @@ export async function executeTool(
           } 
         };
       }
+
+      case "generate_offer": {
+        const property = await storage.getProperty(org.id, args.property_id);
+        if (!property) return { success: false, error: "Property not found" };
+        if (!property.county || !property.state) {
+          return { success: false, error: "Property is missing county or state information required for offer analysis" };
+        }
+
+        const sizeAcres = Number(property.sizeAcres);
+        if (isNaN(sizeAcres) || sizeAcres <= 0) {
+          return { success: false, error: "Property is missing valid acreage information required for offer analysis" };
+        }
+
+        const propertyData = {
+          id: property.id,
+          apn: property.apn || undefined,
+          address: property.address || undefined,
+          county: property.county,
+          state: property.state,
+          sizeAcres,
+          latitude: property.latitude ? Number(property.latitude) : undefined,
+          longitude: property.longitude ? Number(property.longitude) : undefined,
+          zoning: property.zoning || undefined,
+          terrain: property.terrain || undefined,
+          roadAccess: property.roadAccess || undefined,
+          assessedValue: property.assessedValue ? Number(property.assessedValue) : undefined,
+          marketValue: property.marketValue ? Number(property.marketValue) : undefined,
+        };
+
+        const result = await generateOfferSuggestions(propertyData);
+        return { 
+          success: result.success, 
+          data: result.success ? result : undefined,
+          error: result.error 
+        };
+      }
+
+      case "generate_offer_letter": {
+        const property = await storage.getProperty(org.id, args.property_id);
+        if (!property) return { success: false, error: "Property not found" };
+
+        const propertyData = {
+          id: property.id,
+          apn: property.apn || undefined,
+          address: property.address || undefined,
+          county: property.county,
+          state: property.state,
+          sizeAcres: Number(property.sizeAcres) || 0,
+          latitude: property.latitude ? Number(property.latitude) : undefined,
+          longitude: property.longitude ? Number(property.longitude) : undefined,
+        };
+
+        const result = await generateOfferLetter({
+          property: propertyData,
+          offerAmount: args.offer_amount,
+          buyerName: args.buyer_name,
+          buyerCompany: args.buyer_company,
+          buyerEmail: args.buyer_email,
+          buyerPhone: args.buyer_phone,
+          tone: args.tone || "professional",
+          sellerName: args.seller_name,
+          terms: {
+            earnestMoney: args.earnest_money,
+            closingDays: args.closing_days,
+          },
+        });
+
+        return { 
+          success: result.success, 
+          data: result.success ? { letter: result.letter, subject: result.subject } : undefined,
+          error: result.error 
+        };
+      }
+
+      case "send_email": {
+        let toEmail: string | undefined;
+        let leadForCompliance: { tcpaConsent: boolean | null; doNotContact: boolean | null } | null = null;
+
+        if (args.lead_id) {
+          const lead = await storage.getLead(org.id, args.lead_id);
+          if (!lead) return { success: false, error: "Lead not found" };
+          if (!lead.email) return { success: false, error: "Lead does not have an email address" };
+          toEmail = lead.email;
+          leadForCompliance = { tcpaConsent: lead.tcpaConsent, doNotContact: lead.doNotContact };
+        } else if (args.email) {
+          toEmail = args.email;
+        } else {
+          return { success: false, error: "Either lead_id or email is required" };
+        }
+
+        if (leadForCompliance) {
+          const compliance = checkTcpaConsentFromLead(leadForCompliance);
+          if (!compliance.canEmail) {
+            return { success: false, error: `Cannot send email: ${compliance.reason}` };
+          }
+        }
+
+        const isConfigured = await emailService.isConfigured(org.id);
+        if (!isConfigured) {
+          return { success: false, error: "Email service not configured. Please set up AWS SES credentials in Settings." };
+        }
+
+        const htmlContent = args.message;
+        const textContent = htmlContent.replace(/<[^>]*>/g, '').trim();
+
+        const result = await emailService.sendEmail({
+          to: toEmail!,
+          subject: args.subject,
+          html: htmlContent,
+          text: textContent,
+          organizationId: org.id,
+        });
+
+        return { 
+          success: result.success, 
+          data: result.success ? { messageId: result.messageId, message: "Email sent successfully" } : undefined,
+          error: result.error 
+        };
+      }
+
+      case "send_sms": {
+        let toPhone: string | undefined;
+        let leadForCompliance: { tcpaConsent: boolean | null; doNotContact: boolean | null } | null = null;
+
+        if (args.lead_id) {
+          const lead = await storage.getLead(org.id, args.lead_id);
+          if (!lead) return { success: false, error: "Lead not found" };
+          if (!lead.phone) return { success: false, error: "Lead does not have a phone number" };
+          toPhone = lead.phone;
+          leadForCompliance = { tcpaConsent: lead.tcpaConsent, doNotContact: lead.doNotContact };
+        } else if (args.phone_number) {
+          toPhone = args.phone_number;
+        } else {
+          return { success: false, error: "Either lead_id or phone_number is required" };
+        }
+
+        if (leadForCompliance) {
+          const compliance = checkTcpaConsentFromLead(leadForCompliance);
+          if (!compliance.canSms) {
+            return { success: false, error: `Cannot send SMS: ${compliance.reason}` };
+          }
+        }
+
+        if (!toPhone) {
+          return { success: false, error: "Phone number not available" };
+        }
+
+        const result = await sendOrgSMS(org.id, toPhone, args.message);
+
+        return { 
+          success: result.success, 
+          data: result.success ? { messageId: result.messageId, message: "SMS sent successfully" } : undefined,
+          error: result.error 
+        };
+      }
+
+      case "run_comps_analysis": {
+        const property = await storage.getProperty(org.id, args.property_id);
+        if (!property) return { success: false, error: "Property not found" };
+        if (!property.latitude || !property.longitude) {
+          return { success: false, error: "Property does not have coordinates for comps analysis" };
+        }
+
+        const radiusMiles = args.radius_miles || 5;
+        const maxResults = args.max_results || 10;
+
+        const result = await getComparableProperties(
+          Number(property.latitude),
+          Number(property.longitude),
+          radiusMiles,
+          {
+            minAcreage: Number(property.sizeAcres) * 0.5,
+            maxAcreage: Number(property.sizeAcres) * 2,
+            maxResults,
+          },
+          org.id
+        );
+
+        return { 
+          success: result.success, 
+          data: result.success ? {
+            comparables: result.comps,
+            marketAnalysis: result.marketAnalysis,
+            count: result.comps.length,
+          } : undefined,
+          error: result.error 
+        };
+      }
+
+      case "calculate_roi": {
+        const { purchase_price, estimated_sale_price, holding_costs = 0, improvement_costs = 0, holding_months = 6 } = args;
+        
+        const totalInvestment = purchase_price + improvement_costs + (holding_costs * holding_months);
+        const profit = estimated_sale_price - totalInvestment;
+        const roi = (profit / totalInvestment) * 100;
+        const annualizedRoi = (roi / holding_months) * 12;
+        const cashOnCash = (profit / purchase_price) * 100;
+
+        return { 
+          success: true, 
+          data: {
+            purchasePrice: purchase_price,
+            estimatedSalePrice: estimated_sale_price,
+            totalInvestment: Math.round(totalInvestment * 100) / 100,
+            profit: Math.round(profit * 100) / 100,
+            roiPercent: Math.round(roi * 100) / 100,
+            annualizedRoiPercent: Math.round(annualizedRoi * 100) / 100,
+            cashOnCashPercent: Math.round(cashOnCash * 100) / 100,
+            holdingMonths: holding_months,
+            holdingCostsTotal: holding_costs * holding_months,
+            improvementCosts: improvement_costs,
+          }
+        };
+      }
+
+      case "calculate_payment_schedule": {
+        const { principal, interest_rate, term_months, down_payment = 0 } = args;
+        const loanAmount = principal - down_payment;
+        const monthlyRate = interest_rate / 100 / 12;
+        
+        let monthlyPayment: number;
+        let totalInterest: number;
+        
+        if (monthlyRate === 0) {
+          monthlyPayment = loanAmount / term_months;
+          totalInterest = 0;
+        } else {
+          monthlyPayment = loanAmount * (monthlyRate * Math.pow(1 + monthlyRate, term_months)) 
+                         / (Math.pow(1 + monthlyRate, term_months) - 1);
+          totalInterest = (monthlyPayment * term_months) - loanAmount;
+        }
+
+        const schedule: Array<{ month: number; payment: number; principal: number; interest: number; balance: number }> = [];
+        let balance = loanAmount;
+        
+        for (let month = 1; month <= Math.min(term_months, 12); month++) {
+          const interestPayment = balance * monthlyRate;
+          const principalPayment = monthlyPayment - interestPayment;
+          balance -= principalPayment;
+          schedule.push({
+            month,
+            payment: Math.round(monthlyPayment * 100) / 100,
+            principal: Math.round(principalPayment * 100) / 100,
+            interest: Math.round(interestPayment * 100) / 100,
+            balance: Math.round(Math.max(0, balance) * 100) / 100,
+          });
+        }
+
+        return { 
+          success: true, 
+          data: {
+            loanAmount: Math.round(loanAmount * 100) / 100,
+            downPayment: down_payment,
+            monthlyPayment: Math.round(monthlyPayment * 100) / 100,
+            totalPayments: Math.round(monthlyPayment * term_months * 100) / 100,
+            totalInterest: Math.round(totalInterest * 100) / 100,
+            interestRate: interest_rate,
+            termMonths: term_months,
+            firstYearSchedule: schedule,
+          }
+        };
+      }
+
+      case "research_property": {
+        const property = await storage.getProperty(org.id, args.property_id);
+        if (!property) return { success: false, error: "Property not found" };
+        if (!property.latitude || !property.longitude) {
+          return { success: false, error: "Property does not have coordinates for research" };
+        }
+
+        const broker = new DataSourceBroker();
+        const results: Record<string, any> = {};
+        const categories = ["parcel_data", "tax_assessment", "environmental", "zoning"] as const;
+
+        for (const category of categories) {
+          try {
+            const lookupResult = await broker.lookup(category, {
+              latitude: Number(property.latitude),
+              longitude: Number(property.longitude),
+              state: property.state,
+              county: property.county,
+              apn: property.apn || undefined,
+            });
+            if (lookupResult.success) {
+              results[category] = {
+                data: lookupResult.data,
+                source: lookupResult.source.title,
+                fromCache: lookupResult.fromCache,
+              };
+            }
+          } catch (err) {
+            console.error(`[research_property] Failed to lookup ${category}:`, err);
+          }
+        }
+
+        return { 
+          success: Object.keys(results).length > 0, 
+          data: {
+            propertyId: property.id,
+            apn: property.apn,
+            address: property.address,
+            researchResults: results,
+            categoriesSearched: categories,
+            categoriesFound: Object.keys(results),
+          },
+          error: Object.keys(results).length === 0 ? "No data sources returned results" : undefined
+        };
+      }
+
+      case "schedule_followup": {
+        const task = await storage.createTask({
+          organizationId: org.id,
+          title: args.title,
+          description: args.description || null,
+          priority: args.priority || "medium",
+          status: "pending",
+          dueDate: args.due_date ? new Date(args.due_date) : null,
+          entityType: args.entity_type,
+          entityId: args.entity_id,
+          createdBy: "ai-assistant",
+        });
+        invalidateContextCache(org.id);
+        return { 
+          success: true, 
+          data: { 
+            message: `Follow-up scheduled for ${args.due_date}`,
+            task,
+          } 
+        };
+      }
       
       default:
         return { success: false, error: `Unknown tool: ${toolName}` };
@@ -892,11 +1364,11 @@ export function getToolsForRole(role: string) {
   
   const roleToolMap: Record<string, string[]> = {
     executive: allTools,
-    acquisitions: [...coreTools, "get_leads", "get_lead_details", "update_lead_status", "create_lead", "get_properties", "create_property", "get_deals", "create_deal", "get_tasks", "create_task", "get_pipeline_summary"],
-    underwriting: [...coreTools, "get_properties", "get_property_details", "update_property", "get_notes", "calculate_amortization", "get_cashflow_summary", "get_deals", "update_deal"],
-    marketing: [...coreTools, "get_leads", "get_properties", "get_pipeline_summary", "create_task"],
-    research: [...coreTools, "get_properties", "get_property_details", "get_leads", "create_property", "update_property"],
-    documents: [...coreTools, "get_leads", "get_lead_details", "get_properties", "get_property_details", "get_notes", "get_deals"],
+    acquisitions: [...coreTools, "get_leads", "get_lead_details", "update_lead_status", "create_lead", "get_properties", "create_property", "get_deals", "create_deal", "get_tasks", "create_task", "get_pipeline_summary", "generate_offer", "generate_offer_letter", "send_email", "send_sms", "run_comps_analysis", "schedule_followup"],
+    underwriting: [...coreTools, "get_properties", "get_property_details", "update_property", "get_notes", "calculate_amortization", "get_cashflow_summary", "get_deals", "update_deal", "run_comps_analysis", "calculate_roi", "calculate_payment_schedule", "research_property"],
+    marketing: [...coreTools, "get_leads", "get_properties", "get_pipeline_summary", "create_task", "send_email", "send_sms"],
+    research: [...coreTools, "get_properties", "get_property_details", "get_leads", "create_property", "update_property", "run_comps_analysis", "research_property", "calculate_roi"],
+    documents: [...coreTools, "get_leads", "get_lead_details", "get_properties", "get_property_details", "get_notes", "get_deals", "generate_offer_letter"],
     assistant: allTools // Full access for the main assistant
   };
   
