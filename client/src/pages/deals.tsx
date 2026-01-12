@@ -23,6 +23,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Plus, MapPin, DollarSign, Calendar, Building, TrendingUp, CheckCircle, X, GripVertical, FileText, Trash2, Loader2, Briefcase, Calculator, ClipboardCheck, Upload, AlertTriangle, CheckSquare, Square, Clock, Download, Package, Play, Eye, FolderPlus, Sparkles, Flame, Snowflake, Minus, LayoutGrid, List, ChevronLeft, ChevronRight } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
+import { DealsEmptyState } from "@/components/empty-states";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -62,7 +63,7 @@ export default function DealsPage() {
   const searchString = useSearch();
   const urlParams = new URLSearchParams(searchString);
   const actionFromUrl = urlParams.get("action");
-  const isMobile = useIsMobile();
+  const { isMobile } = useIsMobile();
   
   const [isCreateOpen, setIsCreateOpen] = useState(actionFromUrl === "new");
   const [selectedDeal, setSelectedDeal] = useState<DealWithProperty | null>(null);
@@ -224,18 +225,8 @@ export default function DealsPage() {
           </div>
 
           {!isLoading && enrichedDeals.length === 0 ? (
-            <EmptyState
-              icon={Briefcase}
-              title="No deals in your pipeline"
-              description="Track acquisitions and dispositions through your pipeline. Move deals through stages from lead to closed."
-              secondaryDescription="Stay organized and never let a deal fall through the cracks."
-              tips={[
-                "Create deals for properties you're negotiating on",
-                "Track offer amounts and accepted terms",
-                "Move deals through stages: negotiating, accepted, escrow, closed"
-              ]}
-              actionLabel="Create Your First Deal"
-              onAction={() => setIsCreateOpen(true)}
+            <DealsEmptyState
+              onAddDeal={() => setIsCreateOpen(true)}
             />
           ) : (
             <>

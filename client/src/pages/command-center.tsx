@@ -1491,7 +1491,7 @@ const MAX_ATTACHMENTS = 5;
 
 export default function CommandCenterPage() {
   const queryClient = useQueryClient();
-  const isMobile = useIsMobile();
+  const { isMobile } = useIsMobile();
   const { toast } = useToast();
   const [mainTab, setMainTab] = useState<string>("chat");
   const [input, setInput] = useState("");

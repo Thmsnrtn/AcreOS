@@ -7470,3 +7470,102 @@ export const insertDispositionRecommendationSchema = createInsertSchema(disposit
 });
 export type InsertDispositionRecommendation = z.infer<typeof insertDispositionRecommendationSchema>;
 export type DispositionRecommendation = typeof dispositionRecommendations.$inferSelect;
+
+// ============================================
+// PLAYBOOKS - Guided Workflows
+// ============================================
+
+export const PLAYBOOK_TEMPLATES = {
+  acquisition_sprint: "acquisition_sprint",
+  due_diligence: "due_diligence", 
+  disposition_launch: "disposition_launch",
+} as const;
+
+export type PlaybookTemplateType = typeof PLAYBOOK_TEMPLATES[keyof typeof PLAYBOOK_TEMPLATES];
+
+export const playbookInstances = pgTable("playbook_instances", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  templateId: text("template_id").notNull(), // acquisition_sprint, due_diligence, disposition_launch
+  name: text("name").notNull(),
+  status: text("status").notNull().default("in_progress"), // in_progress, completed, cancelled
+  
+  linkedDealId: integer("linked_deal_id").references(() => deals.id),
+  linkedPropertyId: integer("linked_property_id").references(() => properties.id),
+  linkedLeadId: integer("linked_lead_id").references(() => leads.id),
+  
+  completedSteps: jsonb("completed_steps").$type<string[]>().default([]),
+  stepData: jsonb("step_data").$type<Record<string, any>>(),
+  
+  startedAt: timestamp("started_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertPlaybookInstanceSchema = createInsertSchema(playbookInstances).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertPlaybookInstance = z.infer<typeof insertPlaybookInstanceSchema>;
+export type PlaybookInstance = typeof playbookInstances.$inferSelect;
+
+// Playbook step types for frontend
+export interface PlaybookStep {
+  id: string;
+  title: string;
+  description: string;
+  actionType: "navigate" | "create_lead" | "create_property" | "create_deal" | "link_entity" | "manual";
+  actionLabel: string;
+  actionUrl?: string;
+  icon: string;
+  estimatedMinutes?: number;
+}
+
+export interface PlaybookTemplate {
+  id: string;
+  name: string;
+  description: string;
+  category: "acquisition" | "due_diligence" | "disposition";
+  estimatedDuration: string;
+  steps: PlaybookStep[];
+}
+
+// ============================================
+// WORKSPACE PRESETS - Power User Features
+// ============================================
+
+export const workspacePresets = pgTable("workspace_presets", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  userId: text("user_id").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  layout: jsonb("layout").$type<{
+    route: string;
+    sidebarCollapsed?: boolean;
+    openPanels?: string[];
+    filters?: Record<string, any>;
+    sortBy?: string;
+    viewMode?: string;
+  }>().notNull(),
+  icon: text("icon"),
+  color: text("color"),
+  isDefault: boolean("is_default").default(false),
+  sortOrder: integer("sort_order").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("workspace_presets_org_idx").on(table.organizationId),
+  index("workspace_presets_user_idx").on(table.userId),
+]);
+
+export const insertWorkspacePresetSchema = createInsertSchema(workspacePresets).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type WorkspacePreset = typeof workspacePresets.$inferSelect;
+export type InsertWorkspacePreset = z.infer<typeof insertWorkspacePresetSchema>;

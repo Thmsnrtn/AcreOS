@@ -1,20 +1,25 @@
 import { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Sidebar } from "@/components/layout-sidebar";
 import { StatCard } from "@/components/stat-card";
 import { useOrganization, useDashboardStats } from "@/hooks/use-organization";
 import { useLeads, useAgingLeads, type AgingLead } from "@/hooks/use-leads";
 import { useProperties } from "@/hooks/use-properties";
-import { Users, Map, Banknote, TrendingUp, Activity, Building2, Crown, AlertTriangle, Clock, Flame, Sun, Snowflake } from "lucide-react";
+import { usePlaybooks } from "@/hooks/use-playbooks";
+import { Users, Map, Banknote, TrendingUp, Activity, Building2, Crown, AlertTriangle, Clock, Flame, Sun, Snowflake, Sparkles, BookOpen } from "lucide-react";
 import { motion } from "framer-motion";
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { OnboardingWizard } from "@/components/onboarding-wizard";
+import { OnboardingWizard, OnboardingProgress } from "@/components/onboarding";
 import { GettingStartedChecklist } from "@/components/getting-started-checklist";
 import { ActivityFeed } from "@/components/activity-feed";
 import { DashboardSettings, loadSettings, type DashboardWidgetSettings } from "@/components/dashboard-settings";
+import { AnomalyAlerts, PredictiveInsights, NextBestActions } from "@/components/dashboard";
+import { PlaybookCard } from "@/components/playbooks/PlaybookCard";
 import { Link } from "wouter";
+import { WorkspaceManager } from "@/components/workspace/WorkspaceManager";
 
 function getUrgencyStyle(urgency: string) {
   switch (urgency) {
@@ -38,12 +43,53 @@ function getStageIcon(stage: string) {
   }
 }
 
+interface DashboardIntelligence {
+  anomalies: Array<{
+    id: string;
+    type: "positive" | "negative" | "neutral";
+    message: string;
+    metric: string;
+    currentValue: number;
+    previousValue: number;
+    percentChange: number;
+  }>;
+  predictions: Array<{
+    id: string;
+    type: "deals" | "revenue" | "leads";
+    title: string;
+    message: string;
+    currentValue: number;
+    projectedValue: number;
+    timeframe: string;
+    trendData?: { name: string; value: number }[];
+  }>;
+  actions: Array<{
+    id: string;
+    type: "follow_up" | "review_offer" | "schedule_call" | "send_mail" | "close_deal";
+    priority: "high" | "medium" | "low";
+    title: string;
+    description: string;
+    entityType: "lead" | "deal" | "property";
+    entityId: number;
+    dueInfo?: string;
+    actionLabel: string;
+    actionUrl: string;
+  }>;
+  generatedAt: string;
+}
+
 export default function Dashboard() {
   const { data: organization, isLoading: orgLoading } = useOrganization();
   const { data: stats, isLoading: statsLoading } = useDashboardStats();
   const { data: leads = [] } = useLeads();
   const { data: properties = [] } = useProperties();
   const { data: agingLeads = [], isLoading: agingLoading } = useAgingLeads();
+  const { data: playbooksData, isLoading: playbooksLoading } = usePlaybooks();
+  
+  const { data: intelligence, isLoading: intelligenceLoading } = useQuery<DashboardIntelligence>({
+    queryKey: ["/api/dashboard/intelligence"],
+    staleTime: 5 * 60 * 1000,
+  });
 
   const [widgetSettings, setWidgetSettings] = useState<DashboardWidgetSettings>(() => 
     loadSettings(organization)
@@ -155,7 +201,90 @@ export default function Dashboard() {
         );
 
       case "checklist":
-        return <GettingStartedChecklist key={widgetId} />;
+        return (
+          <div key={widgetId} className="space-y-4">
+            <OnboardingProgress />
+            <GettingStartedChecklist />
+          </div>
+        );
+
+      case "intelligence":
+        return (
+          <motion.div
+            key={widgetId}
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.05 * index }}
+          >
+            <Card className="floating-window border-primary/20">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Sparkles className="w-5 h-5 text-primary" />
+                  Smart Intelligence
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <AnomalyAlerts 
+                    anomalies={intelligence?.anomalies || []} 
+                    isLoading={intelligenceLoading}
+                  />
+                  <PredictiveInsights 
+                    predictions={intelligence?.predictions || []} 
+                    isLoading={intelligenceLoading}
+                  />
+                  <NextBestActions 
+                    actions={intelligence?.actions || []} 
+                    isLoading={intelligenceLoading}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        );
+
+      case "playbooks":
+        return (
+          <motion.div
+            key={widgetId}
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.05 * index }}
+          >
+            <Card className="floating-window" data-testid="section-playbooks">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <BookOpen className="w-5 h-5 text-primary" />
+                  Playbooks
+                  {playbooksData?.activeInstances && playbooksData.activeInstances.length > 0 && (
+                    <Badge variant="outline" className="ml-2 text-xs" data-testid="badge-active-playbooks">
+                      {playbooksData.activeInstances.length} active
+                    </Badge>
+                  )}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {playbooksLoading ? (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {[1, 2, 3].map((i) => (
+                      <Skeleton key={i} className="h-48 w-full" />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {playbooksData?.templates.map(({ template, activeInstance }) => (
+                      <PlaybookCard
+                        key={template.id}
+                        template={template}
+                        activeInstance={activeInstance}
+                      />
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
+        );
 
       case "agingLeads":
         if (agingLeads.length === 0) return null;
@@ -328,14 +457,17 @@ export default function Dashboard() {
         <div className="max-w-7xl mx-auto space-y-8">
           
           <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               <div>
                 <h1 className="text-3xl font-bold text-foreground" data-testid="text-dashboard-title">
                   Dashboard
                 </h1>
                 <p className="text-muted-foreground mt-2">Overview of your land investment performance.</p>
               </div>
-              <DashboardSettings settings={widgetSettings} onSettingsChange={setWidgetSettings} />
+              <div className="flex items-center gap-2">
+                <WorkspaceManager />
+                <DashboardSettings settings={widgetSettings} onSettingsChange={setWidgetSettings} />
+              </div>
             </div>
             
             {isLoading ? (

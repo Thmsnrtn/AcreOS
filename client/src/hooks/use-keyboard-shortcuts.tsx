@@ -8,6 +8,7 @@ interface Shortcut {
   description: string;
   callback: ShortcutCallback;
   global?: boolean;
+  meta?: boolean;
 }
 
 interface KeyboardShortcutsContextType {
@@ -16,6 +17,10 @@ interface KeyboardShortcutsContextType {
   unregisterShortcut: (id: string) => void;
   isDialogOpen: boolean;
   setDialogOpen: (open: boolean) => void;
+  isNewMenuOpen: boolean;
+  setNewMenuOpen: (open: boolean) => void;
+  triggerSidebarToggle: () => void;
+  onSidebarToggle: (callback: () => void) => void;
 }
 
 const KeyboardShortcutsContext = createContext<KeyboardShortcutsContextType | null>(null);
@@ -23,10 +28,12 @@ const KeyboardShortcutsContext = createContext<KeyboardShortcutsContextType | nu
 export function KeyboardShortcutsProvider({ children }: { children: ReactNode }) {
   const [shortcuts, setShortcuts] = useState<Map<string, Shortcut>>(new Map());
   const [isDialogOpen, setDialogOpen] = useState(false);
+  const [isNewMenuOpen, setNewMenuOpen] = useState(false);
   const [, setLocation] = useLocation();
   const pendingKeyRef = useRef<string | null>(null);
   const pendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initializedRef = useRef(false);
+  const sidebarToggleCallbackRef = useRef<(() => void) | null>(null);
 
   const registerShortcut = useCallback((id: string, shortcut: Shortcut) => {
     setShortcuts(prev => {
@@ -44,6 +51,16 @@ export function KeyboardShortcutsProvider({ children }: { children: ReactNode })
       next.delete(id);
       return next;
     });
+  }, []);
+
+  const triggerSidebarToggle = useCallback(() => {
+    if (sidebarToggleCallbackRef.current) {
+      sidebarToggleCallbackRef.current();
+    }
+  }, []);
+
+  const onSidebarToggle = useCallback((callback: () => void) => {
+    sidebarToggleCallbackRef.current = callback;
   }, []);
 
   useEffect(() => {
@@ -73,17 +90,9 @@ export function KeyboardShortcutsProvider({ children }: { children: ReactNode })
       const target = e.target as HTMLElement;
       const isInput = target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
       
-      if (isInput && e.key !== "Escape") {
-        pendingKeyRef.current = null;
-        if (pendingTimerRef.current) {
-          clearTimeout(pendingTimerRef.current);
-          pendingTimerRef.current = null;
-        }
-        return;
-      }
-
       if (e.key === "Escape") {
         setDialogOpen(false);
+        setNewMenuOpen(false);
         pendingKeyRef.current = null;
         if (pendingTimerRef.current) {
           clearTimeout(pendingTimerRef.current);
@@ -92,7 +101,37 @@ export function KeyboardShortcutsProvider({ children }: { children: ReactNode })
         return;
       }
 
-      if (e.metaKey || e.ctrlKey || e.altKey) {
+      // Allow meta/ctrl combos even when in input fields
+      if ((e.metaKey || e.ctrlKey)) {
+        if (e.key === "n" || e.key === "N") {
+          e.preventDefault();
+          setNewMenuOpen(prev => !prev);
+          return;
+        }
+        if (e.key === "/") {
+          e.preventDefault();
+          triggerSidebarToggle();
+          return;
+        }
+        if (e.key === "j" || e.key === "J") {
+          e.preventDefault();
+          setLocation("/command-center");
+          return;
+        }
+        // Don't return early for other meta/ctrl combos - let them pass through
+      }
+      
+      // Only skip vim-style shortcuts (no meta key) when in input
+      if (!e.metaKey && !e.ctrlKey && isInput) {
+        pendingKeyRef.current = null;
+        if (pendingTimerRef.current) {
+          clearTimeout(pendingTimerRef.current);
+          pendingTimerRef.current = null;
+        }
+        return;
+      }
+
+      if (e.altKey) {
         return;
       }
 
@@ -135,10 +174,20 @@ export function KeyboardShortcutsProvider({ children }: { children: ReactNode })
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [shortcuts]);
+  }, [shortcuts, triggerSidebarToggle, setLocation]);
 
   return (
-    <KeyboardShortcutsContext.Provider value={{ shortcuts, registerShortcut, unregisterShortcut, isDialogOpen, setDialogOpen }}>
+    <KeyboardShortcutsContext.Provider value={{ 
+      shortcuts, 
+      registerShortcut, 
+      unregisterShortcut, 
+      isDialogOpen, 
+      setDialogOpen,
+      isNewMenuOpen,
+      setNewMenuOpen,
+      triggerSidebarToggle,
+      onSidebarToggle,
+    }}>
       {children}
     </KeyboardShortcutsContext.Provider>
   );

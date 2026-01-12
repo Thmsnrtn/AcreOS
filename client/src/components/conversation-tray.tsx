@@ -535,7 +535,7 @@ function ConversationTrayContent({ onClose }: { onClose?: () => void }) {
 
 export function ConversationTray() {
   const { user } = useAuth();
-  const isMobile = useIsMobile();
+  const { isMobile } = useIsMobile();
   const [isOpen, setIsOpen] = useState(false);
 
   if (!user) return null;

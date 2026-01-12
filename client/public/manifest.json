@@ -29,6 +29,36 @@
       "purpose": "maskable"
     }
   ],
+  "shortcuts": [
+    {
+      "name": "Dashboard",
+      "short_name": "Home",
+      "description": "View your dashboard",
+      "url": "/",
+      "icons": [{ "src": "/pwa-192x192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Leads",
+      "short_name": "Leads",
+      "description": "Manage your leads",
+      "url": "/leads",
+      "icons": [{ "src": "/pwa-192x192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Properties",
+      "short_name": "Properties",
+      "description": "View property inventory",
+      "url": "/properties",
+      "icons": [{ "src": "/pwa-192x192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Deals",
+      "short_name": "Deals",
+      "description": "Manage deal pipeline",
+      "url": "/deals",
+      "icons": [{ "src": "/pwa-192x192.png", "sizes": "192x192" }]
+    }
+  ],
   "screenshots": [
     {
       "src": "/screenshot-wide.png",

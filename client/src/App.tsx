@@ -1,4 +1,4 @@
-import { Switch, Route, Redirect } from "wouter";
+import { Switch, Route, Redirect, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -6,10 +6,14 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/use-auth";
 import { Loader2 } from "lucide-react";
 import { ThemeProvider } from "@/contexts/theme-context";
+import { AnimatePresence, motion } from "framer-motion";
+import { pageTransition } from "@/lib/animations";
 
 import { HintsProvider } from "@/components/feature-hints";
 import { KeyboardShortcutsProvider } from "@/hooks/use-keyboard-shortcuts";
-import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
+import { KeyboardShortcutsModal } from "@/components/keyboard-shortcuts";
+import { NewItemMenu } from "@/components/new-item-menu";
+import { QuickActionsMenu } from "@/components/quick-actions-menu";
 import Dashboard from "@/pages/dashboard";
 import LeadsPage from "@/pages/leads";
 import PropertiesPage from "@/pages/properties";
@@ -50,7 +54,9 @@ import { FloatingAssistant } from "@/components/floating-assistant";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { OfflineIndicator } from "@/components/offline-indicator";
 import { FloatingActionButton } from "@/components/floating-action-button";
+import { CommandPalette } from "@/components/command-palette";
 import { useSwipeNavigation } from "@/hooks/use-swipe-gesture";
+import { MobileBottomNav } from "@/components/mobile";
 
 // Protected Route Wrapper
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
@@ -206,16 +212,41 @@ function Router() {
   );
 }
 
+function PageWrapper({ children }: { children: React.ReactNode }) {
+  const [location] = useLocation();
+  
+  return (
+    <AnimatePresence mode="wait">
+      <motion.div
+        key={location}
+        variants={pageTransition}
+        initial="initial"
+        animate="animate"
+        exit="exit"
+        className="min-h-screen"
+      >
+        {children}
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
 function AppContent() {
   const { user } = useAuth();
   useSwipeNavigation();
   
   return (
     <>
-      <Router />
+      <PageWrapper>
+        <Router />
+      </PageWrapper>
       {user && <FloatingActionButton />}
+      {user && <QuickActionsMenu />}
       {user && <ConversationTray />}
       {user && <FloatingAssistant />}
+      {user && <CommandPalette />}
+      {user && <NewItemMenu />}
+      {user && <MobileBottomNav />}
       <PWAInstallPrompt />
     </>
   );
@@ -232,7 +263,7 @@ function App() {
                 <OfflineIndicator />
                 <Toaster />
                 <AppContent />
-                <KeyboardShortcutsDialog />
+                <KeyboardShortcutsModal />
               </KeyboardShortcutsProvider>
             </HintsProvider>
           </TooltipProvider>

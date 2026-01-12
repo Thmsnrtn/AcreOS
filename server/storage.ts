@@ -25,6 +25,7 @@ import {
   skipTraces,
   propertyListings,
   parcelSnapshots,
+  workspacePresets,
   type Organization, type InsertOrganization,
   type TeamMember, type InsertTeamMember,
   type Lead, type InsertLead,
@@ -84,6 +85,7 @@ import {
   type DueDiligenceChecklist, type InsertDueDiligenceChecklist,
   type SkipTrace, type InsertSkipTrace,
   type PropertyListing, type InsertPropertyListing,
+  type WorkspacePreset, type InsertWorkspacePreset,
   type ParcelSnapshot, type InsertParcelSnapshot,
   type DocumentTemplate, type InsertDocumentTemplate,
   type GeneratedDocument, type InsertGeneratedDocument,
@@ -173,6 +175,8 @@ import {
   type TrustLedgerEntry, type InsertTrustLedger,
   delinquencyEscalations,
   type DelinquencyEscalation, type InsertDelinquencyEscalation,
+  playbookInstances,
+  type PlaybookInstance, type InsertPlaybookInstance,
   ddAssignments,
   type DdAssignment, type InsertDdAssignment,
   swotReports,
@@ -646,6 +650,22 @@ export interface IStorage {
   updateSavedView(id: number, updates: Partial<InsertSavedView>): Promise<SavedView>;
   deleteSavedView(id: number): Promise<void>;
   setDefaultView(orgId: number, entityType: string, viewId: number): Promise<SavedView>;
+
+  // Workspace Presets
+  getWorkspacePresets(orgId: number, userId?: string): Promise<WorkspacePreset[]>;
+  getWorkspacePreset(orgId: number, id: number): Promise<WorkspacePreset | undefined>;
+  createWorkspacePreset(preset: InsertWorkspacePreset): Promise<WorkspacePreset>;
+  updateWorkspacePreset(id: number, updates: Partial<InsertWorkspacePreset>): Promise<WorkspacePreset>;
+  deleteWorkspacePreset(id: number): Promise<void>;
+
+  // Playbook Instances
+  getPlaybookInstances(organizationId: number): Promise<PlaybookInstance[]>;
+  getPlaybookInstanceById(organizationId: number, id: number): Promise<PlaybookInstance | undefined>;
+  getPlaybookInstanceByTemplate(organizationId: number, templateId: string): Promise<PlaybookInstance | undefined>;
+  getActivePlaybookInstances(organizationId: number): Promise<PlaybookInstance[]>;
+  createPlaybookInstance(data: InsertPlaybookInstance): Promise<PlaybookInstance>;
+  updatePlaybookInstance(organizationId: number, id: number, data: Partial<InsertPlaybookInstance>): Promise<PlaybookInstance | undefined>;
+  deletePlaybookInstance(organizationId: number, id: number): Promise<boolean>;
 
   // Notification Preferences
   getNotificationPreferences(userId: string, orgId: number): Promise<NotificationPreference[]>;
@@ -3602,6 +3622,44 @@ export class DatabaseStorage implements IStorage {
       .where(eq(savedViews.id, viewId))
       .returning();
     return updated;
+  }
+
+  // Workspace Presets
+  async getWorkspacePresets(orgId: number, userId?: string): Promise<WorkspacePreset[]> {
+    if (userId) {
+      return await db.select().from(workspacePresets)
+        .where(and(
+          eq(workspacePresets.organizationId, orgId),
+          eq(workspacePresets.userId, userId)
+        ))
+        .orderBy(workspacePresets.sortOrder, workspacePresets.name);
+    }
+    return await db.select().from(workspacePresets)
+      .where(eq(workspacePresets.organizationId, orgId))
+      .orderBy(workspacePresets.sortOrder, workspacePresets.name);
+  }
+
+  async getWorkspacePreset(orgId: number, id: number): Promise<WorkspacePreset | undefined> {
+    const [preset] = await db.select().from(workspacePresets)
+      .where(and(eq(workspacePresets.organizationId, orgId), eq(workspacePresets.id, id)));
+    return preset;
+  }
+
+  async createWorkspacePreset(preset: InsertWorkspacePreset): Promise<WorkspacePreset> {
+    const [newPreset] = await db.insert(workspacePresets).values(preset).returning();
+    return newPreset;
+  }
+
+  async updateWorkspacePreset(id: number, updates: Partial<InsertWorkspacePreset>): Promise<WorkspacePreset> {
+    const [updated] = await db.update(workspacePresets)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(workspacePresets.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteWorkspacePreset(id: number): Promise<void> {
+    await db.delete(workspacePresets).where(eq(workspacePresets.id, id));
   }
 
   // Notification Preferences
@@ -7456,6 +7514,59 @@ Notary Public</p>
       .where(and(eq(goNogoMemos.id, id), eq(goNogoMemos.organizationId, organizationId)))
       .returning();
     return updated;
+  }
+
+  // Playbook Instances
+  async getPlaybookInstances(organizationId: number): Promise<PlaybookInstance[]> {
+    return await db.select().from(playbookInstances)
+      .where(eq(playbookInstances.organizationId, organizationId))
+      .orderBy(desc(playbookInstances.createdAt));
+  }
+
+  async getPlaybookInstanceById(organizationId: number, id: number): Promise<PlaybookInstance | undefined> {
+    const [instance] = await db.select().from(playbookInstances)
+      .where(and(eq(playbookInstances.id, id), eq(playbookInstances.organizationId, organizationId)));
+    return instance;
+  }
+
+  async getPlaybookInstanceByTemplate(organizationId: number, templateId: string): Promise<PlaybookInstance | undefined> {
+    const [instance] = await db.select().from(playbookInstances)
+      .where(and(
+        eq(playbookInstances.organizationId, organizationId),
+        eq(playbookInstances.templateId, templateId),
+        eq(playbookInstances.status, "in_progress")
+      ))
+      .orderBy(desc(playbookInstances.createdAt))
+      .limit(1);
+    return instance;
+  }
+
+  async getActivePlaybookInstances(organizationId: number): Promise<PlaybookInstance[]> {
+    return await db.select().from(playbookInstances)
+      .where(and(
+        eq(playbookInstances.organizationId, organizationId),
+        eq(playbookInstances.status, "in_progress")
+      ))
+      .orderBy(desc(playbookInstances.createdAt));
+  }
+
+  async createPlaybookInstance(data: InsertPlaybookInstance): Promise<PlaybookInstance> {
+    const [created] = await db.insert(playbookInstances).values(data).returning();
+    return created;
+  }
+
+  async updatePlaybookInstance(organizationId: number, id: number, data: Partial<InsertPlaybookInstance>): Promise<PlaybookInstance | undefined> {
+    const [updated] = await db.update(playbookInstances)
+      .set({ ...data, updatedAt: new Date() })
+      .where(and(eq(playbookInstances.id, id), eq(playbookInstances.organizationId, organizationId)))
+      .returning();
+    return updated;
+  }
+
+  async deletePlaybookInstance(organizationId: number, id: number): Promise<boolean> {
+    await db.delete(playbookInstances)
+      .where(and(eq(playbookInstances.id, id), eq(playbookInstances.organizationId, organizationId)));
+    return true;
   }
 }
 

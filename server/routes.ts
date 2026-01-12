@@ -497,6 +497,591 @@ export async function registerRoutes(
     res.json(stats);
   });
   
+  // Dashboard Intelligence - Anomalies, Predictions, Next Best Actions
+  api.get("/api/dashboard/intelligence", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const now = new Date();
+      const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const twoWeeksAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+      const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      const twoMonthsAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+
+      // Fetch data for analysis
+      const allLeads = await storage.getLeads(org.id);
+      const allDeals = await storage.getDeals(org.id);
+      const allProperties = await storage.getProperties(org.id);
+
+      // Calculate week-over-week anomalies
+      const anomalies: Array<{
+        id: string;
+        type: "positive" | "negative" | "neutral";
+        message: string;
+        metric: string;
+        currentValue: number;
+        previousValue: number;
+        percentChange: number;
+      }> = [];
+
+      // Leads that went cold this week vs last week
+      const coldLeadsThisWeek = allLeads.filter(l => 
+        l.nurturingStage === "cold" && 
+        l.updatedAt && new Date(l.updatedAt) >= oneWeekAgo
+      ).length;
+      const coldLeadsLastWeek = allLeads.filter(l => 
+        l.nurturingStage === "cold" && 
+        l.updatedAt && new Date(l.updatedAt) >= twoWeeksAgo && new Date(l.updatedAt) < oneWeekAgo
+      ).length;
+      
+      if (coldLeadsThisWeek !== coldLeadsLastWeek) {
+        const percentChange = coldLeadsLastWeek === 0 
+          ? (coldLeadsThisWeek > 0 ? 100 : 0)
+          : Math.round(((coldLeadsThisWeek - coldLeadsLastWeek) / coldLeadsLastWeek) * 100);
+        anomalies.push({
+          id: "cold-leads",
+          type: coldLeadsThisWeek > coldLeadsLastWeek ? "negative" : "positive",
+          message: `${coldLeadsThisWeek} leads went cold this week vs ${coldLeadsLastWeek} last week`,
+          metric: "Cold Leads",
+          currentValue: coldLeadsThisWeek,
+          previousValue: coldLeadsLastWeek,
+          percentChange,
+        });
+      }
+
+      // New leads this week vs last week
+      const newLeadsThisWeek = allLeads.filter(l => 
+        l.createdAt && new Date(l.createdAt) >= oneWeekAgo
+      ).length;
+      const newLeadsLastWeek = allLeads.filter(l => 
+        l.createdAt && new Date(l.createdAt) >= twoWeeksAgo && new Date(l.createdAt) < oneWeekAgo
+      ).length;
+      
+      if (newLeadsThisWeek !== newLeadsLastWeek && (newLeadsThisWeek > 0 || newLeadsLastWeek > 0)) {
+        const percentChange = newLeadsLastWeek === 0 
+          ? (newLeadsThisWeek > 0 ? 100 : 0)
+          : Math.round(((newLeadsThisWeek - newLeadsLastWeek) / newLeadsLastWeek) * 100);
+        anomalies.push({
+          id: "new-leads",
+          type: newLeadsThisWeek > newLeadsLastWeek ? "positive" : "negative",
+          message: `${newLeadsThisWeek} new leads this week vs ${newLeadsLastWeek} last week`,
+          metric: "New Leads",
+          currentValue: newLeadsThisWeek,
+          previousValue: newLeadsLastWeek,
+          percentChange,
+        });
+      }
+
+      // Deal velocity (deals closed this month vs last month)
+      const dealsClosedThisMonth = allDeals.filter(d => 
+        d.status === "closed" && d.closingDate && new Date(d.closingDate) >= oneMonthAgo
+      ).length;
+      const dealsClosedLastMonth = allDeals.filter(d => 
+        d.status === "closed" && d.closingDate && 
+        new Date(d.closingDate) >= twoMonthsAgo && new Date(d.closingDate) < oneMonthAgo
+      ).length;
+      
+      if (dealsClosedThisMonth !== dealsClosedLastMonth && (dealsClosedThisMonth > 0 || dealsClosedLastMonth > 0)) {
+        const percentChange = dealsClosedLastMonth === 0 
+          ? (dealsClosedThisMonth > 0 ? 100 : 0)
+          : Math.round(((dealsClosedThisMonth - dealsClosedLastMonth) / dealsClosedLastMonth) * 100);
+        anomalies.push({
+          id: "deal-velocity",
+          type: dealsClosedThisMonth >= dealsClosedLastMonth ? "positive" : "negative",
+          message: `Deal velocity ${dealsClosedThisMonth >= dealsClosedLastMonth ? "increased" : "decreased"} ${Math.abs(percentChange)}% from last month`,
+          metric: "Deal Velocity",
+          currentValue: dealsClosedThisMonth,
+          previousValue: dealsClosedLastMonth,
+          percentChange,
+        });
+      }
+
+      // Calculate predictions
+      const predictions: Array<{
+        id: string;
+        type: "deals" | "revenue" | "leads";
+        title: string;
+        message: string;
+        currentValue: number;
+        projectedValue: number;
+        timeframe: string;
+        trendData?: { name: string; value: number }[];
+      }> = [];
+
+      // Project deals for the quarter
+      const quarterStart = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1);
+      const daysIntoQuarter = Math.max(1, Math.floor((now.getTime() - quarterStart.getTime()) / (24 * 60 * 60 * 1000)));
+      const dealsThisQuarter = allDeals.filter(d => 
+        d.status === "closed" && d.closingDate && new Date(d.closingDate) >= quarterStart
+      ).length;
+      const daysInQuarter = 90;
+      const projectedDeals = Math.round((dealsThisQuarter / daysIntoQuarter) * daysInQuarter);
+      
+      if (dealsThisQuarter > 0 || allDeals.length > 0) {
+        const trendData = [];
+        for (let i = 6; i >= 0; i--) {
+          const weekStart = new Date(now.getTime() - i * 7 * 24 * 60 * 60 * 1000);
+          const weekEnd = new Date(weekStart.getTime() + 7 * 24 * 60 * 60 * 1000);
+          const dealsInWeek = allDeals.filter(d => 
+            d.status === "closed" && d.closingDate && 
+            new Date(d.closingDate) >= weekStart && new Date(d.closingDate) < weekEnd
+          ).length;
+          trendData.push({ name: `W${7 - i}`, value: dealsInWeek });
+        }
+
+        predictions.push({
+          id: "quarterly-deals",
+          type: "deals",
+          title: "Quarterly Deal Projection",
+          message: `At current pace, you'll close ${projectedDeals} deals this quarter`,
+          currentValue: dealsThisQuarter,
+          projectedValue: projectedDeals,
+          timeframe: "End of Quarter",
+          trendData,
+        });
+      }
+
+      // Revenue projection for the month
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      const daysIntoMonth = Math.max(1, now.getDate());
+      const revenueThisMonth = allDeals
+        .filter(d => d.status === "closed" && d.closingDate && new Date(d.closingDate) >= monthStart)
+        .reduce((sum, d) => sum + Number(d.acceptedAmount || d.offerAmount || 0), 0);
+      const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+      const projectedRevenue = Math.round((revenueThisMonth / daysIntoMonth) * daysInMonth);
+      
+      if (revenueThisMonth > 0 || allDeals.some(d => d.acceptedAmount || d.offerAmount)) {
+        const trendData = [];
+        for (let i = 6; i >= 0; i--) {
+          const dayStart = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+          const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+          const revenueOnDay = allDeals
+            .filter(d => d.status === "closed" && d.closingDate && 
+              new Date(d.closingDate) >= dayStart && new Date(d.closingDate) < dayEnd)
+            .reduce((sum, d) => sum + Number(d.acceptedAmount || d.offerAmount || 0), 0);
+          trendData.push({ name: dayStart.toLocaleDateString('en-US', { weekday: 'short' }), value: revenueOnDay });
+        }
+
+        predictions.push({
+          id: "monthly-revenue",
+          type: "revenue",
+          title: "Monthly Revenue Projection",
+          message: `Revenue projection: $${projectedRevenue.toLocaleString()} by end of month`,
+          currentValue: revenueThisMonth,
+          projectedValue: projectedRevenue,
+          timeframe: "End of Month",
+          trendData,
+        });
+      }
+
+      // Calculate next best actions
+      const actions: Array<{
+        id: string;
+        type: "follow_up" | "review_offer" | "schedule_call" | "send_mail" | "close_deal";
+        priority: "high" | "medium" | "low";
+        title: string;
+        description: string;
+        entityType: "lead" | "deal" | "property";
+        entityId: number;
+        dueInfo?: string;
+        actionLabel: string;
+        actionUrl: string;
+      }> = [];
+
+      // Find leads that need follow-up (not contacted in 7+ days)
+      const staleLeads = allLeads
+        .filter(l => {
+          if (l.status === "closed" || l.status === "dead" || l.doNotContact) return false;
+          if (!l.lastContactedAt) return true;
+          const daysSinceContact = Math.floor((now.getTime() - new Date(l.lastContactedAt).getTime()) / (24 * 60 * 60 * 1000));
+          return daysSinceContact >= 7;
+        })
+        .sort((a, b) => {
+          const daysA = a.lastContactedAt ? Math.floor((now.getTime() - new Date(a.lastContactedAt).getTime()) / (24 * 60 * 60 * 1000)) : 999;
+          const daysB = b.lastContactedAt ? Math.floor((now.getTime() - new Date(b.lastContactedAt).getTime()) / (24 * 60 * 60 * 1000)) : 999;
+          return daysB - daysA;
+        })
+        .slice(0, 3);
+
+      for (const lead of staleLeads) {
+        const daysSinceContact = lead.lastContactedAt 
+          ? Math.floor((now.getTime() - new Date(lead.lastContactedAt).getTime()) / (24 * 60 * 60 * 1000))
+          : null;
+        
+        actions.push({
+          id: `follow-up-${lead.id}`,
+          type: "follow_up",
+          priority: daysSinceContact && daysSinceContact > 14 ? "high" : "medium",
+          title: `Follow up with ${lead.firstName} ${lead.lastName}`,
+          description: daysSinceContact ? `Last contact ${daysSinceContact} days ago` : "Never contacted",
+          entityType: "lead",
+          entityId: lead.id,
+          dueInfo: daysSinceContact && daysSinceContact > 14 ? "Urgent - contact soon" : undefined,
+          actionLabel: "View Lead",
+          actionUrl: `/leads`,
+        });
+      }
+
+      // Find deals that need attention (offer sent, waiting for response)
+      const pendingDeals = allDeals
+        .filter(d => d.status === "offer_sent" || d.status === "negotiating")
+        .slice(0, 2);
+
+      for (const deal of pendingDeals) {
+        const property = allProperties.find(p => p.id === deal.propertyId);
+        const propertyName = property?.address || `Property #${deal.propertyId}`;
+        const daysSinceOffer = deal.offerDate 
+          ? Math.floor((now.getTime() - new Date(deal.offerDate).getTime()) / (24 * 60 * 60 * 1000))
+          : null;
+
+        actions.push({
+          id: `review-deal-${deal.id}`,
+          type: "review_offer",
+          priority: daysSinceOffer && daysSinceOffer > 5 ? "high" : "medium",
+          title: `Review offer on ${propertyName}`,
+          description: deal.status === "offer_sent" ? "Awaiting seller response" : "In negotiation",
+          entityType: "deal",
+          entityId: deal.id,
+          dueInfo: daysSinceOffer ? `Offer sent ${daysSinceOffer} days ago` : undefined,
+          actionLabel: "View Deal",
+          actionUrl: `/deals`,
+        });
+      }
+
+      // Find properties that need action
+      const pendingProperties = allProperties
+        .filter(p => p.status === "listed" && p.listDate)
+        .sort((a, b) => new Date(a.listDate!).getTime() - new Date(b.listDate!).getTime())
+        .slice(0, 2);
+
+      for (const property of pendingProperties) {
+        const daysListed = property.listDate 
+          ? Math.floor((now.getTime() - new Date(property.listDate).getTime()) / (24 * 60 * 60 * 1000))
+          : 0;
+
+        if (daysListed > 30) {
+          actions.push({
+            id: `property-${property.id}`,
+            type: "review_offer",
+            priority: daysListed > 60 ? "high" : "medium",
+            title: `Review listing for ${property.address || `Property #${property.id}`}`,
+            description: `Listed for ${daysListed} days without a sale`,
+            entityType: "property",
+            entityId: property.id,
+            dueInfo: "Consider price adjustment",
+            actionLabel: "View Property",
+            actionUrl: `/properties`,
+          });
+        }
+      }
+
+      // Sort actions by priority
+      const priorityOrder = { high: 0, medium: 1, low: 2 };
+      actions.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
+
+      res.json({
+        anomalies,
+        predictions,
+        actions,
+        generatedAt: now.toISOString(),
+      });
+    } catch (error: any) {
+      logger.error("Dashboard intelligence error", { error: error.message });
+      res.status(500).json({ message: "Failed to generate dashboard intelligence" });
+    }
+  });
+  
+  // ============================================
+  // PLAYBOOKS
+  // ============================================
+  
+  // Playbook templates data (static)
+  const PLAYBOOK_TEMPLATES_DATA = [
+    {
+      id: "acquisition_sprint",
+      name: "Acquisition Sprint",
+      description: "A complete workflow to find, research, and make an offer on a land parcel in 7 days or less.",
+      category: "acquisition",
+      estimatedDuration: "7 days",
+      steps: [
+        { id: "identify_target_county", title: "Identify Target County", description: "Research and select a county with favorable market conditions.", actionType: "navigate", actionLabel: "Browse Counties", actionUrl: "/counties", icon: "MapPin", estimatedMinutes: 60 },
+        { id: "pull_tax_delinquent_list", title: "Pull Tax Delinquent List", description: "Download or import the tax delinquent property list.", actionType: "navigate", actionLabel: "Import Leads", actionUrl: "/leads", icon: "FileSpreadsheet", estimatedMinutes: 30 },
+        { id: "skip_trace_leads", title: "Skip Trace Leads", description: "Run skip tracing on your imported leads.", actionType: "navigate", actionLabel: "Skip Trace", actionUrl: "/leads", icon: "Search", estimatedMinutes: 15 },
+        { id: "send_mail_campaign", title: "Send Mail Campaign", description: "Create and send your direct mail campaign.", actionType: "navigate", actionLabel: "Create Campaign", actionUrl: "/campaigns", icon: "Mail", estimatedMinutes: 45 },
+        { id: "track_responses", title: "Track Responses", description: "Monitor incoming calls, texts, and mail responses.", actionType: "navigate", actionLabel: "View Inbox", actionUrl: "/inbox", icon: "MessageSquare", estimatedMinutes: 20 },
+        { id: "research_property", title: "Research Property", description: "Research the property thoroughly: verify ownership, check for liens, review GIS data.", actionType: "navigate", actionLabel: "Property Research", actionUrl: "/properties", icon: "FileSearch", estimatedMinutes: 60 },
+        { id: "generate_offer", title: "Generate Offer", description: "Use AI to generate a competitive offer based on market comps.", actionType: "navigate", actionLabel: "Create Offer", actionUrl: "/offers", icon: "DollarSign", estimatedMinutes: 15 },
+        { id: "create_deal", title: "Create Deal", description: "Convert the accepted offer into a deal.", actionType: "create_deal", actionLabel: "Create Deal", actionUrl: "/deals", icon: "Handshake", estimatedMinutes: 10 },
+      ],
+    },
+    {
+      id: "due_diligence",
+      name: "Due Diligence Checklist",
+      description: "Comprehensive checklist to verify property ownership, check for issues, and ensure a clean transaction.",
+      category: "due_diligence",
+      estimatedDuration: "3-5 days",
+      steps: [
+        { id: "verify_ownership", title: "Verify Ownership", description: "Confirm the seller is the actual owner.", actionType: "manual", actionLabel: "Mark Complete", icon: "UserCheck", estimatedMinutes: 30 },
+        { id: "title_search", title: "Title Search", description: "Run a title search to check for liens and encumbrances.", actionType: "manual", actionLabel: "Mark Complete", icon: "FileText", estimatedMinutes: 60 },
+        { id: "check_back_taxes", title: "Check Back Taxes", description: "Verify the amount of back taxes owed.", actionType: "manual", actionLabel: "Mark Complete", icon: "Receipt", estimatedMinutes: 20 },
+        { id: "survey_review", title: "Survey Review", description: "Review existing survey or order a new one.", actionType: "manual", actionLabel: "Mark Complete", icon: "Ruler", estimatedMinutes: 45 },
+        { id: "environmental_check", title: "Environmental Check", description: "Check for wetlands, flood zones, and contamination risks.", actionType: "navigate", actionLabel: "View GIS Data", actionUrl: "/properties", icon: "Leaf", estimatedMinutes: 30 },
+        { id: "zoning_verification", title: "Zoning Verification", description: "Verify current zoning and permitted uses.", actionType: "manual", actionLabel: "Mark Complete", icon: "Building", estimatedMinutes: 20 },
+        { id: "access_verification", title: "Verify Legal Access", description: "Confirm the property has legal road access.", actionType: "manual", actionLabel: "Mark Complete", icon: "Route", estimatedMinutes: 30 },
+        { id: "utilities_check", title: "Utilities Check", description: "Determine availability of power, water, sewer, and internet.", actionType: "manual", actionLabel: "Mark Complete", icon: "Plug", estimatedMinutes: 30 },
+      ],
+    },
+    {
+      id: "disposition_launch",
+      name: "Disposition Launch",
+      description: "Step-by-step process to list, market, and close on your land sale.",
+      category: "disposition",
+      estimatedDuration: "30-90 days",
+      steps: [
+        { id: "prepare_listing", title: "Prepare Listing", description: "Create compelling listing content with photos and descriptions.", actionType: "navigate", actionLabel: "Create Listing", actionUrl: "/listings", icon: "Image", estimatedMinutes: 60 },
+        { id: "set_pricing", title: "Set Pricing Strategy", description: "Analyze comparable sales and set your asking price.", actionType: "navigate", actionLabel: "Price Analysis", actionUrl: "/properties", icon: "TrendingUp", estimatedMinutes: 30 },
+        { id: "list_on_marketplaces", title: "List on Marketplaces", description: "Post to Facebook Marketplace, Craigslist, LandWatch.", actionType: "manual", actionLabel: "Mark Complete", icon: "Share2", estimatedMinutes: 45 },
+        { id: "contact_buyer_list", title: "Contact Buyer List", description: "Reach out to your existing buyer list.", actionType: "navigate", actionLabel: "Send Campaign", actionUrl: "/campaigns", icon: "Users", estimatedMinutes: 20 },
+        { id: "handle_inquiries", title: "Handle Inquiries", description: "Respond to buyer inquiries and answer questions.", actionType: "navigate", actionLabel: "View Inbox", actionUrl: "/inbox", icon: "MessageCircle", estimatedMinutes: 30 },
+        { id: "qualify_buyers", title: "Qualify Buyers", description: "Pre-qualify interested buyers for financing.", actionType: "manual", actionLabel: "Mark Complete", icon: "ClipboardCheck", estimatedMinutes: 30 },
+        { id: "negotiate_terms", title: "Negotiate Terms", description: "Negotiate final price and terms with your buyer.", actionType: "navigate", actionLabel: "Deal Calculator", actionUrl: "/tools", icon: "Calculator", estimatedMinutes: 30 },
+        { id: "generate_documents", title: "Generate Documents", description: "Create purchase agreement, promissory note, and deed.", actionType: "navigate", actionLabel: "Documents", actionUrl: "/documents", icon: "FileSignature", estimatedMinutes: 45 },
+        { id: "close_deal", title: "Close the Deal", description: "Collect signatures, record the deed, and set up payments.", actionType: "create_deal", actionLabel: "Complete Sale", actionUrl: "/deals", icon: "CheckCircle2", estimatedMinutes: 60 },
+      ],
+    },
+  ];
+
+  // GET /api/playbooks - List available playbook templates with user's active instances
+  api.get("/api/playbooks", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      
+      // Get all playbook instances for this organization
+      const instances = await storage.getPlaybookInstances(org.id);
+      
+      // Map templates with their active instances
+      const templatesWithProgress = PLAYBOOK_TEMPLATES_DATA.map(template => {
+        const activeInstance = instances.find(
+          i => i.templateId === template.id && i.status === "in_progress"
+        );
+        return {
+          template,
+          activeInstance: activeInstance || null,
+        };
+      });
+      
+      res.json({
+        templates: templatesWithProgress,
+        activeInstances: instances.filter(i => i.status === "in_progress"),
+      });
+    } catch (error: any) {
+      logger.error("Get playbooks error", { error: error.message });
+      res.status(500).json({ message: "Failed to get playbooks" });
+    }
+  });
+
+  // GET /api/playbooks/:id - Get playbook template details with steps
+  api.get("/api/playbooks/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const org = (req as any).organization;
+      
+      const template = PLAYBOOK_TEMPLATES_DATA.find(t => t.id === id);
+      if (!template) {
+        return res.status(404).json({ message: "Playbook template not found" });
+      }
+      
+      // Check for active instance
+      const activeInstance = await storage.getPlaybookInstanceByTemplate(org.id, id);
+      
+      res.json({
+        template,
+        activeInstance,
+      });
+    } catch (error: any) {
+      logger.error("Get playbook error", { error: error.message });
+      res.status(500).json({ message: "Failed to get playbook" });
+    }
+  });
+
+  // POST /api/playbooks/:id/start - Start a playbook (creates instance)
+  api.post("/api/playbooks/:id/start", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const org = (req as any).organization;
+      const { linkedDealId, linkedPropertyId, linkedLeadId } = req.body;
+      
+      const template = PLAYBOOK_TEMPLATES_DATA.find(t => t.id === id);
+      if (!template) {
+        return res.status(404).json({ message: "Playbook template not found" });
+      }
+      
+      // Check if there's already an active instance
+      const existingInstance = await storage.getPlaybookInstanceByTemplate(org.id, id);
+      if (existingInstance) {
+        return res.json(existingInstance);
+      }
+      
+      // Create new playbook instance
+      const instance = await storage.createPlaybookInstance({
+        organizationId: org.id,
+        templateId: id,
+        name: template.name,
+        status: "in_progress",
+        linkedDealId: linkedDealId || null,
+        linkedPropertyId: linkedPropertyId || null,
+        linkedLeadId: linkedLeadId || null,
+        completedSteps: [],
+        stepData: {},
+        startedAt: new Date(),
+      });
+      
+      // Log activity
+      await activityLogger.log({
+        organizationId: org.id,
+        type: "playbook_started",
+        title: `Started playbook: ${template.name}`,
+        description: `Playbook "${template.name}" was started`,
+        entityType: "playbook",
+        entityId: instance.id,
+      });
+      
+      res.json(instance);
+    } catch (error: any) {
+      logger.error("Start playbook error", { error: error.message });
+      res.status(500).json({ message: "Failed to start playbook" });
+    }
+  });
+
+  // GET /api/playbooks/instances/:instanceId - Get specific playbook instance
+  api.get("/api/playbooks/instances/:instanceId", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { instanceId } = req.params;
+      const org = (req as any).organization;
+      
+      const instance = await storage.getPlaybookInstanceById(org.id, parseInt(instanceId));
+      if (!instance) {
+        return res.status(404).json({ message: "Playbook instance not found" });
+      }
+      
+      const template = PLAYBOOK_TEMPLATES_DATA.find(t => t.id === instance.templateId);
+      
+      res.json({
+        instance,
+        template,
+      });
+    } catch (error: any) {
+      logger.error("Get playbook instance error", { error: error.message });
+      res.status(500).json({ message: "Failed to get playbook instance" });
+    }
+  });
+
+  // POST /api/playbooks/instances/:instanceId/steps/:stepId/complete - Mark step complete
+  api.post("/api/playbooks/instances/:instanceId/steps/:stepId/complete", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { instanceId, stepId } = req.params;
+      const org = (req as any).organization;
+      
+      const instance = await storage.getPlaybookInstanceById(org.id, parseInt(instanceId));
+      if (!instance) {
+        return res.status(404).json({ message: "Playbook instance not found" });
+      }
+      
+      const template = PLAYBOOK_TEMPLATES_DATA.find(t => t.id === instance.templateId);
+      if (!template) {
+        return res.status(404).json({ message: "Playbook template not found" });
+      }
+      
+      // Verify step exists in template
+      const step = template.steps.find((s: any) => s.id === stepId);
+      if (!step) {
+        return res.status(404).json({ message: "Step not found in playbook" });
+      }
+      
+      // Add step to completed steps if not already
+      const completedSteps = (instance.completedSteps as string[]) || [];
+      if (!completedSteps.includes(stepId)) {
+        completedSteps.push(stepId);
+      }
+      
+      // Check if all steps are complete
+      const allComplete = template.steps.every((s: any) => completedSteps.includes(s.id));
+      
+      const updatedInstance = await storage.updatePlaybookInstance(org.id, instance.id, {
+        completedSteps,
+        status: allComplete ? "completed" : "in_progress",
+        completedAt: allComplete ? new Date() : null,
+      });
+      
+      // Log activity
+      await activityLogger.log({
+        organizationId: org.id,
+        type: "playbook_step_completed",
+        title: `Completed step: ${step.title}`,
+        description: `Step "${step.title}" was completed in playbook "${template.name}"`,
+        entityType: "playbook",
+        entityId: instance.id,
+      });
+      
+      if (allComplete) {
+        await activityLogger.log({
+          organizationId: org.id,
+          type: "playbook_completed",
+          title: `Completed playbook: ${template.name}`,
+          description: `All steps in playbook "${template.name}" have been completed`,
+          entityType: "playbook",
+          entityId: instance.id,
+        });
+      }
+      
+      res.json(updatedInstance);
+    } catch (error: any) {
+      logger.error("Complete step error", { error: error.message });
+      res.status(500).json({ message: "Failed to complete step" });
+    }
+  });
+
+  // POST /api/playbooks/instances/:instanceId/steps/:stepId/uncomplete - Undo step completion
+  api.post("/api/playbooks/instances/:instanceId/steps/:stepId/uncomplete", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { instanceId, stepId } = req.params;
+      const org = (req as any).organization;
+      
+      const instance = await storage.getPlaybookInstanceById(org.id, parseInt(instanceId));
+      if (!instance) {
+        return res.status(404).json({ message: "Playbook instance not found" });
+      }
+      
+      // Remove step from completed steps
+      const completedSteps = ((instance.completedSteps as string[]) || []).filter(id => id !== stepId);
+      
+      const updatedInstance = await storage.updatePlaybookInstance(org.id, instance.id, {
+        completedSteps,
+        status: "in_progress",
+        completedAt: null,
+      });
+      
+      res.json(updatedInstance);
+    } catch (error: any) {
+      logger.error("Uncomplete step error", { error: error.message });
+      res.status(500).json({ message: "Failed to uncomplete step" });
+    }
+  });
+
+  // DELETE /api/playbooks/instances/:instanceId - Cancel/delete a playbook instance
+  api.delete("/api/playbooks/instances/:instanceId", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { instanceId } = req.params;
+      const org = (req as any).organization;
+      
+      await storage.deletePlaybookInstance(org.id, parseInt(instanceId));
+      
+      res.json({ success: true });
+    } catch (error: any) {
+      logger.error("Delete playbook instance error", { error: error.message });
+      res.status(500).json({ message: "Failed to delete playbook instance" });
+    }
+  });
+  
   // ============================================
   // ORGANIZATION
   // ============================================
@@ -728,6 +1313,28 @@ export async function registerRoutes(
         step, 
         data || {},
         skipped || false
+      );
+      res.json(status);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+  
+  api.post("/api/onboarding/complete-step", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { stepId, data } = req.body;
+      
+      if (typeof stepId !== "number" || stepId < 0 || stepId > 5) {
+        return res.status(400).json({ message: "Invalid step ID" });
+      }
+      
+      const skipped = data?.skipped === true;
+      const status = await onboardingService.updateOnboardingStep(
+        org.id, 
+        stepId, 
+        data || {},
+        skipped
       );
       res.json(status);
     } catch (error: any) {
@@ -994,6 +1601,56 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Team performance error:", error);
       res.status(500).json({ message: error.message || "Failed to fetch team performance" });
+    }
+  });
+  
+  // ============================================
+  // RECENT ITEMS (Command Palette)
+  // ============================================
+  
+  api.get("/api/recent-items", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const limit = 5;
+      
+      const [recentLeads, recentProperties, recentDeals] = await Promise.all([
+        db.select({ 
+          id: leads.id, 
+          name: sql`CONCAT(${leads.firstName}, ' ', ${leads.lastName})`,
+          type: sql`'lead'` 
+        })
+          .from(leads)
+          .where(eq(leads.organizationId, org.id))
+          .orderBy(desc(leads.updatedAt))
+          .limit(limit),
+        db.select({ 
+          id: properties.id, 
+          name: sql`COALESCE(${properties.address}, 'Unnamed Property')`, 
+          type: sql`'property'` 
+        })
+          .from(properties)
+          .where(eq(properties.organizationId, org.id))
+          .orderBy(desc(properties.updatedAt))
+          .limit(limit),
+        db.select({ 
+          id: deals.id, 
+          name: deals.name, 
+          type: sql`'deal'` 
+        })
+          .from(deals)
+          .where(eq(deals.organizationId, org.id))
+          .orderBy(desc(deals.updatedAt))
+          .limit(limit),
+      ]);
+      
+      res.json({
+        leads: recentLeads,
+        properties: recentProperties,
+        deals: recentDeals,
+      });
+    } catch (err) {
+      console.error("Recent items fetch error:", err);
+      res.status(500).json({ message: "Failed to fetch recent items" });
     }
   });
   
@@ -14924,6 +15581,59 @@ Seller Signature (if applicable)
     } catch (error: any) {
       console.error("Delete automation rule error:", error);
       res.status(500).json({ message: error.message || "Failed to delete automation rule" });
+    }
+  });
+
+  // ============================================
+  // WORKSPACE PRESETS - Power User Features
+  // ============================================
+
+  api.get("/api/workspaces", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = req.user as any;
+      const userId = user?.claims?.sub || user?.id;
+      const presets = await storage.getWorkspacePresets(org.id, userId);
+      res.json(presets);
+    } catch (error: any) {
+      console.error("Get workspace presets error:", error);
+      res.status(500).json({ message: error.message || "Failed to get workspace presets" });
+    }
+  });
+
+  api.post("/api/workspaces", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = req.user as any;
+      const userId = user?.claims?.sub || user?.id;
+      
+      const preset = await storage.createWorkspacePreset({
+        ...req.body,
+        organizationId: org.id,
+        userId,
+      });
+      res.status(201).json(preset);
+    } catch (error: any) {
+      console.error("Create workspace preset error:", error);
+      res.status(500).json({ message: error.message || "Failed to create workspace preset" });
+    }
+  });
+
+  api.delete("/api/workspaces/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      
+      const existing = await storage.getWorkspacePreset(org.id, id);
+      if (!existing) {
+        return res.status(404).json({ message: "Workspace preset not found" });
+      }
+      
+      await storage.deleteWorkspacePreset(id);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Delete workspace preset error:", error);
+      res.status(500).json({ message: error.message || "Failed to delete workspace preset" });
     }
   });
 

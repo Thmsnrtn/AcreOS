@@ -8,6 +8,13 @@
       "when": 1767570291145,
       "tag": "0000_sleepy_betty_ross",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1768234239923,
+      "tag": "0001_brief_giant_man",
+      "breakpoints": true
     }
   ]
 }

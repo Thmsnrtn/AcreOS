@@ -68,6 +68,7 @@ import { useToast } from "@/hooks/use-toast";
 import { DealCalculator } from "@/components/deal-calculator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EmptyState } from "@/components/empty-state";
+import { PropertiesEmptyState } from "@/components/empty-states";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -477,18 +478,9 @@ export default function PropertiesPage() {
               )}
               {properties?.length === 0 && (
                 <div className="col-span-full">
-                  <EmptyState
-                    icon={MapPin}
-                    title="No properties yet"
-                    description="Track your land inventory here. Add properties you're evaluating, under contract, or ready to sell."
-                    secondaryDescription="Keep all your property details, due diligence, and comps in one place."
-                    tips={[
-                      "Add properties you're researching or have under contract",
-                      "Run due diligence checklists to ensure nothing is missed",
-                      "Use comps analysis to determine fair market value"
-                    ]}
-                    actionLabel="Add Your First Property"
-                    onAction={() => setIsCreateOpen(true)}
+                  <PropertiesEmptyState
+                    onAddProperty={() => setIsCreateOpen(true)}
+                    onImportProperties={() => setIsImportOpen(true)}
                   />
                 </div>
               )}
