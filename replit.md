@@ -39,6 +39,12 @@ Preferred communication style: Simple, everyday language.
 - **AI Section**: Conversational AI interface (`/command-center` or `/ai`) with task management and real-time status.
 - **AI Context Aggregator**: Real-time system snapshot service providing full awareness across all modules (leads, properties, deals, tasks, campaigns) with 60-second caching and automatic invalidation on writes.
 - **Cross-Module AI Operations**: Executive assistant (Atlas) can create/update properties, deals, and tasks from any page, with background job execution support.
+- **AI Tools (Atlas)**: 
+  - **Offer Generation**: `generate_offer` (AI-powered suggestions with market analysis), `generate_offer_letter` (professional, friendly, or urgent tone letters)
+  - **Communications**: `send_email` (TCPA-compliant with AWS SES), `send_sms` (TCPA-compliant via Twilio/Telnyx)
+  - **Financial Analysis**: `run_comps_analysis` (comparable sales lookup), `calculate_roi` (investment metrics), `calculate_payment_schedule` (amortization)
+  - **Research**: `research_property` (DataSourceBroker integration for tax, environmental, zoning data)
+  - **Task Management**: `schedule_followup` (create linked reminder tasks)
 - **Founder Dashboard**: Analytics for revenue, system health, agent status, user analytics, bulk alerts, and data endpoint health.
 - **Team Performance Dashboard**: Aggregated metrics for leads, deals, tasks, and activity.
 - **Navigation**: Consolidated sidebar and tabbed hub pages with URL hash.
