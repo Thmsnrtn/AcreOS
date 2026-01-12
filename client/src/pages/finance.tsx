@@ -145,6 +145,9 @@ export default function FinancePage() {
                 <DialogContent className="sm:max-w-[600px] floating-window">
                   <DialogHeader>
                     <DialogTitle>Create Promissory Note</DialogTitle>
+                    <DialogDescription>
+                      Enter the details for a new promissory note including borrower, property, and payment terms.
+                    </DialogDescription>
                   </DialogHeader>
                   <NoteForm onSuccess={() => setIsCreateOpen(false)} />
                 </DialogContent>

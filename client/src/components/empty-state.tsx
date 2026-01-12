@@ -13,6 +13,7 @@ interface EmptyStateProps {
   learnMoreUrl?: string;
   learnMoreLabel?: string;
   tips?: string[];
+  testId?: string;
 }
 
 export function EmptyState({
@@ -26,9 +27,10 @@ export function EmptyState({
   learnMoreUrl,
   learnMoreLabel = "Learn more",
   tips,
+  testId = "empty-state",
 }: EmptyStateProps) {
   return (
-    <div className={`flex flex-col items-center justify-center py-16 px-4 ${className}`} data-testid="empty-state">
+    <div className={`flex flex-col items-center justify-center py-16 px-4 ${className}`} data-testid={testId}>
       <div className="p-4 rounded-full bg-muted/50 mb-4">
         <Icon className="w-10 h-10 text-muted-foreground/50" />
       </div>

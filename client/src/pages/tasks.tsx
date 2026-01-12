@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -441,6 +441,9 @@ export default function TasksPage() {
               <DialogContent className="max-w-lg">
                 <DialogHeader>
                   <DialogTitle>Create Task</DialogTitle>
+                  <DialogDescription>
+                    Add a new task with title, priority, and optional due date.
+                  </DialogDescription>
                 </DialogHeader>
                 <TaskFormContent 
                   form={createForm} 
@@ -645,6 +648,9 @@ export default function TasksPage() {
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Edit Task</DialogTitle>
+            <DialogDescription>
+              Update the task details, status, or priority.
+            </DialogDescription>
           </DialogHeader>
           <TaskFormContent 
             form={editForm} 

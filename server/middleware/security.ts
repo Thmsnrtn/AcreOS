@@ -12,9 +12,9 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
   const cspDirectives = [
     "default-src 'self'",
     "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://api.mapbox.com",
-    "style-src 'self' 'unsafe-inline' https://api.mapbox.com",
+    "style-src 'self' 'unsafe-inline' https://api.mapbox.com https://fonts.googleapis.com",
     "img-src 'self' data: blob: https: http:",
-    "font-src 'self' data:",
+    "font-src 'self' data: https://fonts.gstatic.com",
     "connect-src 'self' https://api.stripe.com https://api.mapbox.com https://events.mapbox.com wss: ws:",
     "frame-src 'self' https://js.stripe.com https://hooks.stripe.com",
     "object-src 'none'",

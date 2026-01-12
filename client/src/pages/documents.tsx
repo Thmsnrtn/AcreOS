@@ -276,10 +276,10 @@ export default function DocumentsPage() {
     mutationFn: async ({ id, variables }: { id: number; variables?: Record<string, any> }) => {
       return apiRequest("POST", `/api/document-packages/${id}/generate-all`, { variables });
     },
-    onSuccess: (data) => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/document-packages"] });
       queryClient.invalidateQueries({ queryKey: ["/api/generated-documents"] });
-      toast({ title: "Documents generated successfully", description: data.message });
+      toast({ title: "Documents generated successfully", description: data?.message });
     },
     onError: (error: any) => {
       toast({ title: "Failed to generate documents", description: error.message, variant: "destructive" });
@@ -1012,6 +1012,9 @@ export default function DocumentsPage() {
             <DialogTitle>
               {previewTemplate ? `Preview: ${previewTemplate.name}` : previewDocument?.name}
             </DialogTitle>
+            <DialogDescription>
+              Preview the document content and available variables.
+            </DialogDescription>
           </DialogHeader>
           <ScrollArea className="flex-1">
             <div 
@@ -1172,7 +1175,7 @@ export default function DocumentsPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="">No deal</SelectItem>
-                      {deals?.map(deal => (
+                      {deals?.map((deal: any) => (
                         <SelectItem key={deal.id} value={deal.id.toString()}>
                           Deal #{deal.id} - {deal.name || deal.type}
                         </SelectItem>

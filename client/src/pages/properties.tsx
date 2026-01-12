@@ -57,7 +57,7 @@ const propertyFormSchema = insertPropertySchema.omit({ organizationId: true }).e
     ),
   status: z.string().min(1, "Status is required"),
 });
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -67,7 +67,6 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { DealCalculator } from "@/components/deal-calculator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/empty-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -372,6 +371,9 @@ export default function PropertiesPage() {
                 <DialogContent className="sm:max-w-[500px]">
                   <DialogHeader>
                     <DialogTitle>Add New Property</DialogTitle>
+                    <DialogDescription>
+                      Enter the property details including APN, location, and acreage.
+                    </DialogDescription>
                   </DialogHeader>
                   <PropertyForm onSuccess={() => setIsCreateOpen(false)} />
                 </DialogContent>
