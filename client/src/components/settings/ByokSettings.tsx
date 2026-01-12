@@ -4,7 +4,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { FileText, MapPin, Phone, Mail } from "lucide-react";
+import { FileText, MapPin, Phone, Mail, Globe } from "lucide-react";
 import { ApiKeySetup } from "./ApiKeySetup";
 
 interface IntegrationStatus {
@@ -51,6 +51,15 @@ const SERVICES = [
     icon: Mail,
     learnMoreUrl: "https://docs.sendgrid.com/ui/account-and-settings/api-keys",
     validationEndpoint: "/api/settings/validate-sendgrid",
+  },
+  {
+    id: "rapidapi",
+    name: "RapidAPI Property Lines",
+    description: "Cheaper parcel boundary data - used before Regrid to reduce costs",
+    placeholder: "32e0fd6179...",
+    icon: Globe,
+    learnMoreUrl: "https://rapidapi.com/admin-DS8z8zYSG/api/property-lines",
+    validationEndpoint: "/api/settings/validate-rapidapi",
   },
 ];
 

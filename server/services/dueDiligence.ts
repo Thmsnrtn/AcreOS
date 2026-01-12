@@ -95,7 +95,7 @@ export interface DueDiligenceReport {
   marketAnalysis: MarketAnalysis;
   risks: RiskAssessment;
   aiSummary?: string;
-  dataSource: "cache" | "county_gis" | "regrid" | "property_record";
+  dataSource: "cache" | "county_gis" | "regrid" | "rapidapi" | "property_record";
   errors?: string[];
 }
 
@@ -430,7 +430,7 @@ export async function generateDueDiligenceReport(
   if (!cachedSnapshot || cacheResult.isStale) {
     try {
       const stateCountyPath = buildStateCountyPath(property.state, property.county);
-      parcelResult = await lookupParcelByAPN(property.apn, stateCountyPath);
+      parcelResult = await lookupParcelByAPN(property.apn, stateCountyPath, organizationId);
       
       if (parcelResult.found && parcelResult.parcel) {
         dataSource = parcelResult.source || "regrid";

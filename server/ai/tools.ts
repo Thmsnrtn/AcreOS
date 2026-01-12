@@ -723,7 +723,7 @@ export async function executeTool(
           try {
             const stateCountyPath = `/us/${args.state.toLowerCase()}/${args.county.toLowerCase().replace(/\s+/g, "-")}`;
             console.log(`[CreateProperty] Fetching parcel for ${args.apn} at ${stateCountyPath}`);
-            const parcelResult = await lookupParcelByAPN(args.apn, stateCountyPath);
+            const parcelResult = await lookupParcelByAPN(args.apn, stateCountyPath, org.id);
             
             if (parcelResult.found && parcelResult.parcel) {
               await storage.updateProperty(property.id, {
@@ -965,7 +965,7 @@ export async function executeTool(
               try {
                 const stateCountyPath = `/us/${prop.state.toLowerCase()}/${prop.county.toLowerCase().replace(/\s+/g, "-")}`;
                 console.log(`[Batch] Fetching parcel for ${prop.apn} at ${stateCountyPath}`);
-                const parcelResult = await lookupParcelByAPN(prop.apn, stateCountyPath);
+                const parcelResult = await lookupParcelByAPN(prop.apn, stateCountyPath, org.id);
                 
                 if (parcelResult.found && parcelResult.parcel) {
                   await storage.updateProperty(property.id, {

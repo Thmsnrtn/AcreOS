@@ -58,7 +58,7 @@ const lookupParcelSkill: Skill = {
       const { apn, state, county } = lookupParcelInputSchema.parse(params);
       // Format state/county path for lookupParcelByAPN
       const stateCountyPath = `${state}/${county.replace(/\s+/g, "-")}`;
-      const result = await lookupParcelByAPN(apn, stateCountyPath);
+      const result = await lookupParcelByAPN(apn, stateCountyPath, context.organizationId);
       
       if (!result.found) {
         return {
@@ -510,7 +510,7 @@ const enrichLeadSkill: Skill = {
       if (types.includes("property_data") && property.apn && property.state && property.county) {
         try {
           const stateCountyPath = `${property.state}/${property.county.replace(/\s+/g, "-")}`;
-          const parcelResult = await lookupParcelByAPN(property.apn, stateCountyPath);
+          const parcelResult = await lookupParcelByAPN(property.apn, stateCountyPath, context.organizationId);
           enrichmentResults.property_data = parcelResult;
         } catch (error: any) {
           enrichmentResults.property_data = { success: false, error: error.message };

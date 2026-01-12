@@ -3160,7 +3160,8 @@ export async function registerRoutes(
         if (state && county) {
           path = `/us/${state.toLowerCase()}/${county.toLowerCase().replace(/\s+/g, "-")}`;
         }
-        result = await lookupParcelByAPN(apn, path);
+        const org = (req as any).organization;
+        result = await lookupParcelByAPN(apn, path, org?.id);
       } else {
         result = await lookupParcelByCoordinates(lat, lng);
       }
@@ -3276,7 +3277,7 @@ export async function registerRoutes(
         path = `/us/${property.state.toLowerCase()}/${property.county.toLowerCase().replace(/\s+/g, "-")}`;
       }
       
-      const result = await lookupParcelByAPN(property.apn, path);
+      const result = await lookupParcelByAPN(property.apn, path, org.id);
       
       if (!result.found || !result.parcel) {
         return res.status(404).json({ message: result.error || "Parcel not found" });
@@ -3325,7 +3326,7 @@ export async function registerRoutes(
       for (const property of propertiesWithoutBoundaries) {
         try {
           const path = `/us/${property.state!.toLowerCase()}/${property.county!.toLowerCase().replace(/\s+/g, "-")}`;
-          const result = await lookupParcelByAPN(property.apn, path);
+          const result = await lookupParcelByAPN(property.apn, path, org.id);
           
           if (result.found && result.parcel) {
             await storage.updateProperty(property.id, {
@@ -11110,7 +11111,7 @@ Seller Signature (if applicable)
         return res.status(400).json({ message: "API key is required" });
       }
       
-      const validProviders = ['sendgrid', 'twilio', 'lob', 'regrid'];
+      const validProviders = ['sendgrid', 'twilio', 'lob', 'regrid', 'rapidapi'];
       if (!validProviders.includes(provider)) {
         return res.status(400).json({ message: `Invalid provider. Must be one of: ${validProviders.join(', ')}` });
       }
@@ -18777,7 +18778,7 @@ Seller Signature (if applicable)
   api.get("/api/settings/integrations/status", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = (req as any).organization;
-      const services = ["lob", "regrid", "twilio", "sendgrid"];
+      const services = ["lob", "regrid", "twilio", "sendgrid", "rapidapi"];
       
       const statuses = await Promise.all(
         services.map(async (service) => {
@@ -18812,7 +18813,7 @@ Seller Signature (if applicable)
       }
 
       // Validate service is one of the allowed ones
-      const allowedServices = ["lob", "regrid", "twilio", "sendgrid"];
+      const allowedServices = ["lob", "regrid", "twilio", "sendgrid", "rapidapi"];
       if (!allowedServices.includes(service)) {
         return res.status(400).json({ message: "Invalid service" });
       }
@@ -18942,6 +18943,31 @@ Seller Signature (if applicable)
       res.json({ valid: response.status !== 401 });
     } catch (error) {
       console.error("SendGrid validation error:", error);
+      res.json({ valid: false });
+    }
+  });
+
+  // Validate RapidAPI Property Lines key
+  api.post("/api/settings/validate-rapidapi", isAuthenticated, async (req, res) => {
+    try {
+      const { apiKey } = req.body;
+
+      if (!apiKey) {
+        return res.status(400).json({ valid: false, message: "API key is required" });
+      }
+
+      // Make a simple API call to verify the key works
+      const response = await fetch("https://property-lines.p.rapidapi.com/get_all_us_state_boundaries", {
+        method: "GET",
+        headers: {
+          "x-rapidapi-host": "property-lines.p.rapidapi.com",
+          "x-rapidapi-key": apiKey,
+        },
+      });
+
+      res.json({ valid: response.ok });
+    } catch (error) {
+      console.error("RapidAPI validation error:", error);
       res.json({ valid: false });
     }
   });

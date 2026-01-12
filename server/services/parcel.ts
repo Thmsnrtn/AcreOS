@@ -1,6 +1,6 @@
 /**
  * Parcel Boundary Service - Tiered Lookup System
- * Priority: Cache (instant) -> County GIS (free) -> Regrid API (paid fallback)
+ * Priority: Cache (instant) -> County GIS (free) -> RapidAPI (cheap) -> Regrid API (paid fallback)
  * 
  * Cache freshness: 30 days
  */
@@ -58,7 +58,7 @@ interface RegridResponse {
 
 export interface ParcelLookupResult {
   found: boolean;
-  source?: "county_gis" | "regrid" | "cache";
+  source?: "county_gis" | "regrid" | "rapidapi" | "cache";
   parcel?: {
     apn: string;
     boundary: {
@@ -476,11 +476,12 @@ async function cacheParcelResult(result: ParcelLookupResult, state: string, coun
 }
 
 /**
- * Tiered parcel lookup: Cache (instant) -> County GIS (free) -> Regrid (paid fallback)
+ * Tiered parcel lookup: Cache (instant) -> County GIS (free) -> RapidAPI (cheap BYOK) -> Regrid (paid)
  */
 export async function lookupParcelByAPN(
   apn: string,
-  stateCountyPath?: string
+  stateCountyPath?: string,
+  organizationId?: number
 ): Promise<ParcelLookupResult> {
   let state = "";
   let county = "";
@@ -514,7 +515,17 @@ export async function lookupParcelByAPN(
     }
   }
   
-  // Step 3: Fall back to Regrid (paid)
+  // Step 3: Try RapidAPI Property Lines (cheaper than Regrid) - requires org key (BYOK)
+  if (organizationId) {
+    const rapidApiResult = await lookupFromRapidAPI(apn, state, county, organizationId);
+    if (rapidApiResult?.found) {
+      console.log(`[Parcel] Found via RapidAPI Property Lines (CHEAP BYOK)`);
+      await cacheParcelResult(rapidApiResult, state, county);
+      return rapidApiResult;
+    }
+  }
+  
+  // Step 4: Fall back to Regrid (paid, most expensive)
   console.log(`[Parcel] Falling back to Regrid API`);
   const regridResult = await lookupFromRegrid(apn, stateCountyPath);
   
@@ -524,6 +535,139 @@ export async function lookupParcelByAPN(
   }
   
   return regridResult;
+}
+
+/**
+ * RapidAPI Property Lines lookup (cheaper than Regrid)
+ * Uses BYOK credentials from organization's integration settings
+ */
+async function lookupFromRapidAPI(
+  apn: string,
+  state: string,
+  county: string,
+  organizationId: number
+): Promise<ParcelLookupResult | null> {
+  // Fetch org-specific RapidAPI key from BYOK integration settings
+  let rapidApiKey: string | null = null;
+  
+  try {
+    const integration = await storage.getOrganizationIntegration(organizationId, "rapidapi");
+    if (integration?.credentials?.apiKey) {
+      rapidApiKey = integration.credentials.apiKey;
+      console.log(`[RapidAPI] Using org BYOK key for org ${organizationId}`);
+    }
+  } catch (error) {
+    console.error(`[RapidAPI] Failed to get org integration:`, error);
+  }
+  
+  // Fall back to environment variable for single-tenant deployments
+  if (!rapidApiKey) {
+    rapidApiKey = process.env.RAPIDAPI_KEY || null;
+  }
+  
+  if (!rapidApiKey) {
+    console.log(`[RapidAPI] No RapidAPI key configured, skipping`);
+    return null;
+  }
+  
+  try {
+    // RapidAPI Property Lines works with lat/lng, not APN directly
+    // We need coordinates - if we don't have them, we can't use this API
+    // Try to get coordinates from a geocoding step or skip
+    
+    // For now, try the parcel lookup by address approach
+    // The API has an endpoint to get boundaries by coordinates
+    const stateCode = state.toUpperCase();
+    
+    // Try to look up using the get_boundaries_by_coordinate endpoint
+    // First, we need coordinates. Let's see if we can get them from a basic geocode
+    const geocodeUrl = `https://property-lines.p.rapidapi.com/get_parcel?state_code=${stateCode}&parcel_number=${encodeURIComponent(apn)}`;
+    
+    console.log(`[RapidAPI] Trying parcel lookup: ${apn} in ${stateCode}`);
+    
+    const response = await fetch(geocodeUrl, {
+      method: "GET",
+      headers: {
+        "x-rapidapi-host": "property-lines.p.rapidapi.com",
+        "x-rapidapi-key": rapidApiKey,
+      },
+      signal: AbortSignal.timeout(15000),
+    });
+    
+    if (!response.ok) {
+      console.log(`[RapidAPI] Response status: ${response.status}`);
+      if (response.status === 401 || response.status === 403) {
+        console.log(`[RapidAPI] Auth error - key may be invalid`);
+        return null;
+      }
+      return null;
+    }
+    
+    const data = await response.json();
+    console.log(`[RapidAPI] Response keys:`, Object.keys(data));
+    
+    // Parse the response - Property Lines API returns GeoJSON features
+    if (data.type === "FeatureCollection" && data.features?.length > 0) {
+      const feature = data.features[0];
+      const geometry = feature.geometry;
+      const props = feature.properties || {};
+      
+      if (geometry && (geometry.type === "Polygon" || geometry.type === "MultiPolygon")) {
+        const centroid = calculateCentroid(geometry);
+        
+        return {
+          found: true,
+          source: "rapidapi",
+          parcel: {
+            apn: props.parcel_number || props.apn || apn,
+            boundary: geometry,
+            centroid,
+            data: {
+              regridId: props.id || "",
+              owner: props.owner || "Unknown",
+              ownerAddress: props.owner_address || "",
+              taxAmount: props.tax_amount || "",
+              lastUpdated: new Date().toISOString(),
+              acres: props.acres || props.area_acres,
+              county: county,
+              state: state,
+            },
+          },
+        };
+      }
+    }
+    
+    // Try alternate response format
+    if (data.geometry && (data.geometry.type === "Polygon" || data.geometry.type === "MultiPolygon")) {
+      const centroid = calculateCentroid(data.geometry);
+      
+      return {
+        found: true,
+        source: "rapidapi",
+        parcel: {
+          apn: data.parcel_number || data.apn || apn,
+          boundary: data.geometry,
+          centroid,
+          data: {
+            regridId: data.id || "",
+            owner: data.owner || "Unknown",
+            ownerAddress: data.owner_address || "",
+            taxAmount: data.tax_amount || "",
+            lastUpdated: new Date().toISOString(),
+            acres: data.acres || data.area_acres,
+            county: county,
+            state: state,
+          },
+        },
+      };
+    }
+    
+    console.log(`[RapidAPI] No parcel geometry found in response`);
+    return null;
+  } catch (error) {
+    console.error("[RapidAPI] Lookup error:", error);
+    return null;
+  }
 }
 
 /**
