@@ -122,6 +122,21 @@ export class CreditService {
 
   async hasEnoughCredits(organizationId: number, requiredCents: number): Promise<boolean> {
     if (await this.isFounder(organizationId)) return true;
+    
+    // Check if user is in trial period - allow basic AI chat during trial
+    const org = await db.query.organizations.findFirst({
+      where: eq(organizations.id, organizationId),
+      columns: { trialEndsAt: true, subscriptionTier: true }
+    });
+    
+    // Users in active trial period get free basic AI chat
+    if (org?.trialEndsAt && new Date(org.trialEndsAt) > new Date()) {
+      return true;
+    }
+    
+    // Note: Trial tokens are for premium skills only, not basic AI chat
+    // They are consumed via storage.consumeTrialToken() in skill permission checks
+    
     const balance = await this.getBalance(organizationId);
     return balance >= requiredCents;
   }

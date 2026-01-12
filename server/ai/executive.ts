@@ -388,8 +388,13 @@ export async function processChat(
   options: ChatOptions = {}
 ): Promise<{ response: string; toolCalls?: any[]; conversationId: number; model?: string }> {
   const { agentRole = "executive", files } = options;
-  const profile = agentProfiles[agentRole];
-  const tools = getToolsForRole(agentRole);
+  // Map "assistant" to "executive" and fallback to executive for unknown roles
+  const roleStr = agentRole as string;
+  const normalizedRole = (roleStr === "assistant" || !agentProfiles[roleStr as keyof typeof agentProfiles]) 
+    ? "executive" 
+    : roleStr as keyof typeof agentProfiles;
+  const profile = agentProfiles[normalizedRole];
+  const tools = getToolsForRole(normalizedRole);
 
   const conversation = await getOrCreateConversation(org.id, userId, options.conversationId);
 
@@ -556,8 +561,13 @@ export async function* processChatStream(
   options: ChatOptions = {}
 ): AsyncGenerator<{ type: string; content?: string; toolCall?: any; done?: boolean; model?: string }> {
   const { agentRole = "executive", files } = options;
-  const profile = agentProfiles[agentRole];
-  const tools = getToolsForRole(agentRole);
+  // Map "assistant" to "executive" and fallback to executive for unknown roles
+  const roleStr = agentRole as string;
+  const normalizedRole = (roleStr === "assistant" || !agentProfiles[roleStr as keyof typeof agentProfiles]) 
+    ? "executive" 
+    : roleStr as keyof typeof agentProfiles;
+  const profile = agentProfiles[normalizedRole];
+  const tools = getToolsForRole(normalizedRole);
 
   const conversation = await getOrCreateConversation(org.id, userId, options.conversationId);
 
