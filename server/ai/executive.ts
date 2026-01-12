@@ -44,19 +44,42 @@ AUTONOMOUS CAPABILITIES:
 - Use the get_system_context tool to understand the full state of the business
 - You can create, update, and manage records across the entire platform
 
+DOCUMENT PROCESSING - CRITICAL:
+When the user attaches a document (Word, PDF, CSV, etc.) with property data:
+1. IMMEDIATELY look for APNs (Assessor Parcel Numbers) in the document content
+2. APNs are formatted like: 123-456-789, 12.34.56.78, or 1234567890
+3. Also look for county names, state abbreviations, addresses, and acreage
+4. Use create_properties_batch to create multiple properties at once
+5. DO NOT ask the user to paste data - you already have the document content in your context
+6. If you see property data, extract it and create the properties immediately
+
+PROPERTY DATA EXTRACTION:
+- Look for patterns like "APN:", "Parcel #:", "Parcel Number:"
+- Common formats: County-Parcel, State-County-Parcel
+- Extract all APNs you find, then use create_properties_batch with:
+  { properties: [{ apn: "...", county: "...", state: "..." }, ...] }
+
 TOOLS AT YOUR DISPOSAL:
 - get_system_context: Get a complete overview of all modules (leads, properties, deals, tasks, finance)
 - create_property, create_deal, create_task, create_lead: Create records in any module
+- create_properties_batch: Create multiple properties at once (for bulk imports from documents)
 - update_property, update_deal, update_task, update_lead_status: Modify existing records
 - get_leads, get_properties, get_deals, get_tasks: Query any module
 
-WORKFLOW:
+WORKFLOW FOR DOCUMENT-BASED PROPERTY IMPORT:
+1. When a document is attached with property data, scan it for APNs and property info
+2. Extract county and state from the document (often mentioned at top)
+3. Use create_properties_batch to add all properties in one operation
+4. Report: "Created X properties: [list APNs]. I can now research these or create deals."
+
+GENERAL WORKFLOW:
 1. When given a task, first use get_system_context if you need to understand the current state
 2. Take action using the appropriate create/update tools
 3. Confirm what you did and offer next steps
 
 Keep responses focused and business-oriented. Format numbers as currency when appropriate.
-Be proactive - if you can complete a task, do it rather than just explaining how.`,
+Be proactive - if you can complete a task, do it rather than just explaining how.
+NEVER ask the user to paste or re-provide data that is already in your context from an attached file.`,
     icon: "Bot"
   },
   acquisitions: {
@@ -388,10 +411,11 @@ export async function processChat(
     chatMessages[chatMessages.length - 1] = { role: "user", content: fullMessage };
   }
 
+  const hasFileAttachments = files && files.length > 0;
   const complexity = classifyFromMessages("chat", chatMessages.map(m => ({ 
     role: m.role as string, 
     content: typeof m.content === 'string' ? m.content : '' 
-  })));
+  })), hasFileAttachments);
   
   let client: OpenAI;
   let provider: AIProvider;
@@ -555,10 +579,11 @@ export async function* processChatStream(
     chatMessages[chatMessages.length - 1] = { role: "user", content: fullMessage };
   }
 
+  const hasFileAttachments = files && files.length > 0;
   const complexity = classifyFromMessages("chat", chatMessages.map(m => ({ 
     role: m.role as string, 
     content: typeof m.content === 'string' ? m.content : '' 
-  })));
+  })), hasFileAttachments);
   
   let client: OpenAI;
   let provider: AIProvider;

@@ -320,6 +320,55 @@ export const toolDefinitions = {
       },
       required: ["job_type", "description"]
     }
+  },
+
+  // Document Processing Tools
+  extract_properties_from_text: {
+    name: "extract_properties_from_text",
+    description: "Extract property information (APNs, addresses, counties, states, sizes) from document text. Use this when the user has attached a document containing property data. Parse the text systematically to identify all properties.",
+    parameters: {
+      type: "object",
+      properties: {
+        document_text: { 
+          type: "string", 
+          description: "The raw text content extracted from the document to parse for property data" 
+        },
+        expected_count: {
+          type: "number",
+          description: "Expected number of properties to extract (helps validate extraction)"
+        }
+      },
+      required: ["document_text"]
+    }
+  },
+
+  create_properties_batch: {
+    name: "create_properties_batch",
+    description: "Create multiple properties at once from extracted data. Use after extracting property data from documents. More efficient than creating properties one by one.",
+    parameters: {
+      type: "object",
+      properties: {
+        properties: {
+          type: "array",
+          description: "Array of property objects to create",
+          items: {
+            type: "object",
+            properties: {
+              apn: { type: "string", description: "Assessor's Parcel Number (required)" },
+              county: { type: "string", description: "County name (required)" },
+              state: { type: "string", description: "State abbreviation (required)" },
+              address: { type: "string", description: "Property address" },
+              city: { type: "string", description: "City name" },
+              zip: { type: "string", description: "ZIP code" },
+              sizeAcres: { type: "string", description: "Property size in acres" },
+              status: { type: "string", enum: ["prospect", "due_diligence", "offer_sent", "under_contract", "owned", "listed", "sold"], description: "Property status (default: prospect)" }
+            },
+            required: ["apn", "county", "state"]
+          }
+        }
+      },
+      required: ["properties"]
+    }
   }
 };
 
@@ -522,7 +571,7 @@ export async function executeTool(
           listPrice: args.listPrice ? String(args.listPrice) : null,
           marketValue: args.marketValue ? String(args.marketValue) : null,
           status: args.status || "prospect",
-          notes: args.notes || null,
+          description: args.notes || null,
         });
         invalidateContextCache(org.id);
         return { success: true, data: { message: "Property created successfully", property } };
@@ -631,7 +680,6 @@ export async function executeTool(
       }
 
       case "schedule_background_job": {
-        // For now, log the job request - in production this would queue to the job system
         console.log(`[AI Tools] Background job scheduled: ${args.job_type} - ${args.description}`);
         return { 
           success: true, 
@@ -639,6 +687,128 @@ export async function executeTool(
             message: `Background job scheduled: ${args.description}`,
             jobType: args.job_type,
             status: "queued"
+          } 
+        };
+      }
+
+      case "extract_properties_from_text": {
+        const text = args.document_text || "";
+        const expectedCount = args.expected_count;
+        
+        const properties: Array<{
+          apn: string;
+          county?: string;
+          state?: string;
+          address?: string;
+          city?: string;
+          sizeAcres?: string;
+          notes?: string;
+        }> = [];
+
+        const apnPatterns = [
+          /(?:APN|Parcel|Parcel\s*#|Parcel\s*ID|Parcel\s*Number)[:\s]*([A-Z0-9\-\.]+)/gi,
+          /\b(\d{3}[\-\.]\d{3}[\-\.]\d{3}[\-\.]\d{3})\b/g,
+          /\b(\d{2,3}[\-\.]\d{2,4}[\-\.]\d{2,4}(?:[\-\.]\d{2,4})?)\b/g,
+        ];
+
+        const foundApns = new Set<string>();
+        for (const pattern of apnPatterns) {
+          const matches = text.matchAll(pattern);
+          for (const match of matches) {
+            const apn = (match[1] || match[0]).trim().toUpperCase();
+            if (apn.length >= 6 && !foundApns.has(apn)) {
+              foundApns.add(apn);
+            }
+          }
+        }
+
+        const countyMatch = text.match(/(?:County|COUNTY)[:\s]*([A-Za-z\s]+?)(?:\n|,|State|STATE)/i);
+        const stateMatch = text.match(/(?:State|STATE)[:\s]*([A-Z]{2})/i);
+        const defaultCounty = countyMatch ? countyMatch[1].trim() : "Unknown";
+        const defaultState = stateMatch ? stateMatch[1].trim() : "Unknown";
+
+        for (const apn of Array.from(foundApns)) {
+          const lines = text.split('\n');
+          let propertyInfo: any = { apn, county: defaultCounty, state: defaultState };
+          
+          for (let i = 0; i < lines.length; i++) {
+            if (lines[i].includes(apn)) {
+              const context = lines.slice(Math.max(0, i - 2), i + 3).join(' ');
+              
+              const acresMatch = context.match(/(\d+\.?\d*)\s*(?:acres?|ac\.?)/i);
+              if (acresMatch) propertyInfo.sizeAcres = acresMatch[1];
+              
+              const addressMatch = context.match(/\d+\s+[A-Za-z]+\s+(?:St|Ave|Rd|Dr|Ln|Blvd|Way|Ct)[\.,$\s]/i);
+              if (addressMatch) propertyInfo.address = addressMatch[0].trim();
+              
+              break;
+            }
+          }
+          
+          properties.push(propertyInfo);
+        }
+
+        const message = properties.length > 0 
+          ? `Extracted ${properties.length} properties from document${expectedCount && properties.length !== expectedCount ? ` (expected ${expectedCount})` : ''}`
+          : "No property APNs found in the document. Please provide the text containing APNs in a recognizable format.";
+
+        return { 
+          success: properties.length > 0, 
+          data: { 
+            message,
+            extractedCount: properties.length,
+            expectedCount,
+            properties,
+            hint: properties.length === 0 ? "Look for APNs (Assessor's Parcel Numbers) in formats like 123-456-789 or 12.34.56.78" : undefined
+          } 
+        };
+      }
+
+      case "create_properties_batch": {
+        const propertiesToCreate = args.properties || [];
+        if (!Array.isArray(propertiesToCreate) || propertiesToCreate.length === 0) {
+          return { success: false, error: "No properties provided to create" };
+        }
+
+        const results: Array<{ success: boolean; apn: string; propertyId?: number; error?: string }> = [];
+        
+        for (const prop of propertiesToCreate) {
+          try {
+            if (!prop.apn || !prop.county || !prop.state) {
+              results.push({ success: false, apn: prop.apn || "unknown", error: "Missing required fields (apn, county, state)" });
+              continue;
+            }
+
+            const property = await storage.createProperty({
+              organizationId: org.id,
+              apn: prop.apn,
+              county: prop.county,
+              state: prop.state,
+              address: prop.address || null,
+              city: prop.city || null,
+              zip: prop.zip || null,
+              sizeAcres: prop.sizeAcres || "0",
+              status: prop.status || "prospect",
+            });
+            
+            results.push({ success: true, apn: prop.apn, propertyId: property.id });
+          } catch (err: any) {
+            results.push({ success: false, apn: prop.apn, error: err.message });
+          }
+        }
+
+        invalidateContextCache(org.id);
+        
+        const successCount = results.filter(r => r.success).length;
+        const failCount = results.filter(r => !r.success).length;
+        
+        return { 
+          success: successCount > 0, 
+          data: { 
+            message: `Created ${successCount} properties${failCount > 0 ? `, ${failCount} failed` : ''}`,
+            results,
+            successCount,
+            failCount
           } 
         };
       }

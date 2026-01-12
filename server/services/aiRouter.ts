@@ -127,10 +127,39 @@ export function classifyTaskComplexity(taskType: string, contentLength?: number)
 
 export function classifyFromMessages(
   taskType: string,
-  messages: Array<{ role: string; content: string }>
+  messages: Array<{ role: string; content: string }>,
+  hasFileAttachments: boolean = false
 ): TaskComplexity {
   const totalContent = messages.map(m => m.content).join(" ");
   const contentLength = totalContent.length;
+  
+  // Document-based tasks with file attachments are always COMPLEX
+  // This ensures GPT-4o is used for better document understanding
+  if (hasFileAttachments) {
+    const documentActionIndicators = [
+      /add.*propert/i,
+      /create.*propert/i,
+      /import/i,
+      /extract/i,
+      /parse/i,
+      /set.*up/i,
+      /upload/i,
+      /process.*file/i,
+      /from.*document/i,
+      /from.*file/i,
+      /attached/i,
+      /inventory/i,
+    ];
+    
+    if (documentActionIndicators.some(pattern => pattern.test(totalContent))) {
+      return TaskComplexity.COMPLEX;
+    }
+  }
+  
+  // Check for file content markers in the message
+  if (totalContent.includes("--- File:") || totalContent.includes("[Attached files:")) {
+    return TaskComplexity.COMPLEX;
+  }
   
   const complexIndicators = [
     /analyze.*multiple/i,
@@ -144,6 +173,10 @@ export function classifyFromMessages(
     /step.*by.*step/i,
     /comprehensive/i,
     /detailed.*analysis/i,
+    /bulk.*import/i,
+    /batch.*create/i,
+    /multiple.*properties/i,
+    /these.*\d+.*properties/i,
   ];
   
   const isComplexContent = complexIndicators.some(pattern => pattern.test(totalContent));
