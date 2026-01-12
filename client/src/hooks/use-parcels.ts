@@ -84,3 +84,40 @@ export function useFetchPropertyParcel() {
     },
   });
 }
+
+interface BulkParcelResult {
+  message: string;
+  updated: number;
+  failed: number;
+  results: Array<{ propertyId: number; apn: string; success: boolean; source?: string; error?: string }>;
+}
+
+export function useFetchAllParcels() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  
+  return useMutation({
+    mutationFn: async (): Promise<BulkParcelResult> => {
+      const res = await apiRequest("POST", "/api/properties/fetch-all-parcels", {});
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || "Failed to bulk fetch parcel data");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/properties'] });
+      toast({
+        title: "Bulk parcel fetch complete",
+        description: data.message,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to fetch parcel data",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+}

@@ -2,7 +2,7 @@ import { Sidebar } from "@/components/layout-sidebar";
 import { useProperties, useCreateProperty, useDeleteProperty, useEnrichProperty } from "@/hooks/use-properties";
 import { queryClient } from "@/lib/queryClient";
 import { ListSkeleton } from "@/components/list-skeleton";
-import { useFetchPropertyParcel } from "@/hooks/use-parcels";
+import { useFetchPropertyParcel, useFetchAllParcels } from "@/hooks/use-parcels";
 import { useState, useMemo } from "react";
 import { useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
@@ -117,6 +117,7 @@ export default function PropertiesPage() {
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
   const [gisFilters, setGisFilters] = useState<GisFilterState>(defaultGisFilters);
   const { toast } = useToast();
+  const { mutate: fetchAllParcels, isPending: isFetchingAllParcels } = useFetchAllParcels();
 
   const filteredProperties = useMemo(() => {
     if (!properties) return [];
@@ -351,6 +352,16 @@ export default function PropertiesPage() {
               >
                 <Upload className="w-4 h-4 md:mr-2" />
                 <span className="hidden md:inline">Import CSV</span>
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={() => fetchAllParcels()}
+                disabled={isFetchingAllParcels}
+                className="min-h-[44px] md:min-h-9"
+                data-testid="button-fetch-all-parcels"
+              >
+                {isFetchingAllParcels ? <Loader2 className="w-4 h-4 md:mr-2 animate-spin" /> : <MapIcon className="w-4 h-4 md:mr-2" />}
+                <span className="hidden md:inline">{isFetchingAllParcels ? "Fetching..." : "Fetch Boundaries"}</span>
               </Button>
               <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
                 <DialogTrigger asChild>

@@ -1,6 +1,7 @@
 import { storage } from "../storage";
 import type { Organization } from "@shared/schema";
 import { getSystemContext, formatContextForAI, invalidateContextCache } from "../services/aiContextAggregator";
+import { lookupParcelByAPN } from "../services/parcel";
 
 // Tool parameter schemas (OpenAI function calling format)
 export const toolDefinitions = {
@@ -573,8 +574,33 @@ export async function executeTool(
           status: args.status || "prospect",
           description: args.notes || null,
         });
+        
+        // Auto-fetch parcel boundary data
+        let hasBoundary = false;
+        if (args.county && args.state) {
+          try {
+            const stateCountyPath = `/us/${args.state.toLowerCase()}/${args.county.toLowerCase().replace(/\s+/g, "-")}`;
+            console.log(`[CreateProperty] Fetching parcel for ${args.apn} at ${stateCountyPath}`);
+            const parcelResult = await lookupParcelByAPN(args.apn, stateCountyPath);
+            
+            if (parcelResult.found && parcelResult.parcel) {
+              await storage.updateProperty(property.id, {
+                parcelBoundary: parcelResult.parcel.boundary,
+                parcelCentroid: parcelResult.parcel.centroid,
+                parcelData: parcelResult.parcel.data,
+                latitude: String(parcelResult.parcel.centroid.lat),
+                longitude: String(parcelResult.parcel.centroid.lng),
+              });
+              hasBoundary = true;
+              console.log(`[CreateProperty] Parcel found from ${parcelResult.source}`);
+            }
+          } catch (parcelErr: any) {
+            console.error(`[CreateProperty] Parcel lookup error:`, parcelErr.message);
+          }
+        }
+        
         invalidateContextCache(org.id);
-        return { success: true, data: { message: "Property created successfully", property } };
+        return { success: true, data: { message: `Property created successfully${hasBoundary ? ' with parcel boundary' : ''}`, property, hasBoundary } };
       }
 
       case "update_property": {
@@ -770,7 +796,7 @@ export async function executeTool(
           return { success: false, error: "No properties provided to create" };
         }
 
-        const results: Array<{ success: boolean; apn: string; propertyId?: number; error?: string }> = [];
+        const results: Array<{ success: boolean; apn: string; propertyId?: number; hasBoundary?: boolean; error?: string }> = [];
         
         for (const prop of propertiesToCreate) {
           try {
@@ -791,7 +817,35 @@ export async function executeTool(
               status: prop.status || "prospect",
             });
             
-            results.push({ success: true, apn: prop.apn, propertyId: property.id });
+            // Auto-fetch parcel boundary data after creation (only if state/county provided)
+            let hasBoundary = false;
+            if (prop.state && prop.county) {
+              try {
+                const stateCountyPath = `/us/${prop.state.toLowerCase()}/${prop.county.toLowerCase().replace(/\s+/g, "-")}`;
+                console.log(`[Batch] Fetching parcel for ${prop.apn} at ${stateCountyPath}`);
+                const parcelResult = await lookupParcelByAPN(prop.apn, stateCountyPath);
+                
+                if (parcelResult.found && parcelResult.parcel) {
+                  await storage.updateProperty(property.id, {
+                    parcelBoundary: parcelResult.parcel.boundary,
+                    parcelCentroid: parcelResult.parcel.centroid,
+                    parcelData: parcelResult.parcel.data,
+                    latitude: String(parcelResult.parcel.centroid.lat),
+                    longitude: String(parcelResult.parcel.centroid.lng),
+                  });
+                  hasBoundary = true;
+                  console.log(`[Batch] Parcel found for ${prop.apn} from ${parcelResult.source}`);
+                } else {
+                  console.log(`[Batch] No parcel found for ${prop.apn}: ${parcelResult.error || 'not found'}`);
+                }
+              } catch (parcelErr: any) {
+                console.error(`[Batch] Parcel lookup error for ${prop.apn}:`, parcelErr.message);
+              }
+            } else {
+              console.log(`[Batch] Skipping parcel lookup for ${prop.apn} - missing state/county`);
+            }
+            
+            results.push({ success: true, apn: prop.apn, propertyId: property.id, hasBoundary });
           } catch (err: any) {
             results.push({ success: false, apn: prop.apn, error: err.message });
           }
@@ -801,14 +855,16 @@ export async function executeTool(
         
         const successCount = results.filter(r => r.success).length;
         const failCount = results.filter(r => !r.success).length;
+        const boundaryCount = results.filter(r => r.hasBoundary).length;
         
         return { 
           success: successCount > 0, 
           data: { 
-            message: `Created ${successCount} properties${failCount > 0 ? `, ${failCount} failed` : ''}`,
+            message: `Created ${successCount} properties${failCount > 0 ? `, ${failCount} failed` : ''}. Parcel boundaries found for ${boundaryCount}/${successCount}.`,
             results,
             successCount,
-            failCount
+            failCount,
+            boundaryCount
           } 
         };
       }

@@ -2621,6 +2621,68 @@ export async function registerRoutes(
       res.status(500).json({ message: "Failed to fetch parcel data" });
     }
   });
+
+  // Bulk fetch parcel data for properties missing boundaries
+  api.post("/api/properties/fetch-all-parcels", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { lookupParcelByAPN } = await import("./services/parcel");
+      const org = (req as any).organization;
+      
+      // Get all properties missing parcel boundaries
+      const allProperties = await storage.getProperties(org.id);
+      const propertiesWithoutBoundaries = allProperties.filter(
+        p => !p.parcelBoundary && p.apn && p.state && p.county
+      );
+      
+      if (propertiesWithoutBoundaries.length === 0) {
+        return res.json({ 
+          message: "All properties already have parcel boundaries",
+          updated: 0,
+          failed: 0 
+        });
+      }
+      
+      console.log(`[BulkParcel] Fetching parcels for ${propertiesWithoutBoundaries.length} properties`);
+      
+      const results: Array<{ propertyId: number; apn: string; success: boolean; source?: string; error?: string }> = [];
+      
+      for (const property of propertiesWithoutBoundaries) {
+        try {
+          const path = `/us/${property.state!.toLowerCase()}/${property.county!.toLowerCase().replace(/\s+/g, "-")}`;
+          const result = await lookupParcelByAPN(property.apn, path);
+          
+          if (result.found && result.parcel) {
+            await storage.updateProperty(property.id, {
+              parcelBoundary: result.parcel.boundary,
+              parcelCentroid: result.parcel.centroid,
+              parcelData: result.parcel.data,
+              latitude: String(result.parcel.centroid.lat),
+              longitude: String(result.parcel.centroid.lng),
+            });
+            results.push({ propertyId: property.id, apn: property.apn, success: true, source: result.source });
+            console.log(`[BulkParcel] Found parcel for ${property.apn} from ${result.source}`);
+          } else {
+            results.push({ propertyId: property.id, apn: property.apn, success: false, error: result.error || 'not found' });
+          }
+        } catch (err: any) {
+          results.push({ propertyId: property.id, apn: property.apn, success: false, error: err.message });
+        }
+      }
+      
+      const updated = results.filter(r => r.success).length;
+      const failed = results.filter(r => !r.success).length;
+      
+      res.json({
+        message: `Updated ${updated} properties with parcel data${failed > 0 ? `, ${failed} failed` : ''}`,
+        updated,
+        failed,
+        results
+      });
+    } catch (err) {
+      console.error("Bulk fetch parcel error:", err);
+      res.status(500).json({ message: "Failed to bulk fetch parcel data" });
+    }
+  });
   
   // ============================================
   // DEALS (Acquisitions/Dispositions)

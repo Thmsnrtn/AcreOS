@@ -46,7 +46,8 @@ Preferred communication style: Simple, everyday language.
 - **Bulk Operations**: Multi-select and bulk actions for Leads and Properties.
 - **API Cost Tracking**: Logging and display of estimated external API costs.
 - **VA Replacement Engine**: Marketing lists, batch offer generation, seller communications, ad posting, buyer prequalification, collection sequences, county research.
-- **Advanced GIS/Mapping**: Map layer toggles, measurement tools, map export, nearby parcel discovery, comparables.
+- **Advanced GIS/Mapping**: Map layer toggles, measurement tools, map export, nearby parcel discovery, comparables, **auto-parcel boundary enrichment** on property creation.
+- **Parcel Boundary Auto-Fetch**: Properties created via AI tools or manually get parcel boundaries automatically fetched using tiered lookup (Cache → County GIS free → Regrid API paid fallback). Bulk fetch available via "Fetch Boundaries" button on Properties page.
 - **Enhanced AI Agents**: Agent memory, feedback loop, skill registry, property analysis chat.
 - **Advanced Automation**: Workflow triggers, visual workflow builder, scheduled tasks.
 - **Document Management**: Template management, version history, document packages.
