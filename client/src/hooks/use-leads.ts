@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, buildUrl, type InsertLead, type UpdateLeadRequest } from "@shared/routes";
+import { api, buildUrl, type InsertLead } from "@shared/routes";
 import { STALE_TIMES, CACHE_TIMES } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { getErrorMessage, getErrorTitle } from "@/lib/error-utils";
 
 export function useLeads() {
   return useQuery({
@@ -31,6 +33,7 @@ export function useLead(id: number) {
 
 export function useCreateLead() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   return useMutation({
     mutationFn: async (data: Omit<InsertLead, 'organizationId'>) => {
       const res = await fetch(api.leads.create.path, {
@@ -44,20 +47,34 @@ export function useCreateLead() {
           const error = api.leads.create.responses[400].parse(await res.json());
           throw new Error(error.message);
         }
-        throw new Error("Failed to create lead");
+        throw new Error(`${res.status}: Failed to create lead`);
       }
       return api.leads.create.responses[201].parse(await res.json());
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.leads.list.path] });
+      toast({
+        title: "Success",
+        description: "Lead created successfully.",
+      });
+    },
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({
+        title,
+        description,
+        variant: "destructive",
+      });
     },
   });
 }
 
 export function useUpdateLead() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   return useMutation({
-    mutationFn: async ({ id, ...updates }: { id: number } & UpdateLeadRequest) => {
+    mutationFn: async ({ id, ...updates }: { id: number } & Partial<InsertLead>) => {
       const url = buildUrl(api.leads.update.path, { id });
       const res = await fetch(url, {
         method: "PUT",
@@ -65,27 +82,54 @@ export function useUpdateLead() {
         body: JSON.stringify(updates),
         credentials: "include",
       });
-      if (!res.ok) throw new Error("Failed to update lead");
+      if (!res.ok) throw new Error(`${res.status}: Failed to update lead`);
       return api.leads.update.responses[200].parse(await res.json());
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.leads.list.path] });
+      toast({
+        title: "Success",
+        description: "Lead updated successfully.",
+      });
+    },
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({
+        title,
+        description,
+        variant: "destructive",
+      });
     },
   });
 }
 
 export function useDeleteLead() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   return useMutation({
     mutationFn: async (id: number) => {
       const res = await fetch(`/api/leads/${id}`, {
         method: "DELETE",
         credentials: "include",
       });
-      if (!res.ok) throw new Error("Failed to delete lead");
+      if (!res.ok) throw new Error(`${res.status}: Failed to delete lead`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.leads.list.path] });
+      toast({
+        title: "Success",
+        description: "Lead deleted successfully.",
+      });
+    },
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({
+        title,
+        description,
+        variant: "destructive",
+      });
     },
   });
 }

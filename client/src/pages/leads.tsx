@@ -54,6 +54,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Search, Mail, Phone, Trash2, Edit, Loader2, Users, FileText, Download, Upload, CheckCircle, XCircle, AlertCircle, Flame, Sun, Snowflake, Skull, ArrowUpDown, ArrowUp, ArrowDown, X, Clock, Eye, User, Calendar, MapPin, StickyNote, PhoneOff, Shield, CheckSquare, RefreshCw, TrendingUp, TrendingDown, Minus, History, Filter, ChevronDown, MoreVertical } from "lucide-react";
+import { telemetry } from "@/lib/telemetry";
 import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState } from "@/components/empty-state";
 import { LeadsEmptyState } from "@/components/empty-states";
@@ -1824,11 +1825,17 @@ function LeadForm({ lead, onSuccess }: { lead?: Lead; onSuccess: () => void }) {
   const onSubmit = (data: z.infer<typeof leadFormSchema>) => {
     if (lead) {
       updateLead({ id: lead.id, ...data }, {
-        onSuccess: () => onSuccess(),
+        onSuccess: () => {
+          telemetry.actionCompleted('lead_updated', { leadId: lead.id });
+          onSuccess();
+        },
       });
     } else {
       createLead(data, {
-        onSuccess: () => onSuccess(),
+        onSuccess: () => {
+          telemetry.actionCompleted('lead_created', { firstName: data.firstName, lastName: data.lastName });
+          onSuccess();
+        },
       });
     }
   };

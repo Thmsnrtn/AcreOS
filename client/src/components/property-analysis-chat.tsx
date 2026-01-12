@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { telemetry } from "@/lib/telemetry";
 import { 
   Send, 
   Loader2, 
@@ -74,6 +75,8 @@ export function PropertyAnalysisChat({ property, open, onOpenChange }: PropertyA
     setMessages(prev => [...prev, userMessage]);
     setInputValue("");
     setIsLoading(true);
+    
+    telemetry.aiUsed('property_analysis');
 
     try {
       const response = await apiRequest("POST", `/api/properties/${property.id}/analyze`, {

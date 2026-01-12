@@ -117,7 +117,8 @@ import {
 import { registerAIOperationsRoutes } from "./routes-ai-operations";
 
 // Rate limiting middleware
-import { rateLimiters, createAuthenticatedRateLimiter, createRateLimiter, RATE_LIMIT_CONFIGS } from "./middleware/rateLimit";
+import { apiRateLimit, strictRateLimit, authRateLimit } from "./middleware/rate-limiter";
+import { createRateLimiter, RATE_LIMIT_CONFIGS } from "./middleware/rateLimit";
 
 // ============================================
 // STRUCTURED LOGGER
@@ -432,23 +433,19 @@ export async function registerRoutes(
   // ============================================
   // Applied in order of specificity, from most strict to least strict
   
-  // Strict rate limit for expensive operations (AI, Stripe, Stripe Connect)
-  app.use("/api/ai", rateLimiters.strict);
-  app.use("/api/stripe", rateLimiters.strict);
+  // Strict rate limit for expensive operations (AI endpoints - 10 per minute)
+  app.use("/api/ai", strictRateLimit);
   
-  // Auth rate limit for login/register endpoints
-  app.use("/api/auth", rateLimiters.auth);
+  // Auth rate limit for login/register endpoints (5 per 5 minutes)
+  app.use("/api/auth", authRateLimit);
   
-  // Public rate limit for borrower portal
-  app.use("/api/borrower", rateLimiters.public);
-  
-  // Default rate limit for all other /api routes
+  // Default rate limit for all other /api routes (100 per minute)
   app.use("/api", (req, res, next) => {
     // Skip rate limiting for health check endpoints
     if (req.path.startsWith("/health")) {
       return next();
     }
-    return rateLimiters.default(req, res, next);
+    return apiRateLimit(req, res, next);
   });
   
   // ============================================
@@ -788,6 +785,28 @@ export async function registerRoutes(
       logger.error("Dashboard intelligence error", { error: error.message });
       res.status(500).json({ message: "Failed to generate dashboard intelligence" });
     }
+  });
+  
+  // ============================================
+  // TELEMETRY
+  // ============================================
+  
+  api.post("/api/telemetry", isAuthenticated, async (req, res) => {
+    const { events } = req.body;
+    const user = (req as any).user;
+    const org = (req as any).organization;
+    
+    // Log events for now (can be sent to analytics service later)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[Telemetry]', { userId: user?.id, orgId: org?.id, events });
+    }
+    
+    // In production, you could send to:
+    // - PostHog
+    // - Mixpanel
+    // - Your own analytics database
+    
+    res.json({ success: true });
   });
   
   // ============================================

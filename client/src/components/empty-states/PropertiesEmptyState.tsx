@@ -52,18 +52,18 @@ export function PropertiesEmptyState({ onAddProperty, onImportProperties }: Prop
         className="text-center max-w-md"
       >
         <h3 className="text-xl font-semibold mb-2">
-          Your property portfolio starts here
+          Build your property portfolio
         </h3>
         <p className="text-muted-foreground mb-6">
-          Track every parcel from prospect to profit. Add your first property and 
-          watch your land investing business grow.
+          Add properties you're evaluating or already own. Get instant valuations, track due 
+          diligence, and manage your entire inventory.
         </p>
         
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
           {onAddProperty && (
             <Button onClick={onAddProperty} data-testid="button-add-property">
               <Plus className="w-4 h-4 mr-2" />
-              Add First Property
+              Add a Property
             </Button>
           )}
           {onImportProperties && (

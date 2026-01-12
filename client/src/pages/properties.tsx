@@ -1,6 +1,7 @@
 import { Sidebar } from "@/components/layout-sidebar";
 import { useProperties, useCreateProperty, useDeleteProperty, useEnrichProperty } from "@/hooks/use-properties";
 import { queryClient } from "@/lib/queryClient";
+import { telemetry } from "@/lib/telemetry";
 import { ListSkeleton } from "@/components/list-skeleton";
 import { useFetchPropertyParcel, useFetchAllParcels } from "@/hooks/use-parcels";
 import { useState, useMemo } from "react";
@@ -858,7 +859,12 @@ function PropertyForm({ onSuccess }: { onSuccess: () => void }) {
   });
 
   const onSubmit = (data: z.infer<typeof propertyFormSchema>) => {
-    mutate(data, { onSuccess });
+    mutate(data, {
+      onSuccess: () => {
+        telemetry.actionCompleted('property_created', { county: data.county, state: data.state, acres: data.sizeAcres });
+        onSuccess();
+      }
+    });
   };
 
   return (

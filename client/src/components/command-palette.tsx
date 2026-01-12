@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
+import { telemetry } from "@/lib/telemetry";
 import {
   Command,
   CommandEmpty,
@@ -82,6 +83,12 @@ export function CommandPalette() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleKeyDown]);
+
+  useEffect(() => {
+    if (open) {
+      telemetry.featureUsed('command_palette');
+    }
+  }, [open]);
 
   const handleSelect = useCallback(
     (path: string) => {

@@ -52,11 +52,11 @@ export function LeadsEmptyState({ onAddLead, onImportLeads }: LeadsEmptyStatePro
         className="text-center max-w-md"
       >
         <h3 className="text-xl font-semibold mb-2">
-          No leads yet. Let's find your first opportunity!
+          Your lead pipeline starts here
         </h3>
         <p className="text-muted-foreground mb-6">
-          Start building your pipeline by importing existing leads or adding them one by one. 
-          Every successful deal begins with a great lead.
+          Import your first batch of leads or add them one by one. AcreOS will help you track 
+          every conversation and close more deals.
         </p>
         
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">

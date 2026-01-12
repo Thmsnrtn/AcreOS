@@ -1,5 +1,6 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 import { toast } from "@/hooks/use-toast";
+import { getErrorMessage, getErrorTitle, shouldRetry, isAuthError } from "@/lib/error-utils";
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
@@ -10,72 +11,41 @@ async function throwIfResNotOk(res: Response) {
 
 function handleQueryError(error: unknown): void {
   const err = error instanceof Error ? error : new Error(String(error));
-  const message = err.message;
   
-  if (message.includes("401")) {
-    toast({
-      title: "Session Expired",
-      description: "Please sign in again to continue.",
-      variant: "destructive",
-    });
+  if (isAuthError(err)) {
     return;
   }
   
-  if (message.includes("500")) {
-    toast({
-      title: "Server Error",
-      description: "Something went wrong on our end. Please try again.",
-      variant: "destructive",
-    });
-    return;
-  }
+  const title = getErrorTitle(err);
+  const description = getErrorMessage(err);
   
-  if (message.includes("network") || message.includes("fetch") || message.includes("Failed to fetch")) {
-    toast({
-      title: "Connection Error",
-      description: "Unable to connect to the server. Please check your connection.",
-      variant: "destructive",
-    });
-    return;
-  }
+  toast({
+    title,
+    description,
+    variant: "destructive",
+  });
   
   console.error("[Query Error]", err);
 }
 
 function handleMutationError(error: unknown): void {
   const err = error instanceof Error ? error : new Error(String(error));
-  const message = err.message;
   
-  if (message.includes("401")) {
+  if (isAuthError(err)) {
     toast({
       title: "Session Expired",
-      description: "Please sign in again to continue.",
+      description: "Your session has expired. Please sign in again.",
       variant: "destructive",
     });
     return;
   }
   
-  if (message.includes("403")) {
-    toast({
-      title: "Permission Denied",
-      description: "You don't have permission to perform this action.",
-      variant: "destructive",
-    });
-    return;
-  }
-  
-  if (message.includes("429")) {
-    toast({
-      title: "Rate Limited",
-      description: "Too many requests. Please wait a moment and try again.",
-      variant: "destructive",
-    });
-    return;
-  }
+  const title = getErrorTitle(err);
+  const description = getErrorMessage(err);
   
   toast({
-    title: "Request Failed",
-    description: "Something went wrong. Please try again.",
+    title,
+    description,
     variant: "destructive",
   });
   
@@ -143,12 +113,20 @@ export const queryClient = new QueryClient({
         if (err?.message?.includes("401") || err?.message?.includes("403")) {
           return false;
         }
-        return failureCount < 2;
+        return shouldRetry(err, failureCount);
       },
       retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
     },
     mutations: {
-      retry: false,
+      retry: (failureCount, error) => {
+        // Don't retry on auth or permission errors
+        const err = error as Error;
+        if (err?.message?.includes("401") || err?.message?.includes("403")) {
+          return false;
+        }
+        return shouldRetry(err, failureCount);
+      },
+      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
       onError: handleMutationError,
     },
   },

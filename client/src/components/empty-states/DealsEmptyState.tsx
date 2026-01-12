@@ -51,11 +51,11 @@ export function DealsEmptyState({ onAddDeal }: DealsEmptyStateProps) {
         className="text-center max-w-md"
       >
         <h3 className="text-xl font-semibold mb-2">
-          Ready to close your first deal?
+          Your deal pipeline awaits
         </h3>
         <p className="text-muted-foreground mb-6">
-          Track your acquisitions and dispositions from offer to close. 
-          See your profit margins, timelines, and success rate at a glance.
+          Create deals to track acquisitions and dispositions from first contact to closing. 
+          Never lose track of an opportunity again.
         </p>
         
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">

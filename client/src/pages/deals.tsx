@@ -2,6 +2,7 @@ import { Sidebar } from "@/components/layout-sidebar";
 import { useDeals, useCreateDeal, useUpdateDeal, useDeleteDeal, useSaveDealAnalysis } from "@/hooks/use-deals";
 import { useProperties } from "@/hooks/use-properties";
 import { ListSkeleton } from "@/components/list-skeleton";
+import { telemetry } from "@/lib/telemetry";
 import { useDealChecklist, useChecklistTemplates, useApplyChecklistTemplate, useUpdateChecklistItem, useStageGate } from "@/hooks/use-checklists";
 import { useState } from "react";
 import { useSearch, Link } from "wouter";
@@ -1254,7 +1255,12 @@ function DealForm({ onSuccess }: { onSuccess: () => void }) {
   });
 
   const onSubmit = (data: z.infer<typeof dealFormSchema>) => {
-    mutate(data, { onSuccess });
+    mutate(data, {
+      onSuccess: () => {
+        telemetry.actionCompleted('deal_created', { type: data.type, offerAmount: data.offerAmount });
+        onSuccess();
+      }
+    });
   };
 
   return (
