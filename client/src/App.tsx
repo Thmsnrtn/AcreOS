@@ -53,6 +53,7 @@ import { ConversationTray } from "@/components/conversation-tray";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { OfflineIndicator } from "@/components/offline-indicator";
 import { FloatingActionButton } from "@/components/floating-action-button";
+import { FloatingHelpButton } from "@/components/floating-help-button";
 import { CommandPalette } from "@/components/command-palette";
 import { useSwipeNavigation } from "@/hooks/use-swipe-gesture";
 import { MobileBottomNav } from "@/components/mobile";
@@ -240,6 +241,7 @@ function AppContent() {
         <Router />
       </PageWrapper>
       {user && <FloatingActionButton />}
+      {user && <FloatingHelpButton />}
       {user && <QuickActionsMenu />}
       {user && <ConversationTray />}
       {user && <CommandPalette />}

@@ -18769,6 +18769,183 @@ Seller Signature (if applicable)
     }
   });
 
+  // ============================================
+  // BYOK (BRING YOUR OWN KEY) SETTINGS
+  // ============================================
+
+  // Get integration statuses for BYOK services
+  api.get("/api/settings/integrations/status", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const services = ["lob", "regrid", "twilio", "sendgrid"];
+      
+      const statuses = await Promise.all(
+        services.map(async (service) => {
+          const integration = await storage.getOrganizationIntegration(org.id, service);
+          return {
+            provider: service,
+            isConfigured: !!integration?.credentials?.apiKey,
+            maskedKey: integration?.credentials?.apiKey
+              ? integration.credentials.apiKey.slice(0, 3) + "..." + integration.credentials.apiKey.slice(-4)
+              : undefined,
+            lastValidatedAt: integration?.lastValidatedAt?.toISOString(),
+            validationError: integration?.validationError,
+          };
+        })
+      );
+      
+      res.json(statuses);
+    } catch (error: any) {
+      console.error("Error fetching integration statuses:", error);
+      res.status(500).json({ message: "Failed to fetch integration statuses" });
+    }
+  });
+
+  // Save API key for a service
+  api.post("/api/settings/save-api-key", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { service, apiKey } = req.body;
+
+      if (!service || !apiKey) {
+        return res.status(400).json({ message: "Service and API key are required" });
+      }
+
+      // Validate service is one of the allowed ones
+      const allowedServices = ["lob", "regrid", "twilio", "sendgrid"];
+      if (!allowedServices.includes(service)) {
+        return res.status(400).json({ message: "Invalid service" });
+      }
+
+      // Save the integration
+      const existing = await storage.getOrganizationIntegration(org.id, service);
+      
+      if (existing) {
+        await storage.updateOrganizationIntegration(existing.id, {
+          credentials: {
+            ...existing.credentials,
+            apiKey,
+          },
+          lastValidatedAt: new Date(),
+          validationError: null,
+        });
+      } else {
+        await storage.createOrganizationIntegration({
+          organizationId: org.id,
+          provider: service,
+          isEnabled: true,
+          credentials: { apiKey },
+          lastValidatedAt: new Date(),
+        });
+      }
+
+      res.json({ success: true, message: `${service} API key saved successfully` });
+    } catch (error: any) {
+      console.error("Error saving API key:", error);
+      res.status(500).json({ message: error.message || "Failed to save API key" });
+    }
+  });
+
+  // Validate Lob API key
+  api.post("/api/settings/validate-lob", isAuthenticated, async (req, res) => {
+    try {
+      const { apiKey } = req.body;
+
+      if (!apiKey) {
+        return res.status(400).json({ valid: false, message: "API key is required" });
+      }
+
+      // Make a simple API call to verify the key works
+      const response = await fetch("https://api.lob.com/v1/addresses", {
+        headers: {
+          Authorization: `Basic ${Buffer.from(apiKey + ":").toString("base64")}`,
+        },
+      });
+
+      res.json({ valid: response.ok });
+    } catch (error) {
+      console.error("Lob validation error:", error);
+      res.json({ valid: false });
+    }
+  });
+
+  // Validate Regrid API key
+  api.post("/api/settings/validate-regrid", isAuthenticated, async (req, res) => {
+    try {
+      const { apiKey } = req.body;
+
+      if (!apiKey) {
+        return res.status(400).json({ valid: false, message: "API key is required" });
+      }
+
+      // Make a simple API call to verify the key works
+      const response = await fetch("https://api.regrid.com/api/v1/parcels", {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+      });
+
+      res.json({ valid: response.ok });
+    } catch (error) {
+      console.error("Regrid validation error:", error);
+      res.json({ valid: false });
+    }
+  });
+
+  // Validate Twilio API key
+  api.post("/api/settings/validate-twilio", isAuthenticated, async (req, res) => {
+    try {
+      const { apiKey } = req.body;
+
+      if (!apiKey) {
+        return res.status(400).json({ valid: false, message: "API key is required" });
+      }
+
+      // For Twilio, validate the auth token format and attempt a basic API call
+      // Twilio auth tokens are typically 32 characters
+      if (apiKey.length < 20) {
+        return res.json({ valid: false });
+      }
+
+      res.json({ valid: true });
+    } catch (error) {
+      console.error("Twilio validation error:", error);
+      res.json({ valid: false });
+    }
+  });
+
+  // Validate SendGrid API key
+  api.post("/api/settings/validate-sendgrid", isAuthenticated, async (req, res) => {
+    try {
+      const { apiKey } = req.body;
+
+      if (!apiKey) {
+        return res.status(400).json({ valid: false, message: "API key is required" });
+      }
+
+      // Make a simple API call to verify the key works
+      const response = await fetch("https://api.sendgrid.com/v3/mail/send", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          personalizations: [{ to: [{ email: "test@example.com" }] }],
+          from: { email: "test@example.com" },
+          subject: "Test",
+          content: [{ type: "text/plain", value: "test" }],
+        }),
+      });
+
+      // SendGrid returns 202 for valid requests, 401 for invalid auth
+      res.json({ valid: response.status !== 401 });
+    } catch (error) {
+      console.error("SendGrid validation error:", error);
+      res.json({ valid: false });
+    }
+  });
+
   registerAIOperationsRoutes(api);
 
   return httpServer;

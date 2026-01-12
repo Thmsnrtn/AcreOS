@@ -1,9 +1,11 @@
 import { useState, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import {
   Dialog,
   DialogContent,
+  DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -209,6 +211,34 @@ export function OnboardingWizard() {
     },
   });
 
+  const loadSampleDataMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/onboarding/sample-data", {});
+      if (!res.ok) throw new Error("Failed to load sample data");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Sample data loaded!",
+        description: `Created ${data.counts.leads} leads, ${data.counts.properties} properties, and ${data.counts.deals} deals.`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/properties"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/deals"] });
+      completeStepMutation.mutate({ 
+        stepId: currentStep, 
+        data: { dataImported: true, sampleDataLoaded: true } 
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to load sample data",
+        description: error.message || "Something went wrong",
+        variant: "destructive",
+      });
+    },
+  });
+
   const updateOrgMutation = useMutation({
     mutationFn: async (name: string) => {
       const res = await apiRequest("PATCH", "/api/organization", { name });
@@ -305,7 +335,8 @@ export function OnboardingWizard() {
   };
 
   const isPending = completeStepMutation.isPending || provisionMutation.isPending || 
-    completeMutation.isPending || createPropertyMutation.isPending || updateOrgMutation.isPending;
+    completeMutation.isPending || createPropertyMutation.isPending || updateOrgMutation.isPending ||
+    loadSampleDataMutation.isPending;
   
   const step = WIZARD_STEPS[currentStep];
   const StepIcon = step.icon;
@@ -444,17 +475,42 @@ export function OnboardingWizard() {
               >
                 <Upload className="w-10 h-10 text-primary" />
               </motion.div>
-              <h2 className="text-2xl font-bold mb-2">Import Your First Lead</h2>
-              <p className="text-muted-foreground">Bring in your existing leads or start fresh</p>
+              <h2 className="text-2xl font-bold mb-2">Get Started with Data</h2>
+              <p className="text-muted-foreground">Load sample data to explore or import your own</p>
             </div>
             
+            <Card 
+              className="cursor-pointer hover-elevate border-2 border-green-500/30 bg-green-500/5"
+              onClick={() => loadSampleDataMutation.mutate()}
+              data-testid="card-load-sample-data"
+            >
+              <CardContent className="p-4 flex items-center gap-4">
+                <div className="w-12 h-12 rounded-md bg-green-500/10 flex items-center justify-center flex-shrink-0">
+                  <Sparkles className="w-6 h-6 text-green-500" />
+                </div>
+                <div className="flex-1">
+                  <p className="font-medium">Load Sample Data</p>
+                  <p className="text-sm text-muted-foreground">
+                    Explore with realistic leads, properties & deals
+                  </p>
+                </div>
+                {loadSampleDataMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 text-green-500 animate-spin flex-shrink-0" />
+                ) : (
+                  <ArrowRight className="w-4 h-4 text-green-500 flex-shrink-0" />
+                )}
+              </CardContent>
+            </Card>
+
+            <div className="text-center text-sm text-muted-foreground">or</div>
+
             <Card 
               className="cursor-pointer hover-elevate"
               onClick={() => window.open("/leads?action=import", "_blank")}
               data-testid="card-import-csv"
             >
               <CardContent className="p-4 flex items-center gap-4">
-                <div className="w-12 h-12 rounded-md bg-primary/10 flex items-center justify-center">
+                <div className="w-12 h-12 rounded-md bg-primary/10 flex items-center justify-center flex-shrink-0">
                   <Upload className="w-6 h-6 text-primary" />
                 </div>
                 <div className="flex-1">
@@ -475,7 +531,7 @@ export function OnboardingWizard() {
               data-testid="card-add-lead"
             >
               <CardContent className="p-4 flex items-center gap-4">
-                <div className="w-12 h-12 rounded-md bg-muted flex items-center justify-center">
+                <div className="w-12 h-12 rounded-md bg-muted flex items-center justify-center flex-shrink-0">
                   <Plus className="w-6 h-6 text-muted-foreground" />
                 </div>
                 <div className="flex-1">
@@ -695,6 +751,9 @@ export function OnboardingWizard() {
         className="sm:max-w-lg max-h-[90vh] overflow-y-auto"
         data-testid="onboarding-wizard"
       >
+        <VisuallyHidden>
+          <DialogTitle>Onboarding Wizard</DialogTitle>
+        </VisuallyHidden>
         <Button
           variant="ghost"
           size="icon"

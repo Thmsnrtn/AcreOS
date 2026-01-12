@@ -1070,6 +1070,13 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
             </TabsList>
           </div>
           
+          {isLoadingProperty && (
+            <div className="flex items-center justify-center py-8 gap-2" data-testid="skeleton-property-detail-loading">
+              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+              <span className="text-muted-foreground">Updating property details...</span>
+            </div>
+          )}
+          
           <TabsContent value="overview" className="space-y-6 mt-4">
             {hasMapData && (
               <div className="rounded-md overflow-hidden border -mx-4 sm:mx-0">

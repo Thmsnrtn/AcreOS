@@ -1,6 +1,6 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
-import { Keyboard, Navigation, Zap, Bot, Command } from "lucide-react";
+import { Keyboard, Navigation, Zap, Bot, Command, HelpCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -31,6 +31,7 @@ const SHORTCUT_CATEGORIES: ShortcutCategory[] = [
       { key: "⌘ K", description: "Open command palette" },
       { key: "⌘ N", description: "New item (context-aware)" },
       { key: "⌘ /", description: "Toggle sidebar" },
+      { key: "⌘ ?", description: "Open help panel" },
       { key: "/", description: "Focus search" },
       { key: "Esc", description: "Close modal/dialog" },
     ],
@@ -41,6 +42,14 @@ const SHORTCUT_CATEGORIES: ShortcutCategory[] = [
     shortcuts: [
       { key: "⌘ J", description: "Open AI assistant" },
       { key: "g a", description: "Go to AI Command Center" },
+    ],
+  },
+  {
+    name: "Help",
+    icon: HelpCircle,
+    shortcuts: [
+      { key: "⌘ ?", description: "Open help panel" },
+      { key: "g h", description: "Go to Help & Support page" },
     ],
   },
 ];

@@ -29,6 +29,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { prefetchRoute } from "@/lib/queryClient";
 import { NotificationCenter } from "@/components/notification-center";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -43,24 +44,24 @@ const routePrefetchMap: Record<string, string> = {
 };
 
 const navItems = [
-  { label: "Dashboard", icon: LayoutDashboard, href: "/" },
-  { label: "Inbox", icon: Inbox, href: "/inbox", showUnreadBadge: true },
-  { label: "Leads (CRM)", icon: Users, href: "/leads" },
-  { label: "Inventory", icon: Map, href: "/properties" },
-  { label: "Deal Pipeline", icon: GitBranch, href: "/deals" },
-  { label: "Tasks", icon: ListTodo, href: "/tasks" },
-  { label: "Automation", icon: Zap, href: "/automation" },
-  { label: "Workflows", icon: Workflow, href: "/workflows" },
-  { label: "Insights", icon: TrendingUp, href: "/analytics" },
-  { label: "Finance", icon: Banknote, href: "/finance" },
-  { label: "Portfolio", icon: PieChart, href: "/portfolio" },
-  { label: "Listings", icon: Store, href: "/listings" },
-  { label: "Documents", icon: FileText, href: "/documents" },
-  { label: "Marketing", icon: Mail, href: "/campaigns" },
-  { label: "Tools", icon: Calculator, href: "/tools" },
-  { label: "AI", icon: Bot, href: "/command-center" },
-  { label: "Help & Support", icon: HelpCircle, href: "/help" },
-  { label: "Settings", icon: Settings, href: "/settings" },
+  { label: "Dashboard", icon: LayoutDashboard, href: "/", description: "Overview of your land investment business" },
+  { label: "Inbox", icon: Inbox, href: "/inbox", showUnreadBadge: true, description: "Messages and communications" },
+  { label: "Leads (CRM)", icon: Users, href: "/leads", description: "Manage your land seller leads" },
+  { label: "Inventory", icon: Map, href: "/properties", description: "Track properties you own or evaluate" },
+  { label: "Deal Pipeline", icon: GitBranch, href: "/deals", description: "Visualize your deal flow" },
+  { label: "Tasks", icon: ListTodo, href: "/tasks", description: "Your action items and to-do list" },
+  { label: "Automation", icon: Zap, href: "/automation", description: "Set up automated workflows and rules" },
+  { label: "Workflows", icon: Workflow, href: "/workflows", description: "Design and manage complex workflows" },
+  { label: "Insights", icon: TrendingUp, href: "/analytics", description: "Analytics and market insights" },
+  { label: "Finance", icon: Banknote, href: "/finance", description: "Manage seller-financed notes" },
+  { label: "Portfolio", icon: PieChart, href: "/portfolio", description: "View your investment portfolio" },
+  { label: "Listings", icon: Store, href: "/listings", description: "Properties available for sale" },
+  { label: "Documents", icon: FileText, href: "/documents", description: "Store and manage documents" },
+  { label: "Marketing", icon: Mail, href: "/campaigns", description: "Email, SMS, and direct mail campaigns" },
+  { label: "Tools", icon: Calculator, href: "/tools", description: "Calculators and utility tools" },
+  { label: "AI", icon: Bot, href: "/command-center", description: "AI assistants and automation" },
+  { label: "Help & Support", icon: HelpCircle, href: "/help", description: "Help topics and support resources" },
+  { label: "Settings", icon: Settings, href: "/settings", description: "Configure your account and preferences" },
 ];
 
 export function Sidebar() {
@@ -128,35 +129,42 @@ export function Sidebar() {
         {navItems.map((item) => {
           const isActive = location === item.href;
           const showBadge = (item as any).showUnreadBadge && inboxUnreadCount > 0;
+          const itemDescription = (item as any).description || item.label;
           return (
-            <Link 
-              key={item.href} 
-              href={item.href}
-              onClick={onNavClick}
-              className={cn(
-                "flex items-center gap-3 px-4 py-3 md:py-2.5 rounded-lg transition-all duration-150 group min-h-[44px]",
-                isActive 
-                  ? "bg-primary text-primary-foreground shadow-md" 
-                  : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-              )}
-              onMouseEnter={() => handlePrefetch(item.href)}
-              data-testid={`link-nav-${item.href.replace("/", "") || "dashboard"}`}
-            >
-              <item.icon className={cn(
-                "w-5 h-5 transition-colors", 
-                isActive ? "text-primary-foreground" : "text-muted-foreground group-hover:text-sidebar-foreground"
-              )} />
-              <span className="font-medium text-sm flex-1">{item.label}</span>
-              {showBadge && (
-                <Badge 
-                  variant="secondary" 
-                  className="text-xs"
-                  data-testid="badge-inbox-unread"
+            <Tooltip key={item.href} delayDuration={300}>
+              <TooltipTrigger asChild>
+                <Link 
+                  href={item.href}
+                  onClick={onNavClick}
+                  className={cn(
+                    "flex items-center gap-3 px-4 py-3 md:py-2.5 rounded-lg transition-all duration-150 group min-h-[44px]",
+                    isActive 
+                      ? "bg-primary text-primary-foreground shadow-md" 
+                      : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                  )}
+                  onMouseEnter={() => handlePrefetch(item.href)}
+                  data-testid={`link-nav-${item.href.replace("/", "") || "dashboard"}`}
                 >
-                  {inboxUnreadCount > 99 ? "99+" : inboxUnreadCount}
-                </Badge>
-              )}
-            </Link>
+                  <item.icon className={cn(
+                    "w-5 h-5 transition-colors", 
+                    isActive ? "text-primary-foreground" : "text-muted-foreground group-hover:text-sidebar-foreground"
+                  )} />
+                  <span className="font-medium text-sm flex-1">{item.label}</span>
+                  {showBadge && (
+                    <Badge 
+                      variant="secondary" 
+                      className="text-xs"
+                      data-testid="badge-inbox-unread"
+                    >
+                      {inboxUnreadCount > 99 ? "99+" : inboxUnreadCount}
+                    </Badge>
+                  )}
+                </Link>
+              </TooltipTrigger>
+              <TooltipContent side="right" className="max-w-xs">
+                <p>{itemDescription}</p>
+              </TooltipContent>
+            </Tooltip>
           );
         })}
       </nav>

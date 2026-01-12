@@ -5,7 +5,7 @@ interface TelemetryEvent {
 }
 
 const eventQueue: TelemetryEvent[] = [];
-let flushTimeout: NodeJS.Timeout | null = null;
+let flushTimeout: ReturnType<typeof setTimeout> | null = null;
 
 export function trackEvent(event: string, properties?: Record<string, any>) {
   eventQueue.push({
@@ -19,27 +19,34 @@ export function trackEvent(event: string, properties?: Record<string, any>) {
   flushTimeout = setTimeout(flushEvents, 5000);
 }
 
-async function flushEvents() {
+function flushEvents() {
   if (eventQueue.length === 0) return;
   
   const events = [...eventQueue];
   eventQueue.length = 0;
   
   try {
-    await fetch('/api/telemetry', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ events }),
-    });
-  } catch (error) {
+    // Use sendBeacon for reliable unload delivery, fall back to fetch with keepalive
+    const payload = JSON.stringify({ events });
+    if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
+      navigator.sendBeacon('/api/telemetry', new Blob([payload], { type: 'application/json' }));
+    } else {
+      // Fire-and-forget with keepalive to not block navigation
+      void fetch('/api/telemetry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload,
+        keepalive: true,
+      }).catch(() => {});
+    }
+  } catch {
     // Silently fail - telemetry should never break the app
-    console.debug('Telemetry flush failed:', error);
   }
 }
 
 // Flush on page unload
 if (typeof window !== 'undefined') {
-  window.addEventListener('beforeunload', flushEvents);
+  window.addEventListener('beforeunload', () => flushEvents());
 }
 
 // Pre-defined event helpers

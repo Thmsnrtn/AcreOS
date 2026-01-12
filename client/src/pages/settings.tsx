@@ -42,6 +42,7 @@ import { ComplianceSettings } from "@/components/compliance-settings";
 import { AISettings } from "@/components/ai-settings";
 import { ProviderSettings } from "@/components/provider-settings";
 import { AICostDashboard } from "@/components/ai-cost-dashboard";
+import { ByokSettings } from "@/components/settings/ByokSettings";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
@@ -71,7 +72,7 @@ interface SeatPricing {
   yearly?: { id: string; amount: number; currency: string } | null;
 }
 
-const VALID_TABS = ["general", "team", "payments", "communications", "notifications", "ai", "data", "developer"] as const;
+const VALID_TABS = ["general", "team", "payments", "communications", "notifications", "ai", "data", "integrations", "developer"] as const;
 type TabValue = typeof VALID_TABS[number];
 
 interface StripeConnectStatusResponse {
@@ -750,6 +751,10 @@ export default function Settings() {
                   <FileText className="w-4 h-4 hidden sm:inline" />
                   Data
                 </TabsTrigger>
+                <TabsTrigger value="integrations" data-testid="tab-integrations" className="gap-1">
+                  <Link2 className="w-4 h-4 hidden sm:inline" />
+                  Integrations
+                </TabsTrigger>
                 <TabsTrigger value="developer" data-testid="tab-developer" className="gap-1">
                   <Code className="w-4 h-4 hidden sm:inline" />
                   Developer
@@ -1382,6 +1387,21 @@ export default function Settings() {
 
               <div className="space-y-4">
                 <ComplianceSettings />
+              </div>
+            </TabsContent>
+
+            <TabsContent value="integrations" className="space-y-8 mt-6" data-testid="tab-content-integrations">
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-xl font-semibold flex items-center gap-2">
+                    <Link2 className="w-5 h-5" />
+                    Bring Your Own Keys (BYOK)
+                  </h2>
+                  <p className="text-muted-foreground text-sm">
+                    Connect your own API keys to external services for unlimited usage and complete control.
+                  </p>
+                </div>
+                <ByokSettings />
               </div>
             </TabsContent>
 
