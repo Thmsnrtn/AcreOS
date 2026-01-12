@@ -1,4 +1,4 @@
-import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupLabel, SidebarGroupContent, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarHeader } from "@/components/ui/sidebar";
+import { SidebarProvider, Sidebar, SidebarContent, SidebarGroup, SidebarGroupLabel, SidebarGroupContent, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarHeader } from "@/components/ui/sidebar";
 import { Target, TestTube, GitBranch, TrendingUp } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useState, useEffect } from "react";
@@ -49,7 +49,7 @@ export default function MarketingHub() {
   };
 
   return (
-    <>
+    <SidebarProvider>
       <Sidebar>
         <SidebarHeader className="p-4 border-b">
           <div className="flex items-center gap-2">
@@ -132,6 +132,6 @@ export default function MarketingHub() {
           </Tabs>
         </div>
       </main>
-    </>
+    </SidebarProvider>
   );
 }

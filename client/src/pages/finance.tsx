@@ -1242,7 +1242,9 @@ function NoteForm({ onSuccess }: { onSuccess: () => void }) {
   const { data: properties } = useProperties();
 
   const availableProperties = properties?.filter(p => p.status !== 'sold') || [];
-  const buyers = leads?.filter(l => l.type === 'buyer') || leads || [];
+  // Show buyers first, but fall back to all leads if no buyer-type leads exist
+  const buyerLeads = leads?.filter(l => l.type === 'buyer') || [];
+  const buyers = buyerLeads.length > 0 ? buyerLeads : (leads || []);
 
   const form = useForm<z.infer<typeof noteFormSchema>>({
     resolver: zodResolver(noteFormSchema),
