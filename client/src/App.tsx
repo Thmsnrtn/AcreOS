@@ -50,7 +50,6 @@ import PrivacyPolicy from "@/pages/privacy";
 import NotFound from "@/pages/not-found";
 import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
 import { ConversationTray } from "@/components/conversation-tray";
-import { FloatingAssistant } from "@/components/floating-assistant";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { OfflineIndicator } from "@/components/offline-indicator";
 import { FloatingActionButton } from "@/components/floating-action-button";
@@ -243,7 +242,6 @@ function AppContent() {
       {user && <FloatingActionButton />}
       {user && <QuickActionsMenu />}
       {user && <ConversationTray />}
-      {user && <FloatingAssistant />}
       {user && <CommandPalette />}
       {user && <NewItemMenu />}
       {user && <MobileBottomNav />}
