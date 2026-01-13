@@ -1909,29 +1909,48 @@ export function SinglePropertyMap({
         data: geojsonData,
       });
 
-      // Simple 2D fill layer - should always be visible
+      // Get all layers to find where to insert our custom layers
+      const layers = map.current.getStyle().layers;
+      console.log("[SinglePropertyMap] Existing layers count:", layers?.length);
+      
+      // Find a symbol layer to insert before (ensures our layers render above satellite)
+      let firstSymbolId: string | undefined;
+      for (const layer of layers || []) {
+        if (layer.type === 'symbol') {
+          firstSymbolId = layer.id;
+          break;
+        }
+      }
+      console.log("[SinglePropertyMap] Inserting before layer:", firstSymbolId || "none (will be on top)");
+
+      // Add fill layer - bright green with high opacity
       map.current.addLayer({
         id: "property-fill",
         type: "fill",
         source: "property",
         paint: {
-          "fill-color": "#00ff00",
-          "fill-opacity": 0.5,
+          "fill-color": "#22c55e",
+          "fill-opacity": 0.4,
         },
-      });
+      }, firstSymbolId);
 
-      // Bold outline
+      // Bold red outline for maximum visibility
       map.current.addLayer({
         id: "property-outline",
         type: "line",
         source: "property",
         paint: {
-          "line-color": "#ff0000",
-          "line-width": 5,
+          "line-color": "#ef4444",
+          "line-width": 4,
         },
-      });
+      }, firstSymbolId);
 
       console.log("[SinglePropertyMap] Layers added successfully");
+      
+      // Debug: verify layers exist
+      const addedFill = map.current.getLayer("property-fill");
+      const addedOutline = map.current.getLayer("property-outline");
+      console.log("[SinglePropertyMap] Verify layers - fill:", !!addedFill, "outline:", !!addedOutline);
 
       map.current.addControl(new mapboxgl.NavigationControl(), "top-right");
 
