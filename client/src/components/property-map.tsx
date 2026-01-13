@@ -1875,77 +1875,63 @@ export function SinglePropertyMap({
   useEffect(() => {
     if (!mapContainer.current || !MAPBOX_TOKEN || !boundary || !centroid) return;
 
+    // Simple 2D map without terrain for reliable boundary rendering
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
       style: "mapbox://styles/mapbox/satellite-streets-v12",
       center: [centroid.lng, centroid.lat],
-      zoom: 17,
-      pitch: 60,
-      bearing: -17,
+      zoom: 16,
+      pitch: 0,
+      bearing: 0,
       interactive: true,
     });
 
     map.current.on("load", () => {
       if (!map.current) return;
 
-      if (enable3DTerrain) {
-        map.current.addSource("mapbox-dem", {
-          type: "raster-dem",
-          url: "mapbox://mapbox.mapbox-terrain-dem-v1",
-          tileSize: 512,
-          maxzoom: 14,
-        });
-
-        map.current.setTerrain({ source: "mapbox-dem", exaggeration: 1.5 });
-
-        map.current.addLayer({
-          id: "sky",
-          type: "sky",
-          paint: {
-            "sky-type": "atmosphere",
-            "sky-atmosphere-sun": [0.0, 90.0],
-            "sky-atmosphere-sun-intensity": 15,
-          },
-        });
-      }
+      console.log("[SinglePropertyMap] Map loaded, adding layers...");
+      console.log("[SinglePropertyMap] Boundary type:", boundary.type);
+      console.log("[SinglePropertyMap] First coord:", JSON.stringify(boundary.coordinates[0]?.[0]));
 
       const geojsonData: GeoJSON.FeatureCollection = {
         type: "FeatureCollection",
         features: [{
           type: "Feature",
-          properties: { apn, color: "#22c55e" },
+          properties: { apn },
           geometry: boundary as GeoJSON.Geometry,
         }],
       };
+
+      console.log("[SinglePropertyMap] Adding source with data:", JSON.stringify(geojsonData).substring(0, 200));
 
       map.current.addSource("property", {
         type: "geojson",
         data: geojsonData,
       });
 
-      // Use fill-extrusion to render above 3D terrain
+      // Simple 2D fill layer - should always be visible
       map.current.addLayer({
         id: "property-fill",
-        type: "fill-extrusion",
+        type: "fill",
         source: "property",
         paint: {
-          "fill-extrusion-color": "#22c55e",
-          "fill-extrusion-opacity": 0.6,
-          "fill-extrusion-height": 50, // 50 meters above terrain
-          "fill-extrusion-base": 0,
+          "fill-color": "#00ff00",
+          "fill-opacity": 0.5,
         },
       });
 
+      // Bold outline
       map.current.addLayer({
         id: "property-outline",
         type: "line",
         source: "property",
         paint: {
-          "line-color": "#22c55e",
-          "line-width": 4,
-          "line-opacity": 1,
+          "line-color": "#ff0000",
+          "line-width": 5,
         },
       });
+
+      console.log("[SinglePropertyMap] Layers added successfully");
 
       map.current.addControl(new mapboxgl.NavigationControl(), "top-right");
 
