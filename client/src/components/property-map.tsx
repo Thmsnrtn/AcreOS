@@ -2036,20 +2036,44 @@ export function SinglePropertyMap({
       }
     };
 
-    // Wait for map to be fully loaded before adding layers
+    // Use load event with fallback
     const currentMap = map.current;
+    let layersAdded = false;
+    
+    const safeAddLayers = () => {
+      if (layersAdded || !currentMap) return;
+      layersAdded = true;
+      try {
+        console.log("[SinglePropertyMap] safeAddLayers called");
+        addLayers();
+      } catch (err) {
+        console.error("[SinglePropertyMap] Error adding layers:", err);
+      }
+    };
+    
+    // Wait for load event
     currentMap.on("load", () => {
-      if (!currentMap || !currentMap.isStyleLoaded()) {
-        console.log("[SinglePropertyMap] load event fired but style not ready, waiting...");
-        currentMap?.once("styledata", () => {
-          console.log("[SinglePropertyMap] styledata event fired, calling addLayers");
-          addLayers();
-        });
+      console.log("[SinglePropertyMap] load event fired");
+      safeAddLayers();
+    });
+    
+    // Fallback: check style periodically for 5 seconds
+    const checkStyleInterval = setInterval(() => {
+      if (layersAdded) {
+        clearInterval(checkStyleInterval);
         return;
       }
-      console.log("[SinglePropertyMap] load event fired with style ready, calling addLayers");
-      addLayers();
-    });
+      if (currentMap && currentMap.isStyleLoaded()) {
+        console.log("[SinglePropertyMap] Style ready via polling");
+        clearInterval(checkStyleInterval);
+        safeAddLayers();
+      }
+    }, 100);
+    
+    // Cleanup interval after 5s
+    setTimeout(() => {
+      clearInterval(checkStyleInterval);
+    }, 5000);
 
     return () => {
       map.current?.remove();

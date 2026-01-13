@@ -22,6 +22,40 @@ import {
 // APN validation pattern - supports common formats like 123-456-789, 123-45-678-901, 12345678
 const apnPattern = /^[\d]+([-][\d]+)*$/;
 
+// Helper to compute centroid from GeoJSON polygon boundary
+function computeCentroidFromBoundary(boundary: { type: string; coordinates: number[][][] | number[][][][] } | null): { lat: number; lng: number } | null {
+  if (!boundary) return null;
+  
+  try {
+    let coords: number[][] = [];
+    
+    if (boundary.type === "Polygon") {
+      // Polygon: coordinates is number[][][]
+      coords = (boundary.coordinates as number[][][])[0] || [];
+    } else if (boundary.type === "MultiPolygon") {
+      // MultiPolygon: coordinates is number[][][][], take first polygon's first ring
+      coords = ((boundary.coordinates as number[][][][])[0] || [])[0] || [];
+    }
+    
+    if (coords.length === 0) return null;
+    
+    // Compute average of all points
+    let sumLng = 0, sumLat = 0;
+    for (const coord of coords) {
+      sumLng += coord[0];
+      sumLat += coord[1];
+    }
+    
+    return {
+      lng: sumLng / coords.length,
+      lat: sumLat / coords.length
+    };
+  } catch (e) {
+    console.error("Failed to compute centroid from boundary:", e);
+    return null;
+  }
+}
+
 // Client-side form schema with enhanced validation
 const propertyFormSchema = insertPropertySchema.omit({ organizationId: true }).extend({
   apn: z.string()
@@ -670,7 +704,10 @@ function PropertyCard({ property, onDelete }: { property: Property; onDelete: ()
   const [isDownloading, setIsDownloading] = useState(false);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
-  const hasMapData = property.parcelBoundary && property.parcelCentroid;
+  
+  // Compute centroid from boundary if not present
+  const effectiveCentroid = property.parcelCentroid || computeCentroidFromBoundary(property.parcelBoundary as { type: string; coordinates: number[][][] | number[][][][] } | null);
+  const hasMapData = property.parcelBoundary && effectiveCentroid;
 
   const handleDownloadDeed = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -702,7 +739,7 @@ function PropertyCard({ property, onDelete }: { property: Property; onDelete: ()
         {hasMapData ? (
           <SinglePropertyMap
             boundary={property.parcelBoundary}
-            centroid={property.parcelCentroid}
+            centroid={effectiveCentroid}
             apn={property.apn}
             height="100%"
             state={property.state}
@@ -1019,7 +1056,9 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
     return `$${num.toLocaleString()}`;
   };
 
-  const hasMapData = currentProperty.parcelBoundary && currentProperty.parcelCentroid;
+  // Compute centroid from boundary if not present
+  const effectiveCentroid = currentProperty.parcelCentroid || computeCentroidFromBoundary(currentProperty.parcelBoundary as { type: string; coordinates: number[][][] | number[][][][] } | null);
+  const hasMapData = currentProperty.parcelBoundary && effectiveCentroid;
   const hasOwnerData = parcelData?.owner || parcelData?.ownerAddress;
   const hasUtilities = utilities && Object.values(utilities).some(Boolean);
 
@@ -1083,7 +1122,7 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
                 <div className="h-[250px] sm:h-[350px]">
                   <SinglePropertyMap
                     boundary={currentProperty.parcelBoundary as { type: "Polygon" | "MultiPolygon"; coordinates: number[][][] | number[][][][]; }}
-                    centroid={currentProperty.parcelCentroid as { lat: number; lng: number }}
+                    centroid={effectiveCentroid as { lat: number; lng: number }}
                     apn={currentProperty.apn}
                     height="100%"
                     enable3DTerrain={true}
