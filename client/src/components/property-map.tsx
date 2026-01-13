@@ -2188,13 +2188,88 @@ export function SinglePropertyMap({
     );
   }
 
+  // Calculate SVG path for boundary overlay (iOS webview fallback)
+  const getSvgPath = () => {
+    if (!boundary || !centroid) return null;
+    
+    // Get polygon coordinates - handle both Polygon and MultiPolygon
+    let coords: number[][] | undefined;
+    if (boundary.type === "Polygon") {
+      coords = boundary.coordinates[0] as number[][];
+    } else {
+      // MultiPolygon - get first polygon's outer ring
+      const firstPolygon = boundary.coordinates[0];
+      if (firstPolygon && firstPolygon.length > 0) {
+        coords = firstPolygon[0] as number[][];
+      }
+    }
+    
+    if (!coords || coords.length < 3) return null;
+    
+    // Calculate bounds
+    let minLng = Infinity, maxLng = -Infinity;
+    let minLat = Infinity, maxLat = -Infinity;
+    
+    for (const coord of coords) {
+      const lng = coord[0] as number;
+      const lat = coord[1] as number;
+      minLng = Math.min(minLng, lng);
+      maxLng = Math.max(maxLng, lng);
+      minLat = Math.min(minLat, lat);
+      maxLat = Math.max(maxLat, lat);
+    }
+    
+    // Calculate the view extent (same as map zoom 17)
+    const latSpan = 0.003; // Approximate span at zoom 17
+    const lngSpan = 0.004;
+    
+    const viewMinLng = centroid.lng - lngSpan;
+    const viewMaxLng = centroid.lng + lngSpan;
+    const viewMinLat = centroid.lat - latSpan;
+    const viewMaxLat = centroid.lat + latSpan;
+    
+    // Convert to SVG coordinates (0-100 range)
+    const points = coords.map((coord) => {
+      const lng = coord[0] as number;
+      const lat = coord[1] as number;
+      const x = ((lng - viewMinLng) / (viewMaxLng - viewMinLng)) * 100;
+      const y = ((viewMaxLat - lat) / (viewMaxLat - viewMinLat)) * 100;
+      return `${x},${y}`;
+    }).join(' ');
+    
+    return points;
+  };
+  
+  const svgPoints = getSvgPath();
+
   return (
     <div 
-      ref={mapContainer} 
-      className="w-full h-full rounded-md overflow-hidden" 
+      className="relative w-full h-full rounded-md overflow-hidden" 
       style={{ height }}
       data-testid="single-property-map"
-    />
+    >
+      <div 
+        ref={mapContainer} 
+        className="absolute inset-0 w-full h-full" 
+      />
+      {/* SVG overlay fallback for iOS webview compatibility */}
+      {svgPoints && (
+        <svg 
+          className="absolute inset-0 w-full h-full pointer-events-none"
+          viewBox="0 0 100 100"
+          preserveAspectRatio="none"
+          style={{ zIndex: 10 }}
+        >
+          <polygon
+            points={svgPoints}
+            fill="rgba(239, 68, 68, 0.5)"
+            stroke="white"
+            strokeWidth="0.8"
+            strokeLinejoin="round"
+          />
+        </svg>
+      )}
+    </div>
   );
 }
 
