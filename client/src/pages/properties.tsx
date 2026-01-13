@@ -107,7 +107,7 @@ import { PropertiesEmptyState } from "@/components/empty-states";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { SinglePropertyMap } from "@/components/property-map";
+import { SinglePropertyMap, StaticPropertyMap } from "@/components/property-map";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
@@ -737,15 +737,12 @@ function PropertyCard({ property, onDelete }: { property: Property; onDelete: ()
     <Card className="card-hover border-border/50 group" data-testid={`card-property-${property.id}`}>
       <div className="h-44 sm:h-40 bg-slate-100 dark:bg-slate-900 relative overflow-hidden">
         {hasMapData ? (
-          <SinglePropertyMap
-            boundary={property.parcelBoundary}
+          <StaticPropertyMap
+            boundary={property.parcelBoundary as { type: string; coordinates: number[][][] }}
             centroid={effectiveCentroid}
-            apn={property.apn}
-            height="100%"
-            state={property.state}
-            county={property.county}
-            showNearbyParcels={true}
-            enable3DTerrain={true}
+            height="176px"
+            width={400}
+            onClick={() => setIsDetailOpen(true)}
           />
         ) : (
           <div className="flex items-center justify-center h-full">

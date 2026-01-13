@@ -2084,4 +2084,153 @@ export function SinglePropertyMap({
   );
 }
 
+interface StaticPropertyMapProps {
+  boundary: {
+    type: string;
+    coordinates: number[][][];
+  };
+  centroid: { lat: number; lng: number };
+  height?: string;
+  width?: number;
+  className?: string;
+  onClick?: () => void;
+}
+
+export function StaticPropertyMap({ 
+  boundary, 
+  centroid, 
+  height = "200px",
+  width = 400,
+  className = "",
+  onClick
+}: StaticPropertyMapProps) {
+  const [imageError, setImageError] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  if (!MAPBOX_TOKEN) {
+    return (
+      <div className={cn("flex items-center justify-center bg-muted/30 rounded-md", className)} style={{ height }}>
+        <div className="text-center text-muted-foreground p-4">
+          <MapPin className="h-6 w-6 mx-auto mb-2 opacity-50" />
+          <p className="text-xs">Configure Mapbox token</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!boundary || !centroid) {
+    return (
+      <div className={cn("flex items-center justify-center bg-muted/30 rounded-md", className)} style={{ height }}>
+        <div className="text-center text-muted-foreground p-4">
+          <MapPin className="h-6 w-6 mx-auto mb-2 opacity-50" />
+          <p className="text-xs">No map data</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Simplify coordinates for URL (take every Nth point to reduce URL length)
+  const simplifyCoordinates = (coords: number[][], maxPoints: number = 50): number[][] => {
+    if (coords.length <= maxPoints) return coords;
+    const step = Math.ceil(coords.length / maxPoints);
+    const simplified = coords.filter((_, i) => i % step === 0);
+    // Ensure the polygon is closed
+    if (simplified.length > 0 && 
+        (simplified[0][0] !== simplified[simplified.length - 1][0] || 
+         simplified[0][1] !== simplified[simplified.length - 1][1])) {
+      simplified.push(simplified[0]);
+    }
+    return simplified;
+  };
+
+  // Build path overlay for the boundary (using Mapbox path syntax)
+  // Format: path-{strokeWidth}+{strokeColor}-{fillOpacity}+{fillColor}({coordinates})
+  const coords = boundary.coordinates[0] || [];
+  const simplifiedCoords = simplifyCoordinates(coords);
+  
+  // Create a path string: lng,lat,lng,lat,...
+  const pathCoords = simplifiedCoords.map(([lng, lat]) => `${lng.toFixed(5)},${lat.toFixed(5)}`).join(',');
+  
+  // Use GeoJSON overlay for more accurate rendering
+  const geojsonOverlay = {
+    type: "Feature",
+    properties: {
+      "stroke": "#ef4444",
+      "stroke-width": 3,
+      "stroke-opacity": 1,
+      "fill": "#22c55e",
+      "fill-opacity": 0.4
+    },
+    geometry: {
+      type: "Polygon",
+      coordinates: [simplifiedCoords]
+    }
+  };
+
+  // URL-encode the GeoJSON
+  const encodedGeojson = encodeURIComponent(JSON.stringify(geojsonOverlay));
+
+  // Calculate dimensions (Mapbox Static API has limits)
+  const pixelHeight = parseInt(height) || 200;
+  const pixelWidth = Math.min(width, 1280); // Max 1280px
+  const safeHeight = Math.min(pixelHeight, 1280);
+
+  // Build the static map URL with auto-fitting
+  const staticMapUrl = `https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/static/geojson(${encodedGeojson})/auto/${pixelWidth}x${safeHeight}@2x?access_token=${MAPBOX_TOKEN}&padding=30`;
+
+  // Fallback URL without GeoJSON overlay (just satellite view centered on property)
+  const fallbackUrl = `https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/static/${centroid.lng},${centroid.lat},16/${pixelWidth}x${safeHeight}@2x?access_token=${MAPBOX_TOKEN}`;
+
+  if (imageError) {
+    return (
+      <div 
+        className={cn("relative overflow-hidden rounded-md cursor-pointer", className)} 
+        style={{ height }}
+        onClick={onClick}
+        data-testid="static-property-map-fallback"
+      >
+        <img 
+          src={fallbackUrl}
+          alt="Property satellite view"
+          className="w-full h-full object-cover"
+          loading="lazy"
+        />
+        <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+          <Badge variant="secondary" className="text-xs">
+            <MapPin className="h-3 w-3 mr-1" />
+            View Details
+          </Badge>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div 
+      className={cn("relative overflow-hidden rounded-md", onClick ? "cursor-pointer hover:opacity-95 transition-opacity" : "", className)} 
+      style={{ height }}
+      onClick={onClick}
+      data-testid="static-property-map"
+    >
+      {isLoading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-muted/50">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      )}
+      <img 
+        src={staticMapUrl}
+        alt="Property boundary map"
+        className="w-full h-full object-cover"
+        loading="lazy"
+        onLoad={() => setIsLoading(false)}
+        onError={() => {
+          console.warn("[StaticPropertyMap] Failed to load static map with overlay, using fallback");
+          setImageError(true);
+          setIsLoading(false);
+        }}
+      />
+    </div>
+  );
+}
+
 export default PropertyMap;
