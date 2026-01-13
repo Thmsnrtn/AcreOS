@@ -1923,13 +1923,16 @@ export function SinglePropertyMap({
         data: geojsonData,
       });
 
+      // Use fill-extrusion to render above 3D terrain
       map.current.addLayer({
         id: "property-fill",
-        type: "fill",
+        type: "fill-extrusion",
         source: "property",
         paint: {
-          "fill-color": "#22c55e",
-          "fill-opacity": 0.35,
+          "fill-extrusion-color": "#22c55e",
+          "fill-extrusion-opacity": 0.6,
+          "fill-extrusion-height": 50, // 50 meters above terrain
+          "fill-extrusion-base": 0,
         },
       });
 
@@ -1939,8 +1942,8 @@ export function SinglePropertyMap({
         source: "property",
         paint: {
           "line-color": "#22c55e",
-          "line-width": 3,
-          "line-opacity": 0.9,
+          "line-width": 4,
+          "line-opacity": 1,
         },
       });
 
