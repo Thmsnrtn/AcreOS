@@ -2028,7 +2028,17 @@ export function SinglePropertyMap({
     };
 
     // Wait for map to be fully loaded before adding layers
-    map.current.on("load", () => {
+    const currentMap = map.current;
+    currentMap.on("load", () => {
+      if (!currentMap || !currentMap.isStyleLoaded()) {
+        console.log("[SinglePropertyMap] load event fired but style not ready, waiting...");
+        currentMap?.once("styledata", () => {
+          console.log("[SinglePropertyMap] styledata event fired, calling addLayers");
+          addLayers();
+        });
+        return;
+      }
+      console.log("[SinglePropertyMap] load event fired with style ready, calling addLayers");
       addLayers();
     });
 
