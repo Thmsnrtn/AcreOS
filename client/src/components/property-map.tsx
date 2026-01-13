@@ -1871,86 +1871,33 @@ export function SinglePropertyMap({
 }: SinglePropertyMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
-  const navControlAdded = useRef(false);
-  const [mapError, setMapError] = useState<string | null>(null);
-  const [nearbyParcels, setNearbyParcels] = useState<NearbyParcel[]>([]);
-  const nearbyParcelsRef = useRef<NearbyParcel[]>([]);
 
   useEffect(() => {
-    nearbyParcelsRef.current = nearbyParcels;
-  }, [nearbyParcels]);
-
-  useEffect(() => {
-    if (!centroid || !state || !county || !showNearbyParcels) return;
-    
-    const fetchNearbyParcels = async () => {
-      try {
-        const response = await fetch(
-          `/api/parcels/nearby?lat=${centroid.lat}&lng=${centroid.lng}&state=${state}&county=${encodeURIComponent(county)}&radius=0.25`
-        );
-        if (response.ok) {
-          const data = await response.json();
-          if (data.parcels && data.parcels.length > 0) {
-            const filtered = data.parcels.filter((p: NearbyParcel) => p.apn !== apn);
-            setNearbyParcels(filtered);
-          }
-        }
-      } catch (err) {
-        console.log("Could not fetch nearby parcels:", err);
-      }
-    };
-    
-    fetchNearbyParcels();
-  }, [centroid, state, county, apn, showNearbyParcels]);
-
-  useEffect(() => {
-    console.log("[SinglePropertyMap] useEffect running", { 
-      hasContainer: !!mapContainer.current, 
-      hasToken: !!MAPBOX_TOKEN, 
-      hasBoundary: !!boundary, 
-      hasCentroid: !!centroid 
-    });
-    
     if (!mapContainer.current || !MAPBOX_TOKEN || !boundary || !centroid) return;
 
-    console.log("[SinglePropertyMap] Creating map instance");
-    
-    try {
-      // Use 2D flat map for better iOS webview compatibility
-      map.current = new mapboxgl.Map({
-        container: mapContainer.current,
-        style: "mapbox://styles/mapbox/satellite-streets-v12",
-        center: [centroid.lng, centroid.lat],
-        zoom: 17,
-        pitch: enable3DTerrain ? 60 : 0,  // Use flat view unless 3D is explicitly enabled
-        bearing: enable3DTerrain ? -17 : 0,
-        interactive: true,
-        preserveDrawingBuffer: true,  // May help with iOS rendering
-        antialias: true,
-      });
-    } catch (error) {
-      console.error("Failed to initialize map:", error);
-      setMapError("Unable to load map. WebGL may not be supported.");
-      return;
-    }
+    map.current = new mapboxgl.Map({
+      container: mapContainer.current,
+      style: "mapbox://styles/mapbox/satellite-streets-v12",
+      center: [centroid.lng, centroid.lat],
+      zoom: 17,
+      pitch: 60,
+      bearing: -17,
+      interactive: true,
+    });
 
-    const addLayers = () => {
+    map.current.on("load", () => {
       if (!map.current) return;
-      
-      // Debug: verify we're adding layers
-      console.log("[SinglePropertyMap] addLayers called, boundary:", boundary ? "present" : "missing");
 
-      if (enable3DTerrain && !map.current.getSource("mapbox-dem")) {
+      if (enable3DTerrain) {
         map.current.addSource("mapbox-dem", {
           type: "raster-dem",
           url: "mapbox://mapbox.mapbox-terrain-dem-v1",
           tileSize: 512,
           maxzoom: 14,
         });
-        map.current.setTerrain({ source: "mapbox-dem", exaggeration: 1.5 });
-      }
 
-      if (!map.current.getLayer("sky") && enable3DTerrain) {
+        map.current.setTerrain({ source: "mapbox-dem", exaggeration: 1.5 });
+
         map.current.addLayer({
           id: "sky",
           type: "sky",
@@ -1962,197 +1909,87 @@ export function SinglePropertyMap({
         });
       }
 
-      if (!map.current.getSource("property")) {
-        const geojsonData: GeoJSON.FeatureCollection = {
-          type: "FeatureCollection",
-          features: [{
-            type: "Feature",
-            properties: { apn, color: "#ef4444" },
-            geometry: boundary as GeoJSON.Geometry,
-          }],
-        };
-        
-        console.log("[SinglePropertyMap] Adding property source with data:", JSON.stringify(geojsonData).slice(0, 200));
-        
-        map.current.addSource("property", {
-          type: "geojson",
-          data: geojsonData,
-        });
+      const geojsonData: GeoJSON.FeatureCollection = {
+        type: "FeatureCollection",
+        features: [{
+          type: "Feature",
+          properties: { apn, color: "#22c55e" },
+          geometry: boundary as GeoJSON.Geometry,
+        }],
+      };
 
-        map.current.addLayer({
-          id: "property-fill",
-          type: "fill",
-          source: "property",
-          paint: {
-            "fill-color": "#ef4444",
-            "fill-opacity": 0.5,
-          },
-        });
-        console.log("[SinglePropertyMap] Added property-fill layer");
+      map.current.addSource("property", {
+        type: "geojson",
+        data: geojsonData,
+      });
 
-        map.current.addLayer({
-          id: "property-outline",
-          type: "line",
-          source: "property",
-          paint: {
-            "line-color": "#ffffff",
-            "line-width": 5,
-            "line-opacity": 1,
-          },
-        });
-        console.log("[SinglePropertyMap] Added property-outline layer");
-      } else {
-        console.log("[SinglePropertyMap] property source already exists, skipping");
+      map.current.addLayer({
+        id: "property-fill",
+        type: "fill",
+        source: "property",
+        paint: {
+          "fill-color": "#22c55e",
+          "fill-opacity": 0.35,
+        },
+      });
+
+      map.current.addLayer({
+        id: "property-outline",
+        type: "line",
+        source: "property",
+        paint: {
+          "line-color": "#22c55e",
+          "line-width": 3,
+          "line-opacity": 0.9,
+        },
+      });
+
+      map.current.addControl(new mapboxgl.NavigationControl(), "top-right");
+
+      // Fetch and display nearby parcels
+      if (showNearbyParcels && state && county) {
+        fetch(`/api/parcels/nearby?lat=${centroid.lat}&lng=${centroid.lng}&state=${state}&county=${encodeURIComponent(county)}&radius=0.25`)
+          .then(res => res.ok ? res.json() : null)
+          .then(data => {
+            if (!data?.parcels || !map.current) return;
+            const filtered = data.parcels.filter((p: NearbyParcel) => p.apn !== apn);
+            if (filtered.length === 0) return;
+
+            const nearbyGeojson: GeoJSON.FeatureCollection = {
+              type: "FeatureCollection",
+              features: filtered.map((p: NearbyParcel) => ({
+                type: "Feature" as const,
+                properties: { apn: p.apn },
+                geometry: p.boundary,
+              })),
+            };
+
+            if (!map.current.getSource("nearby-parcels")) {
+              map.current.addSource("nearby-parcels", {
+                type: "geojson",
+                data: nearbyGeojson,
+              });
+
+              map.current.addLayer({
+                id: "nearby-parcels-outline",
+                type: "line",
+                source: "nearby-parcels",
+                paint: {
+                  "line-color": "#fbbf24",
+                  "line-width": 2,
+                  "line-opacity": 0.8,
+                },
+              }, "property-fill");
+            }
+          })
+          .catch(() => {});
       }
-
-      const currentNearby = nearbyParcelsRef.current;
-      if (currentNearby.length > 0 && !map.current.getSource("nearby-parcels")) {
-        const nearbyGeojson: GeoJSON.FeatureCollection = {
-          type: "FeatureCollection",
-          features: currentNearby.map(p => ({
-            type: "Feature" as const,
-            properties: { apn: p.apn },
-            geometry: p.boundary,
-          })),
-        };
-
-        map.current.addSource("nearby-parcels", {
-          type: "geojson",
-          data: nearbyGeojson,
-        });
-
-        map.current.addLayer({
-          id: "nearby-parcels-outline",
-          type: "line",
-          source: "nearby-parcels",
-          paint: {
-            "line-color": "#fbbf24",
-            "line-width": 2,
-            "line-opacity": 0.8,
-          },
-        }, "property-fill");
-      }
-
-      if (!navControlAdded.current) {
-        map.current.addControl(new mapboxgl.NavigationControl(), "top-right");
-        navControlAdded.current = true;
-      }
-    };
-
-    // Use multiple event listeners with fallback
-    const currentMap = map.current;
-    let layersAdded = false;
-    
-    const safeAddLayers = () => {
-      if (layersAdded || !currentMap) return;
-      
-      // Double-check style is actually ready
-      try {
-        // This will throw if style isn't ready
-        currentMap.getStyle();
-      } catch (err) {
-        console.log("[SinglePropertyMap] Style not ready yet, waiting...");
-        return;
-      }
-      
-      layersAdded = true;
-      try {
-        console.log("[SinglePropertyMap] safeAddLayers called");
-        addLayers();
-      } catch (err) {
-        console.error("[SinglePropertyMap] Error adding layers:", err);
-      }
-    };
-    
-    // Wait for load event (primary)
-    currentMap.on("load", () => {
-      console.log("[SinglePropertyMap] load event fired");
-      safeAddLayers();
     });
-    
-    // Also listen for style.load event (may fire separately)
-    currentMap.on("style.load", () => {
-      console.log("[SinglePropertyMap] style.load event fired");
-      safeAddLayers();
-    });
-    
-    // Also try on idle event
-    currentMap.once("idle", () => {
-      console.log("[SinglePropertyMap] idle event fired");
-      safeAddLayers();
-    });
-    
-    // Aggressive fallback: check style periodically for 10 seconds
-    const checkStyleInterval = setInterval(() => {
-      if (layersAdded) {
-        clearInterval(checkStyleInterval);
-        return;
-      }
-      try {
-        if (currentMap && currentMap.isStyleLoaded()) {
-          console.log("[SinglePropertyMap] Style ready via polling");
-          clearInterval(checkStyleInterval);
-          safeAddLayers();
-        }
-      } catch (err) {
-        // Style check failed, continue polling
-      }
-    }, 200);
-    
-    // Cleanup interval after 10s
-    setTimeout(() => {
-      clearInterval(checkStyleInterval);
-      // Last ditch attempt
-      if (!layersAdded) {
-        console.log("[SinglePropertyMap] Final attempt after 10s timeout");
-        safeAddLayers();
-      }
-    }, 10000);
 
     return () => {
       map.current?.remove();
-      map.current = null;
-      navControlAdded.current = false;
     };
-  }, [boundary, centroid, apn, enable3DTerrain]);
-
-  useEffect(() => {
-    if (!map.current || nearbyParcels.length === 0) return;
-    
-    if (!map.current.isStyleLoaded()) return;
-    
-    if (map.current.getLayer("nearby-parcels-outline")) {
-      map.current.removeLayer("nearby-parcels-outline");
-    }
-    if (map.current.getSource("nearby-parcels")) {
-      map.current.removeSource("nearby-parcels");
-    }
-    
-    const nearbyGeojson: GeoJSON.FeatureCollection = {
-      type: "FeatureCollection",
-      features: nearbyParcels.map(p => ({
-        type: "Feature" as const,
-        properties: { apn: p.apn },
-        geometry: p.boundary,
-      })),
-    };
-
-    map.current.addSource("nearby-parcels", {
-      type: "geojson",
-      data: nearbyGeojson,
-    });
-
-    map.current.addLayer({
-      id: "nearby-parcels-outline",
-      type: "line",
-      source: "nearby-parcels",
-      paint: {
-        "line-color": "#fbbf24",
-        "line-width": 2,
-        "line-opacity": 0.8,
-      },
-    }, "property-fill");
-  }, [nearbyParcels]);
+  }, [boundary, centroid, apn, enable3DTerrain, state, county, showNearbyParcels]);
 
   if (!MAPBOX_TOKEN) {
     return (
@@ -2171,18 +2008,6 @@ export function SinglePropertyMap({
         <div className="text-center text-muted-foreground p-4">
           <MapPin className="h-6 w-6 mx-auto mb-2 opacity-50" />
           <p className="text-xs">No map data</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (mapError) {
-    return (
-      <div className="flex items-center justify-center bg-muted/30 rounded-md" style={{ height }} data-testid="single-property-map">
-        <div className="text-center text-muted-foreground p-4">
-          <MapPin className="h-6 w-6 mx-auto mb-2 opacity-50" />
-          <p className="text-xs">{mapError}</p>
-          <p className="text-xs mt-1">Coordinates: {centroid.lat.toFixed(4)}, {centroid.lng.toFixed(4)}</p>
         </div>
       </div>
     );
