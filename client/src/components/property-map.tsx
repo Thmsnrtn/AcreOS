@@ -1896,8 +1896,10 @@ export function SinglePropertyMap({
     console.log("[SinglePropertyMap] Computed bounds:", JSON.stringify(bounds));
     console.log("[SinglePropertyMap] Centroid:", centroid.lng, centroid.lat);
 
+    console.log("[SinglePropertyMap] Creating map instance...");
+    
     // Simple 2D map without terrain for reliable boundary rendering
-    map.current = new mapboxgl.Map({
+    const mapInstance = new mapboxgl.Map({
       container: mapContainer.current,
       style: "mapbox://styles/mapbox/satellite-streets-v12",
       center: [centroid.lng, centroid.lat],
@@ -1906,11 +1908,23 @@ export function SinglePropertyMap({
       bearing: 0,
       interactive: true,
     });
+    map.current = mapInstance;
 
-    map.current.on("load", () => {
-      if (!map.current) return;
+    // Add error handler
+    mapInstance.on("error", (e) => {
+      console.error("[SinglePropertyMap] Map error:", e.error?.message || e);
+    });
 
-      console.log("[SinglePropertyMap] Map loaded, adding layers...");
+    // Function to add layers - can be called from multiple events
+    const addLayers = () => {
+      console.log("[SinglePropertyMap] addLayers called, isStyleLoaded:", mapInstance.isStyleLoaded());
+      if (!mapInstance.isStyleLoaded()) return;
+      if (mapInstance.getSource("property")) {
+        console.log("[SinglePropertyMap] Source already exists, skipping");
+        return;
+      }
+
+      console.log("[SinglePropertyMap] Adding layers now...");
       console.log("[SinglePropertyMap] Boundary type:", boundary.type);
       console.log("[SinglePropertyMap] Raw boundary coordinates:", JSON.stringify(boundary.coordinates).substring(0, 300));
 
@@ -1925,13 +1939,13 @@ export function SinglePropertyMap({
 
       console.log("[SinglePropertyMap] Full GeoJSON:", JSON.stringify(geojsonData));
 
-      map.current.addSource("property", {
+      mapInstance.addSource("property", {
         type: "geojson",
         data: geojsonData,
       });
 
       // Add fill layer on top of everything (no beforeId)
-      map.current.addLayer({
+      mapInstance.addLayer({
         id: "property-fill",
         type: "fill",
         source: "property",
@@ -1942,7 +1956,7 @@ export function SinglePropertyMap({
       });
 
       // Bold outline on top
-      map.current.addLayer({
+      mapInstance.addLayer({
         id: "property-outline",
         type: "line",
         source: "property",
@@ -1955,17 +1969,17 @@ export function SinglePropertyMap({
       console.log("[SinglePropertyMap] Layers added successfully");
       
       // Debug: verify layers exist and check their visibility
-      const addedFill = map.current.getLayer("property-fill");
-      const addedOutline = map.current.getLayer("property-outline");
+      const addedFill = mapInstance.getLayer("property-fill");
+      const addedOutline = mapInstance.getLayer("property-outline");
       console.log("[SinglePropertyMap] Verify layers - fill:", !!addedFill, "outline:", !!addedOutline);
       
       // Get source data to verify it was set correctly
-      const source = map.current.getSource("property") as mapboxgl.GeoJSONSource;
+      const source = mapInstance.getSource("property") as mapboxgl.GeoJSONSource;
       console.log("[SinglePropertyMap] Source exists:", !!source);
 
       // Fit to boundary bounds with padding
       try {
-        map.current.fitBounds(bounds as mapboxgl.LngLatBoundsLike, {
+        mapInstance.fitBounds(bounds as mapboxgl.LngLatBoundsLike, {
           padding: 50,
           duration: 0,
         });
@@ -1974,14 +1988,14 @@ export function SinglePropertyMap({
         console.error("[SinglePropertyMap] fitBounds error:", e);
       }
 
-      map.current.addControl(new mapboxgl.NavigationControl(), "top-right");
+      mapInstance.addControl(new mapboxgl.NavigationControl(), "top-right");
 
       // Fetch and display nearby parcels
       if (showNearbyParcels && state && county) {
         fetch(`/api/parcels/nearby?lat=${centroid.lat}&lng=${centroid.lng}&state=${state}&county=${encodeURIComponent(county)}&radius=0.25`)
           .then(res => res.ok ? res.json() : null)
           .then(data => {
-            if (!data?.parcels || !map.current) return;
+            if (!data?.parcels || !mapInstance) return;
             const filtered = data.parcels.filter((p: NearbyParcel) => p.apn !== apn);
             if (filtered.length === 0) return;
 
@@ -1994,13 +2008,13 @@ export function SinglePropertyMap({
               })),
             };
 
-            if (!map.current.getSource("nearby-parcels")) {
-              map.current.addSource("nearby-parcels", {
+            if (!mapInstance.getSource("nearby-parcels")) {
+              mapInstance.addSource("nearby-parcels", {
                 type: "geojson",
                 data: nearbyGeojson,
               });
 
-              map.current.addLayer({
+              mapInstance.addLayer({
                 id: "nearby-parcels-outline",
                 type: "line",
                 source: "nearby-parcels",
@@ -2014,6 +2028,23 @@ export function SinglePropertyMap({
           })
           .catch(() => {});
       }
+    };
+
+    // Try multiple events to ensure layers get added
+    mapInstance.on("load", () => {
+      console.log("[SinglePropertyMap] 'load' event fired");
+      addLayers();
+    });
+
+    mapInstance.on("style.load", () => {
+      console.log("[SinglePropertyMap] 'style.load' event fired");
+      addLayers();
+    });
+
+    // Also try after idle as a fallback
+    mapInstance.once("idle", () => {
+      console.log("[SinglePropertyMap] 'idle' event fired");
+      addLayers();
     });
 
     return () => {
