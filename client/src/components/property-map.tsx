@@ -1875,6 +1875,27 @@ export function SinglePropertyMap({
   useEffect(() => {
     if (!mapContainer.current || !MAPBOX_TOKEN || !boundary || !centroid) return;
 
+    // Helper to compute bounds from polygon coordinates
+    const computeBounds = (coords: number[][][]): [[number, number], [number, number]] => {
+      let minLng = Infinity, maxLng = -Infinity;
+      let minLat = Infinity, maxLat = -Infinity;
+      for (const ring of coords) {
+        for (const [lng, lat] of ring) {
+          minLng = Math.min(minLng, lng);
+          maxLng = Math.max(maxLng, lng);
+          minLat = Math.min(minLat, lat);
+          maxLat = Math.max(maxLat, lat);
+        }
+      }
+      return [[minLng, minLat], [maxLng, maxLat]];
+    };
+
+    // Compute bounds from boundary coordinates
+    const coords = boundary.coordinates as number[][][];
+    const bounds = computeBounds(coords);
+    console.log("[SinglePropertyMap] Computed bounds:", JSON.stringify(bounds));
+    console.log("[SinglePropertyMap] Centroid:", centroid.lng, centroid.lat);
+
     // Simple 2D map without terrain for reliable boundary rendering
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
@@ -1891,7 +1912,7 @@ export function SinglePropertyMap({
 
       console.log("[SinglePropertyMap] Map loaded, adding layers...");
       console.log("[SinglePropertyMap] Boundary type:", boundary.type);
-      console.log("[SinglePropertyMap] First coord:", JSON.stringify(boundary.coordinates[0]?.[0]));
+      console.log("[SinglePropertyMap] Raw boundary coordinates:", JSON.stringify(boundary.coordinates).substring(0, 300));
 
       const geojsonData: GeoJSON.FeatureCollection = {
         type: "FeatureCollection",
@@ -1902,55 +1923,56 @@ export function SinglePropertyMap({
         }],
       };
 
-      console.log("[SinglePropertyMap] Adding source with data:", JSON.stringify(geojsonData).substring(0, 200));
+      console.log("[SinglePropertyMap] Full GeoJSON:", JSON.stringify(geojsonData));
 
       map.current.addSource("property", {
         type: "geojson",
         data: geojsonData,
       });
 
-      // Get all layers to find where to insert our custom layers
-      const layers = map.current.getStyle().layers;
-      console.log("[SinglePropertyMap] Existing layers count:", layers?.length);
-      
-      // Find a symbol layer to insert before (ensures our layers render above satellite)
-      let firstSymbolId: string | undefined;
-      for (const layer of layers || []) {
-        if (layer.type === 'symbol') {
-          firstSymbolId = layer.id;
-          break;
-        }
-      }
-      console.log("[SinglePropertyMap] Inserting before layer:", firstSymbolId || "none (will be on top)");
-
-      // Add fill layer - bright green with high opacity
+      // Add fill layer on top of everything (no beforeId)
       map.current.addLayer({
         id: "property-fill",
         type: "fill",
         source: "property",
         paint: {
-          "fill-color": "#22c55e",
-          "fill-opacity": 0.4,
+          "fill-color": "#00ff00",
+          "fill-opacity": 0.6,
         },
-      }, firstSymbolId);
+      });
 
-      // Bold red outline for maximum visibility
+      // Bold outline on top
       map.current.addLayer({
         id: "property-outline",
         type: "line",
         source: "property",
         paint: {
-          "line-color": "#ef4444",
-          "line-width": 4,
+          "line-color": "#ff0000",
+          "line-width": 6,
         },
-      }, firstSymbolId);
+      });
 
       console.log("[SinglePropertyMap] Layers added successfully");
       
-      // Debug: verify layers exist
+      // Debug: verify layers exist and check their visibility
       const addedFill = map.current.getLayer("property-fill");
       const addedOutline = map.current.getLayer("property-outline");
       console.log("[SinglePropertyMap] Verify layers - fill:", !!addedFill, "outline:", !!addedOutline);
+      
+      // Get source data to verify it was set correctly
+      const source = map.current.getSource("property") as mapboxgl.GeoJSONSource;
+      console.log("[SinglePropertyMap] Source exists:", !!source);
+
+      // Fit to boundary bounds with padding
+      try {
+        map.current.fitBounds(bounds as mapboxgl.LngLatBoundsLike, {
+          padding: 50,
+          duration: 0,
+        });
+        console.log("[SinglePropertyMap] fitBounds completed");
+      } catch (e) {
+        console.error("[SinglePropertyMap] fitBounds error:", e);
+      }
 
       map.current.addControl(new mapboxgl.NavigationControl(), "top-right");
 
