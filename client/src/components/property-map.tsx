@@ -1916,14 +1916,17 @@ export function SinglePropertyMap({
     console.log("[SinglePropertyMap] Creating map instance");
     
     try {
+      // Use 2D flat map for better iOS webview compatibility
       map.current = new mapboxgl.Map({
         container: mapContainer.current,
         style: "mapbox://styles/mapbox/satellite-streets-v12",
         center: [centroid.lng, centroid.lat],
         zoom: 17,
-        pitch: 60,
-        bearing: -17,
+        pitch: enable3DTerrain ? 60 : 0,  // Use flat view unless 3D is explicitly enabled
+        bearing: enable3DTerrain ? -17 : 0,
         interactive: true,
+        preserveDrawingBuffer: true,  // May help with iOS rendering
+        antialias: true,
       });
     } catch (error) {
       console.error("Failed to initialize map:", error);
