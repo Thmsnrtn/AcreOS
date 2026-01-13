@@ -1915,15 +1915,23 @@ export function SinglePropertyMap({
       console.error("[SinglePropertyMap] Map error:", e.error?.message || e);
     });
 
+    // Track if layers have been added to prevent duplicates
+    let layersAdded = false;
+    
     // Function to add layers - can be called from multiple events
     const addLayers = () => {
-      console.log("[SinglePropertyMap] addLayers called, isStyleLoaded:", mapInstance.isStyleLoaded());
-      if (!mapInstance.isStyleLoaded()) return;
+      console.log("[SinglePropertyMap] addLayers called, layersAdded:", layersAdded);
+      if (layersAdded) {
+        console.log("[SinglePropertyMap] Layers already added, skipping");
+        return;
+      }
       if (mapInstance.getSource("property")) {
         console.log("[SinglePropertyMap] Source already exists, skipping");
+        layersAdded = true;
         return;
       }
 
+      layersAdded = true;
       console.log("[SinglePropertyMap] Adding layers now...");
       console.log("[SinglePropertyMap] Boundary type:", boundary.type);
       console.log("[SinglePropertyMap] Raw boundary coordinates:", JSON.stringify(boundary.coordinates).substring(0, 300));
@@ -2030,24 +2038,30 @@ export function SinglePropertyMap({
       }
     };
 
-    // Try multiple events to ensure layers get added
-    mapInstance.on("load", () => {
+    // Use 'load' event which guarantees style is ready
+    mapInstance.once("load", () => {
       console.log("[SinglePropertyMap] 'load' event fired");
       addLayers();
     });
 
-    mapInstance.on("style.load", () => {
-      console.log("[SinglePropertyMap] 'style.load' event fired");
-      addLayers();
-    });
-
-    // Also try after idle as a fallback
+    // Fallback: also try after idle 
     mapInstance.once("idle", () => {
       console.log("[SinglePropertyMap] 'idle' event fired");
-      addLayers();
+      if (!layersAdded) {
+        addLayers();
+      }
     });
 
+    // Ultimate fallback with timeout in case events don't fire
+    const timeoutId = setTimeout(() => {
+      console.log("[SinglePropertyMap] Timeout fallback triggered");
+      if (!layersAdded && mapInstance) {
+        addLayers();
+      }
+    }, 2000);
+
     return () => {
+      clearTimeout(timeoutId);
       map.current?.remove();
     };
   }, [boundary, centroid, apn, enable3DTerrain, state, county, showNearbyParcels]);
@@ -2175,8 +2189,8 @@ export function StaticPropertyMap({
   const pixelWidth = Math.min(width, 1280); // Max 1280px
   const safeHeight = Math.min(pixelHeight, 1280);
 
-  // Build the static map URL with auto-fitting
-  const staticMapUrl = `https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/static/geojson(${encodedGeojson})/auto/${pixelWidth}x${safeHeight}@2x?access_token=${MAPBOX_TOKEN}&padding=30`;
+  // Build the static map URL with auto-fitting and more padding for zoomed-out view
+  const staticMapUrl = `https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/static/geojson(${encodedGeojson})/auto/${pixelWidth}x${safeHeight}@2x?access_token=${MAPBOX_TOKEN}&padding=60`;
 
   // Fallback URL without GeoJSON overlay (just satellite view centered on property)
   const fallbackUrl = `https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/static/${centroid.lng},${centroid.lat},16/${pixelWidth}x${safeHeight}@2x?access_token=${MAPBOX_TOKEN}`;
