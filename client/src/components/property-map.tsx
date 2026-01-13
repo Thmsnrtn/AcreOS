@@ -1871,8 +1871,14 @@ export function SinglePropertyMap({
 }: SinglePropertyMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
+  const navControlAdded = useRef(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const [nearbyParcels, setNearbyParcels] = useState<NearbyParcel[]>([]);
+  const nearbyParcelsRef = useRef<NearbyParcel[]>([]);
+
+  useEffect(() => {
+    nearbyParcelsRef.current = nearbyParcels;
+  }, [nearbyParcels]);
 
   useEffect(() => {
     if (!centroid || !state || !county || !showNearbyParcels) return;
@@ -1916,19 +1922,20 @@ export function SinglePropertyMap({
       return;
     }
 
-    map.current.on("load", () => {
+    const addLayers = () => {
       if (!map.current) return;
 
-      if (enable3DTerrain) {
+      if (enable3DTerrain && !map.current.getSource("mapbox-dem")) {
         map.current.addSource("mapbox-dem", {
           type: "raster-dem",
           url: "mapbox://mapbox.mapbox-terrain-dem-v1",
           tileSize: 512,
           maxzoom: 14,
         });
-
         map.current.setTerrain({ source: "mapbox-dem", exaggeration: 1.5 });
+      }
 
+      if (!map.current.getLayer("sky") && enable3DTerrain) {
         map.current.addLayer({
           id: "sky",
           type: "sky",
@@ -1940,10 +1947,48 @@ export function SinglePropertyMap({
         });
       }
 
-      if (nearbyParcels.length > 0) {
+      if (!map.current.getSource("property")) {
+        const geojsonData: GeoJSON.FeatureCollection = {
+          type: "FeatureCollection",
+          features: [{
+            type: "Feature",
+            properties: { apn, color: "#ef4444" },
+            geometry: boundary as GeoJSON.Geometry,
+          }],
+        };
+        
+        map.current.addSource("property", {
+          type: "geojson",
+          data: geojsonData,
+        });
+
+        map.current.addLayer({
+          id: "property-fill",
+          type: "fill",
+          source: "property",
+          paint: {
+            "fill-color": "#ef4444",
+            "fill-opacity": 0.35,
+          },
+        });
+
+        map.current.addLayer({
+          id: "property-outline",
+          type: "line",
+          source: "property",
+          paint: {
+            "line-color": "#ef4444",
+            "line-width": 4,
+            "line-opacity": 1,
+          },
+        });
+      }
+
+      const currentNearby = nearbyParcelsRef.current;
+      if (currentNearby.length > 0 && !map.current.getSource("nearby-parcels")) {
         const nearbyGeojson: GeoJSON.FeatureCollection = {
           type: "FeatureCollection",
-          features: nearbyParcels.map(p => ({
+          features: currentNearby.map(p => ({
             type: "Feature" as const,
             properties: { apn: p.apn },
             geometry: p.boundary,
@@ -1964,51 +2009,62 @@ export function SinglePropertyMap({
             "line-width": 2,
             "line-opacity": 0.8,
           },
-        });
+        }, "property-fill");
       }
 
-      const geojsonData: GeoJSON.FeatureCollection = {
-        type: "FeatureCollection",
-        features: [{
-          type: "Feature",
-          properties: { apn, color: "#ef4444" },
-          geometry: boundary as GeoJSON.Geometry,
-        }],
-      };
+      if (!navControlAdded.current) {
+        map.current.addControl(new mapboxgl.NavigationControl(), "top-right");
+        navControlAdded.current = true;
+      }
+    };
 
-      map.current.addSource("property", {
-        type: "geojson",
-        data: geojsonData,
-      });
-
-      map.current.addLayer({
-        id: "property-fill",
-        type: "fill",
-        source: "property",
-        paint: {
-          "fill-color": "#ef4444",
-          "fill-opacity": 0.25,
-        },
-      });
-
-      map.current.addLayer({
-        id: "property-outline",
-        type: "line",
-        source: "property",
-        paint: {
-          "line-color": "#ef4444",
-          "line-width": 4,
-          "line-opacity": 1,
-        },
-      });
-
-      map.current.addControl(new mapboxgl.NavigationControl(), "top-right");
-    });
+    map.current.on("load", addLayers);
+    map.current.on("style.load", addLayers);
 
     return () => {
       map.current?.remove();
+      map.current = null;
+      navControlAdded.current = false;
     };
-  }, [boundary, centroid, apn, enable3DTerrain, nearbyParcels]);
+  }, [boundary, centroid, apn, enable3DTerrain]);
+
+  useEffect(() => {
+    if (!map.current || nearbyParcels.length === 0) return;
+    
+    if (!map.current.isStyleLoaded()) return;
+    
+    if (map.current.getLayer("nearby-parcels-outline")) {
+      map.current.removeLayer("nearby-parcels-outline");
+    }
+    if (map.current.getSource("nearby-parcels")) {
+      map.current.removeSource("nearby-parcels");
+    }
+    
+    const nearbyGeojson: GeoJSON.FeatureCollection = {
+      type: "FeatureCollection",
+      features: nearbyParcels.map(p => ({
+        type: "Feature" as const,
+        properties: { apn: p.apn },
+        geometry: p.boundary,
+      })),
+    };
+
+    map.current.addSource("nearby-parcels", {
+      type: "geojson",
+      data: nearbyGeojson,
+    });
+
+    map.current.addLayer({
+      id: "nearby-parcels-outline",
+      type: "line",
+      source: "nearby-parcels",
+      paint: {
+        "line-color": "#fbbf24",
+        "line-width": 2,
+        "line-opacity": 0.8,
+      },
+    }, "property-fill");
+  }, [nearbyParcels]);
 
   if (!MAPBOX_TOKEN) {
     return (
