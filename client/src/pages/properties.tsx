@@ -745,7 +745,7 @@ function PropertyCard({ property, onDelete }: { property: Property; onDelete: ()
             state={property.state}
             county={property.county}
             showNearbyParcels={true}
-            enable3DTerrain={false}
+            enable3DTerrain={true}
           />
         ) : (
           <div className="flex items-center justify-center h-full">
