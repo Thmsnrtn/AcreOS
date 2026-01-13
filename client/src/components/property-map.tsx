@@ -2018,8 +2018,13 @@ export function SinglePropertyMap({
       }
     };
 
-    map.current.on("load", addLayers);
-    map.current.on("style.load", addLayers);
+    // Use 'idle' event to ensure map is fully ready before adding layers
+    map.current.once("idle", addLayers);
+    // Also handle style changes (e.g., switching base layer)
+    map.current.on("style.load", () => {
+      // Wait for styledata before adding layers after style change
+      map.current?.once("styledata", addLayers);
+    });
 
     return () => {
       map.current?.remove();
