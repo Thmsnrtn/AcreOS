@@ -2036,12 +2036,22 @@ export function SinglePropertyMap({
       }
     };
 
-    // Use load event with fallback
+    // Use multiple event listeners with fallback
     const currentMap = map.current;
     let layersAdded = false;
     
     const safeAddLayers = () => {
       if (layersAdded || !currentMap) return;
+      
+      // Double-check style is actually ready
+      try {
+        // This will throw if style isn't ready
+        currentMap.getStyle();
+      } catch (err) {
+        console.log("[SinglePropertyMap] Style not ready yet, waiting...");
+        return;
+      }
+      
       layersAdded = true;
       try {
         console.log("[SinglePropertyMap] safeAddLayers called");
@@ -2051,29 +2061,50 @@ export function SinglePropertyMap({
       }
     };
     
-    // Wait for load event
+    // Wait for load event (primary)
     currentMap.on("load", () => {
       console.log("[SinglePropertyMap] load event fired");
       safeAddLayers();
     });
     
-    // Fallback: check style periodically for 5 seconds
+    // Also listen for style.load event (may fire separately)
+    currentMap.on("style.load", () => {
+      console.log("[SinglePropertyMap] style.load event fired");
+      safeAddLayers();
+    });
+    
+    // Also try on idle event
+    currentMap.once("idle", () => {
+      console.log("[SinglePropertyMap] idle event fired");
+      safeAddLayers();
+    });
+    
+    // Aggressive fallback: check style periodically for 10 seconds
     const checkStyleInterval = setInterval(() => {
       if (layersAdded) {
         clearInterval(checkStyleInterval);
         return;
       }
-      if (currentMap && currentMap.isStyleLoaded()) {
-        console.log("[SinglePropertyMap] Style ready via polling");
-        clearInterval(checkStyleInterval);
-        safeAddLayers();
+      try {
+        if (currentMap && currentMap.isStyleLoaded()) {
+          console.log("[SinglePropertyMap] Style ready via polling");
+          clearInterval(checkStyleInterval);
+          safeAddLayers();
+        }
+      } catch (err) {
+        // Style check failed, continue polling
       }
-    }, 100);
+    }, 200);
     
-    // Cleanup interval after 5s
+    // Cleanup interval after 10s
     setTimeout(() => {
       clearInterval(checkStyleInterval);
-    }, 5000);
+      // Last ditch attempt
+      if (!layersAdded) {
+        console.log("[SinglePropertyMap] Final attempt after 10s timeout");
+        safeAddLayers();
+      }
+    }, 10000);
 
     return () => {
       map.current?.remove();
