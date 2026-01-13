@@ -1904,8 +1904,17 @@ export function SinglePropertyMap({
   }, [centroid, state, county, apn, showNearbyParcels]);
 
   useEffect(() => {
+    console.log("[SinglePropertyMap] useEffect running", { 
+      hasContainer: !!mapContainer.current, 
+      hasToken: !!MAPBOX_TOKEN, 
+      hasBoundary: !!boundary, 
+      hasCentroid: !!centroid 
+    });
+    
     if (!mapContainer.current || !MAPBOX_TOKEN || !boundary || !centroid) return;
 
+    console.log("[SinglePropertyMap] Creating map instance");
+    
     try {
       map.current = new mapboxgl.Map({
         container: mapContainer.current,
