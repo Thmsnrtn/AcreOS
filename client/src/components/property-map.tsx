@@ -1982,7 +1982,7 @@ export function SinglePropertyMap({
           source: "property",
           paint: {
             "fill-color": "#ef4444",
-            "fill-opacity": 0.35,
+            "fill-opacity": 0.5,
           },
         });
         console.log("[SinglePropertyMap] Added property-fill layer");
@@ -1992,8 +1992,8 @@ export function SinglePropertyMap({
           type: "line",
           source: "property",
           paint: {
-            "line-color": "#ef4444",
-            "line-width": 4,
+            "line-color": "#ffffff",
+            "line-width": 5,
             "line-opacity": 1,
           },
         });
