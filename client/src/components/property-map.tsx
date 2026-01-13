@@ -1924,6 +1924,9 @@ export function SinglePropertyMap({
 
     const addLayers = () => {
       if (!map.current) return;
+      
+      // Debug: verify we're adding layers
+      console.log("[SinglePropertyMap] addLayers called, boundary:", boundary ? "present" : "missing");
 
       if (enable3DTerrain && !map.current.getSource("mapbox-dem")) {
         map.current.addSource("mapbox-dem", {
@@ -1957,6 +1960,8 @@ export function SinglePropertyMap({
           }],
         };
         
+        console.log("[SinglePropertyMap] Adding property source with data:", JSON.stringify(geojsonData).slice(0, 200));
+        
         map.current.addSource("property", {
           type: "geojson",
           data: geojsonData,
@@ -1971,6 +1976,7 @@ export function SinglePropertyMap({
             "fill-opacity": 0.35,
           },
         });
+        console.log("[SinglePropertyMap] Added property-fill layer");
 
         map.current.addLayer({
           id: "property-outline",
@@ -1982,6 +1988,9 @@ export function SinglePropertyMap({
             "line-opacity": 1,
           },
         });
+        console.log("[SinglePropertyMap] Added property-outline layer");
+      } else {
+        console.log("[SinglePropertyMap] property source already exists, skipping");
       }
 
       const currentNearby = nearbyParcelsRef.current;
