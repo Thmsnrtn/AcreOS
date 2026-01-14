@@ -800,7 +800,7 @@ export default function FounderDashboard() {
 
   const testAllDataSourcesMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/data-sources/test-all`, { limit: 100 });
+      const res = await apiRequest("POST", `/api/data-sources/test-all`, { limit: 1000 });
       if (!res.ok) throw new Error("Failed to start validation");
       return res.json();
     },
