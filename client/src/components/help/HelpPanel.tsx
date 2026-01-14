@@ -110,25 +110,23 @@ export function HelpPanel() {
   });
 
   const createTicketMutation = useMutation({
-    mutationFn: (data: typeof newTicket) =>
-      apiRequest("/api/support/tickets", {
-        method: "POST",
-        body: JSON.stringify({ ...data, pageContext: location })
-      }),
+    mutationFn: async (data: typeof newTicket) => {
+      const res = await apiRequest("POST", "/api/support/tickets", { ...data, pageContext: location });
+      return res.json();
+    },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/support/tickets"] });
-      setSelectedTicketId(data.id);
+      setSelectedTicketId(data.ticket?.id || data.id);
       setSupportView("chat");
       setNewTicket({ subject: "", description: "", category: "general", priority: "normal" });
     }
   });
 
   const sendMessageMutation = useMutation({
-    mutationFn: (message: string) =>
-      apiRequest(`/api/support/tickets/${selectedTicketId}/messages`, {
-        method: "POST",
-        body: JSON.stringify({ message })
-      }),
+    mutationFn: async (message: string) => {
+      const res = await apiRequest("POST", `/api/support/tickets/${selectedTicketId}/messages`, { message });
+      return res.json();
+    },
     onSuccess: () => {
       refetchTicket();
       setNewMessage("");
@@ -136,11 +134,10 @@ export function HelpPanel() {
   });
 
   const closeTicketMutation = useMutation({
-    mutationFn: () =>
-      apiRequest(`/api/support/tickets/${selectedTicketId}/close`, {
-        method: "POST",
-        body: JSON.stringify({})
-      }),
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/support/tickets/${selectedTicketId}/close`, {});
+      return res.json();
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/support/tickets"] });
       setSupportView("list");

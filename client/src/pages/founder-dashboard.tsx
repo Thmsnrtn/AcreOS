@@ -342,6 +342,26 @@ export default function FounderDashboard() {
     queryKey: ['/api/founder/feature-requests'],
   });
 
+  const { data: supportAnalytics } = useQuery<{
+    totalTickets: number;
+    openTickets: number;
+    aiResolvedTickets: number;
+    aiResolutionRate: number | string;
+    averageRating: number | null;
+    recentTickets?: Array<{
+      id: number;
+      subject: string;
+      status: string;
+      category: string;
+      priority: string;
+      aiHandled: boolean;
+      organizationName?: string;
+      createdAt: string;
+    }>;
+  }>({
+    queryKey: ['/api/founder/support/analytics'],
+  });
+
   const updateFeatureRequestMutation = useMutation({
     mutationFn: async ({ id, updates }: { id: number; updates: Partial<{ status: string; priority: string; founderNotes: string }> }) => {
       const res = await apiRequest("PATCH", `/api/founder/feature-requests/${id}`, updates);
@@ -1411,6 +1431,37 @@ export default function FounderDashboard() {
               ) : (
                 <p className="text-sm text-muted-foreground">No feature requests yet.</p>
               )}
+            </CardContent>
+          </Card>
+
+          {/* Support Analytics Section */}
+          <Card data-testid="card-support-analytics">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <MessageSquare className="w-5 h-5 text-purple-500" />
+                Support Analytics (Sophie AI)
+              </CardTitle>
+              <CardDescription>AI-powered customer support metrics</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="text-center p-3 bg-muted/50 rounded-lg">
+                  <p className="text-2xl font-bold">{supportAnalytics?.totalTickets || 0}</p>
+                  <p className="text-xs text-muted-foreground">Total Tickets</p>
+                </div>
+                <div className="text-center p-3 bg-muted/50 rounded-lg">
+                  <p className="text-2xl font-bold">{supportAnalytics?.openTickets || 0}</p>
+                  <p className="text-xs text-muted-foreground">Open</p>
+                </div>
+                <div className="text-center p-3 bg-muted/50 rounded-lg">
+                  <p className="text-2xl font-bold">{supportAnalytics?.aiResolutionRate || 0}%</p>
+                  <p className="text-xs text-muted-foreground">AI Resolution Rate</p>
+                </div>
+                <div className="text-center p-3 bg-muted/50 rounded-lg">
+                  <p className="text-2xl font-bold">{supportAnalytics?.averageRating ? `${supportAnalytics.averageRating}/5` : '-'}</p>
+                  <p className="text-xs text-muted-foreground">Avg Rating</p>
+                </div>
+              </div>
             </CardContent>
           </Card>
 

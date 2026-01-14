@@ -19364,14 +19364,18 @@ Seller Signature (if applicable)
         .from(supportTickets)
         .where(sql`${supportTickets.customerRating} IS NOT NULL`);
       
+      const total = Number(totalTickets.count) || 0;
+      const open = Number(openTickets.count) || 0;
+      const aiResolved = Number(aiResolvedTickets.count) || 0;
+      const rate = total > 0 ? Math.round((aiResolved / total) * 100) : 0;
+      const avgRatingNum = avgRating.avg ? Math.round(Number(avgRating.avg) * 10) / 10 : null;
+      
       res.json({
-        totalTickets: totalTickets.count,
-        openTickets: openTickets.count,
-        aiResolvedTickets: aiResolvedTickets.count,
-        aiResolutionRate: totalTickets.count > 0 
-          ? ((aiResolvedTickets.count / totalTickets.count) * 100).toFixed(1) 
-          : 0,
-        averageRating: avgRating.avg ? parseFloat(avgRating.avg.toFixed(1)) : null
+        totalTickets: total,
+        openTickets: open,
+        aiResolvedTickets: aiResolved,
+        aiResolutionRate: rate,
+        averageRating: avgRatingNum
       });
     } catch (error: any) {
       console.error("[support] Error fetching analytics:", error);

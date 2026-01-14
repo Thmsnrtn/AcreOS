@@ -9,7 +9,19 @@ import {
   deals, notes, tasks, campaigns 
 } from "@shared/schema";
 
-const openai = new OpenAI();
+function getOpenAIClient(): OpenAI {
+  const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+  const baseURL = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
+  
+  if (!apiKey) {
+    throw new Error("OpenAI API key not configured. Please set up the AI integration.");
+  }
+  
+  return new OpenAI({
+    apiKey,
+    baseURL,
+  });
+}
 
 export const supportToolDefinitions = {
   search_knowledge_base: {
@@ -542,6 +554,8 @@ export async function processSupportChat(
   
   const toolsUsed: string[] = [];
   const actionsPerformed: any[] = [];
+  
+  const openai = getOpenAIClient();
   
   let response = await openai.chat.completions.create({
     model: "gpt-4o",
