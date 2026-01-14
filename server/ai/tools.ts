@@ -512,6 +512,21 @@ export const toolDefinitions = {
       },
       required: ["entity_type", "entity_id", "title", "due_date"]
     }
+  },
+
+  browse_web: {
+    name: "browse_web",
+    description: "Browse any website and extract its content. Use this for real-time research on county assessor sites, property listings, government records, or any web page. Returns page title, text content, links, and tables. Can optionally take a screenshot.",
+    parameters: {
+      type: "object",
+      properties: {
+        url: { type: "string", description: "The full URL to browse (must start with http:// or https://)" },
+        extract_tables: { type: "boolean", description: "Whether to extract table data from the page (default: true)" },
+        take_screenshot: { type: "boolean", description: "Whether to capture a screenshot (default: false)" },
+        wait_ms: { type: "number", description: "Extra milliseconds to wait after page load for dynamic content (default: 0)" }
+      },
+      required: ["url"]
+    }
   }
 };
 
@@ -1340,6 +1355,37 @@ export async function executeTool(
           } 
         };
       }
+
+      case "browse_web": {
+        const url = args.url as string;
+        if (!url || (!url.startsWith("http://") && !url.startsWith("https://"))) {
+          return { success: false, error: "Invalid URL. Must start with http:// or https://" };
+        }
+        
+        const { browseWeb } = await import("../services/browserAutomation");
+        const result = await browseWeb(url, {
+          extractTables: args.extract_tables !== false,
+          captureScreenshot: args.take_screenshot === true,
+          waitMs: args.wait_ms || 0,
+        });
+        
+        if (!result.success) {
+          return { success: false, error: result.error || "Failed to load page" };
+        }
+        
+        return {
+          success: true,
+          data: {
+            url: result.url,
+            title: result.title,
+            content: result.content.substring(0, 8000),
+            links: result.links.slice(0, 15),
+            tables: result.tables.slice(0, 30),
+            screenshot: result.screenshot,
+            loadTimeMs: result.loadTimeMs,
+          }
+        };
+      }
       
       default:
         return { success: false, error: `Unknown tool: ${toolName}` };
@@ -1367,7 +1413,7 @@ export function getToolsForRole(role: string) {
     acquisitions: [...coreTools, "get_leads", "get_lead_details", "update_lead_status", "create_lead", "get_properties", "create_property", "get_deals", "create_deal", "get_tasks", "create_task", "get_pipeline_summary", "generate_offer", "generate_offer_letter", "send_email", "send_sms", "run_comps_analysis", "schedule_followup"],
     underwriting: [...coreTools, "get_properties", "get_property_details", "update_property", "get_notes", "calculate_amortization", "get_cashflow_summary", "get_deals", "update_deal", "run_comps_analysis", "calculate_roi", "calculate_payment_schedule", "research_property"],
     marketing: [...coreTools, "get_leads", "get_properties", "get_pipeline_summary", "create_task", "send_email", "send_sms"],
-    research: [...coreTools, "get_properties", "get_property_details", "get_leads", "create_property", "update_property", "run_comps_analysis", "research_property", "calculate_roi"],
+    research: [...coreTools, "get_properties", "get_property_details", "get_leads", "create_property", "update_property", "run_comps_analysis", "research_property", "calculate_roi", "browse_web"],
     documents: [...coreTools, "get_leads", "get_lead_details", "get_properties", "get_property_details", "get_notes", "get_deals", "generate_offer_letter"],
     assistant: allTools // Full access for the main assistant
   };

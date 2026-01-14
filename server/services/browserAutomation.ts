@@ -7,6 +7,7 @@ import {
 import { eq, and, desc, isNull } from "drizzle-orm";
 import puppeteer, { Browser, Page } from "puppeteer-core";
 import { execSync } from "child_process";
+import dns from "dns/promises";
 
 let chromiumPath: string | null = null;
 
@@ -740,6 +741,302 @@ export async function startJobProcessor(intervalMs: number = 30000): Promise<voi
       isProcessingQueue = false;
     }
   }, intervalMs);
+}
+
+export interface BrowseWebResult {
+  success: boolean;
+  url: string;
+  title: string;
+  content: string;
+  links: { text: string; href: string }[];
+  tables: string[];
+  screenshot?: string;
+  error?: string;
+  loadTimeMs: number;
+}
+
+function isPrivateIpv4(ip: string): boolean {
+  const parts = ip.split(".").map(p => parseInt(p, 10));
+  if (parts.length !== 4 || parts.some(p => isNaN(p) || p < 0 || p > 255)) return false;
+  
+  if (parts[0] === 127) return true;
+  if (parts[0] === 10) return true;
+  if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
+  if (parts[0] === 192 && parts[1] === 168) return true;
+  if (parts[0] === 169 && parts[1] === 254) return true;
+  if (parts[0] === 0) return true;
+  if (parts.every(p => p === 255)) return true;
+  
+  return false;
+}
+
+function isPrivateIpv6(ip: string): boolean {
+  const lower = ip.toLowerCase();
+  if (lower === "::1" || lower === "::") return true;
+  if (lower.startsWith("fe80:")) return true;
+  if (lower.startsWith("fc") || lower.startsWith("fd")) return true;
+  if (lower.startsWith("::ffff:")) {
+    const ipv4Part = lower.slice(7);
+    if (isPrivateIpv4(ipv4Part)) return true;
+  }
+  return false;
+}
+
+async function resolveAndCheckHost(hostname: string): Promise<{ allowed: boolean; reason?: string }> {
+  try {
+    const parsed = new URL(`http://${hostname}`);
+    const host = parsed.hostname;
+    
+    const ipv4Match = host.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+    if (ipv4Match) {
+      if (isPrivateIpv4(host)) {
+        return { allowed: false, reason: "Resolved to private IPv4 address" };
+      }
+      return { allowed: true };
+    }
+    
+    try {
+      const addresses = await dns.resolve4(host);
+      for (const addr of addresses) {
+        if (isPrivateIpv4(addr)) {
+          console.log(`[SSRF] Blocked: ${hostname} resolves to private IP ${addr}`);
+          return { allowed: false, reason: `Domain resolves to private IP (${addr})` };
+        }
+      }
+    } catch {
+      // DNS resolution failed for IPv4, try IPv6
+    }
+    
+    try {
+      const addresses6 = await dns.resolve6(host);
+      for (const addr of addresses6) {
+        if (isPrivateIpv6(addr)) {
+          console.log(`[SSRF] Blocked: ${hostname} resolves to private IPv6 ${addr}`);
+          return { allowed: false, reason: `Domain resolves to private IPv6 (${addr})` };
+        }
+      }
+    } catch {
+      // IPv6 resolution failed
+    }
+    
+    return { allowed: true };
+  } catch (err) {
+    console.log(`[SSRF] DNS check error for ${hostname}:`, err);
+    return { allowed: true };
+  }
+}
+
+function isBlockedUrl(urlString: string): { blocked: boolean; reason?: string } {
+  try {
+    const parsed = new URL(urlString);
+    const hostname = parsed.hostname.toLowerCase();
+    
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return { blocked: true, reason: "Only HTTP/HTTPS URLs are allowed" };
+    }
+    
+    if (hostname.startsWith("[") || hostname.includes(":")) {
+      return { blocked: true, reason: "IPv6 addresses are not allowed" };
+    }
+    
+    const ipv4Match = hostname.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+    if (ipv4Match && isPrivateIpv4(hostname)) {
+      return { blocked: true, reason: "Access to internal/private networks is not allowed" };
+    }
+    
+    if (/^\d+$/.test(hostname)) {
+      return { blocked: true, reason: "Numeric IP formats are not allowed" };
+    }
+    if (/^0x[0-9a-f]+$/i.test(hostname)) {
+      return { blocked: true, reason: "Hex IP formats are not allowed" };
+    }
+    if (/^0[0-7]+$/.test(hostname)) {
+      return { blocked: true, reason: "Octal IP formats are not allowed" };
+    }
+    
+    const shortIpv4 = hostname.match(/^(\d+)\.(\d+)$/);
+    if (shortIpv4) {
+      return { blocked: true, reason: "Shorthand IPv4 formats are not allowed" };
+    }
+    const threePartIpv4 = hostname.match(/^(\d+)\.(\d+)\.(\d+)$/);
+    if (threePartIpv4) {
+      return { blocked: true, reason: "Shorthand IPv4 formats are not allowed" };
+    }
+    
+    if (/^0\d+\./.test(hostname) || /\.0\d+\./.test(hostname) || /\.0\d+$/.test(hostname)) {
+      return { blocked: true, reason: "Octal IPv4 formats are not allowed" };
+    }
+    
+    const blockedPatterns = [
+      /^localhost$/i,
+      /\.localhost$/i,
+      /\.local$/i,
+      /\.internal$/i,
+      /^metadata\./i,
+      /^instance-data\./i,
+      /\.metadata\.google\.internal$/i,
+    ];
+    
+    for (const pattern of blockedPatterns) {
+      if (pattern.test(hostname)) {
+        return { blocked: true, reason: "Access to internal/private networks is not allowed" };
+      }
+    }
+    
+    return { blocked: false };
+  } catch {
+    return { blocked: true, reason: "Invalid URL format" };
+  }
+}
+
+export async function browseWeb(url: string, options?: { 
+  extractTables?: boolean; 
+  captureScreenshot?: boolean;
+  waitMs?: number;
+}): Promise<BrowseWebResult> {
+  const startTime = Date.now();
+  let browser: Browser | null = null;
+  
+  const urlCheck = isBlockedUrl(url);
+  if (urlCheck.blocked) {
+    return {
+      success: false,
+      url,
+      title: "",
+      content: "",
+      links: [],
+      tables: [],
+      error: urlCheck.reason || "URL blocked",
+      loadTimeMs: Date.now() - startTime,
+    };
+  }
+  
+  const parsed = new URL(url);
+  const dnsCheck = await resolveAndCheckHost(parsed.hostname);
+  if (!dnsCheck.allowed) {
+    return {
+      success: false,
+      url,
+      title: "",
+      content: "",
+      links: [],
+      tables: [],
+      error: dnsCheck.reason || "DNS resolution blocked",
+      loadTimeMs: Date.now() - startTime,
+    };
+  }
+  
+  try {
+    browser = await launchBrowser();
+    const page = await browser.newPage();
+    
+    await page.setViewport({ width: 1280, height: 800 });
+    await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+    
+    await page.setRequestInterception(true);
+    page.on("request", async (request) => {
+      const reqUrl = request.url();
+      const check = isBlockedUrl(reqUrl);
+      if (check.blocked) {
+        console.log(`[browse_web] Blocked request (URL pattern): ${reqUrl}`);
+        await request.abort("blockedbyclient");
+        return;
+      }
+      
+      try {
+        const parsed = new URL(reqUrl);
+        const hostname = parsed.hostname;
+        
+        const dnsCheck = await resolveAndCheckHost(hostname);
+        if (!dnsCheck.allowed) {
+          console.log(`[browse_web] Blocked request (DNS resolve): ${reqUrl} - ${dnsCheck.reason}`);
+          await request.abort("blockedbyclient");
+          return;
+        }
+        
+        await request.continue();
+      } catch (err) {
+        console.log(`[browse_web] Request check error, allowing: ${reqUrl}`);
+        await request.continue();
+      }
+    });
+    
+    await page.goto(url, { 
+      waitUntil: "networkidle2",
+      timeout: 20000 
+    });
+    
+    if (options?.waitMs) {
+      await new Promise(r => setTimeout(r, options.waitMs));
+    }
+    
+    const title = await page.title();
+    
+    const content = await page.evaluate(() => {
+      const removeElements = (selectors: string[]) => {
+        selectors.forEach(sel => {
+          document.querySelectorAll(sel).forEach(el => el.remove());
+        });
+      };
+      removeElements(["script", "style", "nav", "footer", "header", "aside", ".ad", ".advertisement", "#cookie-banner"]);
+      
+      const main = document.querySelector("main, article, .content, #content, .main") || document.body;
+      return (main.textContent || "").replace(/\s+/g, " ").trim().substring(0, 15000);
+    });
+    
+    const links = await page.evaluate(() => {
+      const anchors = Array.from(document.querySelectorAll("a[href]"));
+      return anchors.slice(0, 20).map(a => ({
+        text: (a.textContent || "").trim().substring(0, 100),
+        href: a.getAttribute("href") || "",
+      })).filter(l => l.text && l.href);
+    });
+    
+    let tables: string[] = [];
+    if (options?.extractTables !== false) {
+      tables = await page.evaluate(() => {
+        const tbls = Array.from(document.querySelectorAll("table")).slice(0, 3);
+        return tbls.map(tbl => {
+          const rows = Array.from(tbl.querySelectorAll("tr")).slice(0, 15);
+          return rows.map(row => {
+            const cells = Array.from(row.querySelectorAll("th, td"));
+            return cells.map(c => (c.textContent || "").trim()).join(" | ");
+          });
+        }).flat();
+      });
+    }
+    
+    let screenshot: string | undefined;
+    if (options?.captureScreenshot) {
+      const screenshotBuffer = await page.screenshot({ encoding: "base64", type: "jpeg", quality: 60 });
+      screenshot = `data:image/jpeg;base64,${screenshotBuffer}`;
+    }
+    
+    await browser.close();
+    
+    return {
+      success: true,
+      url,
+      title,
+      content,
+      links,
+      tables,
+      screenshot,
+      loadTimeMs: Date.now() - startTime,
+    };
+  } catch (error: any) {
+    if (browser) await browser.close().catch(() => {});
+    return {
+      success: false,
+      url,
+      title: "",
+      content: "",
+      links: [],
+      tables: [],
+      error: error.message,
+      loadTimeMs: Date.now() - startTime,
+    };
+  }
 }
 
 export async function executeAdHocAutomation(
