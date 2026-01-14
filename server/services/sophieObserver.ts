@@ -528,7 +528,7 @@ class SophieObserverService {
       type: 'activity_drop',
       confidenceScore: Math.min(95, Math.round(dropPercentage)),
       severity: dropPercentage >= 90 ? 'medium' : 'low',
-      title: 'Noticed you've been quieter lately',
+      title: "Noticed you've been quieter lately",
       description: `Your activity dropped by ${Math.round(dropPercentage)}% compared to your usual pattern. Everything okay? We're here if you need help with anything.`,
       metadata: {
         source: 'activity_monitor',
