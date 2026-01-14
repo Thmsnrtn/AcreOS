@@ -6,8 +6,10 @@ import { eq, and, desc, ilike, sql, or } from "drizzle-orm";
 import { 
   supportTickets, supportTicketMessages, knowledgeBaseArticles, 
   supportResolutionHistory, organizations, leads, properties, 
-  deals, notes, tasks, campaigns 
+  deals, notes, tasks, campaigns, payments, teamMembers,
+  activityLog, auditLog, apiUsageLogs
 } from "@shared/schema";
+import { gte, lte } from "drizzle-orm";
 
 function getOpenAIClient(): OpenAI {
   const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
@@ -249,6 +251,118 @@ export const supportToolDefinitions = {
         }
       },
       required: ["issue_keywords"]
+    }
+  },
+  
+  query_user_data: {
+    name: "query_user_data",
+    description: "Query the customer's data directly to investigate issues. This is READ-ONLY and helps diagnose data-related problems without guessing. Use specific queries to find records, check relationships, and verify data integrity.",
+    parameters: {
+      type: "object",
+      properties: {
+        entity: { 
+          type: "string", 
+          enum: ["leads", "properties", "deals", "notes", "tasks", "campaigns", "payments", "team_members"],
+          description: "Which entity type to query" 
+        },
+        query_type: {
+          type: "string",
+          enum: ["count", "recent", "by_id", "by_status", "search", "relationships"],
+          description: "Type of query: count (totals), recent (latest records), by_id (specific record), by_status (filter by status), search (text search), relationships (check linked records)"
+        },
+        filters: {
+          type: "object",
+          description: "Optional filters: { id?: number, status?: string, search_term?: string, limit?: number, include_details?: boolean }",
+          properties: {
+            id: { type: "number" },
+            status: { type: "string" },
+            search_term: { type: "string" },
+            limit: { type: "number" },
+            include_details: { type: "boolean" }
+          }
+        }
+      },
+      required: ["entity", "query_type"]
+    }
+  },
+  
+  search_logs: {
+    name: "search_logs",
+    description: "Search application logs for errors, warnings, and events related to the customer's issue. Useful for finding error patterns, failed API calls, and debugging information.",
+    parameters: {
+      type: "object",
+      properties: {
+        log_type: {
+          type: "string",
+          enum: ["errors", "api_calls", "auth_events", "sync_events", "ai_operations", "all"],
+          description: "Type of logs to search"
+        },
+        time_range: {
+          type: "string",
+          enum: ["1h", "6h", "24h", "7d"],
+          description: "How far back to search"
+        },
+        search_pattern: {
+          type: "string",
+          description: "Optional text pattern to search for in logs"
+        },
+        severity: {
+          type: "string",
+          enum: ["error", "warn", "info", "all"],
+          description: "Minimum severity level"
+        }
+      },
+      required: ["log_type", "time_range"]
+    }
+  },
+  
+  get_user_activity: {
+    name: "get_user_activity",
+    description: "Get the customer's recent activity history including page visits, actions taken, and API calls. Helps understand what led up to the reported issue.",
+    parameters: {
+      type: "object",
+      properties: {
+        activity_type: {
+          type: "string",
+          enum: ["all", "data_changes", "ai_operations", "billing_events", "login_events"],
+          description: "Type of activity to retrieve"
+        },
+        time_range: {
+          type: "string",
+          enum: ["1h", "6h", "24h", "7d"],
+          description: "How far back to look"
+        },
+        limit: {
+          type: "number",
+          description: "Maximum number of activities to return (default: 20)"
+        }
+      },
+      required: ["activity_type", "time_range"]
+    }
+  },
+  
+  estimate_resolution_confidence: {
+    name: "estimate_resolution_confidence",
+    description: "Estimate your confidence level in resolving this issue based on available information and past success rates. Use this to decide whether to attempt a fix or escalate.",
+    parameters: {
+      type: "object",
+      properties: {
+        issue_category: {
+          type: "string",
+          description: "Category of the issue (billing, technical, data, ai, integration, etc.)"
+        },
+        available_context: {
+          type: "array",
+          items: { type: "string" },
+          description: "What context you have (e.g., 'error_logs', 'user_data', 'similar_resolutions', 'kb_articles')"
+        },
+        attempted_tools: {
+          type: "array",
+          items: { type: "string" },
+          description: "Tools already used in this session"
+        }
+      },
+      required: ["issue_category", "available_context"]
     }
   }
 };
@@ -812,6 +926,485 @@ export async function executeSupportTool(
         };
       }
       
+      case "query_user_data": {
+        const { entity, query_type, filters = {} } = args;
+        const { id, status, search_term, limit = 10, include_details } = filters;
+        
+        const entityMap: Record<string, any> = {
+          leads, properties, deals, notes, tasks, campaigns, payments, 
+          team_members: teamMembers
+        };
+        
+        const table = entityMap[entity];
+        if (!table) {
+          return { success: false, error: `Unknown entity: ${entity}` };
+        }
+        
+        let results: any[] = [];
+        let summary = "";
+        
+        switch (query_type) {
+          case "count": {
+            const [countResult] = await db.select({ count: sql<number>`count(*)` })
+              .from(table)
+              .where(eq(table.organizationId, org.id));
+            results = [{ total: Number(countResult.count) }];
+            summary = `Found ${countResult.count} ${entity} records`;
+            break;
+          }
+          
+          case "recent": {
+            results = await db.select()
+              .from(table)
+              .where(eq(table.organizationId, org.id))
+              .orderBy(desc(table.createdAt || table.id))
+              .limit(Math.min(limit, 20));
+            
+            // Sanitize sensitive fields
+            results = results.map(r => {
+              const { ...safe } = r;
+              delete (safe as any).apiKey;
+              delete (safe as any).password;
+              return include_details ? safe : { 
+                id: r.id, 
+                name: r.name || r.title || r.firstName,
+                status: r.status,
+                createdAt: r.createdAt 
+              };
+            });
+            summary = `Retrieved ${results.length} recent ${entity} records`;
+            break;
+          }
+          
+          case "by_id": {
+            if (!id) return { success: false, error: "id filter required for by_id query" };
+            results = await db.select()
+              .from(table)
+              .where(and(eq(table.organizationId, org.id), eq(table.id, id)))
+              .limit(1);
+            summary = results.length > 0 ? `Found ${entity} with id ${id}` : `No ${entity} found with id ${id}`;
+            break;
+          }
+          
+          case "by_status": {
+            if (!status) return { success: false, error: "status filter required for by_status query" };
+            const conditions = [eq(table.organizationId, org.id)];
+            if (table.status) conditions.push(eq(table.status, status));
+            
+            results = await db.select()
+              .from(table)
+              .where(and(...conditions))
+              .orderBy(desc(table.createdAt || table.id))
+              .limit(Math.min(limit, 50));
+            
+            results = results.map(r => include_details ? r : { 
+              id: r.id, 
+              name: r.name || r.title || r.firstName,
+              status: r.status,
+              createdAt: r.createdAt 
+            });
+            summary = `Found ${results.length} ${entity} with status "${status}"`;
+            break;
+          }
+          
+          case "search": {
+            if (!search_term) return { success: false, error: "search_term filter required for search query" };
+            const searchLower = `%${search_term.toLowerCase()}%`;
+            
+            // Define searchable fields per entity type
+            const searchableFields: Record<string, string[]> = {
+              leads: ["first_name", "last_name", "email", "phone"],
+              properties: ["name", "address", "county", "state"],
+              deals: ["name", "status"],
+              notes: ["status"], // Financial notes - limited searchable fields
+              tasks: ["title", "description"],
+              campaigns: ["name", "type"],
+              payments: ["status"], // Limited searchable fields
+              team_members: ["name", "email", "role"]
+            };
+            
+            const fields = searchableFields[entity] || [];
+            if (fields.length === 0) {
+              return { success: false, error: `Search not supported for entity: ${entity}` };
+            }
+            
+            // Build search conditions using raw SQL for fields that exist
+            const searchCondition = fields.map(f => `COALESCE(${f}::text, '') ILIKE '${search_term.toLowerCase().replace(/'/g, "''")}'`).join(' OR ');
+            
+            results = await db.select()
+              .from(table)
+              .where(and(
+                eq(table.organizationId, org.id),
+                sql.raw(`(${searchCondition})`)
+              ))
+              .limit(Math.min(limit, 20));
+            
+            results = results.map((r: any) => ({ 
+              id: r.id, 
+              name: r.name || r.title || `${r.firstName || ''} ${r.lastName || ''}`.trim() || `ID: ${r.id}`,
+              status: r.status,
+              createdAt: r.createdAt 
+            }));
+            summary = `Search for "${search_term}" found ${results.length} ${entity}`;
+            break;
+          }
+          
+          case "relationships": {
+            if (!id) return { success: false, error: "id filter required for relationships query" };
+            
+            // Get the main record
+            const [record] = await db.select()
+              .from(table)
+              .where(and(eq(table.organizationId, org.id), eq(table.id, id)));
+            
+            if (!record) return { success: false, error: `No ${entity} found with id ${id}` };
+            
+            const relationships: Record<string, any> = { record: { id: record.id, name: (record as any).name || (record as any).title } };
+            
+            // Get related financial notes (notes are financial - promissory notes)
+            if (entity === "properties") {
+              const relatedNotes = await db.select({ count: sql<number>`count(*)` })
+                .from(notes)
+                .where(and(eq(notes.organizationId, org.id), eq(notes.propertyId, id)));
+              relationships.financialNotes = Number(relatedNotes[0]?.count || 0);
+            }
+            if (entity === "leads") {
+              // Leads are connected as borrowers
+              const relatedNotes = await db.select({ count: sql<number>`count(*)` })
+                .from(notes)
+                .where(and(eq(notes.organizationId, org.id), eq(notes.borrowerId, id)));
+              relationships.financialNotes = Number(relatedNotes[0]?.count || 0);
+            }
+            
+            // Get related tasks (tasks use entityType and entityId)
+            const relatedTasks = await db.select({ count: sql<number>`count(*)` })
+              .from(tasks)
+              .where(and(
+                eq(tasks.organizationId, org.id),
+                eq(tasks.entityType, entity.slice(0, -1)), // leads -> lead
+                eq(tasks.entityId, id)
+              ));
+            relationships.tasks = Number(relatedTasks[0]?.count || 0);
+            
+            results = [relationships];
+            summary = `Found relationships for ${entity} ${id}`;
+            break;
+          }
+        }
+        
+        return {
+          success: true,
+          data: {
+            entity,
+            queryType: query_type,
+            results,
+            summary,
+            recordCount: results.length
+          }
+        };
+      }
+      
+      case "search_logs": {
+        const { log_type, time_range, search_pattern, severity = "all" } = args;
+        
+        const timeRangeMap: Record<string, number> = {
+          "1h": 60 * 60 * 1000,
+          "6h": 6 * 60 * 60 * 1000,
+          "24h": 24 * 60 * 60 * 1000,
+          "7d": 7 * 24 * 60 * 60 * 1000
+        };
+        
+        const sinceTime = new Date(Date.now() - (timeRangeMap[time_range] || timeRangeMap["24h"]));
+        
+        let logs: any[] = [];
+        let summary = "";
+        
+        try {
+          // Query API usage logs for API calls (schema: service, action, count, estimatedCostCents, metadata, createdAt)
+          if (log_type === "all" || log_type === "api_calls") {
+            const apiLogs = await db.select()
+              .from(apiUsageLogs)
+              .where(and(
+                eq(apiUsageLogs.organizationId, org.id),
+                gte(apiUsageLogs.createdAt, sinceTime)
+              ))
+              .orderBy(desc(apiUsageLogs.createdAt))
+              .limit(50);
+            
+            const filteredApiLogs = apiLogs
+              .filter(log => {
+                if (search_pattern && !JSON.stringify(log).toLowerCase().includes(search_pattern.toLowerCase())) {
+                  return false;
+                }
+                return true;
+              })
+              .map(log => ({
+                type: "api_call",
+                timestamp: log.createdAt,
+                service: log.service,
+                action: log.action,
+                count: log.count,
+                estimatedCostCents: log.estimatedCostCents,
+                metadata: log.metadata
+              }));
+            
+            logs = [...logs, ...filteredApiLogs];
+          }
+          
+          // Query audit log for auth and data change events (schema: action, entityType, entityId, createdAt)
+          if (log_type === "all" || log_type === "auth_events" || log_type === "sync_events" || log_type === "errors") {
+            const auditLogs = await db.select()
+              .from(auditLog)
+              .where(and(
+                eq(auditLog.organizationId, org.id),
+                gte(auditLog.createdAt, sinceTime)
+              ))
+              .orderBy(desc(auditLog.createdAt))
+              .limit(50);
+            
+            const filteredAuditLogs = auditLogs
+              .filter(log => {
+                if (search_pattern && !JSON.stringify(log).toLowerCase().includes(search_pattern.toLowerCase())) {
+                  return false;
+                }
+                if (log_type === "auth_events" && !["login", "logout", "auth"].some(t => log.action?.includes(t))) {
+                  return false;
+                }
+                if (log_type === "errors" && !["error", "fail", "exception"].some(t => log.action?.toLowerCase().includes(t))) {
+                  return false;
+                }
+                return true;
+              })
+              .map(log => ({
+                type: "audit",
+                timestamp: log.createdAt,
+                action: log.action,
+                entityType: log.entityType,
+                entityId: log.entityId,
+                userId: log.userId,
+                isError: ["error", "fail", "exception"].some(t => log.action?.toLowerCase().includes(t))
+              }));
+            
+            logs = [...logs, ...filteredAuditLogs];
+          }
+          
+          // Query activity log for user activity (schema: action, entityType, entityId, description, createdAt)
+          if (log_type === "all" || log_type === "ai_operations") {
+            const activityLogs = await db.select()
+              .from(activityLog)
+              .where(and(
+                eq(activityLog.organizationId, org.id),
+                gte(activityLog.createdAt, sinceTime)
+              ))
+              .orderBy(desc(activityLog.createdAt))
+              .limit(50);
+            
+            const filteredActivityLogs = activityLogs
+              .filter(log => {
+                if (search_pattern && !JSON.stringify(log).toLowerCase().includes(search_pattern.toLowerCase())) {
+                  return false;
+                }
+                if (log_type === "ai_operations" && !["ai", "atlas", "agent"].some(t => log.action?.includes(t) || log.agentType?.includes(t))) {
+                  return false;
+                }
+                return true;
+              })
+              .map(log => ({
+                type: "activity",
+                timestamp: log.createdAt,
+                action: log.action,
+                agentType: log.agentType,
+                description: log.description,
+                metadata: log.metadata
+              }));
+            
+            logs = [...logs, ...filteredActivityLogs];
+          }
+          
+          // Sort by timestamp descending
+          logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+          logs = logs.slice(0, 30);
+          
+          const errorCount = logs.filter(l => l.isError === true).length;
+          summary = `Found ${logs.length} log entries (${errorCount} errors) in the last ${time_range}`;
+          
+        } catch (error: any) {
+          console.error("[search_logs] Error:", error);
+          summary = `Error searching logs: ${error.message}`;
+        }
+        
+        return {
+          success: true,
+          data: {
+            logType: log_type,
+            timeRange: time_range,
+            searchPattern: search_pattern || null,
+            severity,
+            logs,
+            summary,
+            errorCount: logs.filter(l => l.isError === true).length
+          }
+        };
+      }
+      
+      case "get_user_activity": {
+        const { activity_type, time_range, limit: activityLimit = 20 } = args;
+        
+        const timeRangeMap: Record<string, number> = {
+          "1h": 60 * 60 * 1000,
+          "6h": 6 * 60 * 60 * 1000,
+          "24h": 24 * 60 * 60 * 1000,
+          "7d": 7 * 24 * 60 * 60 * 1000
+        };
+        
+        const sinceTime = new Date(Date.now() - (timeRangeMap[time_range] || timeRangeMap["24h"]));
+        
+        let activities: any[] = [];
+        
+        // Get activities from activity log (schema: action, entityType, entityId, description, createdAt)
+        const activityResults = await db.select()
+          .from(activityLog)
+          .where(and(
+            eq(activityLog.organizationId, org.id),
+            gte(activityLog.createdAt, sinceTime)
+          ))
+          .orderBy(desc(activityLog.createdAt))
+          .limit(Math.min(activityLimit, 50));
+        
+        activities = activityResults
+          .filter(act => {
+            if (activity_type === "all") return true;
+            if (activity_type === "data_changes" && ["create", "update", "delete"].some(a => act.action?.includes(a))) return true;
+            if (activity_type === "ai_operations" && ["ai", "atlas", "agent"].some(a => act.action?.includes(a) || act.agentType?.includes(a))) return true;
+            if (activity_type === "login_events" && ["login", "auth", "session"].some(a => act.action?.includes(a))) return true;
+            return false;
+          })
+          .map(act => ({
+            timestamp: act.createdAt,
+            type: act.action,
+            agentType: act.agentType,
+            description: act.description,
+            entityType: act.entityType,
+            entityId: act.entityId
+          }));
+        
+        // If looking for billing events, check audit log (schema: action, entityType, entityId, createdAt)
+        if (activity_type === "all" || activity_type === "billing_events") {
+          const billingAuditLogs = await db.select()
+            .from(auditLog)
+            .where(and(
+              eq(auditLog.organizationId, org.id),
+              gte(auditLog.createdAt, sinceTime),
+              or(
+                ilike(auditLog.action, "%stripe%"),
+                ilike(auditLog.action, "%payment%"),
+                ilike(auditLog.action, "%subscription%"),
+                ilike(auditLog.action, "%billing%")
+              )
+            ))
+            .orderBy(desc(auditLog.createdAt))
+            .limit(20);
+          
+          const billingActivities = billingAuditLogs.map(log => ({
+            timestamp: log.createdAt,
+            type: "billing_event",
+            description: log.action,
+            entityType: log.entityType,
+            entityId: log.entityId
+          }));
+          
+          activities = [...activities, ...billingActivities];
+        }
+        
+        // Sort and limit
+        activities.sort((a, b) => new Date(b.timestamp as any).getTime() - new Date(a.timestamp as any).getTime());
+        activities = activities.slice(0, activityLimit);
+        
+        return {
+          success: true,
+          data: {
+            activityType: activity_type,
+            timeRange: time_range,
+            activities,
+            summary: `Found ${activities.length} ${activity_type} activities in the last ${time_range}`,
+            activityCount: activities.length
+          }
+        };
+      }
+      
+      case "estimate_resolution_confidence": {
+        const { issue_category, available_context, attempted_tools = [] } = args;
+        
+        // Base confidence starts at 40% for known issue types
+        let confidence = 40;
+        const factors: string[] = [];
+        
+        // Category-based confidence boost
+        const highConfidenceCategories = ["billing", "subscription", "sync", "cache", "permissions"];
+        const mediumConfidenceCategories = ["data", "import", "export", "notifications"];
+        const lowConfidenceCategories = ["bug", "crash", "unknown", "complex"];
+        
+        if (highConfidenceCategories.some(c => issue_category.toLowerCase().includes(c))) {
+          confidence += 20;
+          factors.push("Common issue type with known solutions");
+        } else if (mediumConfidenceCategories.some(c => issue_category.toLowerCase().includes(c))) {
+          confidence += 10;
+          factors.push("Moderately common issue type");
+        } else if (lowConfidenceCategories.some(c => issue_category.toLowerCase().includes(c))) {
+          confidence -= 15;
+          factors.push("Complex or unknown issue type - may need escalation");
+        }
+        
+        // Context-based confidence boost
+        const contextBoosts: Record<string, number> = {
+          "error_logs": 10,
+          "user_data": 10,
+          "similar_resolutions": 15,
+          "kb_articles": 10,
+          "account_diagnostics": 10,
+          "service_health": 5,
+          "user_activity": 10,
+          "system_alerts": 5
+        };
+        
+        for (const ctx of available_context as string[]) {
+          if (contextBoosts[ctx]) {
+            confidence += contextBoosts[ctx];
+            factors.push(`Has ${ctx.replace("_", " ")} (+${contextBoosts[ctx]}%)`);
+          }
+        }
+        
+        // Reduce confidence if many tools already tried
+        if (attempted_tools.length > 5) {
+          confidence -= 10;
+          factors.push("Many tools already attempted without resolution");
+        }
+        
+        // Cap confidence at 95%
+        confidence = Math.min(95, Math.max(10, confidence));
+        
+        const recommendation = confidence >= 70 
+          ? "High confidence - proceed with resolution attempt"
+          : confidence >= 50 
+            ? "Moderate confidence - try available tools, escalate if unsuccessful"
+            : "Low confidence - consider escalating to human support";
+        
+        return {
+          success: true,
+          data: {
+            confidenceScore: confidence,
+            confidenceLevel: confidence >= 70 ? "high" : confidence >= 50 ? "moderate" : "low",
+            recommendation,
+            factors,
+            suggestedNextSteps: confidence < 50 
+              ? ["escalate_to_human", "gather_more_context"]
+              : confidence < 70 
+                ? ["try_similar_resolutions", "check_service_health", "retry_failed_jobs"]
+                : ["apply_known_fix", "log_resolution"]
+          }
+        };
+      }
+      
       default:
         return { success: false, error: `Unknown support tool: ${toolName}` };
     }
@@ -841,17 +1434,27 @@ YOUR CAPABILITIES:
 9. Check external service health status
 10. Escalate to human support when needed
 
+ADVANCED INVESTIGATION TOOLS:
+11. query_user_data: Directly inspect leads, properties, deals, tasks, payments, and more to diagnose data issues
+12. search_logs: Search application logs for errors, API failures, and events in the last 1h/6h/24h/7d
+13. get_user_activity: View recent user actions to understand what led to the issue
+14. estimate_resolution_confidence: Assess your confidence in resolving before attempting or escalating
+
 YOUR WORKFLOW:
 1. First, understand the customer's issue clearly
-2. Use get_similar_resolutions to find what worked for similar issues in the past
-3. Check for any active system alerts related to their issue (get_active_alerts)
-4. Search the knowledge base for relevant solutions
-5. If the issue seems account-specific, run diagnostics
-6. If a known fix exists, apply it (with confirmation)
-7. Try self-healing actions: retry failed jobs, clear caches, resync integrations
-8. Resolve any related system alerts when the issue is fixed
-9. If you can't resolve it, escalate to human support
-10. Always log the resolution with log_resolution for continuous learning
+2. Use estimate_resolution_confidence to assess the issue type and available context
+3. Use get_similar_resolutions to find what worked for similar issues in the past
+4. Check for any active system alerts related to their issue (get_active_alerts)
+5. Search the knowledge base for relevant solutions
+6. Use query_user_data to directly investigate their data if needed
+7. Use search_logs to find errors or API failures related to their issue
+8. Use get_user_activity to understand what actions led to the problem
+9. If the issue seems account-specific, run diagnostics
+10. If a known fix exists, apply it (with confirmation)
+11. Try self-healing actions: retry failed jobs, clear caches, resync integrations
+12. Resolve any related system alerts when the issue is fixed
+13. If confidence is low (<50%) or you can't resolve it, escalate to human support
+14. Always log the resolution with log_resolution for continuous learning
 
 LEARNING FROM PAST RESOLUTIONS:
 You have access to a resolution history that helps you learn from past successes:

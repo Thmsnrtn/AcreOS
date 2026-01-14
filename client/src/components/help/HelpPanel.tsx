@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
@@ -11,6 +11,183 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+// Browser context capture types
+interface CapturedError {
+  type: "console" | "network" | "unhandled";
+  message: string;
+  timestamp: number;
+  details?: string;
+}
+
+interface BrowserContext {
+  errors: CapturedError[];
+  failedRequests: CapturedError[];
+  browserInfo: {
+    userAgent: string;
+    screenSize: string;
+    timezone: string;
+    language: string;
+  };
+  sessionInfo: {
+    currentPath: string;
+    sessionDuration: number;
+    lastActions: string[];
+  };
+}
+
+// Safe stringify that handles circular references
+function safeStringify(obj: any, maxLength = 500): string {
+  try {
+    if (typeof obj === 'string') return obj.slice(0, maxLength);
+    if (typeof obj === 'number' || typeof obj === 'boolean') return String(obj);
+    if (obj === null || obj === undefined) return String(obj);
+    if (obj instanceof Error) return `${obj.name}: ${obj.message}`;
+    
+    const seen = new WeakSet();
+    const result = JSON.stringify(obj, (key, value) => {
+      if (typeof value === 'object' && value !== null) {
+        if (seen.has(value)) return '[Circular]';
+        seen.add(value);
+      }
+      return value;
+    });
+    return result?.slice(0, maxLength) || '[Object]';
+  } catch {
+    return String(obj).slice(0, maxLength);
+  }
+}
+
+// Hook to capture browser errors and failed network requests
+function useBrowserContextCapture(maxErrors = 20): BrowserContext {
+  const errorsRef = useRef<CapturedError[]>([]);
+  const failedRequestsRef = useRef<CapturedError[]>([]);
+  const lastActionsRef = useRef<string[]>([]);
+  const sessionStartRef = useRef(Date.now());
+  const [location] = useLocation();
+  
+  useEffect(() => {
+    // Track navigation as an action
+    const trackAction = (action: string) => {
+      lastActionsRef.current = [...lastActionsRef.current.slice(-9), action];
+    };
+    
+    trackAction(`Navigated to ${location}`);
+    
+    // Capture console errors safely
+    const originalError = console.error;
+    console.error = (...args) => {
+      try {
+        const message = args.map(a => safeStringify(a, 200)).join(' ');
+        errorsRef.current = [...errorsRef.current.slice(-(maxErrors - 1)), {
+          type: "console",
+          message: message.slice(0, 500),
+          timestamp: Date.now()
+        }];
+        trackAction(`Console error: ${message.slice(0, 100)}`);
+      } catch {
+        // Ignore capture errors to avoid breaking console.error
+      }
+      originalError.apply(console, args);
+    };
+    
+    // Capture unhandled promise rejections
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      errorsRef.current = [...errorsRef.current.slice(-(maxErrors - 1)), {
+        type: "unhandled",
+        message: event.reason?.message || String(event.reason),
+        timestamp: Date.now(),
+        details: event.reason?.stack?.slice(0, 300)
+      }];
+      trackAction(`Unhandled rejection: ${String(event.reason).slice(0, 100)}`);
+    };
+    window.addEventListener('unhandledrejection', handleUnhandledRejection);
+    
+    // Capture window errors
+    const handleError = (event: ErrorEvent) => {
+      errorsRef.current = [...errorsRef.current.slice(-(maxErrors - 1)), {
+        type: "console",
+        message: event.message,
+        timestamp: Date.now(),
+        details: `${event.filename}:${event.lineno}:${event.colno}`
+      }];
+      trackAction(`Window error: ${event.message.slice(0, 100)}`);
+    };
+    window.addEventListener('error', handleError);
+    
+    // Intercept fetch to capture failed requests
+    const originalFetch = window.fetch;
+    window.fetch = async (...args) => {
+      const url = typeof args[0] === 'string' ? args[0] : (args[0] as Request).url;
+      const method = (args[1]?.method || 'GET').toUpperCase();
+      
+      try {
+        const response = await originalFetch.apply(window, args);
+        
+        if (!response.ok && response.status >= 400) {
+          failedRequestsRef.current = [...failedRequestsRef.current.slice(-(maxErrors - 1)), {
+            type: "network",
+            message: `${method} ${url} - ${response.status} ${response.statusText}`,
+            timestamp: Date.now(),
+            details: `Status: ${response.status}`
+          }];
+          trackAction(`Failed API: ${method} ${url.slice(0, 50)} (${response.status})`);
+        }
+        
+        return response;
+      } catch (error: any) {
+        failedRequestsRef.current = [...failedRequestsRef.current.slice(-(maxErrors - 1)), {
+          type: "network",
+          message: `${method} ${url} - Network Error: ${error.message}`,
+          timestamp: Date.now()
+        }];
+        trackAction(`Network error: ${method} ${url.slice(0, 50)}`);
+        throw error;
+      }
+    };
+    
+    // Track click events for action history
+    const handleClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      const testId = target.closest('[data-testid]')?.getAttribute('data-testid');
+      const buttonText = target.closest('button')?.textContent?.slice(0, 30);
+      const linkHref = target.closest('a')?.getAttribute('href');
+      
+      if (testId) {
+        trackAction(`Clicked: ${testId}`);
+      } else if (buttonText) {
+        trackAction(`Clicked button: ${buttonText}`);
+      } else if (linkHref) {
+        trackAction(`Clicked link: ${linkHref}`);
+      }
+    };
+    document.addEventListener('click', handleClick);
+    
+    return () => {
+      console.error = originalError;
+      window.fetch = originalFetch;
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+      window.removeEventListener('error', handleError);
+      document.removeEventListener('click', handleClick);
+    };
+  }, [location, maxErrors]);
+  
+  return {
+    errors: errorsRef.current,
+    failedRequests: failedRequestsRef.current,
+    browserInfo: {
+      userAgent: navigator.userAgent,
+      screenSize: `${window.innerWidth}x${window.innerHeight}`,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      language: navigator.language
+    },
+    sessionInfo: {
+      currentPath: location,
+      sessionDuration: Math.round((Date.now() - sessionStartRef.current) / 1000),
+      lastActions: lastActionsRef.current
+    }
+  };
+}
 
 interface SystemAlert {
   id: number;
@@ -95,6 +272,9 @@ export function HelpPanel() {
   const [newMessage, setNewMessage] = useState("");
   const [location] = useLocation();
   const queryClient = useQueryClient();
+  
+  // Capture browser context (console errors, failed requests, actions)
+  const browserContext = useBrowserContextCapture();
 
   const [newTicket, setNewTicket] = useState({
     subject: "",
@@ -128,7 +308,20 @@ export function HelpPanel() {
 
   const createTicketMutation = useMutation({
     mutationFn: async (data: typeof newTicket) => {
-      const res = await apiRequest("POST", "/api/support/tickets", { ...data, pageContext: location });
+      // Include browser context for better diagnostics
+      const errorContext = {
+        browserErrors: browserContext.errors.slice(-10),
+        failedRequests: browserContext.failedRequests.slice(-10),
+        browserInfo: browserContext.browserInfo,
+        sessionInfo: browserContext.sessionInfo,
+        capturedAt: new Date().toISOString()
+      };
+      
+      const res = await apiRequest("POST", "/api/support/tickets", { 
+        ...data, 
+        pageContext: location,
+        errorContext 
+      });
       return res.json();
     },
     onSuccess: (data: any) => {
