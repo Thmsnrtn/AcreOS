@@ -153,7 +153,7 @@ export default function WorkflowsPage() {
     <div className="flex min-h-screen bg-background">
       <Sidebar />
 
-      <main className="flex-1 md:ml-[calc(16rem+1rem)] p-6 space-y-6">
+      <main className="flex-1 md:ml-[17rem] p-4 pt-16 md:pt-8 md:p-8 pb-8 overflow-x-hidden space-y-6">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-3xl font-bold" data-testid="text-page-title">Workflows</h1>

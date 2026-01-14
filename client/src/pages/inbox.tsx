@@ -792,7 +792,7 @@ export default function InboxPage() {
     <div className="flex min-h-screen bg-background">
       <Sidebar />
       
-      <main className="flex-1 md:ml-64 flex flex-col h-screen">
+      <main className="flex-1 md:ml-[17rem] pt-16 md:pt-0 flex flex-col h-screen">
         <div className="flex items-center justify-between gap-4 p-4 border-b flex-wrap">
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold" data-testid="text-inbox-title">Inbox</h1>

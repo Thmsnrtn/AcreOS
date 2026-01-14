@@ -204,9 +204,9 @@ export default function ListingsPage() {
   };
 
   return (
-    <div className="flex h-screen w-full">
+    <div className="flex min-h-screen bg-background">
       <Sidebar />
-      <main className="flex-1 overflow-auto p-6">
+      <main className="flex-1 md:ml-[17rem] p-4 pt-16 md:pt-8 md:p-8 pb-8 overflow-x-hidden overflow-auto">
         <div className="flex items-center justify-between gap-4 flex-wrap mb-6">
           <div>
             <h1 className="text-2xl font-bold" data-testid="text-page-title">Listings</h1>
