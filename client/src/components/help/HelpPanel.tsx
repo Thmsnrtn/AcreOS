@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
-import { Search, BookOpen, MessageCircle, Send, ChevronLeft, Sparkles, Loader2, CheckCircle } from "lucide-react";
+import { Search, BookOpen, MessageCircle, Send, ChevronLeft, Sparkles, Loader2, CheckCircle, AlertTriangle, Bell } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,15 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+interface SystemAlert {
+  id: number;
+  type: string;
+  severity: string;
+  title: string;
+  message: string;
+  createdAt: string;
+}
 
 interface SupportTicket {
   id: number;
@@ -108,6 +117,14 @@ export function HelpPanel() {
     queryKey: ["/api/support/knowledge-base"],
     enabled: activeTab === "topics"
   });
+
+  // Query for proactive system alerts
+  const { data: alertsData } = useQuery<{ alerts: SystemAlert[] }>({
+    queryKey: ["/api/support/alerts"],
+    enabled: activeTab === "support",
+    refetchInterval: 60000 // Refresh every minute
+  });
+  const activeAlerts = alertsData?.alerts || [];
 
   const createTicketMutation = useMutation({
     mutationFn: async (data: typeof newTicket) => {
@@ -225,6 +242,66 @@ export function HelpPanel() {
         <TabsContent value="support" className="mt-4">
           {supportView === "list" && (
             <div className="space-y-4">
+              {/* Proactive Alerts Section */}
+              {activeAlerts.length > 0 && (
+                <div className="space-y-2" data-testid="proactive-alerts-section">
+                  <div className="flex items-center gap-2 text-sm font-medium text-amber-600 dark:text-amber-400">
+                    <Bell className="h-4 w-4" />
+                    Sophie noticed some issues
+                  </div>
+                  {activeAlerts.slice(0, 3).map((alert) => (
+                    <Card 
+                      key={alert.id} 
+                      className={`border-l-4 ${
+                        alert.severity === "critical" || alert.severity === "error" 
+                          ? "border-l-destructive" 
+                          : "border-l-amber-500"
+                      }`}
+                      data-testid={`alert-card-${alert.id}`}
+                    >
+                      <CardContent className="p-3">
+                        <div className="flex items-start gap-2">
+                          <AlertTriangle className={`h-4 w-4 mt-0.5 flex-shrink-0 ${
+                            alert.severity === "critical" || alert.severity === "error"
+                              ? "text-destructive"
+                              : "text-amber-500"
+                          }`} />
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-sm">{alert.title}</p>
+                            {alert.message && (
+                              <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{alert.message}</p>
+                            )}
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="mt-2 w-full text-xs"
+                          onClick={() => {
+                            setNewTicket({
+                              ...newTicket,
+                              subject: `Help with: ${alert.title}`,
+                              description: `I noticed an alert about: ${alert.title}\n\n${alert.message || ""}\n\nCan you help me fix this?`,
+                              category: alert.type === "quota_warning" ? "billing" : "technical"
+                            });
+                            setSupportView("new");
+                          }}
+                          data-testid={`button-ask-about-alert-${alert.id}`}
+                        >
+                          <Sparkles className="h-3 w-3 mr-1" />
+                          Ask Sophie to help fix this
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  ))}
+                  {activeAlerts.length > 3 && (
+                    <p className="text-xs text-muted-foreground text-center">
+                      +{activeAlerts.length - 3} more alerts
+                    </p>
+                  )}
+                </div>
+              )}
+
               <Button
                 className="w-full justify-start gap-2"
                 onClick={() => setSupportView("new")}

@@ -19319,6 +19319,30 @@ Seller Signature (if applicable)
     }
   });
   
+  // Get active alerts for the user's organization (for proactive support)
+  api.get("/api/support/alerts", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.org!;
+      const { proactiveMonitor } = await import("./services/proactiveMonitor");
+      
+      const alerts = await proactiveMonitor.getActiveAlerts(org.id);
+      
+      res.json({
+        alerts: alerts.map(a => ({
+          id: a.id,
+          type: a.type || a.alertType,
+          severity: a.severity,
+          title: a.title,
+          message: a.message,
+          createdAt: a.createdAt
+        }))
+      });
+    } catch (error: any) {
+      console.error("[support] Error fetching alerts:", error);
+      res.json({ alerts: [] }); // Return empty array on error instead of failing
+    }
+  });
+
   // Founder endpoint: Get all support tickets across all orgs
   api.get("/api/founder/support/tickets", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {

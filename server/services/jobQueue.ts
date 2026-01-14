@@ -285,6 +285,31 @@ export class JobQueueService {
     this.pendingQueue = [];
     log("Job queue cleared", "jobQueue");
   }
+
+  /**
+   * Retry failed jobs optionally filtered by type and orgId
+   */
+  retryFailedJobs(jobType?: string, orgId?: number, maxRetries = 10): number {
+    const failedJobs = Array.from(this.jobs.values())
+      .filter(job => {
+        if (job.status !== "failed") return false;
+        if (jobType && jobType !== "all" && job.type !== jobType) return false;
+        if (orgId && job.payload?.organizationId !== orgId) return false;
+        return true;
+      })
+      .slice(0, maxRetries);
+
+    for (const job of failedJobs) {
+      job.status = "pending";
+      job.attempts = 0;
+      job.error = null;
+      job.scheduledFor = new Date();
+      this.pendingQueue.push(job.id);
+      log(`Retrying failed job: ${job.id} (type: ${job.type})`, "jobQueue");
+    }
+
+    return failedJobs.length;
+  }
 }
 
 export const jobQueueService = JobQueueService.getInstance();
