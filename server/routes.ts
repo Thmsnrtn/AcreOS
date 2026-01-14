@@ -4,7 +4,7 @@ import type { Server } from "http";
 import crypto from "crypto";
 import { storage, calculateMonthlyPayment, db } from "./storage";
 import { z } from "zod";
-import { eq, sql, and, desc, lt, inArray } from "drizzle-orm";
+import { eq, sql, and, desc, lt, inArray, or } from "drizzle-orm";
 import { 
   insertLeadSchema, insertPropertySchema, insertNoteSchema, 
   insertCampaignSchema, insertCampaignResponseSchema, insertAgentTaskSchema, insertDealSchema,
@@ -25,6 +25,7 @@ import {
   insertCollectionSequenceSchema, insertCollectionEnrollmentSchema, insertCountyResearchSchema,
   offers, organizationIntegrations, dataSources,
   supportTickets, supportTicketMessages, knowledgeBaseArticles,
+  sophieMemory, systemAlerts,
 } from "@shared/schema";
 
 // Partial update schemas for PUT endpoints
@@ -19445,6 +19446,381 @@ Seller Signature (if applicable)
     } catch (error: any) {
       console.error("[support] Error fetching analytics:", error);
       res.status(500).json({ message: error.message || "Failed to fetch analytics" });
+    }
+  });
+
+  // Founder endpoint: Get escalated tickets with full context
+  api.get("/api/founder/escalations", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.org!;
+      
+      if (!org.isFounder) {
+        return res.status(403).json({ message: "Founder access required" });
+      }
+      
+      // Get escalated tickets that are not resolved
+      const escalatedTickets = await db.select()
+        .from(supportTickets)
+        .where(and(
+          eq(supportTickets.resolutionType, "escalated"),
+          sql`${supportTickets.status} != 'resolved'`
+        ))
+        .orderBy(desc(supportTickets.createdAt))
+        .limit(50);
+      
+      // Enrich with additional context
+      const enrichedTickets = await Promise.all(escalatedTickets.map(async (ticket) => {
+        // Get organization name
+        const [ticketOrg] = await db.select({ name: organizations.name })
+          .from(organizations)
+          .where(eq(organizations.id, ticket.organizationId));
+        
+        // Get ticket messages
+        const messages = await db.select()
+          .from(supportTicketMessages)
+          .where(eq(supportTicketMessages.ticketId, ticket.id))
+          .orderBy(supportTicketMessages.createdAt);
+        
+        // Get Sophie's memory for this ticket (root cause analysis, solutions tried)
+        const memories = await db.select()
+          .from(sophieMemory)
+          .where(and(
+            eq(sophieMemory.organizationId, ticket.organizationId),
+            or(
+              eq(sophieMemory.sourceTicketId, ticket.id),
+              eq(sophieMemory.memoryType, "solution_tried")
+            )
+          ))
+          .orderBy(desc(sophieMemory.createdAt))
+          .limit(10);
+        
+        // Get related system alerts for this org
+        const relatedAlerts = await db.select()
+          .from(systemAlerts)
+          .where(and(
+            eq(systemAlerts.organizationId, ticket.organizationId),
+            sql`${systemAlerts.status} != 'resolved'`
+          ))
+          .orderBy(desc(systemAlerts.createdAt))
+          .limit(5);
+        
+        // Extract root cause analysis from memories
+        const rootCauseMemory = memories.find(m => 
+          m.memoryType === "escalation" || 
+          (m.value as any)?.rootCause
+        );
+        
+        // Extract solutions that were tried
+        const solutionsTried = memories
+          .filter(m => m.memoryType === "solution_tried")
+          .map(m => ({
+            action: (m.value as any)?.summary || m.key,
+            wasSuccessful: (m.value as any)?.wasSuccessful || false,
+            timestamp: m.createdAt
+          }));
+        
+        return {
+          ...ticket,
+          organizationName: ticketOrg?.name || "Unknown",
+          messages,
+          rootCauseAnalysis: rootCauseMemory ? {
+            rootCause: (rootCauseMemory.value as any)?.summary || (rootCauseMemory.value as any)?.rootCause,
+            confidence: (rootCauseMemory.value as any)?.confidence || null,
+            affectedLayers: (rootCauseMemory.value as any)?.affectedLayers || [],
+            suggestedFix: (rootCauseMemory.value as any)?.suggestedFix || null
+          } : null,
+          solutionsTried,
+          relatedAlerts: relatedAlerts.map(a => ({
+            id: a.id,
+            title: a.title,
+            severity: a.severity,
+            message: a.message,
+            createdAt: a.createdAt
+          })),
+          escalationBundle: ticket.escalationBundle || null
+        };
+      }));
+      
+      res.json(enrichedTickets);
+    } catch (error: any) {
+      console.error("[founder] Error fetching escalations:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch escalations" });
+    }
+  });
+
+  // Founder endpoint: Generate a prompt for Replit Agent from a single escalation
+  api.post("/api/founder/escalations/:id/generate-prompt", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.org!;
+      
+      if (!org.isFounder) {
+        return res.status(403).json({ message: "Founder access required" });
+      }
+      
+      const ticketId = parseInt(req.params.id);
+      if (isNaN(ticketId)) {
+        return res.status(400).json({ message: "Invalid ticket ID" });
+      }
+      
+      // Get the ticket with full context
+      const [ticket] = await db.select()
+        .from(supportTickets)
+        .where(eq(supportTickets.id, ticketId));
+      
+      if (!ticket) {
+        return res.status(404).json({ message: "Ticket not found" });
+      }
+      
+      // Get organization
+      const [ticketOrg] = await db.select()
+        .from(organizations)
+        .where(eq(organizations.id, ticket.organizationId));
+      
+      // Get ticket messages
+      const messages = await db.select()
+        .from(supportTicketMessages)
+        .where(eq(supportTicketMessages.ticketId, ticket.id))
+        .orderBy(supportTicketMessages.createdAt);
+      
+      // Get Sophie's memory for this ticket
+      const memories = await db.select()
+        .from(sophieMemory)
+        .where(and(
+          eq(sophieMemory.organizationId, ticket.organizationId),
+          or(
+            eq(sophieMemory.sourceTicketId, ticket.id),
+            eq(sophieMemory.memoryType, "solution_tried")
+          )
+        ))
+        .orderBy(desc(sophieMemory.createdAt))
+        .limit(10);
+      
+      // Extract root cause analysis
+      const rootCauseMemory = memories.find(m => 
+        m.memoryType === "escalation" || 
+        (m.value as any)?.rootCause
+      );
+      
+      // Extract solutions tried
+      const solutionsTried = memories
+        .filter(m => m.memoryType === "solution_tried")
+        .map(m => `- ${(m.value as any)?.summary || m.key} (${(m.value as any)?.wasSuccessful ? 'partially worked' : 'did not resolve'})`)
+        .join('\n');
+      
+      // Determine relevant files based on category
+      const relevantFiles: string[] = [];
+      const category = ticket.category?.toLowerCase() || '';
+      if (category.includes('billing') || category.includes('payment') || category.includes('stripe')) {
+        relevantFiles.push('server/stripeService.ts', 'server/webhookHandlers.ts', 'server/services/credits.ts');
+      }
+      if (category.includes('ai') || category.includes('sophie') || category.includes('support')) {
+        relevantFiles.push('server/ai/supportAgent.ts', 'server/services/sophieLearning.ts', 'server/services/supportBrain.ts');
+      }
+      if (category.includes('lead') || category.includes('campaign') || category.includes('mail')) {
+        relevantFiles.push('server/services/leadNurturer.ts', 'server/services/campaignOptimizer.ts', 'server/services/directMailService.ts');
+      }
+      if (category.includes('gis') || category.includes('map') || category.includes('parcel')) {
+        relevantFiles.push('server/services/parcel.ts', 'server/services/propertyEnrichment.ts', 'server/services/gisValidation.ts');
+      }
+      if (category.includes('technical') || category.includes('bug') || relevantFiles.length === 0) {
+        relevantFiles.push('server/routes.ts', 'client/src/App.tsx', 'shared/schema.ts');
+      }
+      
+      // Build the prompt
+      const prompt = `# Escalated Support Ticket - Needs Developer Attention
+
+## Context
+**Ticket ID:** #${ticket.id}
+**Subject:** ${ticket.subject}
+**Category:** ${ticket.category || 'General'}
+**Priority:** ${ticket.priority || 'Normal'}
+**Status:** ${ticket.status}
+**Organization:** ${ticketOrg?.name || 'Unknown'} (ID: ${ticket.organizationId})
+**User ID:** ${ticket.userId}
+**Created:** ${ticket.createdAt ? new Date(ticket.createdAt).toISOString() : 'Unknown'}
+
+## Issue Description
+${ticket.description}
+
+${ticket.errorContext ? `## Error Context
+\`\`\`json
+${JSON.stringify(ticket.errorContext, null, 2)}
+\`\`\`` : ''}
+
+${ticket.pageContext ? `## Page Context
+User was on: ${ticket.pageContext}` : ''}
+
+## Conversation History
+${messages.map(m => `**${m.role === 'agent' ? `Sophie (${m.agentName || 'AI'})` : m.role === 'user' ? 'Customer' : 'System'}:** ${m.content}`).join('\n\n')}
+
+## Root Cause Analysis (Sophie's Assessment)
+${rootCauseMemory ? `
+- **Identified Cause:** ${(rootCauseMemory.value as any)?.summary || (rootCauseMemory.value as any)?.rootCause || 'Analysis inconclusive'}
+- **Confidence:** ${(rootCauseMemory.value as any)?.confidence ? `${Math.round((rootCauseMemory.value as any).confidence * 100)}%` : 'Unknown'}
+- **Affected Layers:** ${((rootCauseMemory.value as any)?.affectedLayers || []).join(', ') || 'Unknown'}
+- **Suggested Fix:** ${(rootCauseMemory.value as any)?.suggestedFix || 'Manual investigation required'}
+` : 'Sophie was unable to determine a root cause with sufficient confidence.'}
+
+## What Sophie Already Tried
+${solutionsTried || '- No automated fixes were attempted'}
+
+${ticket.escalationBundle ? `## Diagnostic Bundle (Auto-Gathered)
+\`\`\`json
+${JSON.stringify(ticket.escalationBundle, null, 2)}
+\`\`\`` : ''}
+
+## Suggested Approach
+1. Review the error context and conversation history
+2. Check the relevant files listed below for potential issues
+3. Look for patterns in recent changes that might have caused this
+4. Implement a fix and add tests to prevent regression
+5. Update Sophie's knowledge base if this reveals a new issue pattern
+
+## Relevant Files to Check
+${relevantFiles.map(f => `- \`${f}\``).join('\n')}
+
+## Success Criteria
+- [ ] The user's reported issue is resolved
+- [ ] Root cause is identified and documented
+- [ ] Fix is tested and doesn't break other functionality
+- [ ] If applicable, Sophie's knowledge is updated to handle similar cases
+- [ ] User is notified of the resolution
+
+## Notes
+This ticket was escalated by Sophie (AI Support Agent) because it could not be resolved automatically. Please investigate and resolve manually.`;
+
+      res.json({ prompt });
+    } catch (error: any) {
+      console.error("[founder] Error generating prompt:", error);
+      res.status(500).json({ message: error.message || "Failed to generate prompt" });
+    }
+  });
+
+  // Founder endpoint: Generate batch prompt for multiple escalations
+  api.post("/api/founder/escalations/batch-prompt", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.org!;
+      
+      if (!org.isFounder) {
+        return res.status(403).json({ message: "Founder access required" });
+      }
+      
+      const { ticketIds } = req.body as { ticketIds: number[] };
+      
+      if (!ticketIds || !Array.isArray(ticketIds) || ticketIds.length === 0) {
+        return res.status(400).json({ message: "ticketIds array is required" });
+      }
+      
+      // Get all tickets
+      const tickets = await db.select()
+        .from(supportTickets)
+        .where(inArray(supportTickets.id, ticketIds));
+      
+      if (tickets.length === 0) {
+        return res.status(404).json({ message: "No tickets found" });
+      }
+      
+      // Group tickets by category
+      const byCategory: Record<string, typeof tickets> = {};
+      for (const ticket of tickets) {
+        const cat = ticket.category || 'general';
+        if (!byCategory[cat]) byCategory[cat] = [];
+        byCategory[cat].push(ticket);
+      }
+      
+      // Get org names
+      const orgIds = [...new Set(tickets.map(t => t.organizationId))];
+      const orgs = await db.select({ id: organizations.id, name: organizations.name })
+        .from(organizations)
+        .where(inArray(organizations.id, orgIds));
+      const orgMap = new Map(orgs.map(o => [o.id, o.name]));
+      
+      // Build comprehensive prompt
+      let prompt = `# Batch Escalation Review - ${tickets.length} Tickets Need Attention
+
+## Overview
+This batch contains ${tickets.length} escalated support tickets that Sophie (AI Support Agent) could not resolve automatically.
+
+**Tickets by Category:**
+${Object.entries(byCategory).map(([cat, tix]) => `- ${cat}: ${tix.length} ticket(s)`).join('\n')}
+
+---
+
+`;
+
+      // Add each category section
+      for (const [category, categoryTickets] of Object.entries(byCategory)) {
+        prompt += `## Category: ${category.charAt(0).toUpperCase() + category.slice(1)}\n\n`;
+        
+        for (const ticket of categoryTickets) {
+          prompt += `### Ticket #${ticket.id}: ${ticket.subject}
+- **Priority:** ${ticket.priority || 'Normal'}
+- **Organization:** ${orgMap.get(ticket.organizationId) || 'Unknown'}
+- **Created:** ${ticket.createdAt ? new Date(ticket.createdAt).toISOString() : 'Unknown'}
+- **Description:** ${ticket.description?.substring(0, 200)}${(ticket.description?.length || 0) > 200 ? '...' : ''}
+
+`;
+        }
+      }
+      
+      prompt += `---
+
+## Suggested Approach
+1. Review tickets by category to identify common patterns
+2. Prioritize by severity (urgent tickets first)
+3. Check if multiple tickets point to the same underlying issue
+4. Fix root causes rather than symptoms when possible
+5. Update Sophie's training data to prevent similar escalations
+
+## Common Files to Check
+- \`server/routes.ts\` - API endpoints
+- \`server/ai/supportAgent.ts\` - Sophie's support logic
+- \`server/services/\` - Business logic services
+- \`shared/schema.ts\` - Database schema
+
+## Success Criteria
+- [ ] All listed tickets are resolved
+- [ ] Root causes are documented
+- [ ] Related tickets are linked if they share a common cause
+- [ ] Sophie's knowledge base is updated as needed
+`;
+
+      res.json({ prompt });
+    } catch (error: any) {
+      console.error("[founder] Error generating batch prompt:", error);
+      res.status(500).json({ message: error.message || "Failed to generate batch prompt" });
+    }
+  });
+
+  // Founder endpoint: Mark escalation as resolved
+  api.post("/api/founder/escalations/:id/resolve", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.org!;
+      
+      if (!org.isFounder) {
+        return res.status(403).json({ message: "Founder access required" });
+      }
+      
+      const ticketId = parseInt(req.params.id);
+      if (isNaN(ticketId)) {
+        return res.status(400).json({ message: "Invalid ticket ID" });
+      }
+      
+      const { resolution } = req.body as { resolution?: string };
+      
+      await db.update(supportTickets)
+        .set({
+          status: "resolved",
+          resolution: resolution || "Manually resolved by founder",
+          resolvedAt: new Date(),
+          resolvedBy: "founder"
+        })
+        .where(eq(supportTickets.id, ticketId));
+      
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("[founder] Error resolving escalation:", error);
+      res.status(500).json({ message: error.message || "Failed to resolve escalation" });
     }
   });
 

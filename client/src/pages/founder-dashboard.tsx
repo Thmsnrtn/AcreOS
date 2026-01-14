@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { SystemHealth } from "@/components/system-health";
@@ -43,7 +44,11 @@ import {
   Stethoscope,
   Loader2,
   Globe,
-  X
+  X,
+  Copy,
+  Clipboard,
+  ExternalLink,
+  HandHelping
 } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 
@@ -250,6 +255,45 @@ interface LiveDiscoveredEndpoint {
   metadata: Record<string, any> | null;
 }
 
+interface EscalatedTicket {
+  id: number;
+  organizationId: number;
+  userId: string;
+  subject: string;
+  description: string;
+  category: string | null;
+  priority: string | null;
+  status: string;
+  createdAt: string | null;
+  organizationName: string;
+  messages: Array<{
+    id: number;
+    role: string;
+    content: string;
+    agentName: string | null;
+    createdAt: string | null;
+  }>;
+  rootCauseAnalysis: {
+    rootCause: string | null;
+    confidence: number | null;
+    affectedLayers: string[];
+    suggestedFix: string | null;
+  } | null;
+  solutionsTried: Array<{
+    action: string;
+    wasSuccessful: boolean;
+    timestamp: string | null;
+  }>;
+  relatedAlerts: Array<{
+    id: number;
+    title: string;
+    severity: string;
+    message: string;
+    createdAt: string | null;
+  }>;
+  escalationBundle: any | null;
+}
+
 const FEATURE_STATUS_OPTIONS = [
   { value: "submitted", label: "Submitted" },
   { value: "under_review", label: "Under Review" },
@@ -325,6 +369,10 @@ export default function FounderDashboard() {
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [discoveryStateFilter, setDiscoveryStateFilter] = useState<string>("all");
   const [scanTargetStates, setScanTargetStates] = useState<string>("");
+  const [selectedEscalations, setSelectedEscalations] = useState<Set<number>>(new Set());
+  const [promptDialogOpen, setPromptDialogOpen] = useState(false);
+  const [generatedPrompt, setGeneratedPrompt] = useState("");
+  const [generatingPromptFor, setGeneratingPromptFor] = useState<number | null>(null);
 
   const { data: dashboardData, isLoading } = useQuery<AdminDashboardData>({
     queryKey: ['/api/admin/dashboard'],
@@ -361,6 +409,82 @@ export default function FounderDashboard() {
   }>({
     queryKey: ['/api/founder/support/analytics'],
   });
+
+  const { data: escalations, isLoading: escalationsLoading } = useQuery<EscalatedTicket[]>({
+    queryKey: ['/api/founder/escalations'],
+  });
+
+  const generatePromptMutation = useMutation({
+    mutationFn: async (ticketId: number) => {
+      setGeneratingPromptFor(ticketId);
+      const res = await apiRequest("POST", `/api/founder/escalations/${ticketId}/generate-prompt`, {});
+      if (!res.ok) throw new Error("Failed to generate prompt");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setGeneratedPrompt(data.prompt);
+      setPromptDialogOpen(true);
+      setGeneratingPromptFor(null);
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+      setGeneratingPromptFor(null);
+    },
+  });
+
+  const generateBatchPromptMutation = useMutation({
+    mutationFn: async (ticketIds: number[]) => {
+      const res = await apiRequest("POST", `/api/founder/escalations/batch-prompt`, { ticketIds });
+      if (!res.ok) throw new Error("Failed to generate batch prompt");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setGeneratedPrompt(data.prompt);
+      setPromptDialogOpen(true);
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const resolveEscalationMutation = useMutation({
+    mutationFn: async (ticketId: number) => {
+      const res = await apiRequest("POST", `/api/founder/escalations/${ticketId}/resolve`, {});
+      if (!res.ok) throw new Error("Failed to resolve escalation");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/founder/escalations'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/founder/support/analytics'] });
+      setPromptDialogOpen(false);
+      setGeneratedPrompt("");
+      toast({ title: "Escalation marked as resolved" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const handleEscalationSelect = (ticketId: number, checked: boolean) => {
+    setSelectedEscalations(prev => {
+      const next = new Set(prev);
+      if (checked) {
+        next.add(ticketId);
+      } else {
+        next.delete(ticketId);
+      }
+      return next;
+    });
+  };
+
+  const handleCopyPrompt = async () => {
+    try {
+      await navigator.clipboard.writeText(generatedPrompt);
+      toast({ title: "Copied to clipboard" });
+    } catch {
+      toast({ title: "Failed to copy", variant: "destructive" });
+    }
+  };
 
   const updateFeatureRequestMutation = useMutation({
     mutationFn: async ({ id, updates }: { id: number; updates: Partial<{ status: string; priority: string; founderNotes: string }> }) => {
@@ -1462,6 +1586,143 @@ export default function FounderDashboard() {
                   <p className="text-xs text-muted-foreground">Avg Rating</p>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Escalation Queue Section */}
+          <Card data-testid="card-escalation-queue">
+            <CardHeader className="flex flex-row items-start justify-between gap-2 space-y-0">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <HandHelping className="w-5 h-5 text-orange-500" />
+                  Escalation Queue
+                  {escalations && escalations.length > 0 && (
+                    <Badge variant="secondary" className="bg-orange-500/10 text-orange-600 border-orange-500/20">
+                      {escalations.length} needs attention
+                    </Badge>
+                  )}
+                </CardTitle>
+                <CardDescription>Escalated tickets requiring manual review</CardDescription>
+              </div>
+              {selectedEscalations.size > 1 && (
+                <Button
+                  size="sm"
+                  onClick={() => generateBatchPromptMutation.mutate(Array.from(selectedEscalations))}
+                  disabled={generateBatchPromptMutation.isPending}
+                  data-testid="button-batch-prompt"
+                >
+                  {generateBatchPromptMutation.isPending ? (
+                    <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                  ) : (
+                    <Clipboard className="w-3 h-3 mr-1" />
+                  )}
+                  Generate Batch Prompt ({selectedEscalations.size})
+                </Button>
+              )}
+            </CardHeader>
+            <CardContent>
+              {escalationsLoading ? (
+                <div className="space-y-3">
+                  <Skeleton className="h-20 w-full" />
+                  <Skeleton className="h-20 w-full" />
+                </div>
+              ) : escalations && escalations.length > 0 ? (
+                <div className="space-y-3 max-h-[500px] overflow-y-auto">
+                  {escalations.map((ticket) => (
+                    <div 
+                      key={ticket.id} 
+                      className={`flex items-start gap-3 p-4 rounded-lg border ${
+                        ticket.priority === 'urgent' ? 'bg-red-500/5 border-red-500/20' :
+                        ticket.priority === 'high' ? 'bg-orange-500/5 border-orange-500/20' :
+                        'bg-muted/50 border-border'
+                      }`}
+                      data-testid={`escalation-item-${ticket.id}`}
+                    >
+                      <Checkbox
+                        checked={selectedEscalations.has(ticket.id)}
+                        onCheckedChange={(checked) => handleEscalationSelect(ticket.id, !!checked)}
+                        data-testid={`checkbox-escalation-${ticket.id}`}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2 flex-wrap">
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-medium truncate" data-testid={`text-subject-${ticket.id}`}>
+                              #{ticket.id}: {ticket.subject}
+                            </h4>
+                            <div className="flex items-center gap-2 flex-wrap mt-1">
+                              <Badge variant="outline" className="text-xs">
+                                {ticket.category || 'General'}
+                              </Badge>
+                              {ticket.priority && (
+                                <Badge 
+                                  variant="outline" 
+                                  className={`text-xs ${getPriorityBadgeColor(ticket.priority)}`}
+                                >
+                                  {ticket.priority}
+                                </Badge>
+                              )}
+                              <span className="text-xs text-muted-foreground">
+                                {ticket.organizationName}
+                              </span>
+                              <span className="text-xs text-muted-foreground">
+                                {ticket.createdAt ? formatDistanceToNow(new Date(ticket.createdAt), { addSuffix: true }) : ''}
+                              </span>
+                            </div>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => generatePromptMutation.mutate(ticket.id)}
+                            disabled={generatingPromptFor === ticket.id}
+                            data-testid={`button-prompt-${ticket.id}`}
+                          >
+                            {generatingPromptFor === ticket.id ? (
+                              <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                            ) : (
+                              <ExternalLink className="w-3 h-3 mr-1" />
+                            )}
+                            Generate Prompt
+                          </Button>
+                        </div>
+                        <p className="text-sm text-muted-foreground mt-2 line-clamp-2" data-testid={`text-description-${ticket.id}`}>
+                          {ticket.description}
+                        </p>
+                        {ticket.rootCauseAnalysis && (
+                          <div className="text-xs text-muted-foreground mt-2 p-2 bg-background rounded border">
+                            <span className="font-medium">Root Cause: </span>
+                            {ticket.rootCauseAnalysis.rootCause || 'Analysis inconclusive'}
+                            {ticket.rootCauseAnalysis.confidence && (
+                              <span className="ml-2 text-orange-600">
+                                ({Math.round(ticket.rootCauseAnalysis.confidence * 100)}% confidence)
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        {ticket.solutionsTried.length > 0 && (
+                          <div className="text-xs text-muted-foreground mt-1">
+                            <span className="font-medium">Attempted fixes: </span>
+                            {ticket.solutionsTried.length} solution(s) tried
+                          </div>
+                        )}
+                        {ticket.relatedAlerts.length > 0 && (
+                          <div className="flex items-center gap-1 mt-1">
+                            <AlertTriangle className="w-3 h-3 text-yellow-500" />
+                            <span className="text-xs text-yellow-600">
+                              {ticket.relatedAlerts.length} related alert(s)
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <CheckCircle2 className="w-10 h-10 mx-auto mb-2 text-green-500" />
+                  <p className="text-sm">No escalations pending</p>
+                  <p className="text-xs">Sophie is handling all support requests</p>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -2965,6 +3226,71 @@ export default function FounderDashboard() {
             >
               Close
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Generated Prompt Dialog */}
+      <Dialog open={promptDialogOpen} onOpenChange={setPromptDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[85vh] overflow-hidden flex flex-col" data-testid="dialog-generated-prompt">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Clipboard className="w-5 h-5 text-blue-500" />
+              Generated Prompt for Replit Agent
+            </DialogTitle>
+            <DialogDescription>
+              Copy this prompt and use it with Replit Agent to address the escalated issue
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-hidden">
+            <Textarea
+              value={generatedPrompt}
+              readOnly
+              className="h-[50vh] font-mono text-sm resize-none"
+              data-testid="textarea-generated-prompt"
+            />
+          </div>
+          <DialogFooter className="flex flex-row justify-between items-center gap-2 pt-4 border-t">
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={handleCopyPrompt}
+                data-testid="button-copy-prompt"
+              >
+                <Copy className="w-4 h-4 mr-2" />
+                Copy to Clipboard
+              </Button>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setPromptDialogOpen(false);
+                  setGeneratedPrompt("");
+                }}
+                data-testid="button-close-prompt"
+              >
+                Close
+              </Button>
+              <Button
+                onClick={() => {
+                  const selected = Array.from(selectedEscalations);
+                  if (selected.length > 0) {
+                    selected.forEach(id => resolveEscalationMutation.mutate(id));
+                    setSelectedEscalations(new Set());
+                  }
+                }}
+                disabled={selectedEscalations.size === 0 || resolveEscalationMutation.isPending}
+                data-testid="button-resolve-escalation"
+              >
+                {resolveEscalationMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="w-4 h-4 mr-2" />
+                )}
+                Mark as Resolved
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
