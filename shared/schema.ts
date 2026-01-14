@@ -7611,6 +7611,20 @@ export const supportTickets = pgTable("support_tickets", {
     screenSize?: string;
   }>(),
   
+  // Escalation diagnostic bundle (auto-gathered when escalating)
+  escalationBundle: jsonb("escalation_bundle").$type<{
+    gatheredAt: string;
+    organization: any;
+    dataCounts: any;
+    usageLimits: any;
+    activeAlerts: any[];
+    serviceHealth: any;
+    recentActivity: any[];
+    recentApiErrors: any[];
+    previousIssues: any[];
+    solutionsTried: any[];
+  }>(),
+  
   // Metadata
   source: text("source").notNull().default("in_app"), // in_app, email, chat
   createdAt: timestamp("created_at").defaultNow(),
@@ -7692,8 +7706,10 @@ export const supportResolutionHistory = pgTable("support_resolution_history", {
   issueType: text("issue_type").notNull(),
   issuePattern: text("issue_pattern"), // Regex or keyword pattern
   
+  variantName: text("variant_name"), // For A/B testing different resolution approaches
   resolutionApproach: text("resolution_approach").notNull(),
   toolsUsed: jsonb("tools_used").$type<string[]>(),
+  customerEffortScore: integer("customer_effort_score"), // 1-5 how much effort from customer
   
   wasSuccessful: boolean("was_successful").notNull(),
   customerSatisfied: boolean("customer_satisfied"),
@@ -7735,3 +7751,47 @@ export const insertSupportResolutionHistorySchema = createInsertSchema(supportRe
 });
 export type InsertSupportResolutionHistory = z.infer<typeof insertSupportResolutionHistorySchema>;
 export type SupportResolutionHistory = typeof supportResolutionHistory.$inferSelect;
+
+// Multi-session memory for Sophie - stores context across conversations
+export const sophieMemory = pgTable("sophie_memory", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  userId: text("user_id").notNull(),
+  
+  // Memory type for different kinds of remembered information
+  memoryType: text("memory_type").notNull(), // issue_history, preference, solution_tried, escalation, context
+  
+  // The remembered information
+  key: text("key").notNull(), // e.g., "last_billing_issue", "preferred_contact_method", "tried_cache_clear"
+  value: jsonb("value").$type<{
+    summary?: string;
+    details?: any;
+    issueType?: string;
+    toolsUsed?: string[];
+    resolution?: string;
+    wasSuccessful?: boolean;
+    timestamp?: string;
+  }>(),
+  
+  // Relevance and expiry
+  importance: integer("importance").default(5), // 1-10 scale, higher = more important to remember
+  expiresAt: timestamp("expires_at"), // Optional expiry for temporary memories
+  
+  // Source tracking
+  sourceTicketId: integer("source_ticket_id").references(() => supportTickets.id),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("sophie_memory_org_user_idx").on(table.organizationId, table.userId),
+  index("sophie_memory_type_idx").on(table.memoryType),
+  index("sophie_memory_key_idx").on(table.key),
+]);
+
+export const insertSophieMemorySchema = createInsertSchema(sophieMemory).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertSophieMemory = z.infer<typeof insertSophieMemorySchema>;
+export type SophieMemory = typeof sophieMemory.$inferSelect;

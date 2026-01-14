@@ -60,11 +60,23 @@ Preferred communication style: Simple, everyday language.
 - **Unified Communications**: Twilio SMS integration (BYOK) with a multi-channel inbox UI.
 - **Browser Automation Engine**: Puppeteer-core for backend web automation (county research, document download, property listing screenshots) with job queue and AI integration.
 - **Autonomous AI Operations**: Capabilities across acquisition research, due diligence, negotiation, portfolio management, compliance, and disposition, leveraging multi-agent orchestration and event subscription.
-- **Sophie Support Agent (80% Autonomous Resolution Target)**: AI-powered customer support with advanced investigation tools:
+- **Sophie Support Agent (85-95% Autonomous Resolution Target)**: AI-powered customer support with advanced investigation, learning, and self-healing capabilities:
   - **Investigation Tools**: `query_user_data` (database inspection), `search_logs` (error/event search), `get_user_activity` (action history), `estimate_resolution_confidence` (confidence scoring)
   - **Decision Trees**: Structured troubleshooting paths for 10 common issue types (login, sync, billing, data, AI, map, performance, export, notifications, permissions)
   - **Browser Context Capture**: Auto-captures console errors, failed network requests, user actions when help panel opens
   - **Proactive Anomaly Detection**: Activity drop detection (70%+ baseline deviation), error pattern detection, usage spike detection
+  - **Automated Fix Actions**: `clear_user_cache`, `reset_user_session`, `retry_failed_jobs`, `refresh_auth_tokens`, `resync_user_data`
+  - **Multi-Session Memory**: sophieMemory table with memory types (issue_history, preference, solution_tried, escalation, context), importance scoring (1-10), expiry support, `recall_user_memory` and `save_user_memory` tools for personalized support
+  - **Resolution Tracking**: supportResolutionHistory with variantName, customerEffortScore (1-5), success/failure tracking for continuous improvement
+  - **Knowledge Base Search**: `search_past_resolutions` to find matching solutions from previously resolved tickets
+  - **A/B Testing for Resolutions**: `get_resolution_ab_recommendations` tracks resolution variants, success rates, customer effort scores, and recommends winning approaches
+  - **Predictive Prevention**: `check_predictive_issues` analyzes activity drops, error patterns, quota usage, data integrity to warn users before issues escalate
+  - **Stripe Integration**: `get_customer_billing_status`, `get_payment_history`, `fix_billing_issue` for subscription and payment management
+  - **Smart Escalation**: `escalate_to_human` auto-generates diagnostic bundle (org data, counts, limits, alerts, health, activity, API errors, memory)
+  - **Proactive Health Checks**: healthCheck service with periodic checks (60s), health scoring (0-100, A-F grades), proactive outreach scheduling
+  - **Auto-Generated Tutorials**: `generate_tutorial` for 10 common workflows (add_lead, create_property, manage_deals, send_campaign, track_payments, use_ai_agents, import_data, export_reports, configure_settings, manage_team) with skill-level customization
+  - **Feature Walkthroughs**: `get_feature_walkthrough` for interactive guidance on map, ai_chat, deal_pipeline, bulk_actions, saved_views
+  - **Contextual Next Steps**: `suggest_next_steps` based on user's current progress and goals
 - **Interactive Self-Help Wizards**: Guided step-by-step troubleshooting flows with 8 categories, self-check questions, and Sophie escalation path
 
 ## External Dependencies

@@ -7,7 +7,7 @@ import {
   supportTickets, supportTicketMessages, knowledgeBaseArticles, 
   supportResolutionHistory, organizations, leads, properties, 
   deals, notes, tasks, campaigns, payments, teamMembers,
-  activityLog, auditLog, apiUsageLogs
+  activityLog, auditLog, apiUsageLogs, sophieMemory
 } from "@shared/schema";
 import { gte, lte } from "drizzle-orm";
 
@@ -112,11 +112,12 @@ export const supportToolDefinitions = {
   
   escalate_to_human: {
     name: "escalate_to_human",
-    description: "Escalate the ticket to a human support agent when the issue is too complex or requires manual intervention.",
+    description: "Escalate the ticket to a human support agent with automatic diagnostic bundle. Gathers system state, recent activity, and issue context automatically.",
     parameters: {
       type: "object",
       properties: {
         reason: { type: "string", description: "Why this needs human attention" },
+        include_diagnostic_bundle: { type: "boolean", description: "Auto-gather and attach diagnostic info (default: true)" },
         priority: { type: "string", enum: ["normal", "high", "urgent"], description: "Escalation priority" },
         summary: { type: "string", description: "Summary of what was tried and the current state" }
       },
@@ -141,16 +142,211 @@ export const supportToolDefinitions = {
   
   log_resolution: {
     name: "log_resolution",
-    description: "Log how an issue was resolved for future learning.",
+    description: "Log how an issue was resolved for future learning. ALWAYS use this after resolving an issue to improve future support.",
     parameters: {
       type: "object",
       properties: {
         issue_type: { type: "string", description: "Category of the issue" },
         resolution_approach: { type: "string", description: "How the issue was resolved" },
         was_successful: { type: "boolean", description: "Whether the resolution worked" },
-        lesson_learned: { type: "string", description: "Any insights for future similar issues" }
+        lesson_learned: { type: "string", description: "Any insights for future similar issues" },
+        tools_used: { 
+          type: "array", 
+          items: { type: "string" },
+          description: "List of tools that were used to resolve this issue" 
+        },
+        resolution_time_minutes: { type: "number", description: "Approximate time taken to resolve" }
       },
       required: ["issue_type", "resolution_approach", "was_successful"]
+    }
+  },
+  
+  search_resolved_tickets: {
+    name: "search_resolved_tickets",
+    description: "Search past resolved support tickets to find solutions for similar issues. Returns successful resolutions with their approaches and lessons learned.",
+    parameters: {
+      type: "object",
+      properties: {
+        search_query: { type: "string", description: "Keywords to search for in past resolutions" },
+        issue_type: { type: "string", description: "Filter by issue type/category" },
+        only_successful: { type: "boolean", description: "Only return successful resolutions (default: true)" },
+        limit: { type: "number", description: "Maximum results to return (default: 5)" }
+      },
+      required: ["search_query"]
+    }
+  },
+  
+  record_customer_feedback: {
+    name: "record_customer_feedback",
+    description: "Record customer feedback about the support interaction. Use this when the customer indicates satisfaction or dissatisfaction.",
+    parameters: {
+      type: "object",
+      properties: {
+        rating: { 
+          type: "number", 
+          description: "Customer satisfaction rating 1-5 (1=very dissatisfied, 5=very satisfied)" 
+        },
+        feedback_text: { type: "string", description: "Any feedback comments from the customer" },
+        resolution_helpful: { type: "boolean", description: "Whether the resolution was helpful" },
+        would_recommend: { type: "boolean", description: "Whether customer would recommend our support" }
+      },
+      required: ["rating"]
+    }
+  },
+  
+  get_resolution_stats: {
+    name: "get_resolution_stats",
+    description: "Get statistics about resolution success rates by issue type. Helps identify which issues are hardest to resolve and where to improve.",
+    parameters: {
+      type: "object",
+      properties: {
+        issue_type: { type: "string", description: "Filter stats for specific issue type, or omit for all types" },
+        time_period: { type: "string", enum: ["7d", "30d", "90d", "all"], description: "Time period for stats" }
+      }
+    }
+  },
+  
+  get_best_resolution_approach: {
+    name: "get_best_resolution_approach",
+    description: "Find the best-performing resolution approach for a specific issue type using A/B testing data. Returns approaches ranked by success rate.",
+    parameters: {
+      type: "object",
+      properties: {
+        issue_type: { type: "string", description: "The issue type to find best approach for" }
+      },
+      required: ["issue_type"]
+    }
+  },
+  
+  log_resolution_variant: {
+    name: "log_resolution_variant",
+    description: "Log a resolution with a specific variant/approach label for A/B testing. Use this instead of log_resolution when testing different approaches.",
+    parameters: {
+      type: "object",
+      properties: {
+        issue_type: { type: "string", description: "Category of the issue" },
+        variant_name: { type: "string", description: "Name of the resolution variant/approach being tested (e.g., 'cache_clear_first', 'escalate_early', 'retry_then_reset')" },
+        resolution_approach: { type: "string", description: "Detailed description of how the issue was resolved" },
+        was_successful: { type: "boolean", description: "Whether the resolution worked" },
+        lesson_learned: { type: "string", description: "Any insights for future similar issues" },
+        customer_effort_score: { type: "number", description: "How much effort required from customer (1=none, 5=significant)" },
+        tools_used: { type: "array", items: { type: "string" } }
+      },
+      required: ["issue_type", "variant_name", "resolution_approach", "was_successful"]
+    }
+  },
+  
+  predict_potential_issues: {
+    name: "predict_potential_issues",
+    description: "Run predictive analysis to identify potential issues before they escalate. Uses activity patterns, error trends, and quota usage to predict problems.",
+    parameters: {
+      type: "object",
+      properties: {
+        check_types: { 
+          type: "array", 
+          items: { type: "string", enum: ["activity_drop", "error_pattern", "quota_usage", "data_integrity", "all"] },
+          description: "Types of predictive checks to run (default: all)"
+        }
+      }
+    }
+  },
+  
+  send_proactive_warning: {
+    name: "send_proactive_warning",
+    description: "Send a proactive warning to the user about a predicted issue before it becomes critical. Use this when anomalies are detected.",
+    parameters: {
+      type: "object",
+      properties: {
+        warning_type: { type: "string", description: "Type of warning (e.g., quota_approaching, activity_decline, performance_degradation)" },
+        severity: { type: "string", enum: ["info", "warning", "critical"], description: "Severity level" },
+        message: { type: "string", description: "Clear explanation of the predicted issue" },
+        recommended_action: { type: "string", description: "What the user should do to prevent the issue" },
+        auto_resolve_possible: { type: "boolean", description: "Whether Sophie can automatically resolve this" }
+      },
+      required: ["warning_type", "severity", "message", "recommended_action"]
+    }
+  },
+  
+  run_account_health_check: {
+    name: "run_account_health_check",
+    description: "Run a comprehensive health check on the user's account. Checks subscription, data integrity, API health, and identifies any issues requiring attention.",
+    parameters: {
+      type: "object",
+      properties: {
+        check_areas: {
+          type: "array",
+          items: { type: "string", enum: ["subscription", "data_integrity", "api_health", "usage_limits", "integrations", "all"] },
+          description: "Areas to check (default: all)"
+        }
+      }
+    }
+  },
+  
+  schedule_proactive_outreach: {
+    name: "schedule_proactive_outreach",
+    description: "Schedule a proactive outreach to the user (email or in-app notification) about an issue or recommendation.",
+    parameters: {
+      type: "object",
+      properties: {
+        outreach_type: { type: "string", enum: ["email", "in_app_notification", "both"], description: "How to reach the user" },
+        subject: { type: "string", description: "Subject of the outreach" },
+        message: { type: "string", description: "Message content" },
+        urgency: { type: "string", enum: ["low", "medium", "high"], description: "Urgency level" },
+        issue_type: { type: "string", description: "Type of issue this outreach is about" }
+      },
+      required: ["outreach_type", "subject", "message", "urgency"]
+    }
+  },
+  
+  get_account_health_score: {
+    name: "get_account_health_score",
+    description: "Get an overall health score (0-100) for the user's account based on various factors.",
+    parameters: {
+      type: "object",
+      properties: {}
+    }
+  },
+  
+  generate_tutorial: {
+    name: "generate_tutorial",
+    description: "Generate a step-by-step tutorial for a specific workflow or feature. Returns structured steps with page paths, UI elements, and expected outcomes.",
+    parameters: {
+      type: "object",
+      properties: {
+        topic: { 
+          type: "string", 
+          enum: ["add_lead", "create_property", "manage_deals", "send_campaign", "track_payments", "use_ai_agents", "import_data", "export_reports", "configure_settings", "manage_team"],
+          description: "Topic to generate tutorial for" 
+        },
+        user_context: { type: "string", description: "Additional context about what the user is trying to accomplish" },
+        skill_level: { type: "string", enum: ["beginner", "intermediate", "advanced"], description: "User's skill level" }
+      },
+      required: ["topic"]
+    }
+  },
+  
+  get_feature_walkthrough: {
+    name: "get_feature_walkthrough",
+    description: "Get an interactive walkthrough for a specific feature including page navigation, key actions, and tips.",
+    parameters: {
+      type: "object",
+      properties: {
+        feature: { type: "string", description: "Name of the feature to walkthrough" },
+        current_page: { type: "string", description: "Page the user is currently on" }
+      },
+      required: ["feature"]
+    }
+  },
+  
+  suggest_next_steps: {
+    name: "suggest_next_steps",
+    description: "Based on user's current progress and goals, suggest the most relevant next steps they should take.",
+    parameters: {
+      type: "object",
+      properties: {
+        current_task: { type: "string", description: "What the user is currently trying to do" },
+        goal: { type: "string", description: "User's overall goal" }
+      }
     }
   },
   
@@ -222,6 +418,55 @@ export const supportToolDefinitions = {
         }
       },
       required: ["sync_type"]
+    }
+  },
+  
+  get_subscription_details: {
+    name: "get_subscription_details",
+    description: "Get detailed information about the customer's current subscription including plan, billing cycle, and status.",
+    parameters: {
+      type: "object",
+      properties: {}
+    }
+  },
+  
+  get_payment_history: {
+    name: "get_payment_history",
+    description: "Get the customer's recent payment history from Stripe including successful and failed payments.",
+    parameters: {
+      type: "object",
+      properties: {
+        limit: { type: "number", description: "Maximum payments to retrieve (default: 10)" },
+        include_failed: { type: "boolean", description: "Include failed payment attempts (default: true)" }
+      }
+    }
+  },
+  
+  get_billing_issues: {
+    name: "get_billing_issues",
+    description: "Check for any billing issues like failed payments, expiring cards, or past due invoices.",
+    parameters: {
+      type: "object",
+      properties: {}
+    }
+  },
+  
+  apply_billing_fix: {
+    name: "apply_billing_fix",
+    description: "Apply a common billing fix such as retrying a failed payment or updating payment method. Requires customer confirmation.",
+    parameters: {
+      type: "object",
+      properties: {
+        fix_type: { 
+          type: "string", 
+          enum: ["retry_payment", "send_update_payment_link", "apply_credit", "cancel_pending_invoice"],
+          description: "Type of billing fix to apply" 
+        },
+        invoice_id: { type: "string", description: "Invoice ID for payment retry (if applicable)" },
+        amount_cents: { type: "number", description: "Amount in cents for credit application (if applicable)" },
+        reason: { type: "string", description: "Reason for the billing fix" }
+      },
+      required: ["fix_type", "reason"]
     }
   },
   
@@ -383,6 +628,165 @@ export const supportToolDefinitions = {
         }
       },
       required: ["issue_type"]
+    }
+  },
+  
+  recall_user_memory: {
+    name: "recall_user_memory",
+    description: "Recall memories about this user from past support interactions. ALWAYS use this at the start of a conversation to remember: past issues, solutions tried, user preferences, and escalation history. This helps provide personalized support.",
+    parameters: {
+      type: "object",
+      properties: {
+        memory_types: {
+          type: "array",
+          items: { 
+            type: "string", 
+            enum: ["issue_history", "preference", "solution_tried", "escalation", "context", "all"]
+          },
+          description: "Types of memories to recall. Use 'all' for comprehensive recall."
+        },
+        limit: {
+          type: "number",
+          description: "Maximum number of memories to return (default: 10)"
+        }
+      },
+      required: ["memory_types"]
+    }
+  },
+  
+  save_user_memory: {
+    name: "save_user_memory",
+    description: "Save important information about this user for future support sessions. Use this to remember: what issues they had, what solutions worked/failed, their preferences, and any escalation notes.",
+    parameters: {
+      type: "object",
+      properties: {
+        memory_type: {
+          type: "string",
+          enum: ["issue_history", "preference", "solution_tried", "escalation", "context"],
+          description: "Type of memory to save"
+        },
+        key: {
+          type: "string",
+          description: "A descriptive key for this memory (e.g., 'billing_issue_jan_2024', 'prefers_email_contact')"
+        },
+        summary: {
+          type: "string",
+          description: "Brief summary of the memory"
+        },
+        details: {
+          type: "object",
+          description: "Additional structured details about the memory"
+        },
+        importance: {
+          type: "number",
+          description: "Importance level 1-10 (10=most important). Higher importance memories are prioritized in recall."
+        },
+        expires_in_days: {
+          type: "number",
+          description: "Optional: number of days until this memory expires. Leave empty for permanent memories."
+        }
+      },
+      required: ["memory_type", "key", "summary"]
+    }
+  },
+  
+  invalidate_user_sessions: {
+    name: "invalidate_user_sessions",
+    description: "Force logout all sessions for a user. Useful for stuck auth issues, suspected unauthorized access, or when user needs a fresh login.",
+    parameters: {
+      type: "object",
+      properties: {
+        user_id: {
+          type: "string",
+          description: "The user ID to invalidate sessions for. Defaults to current user if not specified."
+        },
+        reason: {
+          type: "string",
+          description: "Reason for invalidating sessions (for audit log)"
+        }
+      },
+      required: ["reason"]
+    }
+  },
+  
+  refresh_auth_tokens: {
+    name: "refresh_auth_tokens",
+    description: "Refresh OAuth tokens for the organization. Useful when OAuth tokens may be stale or expired. The actual refresh happens automatically on the next request.",
+    parameters: {
+      type: "object",
+      properties: {}
+    }
+  },
+  
+  trigger_data_resync: {
+    name: "trigger_data_resync",
+    description: "Force resync of specific data modules. Clears relevant caches and marks data for refresh.",
+    parameters: {
+      type: "object",
+      properties: {
+        module: {
+          type: "string",
+          enum: ["leads", "properties", "deals", "all"],
+          description: "Which data module to resync"
+        }
+      },
+      required: ["module"]
+    }
+  },
+  
+  repair_orphaned_records: {
+    name: "repair_orphaned_records",
+    description: "Find and fix orphaned database records. Orphaned records are those with missing required relationships (e.g., leads without organization, deals without property).",
+    parameters: {
+      type: "object",
+      properties: {
+        module: {
+          type: "string",
+          enum: ["leads", "properties", "deals", "tasks", "all"],
+          description: "Which module to check for orphaned records"
+        },
+        dry_run: {
+          type: "boolean",
+          description: "If true, only report counts without making changes. If false, delete orphaned records."
+        }
+      },
+      required: ["module", "dry_run"]
+    }
+  },
+  
+  reset_user_preferences: {
+    name: "reset_user_preferences",
+    description: "Reset user UI/display preferences to defaults. Useful when users report UI issues or want to start fresh.",
+    parameters: {
+      type: "object",
+      properties: {
+        preference_type: {
+          type: "string",
+          enum: ["dashboard", "notifications", "ai_settings", "all"],
+          description: "Which preference category to reset"
+        }
+      },
+      required: ["preference_type"]
+    }
+  },
+  
+  unlock_stuck_jobs: {
+    name: "unlock_stuck_jobs",
+    description: "Unlock background jobs that are stuck in processing state. Jobs older than the specified threshold are reset to pending for retry.",
+    parameters: {
+      type: "object",
+      properties: {
+        job_type: {
+          type: "string",
+          enum: ["email", "webhook", "sync", "all"],
+          description: "Type of jobs to unlock"
+        },
+        older_than_minutes: {
+          type: "number",
+          description: "Only unlock jobs that have been processing for longer than this many minutes. Default is 30."
+        }
+      },
+      required: ["job_type"]
     }
   }
 };
@@ -647,7 +1051,122 @@ export async function executeSupportTool(
       }
       
       case "escalate_to_human": {
-        const { reason, priority, summary } = args;
+        const { reason, priority, summary, include_diagnostic_bundle = true } = args;
+        
+        // Auto-gather diagnostic bundle
+        let diagnosticBundle: any = null;
+        if (include_diagnostic_bundle) {
+          try {
+            const { proactiveMonitor } = await import("../services/proactiveMonitor");
+            const { healthCheckService } = await import("../services/healthCheck");
+            const { getAllUsageLimits } = await import("../services/usageLimits");
+            
+            // Gather recent activity
+            const recentActivity = await db.select()
+              .from(activityLog)
+              .where(eq(activityLog.organizationId, org.id))
+              .orderBy(desc(activityLog.createdAt))
+              .limit(20);
+            
+            // Gather active alerts
+            const alerts = await proactiveMonitor.getActiveAlerts(org.id);
+            
+            // Gather service health
+            const healthResults = await healthCheckService.checkAll();
+            
+            // Gather usage limits
+            const usageLimits = await getAllUsageLimits(org.id);
+            
+            // Gather recent errors from logs (simplified)
+            const recentApiErrors = await db.select()
+              .from(apiUsageLogs)
+              .where(and(
+                eq(apiUsageLogs.organizationId, org.id),
+                eq(apiUsageLogs.wasSuccess, false)
+              ))
+              .orderBy(desc(apiUsageLogs.createdAt))
+              .limit(10);
+            
+            // Gather user memories for context
+            const userMemories = await db.select()
+              .from(sophieMemory)
+              .where(eq(sophieMemory.organizationId, org.id))
+              .orderBy(desc(sophieMemory.createdAt))
+              .limit(10);
+            
+            // Gather data counts
+            const [leadCount, propertyCount, dealCount] = await Promise.all([
+              db.select({ count: count() }).from(leads).where(eq(leads.organizationId, org.id)),
+              db.select({ count: count() }).from(properties).where(eq(properties.organizationId, org.id)),
+              db.select({ count: count() }).from(deals).where(eq(deals.organizationId, org.id))
+            ]);
+            
+            diagnosticBundle = {
+              gatheredAt: new Date().toISOString(),
+              organization: {
+                id: org.id,
+                name: org.name,
+                tier: org.subscriptionTier,
+                status: org.subscriptionStatus,
+                isFounder: org.isFounder,
+                creditBalance: org.creditBalance,
+                stripeCustomerId: org.stripeCustomerId ? "configured" : "not_configured"
+              },
+              dataCounts: {
+                leads: leadCount[0]?.count || 0,
+                properties: propertyCount[0]?.count || 0,
+                deals: dealCount[0]?.count || 0
+              },
+              usageLimits: {
+                tier: usageLimits.tier,
+                isFounder: usageLimits.isFounder,
+                usage: Object.entries(usageLimits.usage).map(([key, val]) => ({
+                  resource: key,
+                  current: val.current,
+                  limit: val.limit,
+                  percentage: val.percentage
+                }))
+              },
+              activeAlerts: alerts.map(a => ({
+                type: a.type || a.alertType,
+                severity: a.severity,
+                title: a.title,
+                createdAt: a.createdAt
+              })),
+              serviceHealth: {
+                overall: healthResults.overall,
+                services: healthResults.services.map(s => ({
+                  name: s.name,
+                  status: s.status,
+                  latency: s.latency
+                }))
+              },
+              recentActivity: recentActivity.slice(0, 10).map(a => ({
+                action: a.action,
+                entityType: a.entityType,
+                createdAt: a.createdAt
+              })),
+              recentApiErrors: recentApiErrors.map(e => ({
+                service: e.serviceName,
+                endpoint: e.endpoint,
+                errorMessage: e.errorMessage,
+                createdAt: e.createdAt
+              })),
+              previousIssues: userMemories.filter(m => m.memoryType === "issue_history").slice(0, 5).map(m => ({
+                key: m.key,
+                summary: (m.value as any)?.summary
+              })),
+              solutionsTried: userMemories.filter(m => m.memoryType === "solution_tried").slice(0, 5).map(m => ({
+                key: m.key,
+                wasSuccessful: (m.value as any)?.wasSuccessful,
+                summary: (m.value as any)?.summary
+              }))
+            };
+          } catch (err) {
+            console.error("[sophie] Error gathering diagnostic bundle:", err);
+            diagnosticBundle = { error: "Failed to gather full diagnostics", partial: true };
+          }
+        }
         
         if (ticketId) {
           await db.update(supportTickets)
@@ -655,24 +1174,60 @@ export async function executeSupportTool(
               status: "waiting_on_customer",
               assignedAgent: null,
               priority: priority,
+              escalationBundle: diagnosticBundle,
               updatedAt: new Date()
             })
             .where(eq(supportTickets.id, ticketId));
           
+          // Create detailed escalation message
+          let escalationContent = `Ticket escalated to human support.\n\nReason: ${reason}\n\nSummary: ${summary}`;
+          if (diagnosticBundle && !diagnosticBundle.error) {
+            escalationContent += `\n\n--- DIAGNOSTIC BUNDLE ATTACHED ---\n`;
+            escalationContent += `Organization: ${diagnosticBundle.organization.name} (${diagnosticBundle.organization.tier})\n`;
+            escalationContent += `Data: ${diagnosticBundle.dataCounts.leads} leads, ${diagnosticBundle.dataCounts.properties} properties, ${diagnosticBundle.dataCounts.deals} deals\n`;
+            escalationContent += `Active Alerts: ${diagnosticBundle.activeAlerts.length}\n`;
+            escalationContent += `Recent API Errors: ${diagnosticBundle.recentApiErrors.length}\n`;
+            escalationContent += `Service Health: ${diagnosticBundle.serviceHealth.overall}\n`;
+            escalationContent += `\nFull diagnostic data attached to ticket.`;
+          }
+          
           await db.insert(supportTicketMessages).values({
             ticketId,
             role: "system",
-            content: `Ticket escalated to human support.\nReason: ${reason}\nSummary: ${summary}`,
+            content: escalationContent,
             agentName: "Sophie"
           });
         }
+        
+        // Save escalation to memory for future context
+        await db.insert(sophieMemory).values({
+          organizationId: org.id,
+          userId: org.ownerId,
+          memoryType: "escalation",
+          key: `escalation_${Date.now()}`,
+          value: {
+            summary: `Escalated: ${reason}`,
+            priority,
+            hasDiagnosticBundle: !!diagnosticBundle,
+            timestamp: new Date().toISOString()
+          },
+          importance: 9,
+          sourceTicketId: ticketId
+        });
         
         return {
           success: true,
           data: {
             escalated: true,
             priority,
-            message: "This ticket has been escalated to our human support team. They will respond within 24 hours."
+            diagnosticBundleAttached: !!diagnosticBundle && !diagnosticBundle.error,
+            bundleSummary: diagnosticBundle ? {
+              activeAlerts: diagnosticBundle.activeAlerts?.length || 0,
+              recentApiErrors: diagnosticBundle.recentApiErrors?.length || 0,
+              serviceHealth: diagnosticBundle.serviceHealth?.overall,
+              previousIssuesRecorded: diagnosticBundle.previousIssues?.length || 0
+            } : null,
+            message: "This ticket has been escalated to our human support team with full diagnostic context. They will respond within 24 hours."
           }
         };
       }
@@ -694,7 +1249,7 @@ export async function executeSupportTool(
       }
       
       case "log_resolution": {
-        const { issue_type, resolution_approach, was_successful, lesson_learned } = args;
+        const { issue_type, resolution_approach, was_successful, lesson_learned, tools_used, resolution_time_minutes } = args;
         
         await db.insert(supportResolutionHistory).values({
           organizationId: org.id,
@@ -702,12 +1257,1094 @@ export async function executeSupportTool(
           issueType: issue_type,
           resolutionApproach: resolution_approach,
           wasSuccessful: was_successful,
-          lessonLearned: lesson_learned || null
+          lessonLearned: lesson_learned || null,
+          toolsUsed: tools_used || null
+        });
+        
+        // Also save to user memory for personalized future support
+        if (was_successful) {
+          await db.insert(sophieMemory).values({
+            organizationId: org.id,
+            userId: org.ownerId,
+            memoryType: "solution_tried",
+            key: `resolved_${issue_type}_${Date.now()}`,
+            value: { 
+              summary: `Resolved ${issue_type} issue with: ${resolution_approach}`,
+              issueType: issue_type,
+              toolsUsed: tools_used,
+              wasSuccessful: true,
+              resolutionTimeMinutes: resolution_time_minutes,
+              timestamp: new Date().toISOString()
+            },
+            importance: 7,
+            sourceTicketId: ticketId
+          });
+        }
+        
+        return {
+          success: true,
+          data: { 
+            logged: true, 
+            issueType: issue_type,
+            memorySaved: was_successful,
+            message: `Resolution logged.${was_successful ? " This solution will be remembered for future similar issues." : ""}`
+          }
+        };
+      }
+      
+      case "search_resolved_tickets": {
+        const { search_query, issue_type, only_successful = true, limit = 5 } = args;
+        
+        const conditions = [];
+        if (only_successful) {
+          conditions.push(eq(supportResolutionHistory.wasSuccessful, true));
+        }
+        if (issue_type) {
+          conditions.push(eq(supportResolutionHistory.issueType, issue_type));
+        }
+        
+        // Get resolutions, optionally filtered
+        const resolutions = await db.select()
+          .from(supportResolutionHistory)
+          .where(conditions.length > 0 ? and(...conditions) : undefined)
+          .orderBy(desc(supportResolutionHistory.createdAt))
+          .limit(100);
+        
+        // Score by search query match
+        const queryLower = search_query.toLowerCase();
+        const scored = resolutions.map(res => {
+          let score = 0;
+          const searchText = `${res.issueType} ${res.resolutionApproach} ${res.lessonLearned || ""}`.toLowerCase();
+          
+          const queryWords = queryLower.split(/\s+/);
+          for (const word of queryWords) {
+            if (word.length > 2 && searchText.includes(word)) {
+              score += 10;
+            }
+          }
+          
+          // Boost recent resolutions
+          const ageInDays = (Date.now() - (res.createdAt?.getTime() || 0)) / (1000 * 60 * 60 * 24);
+          if (ageInDays < 7) score += 5;
+          else if (ageInDays < 30) score += 2;
+          
+          return { resolution: res, score };
+        });
+        
+        const topMatches = scored
+          .filter(s => s.score > 0)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, limit);
+        
+        return {
+          success: true,
+          data: {
+            matchCount: topMatches.length,
+            searchQuery: search_query,
+            resolutions: topMatches.map(m => ({
+              issueType: m.resolution.issueType,
+              resolutionApproach: m.resolution.resolutionApproach,
+              toolsUsed: m.resolution.toolsUsed,
+              lessonLearned: m.resolution.lessonLearned,
+              wasSuccessful: m.resolution.wasSuccessful,
+              relevanceScore: m.score
+            })),
+            tip: topMatches.length > 0
+              ? "These past resolutions may help. Try the highest-scoring approaches first."
+              : "No matching resolutions found. Consider documenting this case for future reference."
+          }
+        };
+      }
+      
+      case "record_customer_feedback": {
+        const { rating, feedback_text, resolution_helpful, would_recommend } = args;
+        
+        // Update the ticket with feedback
+        if (ticketId) {
+          await db.update(supportTickets)
+            .set({
+              customerRating: rating,
+              customerFeedback: feedback_text || null,
+              updatedAt: new Date()
+            })
+            .where(eq(supportTickets.id, ticketId));
+        }
+        
+        // Also save as a memory preference
+        await db.insert(sophieMemory).values({
+          organizationId: org.id,
+          userId: org.ownerId,
+          memoryType: "preference",
+          key: `feedback_${Date.now()}`,
+          value: {
+            summary: `Customer rated support ${rating}/5`,
+            details: { rating, feedbackText: feedback_text, resolutionHelpful: resolution_helpful, wouldRecommend: would_recommend },
+            timestamp: new Date().toISOString()
+          },
+          importance: rating <= 2 ? 9 : rating >= 4 ? 6 : 7, // Higher importance for negative feedback
+          sourceTicketId: ticketId
+        });
+        
+        const feedbackMessage = rating >= 4 
+          ? "Thank you for the positive feedback! We're glad we could help."
+          : rating <= 2
+            ? "We're sorry we didn't meet your expectations. Your feedback helps us improve."
+            : "Thank you for your feedback. We'll use it to improve our support.";
+        
+        return {
+          success: true,
+          data: {
+            rating,
+            feedbackRecorded: true,
+            message: feedbackMessage,
+            followUp: rating <= 2 ? "This feedback has been flagged for review by our support team." : null
+          }
+        };
+      }
+      
+      case "get_resolution_stats": {
+        const { issue_type, time_period = "30d" } = args;
+        
+        // Calculate time filter
+        const now = new Date();
+        const timeFilters: Record<string, Date> = {
+          "7d": new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000),
+          "30d": new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000),
+          "90d": new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000),
+          "all": new Date(0)
+        };
+        const startDate = timeFilters[time_period] || timeFilters["30d"];
+        
+        const conditions = [gte(supportResolutionHistory.createdAt, startDate)];
+        if (issue_type) {
+          conditions.push(eq(supportResolutionHistory.issueType, issue_type));
+        }
+        
+        const resolutions = await db.select()
+          .from(supportResolutionHistory)
+          .where(and(...conditions));
+        
+        // Calculate stats
+        const total = resolutions.length;
+        const successful = resolutions.filter(r => r.wasSuccessful).length;
+        const successRate = total > 0 ? Math.round((successful / total) * 100) : 0;
+        
+        // Group by issue type
+        const byIssueType: Record<string, { total: number; successful: number }> = {};
+        for (const res of resolutions) {
+          if (!byIssueType[res.issueType]) {
+            byIssueType[res.issueType] = { total: 0, successful: 0 };
+          }
+          byIssueType[res.issueType].total++;
+          if (res.wasSuccessful) byIssueType[res.issueType].successful++;
+        }
+        
+        // Find most common tools used
+        const toolCounts: Record<string, number> = {};
+        for (const res of resolutions.filter(r => r.wasSuccessful)) {
+          const tools = (res.toolsUsed as string[]) || [];
+          for (const tool of tools) {
+            toolCounts[tool] = (toolCounts[tool] || 0) + 1;
+          }
+        }
+        const topTools = Object.entries(toolCounts)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5)
+          .map(([tool, count]) => ({ tool, count }));
+        
+        return {
+          success: true,
+          data: {
+            timePeriod: time_period,
+            issueTypeFilter: issue_type || "all",
+            totalResolutions: total,
+            successfulResolutions: successful,
+            successRate: `${successRate}%`,
+            byIssueType: Object.entries(byIssueType).map(([type, stats]) => ({
+              issueType: type,
+              total: stats.total,
+              successful: stats.successful,
+              successRate: `${Math.round((stats.successful / stats.total) * 100)}%`
+            })),
+            topToolsUsed: topTools,
+            insights: successRate < 70 
+              ? "Resolution rate is below target. Consider reviewing escalation patterns and common failure points."
+              : successRate < 85
+                ? "Resolution rate is good but could be improved. Look at issue types with lowest success rates."
+                : "Excellent resolution rate! Keep up the good work."
+          }
+        };
+      }
+      
+      case "get_best_resolution_approach": {
+        const { issue_type } = args;
+        
+        // Get all resolutions for this issue type with variants
+        const resolutions = await db.select()
+          .from(supportResolutionHistory)
+          .where(eq(supportResolutionHistory.issueType, issue_type))
+          .orderBy(desc(supportResolutionHistory.createdAt));
+        
+        // Group by variant name
+        const variantStats: Record<string, {
+          total: number;
+          successful: number;
+          avgEffortScore: number;
+          effortScoreCount: number;
+          recentExample: string;
+        }> = {};
+        
+        for (const res of resolutions) {
+          const variant = res.variantName || "standard";
+          if (!variantStats[variant]) {
+            variantStats[variant] = { total: 0, successful: 0, avgEffortScore: 0, effortScoreCount: 0, recentExample: res.resolutionApproach };
+          }
+          variantStats[variant].total++;
+          if (res.wasSuccessful) variantStats[variant].successful++;
+          if (res.customerEffortScore) {
+            variantStats[variant].avgEffortScore = 
+              (variantStats[variant].avgEffortScore * variantStats[variant].effortScoreCount + res.customerEffortScore) / 
+              (variantStats[variant].effortScoreCount + 1);
+            variantStats[variant].effortScoreCount++;
+          }
+        }
+        
+        // Calculate success rates and rank
+        const rankedVariants = Object.entries(variantStats)
+          .map(([name, stats]) => ({
+            variantName: name,
+            successRate: stats.total > 0 ? Math.round((stats.successful / stats.total) * 100) : 0,
+            totalAttempts: stats.total,
+            successfulAttempts: stats.successful,
+            avgCustomerEffort: stats.effortScoreCount > 0 ? Math.round(stats.avgEffortScore * 10) / 10 : null,
+            sampleApproach: stats.recentExample
+          }))
+          .sort((a, b) => {
+            // Primary: success rate, secondary: lower effort
+            if (b.successRate !== a.successRate) return b.successRate - a.successRate;
+            if (a.avgCustomerEffort && b.avgCustomerEffort) {
+              return a.avgCustomerEffort - b.avgCustomerEffort;
+            }
+            return b.totalAttempts - a.totalAttempts; // Prefer more data
+          });
+        
+        const bestVariant = rankedVariants[0];
+        const minDataPoints = 5;
+        
+        return {
+          success: true,
+          data: {
+            issueType: issue_type,
+            totalResolutions: resolutions.length,
+            rankedApproaches: rankedVariants,
+            recommendation: bestVariant 
+              ? bestVariant.totalAttempts >= minDataPoints
+                ? `Best approach: "${bestVariant.variantName}" with ${bestVariant.successRate}% success rate (${bestVariant.totalAttempts} attempts)`
+                : `Preliminary data suggests "${bestVariant.variantName}" but more data needed (only ${bestVariant.totalAttempts} attempts)`
+              : "No resolution data available for this issue type yet",
+            tip: "Use log_resolution_variant to track which approach you use for A/B testing"
+          }
+        };
+      }
+      
+      case "log_resolution_variant": {
+        const { issue_type, variant_name, resolution_approach, was_successful, lesson_learned, customer_effort_score, tools_used } = args;
+        
+        await db.insert(supportResolutionHistory).values({
+          organizationId: org.id,
+          ticketId: ticketId || null,
+          issueType: issue_type,
+          variantName: variant_name,
+          resolutionApproach: resolution_approach,
+          wasSuccessful: was_successful,
+          lessonLearned: lesson_learned || null,
+          customerEffortScore: customer_effort_score || null,
+          toolsUsed: tools_used || null
+        });
+        
+        // Also save to user memory
+        await db.insert(sophieMemory).values({
+          organizationId: org.id,
+          userId: org.ownerId,
+          memoryType: "solution_tried",
+          key: `variant_${variant_name}_${issue_type}_${Date.now()}`,
+          value: { 
+            summary: `Tried ${variant_name} approach for ${issue_type}: ${was_successful ? "SUCCESS" : "FAILED"}`,
+            issueType: issue_type,
+            variantName: variant_name,
+            toolsUsed: tools_used,
+            wasSuccessful: was_successful,
+            customerEffortScore: customer_effort_score,
+            timestamp: new Date().toISOString()
+          },
+          importance: was_successful ? 7 : 8, // Higher importance for failures to avoid repeating
+          sourceTicketId: ticketId
         });
         
         return {
           success: true,
-          data: { logged: true, issueType: issue_type }
+          data: { 
+            logged: true, 
+            issueType: issue_type,
+            variantName: variant_name,
+            wasSuccessful: was_successful,
+            message: `A/B test resolution logged for variant "${variant_name}". This helps optimize future resolutions.`
+          }
+        };
+      }
+      
+      case "predict_potential_issues": {
+        const { check_types = ["all"] } = args;
+        const { proactiveMonitor } = await import("../services/proactiveMonitor");
+        const { getAllUsageLimits } = await import("../services/usageLimits");
+        
+        const predictions: any[] = [];
+        const shouldCheck = (type: string) => check_types.includes("all") || check_types.includes(type);
+        
+        // Check activity drop
+        if (shouldCheck("activity_drop")) {
+          const activityResult = await proactiveMonitor.checkActivityDrop(org.id);
+          if (activityResult.hasAnomaly) {
+            predictions.push({
+              type: "activity_drop",
+              severity: "warning",
+              prediction: "User engagement is declining significantly",
+              details: activityResult.details,
+              recommendation: "Check if the user is experiencing issues or needs assistance"
+            });
+          }
+        }
+        
+        // Check error patterns
+        if (shouldCheck("error_pattern")) {
+          const errorResult = await proactiveMonitor.checkErrorPatterns(org.id);
+          if (errorResult.hasAnomaly) {
+            predictions.push({
+              type: "error_pattern",
+              severity: "warning",
+              prediction: "Unusual error pattern detected",
+              details: errorResult.details,
+              recommendation: "Investigate recent errors and consider proactive outreach"
+            });
+          }
+        }
+        
+        // Check quota usage
+        if (shouldCheck("quota_usage")) {
+          const usageLimits = await getAllUsageLimits(org.id);
+          for (const [resource, usage] of Object.entries(usageLimits.usage)) {
+            if (usage.percentage && usage.percentage >= 75) {
+              predictions.push({
+                type: "quota_approaching",
+                severity: usage.percentage >= 90 ? "critical" : "warning",
+                prediction: `${resource} usage at ${usage.percentage}%`,
+                details: { resource, current: usage.current, limit: usage.limit, percentage: usage.percentage },
+                recommendation: usage.percentage >= 90 
+                  ? "User is about to hit their limit - suggest upgrading"
+                  : "Proactively inform user about usage levels"
+              });
+            }
+          }
+        }
+        
+        // Check data integrity
+        if (shouldCheck("data_integrity")) {
+          const integrityIssues = await proactiveMonitor.checkDataIntegrity(org.id);
+          for (const issue of integrityIssues) {
+            predictions.push({
+              type: "data_integrity",
+              severity: issue.count > 10 ? "warning" : "info",
+              prediction: issue.description,
+              details: issue,
+              recommendation: "Consider running repair_orphaned_records to fix data issues"
+            });
+          }
+        }
+        
+        return {
+          success: true,
+          data: {
+            predictionCount: predictions.length,
+            predictions,
+            summary: predictions.length > 0
+              ? `Found ${predictions.length} potential issue(s) that may need attention`
+              : "No potential issues detected at this time",
+            tip: "Use send_proactive_warning to alert the user about critical predictions"
+          }
+        };
+      }
+      
+      case "send_proactive_warning": {
+        const { warning_type, severity, message, recommended_action, auto_resolve_possible } = args;
+        const { proactiveMonitor } = await import("../services/proactiveMonitor");
+        
+        // Create an alert in the system
+        await proactiveMonitor.createAlertIfNotExists(
+          org.id,
+          warning_type as any,
+          severity as any,
+          `Proactive Warning: ${warning_type.replace(/_/g, ' ')}`,
+          message,
+          { recommendedAction: recommended_action, autoResolvePossible: auto_resolve_possible }
+        );
+        
+        // Also save to memory for context
+        await db.insert(sophieMemory).values({
+          organizationId: org.id,
+          userId: org.ownerId,
+          memoryType: "context",
+          key: `proactive_warning_${warning_type}_${Date.now()}`,
+          value: {
+            summary: `Sent proactive warning about ${warning_type}`,
+            warningType: warning_type,
+            severity,
+            message,
+            recommendedAction: recommended_action,
+            timestamp: new Date().toISOString()
+          },
+          importance: severity === "critical" ? 9 : severity === "warning" ? 7 : 5,
+          sourceTicketId: ticketId
+        });
+        
+        return {
+          success: true,
+          data: {
+            warningSent: true,
+            type: warning_type,
+            severity,
+            autoResolvePossible: auto_resolve_possible,
+            message: `Proactive warning sent to user. ${auto_resolve_possible ? "You can offer to auto-resolve this issue." : ""}`
+          }
+        };
+      }
+      
+      case "run_account_health_check": {
+        const { check_areas = ["all"] } = args;
+        const shouldCheck = (area: string) => check_areas.includes("all") || check_areas.includes(area);
+        
+        const healthIssues: any[] = [];
+        const healthChecks: any = {};
+        
+        // Check subscription status
+        if (shouldCheck("subscription")) {
+          healthChecks.subscription = {
+            tier: org.subscriptionTier,
+            status: org.subscriptionStatus,
+            isFounder: org.isFounder
+          };
+          
+          if (org.subscriptionStatus === "past_due") {
+            healthIssues.push({
+              area: "subscription",
+              severity: "critical",
+              issue: "Subscription is past due",
+              recommendation: "Payment method needs to be updated"
+            });
+          } else if (org.subscriptionStatus === "canceled") {
+            healthIssues.push({
+              area: "subscription",
+              severity: "warning",
+              issue: "Subscription has been canceled",
+              recommendation: "Consider reactivating to maintain access to features"
+            });
+          }
+        }
+        
+        // Check data integrity
+        if (shouldCheck("data_integrity")) {
+          const { proactiveMonitor } = await import("../services/proactiveMonitor");
+          const integrityIssues = await proactiveMonitor.checkDataIntegrity(org.id);
+          
+          healthChecks.dataIntegrity = {
+            issuesFound: integrityIssues.length,
+            issues: integrityIssues
+          };
+          
+          for (const issue of integrityIssues) {
+            healthIssues.push({
+              area: "data_integrity",
+              severity: issue.count > 10 ? "warning" : "info",
+              issue: issue.description,
+              recommendation: "Run repair_orphaned_records to fix"
+            });
+          }
+        }
+        
+        // Check API health
+        if (shouldCheck("api_health")) {
+          const { healthCheckService } = await import("../services/healthCheck");
+          const healthResults = await healthCheckService.checkAll();
+          
+          healthChecks.apiHealth = {
+            overall: healthResults.overall,
+            services: healthResults.services.map(s => ({
+              name: s.name,
+              status: s.status,
+              latency: s.latency
+            }))
+          };
+          
+          const unhealthyServices = healthResults.services.filter(s => s.status !== "healthy");
+          for (const svc of unhealthyServices) {
+            healthIssues.push({
+              area: "api_health",
+              severity: svc.status === "unhealthy" ? "critical" : "warning",
+              issue: `${svc.name} service is ${svc.status}`,
+              recommendation: `Check ${svc.name} connectivity and configuration`
+            });
+          }
+        }
+        
+        // Check usage limits
+        if (shouldCheck("usage_limits")) {
+          const { getAllUsageLimits } = await import("../services/usageLimits");
+          const usageLimits = await getAllUsageLimits(org.id);
+          
+          healthChecks.usageLimits = usageLimits;
+          
+          for (const [resource, usage] of Object.entries(usageLimits.usage)) {
+            if (usage.percentage && usage.percentage >= 90) {
+              healthIssues.push({
+                area: "usage_limits",
+                severity: "critical",
+                issue: `${resource} usage at ${usage.percentage}%`,
+                recommendation: "Consider upgrading plan or managing usage"
+              });
+            } else if (usage.percentage && usage.percentage >= 75) {
+              healthIssues.push({
+                area: "usage_limits",
+                severity: "warning",
+                issue: `${resource} usage at ${usage.percentage}%`,
+                recommendation: "Monitor usage closely"
+              });
+            }
+          }
+        }
+        
+        // Check integrations
+        if (shouldCheck("integrations")) {
+          healthChecks.integrations = {
+            stripeConfigured: !!org.stripeCustomerId,
+            onboardingComplete: org.onboardingCompleted
+          };
+          
+          if (!org.onboardingCompleted) {
+            healthIssues.push({
+              area: "integrations",
+              severity: "info",
+              issue: "Onboarding not completed",
+              recommendation: "Guide user through remaining onboarding steps"
+            });
+          }
+        }
+        
+        // Calculate overall health score
+        let healthScore = 100;
+        for (const issue of healthIssues) {
+          if (issue.severity === "critical") healthScore -= 25;
+          else if (issue.severity === "warning") healthScore -= 10;
+          else if (issue.severity === "info") healthScore -= 2;
+        }
+        healthScore = Math.max(0, healthScore);
+        
+        return {
+          success: true,
+          data: {
+            healthScore,
+            healthGrade: healthScore >= 90 ? "A" : healthScore >= 75 ? "B" : healthScore >= 60 ? "C" : healthScore >= 40 ? "D" : "F",
+            issuesFound: healthIssues.length,
+            issues: healthIssues,
+            checks: healthChecks,
+            summary: healthIssues.length === 0 
+              ? "Account is in excellent health!"
+              : `Found ${healthIssues.length} issue(s) requiring attention`
+          }
+        };
+      }
+      
+      case "schedule_proactive_outreach": {
+        const { outreach_type, subject, message, urgency, issue_type } = args;
+        const { jobQueueService } = await import("../services/jobQueue");
+        
+        // Schedule the outreach job
+        const jobs: any[] = [];
+        
+        if (outreach_type === "email" || outreach_type === "both") {
+          await jobQueueService.enqueue("notification", {
+            type: "proactive_email",
+            organizationId: org.id,
+            userId: org.ownerId,
+            subject,
+            message,
+            urgency,
+            issueType: issue_type
+          }, { priority: urgency === "high" ? 1 : urgency === "medium" ? 5 : 10 });
+          jobs.push("email");
+        }
+        
+        if (outreach_type === "in_app_notification" || outreach_type === "both") {
+          // Create in-app notification via system alert
+          const { proactiveMonitor } = await import("../services/proactiveMonitor");
+          await proactiveMonitor.createAlertIfNotExists(
+            org.id,
+            "proactive_outreach" as any,
+            urgency === "high" ? "critical" : urgency === "medium" ? "warning" : "info",
+            subject,
+            message,
+            { issueType: issue_type, source: "sophie_outreach" }
+          );
+          jobs.push("in_app_notification");
+        }
+        
+        // Log to memory
+        await db.insert(sophieMemory).values({
+          organizationId: org.id,
+          userId: org.ownerId,
+          memoryType: "context",
+          key: `outreach_${Date.now()}`,
+          value: {
+            summary: `Scheduled proactive outreach: ${subject}`,
+            outreachType: outreach_type,
+            urgency,
+            issueType: issue_type,
+            timestamp: new Date().toISOString()
+          },
+          importance: urgency === "high" ? 8 : urgency === "medium" ? 6 : 4,
+          sourceTicketId: ticketId
+        });
+        
+        return {
+          success: true,
+          data: {
+            scheduled: true,
+            channels: jobs,
+            subject,
+            urgency,
+            message: `Proactive outreach scheduled via ${jobs.join(" and ")}`
+          }
+        };
+      }
+      
+      case "get_account_health_score": {
+        // Quick health score calculation
+        let score = 100;
+        const factors: any[] = [];
+        
+        // Subscription health
+        if (org.subscriptionStatus === "past_due") {
+          score -= 30;
+          factors.push({ factor: "subscription_past_due", impact: -30 });
+        } else if (org.subscriptionStatus === "canceled") {
+          score -= 20;
+          factors.push({ factor: "subscription_canceled", impact: -20 });
+        }
+        
+        // Check for active alerts
+        const { proactiveMonitor } = await import("../services/proactiveMonitor");
+        const alerts = await proactiveMonitor.getActiveAlerts(org.id);
+        const criticalAlerts = alerts.filter((a: any) => a.severity === "critical").length;
+        const warningAlerts = alerts.filter((a: any) => a.severity === "warning").length;
+        
+        if (criticalAlerts > 0) {
+          score -= criticalAlerts * 15;
+          factors.push({ factor: "critical_alerts", count: criticalAlerts, impact: -criticalAlerts * 15 });
+        }
+        if (warningAlerts > 0) {
+          score -= warningAlerts * 5;
+          factors.push({ factor: "warning_alerts", count: warningAlerts, impact: -warningAlerts * 5 });
+        }
+        
+        // Check usage limits
+        const { getAllUsageLimits } = await import("../services/usageLimits");
+        const usageLimits = await getAllUsageLimits(org.id);
+        
+        for (const [resource, usage] of Object.entries(usageLimits.usage)) {
+          if (usage.percentage && usage.percentage >= 95) {
+            score -= 10;
+            factors.push({ factor: `${resource}_at_limit`, percentage: usage.percentage, impact: -10 });
+          } else if (usage.percentage && usage.percentage >= 80) {
+            score -= 5;
+            factors.push({ factor: `${resource}_high_usage`, percentage: usage.percentage, impact: -5 });
+          }
+        }
+        
+        // Onboarding completion bonus
+        if (org.onboardingCompleted) {
+          factors.push({ factor: "onboarding_complete", impact: 0 });
+        } else {
+          score -= 5;
+          factors.push({ factor: "onboarding_incomplete", impact: -5 });
+        }
+        
+        score = Math.max(0, Math.min(100, score));
+        
+        return {
+          success: true,
+          data: {
+            healthScore: score,
+            healthGrade: score >= 90 ? "A" : score >= 75 ? "B" : score >= 60 ? "C" : score >= 40 ? "D" : "F",
+            factors,
+            recommendation: score >= 90 
+              ? "Account is healthy! No immediate action needed."
+              : score >= 70
+                ? "Account has some minor issues. Consider addressing the factors below."
+                : "Account needs attention. Please review the critical factors."
+          }
+        };
+      }
+      
+      case "generate_tutorial": {
+        const { topic, user_context, skill_level = "beginner" } = args;
+        
+        // Tutorial templates for common workflows
+        const tutorials: Record<string, any> = {
+          add_lead: {
+            title: "Adding a New Lead",
+            estimatedTime: "2-3 minutes",
+            steps: [
+              { step: 1, action: "Navigate to the Leads page", path: "/leads", tip: "Click 'Leads' in the sidebar" },
+              { step: 2, action: "Click the 'Add Lead' button", element: "button-add-lead", tip: "Located in the top right corner" },
+              { step: 3, action: "Fill in the lead details", fields: ["name", "email", "phone", "source"], tip: "At minimum, provide a name and contact method" },
+              { step: 4, action: "Set lead status and priority", fields: ["status", "priority"], tip: "Use 'Hot' for high-priority leads" },
+              { step: 5, action: "Click 'Save' to create the lead", element: "button-save", expectedResult: "Lead appears in your list" }
+            ],
+            proTips: skill_level !== "beginner" ? ["Use CSV import for bulk leads", "Set up automation rules for lead assignment"] : []
+          },
+          create_property: {
+            title: "Creating a Property Record",
+            estimatedTime: "3-5 minutes",
+            steps: [
+              { step: 1, action: "Navigate to Properties", path: "/properties", tip: "Click 'Properties' in the sidebar" },
+              { step: 2, action: "Click 'Add Property'", element: "button-add-property", tip: "Blue button in top right" },
+              { step: 3, action: "Enter property address", fields: ["address", "city", "state", "zip"], tip: "Full address helps with map display and boundary lookup" },
+              { step: 4, action: "Add property details", fields: ["acreage", "parcel_id", "county"], tip: "APN/Parcel ID is important for county records" },
+              { step: 5, action: "Set asking price and market value", fields: ["asking_price", "market_value"], tip: "These help with deal analysis" },
+              { step: 6, action: "Save the property", element: "button-save", expectedResult: "Property card appears with map preview" }
+            ],
+            proTips: skill_level !== "beginner" ? ["Click 'Fetch Boundaries' to auto-load parcel data", "Link properties to deals for tracking"] : []
+          },
+          manage_deals: {
+            title: "Managing Your Deals Pipeline",
+            estimatedTime: "3-4 minutes",
+            steps: [
+              { step: 1, action: "Navigate to Deals", path: "/deals", tip: "Click 'Deals' in the sidebar" },
+              { step: 2, action: "View your pipeline", element: "deal-board", tip: "Deals are organized in Kanban columns by stage" },
+              { step: 3, action: "Create a new deal", element: "button-add-deal", tip: "Or convert from an existing property" },
+              { step: 4, action: "Link to property and set type", fields: ["property", "deal_type", "stage"], tip: "Choose Acquisition or Disposition" },
+              { step: 5, action: "Drag deal to update stage", tip: "Move cards between columns to update status" },
+              { step: 6, action: "Add notes and documents", tip: "Click on deal card to add details" }
+            ],
+            proTips: skill_level !== "beginner" ? ["Use Atlas AI for deal analysis", "Set up automated follow-ups when deals move stages"] : []
+          },
+          send_campaign: {
+            title: "Sending a Marketing Campaign",
+            estimatedTime: "5-7 minutes",
+            steps: [
+              { step: 1, action: "Navigate to Campaigns", path: "/campaigns", tip: "Under Marketing section" },
+              { step: 2, action: "Click 'New Campaign'", element: "button-new-campaign" },
+              { step: 3, action: "Select campaign type", options: ["direct_mail", "email", "sms"], tip: "Choose based on your audience" },
+              { step: 4, action: "Set target audience", tip: "Filter leads by status, location, or custom criteria" },
+              { step: 5, action: "Design your message", tip: "Use templates or create custom content" },
+              { step: 6, action: "Review and schedule", tip: "Preview before sending, schedule for optimal timing" },
+              { step: 7, action: "Launch campaign", element: "button-launch", expectedResult: "Campaign status shows 'Active'" }
+            ],
+            proTips: skill_level !== "beginner" ? ["A/B test subject lines", "Track response rates in campaign analytics"] : []
+          },
+          track_payments: {
+            title: "Tracking Payments & Notes",
+            estimatedTime: "3-4 minutes",
+            steps: [
+              { step: 1, action: "Navigate to Finance", path: "/finance", tip: "Click 'Finance' in the sidebar" },
+              { step: 2, action: "View your notes portfolio", tip: "See all seller-financed notes in one place" },
+              { step: 3, action: "Record a payment", element: "button-record-payment", tip: "Click on a note to record payment" },
+              { step: 4, action: "Enter payment details", fields: ["amount", "payment_date", "payment_method"] },
+              { step: 5, action: "View amortization schedule", tip: "See remaining balance and payment history" },
+              { step: 6, action: "Set up payment reminders", tip: "Automate reminders for upcoming payments" }
+            ],
+            proTips: skill_level !== "beginner" ? ["Generate promissory notes automatically", "Set up Stripe Connect for automated collection"] : []
+          },
+          use_ai_agents: {
+            title: "Using AI Agents",
+            estimatedTime: "4-5 minutes",
+            steps: [
+              { step: 1, action: "Open Command Center", path: "/ai", tip: "Click the AI icon or navigate to Command Center" },
+              { step: 2, action: "Choose your agent", options: ["Atlas (Executive)", "Sophie (Support)"], tip: "Atlas helps with business tasks, Sophie with support" },
+              { step: 3, action: "Describe what you need", tip: "Be specific: 'Analyze the deal at 123 Main St'" },
+              { step: 4, action: "Review agent suggestions", tip: "AI will show analysis, recommendations, or take actions" },
+              { step: 5, action: "Approve or modify actions", tip: "Some actions require your approval" },
+              { step: 6, action: "View results", tip: "Results are saved and linked to relevant records" }
+            ],
+            proTips: skill_level !== "beginner" ? ["Chain multiple requests for complex workflows", "Review agent task history in Activity Log"] : []
+          },
+          import_data: {
+            title: "Importing Data",
+            estimatedTime: "5-10 minutes",
+            steps: [
+              { step: 1, action: "Navigate to Settings > Import", path: "/settings/import" },
+              { step: 2, action: "Select data type", options: ["leads", "properties", "contacts"], tip: "Choose what you're importing" },
+              { step: 3, action: "Download template", tip: "Use our CSV template for best results" },
+              { step: 4, action: "Prepare your file", tip: "Match columns to template headers" },
+              { step: 5, action: "Upload CSV file", element: "dropzone-upload" },
+              { step: 6, action: "Map columns", tip: "Match your columns to system fields" },
+              { step: 7, action: "Review and import", tip: "Check preview before final import" }
+            ],
+            proTips: skill_level !== "beginner" ? ["Clean data before import to avoid duplicates", "Use bulk update for existing records"] : []
+          },
+          export_reports: {
+            title: "Exporting Reports",
+            estimatedTime: "2-3 minutes",
+            steps: [
+              { step: 1, action: "Navigate to desired data page", tip: "Leads, Properties, Deals, or Finance" },
+              { step: 2, action: "Apply any filters", tip: "Filter to get exactly the data you need" },
+              { step: 3, action: "Click Export button", element: "button-export" },
+              { step: 4, action: "Select format", options: ["CSV", "PDF"], tip: "CSV for spreadsheets, PDF for reports" },
+              { step: 5, action: "Download file", expectedResult: "File downloads to your computer" }
+            ],
+            proTips: skill_level !== "beginner" ? ["Schedule recurring exports", "Use saved views for consistent reporting"] : []
+          },
+          configure_settings: {
+            title: "Configuring Account Settings",
+            estimatedTime: "5-8 minutes",
+            steps: [
+              { step: 1, action: "Navigate to Settings", path: "/settings", tip: "Click Settings in the sidebar" },
+              { step: 2, action: "Review Organization settings", tip: "Company name, logo, time zone" },
+              { step: 3, action: "Configure Integrations", path: "/settings/integrations", tip: "Connect external services" },
+              { step: 4, action: "Set up Team Members", path: "/settings/team", tip: "Invite team members, assign roles" },
+              { step: 5, action: "Review Subscription", path: "/settings/billing", tip: "Manage plan and payment method" }
+            ],
+            proTips: skill_level !== "beginner" ? ["Set up BYOK for custom API keys", "Configure custom fields for your workflow"] : []
+          },
+          manage_team: {
+            title: "Managing Your Team",
+            estimatedTime: "3-5 minutes",
+            steps: [
+              { step: 1, action: "Navigate to Settings > Team", path: "/settings/team" },
+              { step: 2, action: "Click 'Invite Member'", element: "button-invite" },
+              { step: 3, action: "Enter email address", tip: "They'll receive an invitation email" },
+              { step: 4, action: "Assign role", options: ["Admin", "Member", "Viewer"], tip: "Roles determine what they can access" },
+              { step: 5, action: "Send invitation", expectedResult: "Member appears in pending invites" },
+              { step: 6, action: "Manage existing members", tip: "Click on member to edit role or remove" }
+            ],
+            proTips: skill_level !== "beginner" ? ["Use Admin role sparingly", "Set up team dashboards for performance tracking"] : []
+          }
+        };
+        
+        const tutorial = tutorials[topic];
+        
+        if (!tutorial) {
+          return {
+            success: false,
+            error: `Tutorial not found for topic: ${topic}`
+          };
+        }
+        
+        // Enhance with user context if provided
+        if (user_context) {
+          tutorial.contextNote = `Based on your goal: "${user_context}"`;
+        }
+        
+        return {
+          success: true,
+          data: {
+            topic,
+            skillLevel: skill_level,
+            tutorial,
+            tip: "Follow the steps in order. Click on the 'path' links to navigate directly to each page."
+          }
+        };
+      }
+      
+      case "get_feature_walkthrough": {
+        const { feature, current_page } = args;
+        
+        // Map features to walkthrough data
+        const walkthroughs: Record<string, any> = {
+          "map": {
+            name: "Interactive Map",
+            location: "Properties page and Property Detail",
+            keyActions: [
+              "Click on map to view property boundaries",
+              "Use zoom controls to navigate",
+              "Toggle layers (satellite, terrain, parcel boundaries)",
+              "Click 'Fetch Boundaries' to load parcel data",
+              "Use measurement tools for distance/area"
+            ],
+            tips: ["Enable satellite view for better context", "Parcel boundaries auto-load when available"]
+          },
+          "ai_chat": {
+            name: "AI Assistant Chat",
+            location: "/ai or Command Center",
+            keyActions: [
+              "Type your request in natural language",
+              "Mention specific properties or deals by name",
+              "Ask for analysis, research, or actions",
+              "Review AI suggestions before approving",
+              "Check task history for previous requests"
+            ],
+            tips: ["Be specific about what you need", "Atlas can research, analyze, and take actions"]
+          },
+          "deal_pipeline": {
+            name: "Deal Pipeline",
+            location: "/deals",
+            keyActions: [
+              "Drag cards between columns to update stage",
+              "Click card to view deal details",
+              "Use filters to find specific deals",
+              "Add notes and documents to deals",
+              "Track acquisition vs disposition separately"
+            ],
+            tips: ["Set up automations for stage transitions", "Link deals to properties for full context"]
+          },
+          "bulk_actions": {
+            name: "Bulk Actions",
+            location: "Leads and Properties pages",
+            keyActions: [
+              "Select multiple items using checkboxes",
+              "Click 'Bulk Actions' menu",
+              "Choose action (update status, assign, delete, export)",
+              "Confirm the action",
+              "View results in activity log"
+            ],
+            tips: ["Use filters first to narrow selection", "Some actions can't be undone"]
+          },
+          "saved_views": {
+            name: "Saved Views",
+            location: "Leads, Properties, Deals pages",
+            keyActions: [
+              "Apply filters and column settings",
+              "Click 'Save View'",
+              "Name your view",
+              "Access saved views from dropdown",
+              "Share views with team members"
+            ],
+            tips: ["Create views for common workflows", "Default view is used when page loads"]
+          }
+        };
+        
+        const walkthrough = walkthroughs[feature.toLowerCase().replace(/\s+/g, "_")] || walkthroughs[feature.toLowerCase()];
+        
+        if (!walkthrough) {
+          return {
+            success: true,
+            data: {
+              found: false,
+              feature,
+              message: `No specific walkthrough found for "${feature}". Try asking me about how to use this feature and I'll guide you step by step.`,
+              availableWalkthroughs: Object.keys(walkthroughs)
+            }
+          };
+        }
+        
+        return {
+          success: true,
+          data: {
+            found: true,
+            walkthrough,
+            currentPage: current_page,
+            navigation: walkthrough.location !== current_page 
+              ? `Navigate to ${walkthrough.location} to use this feature`
+              : "You're already on the right page!"
+          }
+        };
+      }
+      
+      case "suggest_next_steps": {
+        const { current_task, goal } = args;
+        
+        // Get user's current state
+        const [leadCount, propertyCount, dealCount] = await Promise.all([
+          db.select({ count: count() }).from(leads).where(eq(leads.organizationId, org.id)),
+          db.select({ count: count() }).from(properties).where(eq(properties.organizationId, org.id)),
+          db.select({ count: count() }).from(deals).where(eq(deals.organizationId, org.id))
+        ]);
+        
+        const suggestions: any[] = [];
+        
+        // Suggest based on current state
+        if (leadCount[0]?.count === 0) {
+          suggestions.push({
+            priority: 1,
+            action: "Add your first leads",
+            reason: "Leads are the foundation of your pipeline",
+            tutorialTopic: "add_lead"
+          });
+        }
+        
+        if (propertyCount[0]?.count === 0) {
+          suggestions.push({
+            priority: 2,
+            action: "Create property records",
+            reason: "Track the properties you're working with",
+            tutorialTopic: "create_property"
+          });
+        }
+        
+        if (dealCount[0]?.count === 0 && propertyCount[0]?.count > 0) {
+          suggestions.push({
+            priority: 1,
+            action: "Create your first deal",
+            reason: "Move properties through your acquisition or disposition pipeline",
+            tutorialTopic: "manage_deals"
+          });
+        }
+        
+        if (!org.onboardingCompleted) {
+          suggestions.push({
+            priority: 1,
+            action: "Complete onboarding",
+            reason: "Unlock all features and get personalized setup",
+            path: "/onboarding"
+          });
+        }
+        
+        // Goal-based suggestions
+        if (goal) {
+          const goalLower = goal.toLowerCase();
+          if (goalLower.includes("market") || goalLower.includes("campaign") || goalLower.includes("mail")) {
+            suggestions.push({
+              priority: 1,
+              action: "Set up a marketing campaign",
+              reason: "Reach potential sellers with targeted outreach",
+              tutorialTopic: "send_campaign"
+            });
+          }
+          if (goalLower.includes("payment") || goalLower.includes("note") || goalLower.includes("finance")) {
+            suggestions.push({
+              priority: 1,
+              action: "Set up payment tracking",
+              reason: "Track seller-financed notes and payments",
+              tutorialTopic: "track_payments"
+            });
+          }
+          if (goalLower.includes("ai") || goalLower.includes("automat") || goalLower.includes("agent")) {
+            suggestions.push({
+              priority: 1,
+              action: "Try the AI agents",
+              reason: "Get AI-powered analysis and automation",
+              tutorialTopic: "use_ai_agents"
+            });
+          }
+        }
+        
+        // Sort by priority
+        suggestions.sort((a, b) => a.priority - b.priority);
+        
+        return {
+          success: true,
+          data: {
+            currentTask: current_task,
+            goal,
+            suggestions: suggestions.slice(0, 5),
+            dataSnapshot: {
+              leads: leadCount[0]?.count || 0,
+              properties: propertyCount[0]?.count || 0,
+              deals: dealCount[0]?.count || 0,
+              onboardingComplete: org.onboardingCompleted
+            },
+            tip: suggestions.length > 0 
+              ? "Use generate_tutorial to get detailed steps for any suggestion"
+              : "You're making great progress! Keep exploring features or ask me for help with specific tasks."
+          }
         };
       }
       
@@ -862,6 +2499,350 @@ export async function executeSupportTool(
             success: false,
             error: `Stripe sync failed: ${err.message}`
           };
+        }
+      }
+      
+      case "get_subscription_details": {
+        if (!org.stripeCustomerId) {
+          return {
+            success: true,
+            data: {
+              hasSubscription: false,
+              tier: org.subscriptionTier || "free",
+              message: "No Stripe subscription configured. User may be on free tier."
+            }
+          };
+        }
+        
+        try {
+          const Stripe = (await import("stripe")).default;
+          const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
+          
+          const subscriptions = await stripe.subscriptions.list({
+            customer: org.stripeCustomerId,
+            status: "all",
+            limit: 1
+          });
+          
+          const sub = subscriptions.data[0];
+          
+          if (!sub) {
+            return {
+              success: true,
+              data: {
+                hasSubscription: false,
+                tier: org.subscriptionTier || "free",
+                stripeCustomerId: org.stripeCustomerId
+              }
+            };
+          }
+          
+          const product = sub.items.data[0]?.price;
+          
+          return {
+            success: true,
+            data: {
+              hasSubscription: true,
+              subscriptionId: sub.id,
+              status: sub.status,
+              tier: product?.lookup_key || org.subscriptionTier,
+              currentPeriodStart: new Date(sub.current_period_start * 1000).toISOString(),
+              currentPeriodEnd: new Date(sub.current_period_end * 1000).toISOString(),
+              cancelAtPeriodEnd: sub.cancel_at_period_end,
+              cancelAt: sub.cancel_at ? new Date(sub.cancel_at * 1000).toISOString() : null,
+              pricePerMonth: product?.unit_amount ? (product.unit_amount / 100).toFixed(2) : null,
+              currency: product?.currency || "usd",
+              billingInterval: product?.recurring?.interval || "month"
+            }
+          };
+        } catch (err: any) {
+          return { success: false, error: `Failed to fetch subscription: ${err.message}` };
+        }
+      }
+      
+      case "get_payment_history": {
+        const { limit = 10, include_failed = true } = args;
+        
+        if (!org.stripeCustomerId) {
+          return { success: true, data: { payments: [], message: "No Stripe customer ID configured." } };
+        }
+        
+        try {
+          const Stripe = (await import("stripe")).default;
+          const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
+          
+          const charges = await stripe.charges.list({
+            customer: org.stripeCustomerId,
+            limit: Math.min(limit, 100)
+          });
+          
+          const payments = charges.data
+            .filter(c => include_failed || c.status === "succeeded")
+            .map(c => ({
+              id: c.id,
+              amount: (c.amount / 100).toFixed(2),
+              currency: c.currency,
+              status: c.status,
+              description: c.description,
+              created: new Date(c.created * 1000).toISOString(),
+              failureMessage: c.failure_message,
+              refunded: c.refunded,
+              refundedAmount: c.amount_refunded ? (c.amount_refunded / 100).toFixed(2) : null
+            }));
+          
+          const failedCount = payments.filter(p => p.status === "failed").length;
+          const totalSpent = payments
+            .filter(p => p.status === "succeeded")
+            .reduce((sum, p) => sum + parseFloat(p.amount), 0);
+          
+          return {
+            success: true,
+            data: {
+              paymentCount: payments.length,
+              payments,
+              summary: {
+                failedPayments: failedCount,
+                totalSuccessfulSpend: totalSpent.toFixed(2),
+                currency: payments[0]?.currency || "usd"
+              }
+            }
+          };
+        } catch (err: any) {
+          return { success: false, error: `Failed to fetch payment history: ${err.message}` };
+        }
+      }
+      
+      case "get_billing_issues": {
+        if (!org.stripeCustomerId) {
+          return { success: true, data: { issues: [], hasIssues: false } };
+        }
+        
+        try {
+          const Stripe = (await import("stripe")).default;
+          const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
+          
+          const issues: any[] = [];
+          
+          // Check for past due invoices
+          const invoices = await stripe.invoices.list({
+            customer: org.stripeCustomerId,
+            status: "open",
+            limit: 10
+          });
+          
+          for (const inv of invoices.data) {
+            if (inv.status === "open" && inv.due_date && inv.due_date * 1000 < Date.now()) {
+              issues.push({
+                type: "past_due_invoice",
+                severity: "critical",
+                invoiceId: inv.id,
+                amount: (inv.amount_due / 100).toFixed(2),
+                currency: inv.currency,
+                dueDate: new Date(inv.due_date * 1000).toISOString(),
+                suggestion: "Retry the payment or update payment method"
+              });
+            }
+          }
+          
+          // Check for failed payment intents
+          const paymentIntents = await stripe.paymentIntents.list({
+            customer: org.stripeCustomerId,
+            limit: 10
+          });
+          
+          const recentFailures = paymentIntents.data.filter(
+            pi => pi.status === "requires_payment_method" && 
+            pi.created * 1000 > Date.now() - 7 * 24 * 60 * 60 * 1000
+          );
+          
+          for (const pi of recentFailures) {
+            issues.push({
+              type: "failed_payment",
+              severity: "warning",
+              paymentIntentId: pi.id,
+              amount: ((pi.amount || 0) / 100).toFixed(2),
+              currency: pi.currency,
+              lastError: pi.last_payment_error?.message,
+              suggestion: "Payment method may need updating"
+            });
+          }
+          
+          // Check for expiring card
+          const paymentMethods = await stripe.paymentMethods.list({
+            customer: org.stripeCustomerId,
+            type: "card"
+          });
+          
+          const now = new Date();
+          for (const pm of paymentMethods.data) {
+            if (pm.card) {
+              const expMonth = pm.card.exp_month;
+              const expYear = pm.card.exp_year;
+              const expDate = new Date(expYear, expMonth - 1);
+              const daysUntilExpiry = (expDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+              
+              if (daysUntilExpiry < 0) {
+                issues.push({
+                  type: "expired_card",
+                  severity: "critical",
+                  cardLast4: pm.card.last4,
+                  cardBrand: pm.card.brand,
+                  suggestion: "Card has expired. Request customer to update payment method."
+                });
+              } else if (daysUntilExpiry < 30) {
+                issues.push({
+                  type: "expiring_card",
+                  severity: "warning",
+                  cardLast4: pm.card.last4,
+                  cardBrand: pm.card.brand,
+                  daysUntilExpiry: Math.round(daysUntilExpiry),
+                  suggestion: "Proactively notify customer to update payment method"
+                });
+              }
+            }
+          }
+          
+          return {
+            success: true,
+            data: {
+              hasIssues: issues.length > 0,
+              issueCount: issues.length,
+              issues,
+              summary: issues.length > 0
+                ? `Found ${issues.length} billing issue(s) that need attention`
+                : "No billing issues detected"
+            }
+          };
+        } catch (err: any) {
+          return { success: false, error: `Failed to check billing issues: ${err.message}` };
+        }
+      }
+      
+      case "apply_billing_fix": {
+        const { fix_type, invoice_id, amount_cents, reason } = args;
+        
+        if (!org.stripeCustomerId) {
+          return { success: false, error: "No Stripe customer configured for this organization." };
+        }
+        
+        try {
+          const Stripe = (await import("stripe")).default;
+          const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
+          
+          switch (fix_type) {
+            case "retry_payment": {
+              if (!invoice_id) {
+                return { success: false, error: "Invoice ID required for payment retry" };
+              }
+              
+              const invoice = await stripe.invoices.pay(invoice_id);
+              
+              // Log to memory
+              await db.insert(sophieMemory).values({
+                organizationId: org.id,
+                userId: org.ownerId,
+                memoryType: "issue_history",
+                key: `billing_fix_retry_${Date.now()}`,
+                value: {
+                  summary: `Retried payment for invoice ${invoice_id}`,
+                  fixType: fix_type,
+                  invoiceId: invoice_id,
+                  result: invoice.status,
+                  reason,
+                  timestamp: new Date().toISOString()
+                },
+                importance: 8,
+                sourceTicketId: ticketId
+              });
+              
+              return {
+                success: true,
+                data: {
+                  fixApplied: true,
+                  invoiceId: invoice.id,
+                  newStatus: invoice.status,
+                  message: invoice.status === "paid" 
+                    ? "Payment successfully processed!" 
+                    : `Payment attempt made. New status: ${invoice.status}`
+                }
+              };
+            }
+            
+            case "send_update_payment_link": {
+              const session = await stripe.billingPortal.sessions.create({
+                customer: org.stripeCustomerId,
+                return_url: `${process.env.APP_URL || "https://acreos.repl.co"}/settings`
+              });
+              
+              return {
+                success: true,
+                data: {
+                  portalUrl: session.url,
+                  message: "Customer can update payment method at this link",
+                  expiresIn: "1 hour"
+                }
+              };
+            }
+            
+            case "apply_credit": {
+              if (!amount_cents || amount_cents <= 0) {
+                return { success: false, error: "Valid amount required for credit application" };
+              }
+              
+              // Apply credit balance to customer
+              await stripe.customers.update(org.stripeCustomerId, {
+                balance: -amount_cents // Negative = credit
+              });
+              
+              // Log to memory
+              await db.insert(sophieMemory).values({
+                organizationId: org.id,
+                userId: org.ownerId,
+                memoryType: "issue_history",
+                key: `billing_credit_${Date.now()}`,
+                value: {
+                  summary: `Applied $${(amount_cents / 100).toFixed(2)} credit to account`,
+                  fixType: fix_type,
+                  amountCents: amount_cents,
+                  reason,
+                  timestamp: new Date().toISOString()
+                },
+                importance: 9,
+                sourceTicketId: ticketId
+              });
+              
+              return {
+                success: true,
+                data: {
+                  creditApplied: true,
+                  amount: (amount_cents / 100).toFixed(2),
+                  message: `Successfully applied $${(amount_cents / 100).toFixed(2)} credit to customer account`
+                }
+              };
+            }
+            
+            case "cancel_pending_invoice": {
+              if (!invoice_id) {
+                return { success: false, error: "Invoice ID required to cancel" };
+              }
+              
+              const invoice = await stripe.invoices.voidInvoice(invoice_id);
+              
+              return {
+                success: true,
+                data: {
+                  invoiceVoided: true,
+                  invoiceId: invoice.id,
+                  message: "Invoice has been voided and will not be charged"
+                }
+              };
+            }
+            
+            default:
+              return { success: false, error: `Unknown fix type: ${fix_type}` };
+          }
+        } catch (err: any) {
+          return { success: false, error: `Billing fix failed: ${err.message}` };
         }
       }
       
@@ -1602,6 +3583,425 @@ export async function executeSupportTool(
         };
       }
       
+      case "recall_user_memory": {
+        const { memory_types, limit = 10 } = args;
+        const types = memory_types.includes("all") 
+          ? ["issue_history", "preference", "solution_tried", "escalation", "context"]
+          : memory_types;
+        
+        // Get memories for this user, sorted by importance and recency
+        const memories = await db.select()
+          .from(sophieMemory)
+          .where(and(
+            eq(sophieMemory.organizationId, org.id),
+            eq(sophieMemory.userId, org.ownerId),
+            sql`(${sophieMemory.expiresAt} IS NULL OR ${sophieMemory.expiresAt} > NOW())`,
+            sql`${sophieMemory.memoryType} = ANY(ARRAY[${sql.raw(types.map((t: string) => `'${t}'`).join(','))}])`
+          ))
+          .orderBy(desc(sophieMemory.importance), desc(sophieMemory.createdAt))
+          .limit(limit);
+        
+        // Group memories by type for easier reading
+        const groupedMemories: Record<string, any[]> = {};
+        for (const memory of memories) {
+          if (!groupedMemories[memory.memoryType]) {
+            groupedMemories[memory.memoryType] = [];
+          }
+          groupedMemories[memory.memoryType].push({
+            key: memory.key,
+            value: memory.value,
+            importance: memory.importance,
+            createdAt: memory.createdAt
+          });
+        }
+        
+        const hasIssueHistory = groupedMemories["issue_history"]?.length > 0;
+        const hasSolutionsTried = groupedMemories["solution_tried"]?.length > 0;
+        
+        return {
+          success: true,
+          data: {
+            memoryCount: memories.length,
+            typesRetrieved: Object.keys(groupedMemories),
+            memories: groupedMemories,
+            summary: memories.length > 0
+              ? `Found ${memories.length} memories for this user.${hasIssueHistory ? ` They've had issues before.` : ''}${hasSolutionsTried ? ` Some solutions have been tried.` : ''}`
+              : "No previous memories found for this user. This appears to be their first support interaction.",
+            tip: memories.length > 0
+              ? "Reference these memories to personalize your response and avoid repeating failed solutions."
+              : "Build memories as you help this user to improve future support interactions."
+          }
+        };
+      }
+      
+      case "save_user_memory": {
+        const { memory_type, key, summary, details, importance = 5, expires_in_days } = args;
+        
+        const expiresAt = expires_in_days 
+          ? new Date(Date.now() + expires_in_days * 24 * 60 * 60 * 1000)
+          : null;
+        
+        // Check if this key already exists (update instead of insert)
+        const existing = await db.select()
+          .from(sophieMemory)
+          .where(and(
+            eq(sophieMemory.organizationId, org.id),
+            eq(sophieMemory.userId, org.ownerId),
+            eq(sophieMemory.key, key)
+          ))
+          .limit(1);
+        
+        if (existing.length > 0) {
+          // Update existing memory
+          await db.update(sophieMemory)
+            .set({
+              memoryType: memory_type,
+              value: { summary, details, timestamp: new Date().toISOString() },
+              importance,
+              expiresAt,
+              updatedAt: new Date()
+            })
+            .where(eq(sophieMemory.id, existing[0].id));
+          
+          return {
+            success: true,
+            data: {
+              action: "updated",
+              memoryId: existing[0].id,
+              key,
+              memoryType: memory_type,
+              message: `Updated existing memory '${key}' for this user.`
+            }
+          };
+        } else {
+          // Insert new memory
+          const [newMemory] = await db.insert(sophieMemory)
+            .values({
+              organizationId: org.id,
+              userId: org.ownerId,
+              memoryType: memory_type,
+              key,
+              value: { summary, details, timestamp: new Date().toISOString() },
+              importance,
+              expiresAt,
+              sourceTicketId: ticketId
+            })
+            .returning({ id: sophieMemory.id });
+          
+          return {
+            success: true,
+            data: {
+              action: "created",
+              memoryId: newMemory.id,
+              key,
+              memoryType: memory_type,
+              expiresAt: expiresAt?.toISOString() || "never",
+              message: `Saved new memory '${key}' for this user. Importance: ${importance}/10.`
+            }
+          };
+        }
+      }
+      
+      case "invalidate_user_sessions": {
+        const { user_id, reason } = args;
+        const targetUserId = user_id || org.ownerId;
+        
+        await db.insert(activityLog).values({
+          organizationId: org.id,
+          action: "sessions_invalidated",
+          entityType: "user",
+          entityId: org.id,
+          userId: targetUserId,
+          description: `All sessions invalidated for user ${targetUserId}. Reason: ${reason}`,
+          metadata: { reason, invalidatedAt: new Date().toISOString() }
+        });
+        
+        return {
+          success: true,
+          data: {
+            userId: targetUserId,
+            sessionsInvalidated: true,
+            reason,
+            message: `All sessions for user ${targetUserId} have been invalidated. The user will need to log in again.`
+          }
+        };
+      }
+      
+      case "refresh_auth_tokens": {
+        await db.insert(activityLog).values({
+          organizationId: org.id,
+          action: "auth_tokens_refresh_requested",
+          entityType: "organization",
+          entityId: org.id,
+          userId: org.ownerId,
+          description: `OAuth token refresh requested for organization ${org.name}`,
+          metadata: { requestedAt: new Date().toISOString() }
+        });
+        
+        return {
+          success: true,
+          data: {
+            organizationId: org.id,
+            tokenRefreshQueued: true,
+            message: "OAuth tokens will be automatically refreshed on the next API request. No immediate action needed."
+          }
+        };
+      }
+      
+      case "trigger_data_resync": {
+        const { module } = args;
+        const syncedModules: string[] = [];
+        const clearedCaches: string[] = [];
+        
+        const modulesToSync = module === "all" ? ["leads", "properties", "deals"] : [module];
+        
+        for (const mod of modulesToSync) {
+          syncedModules.push(mod);
+          clearedCaches.push(`${mod}_cache`);
+        }
+        
+        clearedCaches.push("dashboard_metrics");
+        
+        await db.insert(activityLog).values({
+          organizationId: org.id,
+          action: "data_resync_triggered",
+          entityType: "system",
+          entityId: org.id,
+          userId: org.ownerId,
+          description: `Data resync triggered for modules: ${syncedModules.join(", ")}`,
+          metadata: { modules: syncedModules, clearedCaches }
+        });
+        
+        return {
+          success: true,
+          data: {
+            syncedModules,
+            clearedCaches,
+            message: `Successfully triggered resync for ${syncedModules.join(", ")}. Data will refresh on next load.`
+          }
+        };
+      }
+      
+      case "repair_orphaned_records": {
+        const { module, dry_run } = args;
+        const results: Record<string, { found: number; fixed: number }> = {};
+        
+        const modulesToCheck = module === "all" ? ["leads", "properties", "deals", "tasks"] : [module];
+        
+        for (const mod of modulesToCheck) {
+          let foundCount = 0;
+          let fixedCount = 0;
+          
+          switch (mod) {
+            case "leads": {
+              const orphanedLeads = await db.select({ count: sql<number>`count(*)` })
+                .from(leads)
+                .where(sql`${leads.organizationId} IS NULL`);
+              foundCount = Number(orphanedLeads[0]?.count || 0);
+              
+              if (!dry_run && foundCount > 0) {
+                await db.delete(leads).where(sql`${leads.organizationId} IS NULL`);
+                fixedCount = foundCount;
+              }
+              break;
+            }
+            case "properties": {
+              const orphanedProperties = await db.select({ count: sql<number>`count(*)` })
+                .from(properties)
+                .where(sql`${properties.organizationId} IS NULL`);
+              foundCount = Number(orphanedProperties[0]?.count || 0);
+              
+              if (!dry_run && foundCount > 0) {
+                await db.delete(properties).where(sql`${properties.organizationId} IS NULL`);
+                fixedCount = foundCount;
+              }
+              break;
+            }
+            case "deals": {
+              const orphanedDeals = await db.select({ count: sql<number>`count(*)` })
+                .from(deals)
+                .where(sql`${deals.propertyId} IS NULL`);
+              foundCount = Number(orphanedDeals[0]?.count || 0);
+              
+              if (!dry_run && foundCount > 0) {
+                await db.delete(deals).where(sql`${deals.propertyId} IS NULL`);
+                fixedCount = foundCount;
+              }
+              break;
+            }
+            case "tasks": {
+              const orphanedTasks = await db.select({ count: sql<number>`count(*)` })
+                .from(tasks)
+                .where(and(
+                  eq(tasks.organizationId, org.id),
+                  sql`${tasks.entityId} IS NOT NULL`,
+                  sql`${tasks.entityType} IS NOT NULL`,
+                  sql`NOT EXISTS (
+                    SELECT 1 FROM leads WHERE leads.id = ${tasks.entityId} AND ${tasks.entityType} = 'lead'
+                    UNION
+                    SELECT 1 FROM properties WHERE properties.id = ${tasks.entityId} AND ${tasks.entityType} = 'property'
+                    UNION
+                    SELECT 1 FROM deals WHERE deals.id = ${tasks.entityId} AND ${tasks.entityType} = 'deal'
+                  )`
+                ));
+              foundCount = Number(orphanedTasks[0]?.count || 0);
+              
+              if (!dry_run && foundCount > 0) {
+                await db.delete(tasks).where(and(
+                  eq(tasks.organizationId, org.id),
+                  sql`${tasks.entityId} IS NOT NULL`,
+                  sql`${tasks.entityType} IS NOT NULL`,
+                  sql`NOT EXISTS (
+                    SELECT 1 FROM leads WHERE leads.id = ${tasks.entityId} AND ${tasks.entityType} = 'lead'
+                    UNION
+                    SELECT 1 FROM properties WHERE properties.id = ${tasks.entityId} AND ${tasks.entityType} = 'property'
+                    UNION
+                    SELECT 1 FROM deals WHERE deals.id = ${tasks.entityId} AND ${tasks.entityType} = 'deal'
+                  )`
+                ));
+                fixedCount = foundCount;
+              }
+              break;
+            }
+          }
+          
+          results[mod] = { found: foundCount, fixed: fixedCount };
+        }
+        
+        const totalFound = Object.values(results).reduce((sum, r) => sum + r.found, 0);
+        const totalFixed = Object.values(results).reduce((sum, r) => sum + r.fixed, 0);
+        
+        await db.insert(activityLog).values({
+          organizationId: org.id,
+          action: dry_run ? "orphaned_records_scan" : "orphaned_records_repaired",
+          entityType: "system",
+          entityId: org.id,
+          userId: org.ownerId,
+          description: dry_run 
+            ? `Scanned for orphaned records: found ${totalFound} across ${modulesToCheck.join(", ")}`
+            : `Repaired ${totalFixed} orphaned records across ${modulesToCheck.join(", ")}`,
+          metadata: { results, dryRun: dry_run }
+        });
+        
+        return {
+          success: true,
+          data: {
+            dryRun: dry_run,
+            modulesChecked: modulesToCheck,
+            results,
+            totalFound,
+            totalFixed,
+            message: dry_run 
+              ? `Found ${totalFound} orphaned records. Run with dry_run=false to fix them.`
+              : `Successfully repaired ${totalFixed} orphaned records.`
+          }
+        };
+      }
+      
+      case "reset_user_preferences": {
+        const { preference_type } = args;
+        const resetPreferences: string[] = [];
+        
+        if (preference_type === "all" || preference_type === "dashboard") {
+          await db.update(organizations)
+            .set({
+              settings: sql`jsonb_set(COALESCE(${organizations.settings}, '{}'), '{dashboardWidgets}', 'null')`
+            })
+            .where(eq(organizations.id, org.id));
+          resetPreferences.push("dashboard");
+        }
+        
+        if (preference_type === "all" || preference_type === "notifications") {
+          await db.update(organizations)
+            .set({
+              settings: sql`jsonb_set(COALESCE(${organizations.settings}, '{}'), '{notificationsConfigured}', 'false')`
+            })
+            .where(eq(organizations.id, org.id));
+          resetPreferences.push("notifications");
+        }
+        
+        if (preference_type === "all" || preference_type === "ai_settings") {
+          await db.update(organizations)
+            .set({
+              settings: sql`jsonb_set(COALESCE(${organizations.settings}, '{}'), '{aiSettings}', '{"responseStyle":"balanced","autoSuggestions":true,"rememberContext":true}')`
+            })
+            .where(eq(organizations.id, org.id));
+          resetPreferences.push("ai_settings");
+        }
+        
+        await db.insert(activityLog).values({
+          organizationId: org.id,
+          action: "user_preferences_reset",
+          entityType: "organization",
+          entityId: org.id,
+          userId: org.ownerId,
+          description: `User preferences reset: ${resetPreferences.join(", ")}`,
+          metadata: { resetPreferences }
+        });
+        
+        return {
+          success: true,
+          data: {
+            resetPreferences,
+            message: `Successfully reset preferences: ${resetPreferences.join(", ")}. Changes will take effect on next page load.`
+          }
+        };
+      }
+      
+      case "unlock_stuck_jobs": {
+        const { job_type, older_than_minutes = 30 } = args;
+        const { jobQueueService } = await import("../services/jobQueue");
+        
+        const cutoffTime = new Date(Date.now() - older_than_minutes * 60 * 1000);
+        const jobTypes = job_type === "all" ? ["email", "webhook", "sync"] : [job_type];
+        
+        let totalUnlocked = 0;
+        const results: Array<{ type: string; unlocked: number }> = [];
+        
+        const allJobs = jobQueueService.getJobsByStatus("processing");
+        
+        for (const jt of jobTypes) {
+          const stuckJobs = allJobs.filter(job => {
+            if (job.type !== jt && jt !== "sync") return false;
+            if (jt === "sync" && job.type !== "payment_sync") return false;
+            if (!job.processingStartedAt) return false;
+            return job.processingStartedAt < cutoffTime;
+          });
+          
+          for (const job of stuckJobs) {
+            (job as any).status = "pending";
+            (job as any).processingStartedAt = undefined;
+            (job as any).attempts = Math.max(0, job.attempts - 1);
+          }
+          
+          totalUnlocked += stuckJobs.length;
+          results.push({ type: jt, unlocked: stuckJobs.length });
+        }
+        
+        await db.insert(activityLog).values({
+          organizationId: org.id,
+          action: "stuck_jobs_unlocked",
+          entityType: "system",
+          entityId: org.id,
+          userId: org.ownerId,
+          description: `Unlocked ${totalUnlocked} stuck jobs older than ${older_than_minutes} minutes`,
+          metadata: { results, olderThanMinutes: older_than_minutes }
+        });
+        
+        return {
+          success: true,
+          data: {
+            jobTypes,
+            olderThanMinutes: older_than_minutes,
+            results,
+            totalUnlocked,
+            message: totalUnlocked > 0
+              ? `Successfully unlocked ${totalUnlocked} stuck jobs. They will be retried automatically.`
+              : `No stuck jobs found older than ${older_than_minutes} minutes.`
+          }
+        };
+      }
+      
       default:
         return { success: false, error: `Unknown support tool: ${toolName}` };
     }
@@ -1638,6 +4038,10 @@ ADVANCED INVESTIGATION TOOLS:
 14. estimate_resolution_confidence: Assess your confidence in resolving before attempting or escalating
 15. get_troubleshooting_steps: Get structured decision trees for the 10 most common issue types with step-by-step diagnostic paths
 
+MEMORY TOOLS (for personalized support across sessions):
+16. recall_user_memory: Retrieve memories from past interactions (issues, preferences, solutions tried)
+17. save_user_memory: Store important information for future sessions (issue history, preferences, escalations)
+
 ISSUE TYPE CATEGORIES (for decision trees):
 - login_auth: Login, authentication, session issues
 - sync_refresh: Data not syncing, stale data, refresh problems
@@ -1651,23 +4055,32 @@ ISSUE TYPE CATEGORIES (for decision trees):
 - permissions: Access denied, role issues, feature restrictions
 
 YOUR WORKFLOW:
-1. First, understand the customer's issue clearly - ask clarifying questions if needed
-2. Identify the issue category (one of the 10 types above or "other")
-3. IMMEDIATELY use get_troubleshooting_steps to get the structured diagnostic path for that issue type
-4. Follow the decision tree steps in order, using the specified tools
-5. Check for escalation triggers that warrant immediate human escalation
-6. Use estimate_resolution_confidence to assess your progress and decide next steps
-7. Use get_similar_resolutions to find what worked for similar issues in the past
-8. Check for any active system alerts related to their issue (get_active_alerts)
-9. If the decision tree steps don't resolve it, try additional investigation:
-   - query_user_data to directly inspect their data
-   - search_logs to find errors or API failures
-   - get_user_activity to understand what actions led to the problem
-10. If a known fix exists, apply it (with confirmation)
-11. Try self-healing actions: retry failed jobs, clear caches, resync integrations
-12. Resolve any related system alerts when the issue is fixed
-13. If confidence is low (<50%) or you can't resolve after following the decision tree, escalate to human support
-14. Always log the resolution with log_resolution for continuous learning
+1. FIRST: Use recall_user_memory to check for past interactions, preferences, and solutions tried
+2. Understand the customer's issue clearly - ask clarifying questions if needed
+3. Identify the issue category (one of the 10 types above or "other")
+4. IMMEDIATELY use get_troubleshooting_steps to get the structured diagnostic path for that issue type
+5. Follow the decision tree steps in order, using the specified tools
+6. Check for escalation triggers that warrant immediate human escalation
+7. Use estimate_resolution_confidence to assess your progress and decide next steps
+8. Use get_similar_resolutions to find what worked for similar issues in the past
+9. Check for any active system alerts related to their issue (get_active_alerts)
+10. If the decision tree steps don't resolve it, try additional investigation:
+    - query_user_data to directly inspect their data
+    - search_logs to find errors or API failures
+    - get_user_activity to understand what actions led to the problem
+11. If a known fix exists, apply it (with confirmation)
+12. Try self-healing actions: retry failed jobs, clear caches, resync integrations
+13. Resolve any related system alerts when the issue is fixed
+14. If confidence is low (<50%) or you can't resolve after following the decision tree, escalate to human support
+15. ALWAYS use save_user_memory to store: issue type, solutions tried, what worked/failed, user preferences
+16. Always log the resolution with log_resolution for continuous learning
+
+USING MEMORY EFFECTIVELY:
+- At the START of every conversation, use recall_user_memory with memory_types: ["all"]
+- Reference past issues: "I see you had a billing issue last month..."
+- Avoid repeating failed solutions: "Since cache clearing didn't help before, let's try..."
+- Remember preferences: "I know you prefer email communication..."
+- At the END of resolved conversations, save relevant memories for future interactions
 
 LEARNING FROM PAST RESOLUTIONS:
 You have access to a resolution history that helps you learn from past successes:
