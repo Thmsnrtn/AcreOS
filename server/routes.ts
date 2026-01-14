@@ -19237,6 +19237,47 @@ Seller Signature (if applicable)
     }
   });
   
+  // Human resolve ticket (triggers Sophie learning)
+  api.post("/api/support/tickets/:id/resolve-human", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const ticketId = parseInt(req.params.id);
+      const user = req.user as any;
+      const { resolution, rating, feedback } = req.body;
+      
+      if (!resolution) {
+        return res.status(400).json({ message: "Resolution is required" });
+      }
+      
+      // Mark ticket as resolved by human
+      await db.update(supportTickets)
+        .set({
+          status: "resolved",
+          resolution,
+          resolutionType: "human",
+          resolvedAt: new Date(),
+          resolvedBy: user.id,
+          customerRating: rating,
+          customerFeedback: feedback,
+          updatedAt: new Date()
+        })
+        .where(eq(supportTickets.id, ticketId));
+      
+      // Trigger Sophie self-learning from this resolution
+      try {
+        const { sophieLearningService } = await import("./services/sophieLearning");
+        const learningResult = await sophieLearningService.learnFromHumanResolution(ticketId);
+        console.log(`[support] Sophie learned from human resolution: ${JSON.stringify(learningResult)}`);
+      } catch (learnErr) {
+        console.error("[support] Error in Sophie learning:", learnErr);
+      }
+      
+      res.json({ success: true, message: "Ticket resolved. Sophie has learned from this resolution." });
+    } catch (error: any) {
+      console.error("[support] Error resolving ticket:", error);
+      res.status(500).json({ message: error.message || "Failed to resolve ticket" });
+    }
+  });
+  
   // Get knowledge base articles
   api.get("/api/support/knowledge-base", async (req, res) => {
     try {

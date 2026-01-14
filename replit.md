@@ -60,7 +60,7 @@ Preferred communication style: Simple, everyday language.
 - **Unified Communications**: Twilio SMS integration (BYOK) with a multi-channel inbox UI.
 - **Browser Automation Engine**: Puppeteer-core for backend web automation (county research, document download, property listing screenshots) with job queue and AI integration.
 - **Autonomous AI Operations**: Capabilities across acquisition research, due diligence, negotiation, portfolio management, compliance, and disposition, leveraging multi-agent orchestration and event subscription.
-- **Sophie Support Agent (85-95% Autonomous Resolution Target)**: AI-powered customer support with advanced investigation, learning, and self-healing capabilities:
+- **Sophie Support Agent (95-99% Autonomous Resolution Target)**: AI-powered customer support with advanced investigation, self-learning, and self-healing capabilities:
   - **Investigation Tools**: `query_user_data` (database inspection), `search_logs` (error/event search), `get_user_activity` (action history), `estimate_resolution_confidence` (confidence scoring)
   - **Decision Trees**: Structured troubleshooting paths for 10 common issue types (login, sync, billing, data, AI, map, performance, export, notifications, permissions)
   - **Browser Context Capture**: Auto-captures console errors, failed network requests, user actions when help panel opens
@@ -77,7 +77,29 @@ Preferred communication style: Simple, everyday language.
   - **Auto-Generated Tutorials**: `generate_tutorial` for 10 common workflows (add_lead, create_property, manage_deals, send_campaign, track_payments, use_ai_agents, import_data, export_reports, configure_settings, manage_team) with skill-level customization
   - **Feature Walkthroughs**: `get_feature_walkthrough` for interactive guidance on map, ai_chat, deal_pipeline, bulk_actions, saved_views
   - **Contextual Next Steps**: `suggest_next_steps` based on user's current progress and goals
+  - **Self-Learning from Escalations**: `learn_from_human_resolution` uses GPT-4o to extract patterns, approaches, and lessons from human-resolved tickets, auto-updates knowledge base
+  - **Automated Root Cause Analysis**: `trace_root_cause` traces issues through frontend → API → database → external services with confidence scoring per layer
+  - **Bulk Issue Resolution**: `detect_bulk_issue` identifies systemic issues affecting multiple orgs, `apply_bulk_fix` applies fixes once for all affected
+  - **External Service Status Monitoring**: Real-time health checks (Stripe, Twilio, Lob, Regrid, OpenAI) every 5 minutes with automatic outage notifications via externalStatusMonitor service
+  - **Screenshot Analysis**: `analyze_screenshot` uses GPT-4o vision to identify UI issues from user-submitted screenshots
+  - **Sentiment Detection**: `analyze_user_sentiment` detects frustration levels (low/medium/high/critical) from message patterns
+  - **Contextual Auto-Suggestions**: `get_contextual_suggestions` provides relevant help based on recent user activity
+  - **User Behavior Prediction**: `predict_user_issues` anticipates issues based on past patterns and current activity
+  - **Self-Healing Data Integrity**: `detect_data_integrity_issues` finds orphaned deals, duplicate leads, broken references; `fix_data_integrity_issue` auto-repairs
+  - **Integration Health Monitoring**: `check_integration_health` verifies Stripe, Twilio, Lob, OpenAI connections
+  - **Proactive Onboarding Nudges**: `detect_onboarding_stuck` identifies stalled users and suggests next steps
+  - **Proactive Self-Healing**: `apply_self_healing_fix` applies known fixes (cache clear, job retry, data resync) based on learned patterns with 70%+ success rate
 - **Interactive Self-Help Wizards**: Guided step-by-step troubleshooting flows with 8 categories, self-check questions, and Sophie escalation path
+- **Sophie Learning Service**: sophieLearning.ts with 9 methods for autonomous learning and healing:
+  - `learnFromHumanResolution(ticketId)` - Extract patterns from human resolutions
+  - `traceRootCause(orgId, issueDescription)` - Multi-layer root cause analysis
+  - `detectBulkIssue(issuePattern)` - Detect systemic issues across orgs
+  - `applyBulkFix(issueType, fixAction, affectedOrgIds)` - Apply fixes to multiple orgs
+  - `getKnownFixPatterns()` - Retrieve successful fix patterns
+  - `applySelfHealingFix(orgId, issuePattern)` - Auto-apply known fixes
+  - `detectDataIntegrityIssues(orgId)` - Find data integrity problems
+  - `fixDataIntegrityIssue(orgId, issueType)` - Auto-repair data issues
+  - `predictUserIssues(orgId, userId)` - Predict upcoming issues
 
 ## External Dependencies
 

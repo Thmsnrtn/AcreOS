@@ -219,6 +219,14 @@ app.use(requestLoggingMiddleware);
       import("./services/healthCheck").then(({ healthCheckService }) => {
         healthCheckService.startPeriodicChecks(60000); // Check every minute
       });
+      
+      // Start external service status monitoring (Stripe, Twilio, Lob, Regrid)
+      import("./services/externalStatusMonitor").then(({ externalStatusMonitor }) => {
+        externalStatusMonitor.startPeriodicMonitoring(5 * 60 * 1000); // Check every 5 minutes
+        log("External service status monitoring started (every 5 minutes)", "external-monitor");
+      }).catch(err => {
+        log(`Failed to start external status monitoring: ${err}`, "external-monitor");
+      });
     },
   );
 })();
