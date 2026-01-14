@@ -24,6 +24,7 @@ import {
   insertSellerCommunicationSchema, insertAdPostingSchema, insertBuyerPrequalificationSchema,
   insertCollectionSequenceSchema, insertCollectionEnrollmentSchema, insertCountyResearchSchema,
   offers, organizationIntegrations, dataSources,
+  supportTickets, supportTicketMessages, knowledgeBaseArticles,
 } from "@shared/schema";
 
 // Partial update schemas for PUT endpoints
@@ -19106,6 +19107,277 @@ Seller Signature (if applicable)
   });
 
   registerAIOperationsRoutes(api);
+
+  // ============================================
+  // SUPPORT TICKET ROUTES
+  // ============================================
+  
+  // Create support ticket
+  api.post("/api/support/tickets", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.org!;
+      const user = req.user as any;
+      
+      const { subject, description, category, priority, pageContext, errorContext } = req.body;
+      
+      if (!subject || !description) {
+        return res.status(400).json({ message: "Subject and description are required" });
+      }
+      
+      const { createSupportTicket } = await import("./ai/supportAgent");
+      const ticket = await createSupportTicket(org, user.id, subject, description, {
+        category,
+        priority,
+        pageContext,
+        errorContext,
+        source: "in_app"
+      });
+      
+      res.status(201).json(ticket);
+    } catch (error: any) {
+      console.error("[support] Error creating ticket:", error);
+      res.status(500).json({ message: error.message || "Failed to create support ticket" });
+    }
+  });
+  
+  // Get user's support tickets
+  api.get("/api/support/tickets", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.org!;
+      const user = req.user as any;
+      const { status } = req.query;
+      
+      const { getSupportTickets } = await import("./ai/supportAgent");
+      const tickets = await getSupportTickets(org.id, {
+        status: status as string,
+        userId: user.id
+      });
+      
+      res.json(tickets);
+    } catch (error: any) {
+      console.error("[support] Error fetching tickets:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch tickets" });
+    }
+  });
+  
+  // Get ticket details with messages
+  api.get("/api/support/tickets/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const ticketId = parseInt(req.params.id);
+      const { getTicketMessages } = await import("./ai/supportAgent");
+      
+      const [ticket] = await db.select()
+        .from(supportTickets)
+        .where(eq(supportTickets.id, ticketId));
+      
+      if (!ticket) {
+        return res.status(404).json({ message: "Ticket not found" });
+      }
+      
+      const messages = await getTicketMessages(ticketId);
+      
+      res.json({ ticket, messages });
+    } catch (error: any) {
+      console.error("[support] Error fetching ticket:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch ticket" });
+    }
+  });
+  
+  // Send message to support ticket (triggers AI response)
+  api.post("/api/support/tickets/:id/messages", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.org!;
+      const user = req.user as any;
+      const ticketId = parseInt(req.params.id);
+      const { message } = req.body;
+      
+      if (!message) {
+        return res.status(400).json({ message: "Message is required" });
+      }
+      
+      // Add user message
+      await db.insert(supportTicketMessages).values({
+        ticketId,
+        role: "user",
+        content: message
+      });
+      
+      // Process with Sophie
+      const { processSupportChat } = await import("./ai/supportAgent");
+      const response = await processSupportChat(message, org, user.id, ticketId);
+      
+      res.json(response);
+    } catch (error: any) {
+      console.error("[support] Error processing message:", error);
+      res.status(500).json({ message: error.message || "Failed to process message" });
+    }
+  });
+  
+  // Close/resolve ticket
+  api.post("/api/support/tickets/:id/close", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const ticketId = parseInt(req.params.id);
+      const { resolution, rating, feedback } = req.body;
+      
+      await db.update(supportTickets)
+        .set({
+          status: "closed",
+          resolution,
+          resolvedAt: new Date(),
+          customerRating: rating,
+          customerFeedback: feedback,
+          updatedAt: new Date()
+        })
+        .where(eq(supportTickets.id, ticketId));
+      
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("[support] Error closing ticket:", error);
+      res.status(500).json({ message: error.message || "Failed to close ticket" });
+    }
+  });
+  
+  // Get knowledge base articles
+  api.get("/api/support/knowledge-base", async (req, res) => {
+    try {
+      const { category, search } = req.query;
+      
+      let query = db.select().from(knowledgeBaseArticles)
+        .where(eq(knowledgeBaseArticles.isPublished, true));
+      
+      const articles = await query.orderBy(desc(knowledgeBaseArticles.viewCount));
+      
+      let filtered = articles;
+      if (category) {
+        filtered = filtered.filter(a => a.category === category);
+      }
+      if (search) {
+        const searchLower = (search as string).toLowerCase();
+        filtered = filtered.filter(a => 
+          a.title.toLowerCase().includes(searchLower) ||
+          a.summary?.toLowerCase().includes(searchLower)
+        );
+      }
+      
+      res.json(filtered);
+    } catch (error: any) {
+      console.error("[support] Error fetching knowledge base:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch articles" });
+    }
+  });
+  
+  // Get single knowledge base article
+  api.get("/api/support/knowledge-base/:slug", async (req, res) => {
+    try {
+      const { slug } = req.params;
+      
+      const [article] = await db.select()
+        .from(knowledgeBaseArticles)
+        .where(eq(knowledgeBaseArticles.slug, slug));
+      
+      if (!article) {
+        return res.status(404).json({ message: "Article not found" });
+      }
+      
+      // Increment view count
+      await db.update(knowledgeBaseArticles)
+        .set({ viewCount: (article.viewCount || 0) + 1 })
+        .where(eq(knowledgeBaseArticles.id, article.id));
+      
+      res.json(article);
+    } catch (error: any) {
+      console.error("[support] Error fetching article:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch article" });
+    }
+  });
+  
+  // Mark article as helpful/not helpful
+  api.post("/api/support/knowledge-base/:id/feedback", async (req, res) => {
+    try {
+      const articleId = parseInt(req.params.id);
+      const { helpful } = req.body;
+      
+      const [article] = await db.select()
+        .from(knowledgeBaseArticles)
+        .where(eq(knowledgeBaseArticles.id, articleId));
+      
+      if (!article) {
+        return res.status(404).json({ message: "Article not found" });
+      }
+      
+      await db.update(knowledgeBaseArticles)
+        .set({
+          helpfulCount: helpful ? (article.helpfulCount || 0) + 1 : article.helpfulCount,
+          notHelpfulCount: !helpful ? (article.notHelpfulCount || 0) + 1 : article.notHelpfulCount
+        })
+        .where(eq(knowledgeBaseArticles.id, articleId));
+      
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("[support] Error recording feedback:", error);
+      res.status(500).json({ message: error.message || "Failed to record feedback" });
+    }
+  });
+  
+  // Founder endpoint: Get all support tickets across all orgs
+  api.get("/api/founder/support/tickets", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.org!;
+      
+      if (!org.isFounder) {
+        return res.status(403).json({ message: "Founder access required" });
+      }
+      
+      const tickets = await db.select()
+        .from(supportTickets)
+        .orderBy(desc(supportTickets.createdAt))
+        .limit(100);
+      
+      res.json(tickets);
+    } catch (error: any) {
+      console.error("[support] Error fetching all tickets:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch tickets" });
+    }
+  });
+  
+  // Founder endpoint: Support analytics
+  api.get("/api/founder/support/analytics", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.org!;
+      
+      if (!org.isFounder) {
+        return res.status(403).json({ message: "Founder access required" });
+      }
+      
+      const [totalTickets] = await db.select({ count: sql<number>`count(*)` })
+        .from(supportTickets);
+      
+      const [openTickets] = await db.select({ count: sql<number>`count(*)` })
+        .from(supportTickets)
+        .where(eq(supportTickets.status, "open"));
+      
+      const [aiResolvedTickets] = await db.select({ count: sql<number>`count(*)` })
+        .from(supportTickets)
+        .where(eq(supportTickets.aiHandled, true));
+      
+      const [avgRating] = await db.select({ avg: sql<number>`avg(${supportTickets.customerRating})` })
+        .from(supportTickets)
+        .where(sql`${supportTickets.customerRating} IS NOT NULL`);
+      
+      res.json({
+        totalTickets: totalTickets.count,
+        openTickets: openTickets.count,
+        aiResolvedTickets: aiResolvedTickets.count,
+        aiResolutionRate: totalTickets.count > 0 
+          ? ((aiResolvedTickets.count / totalTickets.count) * 100).toFixed(1) 
+          : 0,
+        averageRating: avgRating.avg ? parseFloat(avgRating.avg.toFixed(1)) : null
+      });
+    } catch (error: any) {
+      console.error("[support] Error fetching analytics:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch analytics" });
+    }
+  });
 
   return httpServer;
 }
