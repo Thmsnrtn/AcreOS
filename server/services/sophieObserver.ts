@@ -14,9 +14,10 @@ import {
   SophieObservation,
   SophieObservationType,
   ProactiveNotificationLevel,
-  PROACTIVE_NOTIFICATION_LEVELS
+  PROACTIVE_NOTIFICATION_LEVELS,
+  sophieCrossOrgLearnings
 } from "@shared/schema";
-import { eq, and, desc, gte, ne, sql } from "drizzle-orm";
+import { eq, and, desc, gte, ne, sql, like } from "drizzle-orm";
 
 export type ObservationSeverity = 'info' | 'low' | 'medium' | 'high';
 export type NotificationType = 'none' | 'passive' | 'active';
@@ -600,6 +601,136 @@ class SophieObserverService {
   clearCache(): void {
     this.recentObservations.clear();
     console.log('[sophieObserver] Observation cache cleared');
+  }
+
+  /**
+   * Check if an observation matches a known fix pattern with >70% success rate
+   * and attempt proactive self-healing before notifying user
+   */
+  async checkAndApplyProactiveFix(observation: SophieObservation): Promise<{
+    attempted: boolean;
+    success: boolean;
+    action?: string;
+    result?: string;
+  }> {
+    try {
+      const issueText = `${observation.title} ${observation.description}`.toLowerCase();
+      const meta = observation.metadata as any || {};
+      
+      const matchingPatterns = await db
+        .select()
+        .from(sophieCrossOrgLearnings)
+        .where(and(
+          gte(sophieCrossOrgLearnings.successRate, "70"),
+          eq(sophieCrossOrgLearnings.isAutoFixable, true)
+        ))
+        .orderBy(desc(sophieCrossOrgLearnings.successRate))
+        .limit(50);
+      
+      let matchedPattern = null;
+      for (const pattern of matchingPatterns) {
+        const patternLower = (pattern.issuePattern || "").toLowerCase();
+        const keywords = (pattern.keywords as string[]) || [];
+        
+        const patternMatch = patternLower && issueText.includes(patternLower.substring(0, 30));
+        const keywordMatch = keywords.some(k => issueText.includes(k.toLowerCase()));
+        
+        if (patternMatch || keywordMatch) {
+          matchedPattern = pattern;
+          break;
+        }
+      }
+      
+      if (!matchedPattern || !matchedPattern.autoFixAction) {
+        return { attempted: false, success: false };
+      }
+      
+      console.log(`[sophieObserver] Found matching fix pattern for observation ${observation.id}: ${matchedPattern.issuePattern?.substring(0, 50)}`);
+      
+      const { sophieLearningService } = await import("./sophieLearning");
+      const fixResult = await sophieLearningService.applySelfHealingFix(
+        observation.organizationId,
+        `${observation.title} ${observation.description}`,
+        { observationId: observation.id }
+      );
+      
+      if (fixResult.applied) {
+        await this.autoResolveObservation(observation.id, true, fixResult.result);
+        console.log(`[sophieObserver] Proactively fixed observation ${observation.id}: ${fixResult.result}`);
+      } else {
+        console.log(`[sophieObserver] Proactive fix attempt failed for observation ${observation.id}: ${fixResult.result}`);
+      }
+      
+      return {
+        attempted: true,
+        success: fixResult.applied,
+        action: fixResult.action,
+        result: fixResult.result
+      };
+    } catch (error) {
+      console.error('[sophieObserver] Error in proactive self-healing:', error);
+      return { attempted: false, success: false };
+    }
+  }
+
+  /**
+   * Record an observation and attempt proactive fix if applicable
+   */
+  async recordObservationWithProactiveFix(options: RecordObservationOptions): Promise<{
+    observation: SophieObservation | null;
+    proactiveFix: {
+      attempted: boolean;
+      success: boolean;
+      action?: string;
+      result?: string;
+    };
+  }> {
+    const observation = await this.recordObservation(options);
+    
+    if (!observation) {
+      return { observation: null, proactiveFix: { attempted: false, success: false } };
+    }
+    
+    if (options.severity === 'high' || options.confidenceScore >= 70) {
+      const proactiveFix = await this.checkAndApplyProactiveFix(observation);
+      return { observation, proactiveFix };
+    }
+    
+    return { observation, proactiveFix: { attempted: false, success: false } };
+  }
+
+  /**
+   * Find matching fix patterns for a given issue description
+   */
+  async findMatchingFixPatterns(issueText: string): Promise<Array<{
+    id: number;
+    issuePattern: string;
+    autoFixAction: string | null;
+    successRate: string | null;
+  }>> {
+    try {
+      const keywords = issueText.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+      
+      const patterns = await db
+        .select({
+          id: sophieCrossOrgLearnings.id,
+          issuePattern: sophieCrossOrgLearnings.issuePattern,
+          autoFixAction: sophieCrossOrgLearnings.autoFixAction,
+          successRate: sophieCrossOrgLearnings.successRate
+        })
+        .from(sophieCrossOrgLearnings)
+        .where(gte(sophieCrossOrgLearnings.successRate, "70"))
+        .orderBy(desc(sophieCrossOrgLearnings.successRate))
+        .limit(20);
+      
+      return patterns.filter(pattern => {
+        const patternLower = (pattern.issuePattern || "").toLowerCase();
+        return keywords.some(k => patternLower.includes(k));
+      });
+    } catch (error) {
+      console.error('[sophieObserver] Error finding matching fix patterns:', error);
+      return [];
+    }
   }
 }
 

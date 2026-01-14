@@ -7882,3 +7882,81 @@ export const insertSophieMemorySchema = createInsertSchema(sophieMemory).omit({
 });
 export type InsertSophieMemory = z.infer<typeof insertSophieMemorySchema>;
 export type SophieMemory = typeof sophieMemory.$inferSelect;
+
+// Track self-healing fix attempts with retry logic
+export const fixAttempts = pgTable("fix_attempts", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  
+  issuePattern: text("issue_pattern").notNull(),
+  fixAction: text("fix_action").notNull(),
+  
+  attemptNumber: integer("attempt_number").notNull().default(1),
+  status: text("status").notNull().default("pending"), // pending, success, failed, escalated
+  
+  errorMessage: text("error_message"),
+  result: jsonb("result").$type<{
+    success: boolean;
+    details?: string;
+    fixedAt?: string;
+    retryAfter?: string;
+  }>(),
+  
+  sourceObservationId: integer("source_observation_id").references(() => sophieObservations.id),
+  sourceTicketId: integer("source_ticket_id").references(() => supportTickets.id),
+  escalatedAt: timestamp("escalated_at"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("fix_attempts_org_idx").on(table.organizationId),
+  index("fix_attempts_pattern_idx").on(table.issuePattern),
+  index("fix_attempts_status_idx").on(table.status),
+]);
+
+export const insertFixAttemptSchema = createInsertSchema(fixAttempts).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertFixAttempt = z.infer<typeof insertFixAttemptSchema>;
+export type FixAttempt = typeof fixAttempts.$inferSelect;
+
+// Cross-org learning patterns - learnings that apply across all organizations
+export const sophieCrossOrgLearnings = pgTable("sophie_cross_org_learnings", {
+  id: serial("id").primaryKey(),
+  
+  issuePattern: text("issue_pattern").notNull(),
+  issueCategory: text("issue_category").notNull(), // billing, ai, leads, properties, etc.
+  
+  resolutionApproach: text("resolution_approach").notNull(),
+  lessonLearned: text("lesson_learned"),
+  
+  applicableCategories: jsonb("applicable_categories").$type<string[]>().default([]),
+  keywords: jsonb("keywords").$type<string[]>().default([]),
+  
+  successCount: integer("success_count").default(0),
+  failureCount: integer("failure_count").default(0),
+  successRate: numeric("success_rate").default("0"),
+  
+  isAutoFixable: boolean("is_auto_fixable").default(false),
+  autoFixAction: text("auto_fix_action"),
+  
+  sourceTicketIds: jsonb("source_ticket_ids").$type<number[]>().default([]),
+  contributingOrgIds: jsonb("contributing_org_ids").$type<number[]>().default([]),
+  contributingOrgs: integer("contributing_orgs").default(0),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("cross_org_learnings_category_idx").on(table.issueCategory),
+  index("cross_org_learnings_pattern_idx").on(table.issuePattern),
+]);
+
+export const insertSophieCrossOrgLearningSchema = createInsertSchema(sophieCrossOrgLearnings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertSophieCrossOrgLearning = z.infer<typeof insertSophieCrossOrgLearningSchema>;
+export type SophieCrossOrgLearning = typeof sophieCrossOrgLearnings.$inferSelect;

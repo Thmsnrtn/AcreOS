@@ -19238,15 +19238,23 @@ Seller Signature (if applicable)
     }
   });
   
-  // Human resolve ticket (triggers Sophie learning)
+  // Human resolve ticket (triggers Sophie learning and knowledge base update)
   api.post("/api/support/tickets/:id/resolve-human", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const ticketId = parseInt(req.params.id);
       const user = req.user as any;
-      const { resolution, rating, feedback } = req.body;
+      const { resolution, rating, feedback, addToKnowledgeBase } = req.body;
       
       if (!resolution) {
         return res.status(400).json({ message: "Resolution is required" });
+      }
+      
+      const [ticket] = await db.select()
+        .from(supportTickets)
+        .where(eq(supportTickets.id, ticketId));
+      
+      if (!ticket) {
+        return res.status(404).json({ message: "Ticket not found" });
       }
       
       // Mark ticket as resolved by human
@@ -19263,16 +19271,84 @@ Seller Signature (if applicable)
         })
         .where(eq(supportTickets.id, ticketId));
       
+      let learningResult = null;
+      let knowledgeBaseArticle = null;
+      
       // Trigger Sophie self-learning from this resolution
       try {
         const { sophieLearningService } = await import("./services/sophieLearning");
-        const learningResult = await sophieLearningService.learnFromHumanResolution(ticketId);
+        learningResult = await sophieLearningService.learnFromHumanResolution(ticketId);
         console.log(`[support] Sophie learned from human resolution: ${JSON.stringify(learningResult)}`);
+        
+        // If cross-org learning was created and addToKnowledgeBase is true, create KB article
+        if (addToKnowledgeBase && learningResult?.crossOrgLearning) {
+          const learning = learningResult.crossOrgLearning;
+          const slug = `auto-${ticket.category}-${ticketId}`.toLowerCase().replace(/\s+/g, '-');
+          
+          const existingArticle = await db.select()
+            .from(knowledgeBaseArticles)
+            .where(eq(knowledgeBaseArticles.slug, slug))
+            .limit(1);
+          
+          if (existingArticle.length === 0) {
+            const [article] = await db.insert(knowledgeBaseArticles).values({
+              title: `How to resolve: ${learning.issuePattern?.substring(0, 100) || ticket.subject}`,
+              slug,
+              summary: learning.lessonLearned || `Resolution for ${ticket.category} issues`,
+              content: `## Issue Pattern\n${learning.issuePattern}\n\n## Resolution Approach\n${learning.resolutionApproach}\n\n## Key Learnings\n${learning.lessonLearned || 'See resolution approach above.'}`,
+              category: ticket.category || "general",
+              tags: learning.applicableCategories || [],
+              keywords: learning.keywords || [],
+              relatedIssues: [ticket.subject],
+              canAutoFix: learning.isAutoFixable || false,
+              autoFixToolName: learning.autoFixAction,
+              isPublished: true
+            }).returning();
+            
+            knowledgeBaseArticle = article;
+            console.log(`[support] Created KB article from human resolution: ${article.id}`);
+          }
+        }
+        
+        // Store in sophieMemory for future reference
+        try {
+          await db.insert(sophieMemory).values({
+            organizationId: ticket.organizationId,
+            userId: user.id,
+            memoryType: "solution_tried",
+            key: `human_resolution_${ticketId}`,
+            value: {
+              ticketId,
+              subject: ticket.subject,
+              category: ticket.category,
+              resolution,
+              resolvedBy: user.id,
+              resolvedAt: new Date().toISOString(),
+              learningId: learningResult?.learningEntry?.id,
+              crossOrgLearningId: learningResult?.crossOrgLearning?.id
+            } as any,
+            importance: 9,
+            sourceTicketId: ticketId
+          });
+        } catch (memErr) {
+          console.error("[support] Error saving resolution memory:", memErr);
+        }
       } catch (learnErr) {
         console.error("[support] Error in Sophie learning:", learnErr);
       }
       
-      res.json({ success: true, message: "Ticket resolved. Sophie has learned from this resolution." });
+      res.json({ 
+        success: true, 
+        message: "Ticket resolved. Sophie has learned from this resolution.",
+        learning: learningResult ? {
+          learned: learningResult.learned,
+          crossOrgLearningId: learningResult.crossOrgLearning?.id
+        } : null,
+        knowledgeBaseArticle: knowledgeBaseArticle ? {
+          id: knowledgeBaseArticle.id,
+          slug: knowledgeBaseArticle.slug
+        } : null
+      });
     } catch (error: any) {
       console.error("[support] Error resolving ticket:", error);
       res.status(500).json({ message: error.message || "Failed to resolve ticket" });
@@ -19821,6 +19897,140 @@ ${Object.entries(byCategory).map(([cat, tix]) => `- ${cat}: ${tix.length} ticket
     } catch (error: any) {
       console.error("[founder] Error resolving escalation:", error);
       res.status(500).json({ message: error.message || "Failed to resolve escalation" });
+    }
+  });
+
+  // ============================================
+  // SOPHIE LEARNINGS ENDPOINTS
+  // ============================================
+  
+  // Get Sophie's cross-org learnings (what Sophie has learned)
+  api.get("/api/founder/sophie/learnings", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.org!;
+      
+      if (!org.isFounder) {
+        return res.status(403).json({ message: "Founder access required" });
+      }
+      
+      const { sophieLearningService } = await import("./services/sophieLearning");
+      const learnings = await sophieLearningService.getAllLearnings();
+      
+      res.json(learnings);
+    } catch (error: any) {
+      console.error("[founder] Error fetching Sophie learnings:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch learnings" });
+    }
+  });
+  
+  // ============================================
+  // ENHANCED BUG REPORTING
+  // ============================================
+  
+  // Report a bug with full context capture
+  api.post("/api/support/report-bug", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.org!;
+      const user = req.user as any;
+      
+      const {
+        title,
+        description,
+        pageUrl,
+        browserInfo,
+        consoleErrors,
+        failedRequests,
+        reproductionSteps,
+        expectedBehavior,
+        actualBehavior
+      } = req.body;
+      
+      if (!title || !description) {
+        return res.status(400).json({ message: "Title and description are required" });
+      }
+      
+      let orgHealth = null;
+      try {
+        const { healthCheckService } = await import("./services/healthCheck");
+        orgHealth = await healthCheckService.runHealthCheck(org.id);
+      } catch (err) {
+        console.error("[support] Error fetching org health for bug report:", err);
+      }
+      
+      let recentErrors: any[] = [];
+      try {
+        const recentActivity = await db.select()
+          .from(activityLog)
+          .where(and(
+            eq(activityLog.organizationId, org.id),
+            gte(activityLog.createdAt, new Date(Date.now() - 24 * 60 * 60 * 1000))
+          ))
+          .orderBy(desc(activityLog.createdAt))
+          .limit(20);
+        
+        recentErrors = recentActivity.filter(a => 
+          a.action?.toLowerCase().includes('error') || 
+          a.action?.toLowerCase().includes('fail')
+        );
+      } catch (err) {
+        console.error("[support] Error fetching recent errors for bug report:", err);
+      }
+      
+      const bugTicketData = {
+        organizationId: org.id,
+        userId: user.id,
+        subject: `[BUG] ${title}`,
+        description: `## Bug Report
+
+**Description:** ${description}
+
+**Page URL:** ${pageUrl || 'Not provided'}
+
+**Reproduction Steps:**
+${reproductionSteps || 'Not provided'}
+
+**Expected Behavior:**
+${expectedBehavior || 'Not provided'}
+
+**Actual Behavior:**
+${actualBehavior || 'Not provided'}
+
+---
+*This bug was reported through the in-app bug reporter.*`,
+        category: "bug" as const,
+        priority: "medium" as const,
+        status: "open" as const,
+        source: "bug_reporter" as const,
+        pageContext: {
+          url: pageUrl,
+          browserInfo,
+          timestamp: new Date().toISOString()
+        },
+        errorContext: {
+          consoleErrors: consoleErrors || [],
+          failedRequests: failedRequests || [],
+          orgHealth,
+          recentErrors: recentErrors.map(e => ({
+            action: e.action,
+            timestamp: e.createdAt
+          }))
+        }
+      };
+      
+      const [ticket] = await db.insert(supportTickets)
+        .values(bugTicketData)
+        .returning();
+      
+      console.log(`[support] Bug report created: ticket ${ticket.id} for org ${org.id}`);
+      
+      res.json({
+        success: true,
+        ticketId: ticket.id,
+        message: "Bug report submitted successfully. We'll look into it."
+      });
+    } catch (error: any) {
+      console.error("[support] Error creating bug report:", error);
+      res.status(500).json({ message: error.message || "Failed to submit bug report" });
     }
   });
 

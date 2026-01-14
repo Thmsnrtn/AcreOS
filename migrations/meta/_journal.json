@@ -15,6 +15,13 @@
       "when": 1768234239923,
       "tag": "0001_brief_giant_man",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1768418805928,
+      "tag": "0002_puzzling_millenium_guard",
+      "breakpoints": true
     }
   ]
 }
