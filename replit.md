@@ -60,6 +60,12 @@ Preferred communication style: Simple, everyday language.
 - **Unified Communications**: Twilio SMS integration (BYOK) with a multi-channel inbox UI.
 - **Browser Automation Engine**: Puppeteer-core for backend web automation (county research, document download, property listing screenshots) with job queue and AI integration.
 - **Autonomous AI Operations**: Capabilities across acquisition research, due diligence, negotiation, portfolio management, compliance, and disposition, leveraging multi-agent orchestration and event subscription.
+- **Sophie Support Agent (80% Autonomous Resolution Target)**: AI-powered customer support with advanced investigation tools:
+  - **Investigation Tools**: `query_user_data` (database inspection), `search_logs` (error/event search), `get_user_activity` (action history), `estimate_resolution_confidence` (confidence scoring)
+  - **Decision Trees**: Structured troubleshooting paths for 10 common issue types (login, sync, billing, data, AI, map, performance, export, notifications, permissions)
+  - **Browser Context Capture**: Auto-captures console errors, failed network requests, user actions when help panel opens
+  - **Proactive Anomaly Detection**: Activity drop detection (70%+ baseline deviation), error pattern detection, usage spike detection
+- **Interactive Self-Help Wizards**: Guided step-by-step troubleshooting flows with 8 categories, self-check questions, and Sophie escalation path
 
 ## External Dependencies
 

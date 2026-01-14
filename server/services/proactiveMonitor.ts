@@ -8,13 +8,13 @@
 import { db } from "../db";
 import { 
   systemAlerts, organizations, leads, properties, deals, 
-  InsertSystemAlert, SystemAlert 
+  InsertSystemAlert, SystemAlert, activityLog, apiUsageLogs
 } from "@shared/schema";
-import { eq, and, lt, desc, isNull, count, ne } from "drizzle-orm";
+import { eq, and, lt, desc, isNull, count, ne, gte, sql } from "drizzle-orm";
 import { healthCheckService, ServiceStatus } from "./healthCheck";
 import { getAllUsageLimits, ResourceType } from "./usageLimits";
 
-export type AlertType = 'api_error' | 'sync_failure' | 'quota_warning' | 'data_issue' | 'service_degraded';
+export type AlertType = 'api_error' | 'sync_failure' | 'quota_warning' | 'data_issue' | 'service_degraded' | 'activity_drop' | 'error_pattern' | 'anomaly_detected';
 export type AlertSeverity = 'info' | 'warning' | 'critical';
 
 interface ApiErrorEntry {
@@ -204,9 +204,10 @@ class ProactiveMonitorService {
   /**
    * Run all checks for all organizations
    */
-  async runAllChecks(): Promise<{ orgsChecked: number; alertsCreated: number }> {
+  async runAllChecks(): Promise<{ orgsChecked: number; alertsCreated: number; anomaliesDetected: number }> {
     let orgsChecked = 0;
     let alertsCreated = 0;
+    let anomaliesDetected = 0;
 
     try {
       await this.checkServiceHealth();
@@ -217,6 +218,13 @@ class ProactiveMonitorService {
         try {
           await this.checkQuotaUsage(org.id);
           await this.checkDataIntegrity(org.id);
+          
+          // Run anomaly detection
+          const anomalyResults = await this.runAnomalyDetection(org.id);
+          if (anomalyResults.activityDrop || anomalyResults.errorPattern || anomalyResults.anomalousPattern) {
+            anomaliesDetected++;
+          }
+          
           orgsChecked++;
         } catch (error) {
           console.error(`[proactiveMonitor] Error running checks for org ${org.id}:`, error);
@@ -228,7 +236,7 @@ class ProactiveMonitorService {
       console.error('[proactiveMonitor] Error running all checks:', error);
     }
 
-    return { orgsChecked, alertsCreated };
+    return { orgsChecked, alertsCreated, anomaliesDetected };
   }
 
   /**
@@ -442,6 +450,235 @@ class ProactiveMonitorService {
       console.error('[proactiveMonitor] Error auto-resolving alerts by metadata:', error);
       return 0;
     }
+  }
+
+  /**
+   * Check for sudden drops in user activity (anomaly detection)
+   * Compares recent activity to baseline to detect disengagement
+   */
+  async checkActivityDrop(orgId: number): Promise<{ hasAnomaly: boolean; details?: any }> {
+    try {
+      const now = new Date();
+      
+      // Recent period: last 24 hours
+      const recentStart = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      
+      // Baseline period: 7 days before that (to establish normal activity)
+      const baselineEnd = recentStart;
+      const baselineStart = new Date(baselineEnd.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+      // Count recent activity
+      const recentActivity = await db
+        .select({ count: count() })
+        .from(activityLog)
+        .where(and(
+          eq(activityLog.organizationId, orgId),
+          gte(activityLog.createdAt, recentStart)
+        ));
+      
+      // Count baseline activity (average per day over 7 days)
+      const baselineActivity = await db
+        .select({ count: count() })
+        .from(activityLog)
+        .where(and(
+          eq(activityLog.organizationId, orgId),
+          gte(activityLog.createdAt, baselineStart),
+          lt(activityLog.createdAt, baselineEnd)
+        ));
+
+      const recentCount = recentActivity[0]?.count || 0;
+      const baselineCount = baselineActivity[0]?.count || 0;
+      const avgDailyBaseline = baselineCount / 7;
+
+      // If baseline is too low to be meaningful, skip
+      if (avgDailyBaseline < 3) {
+        return { hasAnomaly: false, details: { reason: "insufficient_baseline", avgDailyBaseline } };
+      }
+
+      // Alert if activity dropped by 70% or more
+      const dropPercentage = ((avgDailyBaseline - recentCount) / avgDailyBaseline) * 100;
+      
+      if (dropPercentage >= 70) {
+        await this.createAlertIfNotExists(orgId, 'activity_drop', 'warning',
+          `Sudden drop in user activity detected`,
+          `Your activity has dropped by ${Math.round(dropPercentage)}% compared to your usual pattern. Is everything working correctly? If you're experiencing issues, we're here to help.`,
+          { 
+            recentCount, 
+            avgDailyBaseline: Math.round(avgDailyBaseline), 
+            dropPercentage: Math.round(dropPercentage),
+            suggestedAction: "proactive_outreach"
+          }
+        );
+        return { hasAnomaly: true, details: { dropPercentage, recentCount, avgDailyBaseline } };
+      }
+
+      return { hasAnomaly: false, details: { dropPercentage, recentCount, avgDailyBaseline } };
+    } catch (error) {
+      console.error(`[proactiveMonitor] Error checking activity drop for org ${orgId}:`, error);
+      return { hasAnomaly: false, details: { error: String(error) } };
+    }
+  }
+
+  /**
+   * Check for repeated errors affecting a user (error pattern detection)
+   * Looks for users experiencing multiple errors in a short time based on API usage
+   */
+  async checkErrorPatterns(orgId: number): Promise<{ hasPattern: boolean; details?: any }> {
+    try {
+      const now = new Date();
+      const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+      
+      // Look for error patterns in API usage logs by checking metadata
+      const recentApiCalls = await db
+        .select()
+        .from(apiUsageLogs)
+        .where(and(
+          eq(apiUsageLogs.organizationId, orgId),
+          gte(apiUsageLogs.createdAt, oneHourAgo)
+        ))
+        .orderBy(desc(apiUsageLogs.createdAt))
+        .limit(50);
+
+      // Group by service/action to find patterns (high usage could indicate issues)
+      const usageByService = new Map<string, number>();
+      for (const log of recentApiCalls) {
+        const key = `${log.service}:${log.action}`;
+        usageByService.set(key, (usageByService.get(key) || 0) + (log.count || 1));
+      }
+
+      // Alert if any service has unusually high usage (10+ calls in an hour)
+      const highUsageServices = Array.from(usageByService.entries())
+        .filter(([_, usageCount]) => usageCount >= 10);
+
+      if (highUsageServices.length > 0) {
+        const topService = highUsageServices.sort((a, b) => b[1] - a[1])[0];
+        
+        await this.createAlertIfNotExists(orgId, 'error_pattern', 'warning',
+          `High API usage detected on ${topService[0]}`,
+          `We detected ${topService[1]} calls to ${topService[0]} in the last hour. This may indicate a problem or automation issue we can help investigate.`,
+          { 
+            service: topService[0],
+            usageCount: topService[1],
+            allServices: Object.fromEntries(usageByService),
+            suggestedAction: "investigate_and_assist"
+          }
+        );
+        return { hasPattern: true, details: { highUsageServices, totalCalls: recentApiCalls.length } };
+      }
+
+      return { hasPattern: false, details: { totalCalls: recentApiCalls.length } };
+    } catch (error) {
+      console.error(`[proactiveMonitor] Error checking error patterns for org ${orgId}:`, error);
+      return { hasPattern: false, details: { error: String(error) } };
+    }
+  }
+
+  /**
+   * Check for anomalous usage patterns (unusual behavior detection)
+   * Detects unusual spikes in specific operations that may indicate issues
+   */
+  async checkAnomalousPatterns(orgId: number): Promise<{ hasAnomaly: boolean; details?: any }> {
+    try {
+      const now = new Date();
+      const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+      const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+      // Count different types of activities in the last hour (using action column)
+      const recentOperations = await db
+        .select({
+          action: activityLog.action,
+          count: count()
+        })
+        .from(activityLog)
+        .where(and(
+          eq(activityLog.organizationId, orgId),
+          gte(activityLog.createdAt, oneHourAgo)
+        ))
+        .groupBy(activityLog.action);
+
+      // Get baseline for comparison (last 24h, hourly average)
+      const baselineOperations = await db
+        .select({
+          action: activityLog.action,
+          count: count()
+        })
+        .from(activityLog)
+        .where(and(
+          eq(activityLog.organizationId, orgId),
+          gte(activityLog.createdAt, oneDayAgo),
+          lt(activityLog.createdAt, oneHourAgo)
+        ))
+        .groupBy(activityLog.action);
+
+      // Build baseline map (average per hour over 23 hours)
+      const baselineMap = new Map<string, number>();
+      for (const op of baselineOperations) {
+        if (op.action) {
+          baselineMap.set(op.action, (op.count || 0) / 23);
+        }
+      }
+
+      // Check for anomalous spikes (3x or more compared to baseline)
+      const anomalies: Array<{ type: string; current: number; baseline: number; ratio: number }> = [];
+      
+      for (const op of recentOperations) {
+        if (!op.action) continue;
+        
+        const current = op.count || 0;
+        const baseline = baselineMap.get(op.action) || 0;
+        
+        // Only flag if baseline exists and spike is significant
+        if (baseline >= 2 && current >= baseline * 3) {
+          anomalies.push({
+            type: op.action,
+            current,
+            baseline: Math.round(baseline * 10) / 10,
+            ratio: Math.round((current / baseline) * 10) / 10
+          });
+        }
+      }
+
+      if (anomalies.length > 0) {
+        const topAnomaly = anomalies.sort((a, b) => b.ratio - a.ratio)[0];
+        
+        await this.createAlertIfNotExists(orgId, 'anomaly_detected', 'info',
+          `Unusual activity spike detected`,
+          `We noticed ${topAnomaly.current} "${topAnomaly.type}" operations in the last hour, which is ${topAnomaly.ratio}x your usual rate. Is this expected? Let us know if you need assistance.`,
+          { 
+            topAnomaly,
+            allAnomalies: anomalies,
+            suggestedAction: "proactive_check_in"
+          }
+        );
+        return { hasAnomaly: true, details: { anomalies } };
+      }
+
+      return { hasAnomaly: false, details: { operationsChecked: recentOperations.length } };
+    } catch (error) {
+      console.error(`[proactiveMonitor] Error checking anomalous patterns for org ${orgId}:`, error);
+      return { hasAnomaly: false, details: { error: String(error) } };
+    }
+  }
+
+  /**
+   * Run all anomaly detection checks for an organization
+   */
+  async runAnomalyDetection(orgId: number): Promise<{
+    activityDrop: boolean;
+    errorPattern: boolean;
+    anomalousPattern: boolean;
+  }> {
+    const [activityResult, errorResult, anomalyResult] = await Promise.all([
+      this.checkActivityDrop(orgId),
+      this.checkErrorPatterns(orgId),
+      this.checkAnomalousPatterns(orgId)
+    ]);
+
+    return {
+      activityDrop: activityResult.hasAnomaly,
+      errorPattern: errorResult.hasPattern,
+      anomalousPattern: anomalyResult.hasAnomaly
+    };
   }
 
   /**

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
-import { Search, BookOpen, MessageCircle, Send, ChevronLeft, Sparkles, Loader2, CheckCircle, AlertTriangle, Bell } from "lucide-react";
+import { Search, BookOpen, MessageCircle, Send, ChevronLeft, Sparkles, Loader2, CheckCircle, AlertTriangle, Bell, Lightbulb, ChevronRight, RefreshCw, Wrench, Mail, Lock, Database, Zap, MapPin, Download, Users } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -264,6 +264,286 @@ const helpTopics = [
   },
 ];
 
+// Troubleshooting wizard issue categories - using semantic colors that work in light/dark mode
+const troubleshootingCategories = [
+  { 
+    id: "login_auth", 
+    title: "Login & Authentication", 
+    icon: Lock, 
+    description: "Can't log in, session issues, or access problems"
+  },
+  { 
+    id: "sync_refresh", 
+    title: "Data Sync Issues", 
+    icon: RefreshCw, 
+    description: "Data not updating, stale information, or refresh problems"
+  },
+  { 
+    id: "billing_payment", 
+    title: "Billing & Payments", 
+    icon: Wrench, 
+    description: "Subscription, credits, charges, or payment issues"
+  },
+  { 
+    id: "missing_data", 
+    title: "Missing Data", 
+    icon: Database, 
+    description: "Records not showing, imports failed, or data disappeared"
+  },
+  { 
+    id: "ai_atlas", 
+    title: "AI Assistant (Atlas)", 
+    icon: Zap, 
+    description: "Atlas not responding, errors, or unexpected behavior"
+  },
+  { 
+    id: "map_gis", 
+    title: "Maps & GIS", 
+    icon: MapPin, 
+    description: "Map not loading, parcel boundaries, or location issues"
+  },
+  { 
+    id: "slow_performance", 
+    title: "Slow Performance", 
+    icon: Loader2, 
+    description: "App loading slowly, pages hanging, or timeouts"
+  },
+  { 
+    id: "notifications", 
+    title: "Notifications & Email", 
+    icon: Mail, 
+    description: "Not receiving emails or notifications"
+  },
+];
+
+interface WizardStep {
+  step: number;
+  action: string;
+  details: string;
+  selfCheck?: string;
+  fixAction?: string;
+}
+
+const wizardSteps: Record<string, WizardStep[]> = {
+  login_auth: [
+    { step: 1, action: "Check your browser", details: "Try clearing your browser cache or using incognito/private mode.", selfCheck: "Did the page reload properly?", fixAction: "Clear cache and try again" },
+    { step: 2, action: "Try a different browser", details: "Some extensions can interfere with login. Try Chrome, Firefox, or Safari.", selfCheck: "Can you log in with a different browser?" },
+    { step: 3, action: "Check your subscription", details: "Make sure your subscription is active in the billing section.", selfCheck: "Is your subscription active?" },
+    { step: 4, action: "Still having issues?", details: "If none of the above worked, click the button below to get help from Sophie.", fixAction: "Chat with Sophie" },
+  ],
+  sync_refresh: [
+    { step: 1, action: "Hard refresh the page", details: "Press Ctrl+Shift+R (Windows) or Cmd+Shift+R (Mac) to force a full refresh.", selfCheck: "Did the data update?" },
+    { step: 2, action: "Check your internet connection", details: "Make sure you have a stable internet connection.", selfCheck: "Is your connection stable?" },
+    { step: 3, action: "Wait a moment", details: "Sometimes data syncs take a few seconds. Wait 30 seconds and refresh.", selfCheck: "Did the data appear after waiting?" },
+    { step: 4, action: "Still having issues?", details: "If data is still not syncing, Sophie can investigate and help.", fixAction: "Chat with Sophie" },
+  ],
+  billing_payment: [
+    { step: 1, action: "Check your payment method", details: "Make sure your card on file is not expired and has available funds.", selfCheck: "Is your payment method valid?" },
+    { step: 2, action: "Check for failed payments", details: "Go to Settings > Billing to see if there are any failed payment attempts.", selfCheck: "Were there any failed payments?" },
+    { step: 3, action: "Review your subscription", details: "Verify your plan is correct in Settings > Billing.", selfCheck: "Is your plan what you expected?" },
+    { step: 4, action: "Need more help?", details: "For billing questions, Sophie can check your account status.", fixAction: "Chat with Sophie" },
+  ],
+  missing_data: [
+    { step: 1, action: "Check your filters", details: "Make sure you don't have any filters applied that might be hiding records.", selfCheck: "Are any filters hiding your data?" },
+    { step: 2, action: "Try the search function", details: "Use the search bar to look for the specific record by name or ID.", selfCheck: "Did you find the record?" },
+    { step: 3, action: "Check recent activity", details: "Look at your recent activity to see if the record was modified or deleted.", selfCheck: "Was the record recently changed?" },
+    { step: 4, action: "Data still missing?", details: "Sophie can run diagnostics on your data and help recover it.", fixAction: "Chat with Sophie" },
+  ],
+  ai_atlas: [
+    { step: 1, action: "Check your AI credits", details: "Go to Settings > Billing to verify you have available AI credits.", selfCheck: "Do you have AI credits remaining?" },
+    { step: 2, action: "Try a simpler request", details: "Sometimes complex requests can timeout. Try a shorter, simpler question.", selfCheck: "Did a simpler request work?" },
+    { step: 3, action: "Refresh and retry", details: "Refresh the page and try your request again.", selfCheck: "Did the request work after refresh?" },
+    { step: 4, action: "Still not working?", details: "Sophie can check the AI service status and help resolve issues.", fixAction: "Chat with Sophie" },
+  ],
+  map_gis: [
+    { step: 1, action: "Check your browser", details: "Maps require WebGL. Try a modern browser like Chrome or Firefox.", selfCheck: "Does the map load in another browser?" },
+    { step: 2, action: "Allow location access", details: "Some map features need location permissions. Check your browser settings.", selfCheck: "Did you enable location access?" },
+    { step: 3, action: "Check property address", details: "Make sure the property has a valid address with state and county.", selfCheck: "Does the property have address data?" },
+    { step: 4, action: "Map still not working?", details: "Sophie can check the GIS services and help with parcel data.", fixAction: "Chat with Sophie" },
+  ],
+  slow_performance: [
+    { step: 1, action: "Close other tabs", details: "Too many open tabs can slow down your browser. Close unused tabs.", selfCheck: "Did closing tabs help?" },
+    { step: 2, action: "Clear browser cache", details: "Old cached data can cause slowness. Clear your browser cache.", selfCheck: "Did clearing cache improve speed?" },
+    { step: 3, action: "Check your internet", details: "Run a speed test to ensure your connection is stable.", selfCheck: "Is your internet connection fast enough?" },
+    { step: 4, action: "Still slow?", details: "Sophie can check if there are any system-wide issues.", fixAction: "Chat with Sophie" },
+  ],
+  notifications: [
+    { step: 1, action: "Check spam folder", details: "Our emails sometimes get filtered. Check your spam/junk folder.", selfCheck: "Were emails in your spam folder?" },
+    { step: 2, action: "Verify your email", details: "Make sure your email address is correct in Settings > Profile.", selfCheck: "Is your email address correct?" },
+    { step: 3, action: "Check notification settings", details: "Verify notifications are enabled in Settings > Notifications.", selfCheck: "Are notifications enabled?" },
+    { step: 4, action: "Still not receiving emails?", details: "Sophie can check delivery logs and help troubleshoot.", fixAction: "Chat with Sophie" },
+  ],
+};
+
+function TroubleshootingWizard() {
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [currentStep, setCurrentStep] = useState(0);
+  const [completedSteps, setCompletedSteps] = useState<number[]>([]);
+  
+  const handleCategorySelect = (categoryId: string) => {
+    setSelectedCategory(categoryId);
+    setCurrentStep(0);
+    setCompletedSteps([]);
+  };
+  
+  const handleStepComplete = (stepIndex: number, resolved: boolean) => {
+    if (resolved) {
+      setCompletedSteps([...completedSteps, stepIndex]);
+      if (stepIndex < (wizardSteps[selectedCategory!]?.length || 0) - 1) {
+        setCurrentStep(stepIndex + 1);
+      }
+    } else {
+      setCurrentStep(stepIndex + 1);
+    }
+  };
+  
+  const handleReset = () => {
+    setSelectedCategory(null);
+    setCurrentStep(0);
+    setCompletedSteps([]);
+  };
+  
+  const steps = selectedCategory ? wizardSteps[selectedCategory] : [];
+  const category = troubleshootingCategories.find(c => c.id === selectedCategory);
+  
+  if (!selectedCategory) {
+    return (
+      <div className="space-y-4">
+        <div className="text-center mb-4">
+          <h3 className="font-medium">What issue are you experiencing?</h3>
+          <p className="text-sm text-muted-foreground">Select a category to get step-by-step help</p>
+        </div>
+        
+        <div className="grid grid-cols-2 gap-3">
+          {troubleshootingCategories.map((cat) => {
+            const IconComponent = cat.icon;
+            return (
+              <Card 
+                key={cat.id} 
+                className="cursor-pointer hover-elevate transition-all"
+                onClick={() => handleCategorySelect(cat.id)}
+                data-testid={`wizard-category-${cat.id}`}
+              >
+                <CardContent className="p-3">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 rounded-lg bg-muted text-primary">
+                      <IconComponent className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-medium text-sm truncate">{cat.title}</h4>
+                      <p className="text-xs text-muted-foreground line-clamp-2">{cat.description}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+  
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2 mb-4">
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          onClick={handleReset}
+          data-testid="wizard-back-button"
+        >
+          <ChevronLeft className="w-4 h-4 mr-1" />
+          Back
+        </Button>
+        <div className="flex-1">
+          <h3 className="font-medium flex items-center gap-2">
+            {category && <category.icon className="w-4 h-4 text-primary" />}
+            {category?.title}
+          </h3>
+        </div>
+      </div>
+      
+      <div className="space-y-3">
+        {steps.map((step, index) => {
+          const isCompleted = completedSteps.includes(index);
+          const isCurrent = currentStep === index;
+          const isLocked = index > currentStep && !isCompleted;
+          
+          return (
+            <Card 
+              key={index} 
+              className={`transition-all ${isLocked ? 'opacity-50' : ''} ${isCurrent ? 'ring-2 ring-primary ring-offset-2' : ''}`}
+              data-testid={`wizard-step-${index}`}
+            >
+              <CardContent className="p-4">
+                <div className="flex items-start gap-3">
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${
+                    isCompleted ? 'bg-primary text-primary-foreground' : isCurrent ? 'bg-primary/80 text-primary-foreground' : 'bg-muted text-muted-foreground'
+                  }`}>
+                    {isCompleted ? <CheckCircle className="w-4 h-4" /> : step.step}
+                  </div>
+                  <div className="flex-1 space-y-2">
+                    <h4 className="font-medium text-sm">{step.action}</h4>
+                    <p className="text-sm text-muted-foreground">{step.details}</p>
+                    
+                    {isCurrent && !isCompleted && (
+                      <div className="flex gap-2 pt-2">
+                        {step.selfCheck && (
+                          <>
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              onClick={() => handleStepComplete(index, true)}
+                              data-testid={`wizard-step-${index}-yes`}
+                            >
+                              <CheckCircle className="w-3 h-3 mr-1" />
+                              Yes, this fixed it
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="ghost"
+                              onClick={() => handleStepComplete(index, false)}
+                              data-testid={`wizard-step-${index}-no`}
+                            >
+                              No, continue
+                            </Button>
+                          </>
+                        )}
+                        {step.fixAction === "Chat with Sophie" && (
+                          <Button 
+                            size="sm"
+                            onClick={() => {
+                              const parent = document.querySelector('[data-testid="tab-support"]') as HTMLElement;
+                              parent?.click();
+                            }}
+                            data-testid={`wizard-step-${index}-chat`}
+                          >
+                            <MessageCircle className="w-3 h-3 mr-1" />
+                            Chat with Sophie
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+      
+      {completedSteps.length > 0 && completedSteps.length < steps.length && (
+        <div className="text-center pt-2">
+          <p className="text-sm text-primary flex items-center justify-center gap-1">
+            <CheckCircle className="w-4 h-4" />
+            Great! Step {completedSteps.length} resolved your issue.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function HelpPanel() {
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState("topics");
@@ -380,10 +660,14 @@ export function HelpPanel() {
   return (
     <div className="space-y-4">
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="topics" data-testid="tab-help-topics">
             <BookOpen className="w-4 h-4 mr-2" />
-            Help Topics
+            Topics
+          </TabsTrigger>
+          <TabsTrigger value="selfhelp" data-testid="tab-self-help">
+            <Lightbulb className="w-4 h-4 mr-2" />
+            Self-Help
           </TabsTrigger>
           <TabsTrigger value="support" data-testid="tab-support">
             <MessageCircle className="w-4 h-4 mr-2" />
@@ -430,6 +714,10 @@ export function HelpPanel() {
               <p className="text-muted-foreground text-sm">No help topics found for "{search}"</p>
             </div>
           )}
+        </TabsContent>
+
+        <TabsContent value="selfhelp" className="space-y-4 mt-4">
+          <TroubleshootingWizard />
         </TabsContent>
 
         <TabsContent value="support" className="mt-4">

@@ -364,6 +364,26 @@ export const supportToolDefinitions = {
       },
       required: ["issue_category", "available_context"]
     }
+  },
+  
+  get_troubleshooting_steps: {
+    name: "get_troubleshooting_steps",
+    description: "Get structured troubleshooting steps (decision tree) for a specific issue type. ALWAYS use this first when you identify the issue category to get the optimal diagnostic path. This returns a step-by-step guide with specific tools to use and conditions to check.",
+    parameters: {
+      type: "object",
+      properties: {
+        issue_type: {
+          type: "string",
+          enum: ["login_auth", "sync_refresh", "billing_payment", "missing_data", "ai_atlas", "map_gis", "slow_performance", "export_import", "notifications", "permissions"],
+          description: "The type of issue to get troubleshooting steps for"
+        },
+        user_reported_symptom: {
+          type: "string",
+          description: "Brief description of what the user reported to help tailor the steps"
+        }
+      },
+      required: ["issue_type"]
+    }
   }
 };
 
@@ -1405,6 +1425,183 @@ export async function executeSupportTool(
         };
       }
       
+      case "get_troubleshooting_steps": {
+        const { issue_type, user_reported_symptom = "" } = args;
+        
+        const decisionTrees: Record<string, {
+          title: string;
+          estimatedTime: string;
+          steps: Array<{
+            step: number;
+            action: string;
+            tool?: string;
+            toolArgs?: Record<string, any>;
+            condition?: string;
+            ifTrue?: string;
+            ifFalse?: string;
+          }>;
+          commonCauses: string[];
+          escalationTriggers: string[];
+        }> = {
+          login_auth: {
+            title: "Login & Authentication Issues",
+            estimatedTime: "2-5 minutes",
+            steps: [
+              { step: 1, action: "Check for recent auth events", tool: "get_user_activity", toolArgs: { activity_type: "login_events", time_range: "24h" }, condition: "Check if user has recent login attempts" },
+              { step: 2, action: "Check service health for auth", tool: "check_service_health", condition: "Verify auth services are operational" },
+              { step: 3, action: "Look for auth-related errors in logs", tool: "search_logs", toolArgs: { log_type: "auth_events", time_range: "6h", severity: "error" }, condition: "Check for OAuth or session errors" },
+              { step: 4, action: "Check if user has active subscription", tool: "diagnose_account", toolArgs: { check_type: "subscription" }, condition: "Verify subscription is active" },
+              { step: 5, action: "Try clearing stale sessions", tool: "fix_common_issue", toolArgs: { issue_type: "clear_stale_sessions", confirm: true }, ifTrue: "Session cleared, ask user to login again", ifFalse: "Escalate if still not working" },
+            ],
+            commonCauses: ["Expired session", "Browser cache issues", "Subscription lapsed", "OAuth token expired", "Third-party blocker extensions"],
+            escalationTriggers: ["Repeated OAuth failures in logs", "User locked out for >24h", "Database inconsistency in user record"]
+          },
+          
+          sync_refresh: {
+            title: "Data Sync & Refresh Issues",
+            estimatedTime: "3-5 minutes",
+            steps: [
+              { step: 1, action: "Check for recent sync errors", tool: "search_logs", toolArgs: { log_type: "sync_events", time_range: "6h", severity: "error" }, condition: "Look for failed sync jobs" },
+              { step: 2, action: "Check service health", tool: "check_service_health", condition: "Verify external services are operational" },
+              { step: 3, action: "Try clearing cached data", tool: "clear_org_cache", toolArgs: { cache_type: "all" }, ifTrue: "Cache cleared, data should refresh", ifFalse: "Move to next step" },
+              { step: 4, action: "Retry any failed sync jobs", tool: "retry_failed_jobs", toolArgs: { job_type: "all", max_retries: 5 }, condition: "Re-queue failed background jobs" },
+              { step: 5, action: "Verify data exists after refresh", tool: "query_user_data", toolArgs: { entity: "properties", query_type: "recent", filters: { limit: 5 } }, condition: "Check if fresh data is now available" },
+            ],
+            commonCauses: ["Cache staleness", "Failed background jobs", "API rate limiting", "Network timeouts", "Third-party service downtime"],
+            escalationTriggers: ["Multiple external services down", "Database connection issues", "Consistent job failures after retry"]
+          },
+          
+          billing_payment: {
+            title: "Billing & Payment Issues",
+            estimatedTime: "3-5 minutes",
+            steps: [
+              { step: 1, action: "Check subscription status", tool: "diagnose_account", toolArgs: { check_type: "subscription" }, condition: "Verify current plan and status" },
+              { step: 2, action: "Look for billing-related activity", tool: "get_user_activity", toolArgs: { activity_type: "billing_events", time_range: "7d" }, condition: "Check recent payment attempts" },
+              { step: 3, action: "Search for payment errors", tool: "search_logs", toolArgs: { log_type: "api_calls", time_range: "7d", search_pattern: "stripe" }, condition: "Look for Stripe API failures" },
+              { step: 4, action: "Try resyncing Stripe data", tool: "resync_stripe", toolArgs: { sync_type: "all" }, ifTrue: "Stripe data refreshed", ifFalse: "Manual intervention may be needed" },
+              { step: 5, action: "Recalculate credit balance if needed", tool: "fix_common_issue", toolArgs: { issue_type: "recalculate_credit_balance", confirm: true }, condition: "Fix any credit balance discrepancies" },
+            ],
+            commonCauses: ["Card declined", "Subscription expired", "Stripe webhook failure", "Credit balance out of sync", "Payment method expired"],
+            escalationTriggers: ["Refund requests", "Double-charged", "Subscription stuck in limbo", "Credit purchase not reflected"]
+          },
+          
+          missing_data: {
+            title: "Missing or Incorrect Data",
+            estimatedTime: "3-7 minutes",
+            steps: [
+              { step: 1, action: "Ask user which entity is missing", condition: "Clarify: leads, properties, deals, tasks?" },
+              { step: 2, action: "Query the entity to verify", tool: "query_user_data", toolArgs: { entity: "properties", query_type: "recent", filters: { limit: 10 } }, condition: "Check if data exists in database" },
+              { step: 3, action: "Check data integrity", tool: "check_data_integrity", toolArgs: { module: "all" }, condition: "Look for orphaned or inconsistent records" },
+              { step: 4, action: "Search for related activity", tool: "get_user_activity", toolArgs: { activity_type: "data_changes", time_range: "7d" }, condition: "See if data was recently modified or deleted" },
+              { step: 5, action: "Fix orphaned records if found", tool: "fix_common_issue", toolArgs: { issue_type: "fix_orphaned_records", confirm: true }, ifTrue: "Orphaned records repaired", ifFalse: "Data may be permanently deleted" },
+              { step: 6, action: "Clear cache to force refresh", tool: "clear_org_cache", toolArgs: { cache_type: "all" }, condition: "Ensure frontend shows latest data" },
+            ],
+            commonCauses: ["Browser cache showing stale data", "Import failed silently", "Accidental deletion", "Filter hiding records", "Organization scope issue"],
+            escalationTriggers: ["User claims data was deleted without their action", "Import job completed but data missing", "Database inconsistencies found"]
+          },
+          
+          ai_atlas: {
+            title: "AI Assistant (Atlas) Issues",
+            estimatedTime: "2-5 minutes",
+            steps: [
+              { step: 1, action: "Check AI service health", tool: "check_service_health", condition: "Verify OpenAI/AI services are operational" },
+              { step: 2, action: "Search for AI-related errors", tool: "search_logs", toolArgs: { log_type: "ai_operations", time_range: "6h", severity: "error" }, condition: "Look for API failures or rate limits" },
+              { step: 3, action: "Check user's AI activity", tool: "get_user_activity", toolArgs: { activity_type: "ai_operations", time_range: "24h" }, condition: "See recent AI interactions" },
+              { step: 4, action: "Verify credits/usage limits", tool: "diagnose_account", toolArgs: { check_type: "usage" }, condition: "Check if user has exhausted AI credits" },
+              { step: 5, action: "Reset AI settings if needed", tool: "fix_common_issue", toolArgs: { issue_type: "reset_ai_settings", confirm: true }, ifTrue: "AI settings reset to defaults", ifFalse: "Try again" },
+              { step: 6, action: "Clear AI context cache", tool: "clear_org_cache", toolArgs: { cache_type: "ai_context" }, condition: "Reset AI memory for fresh start" },
+            ],
+            commonCauses: ["AI service rate limits", "Credits exhausted", "Context too large", "API key issues", "Prompt injection blocked"],
+            escalationTriggers: ["Consistent API failures", "User reports harmful/inappropriate responses", "Feature completely non-functional"]
+          },
+          
+          map_gis: {
+            title: "Map & GIS Feature Issues",
+            estimatedTime: "3-5 minutes",
+            steps: [
+              { step: 1, action: "Check external GIS service health", tool: "check_service_health", condition: "Verify Mapbox and GIS APIs are operational" },
+              { step: 2, action: "Look for map-related errors", tool: "search_logs", toolArgs: { log_type: "api_calls", time_range: "6h", search_pattern: "mapbox" }, condition: "Check for Mapbox API errors" },
+              { step: 3, action: "Check for parcel boundary errors", tool: "search_logs", toolArgs: { log_type: "api_calls", time_range: "6h", search_pattern: "regrid" }, condition: "Look for Regrid/parcel API issues" },
+              { step: 4, action: "Clear property boundary cache", tool: "clear_org_cache", toolArgs: { cache_type: "property_boundaries" }, condition: "Force refresh of parcel data" },
+              { step: 5, action: "Verify property has coordinates", tool: "query_user_data", toolArgs: { entity: "properties", query_type: "recent", filters: { limit: 5, include_details: true } }, condition: "Check if properties have lat/lng data" },
+            ],
+            commonCauses: ["Mapbox API rate limits", "Missing property coordinates", "Browser WebGL issues", "Regrid API credits exhausted", "CORS/network issues"],
+            escalationTriggers: ["Complete map failure", "Incorrect parcel boundaries from data source", "Regrid API subscription issues"]
+          },
+          
+          slow_performance: {
+            title: "Slow Performance Issues",
+            estimatedTime: "2-4 minutes",
+            steps: [
+              { step: 1, action: "Check service health", tool: "check_service_health", condition: "Verify all services responding normally" },
+              { step: 2, action: "Check for recent performance-related logs", tool: "search_logs", toolArgs: { log_type: "errors", time_range: "1h" }, condition: "Look for timeout or slow query errors" },
+              { step: 3, action: "Clear all caches", tool: "clear_org_cache", toolArgs: { cache_type: "all" }, condition: "Force fresh data loading" },
+              { step: 4, action: "Check data volume", tool: "query_user_data", toolArgs: { entity: "leads", query_type: "count" }, condition: "Large data volumes may cause slowness" },
+              { step: 5, action: "Advise browser troubleshooting", condition: "Suggest: clear browser cache, try incognito, disable extensions" },
+            ],
+            commonCauses: ["Large data volumes", "Browser cache issues", "Network latency", "Background sync in progress", "Extensions interfering"],
+            escalationTriggers: ["Database query timeouts", "Server error rates elevated", "Issue affects all users"]
+          },
+          
+          export_import: {
+            title: "Export & Import Issues",
+            estimatedTime: "3-5 minutes",
+            steps: [
+              { step: 1, action: "Check for recent import/export activity", tool: "get_user_activity", toolArgs: { activity_type: "data_changes", time_range: "24h" }, condition: "Find the specific operation" },
+              { step: 2, action: "Search for import errors", tool: "search_logs", toolArgs: { log_type: "errors", time_range: "24h", search_pattern: "import" }, condition: "Look for parsing or validation errors" },
+              { step: 3, action: "Check data integrity after import", tool: "check_data_integrity", toolArgs: { module: "all" }, condition: "Verify imported data is consistent" },
+              { step: 4, action: "Retry failed background jobs", tool: "retry_failed_jobs", toolArgs: { job_type: "all", max_retries: 3 }, condition: "Re-queue if import job failed" },
+              { step: 5, action: "Verify data exists", tool: "query_user_data", toolArgs: { entity: "leads", query_type: "recent", filters: { limit: 10 } }, condition: "Check if imported data appears" },
+            ],
+            commonCauses: ["CSV format issues", "Missing required columns", "Duplicate records", "File too large", "Encoding problems"],
+            escalationTriggers: ["Partial import with data corruption", "Export generates corrupted file", "Timeout on large datasets"]
+          },
+          
+          notifications: {
+            title: "Notification & Email Issues",
+            estimatedTime: "3-5 minutes",
+            steps: [
+              { step: 1, action: "Check notification preferences", tool: "diagnose_account", toolArgs: { check_type: "full" }, condition: "Verify notifications are enabled" },
+              { step: 2, action: "Search for email delivery errors", tool: "search_logs", toolArgs: { log_type: "errors", time_range: "7d", search_pattern: "email" }, condition: "Look for SMTP or delivery failures" },
+              { step: 3, action: "Check for failed email jobs", tool: "retry_failed_jobs", toolArgs: { job_type: "email", max_retries: 3 }, condition: "Retry failed email sends" },
+              { step: 4, action: "Reset notification preferences", tool: "fix_common_issue", toolArgs: { issue_type: "reset_notification_preferences", confirm: true }, ifTrue: "Preferences reset to defaults", ifFalse: "Check email provider" },
+              { step: 5, action: "Verify email address", tool: "query_user_data", toolArgs: { entity: "team_members", query_type: "recent", filters: { limit: 5 } }, condition: "Check user's email is correct" },
+            ],
+            commonCauses: ["Notifications disabled", "Email in spam folder", "Invalid email address", "SMTP configuration issue", "Email job failed"],
+            escalationTriggers: ["Email service down", "Bulk email delivery failures", "User not receiving any emails"]
+          },
+          
+          permissions: {
+            title: "Permission & Access Issues",
+            estimatedTime: "2-4 minutes",
+            steps: [
+              { step: 1, action: "Check user permissions", tool: "diagnose_account", toolArgs: { check_type: "permissions" }, condition: "Review user's role and access level" },
+              { step: 2, action: "Look for permission-related activity", tool: "search_logs", toolArgs: { log_type: "auth_events", time_range: "24h", severity: "warn" }, condition: "Check for access denied events" },
+              { step: 3, action: "Query team member data", tool: "query_user_data", toolArgs: { entity: "team_members", query_type: "recent", filters: { limit: 10 } }, condition: "Review team roles and permissions" },
+              { step: 4, action: "Check subscription tier", tool: "diagnose_account", toolArgs: { check_type: "subscription" }, condition: "Some features require higher tiers" },
+              { step: 5, action: "Clear cached permissions", tool: "clear_org_cache", toolArgs: { cache_type: "all" }, condition: "Force permission refresh" },
+            ],
+            commonCauses: ["User role changed", "Feature requires higher tier", "Invitation not accepted", "Organization scope issue", "Team seat limit reached"],
+            escalationTriggers: ["Admin locked out", "Role assignments not saving", "Invitation system broken"]
+          }
+        };
+        
+        const tree = decisionTrees[issue_type];
+        if (!tree) {
+          return { success: false, error: `Unknown issue type: ${issue_type}. Valid types: ${Object.keys(decisionTrees).join(", ")}` };
+        }
+        
+        return {
+          success: true,
+          data: {
+            issueType: issue_type,
+            ...tree,
+            userSymptom: user_reported_symptom,
+            guidance: `Follow these ${tree.steps.length} steps in order. Use the specified tools at each step. If escalation triggers match, consider escalating early.`
+          }
+        };
+      }
+      
       default:
         return { success: false, error: `Unknown support tool: ${toolName}` };
     }
@@ -1439,21 +1636,37 @@ ADVANCED INVESTIGATION TOOLS:
 12. search_logs: Search application logs for errors, API failures, and events in the last 1h/6h/24h/7d
 13. get_user_activity: View recent user actions to understand what led to the issue
 14. estimate_resolution_confidence: Assess your confidence in resolving before attempting or escalating
+15. get_troubleshooting_steps: Get structured decision trees for the 10 most common issue types with step-by-step diagnostic paths
+
+ISSUE TYPE CATEGORIES (for decision trees):
+- login_auth: Login, authentication, session issues
+- sync_refresh: Data not syncing, stale data, refresh problems
+- billing_payment: Subscription, credits, payments, Stripe issues
+- missing_data: Data disappeared, imports failed, records not showing
+- ai_atlas: AI assistant errors, Atlas not responding, AI credits
+- map_gis: Map not loading, parcel boundaries, GIS features
+- slow_performance: App slow, loading issues, timeouts
+- export_import: CSV export/import, data import failures
+- notifications: Emails not arriving, notifications not working
+- permissions: Access denied, role issues, feature restrictions
 
 YOUR WORKFLOW:
-1. First, understand the customer's issue clearly
-2. Use estimate_resolution_confidence to assess the issue type and available context
-3. Use get_similar_resolutions to find what worked for similar issues in the past
-4. Check for any active system alerts related to their issue (get_active_alerts)
-5. Search the knowledge base for relevant solutions
-6. Use query_user_data to directly investigate their data if needed
-7. Use search_logs to find errors or API failures related to their issue
-8. Use get_user_activity to understand what actions led to the problem
-9. If the issue seems account-specific, run diagnostics
+1. First, understand the customer's issue clearly - ask clarifying questions if needed
+2. Identify the issue category (one of the 10 types above or "other")
+3. IMMEDIATELY use get_troubleshooting_steps to get the structured diagnostic path for that issue type
+4. Follow the decision tree steps in order, using the specified tools
+5. Check for escalation triggers that warrant immediate human escalation
+6. Use estimate_resolution_confidence to assess your progress and decide next steps
+7. Use get_similar_resolutions to find what worked for similar issues in the past
+8. Check for any active system alerts related to their issue (get_active_alerts)
+9. If the decision tree steps don't resolve it, try additional investigation:
+   - query_user_data to directly inspect their data
+   - search_logs to find errors or API failures
+   - get_user_activity to understand what actions led to the problem
 10. If a known fix exists, apply it (with confirmation)
 11. Try self-healing actions: retry failed jobs, clear caches, resync integrations
 12. Resolve any related system alerts when the issue is fixed
-13. If confidence is low (<50%) or you can't resolve it, escalate to human support
+13. If confidence is low (<50%) or you can't resolve after following the decision tree, escalate to human support
 14. Always log the resolution with log_resolution for continuous learning
 
 LEARNING FROM PAST RESOLUTIONS:
