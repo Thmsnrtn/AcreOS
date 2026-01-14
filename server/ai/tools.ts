@@ -1358,16 +1358,20 @@ export async function executeTool(
 
       case "browse_web": {
         const url = args.url as string;
+        console.log(`[browse_web] Starting browse for URL: ${url}`);
         if (!url || (!url.startsWith("http://") && !url.startsWith("https://"))) {
           return { success: false, error: "Invalid URL. Must start with http:// or https://" };
         }
         
-        const { browseWeb } = await import("../services/browserAutomation");
+        const browserAutomation = await import("../services/browserAutomation");
+        const browseWeb = browserAutomation.browseWeb;
+        console.log(`[browse_web] Calling browseWeb function...`);
         const result = await browseWeb(url, {
           extractTables: args.extract_tables !== false,
           captureScreenshot: args.take_screenshot === true,
           waitMs: args.wait_ms || 0,
         });
+        console.log(`[browse_web] Result: success=${result.success}, title="${result.title}", contentLen=${result.content?.length}, error=${result.error}`);
         
         if (!result.success) {
           return { success: false, error: result.error || "Failed to load page" };

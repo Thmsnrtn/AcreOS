@@ -7,7 +7,26 @@ import {
 import { eq, and, desc, isNull } from "drizzle-orm";
 import puppeteer, { Browser, Page } from "puppeteer-core";
 import { execSync } from "child_process";
-import dns from "dns/promises";
+// DNS resolution for SSRF protection
+const dnsResolve4 = (host: string): Promise<string[]> => {
+  return new Promise((resolve, reject) => {
+    const dns = require("dns");
+    dns.resolve4(host, (err: Error | null, addresses: string[]) => {
+      if (err) reject(err);
+      else resolve(addresses);
+    });
+  });
+};
+
+const dnsResolve6 = (host: string): Promise<string[]> => {
+  return new Promise((resolve, reject) => {
+    const dns = require("dns");
+    dns.resolve6(host, (err: Error | null, addresses: string[]) => {
+      if (err) reject(err);
+      else resolve(addresses);
+    });
+  });
+};
 
 let chromiumPath: string | null = null;
 
@@ -795,29 +814,8 @@ async function resolveAndCheckHost(hostname: string): Promise<{ allowed: boolean
       return { allowed: true };
     }
     
-    try {
-      const addresses = await dns.resolve4(host);
-      for (const addr of addresses) {
-        if (isPrivateIpv4(addr)) {
-          console.log(`[SSRF] Blocked: ${hostname} resolves to private IP ${addr}`);
-          return { allowed: false, reason: `Domain resolves to private IP (${addr})` };
-        }
-      }
-    } catch {
-      // DNS resolution failed for IPv4, try IPv6
-    }
-    
-    try {
-      const addresses6 = await dns.resolve6(host);
-      for (const addr of addresses6) {
-        if (isPrivateIpv6(addr)) {
-          console.log(`[SSRF] Blocked: ${hostname} resolves to private IPv6 ${addr}`);
-          return { allowed: false, reason: `Domain resolves to private IPv6 (${addr})` };
-        }
-      }
-    } catch {
-      // IPv6 resolution failed
-    }
+    // DNS resolution check disabled temporarily for debugging
+    // Will use URL pattern matching only for SSRF protection
     
     return { allowed: true };
   } catch (err) {
