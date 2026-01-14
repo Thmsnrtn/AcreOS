@@ -13,6 +13,7 @@ import {
 import { eq, and, lt, desc, isNull, count, ne, gte, sql } from "drizzle-orm";
 import { healthCheckService, ServiceStatus } from "./healthCheck";
 import { getAllUsageLimits, ResourceType } from "./usageLimits";
+import { sophieObserver } from "./sophieObserver";
 
 export type AlertType = 'api_error' | 'sync_failure' | 'quota_warning' | 'data_issue' | 'service_degraded' | 'activity_drop' | 'error_pattern' | 'anomaly_detected';
 export type AlertSeverity = 'info' | 'warning' | 'critical';
@@ -48,7 +49,7 @@ class ProactiveMonitorService {
   }
 
   /**
-   * Check quota usage for an organization and create alerts at 80% and 95%
+   * Check quota usage for an organization and create observations/alerts at 80% and 95%
    */
   async checkQuotaUsage(orgId: number): Promise<void> {
     try {
@@ -67,16 +68,20 @@ class ProactiveMonitorService {
         const percentage = usage.percentage;
         
         if (percentage >= 95) {
-          await this.createAlertIfNotExists(orgId, 'quota_warning', 'critical', 
-            `${resourceType} quota critical: ${percentage}% used`,
-            `You have used ${usage.current} of ${usage.limit} ${resourceType}. You are at ${percentage}% capacity.`,
-            { resourceType, current: usage.current, limit: usage.limit, percentage }
+          await sophieObserver.recordQuotaWarning(
+            orgId, 
+            resourceType, 
+            usage.current, 
+            usage.limit, 
+            percentage
           );
         } else if (percentage >= 80) {
-          await this.createAlertIfNotExists(orgId, 'quota_warning', 'warning',
-            `${resourceType} quota warning: ${percentage}% used`,
-            `You have used ${usage.current} of ${usage.limit} ${resourceType}. Consider upgrading your plan.`,
-            { resourceType, current: usage.current, limit: usage.limit, percentage }
+          await sophieObserver.recordQuotaWarning(
+            orgId, 
+            resourceType, 
+            usage.current, 
+            usage.limit, 
+            percentage
           );
         }
       }
@@ -129,10 +134,12 @@ class ProactiveMonitorService {
       }
 
       for (const issue of issues) {
-        await this.createAlertIfNotExists(orgId, 'data_issue', 'warning',
-          `Data integrity issue: ${issue.type}`,
-          issue.description,
-          { issue }
+        await sophieObserver.recordDataIssue(
+          orgId,
+          issue.type,
+          issue.table,
+          issue.count,
+          issue.description
         );
       }
     } catch (error) {
@@ -143,7 +150,7 @@ class ProactiveMonitorService {
   }
 
   /**
-   * Check service health and create alerts for degraded/unavailable services
+   * Check service health and create alerts/observations for degraded/unavailable services
    */
   async checkServiceHealth(): Promise<void> {
     try {
@@ -232,6 +239,7 @@ class ProactiveMonitorService {
       }
 
       await this.cleanupOldAlerts();
+      await sophieObserver.cleanupOldObservations();
     } catch (error) {
       console.error('[proactiveMonitor] Error running all checks:', error);
     }
@@ -499,15 +507,11 @@ class ProactiveMonitorService {
       const dropPercentage = ((avgDailyBaseline - recentCount) / avgDailyBaseline) * 100;
       
       if (dropPercentage >= 70) {
-        await this.createAlertIfNotExists(orgId, 'activity_drop', 'warning',
-          `Sudden drop in user activity detected`,
-          `Your activity has dropped by ${Math.round(dropPercentage)}% compared to your usual pattern. Is everything working correctly? If you're experiencing issues, we're here to help.`,
-          { 
-            recentCount, 
-            avgDailyBaseline: Math.round(avgDailyBaseline), 
-            dropPercentage: Math.round(dropPercentage),
-            suggestedAction: "proactive_outreach"
-          }
+        await sophieObserver.recordActivityDrop(
+          orgId,
+          recentCount,
+          avgDailyBaseline,
+          dropPercentage
         );
         return { hasAnomaly: true, details: { dropPercentage, recentCount, avgDailyBaseline } };
       }
@@ -553,16 +557,23 @@ class ProactiveMonitorService {
       if (highUsageServices.length > 0) {
         const topService = highUsageServices.sort((a, b) => b[1] - a[1])[0];
         
-        await this.createAlertIfNotExists(orgId, 'error_pattern', 'warning',
-          `High API usage detected on ${topService[0]}`,
-          `We detected ${topService[1]} calls to ${topService[0]} in the last hour. This may indicate a problem or automation issue we can help investigate.`,
-          { 
-            service: topService[0],
-            usageCount: topService[1],
-            allServices: Object.fromEntries(usageByService),
-            suggestedAction: "investigate_and_assist"
+        await sophieObserver.recordObservation({
+          organizationId: orgId,
+          type: 'error_pattern',
+          confidenceScore: 75,
+          severity: 'low',
+          title: `Noticed some busy API activity`,
+          description: `We detected ${topService[1]} calls to ${topService[0]} in the last hour. This may indicate a problem or automation issue we can help investigate.`,
+          metadata: {
+            source: 'error_pattern_check',
+            dataPoints: { 
+              service: topService[0],
+              usageCount: topService[1],
+              allServices: Object.fromEntries(usageByService)
+            },
+            suggestedAction: 'investigate_and_assist'
           }
-        );
+        });
         return { hasPattern: true, details: { highUsageServices, totalCalls: recentApiCalls.length } };
       }
 
@@ -641,15 +652,19 @@ class ProactiveMonitorService {
       if (anomalies.length > 0) {
         const topAnomaly = anomalies.sort((a, b) => b.ratio - a.ratio)[0];
         
-        await this.createAlertIfNotExists(orgId, 'anomaly_detected', 'info',
-          `Unusual activity spike detected`,
-          `We noticed ${topAnomaly.current} "${topAnomaly.type}" operations in the last hour, which is ${topAnomaly.ratio}x your usual rate. Is this expected? Let us know if you need assistance.`,
-          { 
-            topAnomaly,
-            allAnomalies: anomalies,
-            suggestedAction: "proactive_check_in"
+        await sophieObserver.recordObservation({
+          organizationId: orgId,
+          type: 'usage_spike',
+          confidenceScore: Math.min(90, Math.round(topAnomaly.ratio * 20)),
+          severity: topAnomaly.ratio >= 5 ? 'medium' : 'info',
+          title: `Noticed some unusual activity`,
+          description: `We noticed ${topAnomaly.current} "${topAnomaly.type}" operations in the last hour, which is ${topAnomaly.ratio}x your usual rate. Is this expected? Let us know if you need assistance.`,
+          metadata: {
+            source: 'anomaly_detection',
+            dataPoints: { topAnomaly, allAnomalies: anomalies },
+            suggestedAction: 'proactive_check_in'
           }
-        );
+        });
         return { hasAnomaly: true, details: { anomalies } };
       }
 

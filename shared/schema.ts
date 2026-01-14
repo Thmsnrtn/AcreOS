@@ -86,6 +86,8 @@ export const organizations = pgTable("organizations", {
   // Trial tokens for sampling premium actions (free tier users)
   trialTokens: integer("trial_tokens").default(5), // Free tokens to try premium actions
   trialTokensGrantedAt: timestamp("trial_tokens_granted_at").defaultNow(), // When tokens were last granted
+  // Sophie proactive notification settings
+  proactiveNotificationLevel: varchar("proactive_notification_level", { length: 50 }).default("balanced"), // minimal, balanced, proactive, off
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -3018,6 +3020,91 @@ export const systemAlerts = pgTable("system_alerts", {
 export const insertSystemAlertSchema = createInsertSchema(systemAlerts).omit({ id: true, createdAt: true });
 export type InsertSystemAlert = z.infer<typeof insertSystemAlertSchema>;
 export type SystemAlert = typeof systemAlerts.$inferSelect;
+
+// ============================================
+// SOPHIE OBSERVATIONS (Proactive Detection)
+// ============================================
+
+// Sophie proactive observation types
+export const SOPHIE_OBSERVATION_TYPES = [
+  'anomaly',           // Unusual patterns detected
+  'performance',       // Performance degradation
+  'error_pattern',     // Repeated errors
+  'usage_spike',       // Unusual usage patterns
+  'quota_warning',     // Approaching quota limits
+  'data_issue',        // Data integrity issues
+  'activity_drop',     // Sudden drop in user activity
+  'service_health',    // External service issues
+  'opportunity',       // Positive opportunity detected
+  'optimization',      // Optimization suggestion
+] as const;
+
+export type SophieObservationType = typeof SOPHIE_OBSERVATION_TYPES[number];
+
+// Notification level options for organizations
+export const PROACTIVE_NOTIFICATION_LEVELS = ['minimal', 'balanced', 'proactive', 'off'] as const;
+export type ProactiveNotificationLevel = typeof PROACTIVE_NOTIFICATION_LEVELS[number];
+
+// Sophie observations table - graceful proactive detection
+export const sophieObservations = pgTable("sophie_observations", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  userId: text("user_id"), // Nullable - may be org-wide observation
+
+  // Classification
+  type: text("type").notNull(), // anomaly, performance, error_pattern, usage_spike, etc.
+  confidenceScore: integer("confidence_score").notNull(), // 0-100
+  severity: text("severity").notNull().default("info"), // info, low, medium, high
+
+  // Content - using soft language framing
+  title: text("title").notNull(), // e.g., "Quick tip", "Something to check", "Heads up"
+  description: text("description").notNull(),
+  metadata: jsonb("metadata").$type<{
+    // Context about the observation
+    source?: string;
+    relatedEntityType?: string;
+    relatedEntityId?: number;
+    suggestedAction?: string;
+    dataPoints?: Record<string, any>;
+    batchKey?: string; // For grouping similar observations
+    previousOccurrences?: number;
+  }>(),
+
+  // Status tracking
+  status: text("status").notNull().default("detected"), // detected, acknowledged, dismissed, escalated, auto_resolved
+
+  // Timestamps
+  detectedAt: timestamp("detected_at").defaultNow(),
+  acknowledgedAt: timestamp("acknowledged_at"),
+  escalatedAt: timestamp("escalated_at"),
+  resolvedAt: timestamp("resolved_at"),
+
+  // Notification tracking
+  notificationSent: boolean("notification_sent").default(false),
+  notificationType: text("notification_type").default("none"), // none, passive, active
+
+  // Auto-resolution tracking
+  autoResolveAttempted: boolean("auto_resolve_attempted").default(false),
+  autoResolveSuccess: boolean("auto_resolve_success").default(false),
+  autoResolveDetails: text("auto_resolve_details"),
+
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("sophie_obs_org_idx").on(table.organizationId),
+  index("sophie_obs_status_idx").on(table.status),
+  index("sophie_obs_type_idx").on(table.type),
+  index("sophie_obs_detected_at_idx").on(table.detectedAt),
+]);
+
+export const insertSophieObservationSchema = createInsertSchema(sophieObservations).omit({ 
+  id: true, 
+  createdAt: true, 
+  updatedAt: true,
+  detectedAt: true 
+});
+export type InsertSophieObservation = z.infer<typeof insertSophieObservationSchema>;
+export type SophieObservation = typeof sophieObservations.$inferSelect;
 
 // ============================================
 // API JOB QUEUE
