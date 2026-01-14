@@ -7569,3 +7569,169 @@ export const insertWorkspacePresetSchema = createInsertSchema(workspacePresets).
 
 export type WorkspacePreset = typeof workspacePresets.$inferSelect;
 export type InsertWorkspacePreset = z.infer<typeof insertWorkspacePresetSchema>;
+
+// ============================================
+// SUPPORT TICKETS & KNOWLEDGE BASE
+// ============================================
+
+export const supportTickets = pgTable("support_tickets", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  userId: text("user_id").notNull(),
+  
+  // Ticket details
+  subject: text("subject").notNull(),
+  description: text("description").notNull(),
+  category: text("category").notNull().default("general"), // general, billing, technical, feature_request, bug_report
+  priority: text("priority").notNull().default("normal"), // low, normal, high, urgent
+  status: text("status").notNull().default("open"), // open, in_progress, waiting_on_customer, resolved, closed
+  
+  // AI handling
+  assignedAgent: text("assigned_agent"), // sophie (Support Agent), atlas, or null for human
+  aiHandled: boolean("ai_handled").default(false),
+  aiConfidenceScore: numeric("ai_confidence_score"), // 0-100 confidence in resolution
+  aiResolutionAttempts: integer("ai_resolution_attempts").default(0),
+  
+  // Resolution details
+  resolution: text("resolution"),
+  resolutionType: text("resolution_type"), // auto_fixed, knowledge_base, escalated, manual
+  resolvedAt: timestamp("resolved_at"),
+  resolvedBy: text("resolved_by"), // user_id or agent name
+  
+  // Customer satisfaction
+  customerRating: integer("customer_rating"), // 1-5 stars
+  customerFeedback: text("customer_feedback"),
+  
+  // Context for AI
+  pageContext: text("page_context"), // Which page user was on
+  errorContext: jsonb("error_context").$type<{
+    errorMessage?: string;
+    stackTrace?: string;
+    browserInfo?: string;
+    screenSize?: string;
+  }>(),
+  
+  // Metadata
+  source: text("source").notNull().default("in_app"), // in_app, email, chat
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("support_tickets_org_idx").on(table.organizationId),
+  index("support_tickets_status_idx").on(table.status),
+  index("support_tickets_user_idx").on(table.userId),
+]);
+
+export const supportTicketMessages = pgTable("support_ticket_messages", {
+  id: serial("id").primaryKey(),
+  ticketId: integer("ticket_id").references(() => supportTickets.id).notNull(),
+  
+  role: text("role").notNull(), // user, agent, system
+  content: text("content").notNull(),
+  agentName: text("agent_name"), // Sophie, Atlas, or human agent name
+  
+  // For AI messages
+  toolsUsed: jsonb("tools_used").$type<string[]>(),
+  actionsPerformed: jsonb("actions_performed").$type<Array<{
+    action: string;
+    target: string;
+    result: string;
+    success: boolean;
+  }>>(),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("support_ticket_messages_ticket_idx").on(table.ticketId),
+]);
+
+export const knowledgeBaseArticles = pgTable("knowledge_base_articles", {
+  id: serial("id").primaryKey(),
+  
+  title: text("title").notNull(),
+  slug: text("slug").notNull().unique(),
+  content: text("content").notNull(), // Markdown content
+  summary: text("summary"), // Short summary for search results
+  
+  category: text("category").notNull(), // getting_started, leads, properties, deals, finance, campaigns, ai, integrations, billing
+  tags: jsonb("tags").$type<string[]>().default([]),
+  
+  // For AI matching
+  keywords: jsonb("keywords").$type<string[]>().default([]),
+  relatedIssues: jsonb("related_issues").$type<string[]>().default([]), // Common error messages or issues this solves
+  
+  // Troubleshooting steps
+  troubleshootingSteps: jsonb("troubleshooting_steps").$type<Array<{
+    step: number;
+    instruction: string;
+    expectedResult: string;
+  }>>(),
+  
+  // Auto-fix capability
+  canAutoFix: boolean("can_auto_fix").default(false),
+  autoFixToolName: text("auto_fix_tool_name"), // Tool the AI can call to fix this
+  autoFixParameters: jsonb("auto_fix_parameters").$type<Record<string, any>>(),
+  
+  // Analytics
+  viewCount: integer("view_count").default(0),
+  helpfulCount: integer("helpful_count").default(0),
+  notHelpfulCount: integer("not_helpful_count").default(0),
+  
+  isPublished: boolean("is_published").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("kb_articles_category_idx").on(table.category),
+  index("kb_articles_slug_idx").on(table.slug),
+]);
+
+// Track AI resolution history for learning
+export const supportResolutionHistory = pgTable("support_resolution_history", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  ticketId: integer("ticket_id").references(() => supportTickets.id),
+  
+  issueType: text("issue_type").notNull(),
+  issuePattern: text("issue_pattern"), // Regex or keyword pattern
+  
+  resolutionApproach: text("resolution_approach").notNull(),
+  toolsUsed: jsonb("tools_used").$type<string[]>(),
+  
+  wasSuccessful: boolean("was_successful").notNull(),
+  customerSatisfied: boolean("customer_satisfied"),
+  
+  // For improving AI
+  lessonLearned: text("lesson_learned"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("resolution_history_issue_type_idx").on(table.issueType),
+]);
+
+export const insertSupportTicketSchema = createInsertSchema(supportTickets).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertSupportTicket = z.infer<typeof insertSupportTicketSchema>;
+export type SupportTicket = typeof supportTickets.$inferSelect;
+
+export const insertSupportTicketMessageSchema = createInsertSchema(supportTicketMessages).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertSupportTicketMessage = z.infer<typeof insertSupportTicketMessageSchema>;
+export type SupportTicketMessage = typeof supportTicketMessages.$inferSelect;
+
+export const insertKnowledgeBaseArticleSchema = createInsertSchema(knowledgeBaseArticles).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertKnowledgeBaseArticle = z.infer<typeof insertKnowledgeBaseArticleSchema>;
+export type KnowledgeBaseArticle = typeof knowledgeBaseArticles.$inferSelect;
+
+export const insertSupportResolutionHistorySchema = createInsertSchema(supportResolutionHistory).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertSupportResolutionHistory = z.infer<typeof insertSupportResolutionHistorySchema>;
+export type SupportResolutionHistory = typeof supportResolutionHistory.$inferSelect;
