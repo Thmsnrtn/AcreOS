@@ -144,8 +144,18 @@ export class DataSourceBroker {
     return this.sortByTierAndHealth(uniqueSources);
   }
 
+  async getValidatedSourcesForCategory(category: LookupCategory): Promise<DataSource[]> {
+    const allSources = await this.getSourcesForCategory(category);
+    const validatedSources = allSources.filter(s => s.isVerified === true);
+    return validatedSources.length > 0 ? validatedSources : allSources.slice(0, 3);
+  }
+
   private sortByTierAndHealth(sources: DataSource[]): DataSource[] {
     return sources.sort((a, b) => {
+      const verifiedA = a.isVerified ? 0 : 1;
+      const verifiedB = b.isVerified ? 0 : 1;
+      if (verifiedA !== verifiedB) return verifiedA - verifiedB;
+
       const tierA = TIER_PRIORITY.indexOf(this.determineTier(a));
       const tierB = TIER_PRIORITY.indexOf(this.determineTier(b));
       if (tierA !== tierB) return tierA - tierB;

@@ -23,7 +23,7 @@ import {
   insertMarketingListSchema, insertOfferBatchSchema, insertOfferSchema,
   insertSellerCommunicationSchema, insertAdPostingSchema, insertBuyerPrequalificationSchema,
   insertCollectionSequenceSchema, insertCollectionEnrollmentSchema, insertCountyResearchSchema,
-  offers, organizationIntegrations,
+  offers, organizationIntegrations, dataSources,
 } from "@shared/schema";
 
 // Partial update schemas for PUT endpoints
@@ -9631,6 +9631,145 @@ Seller Signature (if applicable)
   });
 
   // ============================================
+  // DATA SOURCE VALIDATION (Comprehensive Source Health)
+  // ============================================
+
+  api.get("/api/admin/data-sources/stats", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { dataSourceValidator } = await import("./services/data-source-validator");
+      const stats = await dataSourceValidator.getValidationStats();
+      res.json(stats);
+    } catch (err: any) {
+      console.error("Data source stats error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.get("/api/admin/data-sources", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { category, status, limit = "100", offset = "0" } = req.query;
+      
+      let query = db.select().from(dataSources);
+      
+      const conditions = [];
+      if (category) {
+        conditions.push(eq(dataSources.category, String(category)));
+      }
+      if (status === "valid") {
+        conditions.push(eq(dataSources.isVerified, true));
+      } else if (status === "invalid") {
+        conditions.push(and(
+          eq(dataSources.isVerified, false),
+          sql`${dataSources.lastVerifiedAt} IS NOT NULL`
+        ));
+      } else if (status === "pending") {
+        conditions.push(sql`${dataSources.lastVerifiedAt} IS NULL`);
+      }
+      
+      if (conditions.length > 0) {
+        query = db.select().from(dataSources).where(and(...conditions));
+      }
+      
+      const sources = await query
+        .orderBy(desc(dataSources.lastVerifiedAt), dataSources.category)
+        .limit(Number(limit))
+        .offset(Number(offset));
+      
+      res.json(sources);
+    } catch (err: any) {
+      console.error("Data sources list error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.post("/api/admin/data-sources/validate", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { sourceId, category, limit = 50 } = req.body;
+      const { dataSourceValidator } = await import("./services/data-source-validator");
+      
+      if (sourceId) {
+        const [source] = await db.select().from(dataSources).where(eq(dataSources.id, sourceId));
+        if (!source) {
+          return res.status(404).json({ message: "Source not found" });
+        }
+        const result = await dataSourceValidator.validateSource(source);
+        return res.json(result);
+      }
+      
+      const { runValidationJob, getValidationJobStatus } = await import("./services/dataSourceValidationJob");
+      
+      runValidationJob({ category, limit }).catch(err => {
+        console.error("Background validation job error:", err);
+      });
+      
+      const status = getValidationJobStatus();
+      res.json({ 
+        message: "Validation job started", 
+        ...status 
+      });
+    } catch (err: any) {
+      console.error("Data source validation error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.get("/api/admin/data-sources/validate/status", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { getValidationJobStatus } = await import("./services/dataSourceValidationJob");
+      const status = getValidationJobStatus();
+      res.json(status);
+    } catch (err: any) {
+      console.error("Validation status error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.patch("/api/admin/data-sources/:id", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const sourceId = Number(req.params.id);
+      const { isEnabled, priority, notes } = req.body;
+      
+      const updates: Record<string, any> = { updatedAt: new Date() };
+      if (isEnabled !== undefined) updates.isEnabled = isEnabled;
+      if (priority !== undefined) updates.priority = priority;
+      if (notes !== undefined) updates.notes = notes;
+      
+      const [updated] = await db.update(dataSources)
+        .set(updates)
+        .where(eq(dataSources.id, sourceId))
+        .returning();
+      
+      if (!updated) {
+        return res.status(404).json({ message: "Source not found" });
+      }
+      
+      res.json(updated);
+    } catch (err: any) {
+      console.error("Update data source error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.get("/api/admin/data-sources/categories", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const categories = await db
+        .select({
+          category: dataSources.category,
+          count: sql<number>`count(*)`,
+          validCount: sql<number>`count(*) filter (where ${dataSources.isVerified} = true)`,
+        })
+        .from(dataSources)
+        .groupBy(dataSources.category)
+        .orderBy(desc(sql`count(*)`));
+      
+      res.json(categories);
+    } catch (err: any) {
+      console.error("Data source categories error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
   // COUNTY GIS ENDPOINTS (Free Parcel Data)
   // ============================================
 
@@ -10484,7 +10623,7 @@ Seller Signature (if applicable)
     }
   });
 
-  // Test a single data source
+  // Test a single data source (using comprehensive validator)
   api.post("/api/data-sources/:id/test", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
@@ -10497,85 +10636,79 @@ Seller Signature (if applicable)
         return res.status(404).json({ message: "Data source not found" });
       }
 
-      const urlToTest = source.apiUrl || source.portalUrl;
-      if (!urlToTest) {
-        return res.json({ success: false, message: "No URL configured for this data source" });
+      if (!source.apiUrl) {
+        return res.json({ success: false, message: "No API URL configured for this data source" });
       }
 
-      let success = false;
-      let message = "";
+      const { dataSourceValidator } = await import("./services/data-source-validator");
+      const result = await dataSourceValidator.validateSource(source);
+      
+      const success = result.status === "valid";
+      let message = result.status === "valid" 
+        ? `Valid ${result.endpointType || 'endpoint'} - ${result.fieldsDetected.length} fields, ${result.geometryType || 'no geometry'}`
+        : result.errorMessage || result.status;
+      
+      if (result.latencyMs) {
+        message += ` (${result.latencyMs}ms)`;
+      }
 
-      try {
-        const response = await fetch(urlToTest, {
-          method: "GET",
-          headers: { "Accept": "application/json, text/html, */*" },
-          signal: AbortSignal.timeout(15000),
-        });
-
-        if (response.ok) {
-          success = true;
-          message = `URL is accessible (HTTP ${response.status})`;
-        } else {
-          success = false;
-          message = `HTTP ${response.status}: ${response.statusText}`;
+      res.json({ 
+        success, 
+        message,
+        details: {
+          status: result.status,
+          endpointType: result.endpointType,
+          fieldsDetected: result.fieldsDetected,
+          geometryType: result.geometryType,
+          recordCount: result.recordCount,
+          latencyMs: result.latencyMs,
         }
-      } catch (fetchErr: any) {
-        success = false;
-        message = fetchErr.name === "TimeoutError" ? "Request timed out after 15 seconds" : fetchErr.message;
-      }
-
-      await storage.updateDataSource(id, { isVerified: success });
-
-      res.json({ success, message });
+      });
     } catch (err: any) {
       console.error("Test data source error:", err);
       res.status(500).json({ message: err.message });
     }
   });
 
-  // Test all enabled data sources
+  // Test all enabled data sources (starts background validation job)
   api.post("/api/data-sources/test-all", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const sources = await storage.getDataSources({ isEnabled: true });
-      const results: Array<{ id: number; title: string; success: boolean; message: string }> = [];
-      let passed = 0;
-      let failed = 0;
-
-      for (const source of sources.slice(0, 20)) {
-        const urlToTest = source.apiUrl || source.portalUrl;
-        if (!urlToTest) {
-          results.push({ id: source.id, title: source.title, success: false, message: "No URL configured" });
-          failed++;
-          continue;
-        }
-
-        try {
-          const response = await fetch(urlToTest, {
-            method: "GET",
-            headers: { "Accept": "application/json, text/html, */*" },
-            signal: AbortSignal.timeout(10000),
-          });
-
-          if (response.ok) {
-            await storage.updateDataSource(source.id, { isVerified: true });
-            results.push({ id: source.id, title: source.title, success: true, message: "OK" });
-            passed++;
-          } else {
-            await storage.updateDataSource(source.id, { isVerified: false });
-            results.push({ id: source.id, title: source.title, success: false, message: `HTTP ${response.status}` });
-            failed++;
-          }
-        } catch (fetchErr: any) {
-          const message = fetchErr.name === "TimeoutError" ? "Timeout" : fetchErr.message;
-          await storage.updateDataSource(source.id, { isVerified: false });
-          results.push({ id: source.id, title: source.title, success: false, message });
-          failed++;
-        }
+      const { category, limit = 50 } = req.body || {};
+      const { runValidationJob, getValidationJobStatus, isValidationJobRunning } = await import("./services/dataSourceValidationJob");
+      
+      if (isValidationJobRunning()) {
+        const status = getValidationJobStatus();
+        return res.json({
+          message: "Validation job already in progress",
+          isRunning: true,
+          ...status.progress,
+        });
       }
-
-      res.json({ tested: results.length, passed, failed, results });
+      
+      runValidationJob({ category, limit }).catch(err => {
+        console.error("Background validation job error:", err);
+      });
+      
+      const status = getValidationJobStatus();
+      res.json({ 
+        message: "Validation job started in background", 
+        isRunning: true,
+        ...status.progress,
+      });
     } catch (err: any) {
       console.error("Test all data sources error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Get validation job status
+  api.get("/api/data-sources/validation-status", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { getValidationJobStatus } = await import("./services/dataSourceValidationJob");
+      const status = getValidationJobStatus();
+      res.json(status);
+    } catch (err: any) {
+      console.error("Validation status error:", err);
       res.status(500).json({ message: err.message });
     }
   });

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Sidebar } from "@/components/layout-sidebar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -780,25 +780,48 @@ export default function FounderDashboard() {
     },
   });
 
+  const { data: validationStatus, refetch: refetchValidationStatus } = useQuery<{
+    isRunning: boolean;
+    progress: { completed: number; total: number; currentBatch: number };
+  }>({
+    queryKey: ['/api/data-sources/validation-status'],
+    refetchInterval: (query) => query.state.data?.isRunning ? 3000 : false,
+  });
+
+  const prevValidationRunning = useRef<boolean | undefined>(undefined);
+  useEffect(() => {
+    if (prevValidationRunning.current === true && validationStatus?.isRunning === false) {
+      queryClient.invalidateQueries({ queryKey: ['/api/data-sources'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/data-sources/stats'] });
+      toast({ title: "Validation complete", description: "Data sources have been validated" });
+    }
+    prevValidationRunning.current = validationStatus?.isRunning;
+  }, [validationStatus?.isRunning]);
+
   const testAllDataSourcesMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/data-sources/test-all`, {});
-      if (!res.ok) throw new Error("Failed to test data sources");
+      const res = await apiRequest("POST", `/api/data-sources/test-all`, { limit: 100 });
+      if (!res.ok) throw new Error("Failed to start validation");
       return res.json();
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['/api/data-sources'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/data-sources/stats'] });
-      data.results?.forEach((r: any) => {
-        setDataSourceTestResults(prev => new Map(prev).set(r.id, { success: r.success, message: r.message }));
-      });
-      toast({ 
-        title: "Test complete", 
-        description: `${data.passed}/${data.tested} data sources passed`
-      });
+      refetchValidationStatus();
+      if (data.isRunning) {
+        toast({ 
+          title: "Validation started", 
+          description: data.message || "Background validation in progress..."
+        });
+      } else {
+        queryClient.invalidateQueries({ queryKey: ['/api/data-sources'] });
+        queryClient.invalidateQueries({ queryKey: ['/api/data-sources/stats'] });
+        toast({ 
+          title: "Validation complete", 
+          description: `Tested data sources`
+        });
+      }
     },
     onError: (error: Error) => {
-      toast({ title: "Test failed", description: error.message, variant: "destructive" });
+      toast({ title: "Validation failed", description: error.message, variant: "destructive" });
     },
   });
 
@@ -1693,19 +1716,25 @@ export default function FounderDashboard() {
                     </Badge>
                   </div>
                 )}
+                {validationStatus?.isRunning && validationStatus?.progress && (
+                  <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/20">
+                    <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                    {validationStatus.progress.completed || 0}/{validationStatus.progress.total || 0}
+                  </Badge>
+                )}
                 <Button 
                   onClick={() => testAllDataSourcesMutation.mutate()}
-                  disabled={testAllDataSourcesMutation.isPending}
+                  disabled={testAllDataSourcesMutation.isPending || validationStatus?.isRunning}
                   variant="outline"
                   size="sm"
                   data-testid="button-test-all-sources"
                 >
-                  {testAllDataSourcesMutation.isPending ? (
+                  {testAllDataSourcesMutation.isPending || validationStatus?.isRunning ? (
                     <Loader2 className="w-4 h-4 mr-1 animate-spin" />
                   ) : (
                     <Play className="w-4 h-4 mr-1" />
                   )}
-                  Test All
+                  {validationStatus?.isRunning ? "Validating..." : "Validate All"}
                 </Button>
               </div>
             </CardHeader>
