@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import { useProviderStatus } from "@/hooks/use-provider-status";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -140,6 +141,8 @@ const US_STATES = [
 ];
 
 export function MailSettingsContent() {
+  const { isAvailable } = useProviderStatus();
+  const mailReady = isAvailable('mail');
   const { toast } = useToast();
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
   const [editingIdentity, setEditingIdentity] = useState<MailIdentity | null>(null);
@@ -336,7 +339,14 @@ export function MailSettingsContent() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "verified":
-        return (
+return (
+  <>
+    {!mailReady && (
+      <div className="p-3 mb-3 border rounded-md bg-amber-50 text-amber-800 flex items-center gap-2">
+        <AlertCircle className="w-4 h-4" />
+        <span className="text-sm">Mail provider not configured. Configure in Settings → Providers to enable sending.</span>
+      </div>
+    )}
           <Badge variant="default" className="bg-green-600" data-testid="badge-status-verified">
             <CheckCircle className="w-3 h-3 mr-1" /> Verified
           </Badge>
@@ -641,7 +651,8 @@ export function MailSettingsContent() {
                 />
               </div>
               <DialogFooter className="gap-2">
-                <Button
+<Button
+            disabled={!mailReady || createMutation.isPending}
                   type="button"
                   variant="outline"
                   onClick={closeFormDialog}
