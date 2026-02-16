@@ -54,6 +54,11 @@ export default function AuthPage() {
     return <Redirect to="/" />;
   }
 
+  // In local development, auto-forward to the app and hide the login UI
+  if (import.meta.env.DEV) {
+    return <Redirect to="/" />;
+  }
+
   const handleLogin = () => {
     window.location.href = "/api/login";
   };

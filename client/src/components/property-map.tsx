@@ -1648,7 +1648,7 @@ export function PropertyMap({
                               <span className="text-sm font-medium">GIS Data Layers</span>
                               {dynamicLayersLoading && <Loader2 className="h-3 w-3 animate-spin" data-testid="loader-dynamic-layers" />}
                               {dynamicEnabledLayers.length > 0 && (
-                                <Badge variant="secondary" className="h-5 px-1.5 text-xs" data-testid="badge-enabled-layers-count">
+                                <Badge variant="secondary" className="h-5 px-[6px] text-xs" data-testid="badge-enabled-layers-count">
                                   {dynamicEnabledLayers.length}
                                 </Badge>
                               )}

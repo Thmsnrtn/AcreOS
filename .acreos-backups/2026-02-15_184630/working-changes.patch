@@ -1,0 +1,1125 @@
+diff --git a/client/src/App.tsx b/client/src/App.tsx
+index 7f7c7b7..3641a63 100644
+--- a/client/src/App.tsx
++++ b/client/src/App.tsx
+@@ -8,6 +8,7 @@ import { Loader2 } from "lucide-react";
+ import { ThemeProvider } from "@/contexts/theme-context";
+ import { AnimatePresence, motion } from "framer-motion";
+ import { pageTransition } from "@/lib/animations";
++import { useToast } from "@/hooks/use-toast";
+ 
+ import { HintsProvider } from "@/components/feature-hints";
+ import { KeyboardShortcutsProvider } from "@/hooks/use-keyboard-shortcuts";
+@@ -233,7 +234,19 @@ function PageWrapper({ children }: { children: React.ReactNode }) {
+ 
+ function AppContent() {
+   const { user } = useAuth();
++  const { toast } = useToast();
+   useSwipeNavigation();
++
++  // One-time hint for command palette
++  if (import.meta.env.DEV && typeof window !== 'undefined') {
++    const seen = localStorage.getItem('hint_cmdk_shown');
++    if (!seen && user) {
++      localStorage.setItem('hint_cmdk_shown', '1');
++      setTimeout(() => {
++        toast({ title: 'Tip', description: 'Press ⌘K (or Ctrl+K) to open the command palette.' });
++      }, 800);
++    }
++  }
+   
+   return (
+     <>
+diff --git a/client/src/components/command-palette.tsx b/client/src/components/command-palette.tsx
+index 5d34f1a..ed80f87 100644
+--- a/client/src/components/command-palette.tsx
++++ b/client/src/components/command-palette.tsx
+@@ -2,6 +2,9 @@ import { useEffect, useState, useCallback } from "react";
+ import { useLocation } from "wouter";
+ import { useQuery } from "@tanstack/react-query";
+ import { motion, AnimatePresence } from "framer-motion";
++import type { Lead, Property, Deal } from "@shared/schema";
++import { useAuth } from "@/hooks/use-auth";
++import { motion, AnimatePresence } from "framer-motion";
+ import { telemetry } from "@/lib/telemetry";
+ import {
+   Command,
+@@ -68,6 +71,13 @@ export function CommandPalette() {
+     queryKey: ["/api/recent-items"],
+     enabled: open,
+   });
++  const { isFounder } = useAuth();
++
++  const [query, setQuery] = useState("");
++
++  const { data: leadsData } = useQuery<Lead[]>({ queryKey: ["/api/leads"], enabled: open });
++  const { data: propertiesData } = useQuery<Property[]>({ queryKey: ["/api/properties"], enabled: open });
++  const { data: dealsData } = useQuery<Deal[]>({ queryKey: ["/api/deals"], enabled: open });
+ 
+   const handleKeyDown = useCallback((e: KeyboardEvent) => {
+     if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+@@ -142,6 +152,7 @@ export function CommandPalette() {
+                 placeholder="Search or type a command..."
+                 data-testid="command-palette-input"
+                 autoFocus
++                onValueChange={(val) => setQuery(val)}
+               />
+               <CommandList className="max-h-[400px]">
+                 <CommandEmpty>No results found.</CommandEmpty>
+@@ -162,6 +173,61 @@ export function CommandPalette() {
+ 
+                 <CommandSeparator />
+ 
++                <CommandGroup heading="Search Results">
++                  {(() => {
++                    const q = query.trim().toLowerCase();
++                    if (!q) return null;
++                    const leadMatches = (leadsData || []).filter(l =>
++                      (l.firstName + " " + l.lastName).toLowerCase().includes(q) || (l.email||"").toLowerCase().includes(q)
++                    ).slice(0, 5).map(l => ({ name: `Lead: ${l.firstName} ${l.lastName}`, path: `/leads?id=${l.id}` }));
++                    const propertyMatches = (propertiesData || []).filter(p =>
++                      (p.county+" "+p.state).toLowerCase().includes(q) || String(p.apn||'').toLowerCase().includes(q)
++                    ).slice(0, 5).map(p => ({ name: `Property: ${p.county}, ${p.state}`, path: `/properties?id=${p.id}` }));
++                    const dealMatches = (dealsData || []).filter(d =>
++                      String(d.id).includes(q) || String(d.title||'').toLowerCase().includes(q)
++                    ).slice(0, 5).map(d => ({ name: `Deal #${d.id}`, path: `/deals?id=${d.id}` }));
++                    const results = [...leadMatches, ...propertyMatches, ...dealMatches].slice(0, 8);
++                    return results.length ? results.map(r => (
++                      <CommandItem key={r.path} onSelect={() => handleSelect(r.path)} className="cursor-pointer">
++                        <Search className="mr-2 h-4 w-4 text-muted-foreground" />
++                        <span>{r.name}</span>
++                      </CommandItem>
++                    )) : <CommandItem disabled>No matches</CommandItem>;
++                  })()}
++                </CommandGroup>
++
++                {isFounder && (
++                  <>
++                    <CommandGroup heading="Founder / Admin">
++                      <CommandItem
++                        onSelect={() => handleSelect("/founder")}
++                        data-testid="command-item-founder-dashboard"
++                        className="cursor-pointer"
++                      >
++                        <Sparkles className="mr-2 h-4 w-4 text-amber-500" />
++                        <span>Open Founder Dashboard</span>
++                      </CommandItem>
++                      <CommandItem
++                        onSelect={() => handleSelect("/analytics")}
++                        data-testid="command-item-system-health"
++                        className="cursor-pointer"
++                      >
++                        <Clock className="mr-2 h-4 w-4 text-muted-foreground" />
++                        <span>View System Health</span>
++                      </CommandItem>
++                      <CommandItem
++                        onSelect={() => handleSelect("/finance")}
++                        data-testid="command-item-credits"
++                        className="cursor-pointer"
++                      >
++                        <DollarSign className="mr-2 h-4 w-4 text-green-600" />
++                        <span>Open Credits & Costs</span>
++                      </CommandItem>
++                    </CommandGroup>
++                    <CommandSeparator />
++                  </>
++                )
++
+                 <CommandGroup heading="Quick Actions">
+                   {quickActions.map((action) => (
+                     <CommandItem
+@@ -200,19 +266,19 @@ export function CommandPalette() {
+               </CommandList>
+               <div className="border-t px-3 py-2 text-xs text-muted-foreground flex items-center justify-between">
+                 <span>
+-                  <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
++                  <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-[6px] font-mono text-[10px] font-medium text-muted-foreground">
+                     ↑↓
+                   </kbd>{" "}
+                   to navigate
+                 </span>
+                 <span>
+-                  <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
++                  <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-[6px] font-mono text-[10px] font-medium text-muted-foreground">
+                     ↵
+                   </kbd>{" "}
+                   to select
+                 </span>
+                 <span>
+-                  <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
++                  <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-[6px] font-mono text-[10px] font-medium text-muted-foreground">
+                     esc
+                   </kbd>{" "}
+                   to close
+diff --git a/client/src/components/floating-assistant.tsx b/client/src/components/floating-assistant.tsx
+index 487ceda..15c5193 100644
+--- a/client/src/components/floating-assistant.tsx
++++ b/client/src/components/floating-assistant.tsx
+@@ -1383,7 +1383,7 @@ export function FloatingAssistant() {
+                         />
+                       </div>
+                     ) : (
+-                      <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-border/50 bg-muted text-xs">
++                      <div className="flex items-center gap-1.5 px-2 py-[6px] rounded-lg border border-border/50 bg-muted text-xs">
+                         <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
+                         <div className="flex flex-col min-w-0">
+                           <span className="truncate max-w-[80px]">{att.file.name}</span>
+diff --git a/client/src/components/gis-filters.tsx b/client/src/components/gis-filters.tsx
+index 2219b99..150c116 100644
+--- a/client/src/components/gis-filters.tsx
++++ b/client/src/components/gis-filters.tsx
+@@ -63,7 +63,7 @@ export function GisFilters({ filters, onChange, activeFilterCount = 0 }: GisFilt
+             <MapPin className="w-4 h-4" />
+             <span>GIS Filters</span>
+             {hasActiveFilters && (
+-              <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-xs" data-testid="badge-gis-filter-count">
++              <Badge variant="secondary" className="ml-1 px-[6px] py-0 text-xs" data-testid="badge-gis-filter-count">
+                 {activeFilterCount}
+               </Badge>
+             )}
+diff --git a/client/src/components/keyboard-shortcuts.tsx b/client/src/components/keyboard-shortcuts.tsx
+index 7edf62e..f28534f 100644
+--- a/client/src/components/keyboard-shortcuts.tsx
++++ b/client/src/components/keyboard-shortcuts.tsx
+@@ -124,7 +124,7 @@ export function KeyboardShortcutsModal() {
+         </ScrollArea>
+         
+         <div className="border-t pt-4 text-center text-xs text-muted-foreground">
+-          Press <kbd className="px-1.5 py-0.5 rounded border bg-muted font-mono text-[10px]">?</kbd> anytime to show this dialog
++          Press <kbd className="px-[6px] py-0.5 rounded border bg-muted font-mono text-[10px]">?</kbd> anytime to show this dialog
+         </div>
+       </DialogContent>
+     </Dialog>
+diff --git a/client/src/components/layout-sidebar.tsx b/client/src/components/layout-sidebar.tsx
+index 9c7eeb4..7ee3f99 100644
+--- a/client/src/components/layout-sidebar.tsx
++++ b/client/src/components/layout-sidebar.tsx
+@@ -44,25 +44,25 @@ const routePrefetchMap: Record<string, string> = {
+ };
+ 
+ const navItems = [
+-  { label: "Dashboard", icon: LayoutDashboard, href: "/", description: "Overview of your land investment business" },
+-  { label: "Inbox", icon: Inbox, href: "/inbox", showUnreadBadge: true, description: "Messages and communications" },
+-  { label: "Leads (CRM)", icon: Users, href: "/leads", description: "Manage your land seller leads" },
+-  { label: "Inventory", icon: Map, href: "/properties", description: "Track properties you own or evaluate" },
+-  { label: "Deal Pipeline", icon: GitBranch, href: "/deals", description: "Visualize your deal flow" },
+-  { label: "Tasks", icon: ListTodo, href: "/tasks", description: "Your action items and to-do list" },
+-  { label: "Automation", icon: Zap, href: "/automation", description: "Set up automated workflows and rules" },
+-  { label: "Workflows", icon: Workflow, href: "/workflows", description: "Design and manage complex workflows" },
+-  { label: "Insights", icon: TrendingUp, href: "/analytics", description: "Analytics and market insights" },
+-  { label: "Finance", icon: Banknote, href: "/finance", description: "Manage seller-financed notes" },
+-  { label: "Portfolio", icon: PieChart, href: "/portfolio", description: "View your investment portfolio" },
+-  { label: "Listings", icon: Store, href: "/listings", description: "Properties available for sale" },
+-  { label: "Documents", icon: FileText, href: "/documents", description: "Store and manage documents" },
+-  { label: "Marketing", icon: Mail, href: "/campaigns", description: "Email, SMS, and direct mail campaigns" },
+-  { label: "Tools", icon: Calculator, href: "/tools", description: "Calculators and utility tools" },
+-  { label: "AI", icon: Bot, href: "/command-center", description: "AI assistants and automation" },
+-  { label: "Help & Support", icon: HelpCircle, href: "/help", description: "Help topics and support resources" },
+-  { label: "Settings", icon: Settings, href: "/settings", description: "Configure your account and preferences" },
+-];
++  { label: "Dashboard", icon: LayoutDashboard, href: "/", description: "Overview of your land investment business", section: "Overview" },
++  { label: "Inbox", icon: Inbox, href: "/inbox", showUnreadBadge: true, description: "Messages and communications", section: "Work" },
++  { label: "Leads (CRM)", icon: Users, href: "/leads", description: "Manage your land seller leads", section: "Work" },
++  { label: "Inventory", icon: Map, href: "/properties", description: "Track properties you own or evaluate", section: "Work" },
++  { label: "Deal Pipeline", icon: GitBranch, href: "/deals", description: "Visualize your deal flow", section: "Work" },
++  { label: "Tasks", icon: ListTodo, href: "/tasks", description: "Your action items and to-do list", section: "Work" },
++  { label: "Automation", icon: Zap, href: "/automation", description: "Set up automated workflows and rules", section: "Automation" },
++  { label: "Workflows", icon: Workflow, href: "/workflows", description: "Design and manage complex workflows", section: "Automation" },
++  { label: "AI", icon: Bot, href: "/command-center", description: "AI assistants and automation", section: "Automation" },
++  { label: "Insights", icon: TrendingUp, href: "/analytics", description: "Analytics and market insights", section: "Insights" },
++  { label: "Finance", icon: Banknote, href: "/finance", description: "Manage seller-financed notes", section: "Insights" },
++  { label: "Portfolio", icon: PieChart, href: "/portfolio", description: "View your investment portfolio", section: "Insights" },
++  { label: "Listings", icon: Store, href: "/listings", description: "Properties available for sale", section: "Sales" },
++  { label: "Documents", icon: FileText, href: "/documents", description: "Store and manage documents", section: "Sales" },
++  { label: "Marketing", icon: Mail, href: "/campaigns", description: "Email, SMS, and direct mail campaigns", section: "Sales" },
++  { label: "Tools", icon: Calculator, href: "/tools", description: "Calculators and utility tools", section: "Operations" },
++  { label: "Help & Support", icon: HelpCircle, href: "/help", description: "Help topics and support resources", section: "Operations" },
++  { label: "Settings", icon: Settings, href: "/settings", description: "Configure your account and preferences", section: "Operations" },
++] as const;
+ 
+ export function Sidebar() {
+   const [location] = useLocation();
+@@ -126,47 +126,57 @@ export function Sidebar() {
+             <span className="font-medium text-sm">Founder Dashboard</span>
+           </Link>
+         )}
+-        {navItems.map((item) => {
+-          const isActive = location === item.href;
+-          const showBadge = (item as any).showUnreadBadge && inboxUnreadCount > 0;
+-          const itemDescription = (item as any).description || item.label;
+-          return (
+-            <Tooltip key={item.href} delayDuration={300}>
+-              <TooltipTrigger asChild>
+-                <Link 
+-                  href={item.href}
+-                  onClick={onNavClick}
+-                  className={cn(
+-                    "flex items-center gap-3 px-4 py-3 md:py-2.5 rounded-lg transition-all duration-150 group min-h-[44px]",
+-                    isActive 
+-                      ? "bg-primary text-primary-foreground shadow-md" 
+-                      : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+-                  )}
+-                  onMouseEnter={() => handlePrefetch(item.href)}
+-                  data-testid={`link-nav-${item.href.replace("/", "") || "dashboard"}`}
+-                >
+-                  <item.icon className={cn(
+-                    "w-5 h-5 transition-colors", 
+-                    isActive ? "text-primary-foreground" : "text-muted-foreground group-hover:text-sidebar-foreground"
+-                  )} />
+-                  <span className="font-medium text-sm flex-1">{item.label}</span>
+-                  {showBadge && (
+-                    <Badge 
+-                      variant="secondary" 
+-                      className="text-xs"
+-                      data-testid="badge-inbox-unread"
+-                    >
+-                      {inboxUnreadCount > 99 ? "99+" : inboxUnreadCount}
+-                    </Badge>
+-                  )}
+-                </Link>
+-              </TooltipTrigger>
+-              <TooltipContent side="right" className="max-w-xs">
+-                <p>{itemDescription}</p>
+-              </TooltipContent>
+-            </Tooltip>
+-          );
+-        })}
++        {/* Grouped sections for clearer information architecture */}
++        {Array.from(new Set(navItems.map((n) => (n as any).section))).map((section) => (
++          <div key={section} className="space-y-1">
++            <div className="px-4 pt-4 pb-1 text-[10px] uppercase tracking-wide text-muted-foreground/70">
++              {section}
++            </div>
++            {(navItems as any)
++              .filter((n: any) => n.section === section)
++              .map((item: any) => {
++                const isActive = location === item.href;
++                const showBadge = item.showUnreadBadge && inboxUnreadCount > 0;
++                const itemDescription = item.description || item.label;
++                return (
++                  <Tooltip key={item.href} delayDuration={300}>
++                    <TooltipTrigger asChild>
++                      <Link 
++                        href={item.href}
++                        onClick={onNavClick}
++                        className={cn(
++                          "flex items-center gap-3 px-4 py-3 md:py-2.5 rounded-lg transition-all duration-150 group min-h-[44px]",
++                          isActive 
++                            ? "bg-primary text-primary-foreground shadow-md" 
++                            : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
++                        )}
++                        onMouseEnter={() => handlePrefetch(item.href)}
++                        data-testid={`link-nav-${item.href.replace("/", "") || "dashboard"}`}
++                      >
++                        <item.icon className={cn(
++                          "w-5 h-5 transition-colors", 
++                          isActive ? "text-primary-foreground" : "text-muted-foreground group-hover:text-sidebar-foreground"
++                        )} />
++                        <span className="font-medium text-sm flex-1">{item.label}</span>
++                        {showBadge && (
++                          <Badge 
++                            variant="secondary" 
++                            className="text-xs"
++                            data-testid="badge-inbox-unread"
++                          >
++                            {inboxUnreadCount > 99 ? "99+" : inboxUnreadCount}
++                          </Badge>
++                        )}
++                      </Link>
++                    </TooltipTrigger>
++                    <TooltipContent side="right" className="max-w-xs">
++                      <p>{itemDescription}</p>
++                    </TooltipContent>
++                  </Tooltip>
++                );
++              })}
++          </div>
++        ))}
+       </nav>
+ 
+       <div className="p-4 border-t border-sidebar-border safe-area-bottom space-y-2">
+@@ -192,7 +202,7 @@ export function Sidebar() {
+       <div className="md:hidden fixed top-4 left-4 z-50 safe-area-top">
+         <Sheet open={isOpen} onOpenChange={setIsOpen}>
+           <SheetTrigger asChild>
+-            <Button variant="outline" size="icon" className="shadow-lg glass-panel min-h-[44px] min-w-[44px]" data-testid="button-mobile-menu">
++<Button aria-label="Open navigation" variant="outline" size="icon" className="shadow-lg glass-panel min-h-[44px] min-w-[44px]" data-testid="button-mobile-menu">
+               <Menu className="w-5 h-5" />
+             </Button>
+           </SheetTrigger>
+diff --git a/client/src/components/mobile/MobileBottomNav.tsx b/client/src/components/mobile/MobileBottomNav.tsx
+index 99d1f5d..ad31f30 100644
+--- a/client/src/components/mobile/MobileBottomNav.tsx
++++ b/client/src/components/mobile/MobileBottomNav.tsx
+@@ -63,7 +63,8 @@ export function MobileBottomNav() {
+             );
+           })}
+           
+-          <button
++<button
++            aria-label="Open more actions"
+             onClick={() => setIsDrawerOpen(true)}
+             className={cn(
+               "flex flex-col items-center justify-center gap-1 min-w-[56px] min-h-[48px] rounded-xl transition-all active:scale-95",
+diff --git a/client/src/components/mobile/MobileCommandDrawer.tsx b/client/src/components/mobile/MobileCommandDrawer.tsx
+index d3b505c..9bacf02 100644
+--- a/client/src/components/mobile/MobileCommandDrawer.tsx
++++ b/client/src/components/mobile/MobileCommandDrawer.tsx
+@@ -25,6 +25,7 @@ import {
+ } from "@/components/ui/drawer";
+ import { Input } from "@/components/ui/input";
+ import { useState } from "react";
++import { useAuth } from "@/hooks/use-auth";
+ 
+ interface MobileCommandDrawerProps {
+   open: boolean;
+@@ -53,6 +54,7 @@ const moreItems = [
+ export function MobileCommandDrawer({ open, onOpenChange }: MobileCommandDrawerProps) {
+   const [location] = useLocation();
+   const [searchQuery, setSearchQuery] = useState("");
++  const { isFounder } = useAuth();
+ 
+   const handleNavigate = () => {
+     onOpenChange(false);
+@@ -63,7 +65,11 @@ export function MobileCommandDrawer({ open, onOpenChange }: MobileCommandDrawerP
+     item.label.toLowerCase().includes(searchQuery.toLowerCase())
+   );
+ 
+-  const filteredMoreItems = moreItems.filter(item =>
++  const dynamicMoreItems = isFounder
++    ? [{ href: "/founder", icon: PieChart, label: "Founder Dashboard" }, ...moreItems]
++    : moreItems;
++
++  const filteredMoreItems = dynamicMoreItems.filter(item =>
+     item.label.toLowerCase().includes(searchQuery.toLowerCase())
+   );
+ 
+diff --git a/client/src/components/new-item-menu.tsx b/client/src/components/new-item-menu.tsx
+index 848e1ba..e59233b 100644
+--- a/client/src/components/new-item-menu.tsx
++++ b/client/src/components/new-item-menu.tsx
+@@ -151,7 +151,7 @@ export function NewItemMenu() {
+               <div className="p-3 border-t text-center">
+                 <span className="text-xs text-muted-foreground">
+                   Press{" "}
+-                  <kbd className="px-1.5 py-0.5 rounded border bg-muted font-mono text-[10px]">
++                  <kbd className="px-[6px] py-0.5 rounded border bg-muted font-mono text-[10px]">
+                     ⌘N
+                   </kbd>{" "}
+                   to toggle this menu
+diff --git a/client/src/components/property-map.tsx b/client/src/components/property-map.tsx
+index 30750ce..451b06d 100644
+--- a/client/src/components/property-map.tsx
++++ b/client/src/components/property-map.tsx
+@@ -1648,7 +1648,7 @@ export function PropertyMap({
+                               <span className="text-sm font-medium">GIS Data Layers</span>
+                               {dynamicLayersLoading && <Loader2 className="h-3 w-3 animate-spin" data-testid="loader-dynamic-layers" />}
+                               {dynamicEnabledLayers.length > 0 && (
+-                                <Badge variant="secondary" className="h-5 px-1.5 text-xs" data-testid="badge-enabled-layers-count">
++                                <Badge variant="secondary" className="h-5 px-[6px] text-xs" data-testid="badge-enabled-layers-count">
+                                   {dynamicEnabledLayers.length}
+                                 </Badge>
+                               )}
+diff --git a/client/src/components/ui/chart.tsx b/client/src/components/ui/chart.tsx
+index 39fba6d..937b4ae 100644
+--- a/client/src/components/ui/chart.tsx
++++ b/client/src/components/ui/chart.tsx
+@@ -179,7 +179,7 @@ const ChartTooltipContent = React.forwardRef<
+       <div
+         ref={ref}
+         className={cn(
+-          "grid min-w-[8rem] items-start gap-1.5 rounded-lg border border-border/50 bg-background px-2.5 py-1.5 text-xs shadow-xl",
++          "grid min-w-[8rem] items-start gap-1.5 rounded-lg border border-border/50 bg-background px-2.5 py-[6px] text-xs shadow-xl",
+           className
+         )}
+       >
+diff --git a/client/src/components/ui/command.tsx b/client/src/components/ui/command.tsx
+index 4560d2d..8205ba2 100644
+--- a/client/src/components/ui/command.tsx
++++ b/client/src/components/ui/command.tsx
+@@ -89,7 +89,7 @@ const CommandGroup = React.forwardRef<
+   <CommandPrimitive.Group
+     ref={ref}
+     className={cn(
+-      "overflow-hidden p-1 text-foreground [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground",
++      "overflow-hidden p-1 text-foreground [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-[6px] [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground",
+       className
+     )}
+     {...props}
+@@ -117,7 +117,7 @@ const CommandItem = React.forwardRef<
+   <CommandPrimitive.Item
+     ref={ref}
+     className={cn(
+-      "relative flex cursor-default gap-2 select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none data-[disabled=true]:pointer-events-none data-[selected='true']:bg-accent data-[selected=true]:text-accent-foreground data-[disabled=true]:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
++      "relative flex cursor-default gap-2 select-none items-center rounded-sm px-2 py-[6px] text-sm outline-none data-[disabled=true]:pointer-events-none data-[selected='true']:bg-accent data-[selected=true]:text-accent-foreground data-[disabled=true]:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+       className
+     )}
+     {...props}
+diff --git a/client/src/components/ui/context-menu.tsx b/client/src/components/ui/context-menu.tsx
+index aa3ef77..bd1d536 100644
+--- a/client/src/components/ui/context-menu.tsx
++++ b/client/src/components/ui/context-menu.tsx
+@@ -25,7 +25,7 @@ const ContextMenuSubTrigger = React.forwardRef<
+   <ContextMenuPrimitive.SubTrigger
+     ref={ref}
+     className={cn(
+-      "flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[state=open]:bg-accent data-[state=open]:text-accent-foreground",
++      "flex cursor-default select-none items-center rounded-sm px-2 py-[6px] text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[state=open]:bg-accent data-[state=open]:text-accent-foreground",
+       inset && "pl-8",
+       className
+     )}
+@@ -78,7 +78,7 @@ const ContextMenuItem = React.forwardRef<
+   <ContextMenuPrimitive.Item
+     ref={ref}
+     className={cn(
+-      "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
++      "relative flex cursor-default select-none items-center rounded-sm px-2 py-[6px] text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+       inset && "pl-8",
+       className
+     )}
+@@ -94,7 +94,7 @@ const ContextMenuCheckboxItem = React.forwardRef<
+   <ContextMenuPrimitive.CheckboxItem
+     ref={ref}
+     className={cn(
+-      "relative flex cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
++      "relative flex cursor-default select-none items-center rounded-sm py-[6px] pl-8 pr-2 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+       className
+     )}
+     checked={checked}
+@@ -118,7 +118,7 @@ const ContextMenuRadioItem = React.forwardRef<
+   <ContextMenuPrimitive.RadioItem
+     ref={ref}
+     className={cn(
+-      "relative flex cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
++      "relative flex cursor-default select-none items-center rounded-sm py-[6px] pl-8 pr-2 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+       className
+     )}
+     {...props}
+@@ -142,7 +142,7 @@ const ContextMenuLabel = React.forwardRef<
+   <ContextMenuPrimitive.Label
+     ref={ref}
+     className={cn(
+-      "px-2 py-1.5 text-sm font-semibold text-foreground",
++      "px-2 py-[6px] text-sm font-semibold text-foreground",
+       inset && "pl-8",
+       className
+     )}
+diff --git a/client/src/components/ui/dropdown-menu.tsx b/client/src/components/ui/dropdown-menu.tsx
+index fc790a8..4148519 100644
+--- a/client/src/components/ui/dropdown-menu.tsx
++++ b/client/src/components/ui/dropdown-menu.tsx
+@@ -25,7 +25,7 @@ const DropdownMenuSubTrigger = React.forwardRef<
+   <DropdownMenuPrimitive.SubTrigger
+     ref={ref}
+     className={cn(
+-      "flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none focus:bg-accent data-[state=open]:bg-accent [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
++      "flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-[6px] text-sm outline-none focus:bg-accent data-[state=open]:bg-accent [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+       inset && "pl-8",
+       className
+     )}
+@@ -81,7 +81,7 @@ const DropdownMenuItem = React.forwardRef<
+   <DropdownMenuPrimitive.Item
+     ref={ref}
+     className={cn(
+-      "relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
++      "relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-[6px] text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+       inset && "pl-8",
+       className
+     )}
+@@ -97,7 +97,7 @@ const DropdownMenuCheckboxItem = React.forwardRef<
+   <DropdownMenuPrimitive.CheckboxItem
+     ref={ref}
+     className={cn(
+-      "relative flex cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
++      "relative flex cursor-default select-none items-center rounded-sm py-[6px] pl-8 pr-2 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+       className
+     )}
+     checked={checked}
+@@ -121,7 +121,7 @@ const DropdownMenuRadioItem = React.forwardRef<
+   <DropdownMenuPrimitive.RadioItem
+     ref={ref}
+     className={cn(
+-      "relative flex cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
++      "relative flex cursor-default select-none items-center rounded-sm py-[6px] pl-8 pr-2 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+       className
+     )}
+     {...props}
+@@ -145,7 +145,7 @@ const DropdownMenuLabel = React.forwardRef<
+   <DropdownMenuPrimitive.Label
+     ref={ref}
+     className={cn(
+-      "px-2 py-1.5 text-sm font-semibold",
++      "px-2 py-[6px] text-sm font-semibold",
+       inset && "pl-8",
+       className
+     )}
+diff --git a/client/src/components/ui/menubar.tsx b/client/src/components/ui/menubar.tsx
+index 7b3a71b..2b603f0 100644
+--- a/client/src/components/ui/menubar.tsx
++++ b/client/src/components/ui/menubar.tsx
+@@ -58,7 +58,7 @@ const MenubarTrigger = React.forwardRef<
+   <MenubarPrimitive.Trigger
+     ref={ref}
+     className={cn(
+-      "flex cursor-default select-none items-center rounded-sm px-3 py-1.5 text-sm font-medium outline-none focus:bg-accent focus:text-accent-foreground data-[state=open]:bg-accent data-[state=open]:text-accent-foreground",
++      "flex cursor-default select-none items-center rounded-sm px-3 py-[6px] text-sm font-medium outline-none focus:bg-accent focus:text-accent-foreground data-[state=open]:bg-accent data-[state=open]:text-accent-foreground",
+       className
+     )}
+     {...props}
+@@ -75,7 +75,7 @@ const MenubarSubTrigger = React.forwardRef<
+   <MenubarPrimitive.SubTrigger
+     ref={ref}
+     className={cn(
+-      "flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[state=open]:bg-accent data-[state=open]:text-accent-foreground",
++      "flex cursor-default select-none items-center rounded-sm px-2 py-[6px] text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[state=open]:bg-accent data-[state=open]:text-accent-foreground",
+       inset && "pl-8",
+       className
+     )}
+@@ -136,7 +136,7 @@ const MenubarItem = React.forwardRef<
+   <MenubarPrimitive.Item
+     ref={ref}
+     className={cn(
+-      "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
++      "relative flex cursor-default select-none items-center rounded-sm px-2 py-[6px] text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+       inset && "pl-8",
+       className
+     )}
+@@ -152,7 +152,7 @@ const MenubarCheckboxItem = React.forwardRef<
+   <MenubarPrimitive.CheckboxItem
+     ref={ref}
+     className={cn(
+-      "relative flex cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
++      "relative flex cursor-default select-none items-center rounded-sm py-[6px] pl-8 pr-2 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+       className
+     )}
+     checked={checked}
+@@ -175,7 +175,7 @@ const MenubarRadioItem = React.forwardRef<
+   <MenubarPrimitive.RadioItem
+     ref={ref}
+     className={cn(
+-      "relative flex cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
++      "relative flex cursor-default select-none items-center rounded-sm py-[6px] pl-8 pr-2 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+       className
+     )}
+     {...props}
+@@ -199,7 +199,7 @@ const MenubarLabel = React.forwardRef<
+   <MenubarPrimitive.Label
+     ref={ref}
+     className={cn(
+-      "px-2 py-1.5 text-sm font-semibold",
++      "px-2 py-[6px] text-sm font-semibold",
+       inset && "pl-8",
+       className
+     )}
+diff --git a/client/src/components/ui/select.tsx b/client/src/components/ui/select.tsx
+index 0ecb100..f4ca250 100644
+--- a/client/src/components/ui/select.tsx
++++ b/client/src/components/ui/select.tsx
+@@ -105,7 +105,7 @@ const SelectLabel = React.forwardRef<
+ >(({ className, ...props }, ref) => (
+   <SelectPrimitive.Label
+     ref={ref}
+-    className={cn("py-1.5 pl-8 pr-2 text-sm font-semibold", className)}
++    className={cn("py-[6px] pl-8 pr-2 text-sm font-semibold", className)}
+     {...props}
+   />
+ ))
+@@ -118,7 +118,7 @@ const SelectItem = React.forwardRef<
+   <SelectPrimitive.Item
+     ref={ref}
+     className={cn(
+-      "relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
++      "relative flex w-full cursor-default select-none items-center rounded-sm py-[6px] pl-8 pr-2 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+       className
+     )}
+     {...props}
+diff --git a/client/src/components/ui/tabs.tsx b/client/src/components/ui/tabs.tsx
+index f57fffd..b47d7ed 100644
+--- a/client/src/components/ui/tabs.tsx
++++ b/client/src/components/ui/tabs.tsx
+@@ -27,7 +27,7 @@ const TabsTrigger = React.forwardRef<
+   <TabsPrimitive.Trigger
+     ref={ref}
+     className={cn(
+-      "inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm",
++      "inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-[6px] text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm",
+       className
+     )}
+     {...props}
+diff --git a/client/src/components/ui/tooltip.tsx b/client/src/components/ui/tooltip.tsx
+index e1ae87b..f2db5a1 100644
+--- a/client/src/components/ui/tooltip.tsx
++++ b/client/src/components/ui/tooltip.tsx
+@@ -19,7 +19,7 @@ const TooltipContent = React.forwardRef<
+     ref={ref}
+     sideOffset={sideOffset}
+     className={cn(
+-      "z-50 overflow-hidden rounded-md border bg-popover px-3 py-1.5 text-sm text-popover-foreground shadow-md animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 origin-[--radix-tooltip-content-transform-origin]",
++      "z-50 overflow-hidden rounded-md border bg-popover px-3 py-[6px] text-sm text-popover-foreground shadow-md animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 origin-[--radix-tooltip-content-transform-origin]",
+       className
+     )}
+     {...props}
+diff --git a/client/src/components/workspace/WorkspaceManager.tsx b/client/src/components/workspace/WorkspaceManager.tsx
+index 0a6e8bb..e46bc7a 100644
+--- a/client/src/components/workspace/WorkspaceManager.tsx
++++ b/client/src/components/workspace/WorkspaceManager.tsx
+@@ -170,7 +170,7 @@ export function WorkspaceManager() {
+           {presets.length > 0 && (
+             <>
+               <DropdownMenuSeparator />
+-              <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
++              <div className="px-2 py-[6px] text-xs font-medium text-muted-foreground">
+                 Your Presets
+               </div>
+               {presets.map((preset) => {
+diff --git a/client/src/hooks/use-api-retry.ts b/client/src/hooks/use-api-retry.ts
+index f277dcf..d858b54 100644
+--- a/client/src/hooks/use-api-retry.ts
++++ b/client/src/hooks/use-api-retry.ts
+@@ -1,6 +1,8 @@
+ import { useState, useCallback } from "react";
+ import { useQueryClient } from "@tanstack/react-query";
+ import { toast } from "@/hooks/use-toast";
++import React from "react";
++import { ToastAction } from "@/components/ui/toast";
+ 
+ interface RetryOptions {
+   maxRetries?: number;
+@@ -89,6 +91,14 @@ export function useApiRetry<T>(
+               title: "Request Failed",
+               description: err.message || "Something went wrong. Please try again.",
+               variant: "destructive",
++              action: React.createElement(
++                ToastAction,
++                {
++                  altText: "Copy details",
++                  onClick: () => navigator.clipboard?.writeText(err.stack || err.message).catch(() => {}),
++                },
++                "Copy details"
++              ),
+             });
+           }
+           
+diff --git a/client/src/hooks/use-organization.ts b/client/src/hooks/use-organization.ts
+index ba4c713..2cf6cf9 100644
+--- a/client/src/hooks/use-organization.ts
++++ b/client/src/hooks/use-organization.ts
+@@ -70,6 +70,10 @@ export function useDashboardStats() {
+       if (!res.ok) throw new Error("Failed to fetch dashboard stats");
+       return res.json();
+     },
++    staleTime: 30_000, // match server cache TTL
++    refetchInterval: 30_000,
++    refetchOnWindowFocus: true,
++    keepPreviousData: true,
+   });
+ }
+ 
+diff --git a/client/src/lib/auth-utils.ts b/client/src/lib/auth-utils.ts
+index a06807d..4d3a5a2 100644
+--- a/client/src/lib/auth-utils.ts
++++ b/client/src/lib/auth-utils.ts
+@@ -12,6 +12,11 @@ export function redirectToLogin(toast?: (options: { title: string; description:
+     });
+   }
+   setTimeout(() => {
+-    window.location.href = "/api/login";
++    if (import.meta.env.DEV) {
++      // In local dev, skip Replit login and go to the app shell
++      window.location.href = "/";
++    } else {
++      window.location.href = "/api/login";
++    }
+   }, 500);
+ }
+diff --git a/client/src/lib/queryClient.ts b/client/src/lib/queryClient.ts
+index 0884c52..b985fc2 100644
+--- a/client/src/lib/queryClient.ts
++++ b/client/src/lib/queryClient.ts
+@@ -1,5 +1,7 @@
+ import { QueryClient, QueryFunction } from "@tanstack/react-query";
+ import { toast } from "@/hooks/use-toast";
++import React from "react";
++import { ToastAction } from "@/components/ui/toast";
+ import { getErrorMessage, getErrorTitle, shouldRetry, isAuthError } from "@/lib/error-utils";
+ 
+ async function throwIfResNotOk(res: Response) {
+@@ -23,6 +25,17 @@ function handleQueryError(error: unknown): void {
+     title,
+     description,
+     variant: "destructive",
++    action: React.createElement(
++      ToastAction,
++      {
++        altText: "Copy details",
++        onClick: () => {
++          const details = `${title}: ${String((error as Error)?.message || error)}`;
++          navigator.clipboard?.writeText(details).catch(() => {});
++        },
++      },
++      "Copy details"
++    ),
+   });
+   
+   console.error("[Query Error]", err);
+@@ -47,6 +60,17 @@ function handleMutationError(error: unknown): void {
+     title,
+     description,
+     variant: "destructive",
++    action: React.createElement(
++      ToastAction,
++      {
++        altText: "Copy details",
++        onClick: () => {
++          const details = `${title}: ${String((error as Error)?.message || error)}`;
++          navigator.clipboard?.writeText(details).catch(() => {});
++        },
++      },
++      "Copy details"
++    ),
+   });
+   
+   console.error("[Mutation Error]", err);
+diff --git a/client/src/main.tsx b/client/src/main.tsx
+index 8150901..5fa1f55 100644
+--- a/client/src/main.tsx
++++ b/client/src/main.tsx
+@@ -2,7 +2,7 @@ import { createRoot } from "react-dom/client";
+ import App from "./App";
+ import "./index.css";
+ 
+-if ('serviceWorker' in navigator) {
++if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+   window.addEventListener('load', () => {
+     navigator.serviceWorker.register('/sw.js')
+       .then((registration) => {
+diff --git a/client/src/pages/auth-page.tsx b/client/src/pages/auth-page.tsx
+index 6726e92..b75130d 100644
+--- a/client/src/pages/auth-page.tsx
++++ b/client/src/pages/auth-page.tsx
+@@ -54,6 +54,11 @@ export default function AuthPage() {
+     return <Redirect to="/" />;
+   }
+ 
++  // In local development, auto-forward to the app and hide the login UI
++  if (import.meta.env.DEV) {
++    return <Redirect to="/" />;
++  }
++
+   const handleLogin = () => {
+     window.location.href = "/api/login";
+   };
+diff --git a/client/src/pages/deals.tsx b/client/src/pages/deals.tsx
+index fd188ba..8ae2a27 100644
+--- a/client/src/pages/deals.tsx
++++ b/client/src/pages/deals.tsx
+@@ -59,7 +59,7 @@ const statusColors: Record<string, string> = {
+ };
+ 
+ export default function DealsPage() {
+-  const { data: deals, isLoading } = useDeals();
++  const { data: deals, isLoading, isError, error, refetch } = useDeals();
+   const { data: properties } = useProperties();
+   const searchString = useSearch();
+   const urlParams = new URLSearchParams(searchString);
+@@ -129,7 +129,14 @@ export default function DealsPage() {
+       <main className="flex-1 md:ml-[17rem] p-4 pt-16 md:pt-8 md:p-8 pb-8 overflow-x-hidden">
+         <div className="max-w-7xl mx-auto space-y-6 md:space-y-8">
+           
+-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
++<div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
++            {isError && (
++              <InlineError 
++                message={(error as Error)?.message || "Failed to load deals."}
++                onRetry={() => refetch()}
++                testId="inline-error-deals"
++              />
++            )}
+             <div>
+               <h1 className="text-3xl font-bold" data-testid="text-page-title">Deal Pipeline</h1>
+               <p className="text-muted-foreground">Track acquisitions and dispositions through your pipeline.</p>
+diff --git a/client/src/pages/leads.tsx b/client/src/pages/leads.tsx
+index 3dc592c..f6a40da 100644
+--- a/client/src/pages/leads.tsx
++++ b/client/src/pages/leads.tsx
+@@ -6,6 +6,8 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
+ import { useMutation, useQuery } from "@tanstack/react-query";
+ import { useToast } from "@/hooks/use-toast";
+ import { ListSkeleton, TableRowSkeleton } from "@/components/list-skeleton";
++import { InlineError } from "@/components/inline-error";
++import { useDelayedLoading } from "@/hooks/use-delayed-loading";
+ import { useState, useMemo } from "react";
+ import { useForm } from "react-hook-form";
+ import { zodResolver } from "@hookform/resolvers/zod";
+@@ -13,7 +15,9 @@ import { insertLeadSchema, type Lead } from "@shared/schema";
+ import { z } from "zod";
+ import { useLocation, useSearch } from "wouter";
+ 
+-// Phone number formatting helper - strips to digits only
++const { data: leads, isLoading: leadsLoading, isError: leadsError, error: leadsErr, refetch: refetchLeads } = useLeads();
++
++// Phone number formatting helper
+ const formatPhoneNumber = (phone: string): string => {
+   const digits = phone.replace(/\D/g, '');
+   if (digits.length === 10) {
+@@ -62,6 +66,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
+ import { ConfirmDialog } from "@/components/confirm-dialog";
+ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
++import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
+ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+ import { FocusList } from "@/components/focus-list";
+ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+@@ -953,6 +958,13 @@ export default function LeadsPage() {
+         <div className="max-w-7xl mx-auto space-y-6 md:space-y-8">
+           
+           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
++            {leadsError && (
++              <InlineError 
++                message={(leadsErr as Error)?.message || "Failed to load leads."}
++                onRetry={() => refetchLeads()}
++                testId="inline-error-leads"
++              />
++            )}
+             <div>
+               <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-page-title">Leads CRM</h1>
+               <p className="text-muted-foreground">Manage your potential buyers and sellers.</p>
+@@ -1029,7 +1041,19 @@ export default function LeadsPage() {
+                 </DropdownMenuContent>
+               </DropdownMenu>
+               
+-              <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
++<Dialog open={isCreateOpen} onOpenChange={(open) => {
++                // confirm discard on mobile/desktop if form is dirty
++                const formEl = document.querySelector('[data-testid="lead-form"]') as HTMLFormElement | null;
++                if (!open && formEl) {
++                  // best-effort: if any inputs changed, prompt
++                  const dirty = formEl.querySelector('input[name="firstName"],input[name="lastName"],input[name="email"],input[name="phone"]') as HTMLInputElement | null;
++                  if (dirty && dirty.value) {
++                    const ok = window.confirm('You have unsaved changes. Discard them?');
++                    if (!ok) return;
++                  }
++                }
++                setIsCreateOpen(open);
++              }}>
+                 <DialogTrigger asChild>
+                   <Button className="shadow-lg hover:shadow-primary/25 min-h-[44px]" data-testid="button-add-lead">
+                     <Plus className="w-4 h-4 mr-2" /> Add New Lead
+@@ -1271,7 +1295,7 @@ export default function LeadsPage() {
+                   </div>
+                 )}
+ 
+-                {isLoading ? (
++{useDelayedLoading(leadsLoading, 200) ? (
+                   <div className="p-4" data-testid="skeleton-leads-table">
+                     <ListSkeleton count={8} variant="table" />
+                   </div>
+@@ -1341,6 +1365,11 @@ export default function LeadsPage() {
+                                   <LeadScoreBadge lead={lead} />
+                                   <ContactAgeBadge lead={lead} />
+                                   <TcpaConsentBadge lead={lead} />
++{lead.lastContactedAt && (
++                                    <span className="text-xs text-muted-foreground bg-muted/50 rounded px-[6px] py-[2px]" title="Last contacted">
++                                      {new Date(lead.lastContactedAt).toLocaleDateString()}
++                                    </span>
++                                  )}
+                                 </div>
+                               </TableCell>
+                               <TableCell>
+@@ -1822,6 +1851,8 @@ function LeadForm({ lead, onSuccess }: { lead?: Lead; onSuccess: () => void }) {
+     }
+   });
+ 
++  useUnsavedChanges(form.formState.isDirty);
++
+   const onSubmit = (data: z.infer<typeof leadFormSchema>) => {
+     if (lead) {
+       updateLead({ id: lead.id, ...data }, {
+@@ -1842,7 +1873,7 @@ function LeadForm({ lead, onSuccess }: { lead?: Lead; onSuccess: () => void }) {
+ 
+   return (
+     <Form {...form}>
+-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4">
++<form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4" data-testid="lead-form">
+         <div className="grid grid-cols-2 gap-4">
+           <FormField
+             control={form.control}
+diff --git a/client/src/pages/properties.tsx b/client/src/pages/properties.tsx
+index 440f5fc..4a1eaae 100644
+--- a/client/src/pages/properties.tsx
++++ b/client/src/pages/properties.tsx
+@@ -3,6 +3,8 @@ import { useProperties, useCreateProperty, useDeleteProperty, useEnrichProperty
+ import { queryClient } from "@/lib/queryClient";
+ import { telemetry } from "@/lib/telemetry";
+ import { ListSkeleton } from "@/components/list-skeleton";
++import { InlineError } from "@/components/inline-error";
++import { useDelayedLoading } from "@/hooks/use-delayed-loading";
+ import { useFetchPropertyParcel, useFetchAllParcels } from "@/hooks/use-parcels";
+ import { useState, useMemo } from "react";
+ import { useSearch } from "wouter";
+@@ -121,7 +123,8 @@ import { GisFilters, type GisFilterState, defaultGisFilters, countActiveGisFilte
+ import { Bot } from "lucide-react";
+ 
+ export default function PropertiesPage() {
+-  const { data: properties, isLoading } = useProperties();
++  const { data: properties, isLoading, isError, error, refetch } = useProperties();
++  const delayedLoading = useDelayedLoading(isLoading, 200);
+   const searchString = useSearch();
+   const urlParams = new URLSearchParams(searchString);
+   const actionFromUrl = urlParams.get("action");
+@@ -453,7 +456,7 @@ export default function PropertiesPage() {
+             </div>
+           )}
+ 
+-          {!isLoading && properties && properties.length > 0 && (
++          {!delayedLoading && properties && properties.length > 0 && (
+             <div className="space-y-2 md:space-y-0 md:flex md:flex-wrap md:items-center md:gap-3 p-2 bg-muted/30 rounded-md">
+               <div className="flex items-center justify-between gap-2 md:justify-start">
+                 <div className="flex items-center gap-2 min-h-[44px] md:min-h-0">
+@@ -484,11 +487,19 @@ export default function PropertiesPage() {
+             </div>
+           )}
+ 
+-          {isLoading ? (
++          {delayedLoading ? (
+             <div data-testid="skeleton-properties-grid">
+               <ListSkeleton count={6} variant="card" />
+             </div>
+           ) : (
++            <> 
++              {isError && (
++                <InlineError 
++                  message={(error as Error)?.message || "Failed to load properties."}
++                  onRetry={() => refetch()}
++                  testId="inline-error-properties"
++                />
++              )}
+             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+               {filteredProperties.map((property) => (
+                 <div key={property.id} className="relative">
+diff --git a/server/replit_integrations/auth/replitAuth.ts b/server/replit_integrations/auth/replitAuth.ts
+index 23f2827..7ecea3e 100644
+--- a/server/replit_integrations/auth/replitAuth.ts
++++ b/server/replit_integrations/auth/replitAuth.ts
+@@ -8,6 +8,8 @@ import memoize from "memoizee";
+ import connectPg from "connect-pg-simple";
+ import { authStorage } from "./storage";
+ 
++const DEV_MODE = process.env.DEV_MODE === "true";
++
+ const getOidcConfig = memoize(
+   async () => {
+     return await client.discovery(
+@@ -20,6 +22,23 @@ const getOidcConfig = memoize(
+ 
+ export function getSession() {
+   const sessionTtl = 7 * 24 * 60 * 60 * 1000; // 1 week
++
++  if (DEV_MODE) {
++    // Use in-memory store and a default secret for local development
++    return session({
++      secret: process.env.SESSION_SECRET || "dev-session-secret",
++      resave: false,
++      saveUninitialized: true,
++      rolling: true,
++      cookie: {
++        httpOnly: true,
++        secure: false,
++        sameSite: "lax",
++        maxAge: sessionTtl,
++      },
++    });
++  }
++
+   const pgStore = connectPg(session);
+   const sessionStore = new pgStore({
+     conString: process.env.DATABASE_URL,
+@@ -65,6 +84,39 @@ async function upsertUser(claims: any) {
+ export async function setupAuth(app: Express) {
+   app.set("trust proxy", 1);
+   app.use(getSession());
++
++  if (DEV_MODE) {
++    // Minimal local-auth shim: attach a configurable dev user and mark as authenticated
++    const devEmail = process.env.DEV_USER_EMAIL || process.env.FOUNDER_EMAILS?.split(',')[0]?.trim() || "dev@example.com";
++    app.use(async (req: any, _res, next) => {
++      if (!req.user) {
++        req.user = {
++          claims: {
++            sub: "dev-user",
++            email: devEmail,
++            first_name: "Dev",
++            last_name: "User",
++          },
++        };
++      }
++      // Ensure the user exists in auth storage so /api/auth/user works
++      try {
++        await authStorage.upsertUser({
++          id: req.user.claims.sub,
++          email: req.user.claims.email,
++          firstName: req.user.claims.first_name,
++          lastName: req.user.claims.last_name,
++          profileImageUrl: undefined,
++        });
++      } catch (e) {
++        console.warn("[dev-auth] upsertUser failed:", e);
++      }
++      req.isAuthenticated = () => true;
++      next();
++    });
++    return; // Skip Replit OIDC in dev mode
++  }
++
+   app.use(passport.initialize());
+   app.use(passport.session());
+ 
+@@ -74,7 +126,7 @@ export async function setupAuth(app: Express) {
+     tokens: client.TokenEndpointResponse & client.TokenEndpointResponseHelpers,
+     verified: passport.AuthenticateCallback
+   ) => {
+-    const user = {};
++    const user = {} as any;
+     updateUserSession(user, tokens);
+     await upsertUser(tokens.claims());
+     verified(null, user);
+@@ -156,9 +208,13 @@ export async function setupAuth(app: Express) {
+ }
+ 
+ export const isAuthenticated: RequestHandler = async (req, res, next) => {
++  if (DEV_MODE) {
++    return next();
++  }
++
+   const user = req.user as any;
+ 
+-  if (!req.isAuthenticated() || !user.expires_at) {
++  if (!req.isAuthenticated() || !user?.expires_at) {
+     return res.status(401).json({ message: "Unauthorized" });
+   }
+ 
+diff --git a/server/routes.ts b/server/routes.ts
+index e86b3da..ca5cba9 100644
+--- a/server/routes.ts
++++ b/server/routes.ts
+@@ -490,9 +490,19 @@ export async function registerRoutes(
+   // DASHBOARD
+   // ============================================
+   
++  // simple in-memory cache per org for dashboard stats (30s TTL)
++  const statsCache: Map<number, { ts: number; data: any }> = new Map();
++
+   api.get("/api/dashboard/stats", isAuthenticated, getOrCreateOrg, async (req, res) => {
+-    const org = (req as any).organization;
++  const org = (req as any).organization;
++    const key = org.id as number;
++    const now = Date.now();
++    const cached = statsCache.get(key);
++    if (cached && now - cached.ts < 30_000) {
++      return res.json(cached.data);
++    }
+     const stats = await storage.getDashboardStats(org.id);
++    statsCache.set(key, { ts: now, data: stats });
+     res.json(stats);
+   });
+   

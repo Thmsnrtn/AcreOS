@@ -97,9 +97,10 @@ export function AnomalyAlerts({ anomalies, isLoading }: AnomalyAlertsProps) {
         {anomalies.map((anomaly) => {
           const style = getAnomalyStyle(anomaly.type);
           return (
-            <div 
+            <a 
               key={anomaly.id}
-              className="flex items-center justify-between p-3 rounded-md bg-background/60 border border-border/50"
+              href={anomaly.metric.toLowerCase().includes('lead') ? '/leads' : anomaly.metric.toLowerCase().includes('deal') ? '/deals' : '/analytics'}
+              className="flex items-center justify-between p-3 rounded-md bg-background/60 border border-border/50 hover:bg-accent/40 transition-colors"
               data-testid={`anomaly-${anomaly.id}`}
             >
               <div className="flex-1 min-w-0">
@@ -114,7 +115,7 @@ export function AnomalyAlerts({ anomalies, isLoading }: AnomalyAlertsProps) {
                   {anomaly.percentChange > 0 ? "+" : ""}{anomaly.percentChange}%
                 </span>
               </Badge>
-            </div>
+            </a>
           );
         })}
       </CardContent>

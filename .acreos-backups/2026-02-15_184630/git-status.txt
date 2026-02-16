@@ -1,0 +1,36 @@
+## main...origin/main
+ M client/src/App.tsx
+ M client/src/components/command-palette.tsx
+ M client/src/components/floating-assistant.tsx
+ M client/src/components/gis-filters.tsx
+ M client/src/components/keyboard-shortcuts.tsx
+ M client/src/components/layout-sidebar.tsx
+ M client/src/components/mobile/MobileBottomNav.tsx
+ M client/src/components/mobile/MobileCommandDrawer.tsx
+ M client/src/components/new-item-menu.tsx
+ M client/src/components/property-map.tsx
+ M client/src/components/ui/chart.tsx
+ M client/src/components/ui/command.tsx
+ M client/src/components/ui/context-menu.tsx
+ M client/src/components/ui/dropdown-menu.tsx
+ M client/src/components/ui/menubar.tsx
+ M client/src/components/ui/select.tsx
+ M client/src/components/ui/tabs.tsx
+ M client/src/components/ui/tooltip.tsx
+ M client/src/components/workspace/WorkspaceManager.tsx
+ M client/src/hooks/use-api-retry.ts
+ M client/src/hooks/use-organization.ts
+ M client/src/lib/auth-utils.ts
+ M client/src/lib/queryClient.ts
+ M client/src/main.tsx
+ M client/src/pages/auth-page.tsx
+ M client/src/pages/deals.tsx
+ M client/src/pages/leads.tsx
+ M client/src/pages/properties.tsx
+ M server/replit_integrations/auth/replitAuth.ts
+ M server/routes.ts
+?? .acreos-backups/
+?? client/src/components/inline-error.tsx
+?? client/src/components/ui/filters-chip.tsx
+?? client/src/hooks/use-delayed-loading.ts
+?? client/src/hooks/use-next-route-prefetch.ts

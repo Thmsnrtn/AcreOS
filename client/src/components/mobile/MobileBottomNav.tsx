@@ -63,7 +63,8 @@ export function MobileBottomNav() {
             );
           })}
           
-          <button
+<button
+            aria-label="Open more actions"
             onClick={() => setIsDrawerOpen(true)}
             className={cn(
               "flex flex-col items-center justify-center gap-1 min-w-[56px] min-h-[48px] rounded-xl transition-all active:scale-95",

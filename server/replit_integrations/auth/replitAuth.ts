@@ -8,6 +8,8 @@ import memoize from "memoizee";
 import connectPg from "connect-pg-simple";
 import { authStorage } from "./storage";
 
+const DEV_MODE = process.env.DEV_MODE === "true";
+
 const getOidcConfig = memoize(
   async () => {
     return await client.discovery(
@@ -20,6 +22,23 @@ const getOidcConfig = memoize(
 
 export function getSession() {
   const sessionTtl = 7 * 24 * 60 * 60 * 1000; // 1 week
+
+  if (DEV_MODE) {
+    // Use in-memory store and a default secret for local development
+    return session({
+      secret: process.env.SESSION_SECRET || "dev-session-secret",
+      resave: false,
+      saveUninitialized: true,
+      rolling: true,
+      cookie: {
+        httpOnly: true,
+        secure: false,
+        sameSite: "lax",
+        maxAge: sessionTtl,
+      },
+    });
+  }
+
   const pgStore = connectPg(session);
   const sessionStore = new pgStore({
     conString: process.env.DATABASE_URL,
@@ -65,6 +84,39 @@ async function upsertUser(claims: any) {
 export async function setupAuth(app: Express) {
   app.set("trust proxy", 1);
   app.use(getSession());
+
+  if (DEV_MODE) {
+    // Minimal local-auth shim: attach a configurable dev user and mark as authenticated
+    const devEmail = process.env.DEV_USER_EMAIL || process.env.FOUNDER_EMAILS?.split(',')[0]?.trim() || "dev@example.com";
+    app.use(async (req: any, _res, next) => {
+      if (!req.user) {
+        req.user = {
+          claims: {
+            sub: "dev-user",
+            email: devEmail,
+            first_name: "Dev",
+            last_name: "User",
+          },
+        };
+      }
+      // Ensure the user exists in auth storage so /api/auth/user works
+      try {
+        await authStorage.upsertUser({
+          id: req.user.claims.sub,
+          email: req.user.claims.email,
+          firstName: req.user.claims.first_name,
+          lastName: req.user.claims.last_name,
+          profileImageUrl: undefined,
+        });
+      } catch (e) {
+        console.warn("[dev-auth] upsertUser failed:", e);
+      }
+      req.isAuthenticated = () => true;
+      next();
+    });
+    return; // Skip Replit OIDC in dev mode
+  }
+
   app.use(passport.initialize());
   app.use(passport.session());
 
@@ -74,7 +126,7 @@ export async function setupAuth(app: Express) {
     tokens: client.TokenEndpointResponse & client.TokenEndpointResponseHelpers,
     verified: passport.AuthenticateCallback
   ) => {
-    const user = {};
+    const user = {} as any;
     updateUserSession(user, tokens);
     await upsertUser(tokens.claims());
     verified(null, user);
@@ -156,9 +208,13 @@ export async function setupAuth(app: Express) {
 }
 
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
+  if (DEV_MODE) {
+    return next();
+  }
+
   const user = req.user as any;
 
-  if (!req.isAuthenticated() || !user.expires_at) {
+  if (!req.isAuthenticated() || !user?.expires_at) {
     return res.status(401).json({ message: "Unauthorized" });
   }
 

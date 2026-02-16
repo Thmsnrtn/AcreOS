@@ -6,6 +6,8 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { ListSkeleton, TableRowSkeleton } from "@/components/list-skeleton";
+import { InlineError } from "@/components/inline-error";
+import { useDelayedLoading } from "@/hooks/use-delayed-loading";
 import { useState, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -13,7 +15,9 @@ import { insertLeadSchema, type Lead } from "@shared/schema";
 import { z } from "zod";
 import { useLocation, useSearch } from "wouter";
 
-// Phone number formatting helper - strips to digits only
+const { data: leads, isLoading: leadsLoading, isError: leadsError, error: leadsErr, refetch: refetchLeads } = useLeads();
+
+// Phone number formatting helper
 const formatPhoneNumber = (phone: string): string => {
   const digits = phone.replace(/\D/g, '');
   if (digits.length === 10) {
@@ -62,6 +66,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { FocusList } from "@/components/focus-list";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -953,6 +958,13 @@ export default function LeadsPage() {
         <div className="max-w-7xl mx-auto space-y-6 md:space-y-8">
           
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            {leadsError && (
+              <InlineError 
+                message={(leadsErr as Error)?.message || "Failed to load leads."}
+                onRetry={() => refetchLeads()}
+                testId="inline-error-leads"
+              />
+            )}
             <div>
               <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-page-title">Leads CRM</h1>
               <p className="text-muted-foreground">Manage your potential buyers and sellers.</p>
@@ -1029,7 +1041,19 @@ export default function LeadsPage() {
                 </DropdownMenuContent>
               </DropdownMenu>
               
-              <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+<Dialog open={isCreateOpen} onOpenChange={(open) => {
+                // confirm discard on mobile/desktop if form is dirty
+                const formEl = document.querySelector('[data-testid="lead-form"]') as HTMLFormElement | null;
+                if (!open && formEl) {
+                  // best-effort: if any inputs changed, prompt
+                  const dirty = formEl.querySelector('input[name="firstName"],input[name="lastName"],input[name="email"],input[name="phone"]') as HTMLInputElement | null;
+                  if (dirty && dirty.value) {
+                    const ok = window.confirm('You have unsaved changes. Discard them?');
+                    if (!ok) return;
+                  }
+                }
+                setIsCreateOpen(open);
+              }}>
                 <DialogTrigger asChild>
                   <Button className="shadow-lg hover:shadow-primary/25 min-h-[44px]" data-testid="button-add-lead">
                     <Plus className="w-4 h-4 mr-2" /> Add New Lead
@@ -1271,7 +1295,7 @@ export default function LeadsPage() {
                   </div>
                 )}
 
-                {isLoading ? (
+{useDelayedLoading(leadsLoading, 200) ? (
                   <div className="p-4" data-testid="skeleton-leads-table">
                     <ListSkeleton count={8} variant="table" />
                   </div>
@@ -1341,6 +1365,11 @@ export default function LeadsPage() {
                                   <LeadScoreBadge lead={lead} />
                                   <ContactAgeBadge lead={lead} />
                                   <TcpaConsentBadge lead={lead} />
+{lead.lastContactedAt && (
+                                    <span className="text-xs text-muted-foreground bg-muted/50 rounded px-[6px] py-[2px]" title="Last contacted">
+                                      {new Date(lead.lastContactedAt).toLocaleDateString()}
+                                    </span>
+                                  )}
                                 </div>
                               </TableCell>
                               <TableCell>
@@ -1822,6 +1851,8 @@ function LeadForm({ lead, onSuccess }: { lead?: Lead; onSuccess: () => void }) {
     }
   });
 
+  useUnsavedChanges(form.formState.isDirty);
+
   const onSubmit = (data: z.infer<typeof leadFormSchema>) => {
     if (lead) {
       updateLead({ id: lead.id, ...data }, {
@@ -1842,7 +1873,7 @@ function LeadForm({ lead, onSuccess }: { lead?: Lead; onSuccess: () => void }) {
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4">
+<form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4" data-testid="lead-form">
         <div className="grid grid-cols-2 gap-4">
           <FormField
             control={form.control}

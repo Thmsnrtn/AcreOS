@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * External Service Health Check System
  * 

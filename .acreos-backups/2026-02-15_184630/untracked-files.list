@@ -1,0 +1,7 @@
+.acreos-backups/2026-02-15_184630/git-status.txt
+.acreos-backups/2026-02-15_184630/untracked-files.list
+.acreos-backups/2026-02-15_184630/working-changes.patch
+client/src/components/inline-error.tsx
+client/src/components/ui/filters-chip.tsx
+client/src/hooks/use-delayed-loading.ts
+client/src/hooks/use-next-route-prefetch.ts

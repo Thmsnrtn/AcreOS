@@ -151,7 +151,7 @@ export function NewItemMenu() {
               <div className="p-3 border-t text-center">
                 <span className="text-xs text-muted-foreground">
                   Press{" "}
-                  <kbd className="px-1.5 py-0.5 rounded border bg-muted font-mono text-[10px]">
+                  <kbd className="px-[6px] py-0.5 rounded border bg-muted font-mono text-[10px]">
                     ⌘N
                   </kbd>{" "}
                   to toggle this menu

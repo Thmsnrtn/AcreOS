@@ -8,6 +8,7 @@ import { Loader2 } from "lucide-react";
 import { ThemeProvider } from "@/contexts/theme-context";
 import { AnimatePresence, motion } from "framer-motion";
 import { pageTransition } from "@/lib/animations";
+import { useToast } from "@/hooks/use-toast";
 
 import { HintsProvider } from "@/components/feature-hints";
 import { KeyboardShortcutsProvider } from "@/hooks/use-keyboard-shortcuts";
@@ -56,6 +57,7 @@ import { FloatingActionButton } from "@/components/floating-action-button";
 import { FloatingHelpButton } from "@/components/floating-help-button";
 import { CommandPalette } from "@/components/command-palette";
 import { useSwipeNavigation } from "@/hooks/use-swipe-gesture";
+import { useNextRoutePrefetch } from "@/hooks/use-next-route-prefetch";
 import { MobileBottomNav } from "@/components/mobile";
 
 // Protected Route Wrapper
@@ -102,6 +104,8 @@ function FounderProtectedRoute({ component: Component }: { component: React.Comp
 }
 
 function Router() {
+  const [pathname] = useLocation();
+  useNextRoutePrefetch(pathname);
   return (
     <Switch>
       <Route path="/auth" component={AuthPage} />
@@ -233,7 +237,19 @@ function PageWrapper({ children }: { children: React.ReactNode }) {
 
 function AppContent() {
   const { user } = useAuth();
+  const { toast } = useToast();
   useSwipeNavigation();
+
+  // One-time hint for command palette
+  if (import.meta.env.DEV && typeof window !== 'undefined') {
+    const seen = localStorage.getItem('hint_cmdk_shown');
+    if (!seen && user) {
+      localStorage.setItem('hint_cmdk_shown', '1');
+      setTimeout(() => {
+        toast({ title: 'Tip', description: 'Press ⌘K (or Ctrl+K) to open the command palette.' });
+      }, 800);
+    }
+  }
   
   return (
     <>

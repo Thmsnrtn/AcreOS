@@ -63,7 +63,7 @@ export function GisFilters({ filters, onChange, activeFilterCount = 0 }: GisFilt
             <MapPin className="w-4 h-4" />
             <span>GIS Filters</span>
             {hasActiveFilters && (
-              <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-xs" data-testid="badge-gis-filter-count">
+              <Badge variant="secondary" className="ml-1 px-[6px] py-0 text-xs" data-testid="badge-gis-filter-count">
                 {activeFilterCount}
               </Badge>
             )}

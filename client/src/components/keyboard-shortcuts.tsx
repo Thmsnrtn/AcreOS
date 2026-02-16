@@ -124,7 +124,7 @@ export function KeyboardShortcutsModal() {
         </ScrollArea>
         
         <div className="border-t pt-4 text-center text-xs text-muted-foreground">
-          Press <kbd className="px-1.5 py-0.5 rounded border bg-muted font-mono text-[10px]">?</kbd> anytime to show this dialog
+          Press <kbd className="px-[6px] py-0.5 rounded border bg-muted font-mono text-[10px]">?</kbd> anytime to show this dialog
         </div>
       </DialogContent>
     </Dialog>

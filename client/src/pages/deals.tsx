@@ -2,6 +2,7 @@ import { Sidebar } from "@/components/layout-sidebar";
 import { useDeals, useCreateDeal, useUpdateDeal, useDeleteDeal, useSaveDealAnalysis } from "@/hooks/use-deals";
 import { useProperties } from "@/hooks/use-properties";
 import { ListSkeleton } from "@/components/list-skeleton";
+import { InlineError } from "@/components/inline-error";
 import { telemetry } from "@/lib/telemetry";
 import { useDealChecklist, useChecklistTemplates, useApplyChecklistTemplate, useUpdateChecklistItem, useStageGate } from "@/hooks/use-checklists";
 import { useState } from "react";
@@ -59,7 +60,7 @@ const statusColors: Record<string, string> = {
 };
 
 export default function DealsPage() {
-  const { data: deals, isLoading } = useDeals();
+  const { data: deals, isLoading, isError, error, refetch } = useDeals();
   const { data: properties } = useProperties();
   const searchString = useSearch();
   const urlParams = new URLSearchParams(searchString);
@@ -129,7 +130,14 @@ export default function DealsPage() {
       <main className="flex-1 md:ml-[17rem] p-4 pt-16 md:pt-8 md:p-8 pb-8 overflow-x-hidden">
         <div className="max-w-7xl mx-auto space-y-6 md:space-y-8">
           
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+<div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            {isError && (
+              <InlineError 
+                message={(error as Error)?.message || "Failed to load deals."}
+                onRetry={() => refetch()}
+                testId="inline-error-deals"
+              />
+            )}
             <div>
               <h1 className="text-3xl font-bold" data-testid="text-page-title">Deal Pipeline</h1>
               <p className="text-muted-foreground">Track acquisitions and dispositions through your pipeline.</p>

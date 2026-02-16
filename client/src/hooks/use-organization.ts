@@ -70,6 +70,10 @@ export function useDashboardStats() {
       if (!res.ok) throw new Error("Failed to fetch dashboard stats");
       return res.json();
     },
+    staleTime: 30_000, // match server cache TTL
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
+    keepPreviousData: true,
   });
 }
 
