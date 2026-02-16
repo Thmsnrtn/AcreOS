@@ -12951,6 +12951,58 @@ Seller Signature (if applicable)
     }
   });
 
+  // Dashboard summary: overdue + today's pending tasks
+  api.get("/api/tasks/dashboard-summary", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const orgId = (req as any).organization!.id;
+      
+      // Get all pending/in_progress tasks
+      const allTasks = await storage.getTasks(orgId);
+      const activeTasks = allTasks.filter(t => t.status === "pending" || t.status === "in_progress");
+      
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const todayEnd = new Date(todayStart);
+      todayEnd.setDate(todayEnd.getDate() + 1);
+      
+      const overdue: typeof activeTasks = [];
+      const dueToday: typeof activeTasks = [];
+      
+      for (const task of activeTasks) {
+        if (!task.dueDate) continue;
+        const due = new Date(task.dueDate);
+        if (due < todayStart) {
+          overdue.push(task);
+        } else if (due >= todayStart && due < todayEnd) {
+          dueToday.push(task);
+        }
+      }
+      
+      // Sort by priority (urgent > high > medium > low), then by dueDate
+      const priorityOrder: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 };
+      const sortFn = (a: typeof activeTasks[0], b: typeof activeTasks[0]) => {
+        const pa = priorityOrder[a.priority] ?? 4;
+        const pb = priorityOrder[b.priority] ?? 4;
+        if (pa !== pb) return pa - pb;
+        if (a.dueDate && b.dueDate) return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+        return 0;
+      };
+      
+      overdue.sort(sortFn);
+      dueToday.sort(sortFn);
+      
+      res.json({
+        overdue: overdue.slice(0, 10),
+        dueToday: dueToday.slice(0, 10),
+        overdueCount: overdue.length,
+        dueTodayCount: dueToday.length,
+      });
+    } catch (error: any) {
+      console.error("Get dashboard tasks summary error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch tasks summary" });
+    }
+  });
+
   // ============================================
   // IMPORT / EXPORT
   // ============================================
