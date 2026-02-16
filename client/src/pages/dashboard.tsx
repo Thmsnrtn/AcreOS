@@ -1,8 +1,9 @@
-import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useMemo, useCallback } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Sidebar } from "@/components/layout-sidebar";
 import { StatCard } from "@/components/stat-card";
 import { useOrganization, useDashboardStats } from "@/hooks/use-organization";
+import { PullToRefresh } from "@/components/mobile";
 import { useLeads, useAgingLeads, type AgingLead } from "@/hooks/use-leads";
 import { useProperties } from "@/hooks/use-properties";
 import { usePlaybooks } from "@/hooks/use-playbooks";
@@ -79,6 +80,7 @@ interface DashboardIntelligence {
 }
 
 export default function Dashboard() {
+  const queryClient = useQueryClient();
   const { data: organization, isLoading: orgLoading } = useOrganization();
   const { data: stats, isLoading: statsLoading } = useDashboardStats();
   const { data: leads = [] } = useLeads();
@@ -94,6 +96,17 @@ export default function Dashboard() {
   const [widgetSettings, setWidgetSettings] = useState<DashboardWidgetSettings>(() => 
     loadSettings(organization)
   );
+
+  // Pull-to-refresh handler - invalidates all dashboard-related queries
+  const handleRefresh = useCallback(async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["/api/organization"] }),
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] }),
+      queryClient.invalidateQueries({ queryKey: ["/api/leads"] }),
+      queryClient.invalidateQueries({ queryKey: ["/api/properties"] }),
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/intelligence"] }),
+    ]);
+  }, [queryClient]);
 
   useMemo(() => {
     if (organization) {
@@ -453,8 +466,12 @@ export default function Dashboard() {
     <div className="flex min-h-screen bg-background desert-gradient">
       <Sidebar />
       <OnboardingWizard />
-      <main className="flex-1 md:ml-[17rem] p-4 pt-16 md:pt-8 md:p-8 pb-8 overflow-x-hidden">
-        <div className="max-w-7xl mx-auto space-y-8">
+      <PullToRefresh 
+        onRefresh={handleRefresh}
+        className="flex-1 md:ml-[17rem] min-h-screen"
+      >
+        <main className="p-4 pt-16 md:pt-8 md:p-8 pb-8 overflow-x-hidden">
+          <div className="max-w-7xl mx-auto space-y-8">
           
           <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
             <div className="flex items-center gap-3 flex-wrap">
@@ -511,8 +528,9 @@ export default function Dashboard() {
               {visibleCharts.map((widgetId, idx) => renderWidget(widgetId, widgetSettings.order.indexOf(widgetId)))}
             </div>
           )}
-        </div>
-      </main>
+          </div>
+        </main>
+      </PullToRefresh>
     </div>
   );
 }
