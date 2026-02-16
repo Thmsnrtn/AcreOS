@@ -118,6 +118,7 @@ import { CustomFieldValuesEditor } from "@/components/custom-fields";
 import { DueDiligencePanel } from "@/components/due-diligence-panel";
 import { PropertyAnalysisChat } from "@/components/property-analysis-chat";
 import { GisFilters, type GisFilterState, defaultGisFilters, countActiveGisFilters, applyGisFiltersToProperty } from "@/components/gis-filters";
+import { ResearchSummaryPanel } from "@/components/research-summary-panel";
 import { Bot } from "lucide-react";
 
 export default function PropertiesPage() {
@@ -1115,6 +1116,9 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
           )}
           
           <TabsContent value="overview" className="space-y-6 mt-4">
+            {/* Research Summary Panel - consolidated view for offer decisions */}
+            <ResearchSummaryPanel property={currentProperty} />
+            
             {hasMapData && (
               <div className="rounded-md overflow-hidden border -mx-4 sm:mx-0">
                 <div className="h-[250px] sm:h-[350px]">
