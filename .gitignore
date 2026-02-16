@@ -1,6 +1,18 @@
 node_modules
 dist
 .DS_Store
+
+# Local env / secrets
+.env
+.env.*
+.env*.local
+
+# Backups / local secrets
+.acreos-backups/
+
+# Local logs / snapshots
+logs/snapshots/
+
 server/public
 vite.config.ts.*
 *.tar.gz
