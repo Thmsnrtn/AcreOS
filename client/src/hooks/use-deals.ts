@@ -126,3 +126,94 @@ export function useSaveDealAnalysis() {
     },
   });
 }
+
+export interface BulkStageUpdatePreview {
+  requiresConfirmation: boolean;
+  message: string;
+  dealsToUpdate: Array<{
+    id: number;
+    propertyId: number;
+    currentStage: string;
+    newStage: string;
+  }>;
+  skippedCount: number;
+}
+
+export interface BulkStageUpdateResult {
+  success: boolean;
+  message: string;
+  updatedCount: number;
+  skippedCount: number;
+  previousStates: Array<{ id: number; previousStage: string }>;
+  undoAvailable: boolean;
+}
+
+export function useBulkStageUpdate() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  
+  return useMutation({
+    mutationFn: async ({ ids, newStage, confirmed = false }: { 
+      ids: number[]; 
+      newStage: string; 
+      confirmed?: boolean 
+    }): Promise<BulkStageUpdatePreview | BulkStageUpdateResult> => {
+      const res = await apiRequest("POST", "/api/deals/bulk-stage-update", { 
+        ids, 
+        newStage, 
+        confirmed 
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Bulk stage update failed");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      if ('success' in data && data.success) {
+        queryClient.invalidateQueries({ queryKey: ['/api/deals'] });
+      }
+    },
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({
+        title,
+        description,
+        variant: "destructive",
+      });
+    },
+  });
+}
+
+export function useBulkStageUndo() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  
+  return useMutation({
+    mutationFn: async (previousStates: Array<{ id: number; previousStage: string }>) => {
+      const res = await apiRequest("POST", "/api/deals/bulk-stage-undo", { previousStates });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Undo failed");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/deals'] });
+      toast({
+        title: "Success",
+        description: "Stage changes have been undone.",
+      });
+    },
+    onError: (error) => {
+      const title = getErrorTitle(error);
+      const description = getErrorMessage(error);
+      toast({
+        title,
+        description,
+        variant: "destructive",
+      });
+    },
+  });
+}

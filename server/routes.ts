@@ -3544,6 +3544,192 @@ export async function registerRoutes(
     }
   });
   
+  // Bulk stage update for deals with undo support
+  api.post("/api/deals/bulk-stage-update", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { ids, newStage, confirmed } = req.body;
+      
+      // Validate required fields
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ message: "ids must be a non-empty array" });
+      }
+      
+      if (!newStage || typeof newStage !== "string") {
+        return res.status(400).json({ message: "newStage is required" });
+      }
+      
+      // Validate stage is a valid deal stage
+      const validStages = ["negotiating", "offer_sent", "countered", "accepted", "in_escrow", "closed", "cancelled"];
+      if (!validStages.includes(newStage)) {
+        return res.status(400).json({ 
+          message: `Invalid stage. Must be one of: ${validStages.join(", ")}`,
+          validStages 
+        });
+      }
+      
+      // Get the current state of all deals for safety/undo
+      const existingDeals = await storage.getDealsByIds(org.id, ids);
+      
+      // Check if any deals weren't found
+      const foundIds = existingDeals.map(d => d.id);
+      const missingIds = ids.filter((id: number) => !foundIds.includes(id));
+      
+      if (missingIds.length > 0) {
+        return res.status(404).json({ 
+          message: `Some deals not found: ${missingIds.join(", ")}`,
+          missingIds 
+        });
+      }
+      
+      // Filter out deals that are already in the target stage
+      const dealsToUpdate = existingDeals.filter(d => d.status !== newStage);
+      const alreadyInStage = existingDeals.filter(d => d.status === newStage);
+      
+      if (dealsToUpdate.length === 0) {
+        return res.status(200).json({
+          message: "No deals needed updating - all are already in the target stage",
+          updatedCount: 0,
+          skippedCount: alreadyInStage.length,
+          previousStates: [],
+        });
+      }
+      
+      // If not confirmed, return preview for confirmation
+      if (!confirmed) {
+        const stageTransitions = dealsToUpdate.map(d => ({
+          id: d.id,
+          propertyId: d.propertyId,
+          currentStage: d.status,
+          newStage,
+        }));
+        
+        return res.status(200).json({
+          requiresConfirmation: true,
+          message: `This will update ${dealsToUpdate.length} deal(s) to stage "${newStage}"`,
+          dealsToUpdate: stageTransitions,
+          skippedCount: alreadyInStage.length,
+        });
+      }
+      
+      // Perform the bulk update
+      const idsToUpdate = dealsToUpdate.map(d => d.id);
+      const updatedCount = await storage.bulkUpdateDeals(org.id, idsToUpdate, { status: newStage });
+      
+      // Save previous states for undo capability
+      const previousStates = dealsToUpdate.map(d => ({
+        id: d.id,
+        previousStage: d.status,
+      }));
+      
+      // Create audit log entry
+      const user = req.user as any;
+      const userId = user?.claims?.sub || user?.id;
+      await storage.createAuditLogEntry({
+        organizationId: org.id,
+        userId,
+        action: "bulk_stage_update",
+        entityType: "deal",
+        entityId: 0,
+        changes: { 
+          ids: idsToUpdate, 
+          newStage, 
+          previousStates,
+          count: updatedCount 
+        },
+        ipAddress: req.ip || req.socket?.remoteAddress,
+        userAgent: req.headers["user-agent"],
+      });
+      
+      res.json({
+        success: true,
+        message: `Successfully updated ${updatedCount} deal(s) to stage "${newStage}"`,
+        updatedCount,
+        skippedCount: alreadyInStage.length,
+        previousStates,
+        undoAvailable: true,
+      });
+    } catch (error: any) {
+      console.error("Bulk stage update deals error:", error);
+      res.status(500).json({ message: error.message || "Failed to bulk update deal stages" });
+    }
+  });
+  
+  // Undo bulk stage update
+  api.post("/api/deals/bulk-stage-undo", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { previousStates } = req.body;
+      
+      if (!Array.isArray(previousStates) || previousStates.length === 0) {
+        return res.status(400).json({ message: "previousStates must be a non-empty array" });
+      }
+      
+      // Validate structure of previousStates
+      for (const state of previousStates) {
+        if (!state.id || !state.previousStage) {
+          return res.status(400).json({ 
+            message: "Each previousState must have id and previousStage properties" 
+          });
+        }
+      }
+      
+      // Restore each deal to its previous state
+      let restoredCount = 0;
+      const errors: Array<{ id: number; error: string }> = [];
+      
+      for (const state of previousStates) {
+        try {
+          const deal = await storage.getDeal(org.id, state.id);
+          if (!deal) {
+            errors.push({ id: state.id, error: "Deal not found" });
+            continue;
+          }
+          await storage.updateDeal(state.id, { status: state.previousStage });
+          restoredCount++;
+        } catch (err: any) {
+          errors.push({ id: state.id, error: err.message || "Unknown error" });
+        }
+      }
+      
+      // Create audit log entry for the undo
+      const user = req.user as any;
+      const userId = user?.claims?.sub || user?.id;
+      await storage.createAuditLogEntry({
+        organizationId: org.id,
+        userId,
+        action: "bulk_stage_undo",
+        entityType: "deal",
+        entityId: 0,
+        changes: { 
+          previousStates,
+          restoredCount,
+          errors: errors.length > 0 ? errors : undefined,
+        },
+        ipAddress: req.ip || req.socket?.remoteAddress,
+        userAgent: req.headers["user-agent"],
+      });
+      
+      if (errors.length > 0) {
+        return res.status(207).json({
+          success: false,
+          message: `Partially restored ${restoredCount} of ${previousStates.length} deals`,
+          restoredCount,
+          errors,
+        });
+      }
+      
+      res.json({
+        success: true,
+        message: `Successfully restored ${restoredCount} deal(s) to their previous stages`,
+        restoredCount,
+      });
+    } catch (error: any) {
+      console.error("Bulk stage undo error:", error);
+      res.status(500).json({ message: error.message || "Failed to undo bulk stage update" });
+    }
+  });
+  
   // ============================================
   // DUE DILIGENCE TEMPLATES & CHECKLISTS
   // ============================================

@@ -290,8 +290,10 @@ export interface IStorage {
   // Deals
   getDeals(orgId: number): Promise<Deal[]>;
   getDeal(orgId: number, id: number): Promise<Deal | undefined>;
+  getDealsByIds(orgId: number, ids: number[]): Promise<Deal[]>;
   createDeal(deal: InsertDeal): Promise<Deal>;
   updateDeal(id: number, updates: Partial<InsertDeal>): Promise<Deal>;
+  bulkUpdateDeals(orgId: number, ids: number[], updates: Partial<InsertDeal>): Promise<number>;
   
   // Notes (Financing)
   getNotes(orgId: number): Promise<Note[]>;
@@ -1486,6 +1488,20 @@ export class DatabaseStorage implements IStorage {
       .where(eq(deals.id, id))
       .returning();
     return updated;
+  }
+  
+  async getDealsByIds(orgId: number, ids: number[]): Promise<Deal[]> {
+    if (ids.length === 0) return [];
+    return await db.select().from(deals)
+      .where(and(eq(deals.organizationId, orgId), inArray(deals.id, ids)));
+  }
+  
+  async bulkUpdateDeals(orgId: number, ids: number[], updates: Partial<InsertDeal>): Promise<number> {
+    if (ids.length === 0) return 0;
+    await db.update(deals)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(and(eq(deals.organizationId, orgId), inArray(deals.id, ids)));
+    return ids.length;
   }
   
   // Notes (Financing)
