@@ -117,7 +117,8 @@ import { AIOfferGenerator } from "@/components/ai-offer-generator";
 import { CustomFieldValuesEditor } from "@/components/custom-fields";
 import { DueDiligencePanel } from "@/components/due-diligence-panel";
 import { PropertyAnalysisChat } from "@/components/property-analysis-chat";
-import { GisFilters, type GisFilterState, defaultGisFilters, countActiveGisFilters, applyGisFiltersToProperty } from "@/components/gis-filters";
+import { GisFilters, type GisFilterState, countActiveGisFilters, applyGisFiltersToProperty } from "@/components/gis-filters";
+import { usePersistedGisFilters } from "@/hooks/use-persisted-gis-filters";
 import { Bot } from "lucide-react";
 
 export default function PropertiesPage() {
@@ -150,7 +151,7 @@ export default function PropertiesPage() {
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
-  const [gisFilters, setGisFilters] = useState<GisFilterState>(defaultGisFilters);
+  const { filters: gisFilters, setFilters: setGisFilters, resetFilters: resetGisFilters, getShareableUrl } = usePersistedGisFilters();
   const { toast } = useToast();
   const { mutate: fetchAllParcels, isPending: isFetchingAllParcels } = useFetchAllParcels();
 
@@ -475,6 +476,8 @@ export default function PropertiesPage() {
                 filters={gisFilters}
                 onChange={setGisFilters}
                 activeFilterCount={countActiveGisFilters(gisFilters)}
+                onShare={getShareableUrl}
+                onReset={resetGisFilters}
               />
               {filteredProperties.length !== properties.length && (
                 <span className="hidden md:inline text-sm text-muted-foreground" data-testid="text-filtered-count">
