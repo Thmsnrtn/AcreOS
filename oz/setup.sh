@@ -2,46 +2,46 @@
 set -euo pipefail
 
 # One-time setup for AcreOS Oz cloud agent
-# Prereqs: oz CLI installed and authenticated (see https://docs.warp.dev/reference/cli)
+# Prereqs: oz CLI installed and authenticated
 
-AGENT_NAME=${AGENT_NAME:-acreos-autonomous-engineer}
 ENV_NAME=${ENV_NAME:-acreos-dev}
-IMAGE=${IMAGE:-ghcr.io/YOUR_ORG/acreos-agent:latest}
-REPO_URL=${REPO_URL:-https://github.com/Thmsnrtn/AcreOS.git}
+REPO=${REPO:-Thmsnrtn/AcreOS}
+DOCKER_IMAGE=${DOCKER_IMAGE:-node:20-bullseye}
 
-# 1) Build and publish the image (optional if you host elsewhere)
-# docker build -t "$IMAGE" -f oz/Dockerfile .
-# docker push "$IMAGE"
-
-# 2) Create/update environment
-if ! oz env get "$ENV_NAME" >/dev/null 2>&1; then
-  oz env create \
+echo "[oz] Creating environment (if missing): $ENV_NAME"
+if ! oz environment get --name "$ENV_NAME" >/dev/null 2>&1; then
+  oz environment create \
     --name "$ENV_NAME" \
-    --image "$IMAGE" \
-    --repo "$REPO_URL" \
-    --workdir /workspace \
-    --setup 'npm ci' \
-    --setup 'npm run check || true'
+    --docker-image "$DOCKER_IMAGE" \
+    --repo "$REPO" \
+    --setup-command "npm ci" \
+    --setup-command "npm run check || true" \
+    --personal
 else
-  echo "Env $ENV_NAME exists; skipping create"
+  echo "[oz] Environment exists; skipping create"
 fi
 
-# 3) Set required secrets (replace placeholders)
-# NOTE: never echo real secrets. Use your own secure values below.
-: "${OPENAI_API_KEY:?Set OPENAI_API_KEY in your shell}"
-: "${MAPBOX_TOKEN:?Set MAPBOX_TOKEN in your shell}"
-: "${STRIPE_SECRET_KEY:?Set STRIPE_SECRET_KEY in your shell}"
-: "${SENDGRID_API_KEY:?Set SENDGRID_API_KEY in your shell}"
-: "${LOB_TEST_API_KEY:?Set LOB_TEST_API_KEY in your shell}"
+cat <<'TXT'
 
-oz secrets set OPENAI_API_KEY "$OPENAI_API_KEY"
-oz secrets set MAPBOX_TOKEN "$MAPBOX_TOKEN"
-oz secrets set STRIPE_SECRET_KEY "$STRIPE_SECRET_KEY"
-oz secrets set SENDGRID_API_KEY "$SENDGRID_API_KEY"
-oz secrets set LOB_TEST_API_KEY "$LOB_TEST_API_KEY"
+[oz] Secrets (optional)
+This agent can work on UI/UX + code quality without external API keys.
+If you want AI/SMS/Mail features to work in cloud runs, create secrets:
 
-# 4) Register the agent spec
-oz agent create --file oz/agent.acreos.yaml || oz agent update --file oz/agent.acreos.yaml
+  oz secret create OPENAI_API_KEY
+  oz secret create SENDGRID_API_KEY
+  oz secret create LOB_TEST_API_KEY
+  oz secret create STRIPE_SECRET_KEY
+  oz secret create MAPBOX_TOKEN
 
-echo "\nSetup completed. To run a task manually:"
-echo "  oz agent run $AGENT_NAME --task quick-win-ux --profile ux --context 'Ship a small UX win.'"
+Oz will prompt you to paste each value securely.
+
+[oz] Run the cloud agent
+Example:
+  oz agent run-cloud \
+    --skill acreos-autonomous-engineer \
+    --environment $ENV_NAME \
+    --model gpt-5.1 \
+    --name "AcreOS autonomous improvement" \
+    --prompt "Pick one top issue from logs/audit and ship a small improvement. Push a branch and print the compare URL."
+
+TXT
