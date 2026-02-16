@@ -310,6 +310,10 @@ export const leads = pgTable("leads", {
   optOutReason: text("opt_out_reason"),
   doNotContact: boolean("do_not_contact").default(false),
   
+  // Soft delete support for safe bulk operations with recovery
+  deletedAt: timestamp("deleted_at"), // null = active, timestamp = soft deleted
+  deletedBy: text("deleted_by"), // user ID who performed the deletion
+  
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
@@ -317,6 +321,7 @@ export const leads = pgTable("leads", {
   index("leads_status_idx").on(table.status),
   index("leads_created_at_idx").on(table.createdAt),
   index("leads_email_idx").on(table.email),
+  index("leads_deleted_at_idx").on(table.deletedAt),
 ]);
 
 // Lead activity/interactions log

@@ -2082,6 +2082,36 @@ export async function registerRoutes(
     }
   });
   
+  // Preview leads that will be affected by bulk delete
+  api.post("/api/leads/bulk-delete/preview", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { ids } = req.body;
+      
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ message: "ids must be a non-empty array" });
+      }
+      
+      const leadsToDelete = await storage.getLeadsByIds(org.id, ids);
+      
+      res.json({
+        count: leadsToDelete.length,
+        leads: leadsToDelete.map(lead => ({
+          id: lead.id,
+          firstName: lead.firstName,
+          lastName: lead.lastName,
+          email: lead.email,
+          phone: lead.phone,
+          status: lead.status,
+          createdAt: lead.createdAt,
+        })),
+      });
+    } catch (error: any) {
+      console.error("Bulk delete preview error:", error);
+      res.status(500).json({ message: error.message || "Failed to preview bulk delete" });
+    }
+  });
+  
   api.post("/api/leads/bulk-delete", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteLeads"), async (req, res) => {
     try {
       const org = (req as any).organization;
@@ -2091,25 +2121,116 @@ export async function registerRoutes(
         return res.status(400).json({ message: "ids must be a non-empty array" });
       }
       
-      const deletedCount = await storage.bulkDeleteLeads(org.id, ids);
-      
       const user = req.user as any;
       const userId = user?.claims?.sub || user?.id;
+      
+      // Get lead details before soft-delete for audit log
+      const leadsToDelete = await storage.getLeadsByIds(org.id, ids);
+      
+      const deletedCount = await storage.bulkDeleteLeads(org.id, ids, userId);
+      
       await storage.createAuditLogEntry({
         organizationId: org.id,
         userId,
-        action: "bulk_delete",
+        action: "bulk_soft_delete",
         entityType: "lead",
         entityId: 0,
-        changes: { ids, count: deletedCount },
+        changes: { 
+          ids, 
+          count: deletedCount,
+          recoverable: true,
+          leadNames: leadsToDelete.map(l => `${l.firstName} ${l.lastName}`),
+        },
+        ipAddress: req.ip || req.socket?.remoteAddress,
+        userAgent: req.headers["user-agent"],
+      });
+      
+      res.json({ 
+        deletedCount,
+        recoverable: true,
+        message: `${deletedCount} lead(s) moved to trash. They can be restored within 30 days.`,
+      });
+    } catch (error: any) {
+      console.error("Bulk delete leads error:", error);
+      res.status(500).json({ message: error.message || "Failed to bulk delete leads" });
+    }
+  });
+  
+  // Get deleted/trashed leads
+  api.get("/api/leads/deleted", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const deletedLeads = await storage.getDeletedLeads(org.id);
+      res.json(deletedLeads);
+    } catch (error: any) {
+      console.error("Get deleted leads error:", error);
+      res.status(500).json({ message: error.message || "Failed to get deleted leads" });
+    }
+  });
+  
+  // Restore soft-deleted leads
+  api.post("/api/leads/restore", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteLeads"), async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { ids } = req.body;
+      
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ message: "ids must be a non-empty array" });
+      }
+      
+      const user = req.user as any;
+      const userId = user?.claims?.sub || user?.id;
+      
+      const restoredCount = await storage.restoreLeads(org.id, ids);
+      
+      await storage.createAuditLogEntry({
+        organizationId: org.id,
+        userId,
+        action: "bulk_restore",
+        entityType: "lead",
+        entityId: 0,
+        changes: { ids, count: restoredCount },
+        ipAddress: req.ip || req.socket?.remoteAddress,
+        userAgent: req.headers["user-agent"],
+      });
+      
+      res.json({ restoredCount });
+    } catch (error: any) {
+      console.error("Restore leads error:", error);
+      res.status(500).json({ message: error.message || "Failed to restore leads" });
+    }
+  });
+  
+  // Permanently delete leads (empty trash)
+  api.post("/api/leads/permanent-delete", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteLeads"), async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { ids } = req.body;
+      
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ message: "ids must be a non-empty array" });
+      }
+      
+      const user = req.user as any;
+      const userId = user?.claims?.sub || user?.id;
+      
+      const deletedCount = await storage.permanentlyDeleteLeads(org.id, ids);
+      
+      await storage.createAuditLogEntry({
+        organizationId: org.id,
+        userId,
+        action: "bulk_permanent_delete",
+        entityType: "lead",
+        entityId: 0,
+        changes: { ids, count: deletedCount, permanent: true },
         ipAddress: req.ip || req.socket?.remoteAddress,
         userAgent: req.headers["user-agent"],
       });
       
       res.json({ deletedCount });
     } catch (error: any) {
-      console.error("Bulk delete leads error:", error);
-      res.status(500).json({ message: error.message || "Failed to bulk delete leads" });
+      console.error("Permanent delete leads error:", error);
+      res.status(500).json({ message: error.message || "Failed to permanently delete leads" });
     }
   });
   

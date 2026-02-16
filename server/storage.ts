@@ -257,8 +257,14 @@ export interface IStorage {
   updateLead(id: number, updates: Partial<InsertLead>): Promise<Lead>;
   deleteLead(id: number): Promise<void>;
   getLeadCount(orgId: number): Promise<number>;
-  bulkDeleteLeads(orgId: number, ids: number[]): Promise<number>;
+  bulkDeleteLeads(orgId: number, ids: number[], userId?: string): Promise<number>;
   bulkUpdateLeads(orgId: number, ids: number[], updates: Partial<InsertLead>): Promise<number>;
+  
+  // Lead Soft-Delete & Recovery
+  getDeletedLeads(orgId: number): Promise<Lead[]>;
+  restoreLeads(orgId: number, ids: number[]): Promise<number>;
+  permanentlyDeleteLeads(orgId: number, ids: number[]): Promise<number>;
+  getLeadsByIds(orgId: number, ids: number[]): Promise<Lead[]>;
   
   // Lead Duplicate Detection
   findDuplicateLeads(orgId: number, criteria: {
@@ -1189,7 +1195,7 @@ export class DatabaseStorage implements IStorage {
   // Leads
   async getLeads(orgId: number) {
     return await db.select().from(leads)
-      .where(eq(leads.organizationId, orgId))
+      .where(and(eq(leads.organizationId, orgId), sql`${leads.deletedAt} IS NULL`))
       .orderBy(desc(leads.createdAt));
   }
   
@@ -1224,14 +1230,25 @@ export class DatabaseStorage implements IStorage {
   }
   
   async getLeadCount(orgId: number) {
-    const [result] = await db.select({ count: count() }).from(leads).where(eq(leads.organizationId, orgId));
+    const [result] = await db.select({ count: count() }).from(leads)
+      .where(and(eq(leads.organizationId, orgId), sql`${leads.deletedAt} IS NULL`));
     return result?.count || 0;
   }
   
-  async bulkDeleteLeads(orgId: number, ids: number[]): Promise<number> {
+  async bulkDeleteLeads(orgId: number, ids: number[], userId?: string): Promise<number> {
     if (ids.length === 0) return 0;
-    const result = await db.delete(leads)
-      .where(and(eq(leads.organizationId, orgId), inArray(leads.id, ids)));
+    // Use soft-delete: set deletedAt timestamp instead of hard delete
+    await db.update(leads)
+      .set({ 
+        deletedAt: new Date(),
+        deletedBy: userId || null,
+        updatedAt: new Date()
+      })
+      .where(and(
+        eq(leads.organizationId, orgId), 
+        inArray(leads.id, ids),
+        sql`${leads.deletedAt} IS NULL` // Only delete active leads
+      ));
     return ids.length;
   }
   
@@ -1239,8 +1256,60 @@ export class DatabaseStorage implements IStorage {
     if (ids.length === 0) return 0;
     await db.update(leads)
       .set({ ...updates, updatedAt: new Date() })
-      .where(and(eq(leads.organizationId, orgId), inArray(leads.id, ids)));
+      .where(and(
+        eq(leads.organizationId, orgId), 
+        inArray(leads.id, ids),
+        sql`${leads.deletedAt} IS NULL` // Only update active leads
+      ));
     return ids.length;
+  }
+  
+  // Lead Soft-Delete & Recovery methods
+  async getDeletedLeads(orgId: number): Promise<Lead[]> {
+    return await db.select().from(leads)
+      .where(and(
+        eq(leads.organizationId, orgId),
+        sql`${leads.deletedAt} IS NOT NULL`
+      ))
+      .orderBy(desc(leads.deletedAt));
+  }
+  
+  async restoreLeads(orgId: number, ids: number[]): Promise<number> {
+    if (ids.length === 0) return 0;
+    const result = await db.update(leads)
+      .set({ 
+        deletedAt: null,
+        deletedBy: null,
+        updatedAt: new Date()
+      })
+      .where(and(
+        eq(leads.organizationId, orgId), 
+        inArray(leads.id, ids),
+        sql`${leads.deletedAt} IS NOT NULL`
+      ));
+    return ids.length;
+  }
+  
+  async permanentlyDeleteLeads(orgId: number, ids: number[]): Promise<number> {
+    if (ids.length === 0) return 0;
+    // Hard delete - only for already soft-deleted leads
+    await db.delete(leads)
+      .where(and(
+        eq(leads.organizationId, orgId), 
+        inArray(leads.id, ids),
+        sql`${leads.deletedAt} IS NOT NULL`
+      ));
+    return ids.length;
+  }
+  
+  async getLeadsByIds(orgId: number, ids: number[]): Promise<Lead[]> {
+    if (ids.length === 0) return [];
+    return await db.select().from(leads)
+      .where(and(
+        eq(leads.organizationId, orgId),
+        inArray(leads.id, ids),
+        sql`${leads.deletedAt} IS NULL`
+      ));
   }
 
   async findDuplicateLeads(orgId: number, criteria: {

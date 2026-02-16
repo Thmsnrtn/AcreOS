@@ -73,6 +73,7 @@ import { CustomFieldValuesEditor } from "@/components/custom-fields";
 import { SkipTracePanel } from "@/components/skip-trace-panel";
 import { TaxDelinquentImporter } from "@/components/tax-delinquent-importer";
 import { GisFilters, type GisFilterState, defaultGisFilters, countActiveGisFilters, applyGisFiltersToLead } from "@/components/gis-filters";
+import { SafeBulkDeleteDialog } from "@/components/safe-bulk-delete-dialog";
 import { format } from "date-fns";
 import type { SavedView } from "@shared/schema";
 
@@ -681,22 +682,9 @@ export default function LeadsPage() {
     setSelectedLeadIds(newSet);
   };
 
-  const handleBulkDelete = async () => {
-    if (selectedLeadIds.size === 0) return;
-    setIsBulkDeleting(true);
-    try {
-      const res = await apiRequest("POST", "/api/leads/bulk-delete", { ids: Array.from(selectedLeadIds) });
-      if (!res.ok) throw new Error("Failed to delete leads");
-      const result = await res.json();
-      toast({ title: "Success", description: `Deleted ${result.deletedCount} leads.` });
-      setSelectedLeadIds(new Set());
-      queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message || "Failed to delete leads", variant: "destructive" });
-    } finally {
-      setIsBulkDeleting(false);
-      setShowBulkDeleteConfirm(false);
-    }
+  const handleBulkDeleteSuccess = (deletedIds: number[]) => {
+    setSelectedLeadIds(new Set());
+    // Query cache is invalidated by the SafeBulkDeleteDialog component
   };
 
   const handleBulkStatusChange = async (status: string) => {
@@ -1566,15 +1554,11 @@ export default function LeadsPage() {
         variant="destructive"
       />
 
-      <ConfirmDialog
+      <SafeBulkDeleteDialog
         open={showBulkDeleteConfirm}
-        onOpenChange={(open) => !open && setShowBulkDeleteConfirm(false)}
-        title="Delete Selected Leads"
-        description={`Are you sure you want to delete ${selectedLeadIds.size} lead${selectedLeadIds.size !== 1 ? "s" : ""}? This action cannot be undone and will permanently remove them from your CRM.`}
-        confirmLabel={`Delete ${selectedLeadIds.size} Lead${selectedLeadIds.size !== 1 ? "s" : ""}`}
-        onConfirm={handleBulkDelete}
-        isLoading={isBulkDeleting}
-        variant="destructive"
+        onOpenChange={setShowBulkDeleteConfirm}
+        selectedIds={Array.from(selectedLeadIds)}
+        onSuccess={handleBulkDeleteSuccess}
       />
 
       <Dialog open={!!offerLetterLead} onOpenChange={(open) => !open && setOfferLetterLead(null)}>
