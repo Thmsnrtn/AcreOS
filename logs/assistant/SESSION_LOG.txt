@@ -1,0 +1,83 @@
+================================================================================
+SESSION LOG - AcreOS Agent Assistant
+================================================================================
+
+Session Date: 2026-02-16
+Focus Area: Deals
+Agent: Warp Agent
+
+--------------------------------------------------------------------------------
+TASK SUMMARY
+--------------------------------------------------------------------------------
+Implemented "Next-Action Guidance" for Deal cards in the pipeline view.
+This was identified as the highest-leverage improvement for land investors
+who need quick visual cues to prioritize their deal pipeline.
+
+--------------------------------------------------------------------------------
+CHANGES MADE
+--------------------------------------------------------------------------------
+
+1. Created: client/src/lib/deal-utils.ts
+   - getDealNextAction(): Returns stage-specific action text and icon
+   - getDaysInStage(): Calculates days since last stage change
+   - getDealUrgency(): Returns "normal", "warning", or "urgent" based on staleness
+   - isDealStale(): Boolean check for stale deals
+   - Stage-specific staleness thresholds (e.g., "countered" = 3 days, "in_escrow" = 14 days)
+
+2. Modified: client/src/pages/deals.tsx
+   - Added imports for new helper functions and icons (Send, Phone, ArrowRight)
+   - Added nextActionIcons mapping for visual consistency
+   - Updated DealCard component:
+     * Shows "days in stage" badge (e.g., "5d") next to deal type
+     * Displays next action with icon (e.g., "→ 📞 Follow up")
+     * Applies warning/urgent border styling for stale deals
+     * Hidden for closed/cancelled deals
+
+3. Created: logs/audit/ux_audit_Deals.json
+   - Documented 4 potential improvements for Deals page
+   - Marked deals-001 (next-action-guidance) as complete
+   - Other improvements remain in backlog for future sessions
+
+--------------------------------------------------------------------------------
+NEXT ACTIONS BY STAGE
+--------------------------------------------------------------------------------
+- negotiating → "Prepare offer" (📄)
+- offer_sent  → "Follow up" (📞)
+- countered   → "Review counter" (👁)
+- accepted    → "Order title" (📄)
+- in_escrow   → "Track closing" (📅)
+- closed      → "Complete" (✓) [hidden]
+- cancelled   → "Archived" (✓) [hidden]
+
+--------------------------------------------------------------------------------
+STALENESS THRESHOLDS (days)
+--------------------------------------------------------------------------------
+- negotiating: 7 days
+- offer_sent:  5 days  
+- countered:   3 days (urgent - seller waiting!)
+- accepted:    5 days
+- in_escrow:   14 days (closing takes time)
+
+--------------------------------------------------------------------------------
+PRE-EXISTING ISSUES
+--------------------------------------------------------------------------------
+Note: `npm run check` has 21 pre-existing TypeScript errors in:
+  client/src/hooks/use-infinite-scroll.ts
+  
+This file appears to have JSX in a .ts file (should be .tsx).
+These errors are NOT related to this session's changes.
+
+--------------------------------------------------------------------------------
+TESTING GUIDANCE
+--------------------------------------------------------------------------------
+1. Navigate to /deals page
+2. Create or view existing deals in various stages
+3. Verify each deal card shows:
+   - Days-in-stage badge (e.g., "3d") with appropriate color
+   - Next action text with icon below the amount
+4. Let a deal sit for a few days (or manually set updatedAt) to see:
+   - Warning styling (amber) at ~70% of threshold
+   - Urgent styling (orange) at 100%+ of threshold
+5. Closed/cancelled deals should NOT show next action or days badge
+
+================================================================================

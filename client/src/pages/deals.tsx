@@ -22,7 +22,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, MapPin, DollarSign, Calendar, Building, TrendingUp, CheckCircle, X, GripVertical, FileText, Trash2, Loader2, Briefcase, Calculator, ClipboardCheck, Upload, AlertTriangle, CheckSquare, Square, Clock, Download, Package, Play, Eye, FolderPlus, Sparkles, Flame, Snowflake, Minus, LayoutGrid, List, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, MapPin, DollarSign, Calendar, Building, TrendingUp, CheckCircle, X, GripVertical, FileText, Trash2, Loader2, Briefcase, Calculator, ClipboardCheck, Upload, AlertTriangle, CheckSquare, Square, Clock, Download, Package, Play, Eye, FolderPlus, Sparkles, Flame, Snowflake, Minus, LayoutGrid, List, ChevronLeft, ChevronRight, Send, Phone, ArrowRight } from "lucide-react";
+import { getDealNextAction, getDaysInStage, getDealUrgency, type DealNextAction } from "@/lib/deal-utils";
 import { EmptyState } from "@/components/empty-state";
 import { DealsEmptyState } from "@/components/empty-states";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -450,10 +451,37 @@ export default function DealsPage() {
   );
 }
 
+const nextActionIcons: Record<DealNextAction["icon"], React.ReactNode> = {
+  send: <Send className="w-3 h-3" />,
+  eye: <Eye className="w-3 h-3" />,
+  phone: <Phone className="w-3 h-3" />,
+  file: <FileText className="w-3 h-3" />,
+  calendar: <Calendar className="w-3 h-3" />,
+  check: <CheckCircle className="w-3 h-3" />,
+  alert: <AlertTriangle className="w-3 h-3" />,
+};
+
 function DealCard({ deal, onSelect }: { deal: DealWithProperty; onSelect: () => void }) {
+  const nextAction = getDealNextAction(deal);
+  const daysInStage = getDaysInStage(deal);
+  const urgency = getDealUrgency(deal);
+  const isActiveStage = deal.status !== 'closed' && deal.status !== 'cancelled';
+
+  const urgencyStyles = {
+    normal: '',
+    warning: 'border-amber-500/40 bg-amber-500/5',
+    urgent: 'border-orange-500/50 bg-orange-500/5',
+  };
+
+  const urgencyBadgeStyles = {
+    normal: 'bg-muted text-muted-foreground',
+    warning: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+    urgent: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
+  };
+
   return (
     <Card 
-      className="floating-window cursor-pointer hover-elevate active:scale-[0.98] transition-transform touch-manipulation"
+      className={`floating-window cursor-pointer hover-elevate active:scale-[0.98] transition-transform touch-manipulation ${urgencyStyles[urgency]}`}
       onClick={onSelect}
       data-testid={`card-deal-${deal.id}`}
     >
@@ -465,6 +493,11 @@ function DealCard({ deal, onSelect }: { deal: DealWithProperty; onSelect: () => 
               <Badge variant={deal.type === 'acquisition' ? 'default' : 'secondary'} className="text-xs">
                 {deal.type === 'acquisition' ? 'Buy' : 'Sell'}
               </Badge>
+              {isActiveStage && daysInStage > 0 && (
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${urgencyBadgeStyles[urgency]}`} data-testid={`badge-days-in-stage-${deal.id}`}>
+                  {daysInStage}d
+                </span>
+              )}
             </div>
             <div className="mt-2">
               {deal.property ? (
@@ -486,6 +519,16 @@ function DealCard({ deal, onSelect }: { deal: DealWithProperty; onSelect: () => 
                 <DollarSign className="w-4 h-4 text-emerald-600" />
                 <span className="text-base font-mono font-medium text-emerald-600">
                   ${Number(deal.acceptedAmount || deal.offerAmount || 0).toLocaleString()}
+                </span>
+              </div>
+            )}
+            {/* Next Action Indicator */}
+            {isActiveStage && (
+              <div className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground" data-testid={`next-action-${deal.id}`}>
+                <ArrowRight className="w-3 h-3 flex-shrink-0" />
+                <span className="flex items-center gap-1">
+                  {nextActionIcons[nextAction.icon]}
+                  {nextAction.action}
                 </span>
               </div>
             )}
