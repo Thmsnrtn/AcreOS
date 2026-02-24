@@ -695,7 +695,10 @@ export default function PropertiesPage() {
   );
 }
 
-function PropertyCard({ property, onDelete }
+function PropertyCard({ property, onDelete }: {
+  property: Property;
+  onDelete: () => void;
+}) {
   const { mutate: fetchParcel, isPending: isFetchingParcel } = useFetchPropertyParcel();
   const [isDownloading, setIsDownloading] = useState(false);
   const [isDetailOpen, setIsDetailOpen] = useState(false);

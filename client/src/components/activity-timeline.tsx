@@ -3,7 +3,8 @@ import { formatDistanceToNow, format } from "date-fns";
 import { 
   Mail, MailOpen, MousePointer, MessageSquare, MessageCircle,
   FileText, Package, PhoneOutgoing, PhoneIncoming, StickyNote,
-  ArrowRightCircle, DollarSign, Upload, Filter, ChevronDown, ChevronUp, Loader2
+  ArrowRightCircle, DollarSign, Upload, Filter, ChevronDown, ChevronUp, Loader2,
+  CheckSquare, ListPlus, ListChecks
 } from "lucide-react";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -36,6 +37,9 @@ const eventTypeIcons: Record<ActivityEventType, typeof Mail> = {
   stage_changed: ArrowRightCircle,
   payment_received: DollarSign,
   document_uploaded: Upload,
+  task_completed: CheckSquare,
+  task_created: ListPlus,
+  task_updated: ListChecks,
 };
 
 const eventTypeColors: Record<ActivityEventType, string> = {
@@ -51,7 +55,10 @@ const eventTypeColors: Record<ActivityEventType, string> = {
   note_added: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300",
   stage_changed: "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300",
   payment_received: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300",
-  document_uploaded: "bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-300",
+  document_uploaded: "bg-muted text-muted-foreground",
+  task_completed: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300",
+  task_created: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
+  task_updated: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300",
 };
 
 interface TimelineEventProps {
@@ -81,11 +88,11 @@ function TimelineEvent({ event }: TimelineEventProps) {
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div className="flex-1 min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="outline" size="sm" className={colorClass}>
+                <Badge variant="outline" className={`text-xs ${colorClass}`}>
                   {eventInfo?.name || eventType}
                 </Badge>
                 {event.campaignId && (
-                  <Badge variant="secondary" size="sm">
+                  <Badge variant="secondary" className="text-xs">
                     Campaign
                   </Badge>
                 )}
@@ -212,7 +219,7 @@ export function ActivityTimeline({ entityType, entityId, className }: ActivityTi
               <Filter className="w-4 h-4 mr-2" />
               Filter
               {selectedEventTypes.size > 0 && (
-                <Badge variant="secondary" size="sm" className="ml-2">
+                <Badge variant="secondary" className="text-xs ml-2">
                   {selectedEventTypes.size}
                 </Badge>
               )}

@@ -343,6 +343,10 @@ export default function FinancePage() {
 }
 
 function NoteDetailDrawer({ note, onClose, onDelete }: {
+  note: NoteWithDetails;
+  onClose: () => void;
+  onDelete: () => void;
+}) {
   const { data: payments, isLoading: paymentsLoading } = usePayments(note.id);
   const [showRecordPayment, setShowRecordPayment] = useState(false);
   const [showAcceptPayment, setShowAcceptPayment] = useState(false);
