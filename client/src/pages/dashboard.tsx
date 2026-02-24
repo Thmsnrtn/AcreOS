@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Sidebar } from "@/components/layout-sidebar";
+import { PageShell } from "@/components/page-shell";
 import { StatCard } from "@/components/stat-card";
 import { useOrganization, useDashboardStats } from "@/hooks/use-organization";
 import { useLeads, useAgingLeads, type AgingLead } from "@/hooks/use-leads";
@@ -450,11 +450,8 @@ export default function Dashboard() {
   );
 
   return (
-    <div className="flex min-h-screen bg-background desert-gradient">
-      <Sidebar />
+    <PageShell>
       <OnboardingWizard />
-      <main className="flex-1 md:ml-[17rem] p-4 pt-16 md:pt-8 md:p-8 pb-8 overflow-x-hidden">
-        <div className="max-w-7xl mx-auto space-y-8">
           
           <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
             <div className="flex items-center gap-3 flex-wrap">
@@ -511,8 +508,6 @@ export default function Dashboard() {
               {visibleCharts.map((widgetId, idx) => renderWidget(widgetId, widgetSettings.order.indexOf(widgetId)))}
             </div>
           )}
-        </div>
-      </main>
-    </div>
+    </PageShell>
   );
 }

@@ -43,7 +43,7 @@ import {
 import { activityLogger } from "./services/activityLogger";
 
 // Auth imports
-import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
+import { setupAuth, registerAuthRoutes, isAuthenticated } from "./auth";
 
 // AI imports
 import { processChat, processChatStream, agentProfiles, getOrCreateConversation } from "./ai/executive";
@@ -118,9 +118,17 @@ import {
 // AI Operations Routes
 import { registerAIOperationsRoutes } from "./routes-ai-operations";
 
-// Rate limiting middleware
-import { apiRateLimit, strictRateLimit, authRateLimit } from "./middleware/rate-limiter";
-import { createRateLimiter, RATE_LIMIT_CONFIGS } from "./middleware/rateLimit";
+// Feature routes
+import marketplaceRouter from "./routes-marketplace";
+import predictionsRouter from "./routes-predictions";
+
+// Rate limiting middleware (consolidated sliding-window implementation)
+import { createRateLimiter, rateLimiters, RATE_LIMIT_CONFIGS } from "./middleware/rateLimit";
+
+// Named aliases for backwards compatibility
+const apiRateLimit = rateLimiters.default;
+const strictRateLimit = rateLimiters.strict;
+const authRateLimit = rateLimiters.auth;
 
 // ============================================
 // STRUCTURED LOGGER
@@ -322,76 +330,8 @@ const upload = multer({
   },
 });
 
-// Founder email - gets unlimited credits and enterprise access
-const FOUNDER_EMAIL = "thmsnrtn@gmail.com";
-
-// Middleware to get/create organization for authenticated user
-async function getOrCreateOrg(req: Request, res: Response, next: NextFunction) {
-  if (!req.user) {
-    return res.status(401).json({ message: "Unauthorized" });
-  }
-  
-  // Get user ID from Replit Auth claims
-  const user = req.user as any;
-  const userId = user.claims?.sub || user.id;
-  const userEmail = user.claims?.email || user.email;
-  
-  if (!userId) {
-    console.error("No user ID found in session:", user);
-    return res.status(401).json({ message: "Invalid user session" });
-  }
-  
-  // Check if this is the founder account
-  const isFounderAccount = userEmail?.toLowerCase() === FOUNDER_EMAIL.toLowerCase();
-  
-  let org = await storage.getOrganizationByOwner(userId);
-  
-  if (!org) {
-    // Create default organization for new user with 7-day free trial
-    const displayName = user.claims?.first_name || user.username || user.email || "User";
-    const slug = `org-${userId}-${Date.now()}`;
-    const now = new Date();
-    const trialEnds = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days from now
-    
-    // Founders get enterprise tier and unlimited access
-    org = await storage.createOrganization({
-      name: `${displayName}'s Organization`,
-      slug,
-      ownerId: userId,
-      subscriptionTier: isFounderAccount ? "enterprise" : "free",
-      subscriptionStatus: "active",
-      trialStartedAt: isFounderAccount ? null : now,
-      trialEndsAt: isFounderAccount ? null : trialEnds,
-      trialUsed: isFounderAccount ? true : false,
-      isFounder: isFounderAccount,
-    });
-    
-    // Add user as owner team member
-    await storage.createTeamMember({
-      organizationId: org.id,
-      userId,
-      displayName,
-      role: "owner",
-      isActive: true,
-    });
-    
-    if (isFounderAccount) {
-      console.log(`[Founder] Created founder organization for ${userEmail}`);
-    }
-  } else if (isFounderAccount && !org.isFounder) {
-    // Update existing org to founder status if they're the founder
-    await db.update(organizations).set({ 
-      isFounder: true,
-      subscriptionTier: "enterprise",
-      subscriptionStatus: "active"
-    }).where(eq(organizations.id, org.id));
-    org = { ...org, isFounder: true, subscriptionTier: "enterprise", subscriptionStatus: "active" };
-    console.log(`[Founder] Upgraded existing organization to founder status for ${userEmail}`);
-  }
-  
-  (req as any).organization = org;
-  next();
-}
+// Org middleware — imported from shared module
+import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -486,6 +426,16 @@ export async function registerRoutes(
   // Protected API routes - all require authentication
   const api = app;
   
+  // ============================================
+  // MARKETPLACE ROUTES (mounted as sub-router)
+  // ============================================
+  app.use('/api/marketplace', isAuthenticated, getOrCreateOrg, marketplaceRouter);
+
+  // ============================================
+  // PREDICTION ROUTES (mounted as sub-router)
+  // ============================================
+  app.use('/api/predictions', isAuthenticated, getOrCreateOrg, predictionsRouter);
+
   // ============================================
   // DASHBOARD
   // ============================================
@@ -19028,7 +18978,7 @@ Seller Signature (if applicable)
     }
   });
 
-  // Validate Twilio API key
+  // Validate Twilio API key (Account SID + Auth Token)
   api.post("/api/settings/validate-twilio", isAuthenticated, async (req, res) => {
     try {
       const { apiKey } = req.body;
@@ -19037,20 +18987,30 @@ Seller Signature (if applicable)
         return res.status(400).json({ valid: false, message: "API key is required" });
       }
 
-      // For Twilio, validate the auth token format and attempt a basic API call
-      // Twilio auth tokens are typically 32 characters
-      if (apiKey.length < 20) {
-        return res.json({ valid: false });
+      // Twilio expects SID:TOKEN format, or just the auth token
+      // Validate by calling a read-only endpoint (GET /Accounts)
+      const parts = apiKey.includes(":") ? apiKey.split(":") : [null, apiKey];
+      const sid = parts[0] || process.env.TWILIO_ACCOUNT_SID;
+      const token = parts[1] || apiKey;
+
+      if (!sid) {
+        return res.json({ valid: false, message: "Account SID required (format: SID:TOKEN or set TWILIO_ACCOUNT_SID env)" });
       }
 
-      res.json({ valid: true });
+      const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}.json`, {
+        headers: {
+          Authorization: `Basic ${Buffer.from(`${sid}:${token}`).toString("base64")}`,
+        },
+      });
+
+      res.json({ valid: response.ok });
     } catch (error) {
       console.error("Twilio validation error:", error);
       res.json({ valid: false });
     }
   });
 
-  // Validate SendGrid API key
+  // Validate SendGrid API key (read-only scopes check — does NOT send email)
   api.post("/api/settings/validate-sendgrid", isAuthenticated, async (req, res) => {
     try {
       const { apiKey } = req.body;
@@ -19059,23 +19019,15 @@ Seller Signature (if applicable)
         return res.status(400).json({ valid: false, message: "API key is required" });
       }
 
-      // Make a simple API call to verify the key works
-      const response = await fetch("https://api.sendgrid.com/v3/mail/send", {
-        method: "POST",
+      // Use a read-only endpoint to verify the key — GET /v3/scopes
+      const response = await fetch("https://api.sendgrid.com/v3/scopes", {
+        method: "GET",
         headers: {
           Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          personalizations: [{ to: [{ email: "test@example.com" }] }],
-          from: { email: "test@example.com" },
-          subject: "Test",
-          content: [{ type: "text/plain", value: "test" }],
-        }),
       });
 
-      // SendGrid returns 202 for valid requests, 401 for invalid auth
-      res.json({ valid: response.status !== 401 });
+      res.json({ valid: response.ok });
     } catch (error) {
       console.error("SendGrid validation error:", error);
       res.json({ valid: false });

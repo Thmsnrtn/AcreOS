@@ -5,7 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { PropertyListing, Property } from "@shared/schema";
-import { Sidebar } from "@/components/layout-sidebar";
+import { PageShell } from "@/components/page-shell";
 import { ListSkeleton } from "@/components/list-skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { PaymentCalculator } from "@/components/payment-calculator";
@@ -56,7 +56,7 @@ const listingFormSchema = z.object({
 type ListingFormValues = z.infer<typeof listingFormSchema>;
 
 const STATUS_COLORS: Record<string, string> = {
-  draft: "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300",
+  draft: "bg-muted text-muted-foreground",
   active: "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300",
   pending_sale: "bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300",
   sold: "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300",
@@ -204,9 +204,7 @@ export default function ListingsPage() {
   };
 
   return (
-    <div className="flex min-h-screen bg-background">
-      <Sidebar />
-      <main className="flex-1 md:ml-[17rem] p-4 pt-16 md:pt-8 md:p-8 pb-8 overflow-x-hidden overflow-auto">
+    <PageShell>
         <div className="flex items-center justify-between gap-4 flex-wrap mb-6">
           <div>
             <h1 className="text-2xl font-bold" data-testid="text-page-title">Listings</h1>
@@ -796,7 +794,6 @@ export default function ListingsPage() {
             )}
           </DialogContent>
         </Dialog>
-      </main>
-    </div>
+    </PageShell>
   );
 }

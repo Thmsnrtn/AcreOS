@@ -1,4 +1,4 @@
-import { Sidebar } from "@/components/layout-sidebar";
+import { PageShell } from "@/components/page-shell";
 import { 
   useOrganization, 
   useStripeProducts, 
@@ -691,7 +691,7 @@ export default function Settings() {
       case "pro": return "bg-purple-500/10 text-purple-500 border-purple-500/20";
       case "scale": return "bg-amber-500/10 text-amber-500 border-amber-500/20";
       case "starter": return "bg-blue-500/10 text-blue-500 border-blue-500/20";
-      default: return "bg-slate-500/10 text-slate-500 border-slate-500/20";
+      default: return "bg-muted text-muted-foreground border-border";
     }
   };
 
@@ -709,15 +709,12 @@ export default function Settings() {
   };
 
   return (
-    <div className="flex min-h-screen bg-background desert-gradient">
-      <Sidebar />
-      <main className="flex-1 md:ml-[17rem] p-4 pt-16 md:pt-8 md:p-8 pb-8 overflow-x-hidden">
-        <div className="max-w-4xl mx-auto space-y-6">
+    <PageShell maxWidth="4xl">
           <div>
-            <h1 className="text-3xl font-bold text-slate-900 dark:text-white" data-testid="text-settings-title">
+            <h1 className="text-3xl font-bold" data-testid="text-settings-title">
               Settings
             </h1>
-            <p className="text-slate-500 mt-2">Manage your organization, team, and preferences.</p>
+            <p className="text-muted-foreground mt-2">Manage your organization, team, and preferences.</p>
           </div>
 
           <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
@@ -1456,9 +1453,6 @@ export default function Settings() {
               </div>
             </TabsContent>
           </Tabs>
-        </div>
-      </main>
-      
       <ConfirmDialog
         open={showClearConfirm}
         onOpenChange={setShowClearConfirm}
@@ -1469,6 +1463,6 @@ export default function Settings() {
         isLoading={clearDataMutation.isPending}
         variant="destructive"
       />
-    </div>
+    </PageShell>
   );
 }

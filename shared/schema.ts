@@ -7960,3 +7960,1493 @@ export const insertSophieCrossOrgLearningSchema = createInsertSchema(sophieCross
 });
 export type InsertSophieCrossOrgLearning = z.infer<typeof insertSophieCrossOrgLearningSchema>;
 export type SophieCrossOrgLearning = typeof sophieCrossOrgLearnings.$inferSelect;
+
+// ============================================
+// PHASE 1: INTELLIGENCE AMPLIFICATION
+// ============================================
+// (Tables already defined above - reusing existing definitions)
+
+// Market Indicators - Aggregated economic and real estate signals (DUPLICATE - ALREADY EXISTS)
+// Using existing marketPredictions table definition from earlier in file
+export const marketIndicatorsDuplicate = pgTable("market_indicators_temp", {
+  id: serial("id").primaryKey(),
+  
+  indicatorDate: timestamp("indicator_date").notNull().defaultNow(),
+  
+  // Interest rates
+  federalFundsRate: numeric("federal_funds_rate"),
+  mortgageRate30Yr: numeric("mortgage_rate_30_yr"),
+  
+  // Economic
+  gdpGrowthRate: numeric("gdp_growth_rate"),
+  inflationRate: numeric("inflation_rate"),
+  unemploymentRate: numeric("unemployment_rate"),
+  
+  // Real estate specific
+  nationalHomePriceIndex: numeric("national_home_price_index"),
+  landDemandIndex: numeric("land_demand_index"), // custom calculation
+  
+  // Sentiment
+  consumerConfidenceIndex: numeric("consumer_confidence_index"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertMarketIndicatorSchema = createInsertSchema(marketIndicatorsDuplicate).omit({ id: true, createdAt: true });
+export type InsertMarketIndicator = z.infer<typeof insertMarketIndicatorSchema>;
+export type MarketIndicator = typeof marketIndicatorsDuplicate.$inferSelect;
+
+// Price Trends - Historical price movements by property type and location
+export const priceTrends = pgTable("price_trends", {
+  id: serial("id").primaryKey(),
+  
+  // Location
+  state: text("state").notNull(),
+  county: text("county").notNull(),
+  
+  // Property characteristics
+  propertyType: text("property_type").notNull(), // raw_land, recreational, agricultural, residential_lot, commercial
+  acreageRange: text("acreage_range"), // 0-1, 1-5, 5-10, 10-40, 40+
+  
+  // Time period
+  periodStart: timestamp("period_start").notNull(),
+  periodEnd: timestamp("period_end").notNull(),
+  
+  // Pricing data
+  avgPricePerAcre: numeric("avg_price_per_acre").notNull(),
+  medianPricePerAcre: numeric("median_price_per_acre"),
+  minPrice: numeric("min_price"),
+  maxPrice: numeric("max_price"),
+  
+  // Volume
+  transactionCount: integer("transaction_count").notNull(),
+  totalAcresSold: numeric("total_acres_sold"),
+  
+  // Velocity
+  avgDaysOnMarket: integer("avg_days_on_market"),
+  
+  // Comparison to previous period
+  priceChange: numeric("price_change"), // percentage
+  volumeChange: numeric("volume_change"), // percentage
+  
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("price_trends_state_county_idx").on(table.state, table.county),
+  index("price_trends_type_idx").on(table.propertyType),
+  index("price_trends_period_idx").on(table.periodStart, table.periodEnd),
+]);
+
+export const insertPriceTrendSchema = createInsertSchema(priceTrends).omit({ id: true, createdAt: true });
+export type InsertPriceTrend = z.infer<typeof insertPriceTrendSchema>;
+export type PriceTrend = typeof priceTrends.$inferSelect;
+
+// Scraped Deals - Opportunities found through automation
+export const scrapedDeals = pgTable("scraped_deals", {
+  id: serial("id").primaryKey(),
+  
+  // Source information
+  sourceId: integer("source_id"), // references dealSources
+  sourceType: text("source_type").notNull(), // tax_auction, foreclosure, probate, expired_listing, fsbo
+  sourceUrl: text("source_url"),
+  
+  // Property details
+  apn: text("apn"),
+  address: text("address"),
+  city: text("city"),
+  county: text("county").notNull(),
+  state: text("state").notNull(),
+  zip: text("zip"),
+  
+  // Property characteristics
+  sizeAcres: numeric("size_acres"),
+  zoning: text("zoning"),
+  
+  // Pricing
+  listPrice: numeric("list_price"),
+  assessedValue: numeric("assessed_value"),
+  taxesOwed: numeric("taxes_owed"),
+  minimumBid: numeric("minimum_bid"),
+  
+  // Auction/sale details
+  auctionDate: timestamp("auction_date"),
+  auctionStatus: text("auction_status"), // upcoming, live, sold, unsold, cancelled
+  
+  // Owner information
+  ownerName: text("owner_name"),
+  ownerAddress: text("owner_address"),
+  ownerType: text("owner_type"), // individual, corporate, estate, government
+  
+  // Distress signals
+  distressScore: integer("distress_score"), // 0-100
+  distressFactors: jsonb("distress_factors").$type<{
+    taxDelinquent?: boolean;
+    yearsDelinquent?: number;
+    foreclosureStage?: string;
+    probateStatus?: string;
+    vacantLand?: boolean;
+    absenteeOwner?: boolean;
+    ownershipDuration?: number;
+  }>(),
+  
+  // Processing status
+  status: text("status").notNull().default("new"), // new, reviewed, contacted, added_to_crm, passed, archived
+  convertedToLeadId: integer("converted_to_lead_id"),
+  convertedToPropertyId: integer("converted_to_property_id"),
+  
+  // Scraping metadata
+  scrapedAt: timestamp("scraped_at").notNull().defaultNow(),
+  lastVerified: timestamp("last_verified"),
+  
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("scraped_deals_state_county_idx").on(table.state, table.county),
+  index("scraped_deals_status_idx").on(table.status),
+  index("scraped_deals_auction_date_idx").on(table.auctionDate),
+  index("scraped_deals_distress_idx").on(table.distressScore),
+]);
+
+export const insertScrapedDealSchema = createInsertSchema(scrapedDeals).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertScrapedDeal = z.infer<typeof insertScrapedDealSchema>;
+export type ScrapedDeal = typeof scrapedDeals.$inferSelect;
+
+// Deal Sources - Registry of county websites and data sources for scraping
+export const dealSources = pgTable("deal_sources", {
+  id: serial("id").primaryKey(),
+  
+  // Source identification
+  name: text("name").notNull(),
+  sourceType: text("source_type").notNull(), // county_website, auction_site, foreclosure_tracker, mls
+  
+  // Location
+  state: text("state").notNull(),
+  county: text("county"),
+  
+  // URL and scraping config
+  baseUrl: text("base_url").notNull(),
+  scrapingConfig: jsonb("scraping_config").$type<{
+    scraperType: string; // puppeteer, api, rss
+    selectors?: Record<string, string>;
+    apiEndpoint?: string;
+    apiKey?: string;
+    updateFrequency?: string; // daily, weekly, realtime
+    customHeaders?: Record<string, string>;
+  }>(),
+  
+  // Status
+  isActive: boolean("is_active").default(true),
+  lastScraped: timestamp("last_scraped"),
+  lastSuccessful: timestamp("last_successful"),
+  consecutiveFailures: integer("consecutive_failures").default(0),
+  
+  // Performance
+  avgDealsPerScrape: numeric("avg_deals_per_scrape"),
+  totalDealsFound: integer("total_deals_found").default(0),
+  conversionRate: numeric("conversion_rate"), // scraped deals to actual deals
+  
+  // Priority
+  priority: integer("priority").default(50), // 0-100, higher = more important
+  
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("deal_sources_state_county_idx").on(table.state, table.county),
+  index("deal_sources_active_idx").on(table.isActive),
+]);
+
+export const insertDealSourceSchema = createInsertSchema(dealSources).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertDealSource = z.infer<typeof insertDealSourceSchema>;
+export type DealSource = typeof dealSources.$inferSelect;
+
+// Auto-Bid Rules - User-defined parameters for automatic bidding
+export const autoBidRules = pgTable("auto_bid_rules", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  
+  name: text("name").notNull(),
+  isActive: boolean("is_active").default(true),
+  
+  // Geographic filters
+  states: jsonb("states").$type<string[]>(),
+  counties: jsonb("counties").$type<string[]>(),
+  
+  // Property filters
+  minAcres: numeric("min_acres"),
+  maxAcres: numeric("max_acres"),
+  propertyTypes: jsonb("property_types").$type<string[]>(),
+  
+  // Price parameters
+  maxBidAmount: numeric("max_bid_amount").notNull(),
+  bidStrategy: text("bid_strategy").notNull(), // percentage_of_value, fixed_amount, incremental
+  bidPercentage: numeric("bid_percentage"), // if percentage_of_value
+  incrementAmount: numeric("increment_amount"), // if incremental
+  
+  // Distress criteria
+  minDistressScore: integer("min_distress_score"),
+  requireTaxDelinquent: boolean("require_tax_delinquent").default(false),
+  
+  // Approval workflow
+  requiresApproval: boolean("requires_approval").default(true),
+  approvalThreshold: numeric("approval_threshold"), // bids above this require approval
+  
+  // Budget controls
+  monthlyBudget: numeric("monthly_budget"),
+  currentMonthSpent: numeric("current_month_spent").default("0"),
+  
+  // Stats
+  bidsPlaced: integer("bids_placed").default(0),
+  bidsWon: integer("bids_won").default(0),
+  totalSpent: numeric("total_spent").default("0"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("auto_bid_rules_org_idx").on(table.organizationId),
+  index("auto_bid_rules_active_idx").on(table.isActive),
+]);
+
+export const insertAutoBidRuleSchema = createInsertSchema(autoBidRules).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertAutoBidRule = z.infer<typeof insertAutoBidRuleSchema>;
+export type AutoBidRule = typeof autoBidRules.$inferSelect;
+
+// Deal Alerts - Notifications for matching deals
+export const dealAlerts = pgTable("deal_alerts", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  scrapedDealId: integer("scraped_deal_id").references(() => scrapedDeals.id).notNull(),
+  autoBidRuleId: integer("auto_bid_rule_id").references(() => autoBidRules.id),
+  
+  alertType: text("alert_type").notNull(), // match, bid_placed, bid_won, bid_lost, auction_soon
+  priority: text("priority").notNull().default("medium"), // low, medium, high, urgent
+  
+  message: text("message").notNull(),
+  actionRequired: boolean("action_required").default(false),
+  actionUrl: text("action_url"),
+  
+  // Delivery
+  sentAt: timestamp("sent_at"),
+  readAt: timestamp("read_at"),
+  dismissedAt: timestamp("dismissed_at"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("deal_alerts_org_idx").on(table.organizationId),
+  index("deal_alerts_type_idx").on(table.alertType),
+  index("deal_alerts_read_idx").on(table.readAt),
+]);
+
+export const insertDealAlertSchema = createInsertSchema(dealAlerts).omit({ id: true, createdAt: true });
+export type InsertDealAlert = z.infer<typeof insertDealAlertSchema>;
+export type DealAlert = typeof dealAlerts.$inferSelect;
+
+// Negotiation Threads - Track negotiation conversations
+export const negotiationThreads = pgTable("negotiation_threads", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  
+  leadId: integer("lead_id").references(() => leads.id).notNull(),
+  propertyId: integer("property_id").references(() => properties.id),
+  dealId: integer("deal_id"),
+  
+  status: text("status").notNull().default("active"), // active, stalled, closed_won, closed_lost, archived
+  
+  // Current state
+  currentOfferAmount: numeric("current_offer_amount"),
+  targetPrice: numeric("target_price"),
+  walkawayPrice: numeric("walkaway_price"),
+  
+  // Psychology profile
+  sellerProfile: jsonb("seller_profile").$type<{
+    communicationStyle?: string; // responsive, slow, aggressive, friendly
+    motivationLevel?: string; // high, medium, low
+    urgency?: string; // immediate, flexible, no_rush
+    priceFlexibility?: string; // firm, somewhat_flexible, very_flexible
+    keyMotivators?: string[]; // cash, speed, terms, family, tax
+  }>(),
+  
+  // Sentiment analysis
+  overallSentiment: text("overall_sentiment"), // positive, neutral, negative, frustrated
+  sentimentTrend: text("sentiment_trend"), // improving, stable, declining
+  
+  // AI strategy
+  currentStrategy: text("current_strategy"), // anchor_low, meet_middle, add_terms, wait_and_watch
+  strategyConfidence: numeric("strategy_confidence"), // 0-1
+  
+  // Stats
+  totalExchanges: integer("total_exchanges").default(0),
+  avgResponseTimeHours: numeric("avg_response_time_hours"),
+  daysInNegotiation: integer("days_in_negotiation"),
+  
+  startedAt: timestamp("started_at").notNull().defaultNow(),
+  lastActivityAt: timestamp("last_activity_at").defaultNow(),
+  closedAt: timestamp("closed_at"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("negotiation_threads_org_idx").on(table.organizationId),
+  index("negotiation_threads_lead_idx").on(table.leadId),
+  index("negotiation_threads_status_idx").on(table.status),
+]);
+
+export const insertNegotiationThreadSchema = createInsertSchema(negotiationThreads).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertNegotiationThread = z.infer<typeof insertNegotiationThreadSchema>;
+export type NegotiationThread = typeof negotiationThreads.$inferSelect;
+
+// Negotiation Moves - Individual offers and counter-offers
+export const negotiationMoves = pgTable("negotiation_moves", {
+  id: serial("id").primaryKey(),
+  threadId: integer("thread_id").references(() => negotiationThreads.id).notNull(),
+  
+  moveNumber: integer("move_number").notNull(),
+  moveType: text("move_type").notNull(), // initial_offer, counter_offer, acceptance, rejection, terms_change
+  party: text("party").notNull(), // buyer, seller
+  
+  // Offer details
+  offerAmount: numeric("offer_amount"),
+  terms: text("terms"),
+  reasoning: text("reasoning"), // AI's reasoning for this move
+  
+  // AI generation
+  generatedByAI: boolean("generated_by_ai").default(false),
+  aiModel: text("ai_model"),
+  aiConfidence: numeric("ai_confidence"),
+  alternativeStrategies: jsonb("alternative_strategies").$type<Array<{
+    strategy: string;
+    amount: number;
+    reasoning: string;
+    confidence: number;
+  }>>(),
+  
+  // Response
+  responseReceived: boolean("response_received").default(false),
+  responseTime: integer("response_time"), // hours
+  responseType: text("response_type"), // accepted, rejected, countered, no_response
+  
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("negotiation_moves_thread_idx").on(table.threadId),
+  index("negotiation_moves_party_idx").on(table.party),
+]);
+
+export const insertNegotiationMoveSchema = createInsertSchema(negotiationMoves).omit({ id: true, createdAt: true });
+export type InsertNegotiationMove = z.infer<typeof insertNegotiationMoveSchema>;
+export type NegotiationMove = typeof negotiationMoves.$inferSelect;
+
+// Negotiation Outcomes - Learning data for AI improvement
+export const negotiationOutcomes = pgTable("negotiation_outcomes", {
+  id: serial("id").primaryKey(),
+  threadId: integer("thread_id").references(() => negotiationThreads.id).notNull(),
+  
+  outcome: text("outcome").notNull(), // deal_closed, seller_walked, buyer_walked, stalled
+  
+  // Final terms
+  finalPrice: numeric("final_price"),
+  initialOffer: numeric("initial_offer"),
+  targetPrice: numeric("target_price"),
+  negotiationDiscount: numeric("negotiation_discount"), // percentage saved from initial ask
+  
+  // Performance metrics
+  totalDays: integer("total_days"),
+  totalMoves: integer("total_moves"),
+  strategyUsed: text("strategy_used"),
+  strategyEffectiveness: integer("strategy_effectiveness"), // 1-10
+  
+  // Learnings
+  keyFactors: jsonb("key_factors").$type<string[]>(), // what made this succeed/fail
+  lessonsLearned: text("lessons_learned"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("negotiation_outcomes_outcome_idx").on(table.outcome),
+]);
+
+export const insertNegotiationOutcomeSchema = createInsertSchema(negotiationOutcomes).omit({ id: true, createdAt: true });
+export type InsertNegotiationOutcome = z.infer<typeof insertNegotiationOutcomeSchema>;
+export type NegotiationOutcome = typeof negotiationOutcomes.$inferSelect;
+
+// Negotiation Strategies - A/B test variants
+export const negotiationStrategies = pgTable("negotiation_strategies", {
+  id: serial("id").primaryKey(),
+  
+  name: text("name").notNull(),
+  description: text("description"),
+  
+  strategyType: text("strategy_type").notNull(), // anchor_low, anchor_high, meet_middle, terms_heavy, cash_heavy
+  
+  // Parameters
+  initialOfferPercentage: numeric("initial_offer_percentage"), // % of target
+  incrementStrategy: text("increment_strategy"), // fixed, percentage, adaptive
+  maxMoves: integer("max_moves"),
+  
+  // Performance tracking
+  timesUsed: integer("times_used").default(0),
+  successRate: numeric("success_rate"),
+  avgDiscount: numeric("avg_discount"), // avg % saved
+  avgDaysToClose: numeric("avg_days_to_close"),
+  
+  isActive: boolean("is_active").default(true),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertNegotiationStrategySchema = createInsertSchema(negotiationStrategies).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertNegotiationStrategy = z.infer<typeof insertNegotiationStrategySchema>;
+export type NegotiationStrategy = typeof negotiationStrategies.$inferSelect;
+
+// ============================================
+// PHASE 2: NETWORK EFFECTS & MARKETPLACE
+// ============================================
+
+// Marketplace Listings - Properties for sale between AcreOS users
+export const marketplaceListings = pgTable("marketplace_listings", {
+  id: serial("id").primaryKey(),
+  
+  // Seller info
+  sellerOrganizationId: integer("seller_organization_id").references(() => organizations.id).notNull(),
+  propertyId: integer("property_id").references(() => properties.id).notNull(),
+  
+  // Listing details
+  listingType: text("listing_type").notNull(), // wholesale, assignment, partnership, note_sale
+  title: text("title").notNull(),
+  description: text("description"),
+  
+  // Pricing
+  askingPrice: numeric("asking_price").notNull(),
+  minAcceptablePrice: numeric("min_acceptable_price"), // private, not shown
+  
+  // Terms
+  closingTimelineDays: integer("closing_timeline_days"),
+  isNegotiable: boolean("is_negotiable").default(true),
+  acceptsPartnership: boolean("accepts_partnership").default(false),
+  partnershipTerms: text("partnership_terms"),
+  
+  // Visibility
+  visibility: text("visibility").notNull().default("public"), // public, private, verified_only
+  isPremiumPlacement: boolean("is_premium_placement").default(false),
+  premiumExpiresAt: timestamp("premium_expires_at"),
+  
+  // Status
+  status: text("status").notNull().default("active"), // active, under_offer, sold, expired, cancelled
+  
+  // Metrics
+  views: integer("views").default(0),
+  favorites: integer("favorites").default(0),
+  inquiries: integer("inquiries").default(0),
+  
+  // Deal protection
+  exclusivityPeriod: integer("exclusivity_period"), // hours for accepted offer
+  
+  expiresAt: timestamp("expires_at"),
+  soldAt: timestamp("sold_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("marketplace_listings_seller_idx").on(table.sellerOrganizationId),
+  index("marketplace_listings_status_idx").on(table.status),
+  index("marketplace_listings_type_idx").on(table.listingType),
+]);
+
+export const insertMarketplaceListingSchema = createInsertSchema(marketplaceListings).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertMarketplaceListing = z.infer<typeof insertMarketplaceListingSchema>;
+export type MarketplaceListing = typeof marketplaceListings.$inferSelect;
+
+// Marketplace Bids - Offers on marketplace listings
+export const marketplaceBids = pgTable("marketplace_bids", {
+  id: serial("id").primaryKey(),
+  
+  listingId: integer("listing_id").references(() => marketplaceListings.id).notNull(),
+  bidderOrganizationId: integer("bidder_organization_id").references(() => organizations.id).notNull(),
+  
+  bidAmount: numeric("bid_amount").notNull(),
+  message: text("message"),
+  proposedTerms: text("proposed_terms"),
+  
+  // Bid type
+  bidType: text("bid_type").notNull().default("purchase"), // purchase, partnership, assignment
+  partnershipSplit: numeric("partnership_split"), // percentage if partnership
+  
+  status: text("status").notNull().default("pending"), // pending, accepted, rejected, countered, expired, withdrawn
+  
+  // Seller response
+  sellerResponse: text("seller_response"),
+  counterOffer: numeric("counter_offer"),
+  respondedAt: timestamp("responded_at"),
+  
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("marketplace_bids_listing_idx").on(table.listingId),
+  index("marketplace_bids_bidder_idx").on(table.bidderOrganizationId),
+  index("marketplace_bids_status_idx").on(table.status),
+]);
+
+export const insertMarketplaceBidSchema = createInsertSchema(marketplaceBids).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertMarketplaceBid = z.infer<typeof insertMarketplaceBidSchema>;
+export type MarketplaceBid = typeof marketplaceBids.$inferSelect;
+
+// Investor Profiles - Public profiles for marketplace trust
+export const investorProfiles = pgTable("investor_profiles", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull().unique(),
+  
+  // Public info
+  displayName: text("display_name").notNull(),
+  bio: text("bio"),
+  location: text("location"),
+  website: text("website"),
+  
+  // Specialization
+  specialties: jsonb("specialties").$type<string[]>(), // raw_land, recreational, agricultural
+  preferredStates: jsonb("preferred_states").$type<string[]>(),
+  investmentRange: jsonb("investment_range").$type<{ min: number; max: number }>(),
+  
+  // Verification
+  isVerified: boolean("is_verified").default(false),
+  verifiedAt: timestamp("verified_at"),
+  verificationDocuments: jsonb("verification_documents").$type<string[]>(),
+  
+  // Reputation
+  dealsClosed: integer("deals_closed").default(0),
+  avgResponseTimeHours: numeric("avg_response_time_hours"),
+  reliabilityScore: numeric("reliability_score"), // 0-100
+  rating: numeric("rating"), // 0-5
+  reviewCount: integer("review_count").default(0),
+  
+  // Activity
+  lastActiveAt: timestamp("last_active_at").defaultNow(),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("investor_profiles_verified_idx").on(table.isVerified),
+  index("investor_profiles_org_idx").on(table.organizationId),
+]);
+
+export const insertInvestorProfileSchema = createInsertSchema(investorProfiles).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertInvestorProfile = z.infer<typeof insertInvestorProfileSchema>;
+export type InvestorProfile = typeof investorProfiles.$inferSelect;
+
+// Deal Rooms - Private collaboration spaces
+export const dealRooms = pgTable("deal_rooms", {
+  id: serial("id").primaryKey(),
+  
+  listingId: integer("listing_id").references(() => marketplaceListings.id),
+  
+  // Participants
+  participants: jsonb("participants").$type<Array<{
+    organizationId: number;
+    role: string; // seller, buyer, partner
+    joinedAt: string;
+  }>>().notNull(),
+  
+  // Deal details
+  dealType: text("deal_type"), // purchase, partnership, joint_venture
+  agreedPrice: numeric("agreed_price"),
+  dealTerms: text("deal_terms"),
+  
+  status: text("status").notNull().default("active"), // active, closed, cancelled
+  
+  // Documents
+  sharedDocuments: jsonb("shared_documents").$type<Array<{
+    name: string;
+    url: string;
+    uploadedBy: number;
+    uploadedAt: string;
+  }>>(),
+  
+  closedAt: timestamp("closed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertDealRoomSchema = createInsertSchema(dealRooms).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertDealRoom = z.infer<typeof insertDealRoomSchema>;
+export type DealRoom = typeof dealRooms.$inferSelect;
+
+// Marketplace Transactions - Completed deals with fees
+export const marketplaceTransactions = pgTable("marketplace_transactions", {
+  id: serial("id").primaryKey(),
+  
+  listingId: integer("listing_id").references(() => marketplaceListings.id).notNull(),
+  sellerOrganizationId: integer("seller_organization_id").references(() => organizations.id).notNull(),
+  buyerOrganizationId: integer("buyer_organization_id").references(() => organizations.id).notNull(),
+  
+  transactionType: text("transaction_type").notNull(), // wholesale, partnership, assignment
+  
+  // Financial details
+  salePrice: numeric("sale_price").notNull(),
+  platformFeePercent: numeric("platform_fee_percent").notNull().default("1.5"),
+  platformFeeCents: integer("platform_fee_cents").notNull(),
+  
+  // Payment processing
+  sellerPayoutStatus: text("seller_payout_status").notNull().default("pending"), // pending, processing, completed, failed
+  sellerPayoutAmount: numeric("seller_payout_amount"),
+  sellerStripeTransferId: text("seller_stripe_transfer_id"),
+  
+  // Status
+  status: text("status").notNull().default("pending"), // pending, completed, refunded, disputed
+  
+  closingDate: timestamp("closing_date"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("marketplace_transactions_seller_idx").on(table.sellerOrganizationId),
+  index("marketplace_transactions_buyer_idx").on(table.buyerOrganizationId),
+  index("marketplace_transactions_status_idx").on(table.status),
+]);
+
+export const insertMarketplaceTransactionSchema = createInsertSchema(marketplaceTransactions).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertMarketplaceTransaction = z.infer<typeof insertMarketplaceTransactionSchema>;
+export type MarketplaceTransaction = typeof marketplaceTransactions.$inferSelect;
+
+// Buyer Behavior Events - Anonymized tracking for intelligence network
+export const buyerBehaviorEvents = pgTable("buyer_behavior_events", {
+  id: serial("id").primaryKey(),
+  
+  // Anonymized identifier (NOT organizationId)
+  anonymousId: text("anonymous_id").notNull(), // hash of orgId
+  
+  eventType: text("event_type").notNull(), // view, favorite, inquiry, bid, purchase
+  
+  // Property characteristics (NOT specific property)
+  propertyType: text("property_type"),
+  acreageRange: text("acreage_range"),
+  priceRange: text("price_range"),
+  
+  // Location (county level only)
+  state: text("state"),
+  county: text("county"),
+  
+  eventDate: timestamp("event_date").notNull().defaultNow(),
+  
+  // Aggregate only, no PII
+  metadata: jsonb("metadata").$type<{
+    timeOnPage?: number;
+    deviceType?: string;
+  }>(),
+}, (table) => [
+  index("buyer_behavior_state_county_idx").on(table.state, table.county),
+  index("buyer_behavior_type_idx").on(table.eventType),
+  index("buyer_behavior_date_idx").on(table.eventDate),
+]);
+
+export const insertBuyerBehaviorEventSchema = createInsertSchema(buyerBehaviorEvents).omit({ id: true });
+export type InsertBuyerBehaviorEvent = z.infer<typeof insertBuyerBehaviorEventSchema>;
+export type BuyerBehaviorEvent = typeof buyerBehaviorEvents.$inferSelect;
+
+// Demand Heatmaps - Pre-computed geographic demand
+export const demandHeatmaps = pgTable("demand_heatmaps", {
+  id: serial("id").primaryKey(),
+  
+  state: text("state").notNull(),
+  county: text("county").notNull(),
+  
+  // Time period
+  periodStart: timestamp("period_start").notNull(),
+  periodEnd: timestamp("period_end").notNull(),
+  
+  // Demand metrics
+  demandScore: integer("demand_score").notNull(), // 0-100
+  viewCount: integer("view_count").default(0),
+  inquiryCount: integer("inquiry_count").default(0),
+  bidCount: integer("bid_count").default(0),
+  purchaseCount: integer("purchase_count").default(0),
+  
+  // Price insights
+  avgBidToAskRatio: numeric("avg_bid_to_ask_ratio"),
+  competitionLevel: text("competition_level"), // low, medium, high
+  
+  // Trends
+  demandTrend: text("demand_trend"), // increasing, stable, decreasing
+  
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("demand_heatmaps_state_county_idx").on(table.state, table.county),
+  index("demand_heatmaps_score_idx").on(table.demandScore),
+]);
+
+export const insertDemandHeatmapSchema = createInsertSchema(demandHeatmaps).omit({ id: true, createdAt: true });
+export type InsertDemandHeatmap = z.infer<typeof insertDemandHeatmapSchema>;
+export type DemandHeatmap = typeof demandHeatmaps.$inferSelect;
+
+// ============================================
+// PHASE 3: FINANCIAL INTELLIGENCE
+// ============================================
+
+// Portfolio Simulations - Monte Carlo analysis results
+export const portfolioSimulations = pgTable("portfolio_simulations", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  
+  name: text("name").notNull(),
+  description: text("description"),
+  
+  // Simulation parameters
+  iterations: integer("iterations").notNull().default(10000),
+  timeHorizonMonths: integer("time_horizon_months").notNull(),
+  
+  assumptions: jsonb("assumptions").$type<{
+    appreciationRate?: { min: number; max: number; likely: number };
+    dispositionRate?: { min: number; max: number; likely: number };
+    defaultRate?: { min: number; max: number; likely: number };
+    marketVolatility?: number;
+  }>(),
+  
+  // Results
+  results: jsonb("results").$type<{
+    portfolioValue: { p10: number; p50: number; p90: number };
+    totalReturn: { p10: number; p50: number; p90: number };
+    cashFlow: { p10: number; p50: number; p90: number };
+    riskOfLoss: number; // percentage
+  }>(),
+  
+  status: text("status").notNull().default("pending"), // pending, running, completed, failed
+  
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("portfolio_simulations_org_idx").on(table.organizationId),
+  index("portfolio_simulations_status_idx").on(table.status),
+]);
+
+export const insertPortfolioSimulationSchema = createInsertSchema(portfolioSimulations).omit({ id: true, createdAt: true });
+export type InsertPortfolioSimulation = z.infer<typeof insertPortfolioSimulationSchema>;
+export type PortfolioSimulation = typeof portfolioSimulations.$inferSelect;
+
+// Optimization Recommendations - AI suggestions for portfolio
+export const optimizationRecommendations = pgTable("optimization_recommendations", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  
+  recommendationType: text("recommendation_type").notNull(), // diversification, tax_optimization, cash_flow, risk_reduction
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  reasoning: text("reasoning").notNull(),
+  
+  priority: text("priority").notNull().default("medium"), // low, medium, high, critical
+  
+  // Estimated impact
+  estimatedImpact: jsonb("estimated_impact").$type<{
+    returnIncrease?: number; // percentage
+    riskReduction?: number; // percentage
+    taxSavings?: number; // dollars
+    cashFlowImprovement?: number; // dollars per month
+  }>(),
+  
+  // Action items
+  actionItems: jsonb("action_items").$type<Array<{
+    action: string;
+    propertyId?: number;
+    estimatedCost?: number;
+  }>>(),
+  
+  status: text("status").notNull().default("new"), // new, reviewed, implemented, dismissed
+  
+  reviewedAt: timestamp("reviewed_at"),
+  implementedAt: timestamp("implemented_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("optimization_recommendations_org_idx").on(table.organizationId),
+  index("optimization_recommendations_type_idx").on(table.recommendationType),
+  index("optimization_recommendations_status_idx").on(table.status),
+]);
+
+export const insertOptimizationRecommendationSchema = createInsertSchema(optimizationRecommendations).omit({ id: true, createdAt: true });
+export type InsertOptimizationRecommendation = z.infer<typeof insertOptimizationRecommendationSchema>;
+export type OptimizationRecommendation = typeof optimizationRecommendations.$inferSelect;
+
+// Transaction Training Data - Anonymized for valuation model
+export const transactionTraining = pgTable("transaction_training", {
+  id: serial("id").primaryKey(),
+  
+  // Anonymized (no orgId)
+  transactionHash: text("transaction_hash").notNull().unique(),
+  
+  // Location
+  state: text("state").notNull(),
+  county: text("county").notNull(),
+  
+  // Property characteristics
+  propertyType: text("property_type").notNull(),
+  sizeAcres: numeric("size_acres").notNull(),
+  zoning: text("zoning"),
+  
+  // Features (from DataSourceBroker)
+  hasRoadAccess: boolean("has_road_access"),
+  hasUtilities: boolean("has_utilities"),
+  hasWater: boolean("has_water"),
+  floodZone: text("flood_zone"),
+  hasWetlands: boolean("has_wetlands"),
+  soilQuality: text("soil_quality"),
+  
+  // Economic context
+  countyMedianIncome: numeric("county_median_income"),
+  populationDensity: numeric("population_density"),
+  distanceToMetro: numeric("distance_to_metro"), // miles
+  
+  // Transaction
+  salePrice: numeric("sale_price").notNull(),
+  pricePerAcre: numeric("price_per_acre").notNull(),
+  saleDate: timestamp("sale_date").notNull(),
+  
+  // Quality indicators
+  dataQuality: text("data_quality").notNull(), // high, medium, low
+  isOutlier: boolean("is_outlier").default(false),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("transaction_training_state_county_idx").on(table.state, table.county),
+  index("transaction_training_type_idx").on(table.propertyType),
+  index("transaction_training_date_idx").on(table.saleDate),
+]);
+
+export const insertTransactionTrainingSchema = createInsertSchema(transactionTraining).omit({ id: true, createdAt: true });
+export type InsertTransactionTraining = z.infer<typeof insertTransactionTrainingSchema>;
+export type TransactionTraining = typeof transactionTraining.$inferSelect;
+
+// Valuation Predictions - Cached AcreOS Market Value predictions
+export const valuationPredictions = pgTable("valuation_predictions", {
+  id: serial("id").primaryKey(),
+  
+  propertyId: integer("property_id").references(() => properties.id).notNull(),
+  
+  // Prediction
+  predictedValue: numeric("predicted_value").notNull(),
+  confidenceScore: numeric("confidence_score").notNull(), // 0-100
+  valueRange: jsonb("value_range").$type<{ low: number; high: number }>(),
+  
+  // Model info
+  modelVersion: text("model_version").notNull(),
+  featuresUsed: jsonb("features_used").$type<string[]>(),
+  
+  // Comparables
+  comparableCount: integer("comparable_count"),
+  
+  validUntil: timestamp("valid_until").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("valuation_predictions_property_idx").on(table.propertyId),
+  index("valuation_predictions_valid_idx").on(table.validUntil),
+]);
+
+export const insertValuationPredictionSchema = createInsertSchema(valuationPredictions).omit({ id: true, createdAt: true });
+export type InsertValuationPrediction = z.infer<typeof insertValuationPredictionSchema>;
+export type ValuationPrediction = typeof valuationPredictions.$inferSelect;
+
+// Land Credit Scores - Multi-dimensional property scoring
+export const landCreditScores = pgTable("land_credit_scores", {
+  id: serial("id").primaryKey(),
+  
+  propertyId: integer("property_id").references(() => properties.id).notNull(),
+  
+  // Core scores (0-100)
+  liquidityScore: integer("liquidity_score").notNull(),
+  riskScore: integer("risk_score").notNull(),
+  developmentPotentialScore: integer("development_potential_score").notNull(),
+  marketabilityScore: integer("marketability_score").notNull(),
+  
+  // Overall grade
+  overallScore: integer("overall_score").notNull(),
+  grade: text("grade").notNull(), // A+, A, B+, B, C+, C, D, F
+  
+  // Detailed breakdown
+  scoreBreakdown: jsonb("score_breakdown").$type<{
+    location: number;
+    characteristics: number;
+    marketDemand: number;
+    economicFactors: number;
+    timeOnMarket: number;
+  }>(),
+  
+  modelVersion: text("model_version").notNull(),
+  validUntil: timestamp("valid_until").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("land_credit_scores_property_idx").on(table.propertyId),
+  index("land_credit_scores_grade_idx").on(table.grade),
+]);
+
+export const insertLandCreditScoreSchema = createInsertSchema(landCreditScores).omit({ id: true, createdAt: true });
+export type InsertLandCreditScore = z.infer<typeof insertLandCreditScoreSchema>;
+export type LandCreditScore = typeof landCreditScores.$inferSelect;
+
+// ===========================
+// PHASE 3: CAPITAL MARKETS
+// ===========================
+
+// Note Securities - Seller financing securitization
+export const noteSecurities = pgTable("note_securities", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  
+  propertyId: integer("property_id").references(() => properties.id),
+  
+  // Note details
+  principalAmount: numeric("principal_amount").notNull(),
+  interestRate: numeric("interest_rate").notNull(),
+  termMonths: integer("term_months").notNull(),
+  monthlyPayment: numeric("monthly_payment").notNull(),
+  
+  // Securitization
+  isSecuritized: boolean("is_securitized").default(false),
+  securitizationDate: timestamp("securitization_date"),
+  investorId: text("investor_id"),
+  purchasePrice: numeric("purchase_price"),
+  discount: numeric("discount"), // % discount from face value
+  
+  // Performance
+  paymentsReceived: integer("payments_received").default(0),
+  totalPaymentsDue: integer("total_payments_due"),
+  currentBalance: numeric("current_balance"),
+  delinquentDays: integer("delinquent_days").default(0),
+  
+  status: text("status").notNull(), // performing, delinquent, default, paid_off
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("note_securities_org_idx").on(table.organizationId),
+  index("note_securities_investor_idx").on(table.investorId),
+  index("note_securities_status_idx").on(table.status),
+]);
+
+export const insertNoteSecuritySchema = createInsertSchema(noteSecurities).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertNoteSecurity = z.infer<typeof insertNoteSecuritySchema>;
+export type NoteSecurity = typeof noteSecurities.$inferSelect;
+
+// Lender Network - Connect with institutional lenders
+export const lenderNetwork = pgTable("lender_network", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  
+  lenderName: text("lender_name").notNull(),
+  lenderType: text("lender_type").notNull(), // bank, private_lender, hard_money, institutional
+  
+  // Lending criteria
+  minLoanAmount: numeric("min_loan_amount"),
+  maxLoanAmount: numeric("max_loan_amount"),
+  maxLTV: numeric("max_ltv"), // Loan-to-value %
+  minCreditScore: integer("min_credit_score"),
+  
+  // Terms
+  interestRateRange: jsonb("interest_rate_range").$type<{ min: number; max: number }>(),
+  typicalTermMonths: integer("typical_term_months"),
+  
+  // Specializations
+  propertyTypes: jsonb("property_types").$type<string[]>(),
+  states: jsonb("states").$type<string[]>(),
+  
+  // Contact
+  contactName: text("contact_name"),
+  contactEmail: text("contact_email"),
+  contactPhone: text("contact_phone"),
+  
+  // Performance
+  loansIssued: integer("loans_issued").default(0),
+  avgClosingDays: integer("avg_closing_days"),
+  approvalRate: numeric("approval_rate"),
+  
+  isActive: boolean("is_active").default(true),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("lender_network_org_idx").on(table.organizationId),
+  index("lender_network_type_idx").on(table.lenderType),
+]);
+
+export const insertLenderNetworkSchema = createInsertSchema(lenderNetwork).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertLenderNetwork = z.infer<typeof insertLenderNetworkSchema>;
+export type LenderNetwork = typeof lenderNetwork.$inferSelect;
+
+// Capital Raises - Syndication and fund raising
+export const capitalRaises = pgTable("capital_raises", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  
+  title: text("title").notNull(),
+  description: text("description"),
+  
+  // Raise details
+  targetAmount: numeric("target_amount").notNull(),
+  raisedAmount: numeric("raised_amount").default("0"),
+  minInvestment: numeric("min_investment").notNull(),
+  
+  // Terms
+  offeringType: text("offering_type").notNull(), // equity, debt, preferred
+  returnStructure: text("return_structure"), // profit_share, interest, appreciation
+  targetReturn: numeric("target_return"),
+  holdPeriod: integer("hold_period"), // months
+  
+  // Properties
+  propertyIds: jsonb("property_ids").$type<number[]>(),
+  
+  // Investors
+  investorCount: integer("investor_count").default(0),
+  investors: jsonb("investors").$type<{ userId: number; amount: number; date: string }[]>(),
+  
+  status: text("status").notNull(), // draft, active, funded, closed
+  
+  startDate: timestamp("start_date"),
+  endDate: timestamp("end_date"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("capital_raises_org_idx").on(table.organizationId),
+  index("capital_raises_status_idx").on(table.status),
+]);
+
+export const insertCapitalRaiseSchema = createInsertSchema(capitalRaises).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertCapitalRaise = z.infer<typeof insertCapitalRaiseSchema>;
+export type CapitalRaise = typeof capitalRaises.$inferSelect;
+
+// ===========================
+// PHASE 4: VOICE & VISUAL AI
+// ===========================
+
+// Voice Calls - AI voice agent call logs
+export const voiceCalls = pgTable("voice_calls", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  
+  // Call details
+  callSid: text("call_sid").unique(),
+  direction: text("direction").notNull(), // inbound, outbound
+  fromNumber: text("from_number"),
+  toNumber: text("to_number"),
+  
+  // Contact
+  contactId: integer("contact_id"),
+  leadId: integer("lead_id"),
+  propertyId: integer("property_id"),
+  
+  // Call metrics
+  durationSeconds: integer("duration_seconds"),
+  callStatus: text("call_status"), // ringing, in-progress, completed, failed
+  
+  // AI agent
+  agentType: text("agent_type").notNull(), // sophie, atlas, custom
+  agentObjective: text("agent_objective"), // qualify_lead, schedule_showing, answer_questions
+  
+  // Results
+  wasAnswered: boolean("was_answered"),
+  sentimentScore: numeric("sentiment_score"), // -1 to 1
+  objectiveAchieved: boolean("objective_achieved"),
+  
+  // Follow-up
+  actionItems: jsonb("action_items").$type<string[]>(),
+  scheduledAppointment: timestamp("scheduled_appointment"),
+  
+  recordingUrl: text("recording_url"),
+  transcriptId: integer("transcript_id"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("voice_calls_org_idx").on(table.organizationId),
+  index("voice_calls_contact_idx").on(table.contactId),
+  index("voice_calls_date_idx").on(table.createdAt),
+]);
+
+export const insertVoiceCallSchema = createInsertSchema(voiceCalls).omit({ id: true, createdAt: true });
+export type InsertVoiceCall = z.infer<typeof insertVoiceCallSchema>;
+export type VoiceCall = typeof voiceCalls.$inferSelect;
+
+// Call Transcripts - Full conversation transcription (DUPLICATE - ALREADY EXISTS ABOVE)
+// Using existing callTranscripts table definition from earlier in file
+
+// Property Photos - Visual assets for properties
+export const propertyPhotos = pgTable("property_photos", {
+  id: serial("id").primaryKey(),
+  
+  propertyId: integer("property_id").references(() => properties.id).notNull(),
+  
+  // Image details
+  url: text("url").notNull(),
+  thumbnailUrl: text("thumbnail_url"),
+  storageKey: text("storage_key").notNull(),
+  
+  // Metadata
+  filename: text("filename"),
+  mimeType: text("mime_type"),
+  sizeBytes: integer("size_bytes"),
+  width: integer("width"),
+  height: integer("height"),
+  
+  // Organization
+  sortOrder: integer("sort_order").default(0),
+  isPrimary: boolean("is_primary").default(false),
+  category: text("category"), // aerial, street, feature, misc
+  
+  // Capture info
+  capturedAt: timestamp("captured_at"),
+  capturedBy: text("captured_by"), // drone, camera, satellite, street_view
+  gpsCoordinates: jsonb("gps_coordinates").$type<{ lat: number; lng: number }>(),
+  
+  // AI analysis
+  hasAnalysis: boolean("has_analysis").default(false),
+  analysisId: integer("analysis_id"),
+  
+  uploadedBy: text("uploaded_by"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("property_photos_property_idx").on(table.propertyId),
+  index("property_photos_primary_idx").on(table.isPrimary),
+]);
+
+export const insertPropertyPhotoSchema = createInsertSchema(propertyPhotos).omit({ id: true, createdAt: true });
+export type InsertPropertyPhoto = z.infer<typeof insertPropertyPhotoSchema>;
+export type PropertyPhoto = typeof propertyPhotos.$inferSelect;
+
+// Photo Analysis - OpenAI Vision API analysis
+export const photoAnalysis = pgTable("photo_analysis", {
+  id: serial("id").primaryKey(),
+  
+  photoId: integer("photo_id").references(() => propertyPhotos.id).notNull(),
+  propertyId: integer("property_id").references(() => properties.id).notNull(),
+  
+  // Vision API results
+  detectedFeatures: jsonb("detected_features").$type<string[]>(),
+  landscapeType: text("landscape_type"), // forest, grassland, desert, mixed
+  buildingDetected: boolean("building_detected"),
+  roadDetected: boolean("road_detected"),
+  waterDetected: boolean("water_detected"),
+  
+  // Quality assessment
+  photoQuality: text("photo_quality"), // excellent, good, fair, poor
+  isUsableForMarketing: boolean("is_usable_for_marketing"),
+  
+  // Detailed analysis
+  aiDescription: text("ai_description"),
+  estimatedAcreageVisible: numeric("estimated_acreage_visible"),
+  vegetationDensity: numeric("vegetation_density"), // 0-100
+  
+  // Comparison
+  similarPhotos: jsonb("similar_photos").$type<number[]>(), // Other photo IDs
+  
+  modelVersion: text("model_version"),
+  confidence: numeric("confidence"), // 0-100
+  
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("photo_analysis_photo_idx").on(table.photoId),
+  index("photo_analysis_property_idx").on(table.propertyId),
+]);
+
+export const insertPhotoAnalysisSchema = createInsertSchema(photoAnalysis).omit({ id: true, createdAt: true });
+export type InsertPhotoAnalysis = z.infer<typeof insertPhotoAnalysisSchema>;
+export type PhotoAnalysis = typeof photoAnalysis.$inferSelect;
+
+// Satellite Snapshots - Regular satellite imagery monitoring
+export const satelliteSnapshots = pgTable("satellite_snapshots", {
+  id: serial("id").primaryKey(),
+  
+  propertyId: integer("property_id").references(() => properties.id).notNull(),
+  
+  // Imagery
+  imageUrl: text("image_url").notNull(),
+  provider: text("provider"), // google, mapbox, sentinel
+  resolution: numeric("resolution"), // meters per pixel
+  
+  // Timing
+  captureDate: timestamp("capture_date").notNull(),
+  cloudCoverage: numeric("cloud_coverage"), // %
+  
+  // Analysis
+  changeDetected: boolean("change_detected").default(false),
+  changeType: text("change_type"), // vegetation, construction, clearing
+  changeSeverity: text("change_severity"), // minor, moderate, major
+  
+  // Comparison
+  comparedToSnapshotId: integer("compared_to_snapshot_id"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("satellite_snapshots_property_idx").on(table.propertyId),
+  index("satellite_snapshots_date_idx").on(table.captureDate),
+]);
+
+export const insertSatelliteSnapshotSchema = createInsertSchema(satelliteSnapshots).omit({ id: true, createdAt: true });
+export type InsertSatelliteSnapshot = z.infer<typeof insertSatelliteSnapshotSchema>;
+export type SatelliteSnapshot = typeof satelliteSnapshots.$inferSelect;
+
+// ===========================
+// PHASE 5: ACREOS ACADEMY
+// ===========================
+
+// Courses - Educational content
+export const courses = pgTable("courses", {
+  id: serial("id").primaryKey(),
+  
+  // Content
+  title: text("title").notNull(),
+  description: text("description"),
+  category: text("category").notNull(), // beginner, intermediate, advanced, specialty
+  difficultyLevel: integer("difficulty_level"), // 1-5
+  
+  // Media
+  thumbnailUrl: text("thumbnail_url"),
+  previewVideoUrl: text("preview_video_url"),
+  
+  // Structure
+  moduleCount: integer("module_count").default(0),
+  totalDurationMinutes: integer("total_duration_minutes"),
+  
+  // Pricing
+  price: numeric("price").notNull(),
+  discountedPrice: numeric("discounted_price"),
+  
+  // Instructor
+  instructorName: text("instructor_name"),
+  instructorBio: text("instructor_bio"),
+  
+  // Status
+  isPublished: boolean("is_published").default(false),
+  publishedAt: timestamp("published_at"),
+  
+  // Analytics
+  enrollmentCount: integer("enrollment_count").default(0),
+  completionRate: numeric("completion_rate"),
+  avgRating: numeric("avg_rating"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("courses_category_idx").on(table.category),
+  index("courses_published_idx").on(table.isPublished),
+]);
+
+export const insertCourseSchema = createInsertSchema(courses).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertCourse = z.infer<typeof insertCourseSchema>;
+export type Course = typeof courses.$inferSelect;
+
+// Course Modules - Lessons within courses
+export const courseModules = pgTable("course_modules", {
+  id: serial("id").primaryKey(),
+  
+  courseId: integer("course_id").references(() => courses.id).notNull(),
+  
+  title: text("title").notNull(),
+  description: text("description"),
+  
+  // Content
+  contentType: text("content_type").notNull(), // video, text, quiz, interactive
+  videoUrl: text("video_url"),
+  content: text("content"),
+  
+  // Structure
+  sortOrder: integer("sort_order").notNull(),
+  durationMinutes: integer("duration_minutes"),
+  
+  // Requirements
+  isPreview: boolean("is_preview").default(false), // Free preview
+  requiredScore: integer("required_score"), // For quizzes
+  
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("course_modules_course_idx").on(table.courseId),
+]);
+
+export const insertCourseModuleSchema = createInsertSchema(courseModules).omit({ id: true, createdAt: true });
+export type InsertCourseModule = z.infer<typeof insertCourseModuleSchema>;
+export type CourseModule = typeof courseModules.$inferSelect;
+
+// Course Enrollments - Student registrations
+export const courseEnrollments = pgTable("course_enrollments", {
+  id: serial("id").primaryKey(),
+  
+  userId: text("user_id").notNull(),
+  courseId: integer("course_id").references(() => courses.id).notNull(),
+  
+  // Progress
+  completedModules: jsonb("completed_modules").$type<number[]>(),
+  progressPercentage: numeric("progress_percentage").default("0"),
+  
+  // Completion
+  isCompleted: boolean("is_completed").default(false),
+  completedAt: timestamp("completed_at"),
+  
+  // Certificate
+  certificateIssued: boolean("certificate_issued").default(false),
+  certificateUrl: text("certificate_url"),
+  
+  // Payment
+  amountPaid: numeric("amount_paid"),
+  paymentStatus: text("payment_status"), // pending, paid, refunded
+  
+  // Engagement
+  lastAccessedAt: timestamp("last_accessed_at"),
+  totalTimeMinutes: integer("total_time_minutes").default(0),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("course_enrollments_user_idx").on(table.userId),
+  index("course_enrollments_course_idx").on(table.courseId),
+]);
+
+export const insertCourseEnrollmentSchema = createInsertSchema(courseEnrollments).omit({ id: true, createdAt: true });
+export type InsertCourseEnrollment = z.infer<typeof insertCourseEnrollmentSchema>;
+export type CourseEnrollment = typeof courseEnrollments.$inferSelect;
+
+// Tutor Sessions - AI tutor interactions
+export const tutorSessions = pgTable("tutor_sessions", {
+  id: serial("id").primaryKey(),
+  
+  userId: text("user_id").notNull(),
+  courseId: integer("course_id").references(() => courses.id),
+  
+  // Session
+  topic: text("topic"),
+  messages: jsonb("messages").$type<{ role: string; content: string; timestamp: string }[]>(),
+  
+  // Metrics
+  messageCount: integer("message_count").default(0),
+  durationMinutes: integer("duration_minutes"),
+  
+  // Outcomes
+  questionAnswered: boolean("question_answered"),
+  satisfactionRating: integer("satisfaction_rating"), // 1-5
+  
+  endedAt: timestamp("ended_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("tutor_sessions_user_idx").on(table.userId),
+]);
+
+export const insertTutorSessionSchema = createInsertSchema(tutorSessions).omit({ id: true, createdAt: true });
+export type InsertTutorSession = z.infer<typeof insertTutorSessionSchema>;
+export type TutorSession = typeof tutorSessions.$inferSelect;
+
+// ===========================
+// PHASE 5: REGULATORY AI
+// ===========================
+
+// Regulatory Changes - Zoning & compliance monitoring
+export const regulatoryChanges = pgTable("regulatory_changes", {
+  id: serial("id").primaryKey(),
+  
+  // Location
+  state: text("state").notNull(),
+  county: text("county").notNull(),
+  municipality: text("municipality"),
+  
+  // Change details
+  changeType: text("change_type").notNull(), // zoning, tax, environmental, building_code
+  title: text("title").notNull(),
+  description: text("description"),
+  
+  // Impact
+  impactLevel: text("impact_level"), // high, medium, low
+  affectedProperties: jsonb("affected_properties").$type<number[]>(),
+  
+  // Timing
+  effectiveDate: timestamp("effective_date"),
+  proposedDate: timestamp("proposed_date"),
+  
+  // Source
+  sourceUrl: text("source_url"),
+  sourceDocument: text("source_document"),
+  
+  // Status
+  status: text("status"), // proposed, approved, active, repealed
+  
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("regulatory_changes_location_idx").on(table.state, table.county),
+  index("regulatory_changes_type_idx").on(table.changeType),
+  index("regulatory_changes_date_idx").on(table.effectiveDate),
+]);
+
+export const insertRegulatoryChangeSchema = createInsertSchema(regulatoryChanges).omit({ id: true, createdAt: true });
+export type InsertRegulatoryChange = z.infer<typeof insertRegulatoryChangeSchema>;
+export type RegulatoryChange = typeof regulatoryChanges.$inferSelect;
+
+// Compliance Alerts - Property-specific alerts
+export const complianceAlerts = pgTable("compliance_alerts", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  
+  propertyId: integer("property_id").references(() => properties.id).notNull(),
+  regulatoryChangeId: integer("regulatory_change_id").references(() => regulatoryChanges.id),
+  
+  // Alert
+  alertType: text("alert_type").notNull(), // action_required, informational, deadline
+  severity: text("severity").notNull(), // critical, high, medium, low
+  
+  title: text("title").notNull(),
+  description: text("description"),
+  
+  // Action
+  actionRequired: text("action_required"),
+  deadline: timestamp("deadline"),
+  
+  // Status
+  status: text("status").default('pending'), // pending, acknowledged, resolved, dismissed
+  acknowledgedAt: timestamp("acknowledged_at"),
+  acknowledgedBy: text("acknowledged_by"),
+  resolvedAt: timestamp("resolved_at"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("compliance_alerts_org_idx").on(table.organizationId),
+  index("compliance_alerts_property_idx").on(table.propertyId),
+  index("compliance_alerts_status_idx").on(table.status),
+]);
+
+export const insertComplianceAlertSchema = createInsertSchema(complianceAlerts).omit({ id: true, createdAt: true });
+export type InsertComplianceAlert = z.infer<typeof insertComplianceAlertSchema>;
+export type ComplianceAlert = typeof complianceAlerts.$inferSelect;
+
+// ===========================
+// PHASE 5: WHITE-LABEL
+// ===========================
+
+// White-label Tenants - Enterprise customers
+export const whitelabelTenants = pgTable("whitelabel_tenants", {
+  id: serial("id").primaryKey(),
+  
+  // Tenant info
+  tenantName: text("tenant_name").notNull(),
+  subdomain: text("subdomain").notNull().unique(),
+  customDomain: text("custom_domain").unique(),
+  
+  // Branding
+  logoUrl: text("logo_url"),
+  primaryColor: text("primary_color"),
+  secondaryColor: text("secondary_color"),
+  
+  // Features enabled
+  features: jsonb("features").$type<string[]>(),
+  
+  // Limits
+  maxUsers: integer("max_users"),
+  maxProperties: integer("max_properties"),
+  maxStorage: integer("max_storage"), // GB
+  
+  // Billing
+  plan: text("plan").notNull(), // starter, professional, enterprise
+  monthlyFee: numeric("monthly_fee").notNull(),
+  
+  // Admin
+  adminUserId: text("admin_user_id"),
+  adminEmail: text("admin_email"),
+  
+  // Status
+  isActive: boolean("is_active").default(true),
+  suspendedAt: timestamp("suspended_at"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("whitelabel_tenants_subdomain_idx").on(table.subdomain),
+]);
+
+export const insertWhitelabelTenantSchema = createInsertSchema(whitelabelTenants).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertWhitelabelTenant = z.infer<typeof insertWhitelabelTenantSchema>;
+export type WhitelabelTenant = typeof whitelabelTenants.$inferSelect;

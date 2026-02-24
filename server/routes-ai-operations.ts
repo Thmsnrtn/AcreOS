@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction, Router } from "express";
 import { Router as createRouter } from "express";
 import { z } from "zod";
-import { isAuthenticated } from "./replit_integrations/auth";
+import { isAuthenticated } from "./auth";
 import { storage } from "./storage";
 
 // ============================================
@@ -171,39 +171,8 @@ function validateNumericParam(paramName: string) {
   };
 }
 
-function generateSlug(name: string): string {
-  const baseSlug = name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '');
-  const uniqueSuffix = Date.now().toString(36) + Math.random().toString(36).substring(2, 8);
-  return `${baseSlug}-${uniqueSuffix}`;
-}
-
-async function getOrCreateOrg(req: Request, res: Response, next: NextFunction) {
-  if (!req.user) {
-    return res.status(401).json({ message: "Unauthorized" });
-  }
-  
-  const user = req.user as any;
-  const userId = user.claims?.sub || user.id;
-  
-  if (!userId) {
-    return res.status(401).json({ message: "Invalid user session" });
-  }
-  
-  let org = await storage.getOrganizationByOwner(userId);
-  if (!org) {
-    const orgName = user.username ? `${user.username}'s Organization` : "My Organization";
-    org = await storage.createOrganization({
-      name: orgName,
-      slug: generateSlug(user.username || "org"),
-      ownerId: userId,
-    });
-  }
-  (req as any).organization = org;
-  next();
-}
+// Org middleware — imported from shared module
+import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 
 export function registerAIOperationsRoutes(app: Express): void {
   const router = createRouter();

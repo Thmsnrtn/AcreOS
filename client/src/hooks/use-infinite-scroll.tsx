@@ -1,3 +1,4 @@
+import React from "react";
 import { useInfiniteQuery, UseInfiniteQueryOptions } from "@tanstack/react-query";
 import { useEffect, useRef, useCallback } from "react";
 import { STALE_TIMES } from "@/lib/queryClient";

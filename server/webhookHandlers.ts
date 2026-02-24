@@ -1,4 +1,4 @@
-import { getStripeSync, getUncachableStripeClient, getStripeSecretKey } from './stripeClient';
+import { getUncachableStripeClient, getStripeSecretKey } from './stripeClient';
 import { storage } from './storage';
 import { creditService } from './services/credits';
 import { CreditPackId } from '@shared/schema';
@@ -61,8 +61,8 @@ export class WebhookHandlers {
       return;
     }
 
-    const sync = await getStripeSync();
-    await sync.processWebhook(payload, signature);
+    // Unhandled event type — log and acknowledge
+    console.log(`Unhandled Stripe event type: ${event.type}`);
   }
 
   static async processPaymentFailed(invoice: Stripe.Invoice): Promise<void> {

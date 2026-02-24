@@ -22,5 +22,8 @@ logs/snapshots/
 .vscode/
 .idea/
 
+# Docker
+.dockerignore
+
 # OS / tooling
 Thumbs.db

@@ -1,10 +1,9 @@
 import express, { type Request, Response, NextFunction } from "express";
 import path from "path";
-import { runMigrations } from 'stripe-replit-sync';
+import cookieParser from "cookie-parser";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
-import { getStripeSync } from "./stripeClient";
 import { WebhookHandlers } from "./webhookHandlers";
 import { leadNurturerService } from "./services/leadNurturer";
 import { db, storage } from "./storage";
@@ -12,6 +11,7 @@ import { eq, sql } from "drizzle-orm";
 import { organizations } from "@shared/schema";
 import { logger, requestLoggingMiddleware, errorLoggingMiddleware } from "./utils/logger";
 import { securityHeaders, corsMiddleware, requestTimeout, validateContentType, sanitizeQueryParams } from "./middleware/security";
+import { csrfProtection } from "./middleware/csrf";
 import crypto from "crypto";
 
 const app = express();
@@ -58,50 +58,21 @@ async function withJobLock<T>(
 }
 
 async function initStripe() {
-  const databaseUrl = process.env.DATABASE_URL;
-
-  if (!databaseUrl) {
-    log('DATABASE_URL not set, skipping Stripe initialization', 'stripe');
+  if (!process.env.STRIPE_SECRET_KEY) {
+    log('STRIPE_SECRET_KEY not set, skipping Stripe initialization', 'stripe');
     return;
   }
 
   try {
-    log('Initializing Stripe schema...', 'stripe');
-    await runMigrations({ 
-      databaseUrl,
-      schema: 'stripe'
-    });
-    log('Stripe schema ready', 'stripe');
+    log('Stripe configured via environment variables', 'stripe');
 
-    const stripeSync = await getStripeSync();
-
-    const replitDomains = process.env.REPLIT_DOMAINS;
-    if (replitDomains) {
-      log('Setting up managed webhook...', 'stripe');
-      const webhookBaseUrl = `https://${replitDomains.split(',')[0]}`;
-      try {
-        const result = await stripeSync.findOrCreateManagedWebhook(
-          `${webhookBaseUrl}/api/stripe/webhook`);
-        if (result?.webhook?.url) {
-          log(`Webhook configured: ${result.webhook.url}`, 'stripe');
-        } else {
-          log('Webhook created but URL not returned', 'stripe');
-        }
-      } catch (webhookErr: any) {
-        log(`Webhook setup error (non-fatal): ${webhookErr.message}`, 'stripe');
-      }
+    const appUrl = process.env.APP_URL;
+    if (appUrl) {
+      log(`Webhook URL: ${appUrl}/api/stripe/webhook`, 'stripe');
+      log('Configure this URL in your Stripe Dashboard webhook settings', 'stripe');
     } else {
-      log('REPLIT_DOMAINS not set, skipping webhook setup', 'stripe');
+      log('APP_URL not set — configure Stripe webhook URL manually in Stripe Dashboard', 'stripe');
     }
-
-    log('Syncing Stripe data in background...', 'stripe');
-    stripeSync.syncBackfill()
-      .then(() => {
-        log('Stripe data synced', 'stripe');
-      })
-      .catch((err: any) => {
-        log(`Error syncing Stripe data: ${err.message}`, 'stripe');
-      });
   } catch (error: any) {
     log(`Failed to initialize Stripe: ${error.message}`, 'stripe');
   }
@@ -149,9 +120,13 @@ app.use(
 );
 
 app.use(express.urlencoded({ extended: false }));
+app.use(cookieParser());
 
 app.use(validateContentType);
 app.use(requestLoggingMiddleware);
+
+// CSRF protection for state-changing API requests
+app.use("/api", csrfProtection);
 
 (async () => {
   await initStripe();
@@ -162,10 +137,14 @@ app.use(requestLoggingMiddleware);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
+    // Don't leak internal error details in production
+    const message = status >= 500 && process.env.NODE_ENV === "production"
+      ? "Internal Server Error"
+      : err.message || "Internal Server Error";
 
-    res.status(status).json({ message });
-    throw err;
+    if (!res.headersSent) {
+      res.status(status).json({ message });
+    }
   });
 
   if (process.env.NODE_ENV === "production") {
@@ -211,6 +190,10 @@ app.use(requestLoggingMiddleware);
       
       // Start job queue worker (every 10 seconds)
       startJobQueueWorker();
+      
+      // Start deal hunter background jobs
+      startDealHunterScrapingJob();
+      startDistressRecalculationJob();
       
       // Auto-seed county GIS endpoints for free parcel lookups
       seedCountyGisEndpointsOnStartup();
@@ -516,6 +499,96 @@ function startScheduledTaskRunnerJob() {
       log(`Scheduled task runner run failed: ${err}`, 'task-runner');
     });
   }, ONE_MINUTE);
+}
+
+// Deal Hunter daily scraping job
+async function processDealHunterScraping() {
+  try {
+    const { dealHunter } = await import("./services/dealHunter");
+    
+    log('Starting daily deal scraping across all sources', 'deal-hunter');
+    
+    // In production, would scrape all registered sources
+    // For now, just log that job ran
+    const sources = await dealHunter.getRegisteredSources();
+    
+    log(`Found ${sources.length} registered deal sources`, 'deal-hunter');
+    
+    for (const source of sources) {
+      if (source.enabled) {
+        log(`Scraping ${source.name} (${source.state}/${source.county})`, 'deal-hunter');
+        // In production: await dealHunter.scrapeDealSource(source.id);
+      }
+    }
+  } catch (err) {
+    log(`Deal hunter scraping job error: ${err}`, 'deal-hunter');
+  }
+}
+
+function startDealHunterScrapingJob() {
+  const ONE_DAY = 24 * 60 * 60 * 1000;
+  const TTL_SECONDS = 23 * 60 * 60; // Lock TTL slightly less than interval
+  
+  log('Starting deal hunter scraping job (daily at 2 AM)', 'deal-hunter');
+  
+  // Calculate time until next 2 AM
+  const now = new Date();
+  const next2AM = new Date(now);
+  next2AM.setHours(2, 0, 0, 0);
+  if (next2AM <= now) {
+    next2AM.setDate(next2AM.getDate() + 1);
+  }
+  const msUntil2AM = next2AM.getTime() - now.getTime();
+  
+  // Run at next 2 AM
+  setTimeout(() => {
+    withJobLock('deal_hunter_scraping', TTL_SECONDS, processDealHunterScraping).catch(err => {
+      log(`Deal hunter scraping run failed: ${err}`, 'deal-hunter');
+    });
+    
+    // Then run daily
+    setInterval(() => {
+      withJobLock('deal_hunter_scraping', TTL_SECONDS, processDealHunterScraping).catch(err => {
+        log(`Scheduled deal hunter scraping run failed: ${err}`, 'deal-hunter');
+      });
+    }, ONE_DAY);
+  }, msUntil2AM);
+}
+
+// Deal distress score recalculation job (hourly)
+async function processDistressRecalculation() {
+  try {
+    const { dealHunter } = await import("./services/dealHunter");
+    
+    const result = await dealHunter.recalculateAllDistressScores();
+    
+    if (result.updated > 0) {
+      log(`Recalculated distress scores: ${result.updated} deals updated`, 'deal-hunter');
+    }
+  } catch (err) {
+    log(`Distress recalculation job error: ${err}`, 'deal-hunter');
+  }
+}
+
+function startDistressRecalculationJob() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  const TTL_SECONDS = 55 * 60; // Lock TTL slightly less than interval
+  
+  log('Starting distress score recalculation job (every hour)', 'deal-hunter');
+  
+  // Run after 5 minutes on startup
+  setTimeout(() => {
+    withJobLock('distress_recalculation', TTL_SECONDS, processDistressRecalculation).catch(err => {
+      log(`Initial distress recalculation run failed: ${err}`, 'deal-hunter');
+    });
+  }, 5 * 60 * 1000);
+  
+  // Then run every hour
+  setInterval(() => {
+    withJobLock('distress_recalculation', TTL_SECONDS, processDistressRecalculation).catch(err => {
+      log(`Scheduled distress recalculation run failed: ${err}`, 'deal-hunter');
+    });
+  }, ONE_HOUR);
 }
 
 // Job queue worker

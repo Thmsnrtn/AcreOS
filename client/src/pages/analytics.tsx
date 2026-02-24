@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Sidebar } from "@/components/layout-sidebar";
+import { PageShell } from "@/components/page-shell";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AnalyticsContent } from "@/components/analytics-content";
 import { TeamDashboardContent } from "@/components/team-dashboard-content";
@@ -39,10 +39,8 @@ export default function AnalyticsPage() {
   };
 
   return (
-    <div className="flex min-h-screen bg-background desert-gradient">
-      <Sidebar />
-      <main className="flex-1 md:ml-[17rem] p-4 pt-16 md:pt-8 md:p-8 pb-8 overflow-x-hidden">
-        <div className="max-w-7xl mx-auto space-y-6 md:space-y-8">
+    <PageShell>
+        
           <div>
             <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-insights-title">Insights</h1>
             <p className="text-muted-foreground text-sm md:text-base">Analytics, team performance, and activity tracking</p>
@@ -88,8 +86,6 @@ export default function AnalyticsPage() {
               <ActivityContent />
             </TabsContent>
           </Tabs>
-        </div>
-      </main>
-    </div>
+    </PageShell>
   );
 }

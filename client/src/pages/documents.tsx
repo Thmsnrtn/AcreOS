@@ -5,7 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { DocumentTemplate, GeneratedDocument, Deal, Property, DocumentPackage } from "@shared/schema";
-import { Sidebar } from "@/components/layout-sidebar";
+import { PageShell } from "@/components/page-shell";
 import { ListSkeleton } from "@/components/list-skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { TemplateEditor } from "@/components/template-editor";
@@ -46,7 +46,7 @@ const DOCUMENT_CATEGORIES = [
 ];
 
 const STATUS_BADGES: Record<string, { color: string; icon: typeof Clock; label: string }> = {
-  draft: { color: "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300", icon: FilePenLine, label: "Draft" },
+  draft: { color: "bg-muted text-muted-foreground", icon: FilePenLine, label: "Draft" },
   pending_signature: { color: "bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300", icon: Clock, label: "Pending Signature" },
   partially_signed: { color: "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300", icon: FilePenLine, label: "Partially Signed" },
   signed: { color: "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300", icon: FileCheck, label: "Signed" },
@@ -681,7 +681,7 @@ export default function DocumentsPage() {
   };
 
   const PACKAGE_STATUS_BADGES: Record<string, { color: string; icon: typeof Clock; label: string }> = {
-    draft: { color: "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300", icon: FilePenLine, label: "Draft" },
+    draft: { color: "bg-muted text-muted-foreground", icon: FilePenLine, label: "Draft" },
     complete: { color: "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300", icon: CheckCircle, label: "Complete" },
     sent: { color: "bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300", icon: Send, label: "Sent" },
     signed: { color: "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300", icon: FileCheck, label: "Signed" },
@@ -784,10 +784,7 @@ export default function DocumentsPage() {
   };
 
   return (
-    <div className="flex min-h-screen bg-background">
-      <Sidebar />
-      <main className="flex-1 md:ml-[17rem] p-4 pt-16 md:pt-8 md:p-8 pb-8 overflow-x-hidden overflow-auto">
-        <div className="max-w-7xl mx-auto space-y-6">
+    <PageShell>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h1 className="text-2xl font-bold" data-testid="text-page-title">Documents</h1>
@@ -837,8 +834,6 @@ export default function DocumentsPage() {
               {renderPackagesTab()}
             </TabsContent>
           </Tabs>
-        </div>
-      </main>
 
       <Dialog open={isCreateTemplateOpen} onOpenChange={setIsCreateTemplateOpen}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
@@ -1018,7 +1013,7 @@ export default function DocumentsPage() {
           </DialogHeader>
           <ScrollArea className="flex-1">
             <div 
-              className="prose dark:prose-invert max-w-none p-4 bg-white dark:bg-gray-900 rounded-lg"
+              className="prose dark:prose-invert max-w-none p-4 bg-background rounded-lg"
               dangerouslySetInnerHTML={{ 
                 __html: previewTemplate?.content || previewDocument?.content || "" 
               }}
@@ -1400,6 +1395,6 @@ export default function DocumentsPage() {
           </div>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageShell>
   );
 }

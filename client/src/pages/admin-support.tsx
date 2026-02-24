@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Headphones, AlertTriangle, CheckCircle, Clock, Users, TrendingUp, MessageSquare, Send, ArrowLeft, User, Bot, Loader2 } from "lucide-react";
-import { Sidebar } from "@/components/layout-sidebar";
+import { PageShell } from "@/components/page-shell";
 import type { SupportCase, SupportMessage } from "@shared/schema";
 
 type SupportMetrics = {
@@ -39,7 +39,7 @@ function getPriorityColor(priority: number): string {
     case 2:
       return "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20";
     default:
-      return "bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/20";
+      return "bg-muted text-muted-foreground border-border";
   }
 }
 
@@ -172,10 +172,7 @@ export default function AdminSupportPage() {
   const messages = caseDetails?.messages || [];
 
   return (
-    <div className="flex min-h-screen bg-background desert-gradient">
-      <Sidebar />
-      <main className="flex-1 md:ml-[17rem] p-4 pt-16 md:pt-8 md:p-8 pb-8 overflow-x-hidden">
-        <div className="max-w-7xl mx-auto space-y-6">
+    <PageShell>
           <div>
             <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-page-title">Admin Support Dashboard</h1>
             <p className="text-muted-foreground">Manage escalated support cases and track resolution metrics.</p>
@@ -450,8 +447,6 @@ export default function AdminSupportPage() {
               )}
             </Card>
           </div>
-        </div>
-      </main>
-    </div>
+    </PageShell>
   );
 }

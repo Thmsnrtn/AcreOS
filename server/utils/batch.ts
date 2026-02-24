@@ -1,5 +1,5 @@
 import pLimit from "p-limit";
-import pRetry from "p-retry";
+import pRetry, { AbortError } from "p-retry";
 
 /**
  * Batch Processing Utilities
@@ -10,12 +10,11 @@ import pRetry from "p-retry";
  *
  * USAGE:
  * ```typescript
- * import { batchProcess, isRateLimitError } from "./replit_integrations/batch";
+ * import { batchProcess, isRateLimitError } from "../utils/batch";
  *
  * const results = await batchProcess(
  *   artworks,
  *   async (artwork) => {
- *     // Your custom LLM logic here
  *     const response = await openai.chat.completions.create({
  *       model: "gpt-5.1",
  *       messages: [{ role: "user", content: `Categorize: ${artwork.name}` }],
@@ -62,20 +61,6 @@ export function isRateLimitError(error: unknown): boolean {
  * @param processor - Async function to process each item (write your LLM logic here)
  * @param options - Concurrency and retry settings
  * @returns Promise resolving to array of results in the same order as input
- *
- * @example
- * // Process CSV artwork data with custom categorization
- * const categorized = await batchProcess(
- *   csvRows,
- *   async (row) => {
- *     const response = await openai.chat.completions.create({
- *       model: "gpt-5.1", // the newest OpenAI model
- *       messages: [{ role: "user", content: `Categorize artwork: ${row.name}` }],
- *       response_format: { type: "json_object" },
- *     });
- *     return { ...row, category: JSON.parse(response.choices[0]?.message?.content || "{}") };
- *   }
- * );
  */
 export async function batchProcess<T, R>(
   items: T[],
@@ -107,7 +92,7 @@ export async function batchProcess<T, R>(
               throw error; // Rethrow to trigger p-retry
             }
             // For non-rate-limit errors, abort immediately
-            throw new pRetry.AbortError(
+            throw new AbortError(
               error instanceof Error ? error : new Error(String(error))
             );
           }
@@ -156,7 +141,7 @@ export async function batchProcessWithSSE<T, R>(
           factor: 2,
           onFailedAttempt: (error) => {
             if (!isRateLimitError(error)) {
-              throw new pRetry.AbortError(
+              throw new AbortError(
                 error instanceof Error ? error : new Error(String(error))
               );
             }
@@ -179,4 +164,3 @@ export async function batchProcessWithSSE<T, R>(
   sendEvent({ type: "complete", processed: items.length, errors });
   return results;
 }
-

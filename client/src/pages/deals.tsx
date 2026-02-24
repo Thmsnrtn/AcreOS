@@ -1,4 +1,4 @@
-import { Sidebar } from "@/components/layout-sidebar";
+import { PageShell } from "@/components/page-shell";
 import { useDeals, useCreateDeal, useUpdateDeal, useDeleteDeal, useSaveDealAnalysis } from "@/hooks/use-deals";
 import { useProperties } from "@/hooks/use-properties";
 import { ListSkeleton } from "@/components/list-skeleton";
@@ -40,7 +40,7 @@ import { DisclaimerBanner } from "@/components/disclaimer-banner";
 type DealWithProperty = Deal & { property?: Property };
 
 const dealStages = [
-  { value: 'negotiating', label: 'Negotiating', color: 'bg-slate-100 dark:bg-slate-800' },
+  { value: 'negotiating', label: 'Negotiating', color: 'bg-muted' },
   { value: 'offer_sent', label: 'Offer Sent', color: 'bg-blue-100 dark:bg-blue-900/30' },
   { value: 'countered', label: 'Countered', color: 'bg-amber-100 dark:bg-amber-900/30' },
   { value: 'accepted', label: 'Accepted', color: 'bg-emerald-100 dark:bg-emerald-900/30' },
@@ -49,7 +49,7 @@ const dealStages = [
 ];
 
 const statusColors: Record<string, string> = {
-  negotiating: 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-200',
+  negotiating: 'bg-muted text-muted-foreground',
   offer_sent: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
   countered: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400',
   accepted: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',
@@ -124,10 +124,8 @@ export default function DealsPage() {
   };
 
   return (
-    <div className="flex min-h-screen bg-background desert-gradient">
-      <Sidebar />
-      <main className="flex-1 md:ml-[17rem] p-4 pt-16 md:pt-8 md:p-8 pb-8 overflow-x-hidden">
-        <div className="max-w-7xl mx-auto space-y-6 md:space-y-8">
+    <PageShell>
+        
           
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
@@ -425,8 +423,6 @@ export default function DealsPage() {
               )}
             </>
           )}
-        </div>
-      </main>
 
       {selectedDeal && (
         <DealDetailDrawer 
@@ -446,7 +442,7 @@ export default function DealsPage() {
         isLoading={isDeleting}
         variant="destructive"
       />
-    </div>
+    </PageShell>
   );
 }
 
@@ -575,7 +571,7 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
     switch (condition) {
       case 'hot': return <Flame className="w-4 h-4 text-orange-500" />;
       case 'cold': return <Snowflake className="w-4 h-4 text-blue-500" />;
-      default: return <Minus className="w-4 h-4 text-gray-500" />;
+      default: return <Minus className="w-4 h-4 text-muted-foreground" />;
     }
   };
   
@@ -998,7 +994,7 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                     const docsCount = (pkg.documents as any[] || []).length;
                     const generatedCount = (pkg.documents as any[] || []).filter((d: any) => d.documentId).length;
                     const statusColors: Record<string, string> = {
-                      draft: "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300",
+                      draft: "bg-muted text-muted-foreground",
                       complete: "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300",
                       sent: "bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300",
                       signed: "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300",

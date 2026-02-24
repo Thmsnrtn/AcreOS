@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Sidebar } from "@/components/layout-sidebar";
+import { PageShell } from "@/components/page-shell";
 import { WorkflowBuilder } from "@/components/workflow-builder";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -150,10 +150,7 @@ export default function WorkflowsPage() {
   };
 
   return (
-    <div className="flex min-h-screen bg-background">
-      <Sidebar />
-
-      <main className="flex-1 md:ml-[17rem] p-4 pt-16 md:pt-8 md:p-8 pb-8 overflow-x-hidden space-y-6">
+    <PageShell>
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-3xl font-bold" data-testid="text-page-title">Workflows</h1>
@@ -318,7 +315,6 @@ export default function WorkflowsPage() {
           onConfirm={confirmDelete}
           isLoading={deleteMutation.isPending}
         />
-      </main>
-    </div>
+    </PageShell>
   );
 }

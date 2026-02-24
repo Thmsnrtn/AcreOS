@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Sidebar } from "@/components/layout-sidebar";
+import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -318,13 +318,13 @@ const FEATURE_CATEGORY_LABELS: Record<string, string> = {
 
 function getStatusBadgeColor(status: string | null) {
   switch (status) {
-    case 'submitted': return 'bg-gray-500/10 text-gray-600 border-gray-500/20';
+    case 'submitted': return 'bg-muted text-muted-foreground border-border';
     case 'under_review': return 'bg-blue-500/10 text-blue-600 border-blue-500/20';
     case 'planned': return 'bg-purple-500/10 text-purple-600 border-purple-500/20';
     case 'in_progress': return 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20';
     case 'completed': return 'bg-green-500/10 text-green-600 border-green-500/20';
     case 'declined': return 'bg-red-500/10 text-red-600 border-red-500/20';
-    default: return 'bg-gray-500/10 text-gray-600 border-gray-500/20';
+    default: return 'bg-muted text-muted-foreground border-border';
   }
 }
 
@@ -333,7 +333,7 @@ function getPriorityBadgeColor(priority: string | null) {
     case 'high': return 'bg-red-500/10 text-red-600 border-red-500/20';
     case 'medium': return 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20';
     case 'low': return 'bg-green-500/10 text-green-600 border-green-500/20';
-    default: return 'bg-gray-500/10 text-gray-600 border-gray-500/20';
+    default: return 'bg-muted text-muted-foreground border-border';
   }
 }
 
@@ -974,7 +974,7 @@ export default function FounderDashboard() {
       case 'healthy': return 'bg-green-500/10 text-green-600 border-green-500/20';
       case 'busy': return 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20';
       case 'warning': return 'bg-orange-500/10 text-orange-600 border-orange-500/20';
-      default: return 'bg-gray-500/10 text-gray-600 border-gray-500/20';
+      default: return 'bg-muted text-muted-foreground border-border';
     }
   };
 
@@ -993,7 +993,7 @@ export default function FounderDashboard() {
       case 'cancel': return <AlertCircle className="w-4 h-4 text-red-600" />;
       case 'reactivate': return <RefreshCw className="w-4 h-4 text-blue-600" />;
       case 'signup': return <UserPlus className="w-4 h-4 text-green-600" />;
-      default: return <Activity className="w-4 h-4 text-gray-600" />;
+      default: return <Activity className="w-4 h-4 text-muted-foreground" />;
     }
   };
 
@@ -1017,30 +1017,22 @@ export default function FounderDashboard() {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-screen bg-background">
-        <Sidebar />
-        <main className="flex-1 md:ml-[17rem] p-4 pt-16 md:pt-8 md:p-8 pb-8">
-          <div className="max-w-7xl mx-auto space-y-6">
-            <Skeleton className="h-10 w-64" />
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {[1, 2, 3, 4, 5, 6].map((i) => (
-                <Skeleton key={i} className="h-64" />
-              ))}
-            </div>
-          </div>
-        </main>
-      </div>
+      <PageShell>
+        <Skeleton className="h-10 w-64" />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <Skeleton key={i} className="h-64" />
+          ))}
+        </div>
+      </PageShell>
     );
   }
 
   return (
-    <div className="flex min-h-screen bg-background desert-gradient">
-      <Sidebar />
-      <main className="flex-1 md:ml-[17rem] p-4 pt-16 md:pt-8 md:p-8 pb-8 overflow-x-hidden">
-        <div className="max-w-7xl mx-auto space-y-6">
+    <PageShell>
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-slate-900 dark:text-white flex items-center gap-2" data-testid="text-founder-dashboard-title">
+              <h1 className="text-3xl font-bold text-foreground flex items-center gap-2" data-testid="text-founder-dashboard-title">
                 <Crown className="w-8 h-8 text-amber-500" />
                 Founder Dashboard
               </h1>
@@ -1939,7 +1931,7 @@ export default function FounderDashboard() {
                             {endpoint.errorCount} errors
                           </Badge>
                         ) : (
-                          <Badge variant="outline" className="bg-gray-500/10 text-gray-600 border-gray-500/20">
+                          <Badge variant="outline" className="bg-muted text-muted-foreground border-border">
                             Pending
                           </Badge>
                         )}
@@ -2104,7 +2096,7 @@ export default function FounderDashboard() {
                             variant="outline" 
                             className={source.accessLevel === 'free' ? 'bg-green-500/10 text-green-600 border-green-500/20' : 
                                        source.accessLevel === 'limited_free' ? 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20' : 
-                                       'bg-gray-500/10 text-gray-600 border-gray-500/20'}
+                                       'bg-muted text-muted-foreground border-border'}
                           >
                             {source.accessLevel}
                           </Badge>
@@ -2256,7 +2248,7 @@ export default function FounderDashboard() {
                             org.tier === 'scale' ? 'bg-purple-500/10 text-purple-600 border-purple-500/20' :
                             org.tier === 'pro' ? 'bg-blue-500/10 text-blue-600 border-blue-500/20' :
                             org.tier === 'starter' ? 'bg-green-500/10 text-green-600 border-green-500/20' :
-                            'bg-gray-500/10 text-gray-600 border-gray-500/20'
+                            'bg-muted text-muted-foreground border-border'
                           }
                         >
                           {org.tier || 'free'}
@@ -2269,7 +2261,7 @@ export default function FounderDashboard() {
                             org.subscriptionStatus === 'active' ? 'bg-green-500/10 text-green-600 border-green-500/20' :
                             org.subscriptionStatus === 'cancelled' ? 'bg-red-500/10 text-red-600 border-red-500/20' :
                             org.subscriptionStatus === 'trialing' ? 'bg-blue-500/10 text-blue-600 border-blue-500/20' :
-                            'bg-gray-500/10 text-gray-600 border-gray-500/20'
+                            'bg-muted text-muted-foreground border-border'
                           }
                         >
                           {org.subscriptionStatus || 'none'}
@@ -2395,9 +2387,6 @@ export default function FounderDashboard() {
               </div>
             </CardContent>
           </Card>
-        </div>
-      </main>
-
       {/* Notes Modal */}
       <Dialog open={notesModalOpen} onOpenChange={setNotesModalOpen}>
         <DialogContent data-testid="dialog-feature-notes">
@@ -2528,7 +2517,7 @@ export default function FounderDashboard() {
                                         {endpoint.confidenceScore && (
                                           <Badge 
                                             variant="outline" 
-                                            className={`text-xs ${endpoint.confidenceScore >= 85 ? 'bg-green-500/10 text-green-600 border-green-500/20' : endpoint.confidenceScore >= 70 ? 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20' : 'bg-gray-500/10 text-gray-600 border-gray-500/20'}`}
+                                            className={`text-xs ${endpoint.confidenceScore >= 85 ? 'bg-green-500/10 text-green-600 border-green-500/20' : endpoint.confidenceScore >= 70 ? 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20' : 'bg-muted text-muted-foreground border-border'}`}
                                           >
                                             {endpoint.confidenceScore}% confidence
                                           </Badge>
@@ -2716,7 +2705,7 @@ export default function FounderDashboard() {
                         </span>
                         <span className="col-span-2">
                           {endpoint.status === "pending" && (
-                            <Badge variant="outline" className="bg-gray-500/10 text-gray-600 border-gray-500/20">Pending</Badge>
+                            <Badge variant="outline" className="bg-muted text-muted-foreground border-border">Pending</Badge>
                           )}
                           {endpoint.status === "validated" && (
                             <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">Validated</Badge>
@@ -2732,7 +2721,7 @@ export default function FounderDashboard() {
                           {endpoint.confidenceScore && (
                             <Badge 
                               variant="outline" 
-                              className={`text-xs ${endpoint.confidenceScore >= 80 ? 'bg-green-500/10 text-green-600 border-green-500/20' : endpoint.confidenceScore >= 60 ? 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20' : 'bg-gray-500/10 text-gray-600 border-gray-500/20'}`}
+                              className={`text-xs ${endpoint.confidenceScore >= 80 ? 'bg-green-500/10 text-green-600 border-green-500/20' : endpoint.confidenceScore >= 60 ? 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20' : 'bg-muted text-muted-foreground border-border'}`}
                             >
                               {endpoint.confidenceScore}%
                             </Badge>
@@ -3294,6 +3283,6 @@ export default function FounderDashboard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageShell>
   );
 }

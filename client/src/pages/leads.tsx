@@ -1,4 +1,4 @@
-import { Sidebar } from "@/components/layout-sidebar";
+import { PageShell } from "@/components/page-shell";
 import { useLeads, useCreateLead, useUpdateLead, useDeleteLead } from "@/hooks/use-leads";
 import { useProperties } from "@/hooks/use-properties";
 import { useTeamMembers, useUserPermissions, getRoleBadgeStyle, getRoleLabel } from "@/hooks/use-organization";
@@ -104,7 +104,7 @@ function getStageStyle(stage: string) {
     case "cold":
       return "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300";
     default:
-      return "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300";
+      return "bg-muted text-muted-foreground";
   }
 }
 
@@ -947,10 +947,7 @@ export default function LeadsPage() {
   };
 
   return (
-    <div className="flex min-h-screen bg-background desert-gradient">
-      <Sidebar />
-      <main className="flex-1 md:ml-[17rem] p-4 pt-16 md:pt-8 md:p-8 pb-8 overflow-x-hidden">
-        <div className="max-w-7xl mx-auto space-y-6 md:space-y-8">
+    <PageShell>
           
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
@@ -1076,7 +1073,7 @@ export default function LeadsPage() {
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input 
                       placeholder="Search leads..." 
-                      className="pl-9 bg-slate-50 dark:bg-slate-900 border-none"
+                      className="pl-9 bg-muted border-none"
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
                       data-testid="input-search-leads"
@@ -1105,7 +1102,7 @@ export default function LeadsPage() {
                       </SelectItem>
                       <SelectItem value="dead">
                         <span className="flex items-center gap-2">
-                          <Skull className="w-3 h-3 text-slate-500" /> Dead Leads
+                          <Skull className="w-3 h-3 text-muted-foreground" /> Dead Leads
                         </span>
                       </SelectItem>
                     </SelectContent>
@@ -1141,7 +1138,7 @@ export default function LeadsPage() {
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                         <Input 
                           placeholder="Search leads..." 
-                          className="pl-9 bg-slate-50 dark:bg-slate-900 border-none min-h-[44px]"
+                          className="pl-9 bg-muted border-none min-h-[44px]"
                           value={search}
                           onChange={(e) => setSearch(e.target.value)}
                           data-testid="input-search-leads-mobile"
@@ -1208,7 +1205,7 @@ export default function LeadsPage() {
                             </SelectItem>
                             <SelectItem value="dead">
                               <span className="flex items-center gap-2">
-                                <Skull className="w-3 h-3 text-slate-500" /> Dead Leads
+                                <Skull className="w-3 h-3 text-muted-foreground" /> Dead Leads
                               </span>
                             </SelectItem>
                           </SelectContent>
@@ -1281,7 +1278,7 @@ export default function LeadsPage() {
                     <div className="hidden md:block overflow-x-auto">
                       <Table>
                         <TableHeader>
-                          <TableRow className="bg-slate-50/50 dark:bg-slate-900/50">
+                          <TableRow className="bg-muted/50">
                             <TableHead className="w-[50px]">
                               <Checkbox
                                 checked={filteredLeads && filteredLeads.length > 0 && selectedLeadIds.size === filteredLeads.length}
@@ -1527,8 +1524,6 @@ export default function LeadsPage() {
               <FocusList />
             </div>
           </div>
-        </div>
-      </main>
 
       {viewingLead && (
         <LeadDetailDrawer 
@@ -1786,7 +1781,7 @@ export default function LeadsPage() {
         open={isTaxDelinquentImportOpen} 
         onOpenChange={setIsTaxDelinquentImportOpen} 
       />
-    </div>
+    </PageShell>
   );
 }
 
@@ -1796,7 +1791,7 @@ function LeadStatusBadge({ status }: { status: string }) {
     contacting: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
     negotiation: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300",
     closed: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
-    dead: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
+    dead: "bg-muted text-muted-foreground",
   };
   
   return (
@@ -1976,7 +1971,7 @@ function LeadDetailDrawer({ lead, onClose, onEdit }: { lead: Lead; onClose: () =
     contacting: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400',
     negotiation: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400',
     closed: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',
-    dead: 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-200',
+    dead: 'bg-muted text-muted-foreground',
   };
 
   return (

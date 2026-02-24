@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Sidebar } from "@/components/layout-sidebar";
+import { PageShell } from "@/components/page-shell";
 import { ListSkeleton } from "@/components/list-skeleton";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -26,14 +26,14 @@ import {
 import { format } from "date-fns";
 
 const offerStatuses = [
-  { value: "draft", label: "Draft", color: "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-200" },
+  { value: "draft", label: "Draft", color: "bg-muted text-muted-foreground" },
   { value: "queued", label: "Queued", color: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400" },
   { value: "sent", label: "Sent", color: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400" },
   { value: "delivered", label: "Delivered", color: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400" },
   { value: "responded", label: "Responded", color: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400" },
   { value: "accepted", label: "Accepted", color: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400" },
   { value: "rejected", label: "Rejected", color: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400" },
-  { value: "expired", label: "Expired", color: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-400" },
+  { value: "expired", label: "Expired", color: "bg-muted text-muted-foreground" },
 ];
 
 const getStatusBadge = (status: string) => {
@@ -240,10 +240,8 @@ export default function OffersPage() {
   };
 
   return (
-    <div className="flex min-h-screen bg-background desert-gradient">
-      <Sidebar />
-      <main className="flex-1 md:ml-[17rem] p-4 pt-16 md:pt-8 md:p-8 pb-8 overflow-x-hidden">
-        <div className="max-w-7xl mx-auto space-y-6 md:space-y-8">
+    <PageShell>
+        
           
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
@@ -774,8 +772,6 @@ export default function OffersPage() {
               )}
             </TabsContent>
           </Tabs>
-        </div>
-      </main>
-    </div>
+    </PageShell>
   );
 }

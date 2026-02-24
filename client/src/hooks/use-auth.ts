@@ -4,6 +4,25 @@ import type { User } from "@shared/models/auth";
 // Extended user type with founder status (added by server)
 export type AuthUser = User & { isFounder?: boolean };
 
+type LoginInput = { email: string; password: string };
+type RegisterInput = { email: string; password: string; firstName?: string; lastName?: string };
+
+async function apiRequest<T = unknown>(url: string, body: unknown): Promise<T> {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.message || `${response.status}: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
 async function fetchUser(): Promise<AuthUser | null> {
   const response = await fetch("/api/auth/user", {
     credentials: "include",
@@ -21,7 +40,10 @@ async function fetchUser(): Promise<AuthUser | null> {
 }
 
 async function logout(): Promise<void> {
-  window.location.href = "/api/logout";
+  await fetch("/api/auth/logout", {
+    method: "POST",
+    credentials: "include",
+  });
 }
 
 export function useAuth() {
@@ -33,10 +55,25 @@ export function useAuth() {
     staleTime: 1000 * 60 * 5, // 5 minutes
   });
 
+  const loginMutation = useMutation({
+    mutationFn: (input: LoginInput) => apiRequest<AuthUser>("/api/auth/login", input),
+    onSuccess: (data) => {
+      queryClient.setQueryData(["/api/auth/user"], data);
+    },
+  });
+
+  const registerMutation = useMutation({
+    mutationFn: (input: RegisterInput) => apiRequest<AuthUser>("/api/auth/register", input),
+    onSuccess: (data) => {
+      queryClient.setQueryData(["/api/auth/user"], data);
+    },
+  });
+
   const logoutMutation = useMutation({
     mutationFn: logout,
     onSuccess: () => {
       queryClient.setQueryData(["/api/auth/user"], null);
+      window.location.href = "/auth";
     },
   });
 
@@ -45,7 +82,13 @@ export function useAuth() {
     isLoading,
     isAuthenticated: !!user,
     isFounder: user?.isFounder ?? false,
+    login: loginMutation.mutate,
+    register: registerMutation.mutate,
     logout: logoutMutation.mutate,
+    loginError: loginMutation.error,
+    registerError: registerMutation.error,
+    isLoggingIn: loginMutation.isPending,
+    isRegistering: registerMutation.isPending,
     isLoggingOut: logoutMutation.isPending,
   };
 }

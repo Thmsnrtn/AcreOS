@@ -1,4 +1,4 @@
-import { Sidebar } from "@/components/layout-sidebar";
+import { PageShell } from "@/components/page-shell";
 import { useProperties, useCreateProperty, useDeleteProperty, useEnrichProperty } from "@/hooks/use-properties";
 import { queryClient } from "@/lib/queryClient";
 import { telemetry } from "@/lib/telemetry";
@@ -358,10 +358,8 @@ export default function PropertiesPage() {
   };
 
   return (
-    <div className="flex min-h-screen bg-background desert-gradient">
-      <Sidebar />
-      <main className="flex-1 md:ml-[17rem] p-4 pt-16 md:pt-8 md:p-8 pb-8 overflow-x-hidden">
-        <div className="max-w-7xl mx-auto space-y-6 md:space-y-8">
+    <PageShell>
+        
           
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
@@ -521,8 +519,6 @@ export default function PropertiesPage() {
               )}
             </div>
           )}
-        </div>
-      </main>
 
       <ConfirmDialog
         open={!!deletingProperty}
@@ -695,11 +691,11 @@ export default function PropertiesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageShell>
   );
 }
 
-function PropertyCard({ property, onDelete }: { property: Property; onDelete: () => void }) {
+function PropertyCard({ property, onDelete }
   const { mutate: fetchParcel, isPending: isFetchingParcel } = useFetchPropertyParcel();
   const [isDownloading, setIsDownloading] = useState(false);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
@@ -735,7 +731,7 @@ function PropertyCard({ property, onDelete }: { property: Property; onDelete: ()
 
   return (
     <Card className="card-hover border-border/50 group" data-testid={`card-property-${property.id}`}>
-      <div className="h-44 sm:h-40 bg-slate-100 dark:bg-slate-900 relative overflow-hidden">
+      <div className="h-44 sm:h-40 bg-muted relative overflow-hidden">
         {hasMapData ? (
           <StaticPropertyMap
             boundary={property.parcelBoundary as { type: string; coordinates: number[][][] }}
@@ -747,7 +743,7 @@ function PropertyCard({ property, onDelete }: { property: Property; onDelete: ()
         ) : (
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
-              <MapPin className="w-8 h-8 text-slate-300 dark:text-slate-700 mx-auto mb-2" />
+              <MapPin className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
               <Button
                 variant="outline"
                 className="min-h-[44px] sm:min-h-8"
@@ -1861,7 +1857,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
             <Card data-testid="card-infrastructure">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Building2 className="w-4 h-4 text-slate-600" />
+                  <Building2 className="w-4 h-4 text-muted-foreground" />
                   <h4 className="font-semibold">Infrastructure</h4>
                 </div>
                 <div className="space-y-2 text-sm">
@@ -1929,7 +1925,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
             <Card data-testid="card-transportation">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <Car className="w-4 h-4 text-slate-600" />
+                  <Car className="w-4 h-4 text-muted-foreground" />
                   <h4 className="font-semibold">Transportation</h4>
                 </div>
                 <div className="space-y-2 text-sm">

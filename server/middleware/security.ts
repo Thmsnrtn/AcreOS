@@ -20,9 +20,14 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
-    "frame-ancestors 'none'",
-    "upgrade-insecure-requests"
+    "frame-ancestors 'none'"
   ];
+  
+  // Only upgrade to HTTPS in production
+  if (process.env.NODE_ENV === "production") {
+    cspDirectives.push("upgrade-insecure-requests");
+  }
+  
   res.setHeader("Content-Security-Policy", cspDirectives.join("; "));
   
   if (process.env.NODE_ENV === "production") {
@@ -32,13 +37,24 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
   next();
 }
 
-const ALLOWED_ORIGINS = [
-  /^https:\/\/.*\.replit\.dev$/,
-  /^https:\/\/.*\.replit\.app$/,
-  /^https:\/\/.*\.repl\.co$/,
+const ALLOWED_ORIGINS: (string | RegExp)[] = [
+  "http://localhost:3000",
   "http://localhost:5000",
+  "http://localhost:8080",
+  "http://127.0.0.1:3000",
   "http://127.0.0.1:5000",
+  "http://127.0.0.1:8080",
 ];
+
+// Add production domain from APP_URL env var
+if (process.env.APP_URL) {
+  try {
+    const appOrigin = new URL(process.env.APP_URL).origin;
+    ALLOWED_ORIGINS.push(appOrigin);
+  } catch {
+    // Invalid APP_URL, skip
+  }
+}
 
 export function corsMiddleware(req: Request, res: Response, next: NextFunction) {
   const origin = req.headers.origin;

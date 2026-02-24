@@ -1,4 +1,4 @@
-import { Sidebar } from "@/components/layout-sidebar";
+import { PageShell } from "@/components/page-shell";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -53,7 +53,7 @@ const taskFormSchema = z.object({
 type TaskFormValues = z.infer<typeof taskFormSchema>;
 
 const priorityColors = {
-  low: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
+  low: "bg-muted text-muted-foreground",
   medium: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
   high: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300",
   urgent: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
@@ -416,10 +416,7 @@ export default function TasksPage() {
   );
 
   return (
-    <div className="flex min-h-screen bg-background desert-gradient">
-      <Sidebar />
-      <main className="flex-1 md:ml-[17rem] p-4 pt-16 md:pt-8 md:p-8 pb-8 overflow-x-hidden">
-        <div className="max-w-7xl mx-auto w-full space-y-6">
+    <PageShell>
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-3">
               <div className="p-3 bg-primary rounded-xl text-primary-foreground">
@@ -641,8 +638,6 @@ export default function TasksPage() {
               )}
             </CardContent>
           </Card>
-        </div>
-      </main>
 
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
         <DialogContent className="max-w-lg">
@@ -659,6 +654,6 @@ export default function TasksPage() {
           />
         </DialogContent>
       </Dialog>
-    </div>
+    </PageShell>
   );
 }

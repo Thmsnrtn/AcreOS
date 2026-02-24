@@ -93,9 +93,7 @@ export class StripeConnectService {
       throw new Error("Stripe is not configured. Please contact support to enable payment processing.");
     }
     
-    const baseUrl = process.env.REPLIT_DEV_DOMAIN 
-      ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-      : process.env.APP_URL || "http://localhost:5000";
+    const baseUrl = process.env.APP_URL || "http://localhost:5000";
 
     return stripe.accountLinks.create({
       account: accountId,

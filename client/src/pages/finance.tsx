@@ -1,4 +1,4 @@
-import { Sidebar } from "@/components/layout-sidebar";
+import { PageShell } from "@/components/page-shell";
 import { useNotes, useCreateNote, useDeleteNote } from "@/hooks/use-notes";
 import { usePayments, useRecordPayment } from "@/hooks/use-payments";
 import { useLeads } from "@/hooks/use-leads";
@@ -116,10 +116,7 @@ export default function FinancePage() {
   };
 
   return (
-    <div className="flex min-h-screen bg-background desert-gradient">
-      <Sidebar />
-      <main className="flex-1 md:ml-[17rem] p-4 pt-16 md:pt-8 md:p-8 pb-8 overflow-x-hidden">
-        <div className="max-w-7xl mx-auto space-y-6 md:space-y-8">
+    <PageShell>
           
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
@@ -322,11 +319,9 @@ export default function FinancePage() {
               </div>
             </CardContent>
           </Card>
-        </div>
-      </main>
 
       {selectedNote && (
-        <NoteDetailDrawer 
+        <NoteDetailDrawer
           note={selectedNote} 
           onClose={() => setSelectedNote(null)}
           onDelete={() => setDeletingNote(selectedNote)}
@@ -343,11 +338,11 @@ export default function FinancePage() {
         isLoading={isDeleting}
         variant="destructive"
       />
-    </div>
+    </PageShell>
   );
 }
 
-function NoteDetailDrawer({ note, onClose, onDelete }: { note: NoteWithDetails; onClose: () => void; onDelete: () => void }) {
+function NoteDetailDrawer({ note, onClose, onDelete }: {
   const { data: payments, isLoading: paymentsLoading } = usePayments(note.id);
   const [showRecordPayment, setShowRecordPayment] = useState(false);
   const [showAcceptPayment, setShowAcceptPayment] = useState(false);

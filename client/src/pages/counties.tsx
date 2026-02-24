@@ -1,4 +1,4 @@
-import { Sidebar } from "@/components/layout-sidebar";
+import { PageShell } from "@/components/page-shell";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -533,8 +533,7 @@ export default function CountiesPage() {
   };
 
   return (
-    <Sidebar>
-      <div className="p-6 space-y-6">
+    <PageShell>
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-2xl font-bold" data-testid="text-page-title">Target Counties</h1>
@@ -656,7 +655,6 @@ export default function CountiesPage() {
           variant="destructive"
           isLoading={isDeleting}
         />
-      </div>
-    </Sidebar>
+    </PageShell>
   );
 }
