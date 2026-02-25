@@ -100,14 +100,6 @@ export function OnboardingProgress() {
   const { data: onboardingStatus } = useQuery<OnboardingStatus>({
     queryKey: ["/api/onboarding/status"],
     enabled: !!organization,
-    onError: (err) => {
-      console.error("Failed to load onboarding status:", err);
-      toast({
-        title: "Failed to load onboarding status",
-        description: "Some onboarding data may not be up to date.",
-        variant: "destructive",
-      });
-    },
   });
 
   const settings = organization?.settings as Record<string, unknown> | null;
@@ -115,7 +107,7 @@ export function OnboardingProgress() {
   const checklistDismissed = settings?.checklistDismissed === true;
 
   const stripeConnected = organization?.stripeCustomerId != null || 
-    (onboardingStatus?.data?.stripeConnected === true);
+    ((onboardingStatus as OnboardingStatus | undefined)?.data?.stripeConnected === true);
 
   const checklistItems: ChecklistItem[] = [
     {
@@ -156,7 +148,7 @@ export function OnboardingProgress() {
       description: "Try the AI assistant",
       icon: Bot,
       href: "/command-center",
-      isComplete: (onboardingStatus?.data?.completedSteps?.includes(4) || false),
+      isComplete: ((onboardingStatus as OnboardingStatus | undefined)?.data?.completedSteps?.includes(4) || false),
     },
   ];
 
@@ -185,7 +177,7 @@ export function OnboardingProgress() {
     return null;
   }
 
-  if (onboardingStatus?.completed && allComplete) {
+  if ((onboardingStatus as OnboardingStatus | undefined)?.completed && allComplete) {
     return null;
   }
 

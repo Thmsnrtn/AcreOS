@@ -1,10 +1,59 @@
 import { getUncachableStripeClient, getStripeSecretKey } from './stripeClient';
-import { storage } from './storage';
+import { storage, db } from './storage';
 import { creditService } from './services/credits';
-import { CreditPackId } from '@shared/schema';
+import { CreditPackId, stripeProcessedEvents } from '@shared/schema';
+import { eq } from 'drizzle-orm';
 import Stripe from 'stripe';
 
 export class WebhookHandlers {
+  /**
+   * Verify webhook signature and parse event.
+   * Uses stripe.webhooks.constructEvent() for cryptographic verification.
+   */
+  private static async verifyAndParseEvent(payload: Buffer, signature: string): Promise<Stripe.Event> {
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    if (!webhookSecret) {
+      throw new Error('STRIPE_WEBHOOK_SECRET not configured — cannot verify webhook signatures');
+    }
+
+    const stripe = await getUncachableStripeClient();
+    // constructEvent verifies the signature and throws on mismatch
+    return stripe.webhooks.constructEvent(payload, signature, webhookSecret);
+  }
+
+  /**
+   * Check if this event has already been processed (idempotency).
+   * Returns true if already processed.
+   */
+  private static async isDuplicate(eventId: string): Promise<boolean> {
+    try {
+      const [existing] = await db
+        .select({ id: stripeProcessedEvents.id })
+        .from(stripeProcessedEvents)
+        .where(eq(stripeProcessedEvents.stripeEventId, eventId))
+        .limit(1);
+      return !!existing;
+    } catch {
+      // Table may not exist yet during migration — allow processing
+      return false;
+    }
+  }
+
+  /**
+   * Record that an event has been processed.
+   */
+  private static async markProcessed(eventId: string, eventType: string): Promise<void> {
+    try {
+      await db.insert(stripeProcessedEvents).values({
+        stripeEventId: eventId,
+        eventType,
+      }).onConflictDoNothing();
+    } catch (err) {
+      // Non-fatal — log and continue
+      console.warn(`[webhook] Failed to record processed event ${eventId}:`, err);
+    }
+  }
+
   static async processWebhook(payload: Buffer, signature: string): Promise<void> {
     if (!Buffer.isBuffer(payload)) {
       throw new Error(
@@ -15,14 +64,13 @@ export class WebhookHandlers {
       );
     }
 
-    const stripe = await getUncachableStripeClient();
-    
-    let event: Stripe.Event;
-    try {
-      event = JSON.parse(payload.toString()) as Stripe.Event;
-    } catch (err) {
-      console.error('Failed to parse webhook payload:', err);
-      throw new Error('Invalid webhook payload');
+    // Verify signature cryptographically
+    const event = await WebhookHandlers.verifyAndParseEvent(payload, signature);
+
+    // Idempotency: skip already-processed events
+    if (await WebhookHandlers.isDuplicate(event.id)) {
+      console.log(`[webhook] Skipping duplicate event: ${event.id} (${event.type})`);
+      return;
     }
 
     // Handle checkout session completed
@@ -31,11 +79,13 @@ export class WebhookHandlers {
       
       if (session.metadata?.type === 'borrower_portal_payment') {
         await WebhookHandlers.processBorrowerPortalPayment(session);
+        await WebhookHandlers.markProcessed(event.id, event.type);
         return;
       }
       
       if (session.metadata?.type === 'credit_purchase') {
         await WebhookHandlers.processCreditPurchase(session);
+        await WebhookHandlers.markProcessed(event.id, event.type);
         return;
       }
     }
@@ -44,6 +94,7 @@ export class WebhookHandlers {
     if (event.type === 'invoice.payment_failed') {
       const invoice = event.data.object as Stripe.Invoice;
       await WebhookHandlers.processPaymentFailed(invoice);
+      await WebhookHandlers.markProcessed(event.id, event.type);
       return;
     }
 
@@ -51,18 +102,35 @@ export class WebhookHandlers {
     if (event.type === 'invoice.payment_succeeded') {
       const invoice = event.data.object as Stripe.Invoice;
       await WebhookHandlers.processPaymentSucceeded(invoice);
+      await WebhookHandlers.markProcessed(event.id, event.type);
       return;
     }
 
-    // Handle subscription updates
+    // Handle subscription lifecycle
     if (event.type === 'customer.subscription.deleted') {
       const subscription = event.data.object as Stripe.Subscription;
       await WebhookHandlers.processSubscriptionCancelled(subscription);
+      await WebhookHandlers.markProcessed(event.id, event.type);
+      return;
+    }
+
+    if (event.type === 'customer.subscription.updated') {
+      const subscription = event.data.object as Stripe.Subscription;
+      await WebhookHandlers.processSubscriptionUpdated(subscription);
+      await WebhookHandlers.markProcessed(event.id, event.type);
+      return;
+    }
+
+    if (event.type === 'customer.subscription.trial_will_end') {
+      const subscription = event.data.object as Stripe.Subscription;
+      await WebhookHandlers.processTrialWillEnd(subscription);
+      await WebhookHandlers.markProcessed(event.id, event.type);
       return;
     }
 
     // Unhandled event type — log and acknowledge
-    console.log(`Unhandled Stripe event type: ${event.type}`);
+    console.log(`[webhook] Unhandled Stripe event type: ${event.type}`);
+    await WebhookHandlers.markProcessed(event.id, event.type);
   }
 
   static async processPaymentFailed(invoice: Stripe.Invoice): Promise<void> {
@@ -144,7 +212,7 @@ export class WebhookHandlers {
       const org = await storage.getOrganizationByStripeCustomerId(customerId);
       if (!org) return;
 
-      const previousTier = org.tier || org.subscriptionTier || 'free';
+      const previousTier = org.subscriptionTier || 'free';
 
       // Update org to free tier
       await storage.updateOrganization(org.id, {
@@ -165,6 +233,102 @@ export class WebhookHandlers {
       console.log(`Subscription cancelled: Org ${org.id}`);
     } catch (err) {
       console.error('Error processing subscription cancelled:', err);
+    }
+  }
+
+  /**
+   * Handle subscription plan changes (upgrades/downgrades, status changes).
+   */
+  static async processSubscriptionUpdated(subscription: Stripe.Subscription): Promise<void> {
+    try {
+      const customerId = typeof subscription.customer === 'string'
+        ? subscription.customer
+        : subscription.customer?.id;
+
+      if (!customerId) return;
+
+      const org = await storage.getOrganizationByStripeCustomerId(customerId);
+      if (!org) return;
+
+      // Map Stripe status to our status
+      const statusMap: Record<string, string> = {
+        active: 'active',
+        past_due: 'past_due',
+        unpaid: 'unpaid',
+        trialing: 'trialing',
+        canceled: 'cancelled',
+        incomplete: 'incomplete',
+        incomplete_expired: 'expired',
+        paused: 'paused',
+      };
+
+      // Determine tier from product metadata
+      const priceId = subscription.items?.data?.[0]?.price?.id;
+      let newTier: string | undefined;
+
+      if (priceId) {
+        const stripe = await getUncachableStripeClient();
+        const price = await stripe.prices.retrieve(priceId, { expand: ['product'] });
+        const product = price.product as Stripe.Product;
+        newTier = product.metadata?.tier;
+      }
+
+      const updates: Record<string, any> = {
+        subscriptionStatus: statusMap[subscription.status] || subscription.status,
+        stripeSubscriptionId: subscription.id,
+      };
+
+      if (newTier) {
+        const previousTier = org.subscriptionTier;
+        updates.subscriptionTier = newTier;
+
+        if (previousTier !== newTier) {
+          await storage.logSubscriptionEvent({
+            organizationId: org.id,
+            eventType: 'change',
+            fromTier: previousTier,
+            toTier: newTier,
+          });
+        }
+      }
+
+      await storage.updateOrganization(org.id, updates);
+      console.log(`[webhook] Subscription updated: Org ${org.id}, Status: ${subscription.status}${newTier ? `, Tier: ${newTier}` : ''}`);
+    } catch (err) {
+      console.error('Error processing subscription updated:', err);
+    }
+  }
+
+  /**
+   * Handle trial ending soon (3 days before trial ends).
+   */
+  static async processTrialWillEnd(subscription: Stripe.Subscription): Promise<void> {
+    try {
+      const customerId = typeof subscription.customer === 'string'
+        ? subscription.customer
+        : subscription.customer?.id;
+
+      if (!customerId) return;
+
+      const org = await storage.getOrganizationByStripeCustomerId(customerId);
+      if (!org) return;
+
+      // Create a system alert for the org
+      await storage.createSystemAlert({
+        organizationId: org.id,
+        type: 'trial_ending',
+        severity: 'warning',
+        title: 'Your trial is ending soon',
+        message: `Your trial ends on ${new Date((subscription.trial_end || 0) * 1000).toLocaleDateString()}. Upgrade to keep access to all features.`,
+        metadata: {
+          trialEnd: subscription.trial_end,
+          subscriptionId: subscription.id,
+        },
+      });
+
+      console.log(`[webhook] Trial ending soon alert created: Org ${org.id}`);
+    } catch (err) {
+      console.error('Error processing trial_will_end:', err);
     }
   }
 

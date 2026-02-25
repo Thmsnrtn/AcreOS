@@ -1946,7 +1946,7 @@ function LeadDetailDrawer({ lead, onClose, onEdit }: { lead: Lead; onClose: () =
   const handleAssignmentChange = (userId: string) => {
     setIsAssigning(true);
     updateLead(
-      { id: lead.id, data: { assignedTo: userId === "unassigned" ? null : userId } },
+      { id: lead.id, assignedTo: userId === "unassigned" ? null : userId } as any,
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: ['/api/leads'] });

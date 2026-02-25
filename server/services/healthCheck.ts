@@ -117,38 +117,26 @@ class HealthCheckService {
   }
 
   /**
-   * Check if SendGrid is configured
+   * Check AWS SES email service
    */
-  async checkSendGrid(): Promise<ServiceHealth> {
-    const name = 'sendgrid';
-    const start = Date.now();
+  async checkEmail(): Promise<ServiceHealth> {
+    const name = 'email';
     
     try {
-      const sendgridKey = process.env.SENDGRID_API_KEY;
-      if (!sendgridKey) {
-        return this.createHealth(name, 'unconfigured', undefined, 'SENDGRID_API_KEY not configured');
-      }
-
-      const response = await fetch('https://api.sendgrid.com/v3/user/profile', {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${sendgridKey}`,
-          'Content-Type': 'application/json',
-        },
-      });
+      const awsKey = process.env.AWS_ACCESS_KEY_ID;
+      const awsSecret = process.env.AWS_SECRET_ACCESS_KEY;
+      const fromEmail = process.env.AWS_SES_FROM_EMAIL;
       
-      const latency = Date.now() - start;
-      
-      if (response.ok) {
-        return this.createHealth(name, 'healthy', latency);
-      } else if (response.status === 401) {
-        return this.createHealth(name, 'unavailable', latency, 'Invalid API key');
-      } else {
-        return this.createHealth(name, 'degraded', latency, `HTTP ${response.status}`);
+      if (!awsKey || !awsSecret) {
+        return this.createHealth(name, 'unconfigured', undefined, 'AWS SES credentials not configured (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)');
       }
+      if (!fromEmail) {
+        return this.createHealth(name, 'degraded', undefined, 'AWS_SES_FROM_EMAIL not set — email sending will fail');
+      }
+      
+      return this.createHealth(name, 'healthy', undefined, `AWS SES configured (from: ${fromEmail})`);
     } catch (error: any) {
-      const latency = Date.now() - start;
-      return this.createHealth(name, 'degraded', latency, error.message);
+      return this.createHealth(name, 'degraded', undefined, error.message);
     }
   }
 
@@ -218,7 +206,7 @@ class HealthCheckService {
       this.checkStripe(),
       this.checkOpenAI(),
       this.checkTwilio(),
-      this.checkSendGrid(),
+      this.checkEmail(),
       this.checkLob(),
     ]);
 
@@ -248,8 +236,9 @@ class HealthCheckService {
         return this.checkOpenAI();
       case 'twilio':
         return this.checkTwilio();
+      case 'email':
       case 'sendgrid':
-        return this.checkSendGrid();
+        return this.checkEmail();
       case 'lob':
         return this.checkLob();
       default:

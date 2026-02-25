@@ -168,9 +168,31 @@ export function registerIntegrationRoutes(app: Express): void {
           }
         }
       } else if (provider === 'twilio') {
-        testResult = { success: true, message: 'Twilio validation pending - full implementation coming soon' };
+        try {
+          const twilioResponse = await fetch('https://api.twilio.com/2010-04-01/Accounts.json', {
+            headers: { 'Authorization': 'Basic ' + Buffer.from(credentials.apiKey + ':').toString('base64') },
+          });
+          if (twilioResponse.status === 401 || twilioResponse.status === 403) {
+            testResult = { success: false, message: 'Invalid Twilio API key' };
+          } else {
+            testResult = { success: true, message: 'Twilio API key is valid' };
+          }
+        } catch (twilioErr: any) {
+          testResult = { success: false, message: `Twilio test failed: ${twilioErr.message}` };
+        }
       } else if (provider === 'lob') {
-        testResult = { success: true, message: 'Lob validation pending - full implementation coming soon' };
+        try {
+          const lobResponse = await fetch('https://api.lob.com/v1/addresses?limit=1', {
+            headers: { 'Authorization': 'Basic ' + Buffer.from(credentials.apiKey + ':').toString('base64') },
+          });
+          if (lobResponse.status === 401 || lobResponse.status === 403) {
+            testResult = { success: false, message: 'Invalid Lob API key' };
+          } else {
+            testResult = { success: true, message: 'Lob API key is valid' };
+          }
+        } catch (lobErr: any) {
+          testResult = { success: false, message: `Lob test failed: ${lobErr.message}` };
+        }
       } else if (provider === 'regrid') {
         try {
           const testResponse = await fetch(`https://app.regrid.com/api/v2/parcels/address?query=1600%20Pennsylvania%20Ave%20NW,%20Washington,%20DC&token=${credentials.apiKey}&limit=1`);

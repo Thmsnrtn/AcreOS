@@ -198,7 +198,7 @@ export function TemplateEditor({ template, onSave, onCancel, mode = "create" }: 
     onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ["/api/document-templates"] });
       toast({ title: "Template created successfully" });
-      onSave?.(response as DocumentTemplate);
+      onSave?.(response as unknown as DocumentTemplate);
     },
     onError: (error: any) => {
       toast({ title: "Failed to create template", description: error.message, variant: "destructive" });
@@ -213,7 +213,7 @@ export function TemplateEditor({ template, onSave, onCancel, mode = "create" }: 
     onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ["/api/document-templates"] });
       toast({ title: "Template updated successfully" });
-      onSave?.(response as DocumentTemplate);
+      onSave?.(response as unknown as DocumentTemplate);
     },
     onError: (error: any) => {
       toast({ title: "Failed to update template", description: error.message, variant: "destructive" });

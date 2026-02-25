@@ -19,12 +19,14 @@ const CSRF_HEADER = "x-csrf-token";
 /** Safe methods that don't require CSRF validation */
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
-/** Paths exempt from CSRF (webhooks, external callbacks) */
+/** Paths exempt from CSRF (webhooks, external callbacks, borrower portal) */
 const EXEMPT_PATHS = [
   "/stripe/webhook",
+  "/stripe/connect/webhook",
   "/auth/login",
   "/auth/register",
   "/auth/logout",
+  "/borrower/",
 ];
 
 /**

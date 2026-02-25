@@ -139,7 +139,7 @@ function CountyCard({ county, onEdit, onDelete }: {
             <CardTitle className="text-lg" data-testid={`text-county-name-${county.id}`}>
               {county.name}
             </CardTitle>
-            <Badge size="sm" className={statusConfig.color} data-testid={`badge-status-${county.id}`}>
+            <Badge className={statusConfig.color} data-testid={`badge-status-${county.id}`}>
               {statusConfig.label}
             </Badge>
           </div>
@@ -216,7 +216,6 @@ function CountyCard({ county, onEdit, onDelete }: {
                 return (
                   <Badge
                     key={idx}
-                    size="sm"
                     className={typeConfig?.color || ""}
                     data-testid={`badge-source-${county.id}-${idx}`}
                   >
@@ -500,7 +499,7 @@ export default function CountiesPage() {
     return true;
   });
 
-  const uniqueStates = [...new Set((counties || []).map(c => c.state))].sort();
+  const uniqueStates = Array.from(new Set((counties || []).map(c => c.state))).sort();
 
   const handleOpenCreate = () => {
     setEditingCounty(null);
@@ -602,14 +601,8 @@ export default function CountiesPage() {
                 ? "Add your first target county to start tracking acquisition markets."
                 : "Try adjusting your filters to see more results."
             }
-            action={
-              counties?.length === 0 ? (
-                <Button onClick={handleOpenCreate} data-testid="button-add-county-empty">
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add County
-                </Button>
-              ) : undefined
-            }
+            actionLabel={counties?.length === 0 ? "Add County" : undefined}
+            onAction={counties?.length === 0 ? handleOpenCreate : undefined}
           />
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -650,7 +643,7 @@ export default function CountiesPage() {
           onOpenChange={(open) => !open && setDeletingCounty(null)}
           title="Delete County"
           description={`Are you sure you want to delete "${deletingCounty?.name}, ${deletingCounty?.state}"? This action cannot be undone.`}
-          confirmText="Delete"
+          confirmLabel="Delete"
           onConfirm={handleDelete}
           variant="destructive"
           isLoading={isDeleting}

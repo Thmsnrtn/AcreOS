@@ -9453,3 +9453,44 @@ export const whitelabelTenants = pgTable("whitelabel_tenants", {
 export const insertWhitelabelTenantSchema = createInsertSchema(whitelabelTenants).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertWhitelabelTenant = z.infer<typeof insertWhitelabelTenantSchema>;
 export type WhitelabelTenant = typeof whitelabelTenants.$inferSelect;
+
+// ===========================
+// STRIPE WEBHOOK DEDUP
+// ===========================
+
+// Tracks processed Stripe events for idempotency
+export const stripeProcessedEvents = pgTable("stripe_processed_events", {
+  id: serial("id").primaryKey(),
+  stripeEventId: text("stripe_event_id").notNull().unique(),
+  eventType: text("event_type").notNull(),
+  processedAt: timestamp("processed_at").defaultNow(),
+}, (table) => [
+  index("stripe_processed_events_event_id_idx").on(table.stripeEventId),
+]);
+
+// ===========================
+// AI TELEMETRY
+// ===========================
+
+// Tracks AI request metrics for cost optimization and observability
+export const aiTelemetryEvents = pgTable("ai_telemetry_events", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id),
+  taskType: text("task_type").notNull(),
+  provider: text("provider").notNull(), // openai, openrouter
+  model: text("model").notNull(),
+  promptTokens: integer("prompt_tokens"),
+  completionTokens: integer("completion_tokens"),
+  totalTokens: integer("total_tokens"),
+  estimatedCostCents: numeric("estimated_cost_cents"),
+  latencyMs: integer("latency_ms"),
+  cacheHit: boolean("cache_hit").default(false),
+  complexity: text("complexity"), // simple, moderate, complex
+  success: boolean("success").default(true),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("ai_telemetry_org_idx").on(table.organizationId),
+  index("ai_telemetry_created_idx").on(table.createdAt),
+  index("ai_telemetry_provider_idx").on(table.provider),
+]);

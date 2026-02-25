@@ -47,18 +47,16 @@ export function SequencesContent() {
 
   const createMutation = useMutation({
     mutationFn: async (data: { sequence: typeof formData; steps: SequenceStepData[] }) => {
-      const sequence = await apiRequest("/api/sequences", { method: "POST", body: JSON.stringify(data.sequence) });
+      const res = await apiRequest("POST", "/api/sequences", data.sequence);
+      const sequence = await res.json();
       for (const step of data.steps) {
-        await apiRequest(`/api/sequences/${sequence.id}/steps`, {
-          method: "POST",
-          body: JSON.stringify({
+        await apiRequest("POST", `/api/sequences/${sequence.id}/steps`, {
             delayDays: step.delayDays,
             channel: step.channel,
             subject: step.subject,
             content: step.content,
             conditionType: step.conditionType,
             conditionDays: step.conditionDays,
-          }),
         });
       }
       return sequence;
@@ -77,22 +75,20 @@ export function SequencesContent() {
 
   const updateMutation = useMutation({
     mutationFn: async (data: { id: number; sequence: typeof formData; steps: SequenceStepData[] }) => {
-      await apiRequest(`/api/sequences/${data.id}`, { method: "PUT", body: JSON.stringify(data.sequence) });
-      const existingSteps = await apiRequest(`/api/sequences/${data.id}/steps`);
+      await apiRequest("PUT", `/api/sequences/${data.id}`, data.sequence);
+      const stepsRes = await apiRequest("GET", `/api/sequences/${data.id}/steps`);
+      const existingSteps: any[] = await stepsRes.json();
       for (const step of existingSteps) {
-        await apiRequest(`/api/sequences/${data.id}/steps/${step.id}`, { method: "DELETE" });
+        await apiRequest("DELETE", `/api/sequences/${data.id}/steps/${step.id}`);
       }
       for (const step of data.steps) {
-        await apiRequest(`/api/sequences/${data.id}/steps`, {
-          method: "POST",
-          body: JSON.stringify({
+        await apiRequest("POST", `/api/sequences/${data.id}/steps`, {
             delayDays: step.delayDays,
             channel: step.channel,
             subject: step.subject,
             content: step.content,
             conditionType: step.conditionType,
             conditionDays: step.conditionDays,
-          }),
         });
       }
     },
@@ -109,7 +105,7 @@ export function SequencesContent() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: number) => apiRequest(`/api/sequences/${id}`, { method: "DELETE" }),
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/sequences/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/sequences"] });
       queryClient.invalidateQueries({ queryKey: ["/api/sequences/stats"] });
@@ -121,7 +117,7 @@ export function SequencesContent() {
   });
 
   const pauseEnrollmentMutation = useMutation({
-    mutationFn: (id: number) => apiRequest(`/api/enrollments/${id}/pause`, { method: "POST", body: JSON.stringify({}) }),
+    mutationFn: (id: number) => apiRequest("POST", `/api/enrollments/${id}/pause`, {}),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/enrollments/active"] });
       toast({ title: "Enrollment paused" });
@@ -129,7 +125,7 @@ export function SequencesContent() {
   });
 
   const resumeEnrollmentMutation = useMutation({
-    mutationFn: (id: number) => apiRequest(`/api/enrollments/${id}/resume`, { method: "POST", body: JSON.stringify({}) }),
+    mutationFn: (id: number) => apiRequest("POST", `/api/enrollments/${id}/resume`, {}),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/enrollments/active"] });
       toast({ title: "Enrollment resumed" });
@@ -137,7 +133,7 @@ export function SequencesContent() {
   });
 
   const cancelEnrollmentMutation = useMutation({
-    mutationFn: (id: number) => apiRequest(`/api/enrollments/${id}/cancel`, { method: "POST", body: JSON.stringify({}) }),
+    mutationFn: (id: number) => apiRequest("POST", `/api/enrollments/${id}/cancel`, {}),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/enrollments/active"] });
       toast({ title: "Enrollment cancelled" });
@@ -151,7 +147,8 @@ export function SequencesContent() {
   };
 
   const handleEdit = async (sequence: CampaignSequence) => {
-    const fullSequence = await apiRequest(`/api/sequences/${sequence.id}`);
+    const res = await apiRequest("GET", `/api/sequences/${sequence.id}`);
+    const fullSequence: SequenceWithSteps = await res.json();
     setSelectedSequence(fullSequence);
     setFormData({
       name: fullSequence.name,
@@ -176,7 +173,8 @@ export function SequencesContent() {
   };
 
   const handleView = async (sequence: CampaignSequence) => {
-    const fullSequence = await apiRequest(`/api/sequences/${sequence.id}`);
+    const res = await apiRequest("GET", `/api/sequences/${sequence.id}`);
+    const fullSequence: SequenceWithSteps = await res.json();
     setViewingSequence(fullSequence);
   };
 

@@ -52,11 +52,12 @@ export function TimelineView({ deals = [], milestones: externalMilestones = [], 
     return deals.flatMap((deal) => {
       const items: TimelineMilestone[] = [];
       
+      const dealAny = deal as any;
       if (deal.createdAt) {
         items.push({
           id: `deal-created-${deal.id}`,
           date: new Date(deal.createdAt),
-          title: `Deal Created: ${deal.name || `Deal #${deal.id}`}`,
+          title: `Deal Created: ${dealAny.name || `Deal #${deal.id}`}`,
           type: "deal",
           status: "completed",
           entityId: deal.id,
@@ -64,13 +65,13 @@ export function TimelineView({ deals = [], milestones: externalMilestones = [], 
         });
       }
       
-      if (deal.expectedCloseDate) {
-        const closeDate = new Date(deal.expectedCloseDate);
+      if (dealAny.expectedCloseDate) {
+        const closeDate = new Date(dealAny.expectedCloseDate);
         const isOverdue = closeDate < today && deal.status !== "closed";
         items.push({
           id: `deal-close-${deal.id}`,
           date: closeDate,
-          title: `Expected Close: ${deal.name || `Deal #${deal.id}`}`,
+          title: `Expected Close: ${dealAny.name || `Deal #${deal.id}`}`,
           type: "deadline",
           status: deal.status === "closed" ? "completed" : isOverdue ? "overdue" : "pending",
           entityId: deal.id,

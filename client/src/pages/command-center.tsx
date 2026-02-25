@@ -807,11 +807,22 @@ function AgentsTabContent() {
     };
   });
 
+  const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
+
   const handleViewActivity = (agentId: string, agentName: string) => {
-    toast({ 
-      title: "Coming Soon", 
-      description: `Activity logs for ${agentName} will be available in a future update.` 
-    });
+    setSelectedAgent(selectedAgent === agentId ? null : agentId);
+  };
+
+  const getAgentActivitySummary = (agent: BackgroundAgent) => {
+    const status = agentStatuses.find((s) => s.agentName === agent.id);
+    if (!status) return "No activity recorded yet.";
+    const parts: string[] = [];
+    if (status.processedCount) parts.push(`${status.processedCount} items processed`);
+    if (status.errorCount) parts.push(`${status.errorCount} errors`);
+    if (status.lastError) parts.push(`Last error: ${status.lastError}`);
+    if (status.lastRunAt) parts.push(`Last run: ${new Date(status.lastRunAt).toLocaleString()}`);
+    if (status.nextRunAt) parts.push(`Next run: ${new Date(status.nextRunAt).toLocaleString()}`);
+    return parts.length > 0 ? parts.join(" \u2022 ") : "Agent is idle with no recent activity.";
   };
 
   return (
@@ -884,6 +895,12 @@ function AgentsTabContent() {
                       )}
                     </div>
 
+                    {selectedAgent === agent.id && (
+                      <div className="p-3 bg-muted/50 rounded-lg text-xs text-muted-foreground border">
+                        {getAgentActivitySummary(agent)}
+                      </div>
+                    )}
+
                     <div className="flex items-center gap-2 mt-auto pt-3">
                       <Button
                         variant="ghost"
@@ -893,7 +910,7 @@ function AgentsTabContent() {
                         data-testid={`button-view-agent-${agent.id}`}
                       >
                         <Activity className="w-3 h-3 mr-1" />
-                        View Activity
+                        {selectedAgent === agent.id ? "Hide Activity" : "View Activity"}
                       </Button>
                     </div>
                   </CardContent>
