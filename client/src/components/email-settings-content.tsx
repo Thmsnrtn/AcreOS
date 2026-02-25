@@ -171,7 +171,7 @@ export function EmailSettingsContent() {
 
   const displayName = user?.firstName && user?.lastName
     ? `${user.firstName} ${user.lastName}`
-    : user?.username || "User";
+    : user?.email?.split("@")[0] || "User";
 
   const platformEmail = user?.firstName && user?.lastName
     ? `${user.firstName.toLowerCase()}.${user.lastName.toLowerCase()}@acreage.pro`

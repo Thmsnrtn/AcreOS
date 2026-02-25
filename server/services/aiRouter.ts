@@ -1,4 +1,65 @@
 import OpenAI from "openai";
+import crypto from "crypto";
+
+// ============================================
+// AI RESPONSE CACHE (in-memory, TTL-based)
+// ============================================
+
+interface CacheEntry {
+  content: string;
+  provider: AIProvider;
+  model: string;
+  usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
+  estimatedCost?: number;
+  cachedAt: number;
+}
+
+const AI_CACHE = new Map<string, CacheEntry>();
+const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
+const MAX_CACHE_SIZE = 500;
+
+function getCacheKey(task: AITask): string {
+  const payload = JSON.stringify({
+    messages: task.messages,
+    taskType: task.taskType,
+    responseFormat: task.responseFormat,
+    temperature: task.temperature,
+  });
+  return crypto.createHash('sha256').update(payload).digest('hex');
+}
+
+function getCachedResponse(key: string): CacheEntry | null {
+  const entry = AI_CACHE.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.cachedAt > CACHE_TTL_MS) {
+    AI_CACHE.delete(key);
+    return null;
+  }
+  return entry;
+}
+
+function setCachedResponse(key: string, entry: CacheEntry): void {
+  // Evict oldest entries if cache is full
+  if (AI_CACHE.size >= MAX_CACHE_SIZE) {
+    const oldestKey = AI_CACHE.keys().next().value;
+    if (oldestKey) AI_CACHE.delete(oldestKey);
+  }
+  AI_CACHE.set(key, entry);
+}
+
+// Cache stats for telemetry
+let cacheHits = 0;
+let cacheMisses = 0;
+
+export function getAICacheStats() {
+  return { size: AI_CACHE.size, hits: cacheHits, misses: cacheMisses, maxSize: MAX_CACHE_SIZE, ttlMs: CACHE_TTL_MS };
+}
+
+export function clearAICache() {
+  AI_CACHE.clear();
+  cacheHits = 0;
+  cacheMisses = 0;
+}
 
 export enum TaskComplexity {
   SIMPLE = "simple",
@@ -281,22 +342,89 @@ export async function routeAITask(
   task: AITask,
   config: AIRouterConfig = {}
 ): Promise<AIResponse> {
+  // Check cache for non-complex, deterministic tasks (temperature <= 0.3)
+  const isCacheable = task.complexity !== TaskComplexity.COMPLEX && (task.temperature ?? 0.7) <= 0.3;
+  let cacheKey = '';
+  
+  if (isCacheable) {
+    cacheKey = getCacheKey(task);
+    const cached = getCachedResponse(cacheKey);
+    if (cached) {
+      cacheHits++;
+      console.log(`[AIRouter] Cache HIT for ${task.taskType} (${task.complexity})`);
+      // Record telemetry for cache hit
+      recordAITelemetry({
+        orgId: config.orgId,
+        taskType: task.taskType,
+        provider: cached.provider,
+        model: cached.model,
+        promptTokens: cached.usage?.promptTokens || 0,
+        completionTokens: cached.usage?.completionTokens || 0,
+        totalTokens: cached.usage?.totalTokens || 0,
+        estimatedCostCents: 0, // No cost for cache hit
+        latencyMs: 0,
+        cacheHit: true,
+        complexity: task.complexity,
+        success: true,
+      });
+      return {
+        content: cached.content,
+        provider: cached.provider,
+        model: cached.model,
+        usage: cached.usage,
+        estimatedCost: 0, // No cost for cache hit
+      };
+    }
+    cacheMisses++;
+  }
+
+  const startTime = Date.now();
   const { provider, model, client } = selectProviderAndModel(task.complexity, config);
   
   console.log(`[AIRouter] Routing ${task.taskType} (${task.complexity}) -> ${provider}/${model}`);
   
-  const response = await client.chat.completions.create({
-    model,
-    messages: task.messages,
-    max_tokens: task.maxTokens || 4096,
-    temperature: task.temperature ?? 0.7,
-    ...(task.responseFormat === "json" && { response_format: { type: "json_object" } }),
-  });
+  let content = '';
+  let usage: any;
+  let success = true;
+  let errorMessage: string | undefined;
+
+  try {
+    const response = await client.chat.completions.create({
+      model,
+      messages: task.messages,
+      max_tokens: task.maxTokens || 4096,
+      temperature: task.temperature ?? 0.7,
+      ...(task.responseFormat === "json" && { response_format: { type: "json_object" } }),
+    });
+    
+    content = response.choices[0]?.message?.content || "";
+    usage = response.usage;
+  } catch (err: any) {
+    success = false;
+    errorMessage = err.message;
+    const latencyMs = Date.now() - startTime;
+    recordAITelemetry({
+      orgId: config.orgId,
+      taskType: task.taskType,
+      provider,
+      model,
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+      estimatedCostCents: 0,
+      latencyMs,
+      cacheHit: false,
+      complexity: task.complexity,
+      success: false,
+      errorMessage: err.message,
+    });
+    throw err;
+  }
+
+  const latencyMs = Date.now() - startTime;
+  const costEstimate = usage ? estimateCost(model, usage.prompt_tokens, usage.completion_tokens) : 0;
   
-  const content = response.choices[0]?.message?.content || "";
-  const usage = response.usage;
-  
-  return {
+  const result: AIResponse = {
     content,
     provider,
     model,
@@ -305,8 +433,34 @@ export async function routeAITask(
       completionTokens: usage.completion_tokens,
       totalTokens: usage.total_tokens,
     } : undefined,
-    estimatedCost: usage ? estimateCost(model, usage.prompt_tokens, usage.completion_tokens) : undefined,
+    estimatedCost: costEstimate,
   };
+
+  // Cache the result
+  if (isCacheable && cacheKey && content) {
+    setCachedResponse(cacheKey, {
+      ...result,
+      cachedAt: Date.now(),
+    });
+  }
+
+  // Record telemetry (fire and forget)
+  recordAITelemetry({
+    orgId: config.orgId,
+    taskType: task.taskType,
+    provider,
+    model,
+    promptTokens: usage?.prompt_tokens || 0,
+    completionTokens: usage?.completion_tokens || 0,
+    totalTokens: usage?.total_tokens || 0,
+    estimatedCostCents: Math.round(costEstimate * 100),
+    latencyMs,
+    cacheHit: false,
+    complexity: task.complexity,
+    success: true,
+  });
+
+  return result;
 }
 
 export async function routeSimpleTask(
@@ -369,4 +523,52 @@ export function getProviderStatus(): Record<AIProvider, boolean> {
     [AIProvider.OPENROUTER]: !!getOpenRouterClient(),
     [AIProvider.OPENAI]: !!getOpenAIClient(),
   };
+}
+
+// ============================================
+// AI TELEMETRY (async, non-blocking)
+// ============================================
+
+interface TelemetryPayload {
+  orgId?: number;
+  taskType: string;
+  provider: string;
+  model: string;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  estimatedCostCents: number;
+  latencyMs: number;
+  cacheHit: boolean;
+  complexity: string;
+  success: boolean;
+  errorMessage?: string;
+}
+
+function recordAITelemetry(payload: TelemetryPayload): void {
+  // Fire-and-forget: don't block the response
+  (async () => {
+    try {
+      const { db } = await import('../db');
+      const { aiTelemetryEvents } = await import('@shared/schema');
+      await db.insert(aiTelemetryEvents).values({
+        organizationId: payload.orgId || null,
+        taskType: payload.taskType,
+        provider: payload.provider,
+        model: payload.model,
+        promptTokens: payload.promptTokens,
+        completionTokens: payload.completionTokens,
+        totalTokens: payload.totalTokens,
+        estimatedCostCents: payload.estimatedCostCents.toString(),
+        latencyMs: payload.latencyMs,
+        cacheHit: payload.cacheHit,
+        complexity: payload.complexity,
+        success: payload.success,
+        errorMessage: payload.errorMessage || null,
+      });
+    } catch (err) {
+      // Telemetry is non-critical — log and continue
+      console.warn('[AIRouter] Failed to record telemetry:', err);
+    }
+  })();
 }

@@ -223,7 +223,7 @@ export function SavedViewsSelector({
           <DropdownMenuContent align="start">
             <DropdownMenuItem 
               onClick={() => setDefaultMutation.mutate(selectedView.id)}
-              disabled={selectedView.isDefault}
+              disabled={selectedView.isDefault ?? false}
               data-testid="button-set-default-view"
             >
               <Star className="w-4 h-4 mr-2" />

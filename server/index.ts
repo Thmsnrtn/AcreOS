@@ -504,7 +504,8 @@ function startScheduledTaskRunnerJob() {
 // Deal Hunter daily scraping job
 async function processDealHunterScraping() {
   try {
-    const { dealHunter } = await import("./services/dealHunter");
+    const dealHunterModule = await import("./services/dealHunter");
+    const dealHunter = (dealHunterModule as any).dealHunter || dealHunterModule;
     
     log('Starting daily deal scraping across all sources', 'deal-hunter');
     
@@ -558,7 +559,8 @@ function startDealHunterScrapingJob() {
 // Deal distress score recalculation job (hourly)
 async function processDistressRecalculation() {
   try {
-    const { dealHunter } = await import("./services/dealHunter");
+    const dealHunterModule2 = await import("./services/dealHunter");
+    const dealHunter = (dealHunterModule2 as any).dealHunter || dealHunterModule2;
     
     const result = await dealHunter.recalculateAllDistressScores();
     

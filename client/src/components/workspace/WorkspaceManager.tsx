@@ -57,22 +57,11 @@ export function WorkspaceManager() {
 
   const { data: presets = [], isLoading, error } = useQuery<WorkspacePreset[]>({
     queryKey: ["/api/workspaces"],
-    onError: (err) => {
-      console.error("Failed to load workspaces:", err);
-      toast({
-        title: "Failed to load workspaces",
-        description: "Using default presets only. Your custom workspaces will not be available.",
-        variant: "destructive",
-      });
-    },
   });
 
   const createPresetMutation = useMutation({
     mutationFn: async (data: { name: string; layout: any }) => {
-      return apiRequest("/api/workspaces", {
-        method: "POST",
-        body: JSON.stringify(data),
-      });
+      return apiRequest("POST", "/api/workspaces", data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/workspaces"] });
@@ -87,7 +76,7 @@ export function WorkspaceManager() {
 
   const deletePresetMutation = useMutation({
     mutationFn: async (id: number) => {
-      return apiRequest(`/api/workspaces/${id}`, { method: "DELETE" });
+      return apiRequest("DELETE", `/api/workspaces/${id}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/workspaces"] });
@@ -127,7 +116,7 @@ export function WorkspaceManager() {
     toast({ title: `Switched to: ${name}` });
   };
 
-  const currentPreset = presets.find(p => p.layout?.route === location);
+  const currentPreset = (presets as WorkspacePreset[]).find((p: WorkspacePreset) => p.layout?.route === location);
 
   return (
     <div data-testid="workspace-manager">
@@ -167,13 +156,13 @@ export function WorkspaceManager() {
             );
           })}
           
-          {presets.length > 0 && (
+          {(presets as WorkspacePreset[]).length > 0 && (
             <>
               <DropdownMenuSeparator />
               <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
                 Your Presets
               </div>
-              {presets.map((preset) => {
+              {(presets as WorkspacePreset[]).map((preset: WorkspacePreset) => {
                 const isActive = preset.layout?.route === location;
                 return (
                   <DropdownMenuItem

@@ -7,10 +7,20 @@ export type AuthUser = User & { isFounder?: boolean };
 type LoginInput = { email: string; password: string };
 type RegisterInput = { email: string; password: string; firstName?: string; lastName?: string };
 
+function getCsrfToken(): string | null {
+  const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
 async function apiRequest<T = unknown>(url: string, body: unknown): Promise<T> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const csrfToken = getCsrfToken();
+  if (csrfToken) {
+    headers["X-CSRF-Token"] = csrfToken;
+  }
   const response = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     credentials: "include",
     body: JSON.stringify(body),
   });

@@ -234,7 +234,7 @@ function AuditLogViewer() {
                         {log.userId || "System"}
                       </TableCell>
                       <TableCell className="text-sm max-w-[200px] truncate">
-                        {log.changes?.fields?.join(", ") || log.metadata?.purgedCount ? `${log.metadata.purgedCount} records` : "-"}
+                        {log.changes?.fields?.join(", ") || (log.metadata as any)?.purgedCount ? `${(log.metadata as any).purgedCount} records` : "-"}
                       </TableCell>
                     </TableRow>
                   ))}

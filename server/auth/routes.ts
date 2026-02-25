@@ -3,6 +3,7 @@ import passport from "passport";
 import { z } from "zod";
 import { isAuthenticated, createUser } from "./localAuth";
 import { isFounderEmail } from "../services/founder";
+import { setCsrfCookie } from "../middleware/csrf";
 import { db } from "../db";
 import { users } from "@shared/models/auth";
 import { eq } from "drizzle-orm";
@@ -40,13 +41,17 @@ export function registerAuthRoutes(app: Express): void {
       const { email, password, firstName, lastName } = parsed.data;
       const user = await createUser({ email, password, firstName, lastName });
 
-      // Auto-login after registration
-      req.login(user, (err) => {
-        if (err) return next(err);
-        const isFounder = isFounderEmail(user.email);
-        return res.status(201).json(
-          isFounder ? { ...user, passwordHash: undefined, isFounder: true } : { ...user, passwordHash: undefined }
-        );
+      // Session rotation: regenerate session ID before login to prevent session fixation
+      req.session.regenerate((regenErr) => {
+        if (regenErr) return next(regenErr);
+        req.login(user, (err) => {
+          if (err) return next(err);
+          setCsrfCookie(req, res);
+          const isFounder = isFounderEmail(user.email);
+          return res.status(201).json(
+            isFounder ? { ...user, passwordHash: undefined, isFounder: true } : { ...user, passwordHash: undefined }
+          );
+        });
       });
     } catch (error: any) {
       if (error.message?.includes("already exists")) {
@@ -73,15 +78,23 @@ export function registerAuthRoutes(app: Express): void {
       if (!user) {
         return res.status(401).json({ message: info?.message || "Invalid email or password" });
       }
-      req.login(user, (loginErr) => {
-        if (loginErr) {
-          console.error("[auth] Session error:", loginErr);
+      // Session rotation: regenerate session ID before login to prevent session fixation
+      req.session.regenerate((regenErr) => {
+        if (regenErr) {
+          console.error("[auth] Session regeneration error:", regenErr);
           return res.status(500).json({ message: "Login failed" });
         }
-        const isFounder = isFounderEmail(user.email);
-        return res.json(
-          isFounder ? { ...user, passwordHash: undefined, isFounder: true } : { ...user, passwordHash: undefined }
-        );
+        req.login(user, (loginErr) => {
+          if (loginErr) {
+            console.error("[auth] Session error:", loginErr);
+            return res.status(500).json({ message: "Login failed" });
+          }
+          setCsrfCookie(req, res);
+          const isFounder = isFounderEmail(user.email);
+          return res.json(
+            isFounder ? { ...user, passwordHash: undefined, isFounder: true } : { ...user, passwordHash: undefined }
+          );
+        });
       });
     })(req, res, next);
   });
@@ -106,6 +119,8 @@ export function registerAuthRoutes(app: Express): void {
   // Get current authenticated user
   app.get("/api/auth/user", isAuthenticated, async (req, res) => {
     try {
+      // Set CSRF cookie on every authenticated read (double-submit cookie pattern)
+      setCsrfCookie(req, res);
       const user = req.user as any;
       const isFounder = isFounderEmail(user?.email);
       // Strip passwordHash from response, add isFounder only for founders

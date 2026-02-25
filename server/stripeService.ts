@@ -1,6 +1,4 @@
 import { getUncachableStripeClient } from './stripeClient';
-import { db } from './db';
-import { sql } from 'drizzle-orm';
 
 export class StripeService {
   async createCustomer(email: string, userId: string, name?: string) {
@@ -81,62 +79,78 @@ export class StripeService {
   }
 
   async getProduct(productId: string) {
-    const result = await db.execute(
-      sql`SELECT * FROM stripe.products WHERE id = ${productId}`
-    );
-    return result.rows[0] || null;
+    const stripe = await getUncachableStripeClient();
+    try {
+      return await stripe.products.retrieve(productId);
+    } catch {
+      return null;
+    }
   }
 
   async listProducts(active = true) {
-    const result = await db.execute(
-      sql`SELECT * FROM stripe.products WHERE active = ${active}`
-    );
-    return result.rows;
+    const stripe = await getUncachableStripeClient();
+    const products = await stripe.products.list({ active, limit: 100 });
+    return products.data;
   }
 
   async listProductsWithPrices(active = true) {
-    const result = await db.execute(
-      sql`
-        SELECT 
-          p.id as product_id,
-          p.name as product_name,
-          p.description as product_description,
-          p.active as product_active,
-          p.metadata as product_metadata,
-          pr.id as price_id,
-          pr.unit_amount,
-          pr.currency,
-          pr.recurring,
-          pr.active as price_active,
-          pr.metadata as price_metadata
-        FROM stripe.products p
-        LEFT JOIN stripe.prices pr ON pr.product = p.id AND pr.active = true
-        WHERE p.active = ${active}
-        ORDER BY p.id, pr.unit_amount
-      `
-    );
-    return result.rows;
+    const stripe = await getUncachableStripeClient();
+    const [products, prices] = await Promise.all([
+      stripe.products.list({ active, limit: 100 }),
+      stripe.prices.list({ active: true, limit: 100, expand: ['data.product'] }),
+    ]);
+
+    return products.data.map(product => {
+      const productPrices = prices.data
+        .filter(p => {
+          const prodId = typeof p.product === 'string' ? p.product : p.product?.id;
+          return prodId === product.id;
+        })
+        .sort((a, b) => (a.unit_amount || 0) - (b.unit_amount || 0));
+
+      return {
+        product_id: product.id,
+        product_name: product.name,
+        product_description: product.description,
+        product_active: product.active,
+        product_metadata: product.metadata,
+        prices: productPrices.map(p => ({
+          price_id: p.id,
+          unit_amount: p.unit_amount,
+          currency: p.currency,
+          recurring: p.recurring,
+          price_active: p.active,
+          price_metadata: p.metadata,
+        })),
+      };
+    });
   }
 
   async getPrice(priceId: string) {
-    const result = await db.execute(
-      sql`SELECT * FROM stripe.prices WHERE id = ${priceId}`
-    );
-    return result.rows[0] || null;
+    const stripe = await getUncachableStripeClient();
+    try {
+      return await stripe.prices.retrieve(priceId);
+    } catch {
+      return null;
+    }
   }
 
   async getSubscription(subscriptionId: string) {
-    const result = await db.execute(
-      sql`SELECT * FROM stripe.subscriptions WHERE id = ${subscriptionId}`
-    );
-    return result.rows[0] || null;
+    const stripe = await getUncachableStripeClient();
+    try {
+      return await stripe.subscriptions.retrieve(subscriptionId);
+    } catch {
+      return null;
+    }
   }
 
   async getCustomerSubscriptions(customerId: string) {
-    const result = await db.execute(
-      sql`SELECT * FROM stripe.subscriptions WHERE customer = ${customerId} ORDER BY created DESC`
-    );
-    return result.rows;
+    const stripe = await getUncachableStripeClient();
+    const subscriptions = await stripe.subscriptions.list({
+      customer: customerId,
+      limit: 100,
+    });
+    return subscriptions.data;
   }
 }
 

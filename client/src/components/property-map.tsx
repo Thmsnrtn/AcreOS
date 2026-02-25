@@ -33,6 +33,7 @@ const MAP_STYLES: Record<MapStyle, string> = {
 };
 
 const FEMA_NFHL_URL = "https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer";
+const USGS_LAND_USE_URL = "https://www.sciencebase.gov/arcgis/rest/services/Catalog/5f9637fad34eb2e5df3d40a2/MapServer";
 
 const LAYER_STORAGE_KEY = "property-map-layers";
 const MEASUREMENT_UNITS_KEY = "property-map-measurement-units";
@@ -388,17 +389,48 @@ export function PropertyMap({
     }
   }, []);
 
-  const handleZoningToggle = useCallback((checked: boolean) => {
-    if (checked) {
-      toast({
-        title: "Coming Soon",
-        description: "Zoning district data will be available in a future update.",
+  const addZoningLayer = useCallback(() => {
+    if (!map.current) return;
+
+    if (!map.current.getSource("zoning-land-use")) {
+      map.current.addSource("zoning-land-use", {
+        type: "raster",
+        tiles: [
+          `${USGS_LAND_USE_URL}/export?bbox={bbox-epsg-3857}&bboxSR=3857&imageSR=3857&size=256,256&format=png32&transparent=true&f=image`
+        ],
+        tileSize: 256,
+        attribution: "USGS NLCD",
       });
-      updateLayerState({ zoningDistricts: false });
-    } else {
-      updateLayerState({ zoningDistricts: false });
     }
-  }, [toast, updateLayerState]);
+
+    if (!map.current.getLayer("zoning-land-use-layer")) {
+      const firstSymbolId = map.current.getStyle()?.layers?.find(l => l.type === "symbol")?.id;
+      map.current.addLayer({
+        id: "zoning-land-use-layer",
+        type: "raster",
+        source: "zoning-land-use",
+        paint: { "raster-opacity": 0.6, "raster-fade-duration": 0 },
+      }, firstSymbolId);
+    }
+
+    map.current.setLayoutProperty("zoning-land-use-layer", "visibility", "visible");
+  }, []);
+
+  const removeZoningLayer = useCallback(() => {
+    if (!map.current) return;
+    if (map.current.getLayer("zoning-land-use-layer")) {
+      map.current.setLayoutProperty("zoning-land-use-layer", "visibility", "none");
+    }
+  }, []);
+
+  const handleZoningToggle = useCallback((checked: boolean) => {
+    updateLayerState({ zoningDistricts: checked });
+    if (checked) {
+      addZoningLayer();
+    } else {
+      removeZoningLayer();
+    }
+  }, [updateLayerState, addZoningLayer, removeZoningLayer]);
 
   const fetchNearbyParcels = useCallback(async () => {
     if (!selectedPropertyId) {

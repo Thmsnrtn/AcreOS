@@ -29,9 +29,31 @@ export default function ToolsPage() {
             </TabsContent>
 
             <TabsContent value="more">
-              <div className="text-center py-12 text-muted-foreground">
-                <Wrench className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                <p>More tools coming soon...</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="border rounded-lg p-6 space-y-3">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-muted">
+                      <Calculator className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold">Amortization Schedule</h3>
+                      <p className="text-sm text-muted-foreground">Generate payment schedules for seller-financed notes.</p>
+                    </div>
+                  </div>
+                  <p className="text-sm text-muted-foreground">Create and view this from the Finance &gt; Notes section when you add a new note.</p>
+                </div>
+                <div className="border rounded-lg p-6 space-y-3">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-muted">
+                      <Wrench className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold">CSV Import / Export</h3>
+                      <p className="text-sm text-muted-foreground">Bulk import leads, properties, and deals from CSV files.</p>
+                    </div>
+                  </div>
+                  <p className="text-sm text-muted-foreground">Available from the Leads, Properties, and Deals pages via the import/export buttons.</p>
+                </div>
               </div>
             </TabsContent>
           </Tabs>

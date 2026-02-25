@@ -98,7 +98,7 @@ describe("csrfProtection middleware", () => {
   });
 
   it("allows exempt paths without a token", () => {
-    const { req, res, next } = mockReqRes("POST", "/api/auth/login");
+    const { req, res, next } = mockReqRes("POST", "/auth/login");
     csrfProtection(req, res, next);
     expect(next).toHaveBeenCalled();
   });

@@ -634,7 +634,7 @@ function TestDetails({ test, onComplete, isPending }: TestDetailsProps) {
         </div>
         <div>
           <span className="text-muted-foreground">Sample Size:</span>
-          <p className="font-medium">{test.sampleSize || 25}%</p>
+          <p className="font-medium">{test.minSampleSize || 25}%</p>
         </div>
       </div>
 

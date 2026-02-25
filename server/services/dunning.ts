@@ -245,7 +245,7 @@ class DunningService {
       const formattedAmount = (amountAtRisk / 100).toFixed(2);
 
       const alert: InsertSystemAlert = {
-        alertType: "revenue_at_risk",
+        type: "revenue_at_risk",
         severity,
         title: `Revenue at Risk: $${formattedAmount}`,
         message: reason,
