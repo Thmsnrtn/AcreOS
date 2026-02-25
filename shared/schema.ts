@@ -7996,6 +7996,9 @@ export const insertMarketIndicatorSchema = createInsertSchema(marketIndicatorsDu
 export type InsertMarketIndicator = z.infer<typeof insertMarketIndicatorSchema>;
 export type MarketIndicator = typeof marketIndicatorsDuplicate.$inferSelect;
 
+// Alias for imports expecting "marketIndicators"
+export const marketIndicators = marketIndicatorsDuplicate;
+
 // Price Trends - Historical price movements by property type and location
 export const priceTrends = pgTable("price_trends", {
   id: serial("id").primaryKey(),
