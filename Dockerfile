@@ -1,34 +1,43 @@
+# syntax = docker/dockerfile:1
+
 # ──────────────────────────────────────────────
 # AcreOS — Multi-stage production Dockerfile
 # ──────────────────────────────────────────────
 
-# --- Stage 1: build ---
-FROM node:20-slim AS builder
-WORKDIR /app
+ARG NODE_VERSION=22.21.1
+FROM node:${NODE_VERSION}-slim AS base
 
-COPY package.json package-lock.json* yarn.lock* ./
-RUN npm ci --ignore-scripts
+LABEL fly_launch_runtime="Node.js"
+
+WORKDIR /app
+ENV NODE_ENV="production"
+
+# --- Build stage ---
+FROM base AS build
+
+RUN apt-get update -qq && \
+    apt-get install --no-install-recommends -y build-essential node-gyp pkg-config python-is-python3
+
+COPY package-lock.json package.json ./
+RUN npm ci --include=dev
 
 COPY . .
 RUN npm run build
+RUN npm prune --omit=dev
 
-# --- Stage 2: production ---
-FROM node:20-slim AS runner
-WORKDIR /app
+# --- Production stage ---
+FROM base
 
-ENV NODE_ENV=production
+# Chromium for puppeteer-core (browser automation features)
+RUN apt-get update -qq && \
+    apt-get install --no-install-recommends -y chromium chromium-sandbox && \
+    rm -rf /var/lib/apt/lists /var/cache/apt/archives
 
-# Install only production dependencies
-COPY package.json package-lock.json* yarn.lock* ./
-RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
-
-# bcrypt needs native bindings — rebuild in the runner stage
-RUN npm rebuild bcrypt
-
-# Copy build artefacts from builder
-COPY --from=builder /app/dist ./dist
+COPY --from=build /app /app
 
 EXPOSE 5000
+
+ENV PUPPETEER_EXECUTABLE_PATH="/usr/bin/chromium"
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD node -e "fetch('http://localhost:5000/api/health/cached').then(r=>{if(!r.ok)throw 1}).catch(()=>process.exit(1))"
