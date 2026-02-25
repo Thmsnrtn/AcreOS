@@ -21,10 +21,10 @@ const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 /** Paths exempt from CSRF (webhooks, external callbacks) */
 const EXEMPT_PATHS = [
-  "/api/stripe/webhook",
-  "/api/auth/login",
-  "/api/auth/register",
-  "/api/auth/logout",
+  "/stripe/webhook",
+  "/auth/login",
+  "/auth/register",
+  "/auth/logout",
 ];
 
 /**
