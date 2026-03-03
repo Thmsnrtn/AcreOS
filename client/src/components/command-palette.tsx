@@ -27,6 +27,11 @@ import {
   Mail,
   Sparkles,
   Clock,
+  Target,
+  Shield,
+  BarChart2,
+  Store,
+  GraduationCap,
 } from "lucide-react";
 
 interface RecentItem {
@@ -48,8 +53,13 @@ const pages = [
   { name: "Deals", icon: Handshake, path: "/deals" },
   { name: "Finance", icon: DollarSign, path: "/finance" },
   { name: "Marketing", icon: Megaphone, path: "/campaigns" },
-  { name: "Settings", icon: Settings, path: "/settings" },
+  { name: "Acquisition Radar", icon: Target, path: "/radar" },
+  { name: "Land Credit Score", icon: Shield, path: "/land-credit" },
+  { name: "Portfolio Optimizer", icon: BarChart2, path: "/portfolio-optimizer" },
+  { name: "Marketplace", icon: Store, path: "/marketplace" },
+  { name: "Academy", icon: GraduationCap, path: "/academy" },
   { name: "AI Assistant", icon: Bot, path: "/command-center" },
+  { name: "Settings", icon: Settings, path: "/settings" },
 ];
 
 const quickActions = [

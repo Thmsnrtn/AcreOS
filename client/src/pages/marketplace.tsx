@@ -14,32 +14,46 @@ export default function MarketplacePage() {
   const [showBidDialog, setShowBidDialog] = useState(false);
 
   // Fetch listings
-  const { data: listings = [] } = useQuery({
+  const { data: listingsData } = useQuery({
     queryKey: ['marketplace-listings'],
     queryFn: async () => {
-      const res = await fetch('/api/marketplace/listings');
+      const res = await fetch('/api/marketplace/listings', { credentials: 'include' });
       if (!res.ok) throw new Error('Failed to fetch listings');
       return res.json();
     },
   });
+  const listings = listingsData?.listings ?? [];
 
   // Fetch matches
-  const { data: matches = [] } = useQuery({
+  const { data: matchesData } = useQuery({
     queryKey: ['marketplace-matches'],
     queryFn: async () => {
-      const res = await fetch('/api/marketplace/matches');
+      const res = await fetch('/api/marketplace/matches', { credentials: 'include' });
       if (!res.ok) throw new Error('Failed to fetch matches');
       return res.json();
     },
   });
+  const matches = matchesData?.matches ?? [];
+
+  // Fetch stats
+  const { data: statsData } = useQuery({
+    queryKey: ['marketplace-stats'],
+    queryFn: async () => {
+      const res = await fetch('/api/marketplace/stats', { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to fetch stats');
+      return res.json();
+    },
+  });
+  const stats = statsData?.stats;
 
   // Place bid mutation
   const placeBidMutation = useMutation({
     mutationFn: async ({ listingId, amount }: { listingId: number; amount: number }) => {
       const res = await fetch(`/api/marketplace/listings/${listingId}/bids`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount }),
+        body: JSON.stringify({ bidAmount: amount }),
       });
       if (!res.ok) throw new Error('Failed to place bid');
       return res.json();
@@ -86,7 +100,7 @@ export default function MarketplacePage() {
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{listings?.listings?.length ?? listings?.length ?? 0}</div>
+            <div className="text-2xl font-bold">{stats?.totalListings ?? listings.length}</div>
             <p className="text-xs text-muted-foreground">Available on marketplace</p>
           </CardContent>
         </Card>

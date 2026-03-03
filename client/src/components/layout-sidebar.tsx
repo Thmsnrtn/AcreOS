@@ -1,11 +1,11 @@
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
-import { 
-  LayoutDashboard, 
-  Users, 
-  Map, 
-  Banknote, 
-  Bot, 
+import {
+  LayoutDashboard,
+  Users,
+  Map,
+  Banknote,
+  Bot,
   Settings,
   LogOut,
   Menu,
@@ -21,7 +21,11 @@ import {
   FileText,
   Zap,
   TrendingUp,
-  Workflow
+  Workflow,
+  Target,
+  Shield,
+  BarChart2,
+  GraduationCap,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useState, useCallback } from "react";
@@ -55,7 +59,12 @@ const navItems = [
   { label: "Insights", icon: TrendingUp, href: "/analytics", description: "Analytics and market insights" },
   { label: "Finance", icon: Banknote, href: "/finance", description: "Manage seller-financed notes" },
   { label: "Portfolio", icon: PieChart, href: "/portfolio", description: "View your investment portfolio" },
-  { label: "Listings", icon: Store, href: "/listings", description: "Properties available for sale" },
+  { label: "Optimizer", icon: BarChart2, href: "/portfolio-optimizer", description: "Monte Carlo simulation and AI optimization" },
+  { label: "Acq. Radar", icon: Target, href: "/radar", description: "AI-scored deal acquisition opportunities" },
+  { label: "Land Credit", icon: Shield, href: "/land-credit", description: "Proprietary 300–850 land credit scoring" },
+  { label: "Marketplace", icon: Store, href: "/marketplace", description: "Buy and sell deals with other investors" },
+  { label: "Listings", icon: FileText, href: "/listings", description: "Properties available for sale" },
+  { label: "Academy", icon: GraduationCap, href: "/academy", description: "Land investment education and certification" },
   { label: "Documents", icon: FileText, href: "/documents", description: "Store and manage documents" },
   { label: "Marketing", icon: Mail, href: "/campaigns", description: "Email, SMS, and direct mail campaigns" },
   { label: "Tools", icon: Calculator, href: "/tools", description: "Calculators and utility tools" },
