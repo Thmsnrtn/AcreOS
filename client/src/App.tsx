@@ -52,6 +52,12 @@ import AVMPage from "@/pages/avm";
 import NegotiationCopilotPage from "@/pages/negotiation-copilot";
 import CashFlowPage from "@/pages/cash-flow";
 import DealHunterPage from "@/pages/deal-hunter";
+import VisionAIPage from "@/pages/vision-ai";
+import CapitalMarketsPage from "@/pages/capital-markets";
+import MarketIntelligencePage from "@/pages/market-intelligence";
+import CompliancePage from "@/pages/compliance";
+import TaxResearcherPage from "@/pages/tax-researcher";
+import DocumentIntelligencePage from "@/pages/document-intelligence";
 import AuthPage from "@/pages/auth-page";
 import BorrowerPortal from "@/pages/borrower-portal";
 import TermsOfService from "@/pages/terms";
@@ -241,6 +247,24 @@ function Router() {
       </Route>
       <Route path="/deal-hunter">
         {() => <ProtectedRoute component={DealHunterPage} />}
+      </Route>
+      <Route path="/vision-ai">
+        {() => <ProtectedRoute component={VisionAIPage} />}
+      </Route>
+      <Route path="/capital-markets">
+        {() => <ProtectedRoute component={CapitalMarketsPage} />}
+      </Route>
+      <Route path="/market-intelligence">
+        {() => <ProtectedRoute component={MarketIntelligencePage} />}
+      </Route>
+      <Route path="/compliance">
+        {() => <ProtectedRoute component={CompliancePage} />}
+      </Route>
+      <Route path="/tax-researcher">
+        {() => <ProtectedRoute component={TaxResearcherPage} />}
+      </Route>
+      <Route path="/document-intelligence">
+        {() => <ProtectedRoute component={DocumentIntelligencePage} />}
       </Route>
 
       <Route component={NotFound} />

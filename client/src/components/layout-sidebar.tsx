@@ -29,6 +29,12 @@ import {
   BarChart2,
   GraduationCap,
   Search,
+  Eye,
+  Globe,
+  ShieldCheck,
+  Gavel,
+  DollarSign,
+  FileSearch,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useState, useCallback } from "react";
@@ -72,6 +78,12 @@ const navItems = [
   { label: "Negotiation", icon: Brain, href: "/negotiation", description: "AI-powered negotiation copilot" },
   { label: "Cash Flow", icon: Activity, href: "/cash-flow", description: "12-month cash flow forecasting and payment health" },
   { label: "Deal Hunter", icon: Search, href: "/deal-hunter", description: "Automated sourcing from tax auctions and distressed properties" },
+  { label: "Vision AI", icon: Eye, href: "/vision-ai", description: "AI photo analysis, satellite imagery, and change detection" },
+  { label: "Capital Mkts", icon: DollarSign, href: "/capital-markets", description: "Note securitization, lender network, and capital raises" },
+  { label: "Markets", icon: Globe, href: "/market-intelligence", description: "Market analysis, price trends, and multi-market comparison" },
+  { label: "Compliance", icon: ShieldCheck, href: "/compliance", description: "Regulatory monitoring and RESPA/TCPA compliance" },
+  { label: "Tax Research", icon: Gavel, href: "/tax-researcher", description: "Tax lien auctions, delinquent properties, and sale alerts" },
+  { label: "Doc Intel", icon: FileSearch, href: "/document-intelligence", description: "AI contract parsing, clause extraction, risk analysis" },
   { label: "Documents", icon: FileText, href: "/documents", description: "Store and manage documents" },
   { label: "Marketing", icon: Mail, href: "/campaigns", description: "Email, SMS, and direct mail campaigns" },
   { label: "Tools", icon: Calculator, href: "/tools", description: "Calculators and utility tools" },

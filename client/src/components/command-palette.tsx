@@ -36,6 +36,11 @@ import {
   Brain,
   Activity,
   Search,
+  Eye,
+  Globe,
+  ShieldCheck,
+  Gavel,
+  FileSearch,
 } from "lucide-react";
 
 interface RecentItem {
@@ -64,6 +69,12 @@ const pages = [
   { name: "Negotiation Copilot", icon: Brain, path: "/negotiation" },
   { name: "Cash Flow Forecaster", icon: Activity, path: "/cash-flow" },
   { name: "Deal Hunter", icon: Search, path: "/deal-hunter" },
+  { name: "Vision AI", icon: Eye, path: "/vision-ai" },
+  { name: "Capital Markets", icon: DollarSign, path: "/capital-markets" },
+  { name: "Market Intelligence", icon: Globe, path: "/market-intelligence" },
+  { name: "Compliance AI", icon: ShieldCheck, path: "/compliance" },
+  { name: "Tax Researcher", icon: Gavel, path: "/tax-researcher" },
+  { name: "Document Intelligence", icon: FileSearch, path: "/document-intelligence" },
   { name: "Marketplace", icon: Store, path: "/marketplace" },
   { name: "Academy", icon: GraduationCap, path: "/academy" },
   { name: "AI Assistant", icon: Bot, path: "/command-center" },
