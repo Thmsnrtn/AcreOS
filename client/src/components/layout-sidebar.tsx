@@ -28,6 +28,7 @@ import {
   Shield,
   BarChart2,
   GraduationCap,
+  Search,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useState, useCallback } from "react";
@@ -70,6 +71,7 @@ const navItems = [
   { label: "AVM™", icon: TrendingUp, href: "/avm", description: "AcreOS Valuation Model — instant property estimates" },
   { label: "Negotiation", icon: Brain, href: "/negotiation", description: "AI-powered negotiation copilot" },
   { label: "Cash Flow", icon: Activity, href: "/cash-flow", description: "12-month cash flow forecasting and payment health" },
+  { label: "Deal Hunter", icon: Search, href: "/deal-hunter", description: "Automated sourcing from tax auctions and distressed properties" },
   { label: "Documents", icon: FileText, href: "/documents", description: "Store and manage documents" },
   { label: "Marketing", icon: Mail, href: "/campaigns", description: "Email, SMS, and direct mail campaigns" },
   { label: "Tools", icon: Calculator, href: "/tools", description: "Calculators and utility tools" },

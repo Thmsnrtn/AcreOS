@@ -17,6 +17,7 @@ import portfolioOptimizerRouter from "./routes-portfolio-optimizer";
 import avmRouter from "./routes-avm";
 import negotiationRouter from "./routes-negotiation";
 import cashFlowRouter from "./routes-cash-flow";
+import dealHunterRouter from "./routes-deal-hunter";
 
 // Rate limiting middleware
 import { createRateLimiter, rateLimiters, RATE_LIMIT_CONFIGS } from "./middleware/rateLimit";
@@ -196,6 +197,7 @@ export async function registerRoutes(
   app.use('/api/avm', isAuthenticated, getOrCreateOrg, avmRouter);
   app.use('/api/negotiation', isAuthenticated, getOrCreateOrg, negotiationRouter);
   app.use('/api/cash-flow', isAuthenticated, getOrCreateOrg, cashFlowRouter);
+  app.use('/api/deal-hunter', isAuthenticated, getOrCreateOrg, dealHunterRouter);
 
   // ============================================
   // DOMAIN ROUTE MODULES
