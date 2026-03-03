@@ -35,6 +35,7 @@ import {
   TrendingUp,
   Brain,
   Activity,
+  Search,
 } from "lucide-react";
 
 interface RecentItem {
@@ -62,6 +63,7 @@ const pages = [
   { name: "AcreOS Valuation Model", icon: TrendingUp, path: "/avm" },
   { name: "Negotiation Copilot", icon: Brain, path: "/negotiation" },
   { name: "Cash Flow Forecaster", icon: Activity, path: "/cash-flow" },
+  { name: "Deal Hunter", icon: Search, path: "/deal-hunter" },
   { name: "Marketplace", icon: Store, path: "/marketplace" },
   { name: "Academy", icon: GraduationCap, path: "/academy" },
   { name: "AI Assistant", icon: Bot, path: "/command-center" },

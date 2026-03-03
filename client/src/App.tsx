@@ -51,6 +51,7 @@ import PortfolioOptimizerPage from "@/pages/portfolio-optimizer";
 import AVMPage from "@/pages/avm";
 import NegotiationCopilotPage from "@/pages/negotiation-copilot";
 import CashFlowPage from "@/pages/cash-flow";
+import DealHunterPage from "@/pages/deal-hunter";
 import AuthPage from "@/pages/auth-page";
 import BorrowerPortal from "@/pages/borrower-portal";
 import TermsOfService from "@/pages/terms";
@@ -237,6 +238,9 @@ function Router() {
       </Route>
       <Route path="/cash-flow">
         {() => <ProtectedRoute component={CashFlowPage} />}
+      </Route>
+      <Route path="/deal-hunter">
+        {() => <ProtectedRoute component={DealHunterPage} />}
       </Route>
 
       <Route component={NotFound} />
