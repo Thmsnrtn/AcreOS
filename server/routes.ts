@@ -18,6 +18,13 @@ import avmRouter from "./routes-avm";
 import negotiationRouter from "./routes-negotiation";
 import cashFlowRouter from "./routes-cash-flow";
 import dealHunterRouter from "./routes-deal-hunter";
+import academyRouter from "./routes-academy";
+import visionAIRouter from "./routes-vision-ai";
+import capitalMarketsRouter from "./routes-capital-markets";
+import documentIntelligenceRouter from "./routes-document-intelligence";
+import marketIntelligenceRouter from "./routes-market-intelligence";
+import complianceRouter from "./routes-compliance";
+import taxResearcherRouter from "./routes-tax-researcher";
 
 // Rate limiting middleware
 import { createRateLimiter, rateLimiters, RATE_LIMIT_CONFIGS } from "./middleware/rateLimit";
@@ -198,6 +205,13 @@ export async function registerRoutes(
   app.use('/api/negotiation', isAuthenticated, getOrCreateOrg, negotiationRouter);
   app.use('/api/cash-flow', isAuthenticated, getOrCreateOrg, cashFlowRouter);
   app.use('/api/deal-hunter', isAuthenticated, getOrCreateOrg, dealHunterRouter);
+  app.use('/api/academy', isAuthenticated, getOrCreateOrg, academyRouter);
+  app.use('/api/vision-ai', isAuthenticated, getOrCreateOrg, visionAIRouter);
+  app.use('/api/capital-markets', isAuthenticated, getOrCreateOrg, capitalMarketsRouter);
+  app.use('/api/document-intelligence', isAuthenticated, getOrCreateOrg, documentIntelligenceRouter);
+  app.use('/api/market-intelligence', isAuthenticated, marketIntelligenceRouter);
+  app.use('/api/compliance', isAuthenticated, getOrCreateOrg, complianceRouter);
+  app.use('/api/tax-researcher', isAuthenticated, getOrCreateOrg, taxResearcherRouter);
 
   // ============================================
   // DOMAIN ROUTE MODULES
