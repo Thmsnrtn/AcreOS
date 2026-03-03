@@ -14,6 +14,9 @@ import predictionsRouter from "./routes-predictions";
 import landCreditRouter from "./routes-land-credit";
 import acquisitionRadarRouter from "./routes-acquisition-radar";
 import portfolioOptimizerRouter from "./routes-portfolio-optimizer";
+import avmRouter from "./routes-avm";
+import negotiationRouter from "./routes-negotiation";
+import cashFlowRouter from "./routes-cash-flow";
 
 // Rate limiting middleware
 import { createRateLimiter, rateLimiters, RATE_LIMIT_CONFIGS } from "./middleware/rateLimit";
@@ -190,6 +193,9 @@ export async function registerRoutes(
   app.use('/api/land-credit', isAuthenticated, getOrCreateOrg, landCreditRouter);
   app.use('/api/radar', isAuthenticated, getOrCreateOrg, acquisitionRadarRouter);
   app.use('/api/portfolio-optimizer', isAuthenticated, getOrCreateOrg, portfolioOptimizerRouter);
+  app.use('/api/avm', isAuthenticated, getOrCreateOrg, avmRouter);
+  app.use('/api/negotiation', isAuthenticated, getOrCreateOrg, negotiationRouter);
+  app.use('/api/cash-flow', isAuthenticated, getOrCreateOrg, cashFlowRouter);
 
   // ============================================
   // DOMAIN ROUTE MODULES

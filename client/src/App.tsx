@@ -48,6 +48,9 @@ import AcademyPage from "@/pages/academy";
 import LandCreditPage from "@/pages/land-credit";
 import AcquisitionRadarPage from "@/pages/acquisition-radar";
 import PortfolioOptimizerPage from "@/pages/portfolio-optimizer";
+import AVMPage from "@/pages/avm";
+import NegotiationCopilotPage from "@/pages/negotiation-copilot";
+import CashFlowPage from "@/pages/cash-flow";
 import AuthPage from "@/pages/auth-page";
 import BorrowerPortal from "@/pages/borrower-portal";
 import TermsOfService from "@/pages/terms";
@@ -225,6 +228,15 @@ function Router() {
       </Route>
       <Route path="/portfolio-optimizer">
         {() => <ProtectedRoute component={PortfolioOptimizerPage} />}
+      </Route>
+      <Route path="/avm">
+        {() => <ProtectedRoute component={AVMPage} />}
+      </Route>
+      <Route path="/negotiation">
+        {() => <ProtectedRoute component={NegotiationCopilotPage} />}
+      </Route>
+      <Route path="/cash-flow">
+        {() => <ProtectedRoute component={CashFlowPage} />}
       </Route>
 
       <Route component={NotFound} />
