@@ -32,6 +32,9 @@ import {
   BarChart2,
   Store,
   GraduationCap,
+  TrendingUp,
+  Brain,
+  Activity,
 } from "lucide-react";
 
 interface RecentItem {
@@ -56,6 +59,9 @@ const pages = [
   { name: "Acquisition Radar", icon: Target, path: "/radar" },
   { name: "Land Credit Score", icon: Shield, path: "/land-credit" },
   { name: "Portfolio Optimizer", icon: BarChart2, path: "/portfolio-optimizer" },
+  { name: "AcreOS Valuation Model", icon: TrendingUp, path: "/avm" },
+  { name: "Negotiation Copilot", icon: Brain, path: "/negotiation" },
+  { name: "Cash Flow Forecaster", icon: Activity, path: "/cash-flow" },
   { name: "Marketplace", icon: Store, path: "/marketplace" },
   { name: "Academy", icon: GraduationCap, path: "/academy" },
   { name: "AI Assistant", icon: Bot, path: "/command-center" },
