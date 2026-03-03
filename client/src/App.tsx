@@ -43,6 +43,11 @@ import AnalyticsPage from "@/pages/analytics";
 import EmailSettingsPage from "@/pages/email-settings";
 import MailSettingsPage from "@/pages/mail-settings";
 import InboxPage from "@/pages/inbox";
+import MarketplacePage from "@/pages/marketplace";
+import AcademyPage from "@/pages/academy";
+import LandCreditPage from "@/pages/land-credit";
+import AcquisitionRadarPage from "@/pages/acquisition-radar";
+import PortfolioOptimizerPage from "@/pages/portfolio-optimizer";
 import AuthPage from "@/pages/auth-page";
 import BorrowerPortal from "@/pages/borrower-portal";
 import TermsOfService from "@/pages/terms";
@@ -205,6 +210,21 @@ function Router() {
       </Route>
       <Route path="/founder">
         {() => <FounderProtectedRoute component={FounderDashboard} />}
+      </Route>
+      <Route path="/marketplace">
+        {() => <ProtectedRoute component={MarketplacePage} />}
+      </Route>
+      <Route path="/academy">
+        {() => <ProtectedRoute component={AcademyPage} />}
+      </Route>
+      <Route path="/land-credit">
+        {() => <ProtectedRoute component={LandCreditPage} />}
+      </Route>
+      <Route path="/radar">
+        {() => <ProtectedRoute component={AcquisitionRadarPage} />}
+      </Route>
+      <Route path="/portfolio-optimizer">
+        {() => <ProtectedRoute component={PortfolioOptimizerPage} />}
       </Route>
 
       <Route component={NotFound} />
