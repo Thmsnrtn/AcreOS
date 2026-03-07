@@ -1,0 +1,31 @@
+{
+  "_comment": "AcreOS MCP Server — Claude Desktop configuration",
+  "_instructions": [
+    "Add the 'acreos' entry under 'mcpServers' in your Claude Desktop config:",
+    "  macOS:   ~/Library/Application Support/Claude/claude_desktop_config.json",
+    "  Windows: %APPDATA%\\Claude\\claude_desktop_config.json",
+    "",
+    "Option A — stdio (run locally against a local AcreOS dev instance):",
+    "  Requires DATABASE_URL env var pointing at your Postgres database.",
+    "",
+    "Option B — HTTP (connect to deployed AcreOS at acreos.fly.dev):",
+    "  Use the 'url' transport pointing at the /mcp endpoint.",
+    "  (HTTP MCP support requires Claude Desktop >= 0.10 or a compatible host)"
+  ],
+  "mcpServers": {
+    "acreos-stdio": {
+      "_comment": "Option A: local stdio transport (runs server/mcp/index.ts as a subprocess)",
+      "command": "npx",
+      "args": ["tsx", "/path/to/AcreOS/server/mcp/index.ts"],
+      "env": {
+        "DATABASE_URL": "postgresql://user:password@localhost:5432/acreos",
+        "NODE_ENV": "development"
+      }
+    },
+    "acreos-http": {
+      "_comment": "Option B: HTTP StreamableHTTP transport (connect to deployed app)",
+      "url": "https://acreos.fly.dev/mcp",
+      "transport": "http"
+    }
+  }
+}

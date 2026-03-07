@@ -15,6 +15,8 @@ import { csrfProtection } from "./middleware/csrf";
 import crypto from "crypto";
 import { wsServer } from "./websocket";
 import { realtimeAlertsService } from "./services/realtimeAlerts";
+import { createMcpServer } from "./mcp/index.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 
 const app = express();
 const httpServer = createServer(app);
@@ -137,6 +139,38 @@ app.use("/api", csrfProtection);
 (async () => {
   await initStripe();
   
+  // ── MCP HTTP endpoint (stateless StreamableHTTP transport) ───────────────
+  // Accessible at POST /mcp — Claude Desktop or any MCP client can connect here.
+  // Auth note: currently open; add session/API key check before production public exposure.
+  const mcpServer = createMcpServer();
+  app.post("/mcp", async (req, res) => {
+    try {
+      const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+      await mcpServer.connect(transport);
+      await transport.handleRequest(req, res, req.body);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+  app.get("/mcp", (_req, res) => {
+    res.json({
+      name: "AcreOS MCP Server",
+      version: "1.0.0",
+      transport: "StreamableHTTP",
+      endpoint: "/mcp",
+      tools: [
+        "get_flood_zone", "get_wetlands", "get_soil_data", "get_demographics",
+        "get_public_lands", "get_natural_hazards", "get_infrastructure",
+        "get_transportation", "get_water_resources", "get_elevation", "get_climate",
+        "get_agricultural_values", "get_land_cover", "enrich_property",
+        "reverse_geocode", "geocode_address", "get_epa_data",
+        "search_properties", "get_property", "search_leads", "get_deals",
+        "get_portfolio_summary",
+      ],
+      description: "22 tools exposing AcreOS property intelligence and free public land data APIs",
+    });
+  });
+
   await registerRoutes(httpServer, app);
 
   app.use(errorLoggingMiddleware);

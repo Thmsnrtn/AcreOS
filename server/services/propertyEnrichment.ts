@@ -85,7 +85,42 @@ export interface EnrichmentResult {
     riskScore?: number;
     overallScore?: number;
   };
-  
+
+  elevation?: {
+    elevationFeet?: number;
+    elevationMeters?: number;
+    datum?: string;
+    source?: string;
+  };
+
+  climate?: {
+    avgHighTempF?: number;
+    avgLowTempF?: number;
+    annualPrecipInches?: number;
+    period?: string;
+    source?: string;
+  };
+
+  agriculturalValues?: {
+    countyAvgPerAcre?: number | null;
+    stateAvgPerAcre?: number | null;
+    nationalAvgPerAcre?: number | null;
+    dataYear?: number;
+    notes?: string;
+    source?: string;
+  };
+
+  landCover?: {
+    nlcdClass?: number | null;
+    className?: string;
+    isAgricultural?: boolean;
+    isDeveloped?: boolean;
+    isForested?: boolean;
+    isWetland?: boolean;
+    year?: number;
+    source?: string;
+  };
+
   errors?: Record<string, string>;
 }
 
@@ -108,7 +143,7 @@ export class PropertyEnrichmentService {
     
     const defaultCategories: LookupCategory[] = [
       "flood_zone",
-      "wetlands", 
+      "wetlands",
       "soil",
       "environmental",
       "infrastructure",
@@ -116,7 +151,11 @@ export class PropertyEnrichmentService {
       "demographics",
       "public_lands",
       "transportation",
-      "water_resources"
+      "water_resources",
+      "elevation",
+      "climate",
+      "agricultural_values",
+      "land_cover",
     ];
     
     const categories = options?.categories || defaultCategories;
@@ -236,6 +275,49 @@ export class PropertyEnrichmentService {
           if (data.waterBodies) {
             result.water.nearestWaterBodyMiles = data.waterBodies.nearestMiles;
           }
+          break;
+
+        case "elevation":
+          result.elevation = {
+            elevationFeet: data.elevationFeet,
+            elevationMeters: data.elevationMeters,
+            datum: data.datum,
+            source: data.source,
+          };
+          break;
+
+        case "climate":
+          result.climate = {
+            avgHighTempF: data.avgHighTempF,
+            avgLowTempF: data.avgLowTempF,
+            annualPrecipInches: data.annualPrecipInches,
+            period: data.period,
+            source: data.source,
+          };
+          break;
+
+        case "agricultural_values":
+          result.agriculturalValues = {
+            countyAvgPerAcre: data.countyAvgPerAcre,
+            stateAvgPerAcre: data.stateAvgPerAcre,
+            nationalAvgPerAcre: data.nationalAvgPerAcre,
+            dataYear: data.dataYear,
+            notes: data.notes,
+            source: data.source,
+          };
+          break;
+
+        case "land_cover":
+          result.landCover = {
+            nlcdClass: data.nlcdClass,
+            className: data.className,
+            isAgricultural: data.isAgricultural,
+            isDeveloped: data.isDeveloped,
+            isForested: data.isForested,
+            isWetland: data.isWetland,
+            year: data.year,
+            source: data.source,
+          };
           break;
       }
     }
