@@ -634,6 +634,78 @@ export function createMcpServer() {
     }
   );
 
+  // ── 26. PLSS Legal Description ────────────────────────────────────────────
+  server.tool(
+    "get_plss",
+    "Look up the Public Land Survey System (PLSS) legal description for a coordinate using BLM CadNSDI. Returns section, township, range, and formatted legal description (e.g. 'Sec. 14, T2N, R3E'). Critical for rural land title research. Free – no API key required.",
+    {
+      latitude: z.number().describe("Decimal latitude"),
+      longitude: z.number().describe("Decimal longitude"),
+    },
+    async ({ latitude, longitude }) => {
+      try {
+        const result = await dataSourceBroker.lookup("plss", { latitude, longitude });
+        return ok(result.data, `PLSS via ${result.source.title}`);
+      } catch (e: any) {
+        return err(e.message);
+      }
+    }
+  );
+
+  // ── 27. Watershed / HUC ───────────────────────────────────────────────────
+  server.tool(
+    "get_watershed",
+    "Get the NHD Plus watershed name and HUC-8/HUC-12 codes for a coordinate using EPA WATERS. Identifies the hydrologic unit containing the property. Free – no API key required.",
+    {
+      latitude: z.number().describe("Decimal latitude"),
+      longitude: z.number().describe("Decimal longitude"),
+    },
+    async ({ latitude, longitude }) => {
+      try {
+        const result = await dataSourceBroker.lookup("watershed", { latitude, longitude });
+        return ok(result.data, `Watershed via ${result.source.title}`);
+      } catch (e: any) {
+        return err(e.message);
+      }
+    }
+  );
+
+  // ── 28. FEMA National Risk Index ─────────────────────────────────────────
+  server.tool(
+    "get_fema_nri",
+    "Get the official FEMA National Risk Index hazard risk ratings for a location. Returns composite risk score plus individual ratings for riverine flood, hurricane, tornado, hail, wildfire, lightning, earthquake, and drought at the county level. Free – no API key required.",
+    {
+      latitude: z.number().describe("Decimal latitude"),
+      longitude: z.number().describe("Decimal longitude"),
+    },
+    async ({ latitude, longitude }) => {
+      try {
+        const result = await dataSourceBroker.lookup("fema_nri", { latitude, longitude });
+        return ok(result.data, `FEMA NRI via ${result.source.title}`);
+      } catch (e: any) {
+        return err(e.message);
+      }
+    }
+  );
+
+  // ── 29. USDA FSA Common Land Units ───────────────────────────────────────
+  server.tool(
+    "get_usda_clu",
+    "Retrieve USDA FSA Common Land Unit (CLU) farm records for a coordinate. Returns farm number, tract number, CLU ID, and officially calculated acreage from USDA farm records. Free – no API key required.",
+    {
+      latitude: z.number().describe("Decimal latitude"),
+      longitude: z.number().describe("Decimal longitude"),
+    },
+    async ({ latitude, longitude }) => {
+      try {
+        const result = await dataSourceBroker.lookup("usda_clu", { latitude, longitude });
+        return ok(result.data, `USDA CLU via ${result.source.title}`);
+      } catch (e: any) {
+        return err(e.message);
+      }
+    }
+  );
+
   return server;
 }
 

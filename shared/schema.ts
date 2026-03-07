@@ -566,6 +566,11 @@ export const properties = pgTable("properties", {
     lastUpdated?: string;
   }>(),
   
+  // Enrichment data (from PropertyEnrichmentService - free public data sources)
+  enrichmentData: jsonb("enrichment_data"),
+  enrichmentStatus: text("enrichment_status"), // pending, processing, complete, failed
+  enrichedAt: timestamp("enriched_at"),
+
   // Timestamps
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
