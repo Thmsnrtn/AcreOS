@@ -13,9 +13,15 @@ import { logger, requestLoggingMiddleware, errorLoggingMiddleware } from "./util
 import { securityHeaders, corsMiddleware, requestTimeout, validateContentType, sanitizeQueryParams } from "./middleware/security";
 import { csrfProtection } from "./middleware/csrf";
 import crypto from "crypto";
+import { wsServer } from "./websocket";
+import { realtimeAlertsService } from "./services/realtimeAlerts";
 
 const app = express();
 const httpServer = createServer(app);
+
+// Initialize WebSocket real-time server
+wsServer.initialize(httpServer);
+realtimeAlertsService.setWebSocketServer(wsServer);
 
 declare module "http" {
   interface IncomingMessage {
@@ -194,7 +200,13 @@ app.use("/api", csrfProtection);
       // Start deal hunter background jobs
       startDealHunterScrapingJob();
       startDistressRecalculationJob();
-      
+
+      // Start voice learning profile refresh job (every 12 hours)
+      startVoiceLearningRefreshJob();
+
+      // Start real-time alert sync job (every 5 minutes)
+      startRealtimeAlertSyncJob();
+
       // Auto-seed county GIS endpoints for free parcel lookups
       seedCountyGisEndpointsOnStartup();
       
@@ -504,23 +516,27 @@ function startScheduledTaskRunnerJob() {
 // Deal Hunter daily scraping job
 async function processDealHunterScraping() {
   try {
-    const dealHunterModule = await import("./services/dealHunter");
-    const dealHunter = (dealHunterModule as any).dealHunter || dealHunterModule;
-    
-    log('Starting daily deal scraping across all sources', 'deal-hunter');
-    
-    // In production, would scrape all registered sources
-    // For now, just log that job ran
-    const sources = await dealHunter.getRegisteredSources();
-    
-    log(`Found ${sources.length} registered deal sources`, 'deal-hunter');
-    
-    for (const source of sources) {
-      if (source.enabled) {
-        log(`Scraping ${source.name} (${source.state}/${source.county})`, 'deal-hunter');
-        // In production: await dealHunter.scrapeDealSource(source.id);
+    const { dealHunterService } = await import("./services/dealHunter");
+
+    log('Starting daily deal scraping across all active sources', 'deal-hunter');
+
+    const results = await dealHunterService.scrapeAllActiveSources();
+    const totalDeals = results.reduce((sum, r) => sum + (r.dealsFound || 0), 0);
+    const succeeded = results.filter(r => r.success).length;
+    const failed = results.filter(r => !r.success).length;
+
+    log(
+      `Deal scraping complete: ${succeeded} sources succeeded, ${failed} failed, ${totalDeals} deals found`,
+      'deal-hunter'
+    );
+
+    // Sync newly found deal alerts to real-time notifications
+    try {
+      const pushed = await realtimeAlertsService.syncDealAlertsToWebSocket();
+      if (pushed > 0) {
+        log(`Pushed ${pushed} deal alerts to connected clients`, 'deal-hunter');
       }
-    }
+    } catch (_) {}
   } catch (err) {
     log(`Deal hunter scraping job error: ${err}`, 'deal-hunter');
   }
@@ -678,4 +694,68 @@ function startJobQueueWorker() {
   }).catch(err => {
     log(`Failed to start job queue worker: ${err}`, 'jobQueue');
   });
+}
+
+// Voice Learning: refresh org voice profiles every 12 hours
+async function processVoiceLearningRefresh() {
+  try {
+    const { voiceLearningService } = await import('./services/voiceLearning');
+    const activeOrgs = await db
+      .select({ id: organizations.id })
+      .from(organizations)
+      .where(sql`${organizations.subscriptionStatus} = 'active'`)
+      .limit(50);
+
+    let refreshed = 0;
+    for (const org of activeOrgs) {
+      try {
+        voiceLearningService.invalidateProfile(org.id);
+        await voiceLearningService.buildProfile(org.id);
+        refreshed++;
+      } catch (_) {}
+    }
+    if (refreshed > 0) {
+      log(`Voice learning: refreshed profiles for ${refreshed} organizations`, 'voice-learning');
+    }
+  } catch (err) {
+    log(`Voice learning refresh job error: ${err}`, 'voice-learning');
+  }
+}
+
+function startVoiceLearningRefreshJob() {
+  const TWELVE_HOURS = 12 * 60 * 60 * 1000;
+  const TTL_SECONDS = 11 * 60 * 60;
+
+  log('Starting voice learning profile refresh job (every 12 hours)', 'voice-learning');
+
+  // Run after 10 minutes on startup (non-critical, low priority)
+  setTimeout(() => {
+    withJobLock('voice_learning_refresh', TTL_SECONDS, processVoiceLearningRefresh).catch(err => {
+      log(`Initial voice learning refresh failed: ${err}`, 'voice-learning');
+    });
+  }, 10 * 60 * 1000);
+
+  setInterval(() => {
+    withJobLock('voice_learning_refresh', TTL_SECONDS, processVoiceLearningRefresh).catch(err => {
+      log(`Scheduled voice learning refresh failed: ${err}`, 'voice-learning');
+    });
+  }, TWELVE_HOURS);
+}
+
+// Real-time alert sync: push pending deal alerts to WebSocket clients every 5 minutes
+function startRealtimeAlertSyncJob() {
+  const FIVE_MINUTES = 5 * 60 * 1000;
+
+  log('Starting real-time alert sync job (every 5 minutes)', 'realtime');
+
+  setInterval(async () => {
+    try {
+      const pushed = await realtimeAlertsService.syncDealAlertsToWebSocket();
+      if (pushed > 0) {
+        log(`Real-time sync: pushed ${pushed} alerts to WebSocket clients`, 'realtime');
+      }
+    } catch (err) {
+      log(`Real-time alert sync error: ${err}`, 'realtime');
+    }
+  }, FIVE_MINUTES);
 }

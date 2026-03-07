@@ -26,6 +26,11 @@ import marketIntelligenceRouter from "./routes-market-intelligence";
 import complianceRouter from "./routes-compliance";
 import taxResearcherRouter from "./routes-tax-researcher";
 
+// Phase 2-4 new feature routes
+import voiceLearningRouter from "./routes-voice-learning";
+import whiteLabelRouter from "./routes-white-label";
+import realtimeRouter from "./routes-realtime";
+
 // Rate limiting middleware
 import { createRateLimiter, rateLimiters, RATE_LIMIT_CONFIGS } from "./middleware/rateLimit";
 
@@ -212,6 +217,11 @@ export async function registerRoutes(
   app.use('/api/market-intelligence', isAuthenticated, marketIntelligenceRouter);
   app.use('/api/compliance', isAuthenticated, getOrCreateOrg, complianceRouter);
   app.use('/api/tax-researcher', isAuthenticated, getOrCreateOrg, taxResearcherRouter);
+
+  // Phase 2-4: Voice Learning, Context Profile, White-Label, Real-Time
+  app.use('/api/intelligence', isAuthenticated, getOrCreateOrg, voiceLearningRouter);
+  app.use('/api/white-label', isAuthenticated, getOrCreateOrg, whiteLabelRouter);
+  app.use('/api/realtime', isAuthenticated, getOrCreateOrg, realtimeRouter);
 
   // ============================================
   // DOMAIN ROUTE MODULES
