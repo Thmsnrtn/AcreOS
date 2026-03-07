@@ -1,44 +1,8 @@
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
-import {
-  LayoutDashboard,
-  Users,
-  Map,
-  Banknote,
-  Bot,
-  Settings,
-  LogOut,
-  Menu,
-  Mail,
-  Inbox,
-  GitBranch,
-  Calculator,
-  Crown,
-  HelpCircle,
-  PieChart,
-  ListTodo,
-  Store,
-  FileText,
-  Zap,
-  TrendingUp,
-  Workflow,
-  Brain,
-  Activity,
-  Target,
-  Shield,
-  BarChart2,
-  GraduationCap,
-  Search,
-  Eye,
-  Globe,
-  ShieldCheck,
-  Gavel,
-  DollarSign,
-  FileSearch,
-} from "lucide-react";
+import { LogOut, Menu, Crown, SlidersHorizontal } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useState, useCallback } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -46,72 +10,81 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { prefetchRoute } from "@/lib/queryClient";
 import { NotificationCenter } from "@/components/notification-center";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { useNavPreferences } from "@/hooks/use-nav-preferences";
+import { NAV_ITEM_MAP, type MasterNavItem } from "@/lib/nav-items";
+import { NavCustomizer } from "@/components/nav-customizer";
 
 const routePrefetchMap: Record<string, string> = {
+  "/pipeline": "/api/deals",
+  "/money": "/api/notes",
   "/leads": "/api/leads",
   "/properties": "/api/properties",
   "/deals": "/api/deals",
   "/finance": "/api/notes",
-  "/campaigns": "/api/campaigns",
-  "/inbox": "/api/inbox",
 };
-
-const navItems = [
-  { label: "Dashboard", icon: LayoutDashboard, href: "/", description: "Overview of your land investment business" },
-  { label: "Inbox", icon: Inbox, href: "/inbox", showUnreadBadge: true, description: "Messages and communications" },
-  { label: "Leads (CRM)", icon: Users, href: "/leads", description: "Manage your land seller leads" },
-  { label: "Inventory", icon: Map, href: "/properties", description: "Track properties you own or evaluate" },
-  { label: "Deal Pipeline", icon: GitBranch, href: "/deals", description: "Visualize your deal flow" },
-  { label: "Tasks", icon: ListTodo, href: "/tasks", description: "Your action items and to-do list" },
-  { label: "Automation", icon: Zap, href: "/automation", description: "Set up automated workflows and rules" },
-  { label: "Workflows", icon: Workflow, href: "/workflows", description: "Design and manage complex workflows" },
-  { label: "Insights", icon: TrendingUp, href: "/analytics", description: "Analytics and market insights" },
-  { label: "Finance", icon: Banknote, href: "/finance", description: "Manage seller-financed notes" },
-  { label: "Portfolio", icon: PieChart, href: "/portfolio", description: "View your investment portfolio" },
-  { label: "Optimizer", icon: BarChart2, href: "/portfolio-optimizer", description: "Monte Carlo simulation and AI optimization" },
-  { label: "Acq. Radar", icon: Target, href: "/radar", description: "AI-scored deal acquisition opportunities" },
-  { label: "Land Credit", icon: Shield, href: "/land-credit", description: "Proprietary 300–850 land credit scoring" },
-  { label: "Marketplace", icon: Store, href: "/marketplace", description: "Buy and sell deals with other investors" },
-  { label: "Listings", icon: FileText, href: "/listings", description: "Properties available for sale" },
-  { label: "Academy", icon: GraduationCap, href: "/academy", description: "Land investment education and certification" },
-  { label: "AVM™", icon: TrendingUp, href: "/avm", description: "AcreOS Valuation Model — instant property estimates" },
-  { label: "Negotiation", icon: Brain, href: "/negotiation", description: "AI-powered negotiation copilot" },
-  { label: "Cash Flow", icon: Activity, href: "/cash-flow", description: "12-month cash flow forecasting and payment health" },
-  { label: "Deal Hunter", icon: Search, href: "/deal-hunter", description: "Automated sourcing from tax auctions and distressed properties" },
-  { label: "Vision AI", icon: Eye, href: "/vision-ai", description: "AI photo analysis, satellite imagery, and change detection" },
-  { label: "Capital Mkts", icon: DollarSign, href: "/capital-markets", description: "Note securitization, lender network, and capital raises" },
-  { label: "Markets", icon: Globe, href: "/market-intelligence", description: "Market analysis, price trends, and multi-market comparison" },
-  { label: "Compliance", icon: ShieldCheck, href: "/compliance", description: "Regulatory monitoring and RESPA/TCPA compliance" },
-  { label: "Tax Research", icon: Gavel, href: "/tax-researcher", description: "Tax lien auctions, delinquent properties, and sale alerts" },
-  { label: "Doc Intel", icon: FileSearch, href: "/document-intelligence", description: "AI contract parsing, clause extraction, risk analysis" },
-  { label: "Documents", icon: FileText, href: "/documents", description: "Store and manage documents" },
-  { label: "Marketing", icon: Mail, href: "/campaigns", description: "Email, SMS, and direct mail campaigns" },
-  { label: "Tools", icon: Calculator, href: "/tools", description: "Calculators and utility tools" },
-  { label: "AI", icon: Bot, href: "/command-center", description: "AI assistants and automation" },
-  { label: "Help & Support", icon: HelpCircle, href: "/help", description: "Help topics and support resources" },
-  { label: "Settings", icon: Settings, href: "/settings", description: "Configure your account and preferences" },
-];
 
 export function Sidebar() {
   const [location] = useLocation();
   const { logout, isFounder } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
+  const [customizerOpen, setCustomizerOpen] = useState(false);
 
-  const { data: unreadCountData } = useQuery<{ count: number }>({
-    queryKey: ["/api/inbox/unread-count"],
-    refetchInterval: 60000,
-  });
-  const inboxUnreadCount = unreadCountData?.count ?? 0;
+  const {
+    sidebarItems,
+    mobileItems,
+    setSidebarItems,
+    setMobileItems,
+    reset,
+  } = useNavPreferences();
 
   const handlePrefetch = useCallback((href: string) => {
     const apiRoute = routePrefetchMap[href];
-    if (apiRoute) {
-      prefetchRoute(apiRoute);
-    }
+    if (apiRoute) prefetchRoute(apiRoute);
   }, []);
+
+  const renderNavItem = (item: MasterNavItem, onNavClick?: () => void) => {
+    const isActive =
+      location === item.href ||
+      (item.href !== "/today" && location.startsWith(item.href));
+    const ItemIcon = item.icon;
+    return (
+      <Tooltip key={item.href} delayDuration={300}>
+        <TooltipTrigger asChild>
+          <Link
+            href={item.href}
+            onClick={onNavClick}
+            className={cn(
+              "flex items-center gap-3 px-4 py-3 md:py-2 rounded-lg transition-all duration-150 group min-h-[40px]",
+              isActive
+                ? "bg-primary text-primary-foreground shadow-md"
+                : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+            )}
+            onMouseEnter={() => handlePrefetch(item.href)}
+            data-testid={`link-nav-${item.id}`}
+          >
+            <ItemIcon
+              className={cn(
+                "w-4 h-4 transition-colors shrink-0",
+                isActive ? "text-primary-foreground" : "text-muted-foreground group-hover:text-sidebar-foreground"
+              )}
+            />
+            <span className="font-medium text-sm flex-1 truncate">{item.label}</span>
+          </Link>
+        </TooltipTrigger>
+        <TooltipContent side="right" className="max-w-xs">
+          <p>{item.description}</p>
+        </TooltipContent>
+      </Tooltip>
+    );
+  };
+
+  const resolvedSidebarItems = sidebarItems
+    .map((id) => NAV_ITEM_MAP.get(id))
+    .filter((item): item is MasterNavItem => item != null);
 
   const NavContent = ({ onNavClick }: { onNavClick?: () => void }) => (
     <div className="flex flex-col h-full vibrancy-sidebar">
+      {/* Header */}
       <div className="p-4 md:p-6 border-b border-sidebar-border">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
@@ -119,8 +92,8 @@ export function Sidebar() {
               AcreOS
             </h1>
             {isFounder && (
-              <Badge 
-                variant="outline" 
+              <Badge
+                variant="outline"
                 className="bg-amber-500/10 text-amber-600 border-amber-500/30 text-xs"
                 data-testid="badge-founder"
               >
@@ -134,75 +107,48 @@ export function Sidebar() {
         <p className="text-xs text-muted-foreground mt-1">Land Investment Platform</p>
       </div>
 
-      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+      {/* Nav items */}
+      <nav className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto">
         {isFounder && (
-          <Link 
-            href="/founder" 
+          <Link
+            href="/founder"
             onClick={onNavClick}
             className={cn(
-              "flex items-center gap-3 px-4 py-3 md:py-2.5 rounded-lg transition-all duration-150 group mb-2 min-h-[44px]",
-              location === "/founder" 
-                ? "bg-amber-500 text-white shadow-md" 
+              "flex items-center gap-3 px-4 py-3 md:py-2 rounded-lg transition-all duration-150 group mb-2 min-h-[40px]",
+              location === "/founder"
+                ? "bg-amber-500 text-white shadow-md"
                 : "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20"
-            )} 
+            )}
             data-testid="link-founder-dashboard"
           >
             <Crown className={cn(
-              "w-5 h-5 transition-colors", 
+              "w-4 h-4 transition-colors",
               location === "/founder" ? "text-white" : "text-amber-500"
             )} />
             <span className="font-medium text-sm">Founder Dashboard</span>
           </Link>
         )}
-        {navItems.map((item) => {
-          const isActive = location === item.href;
-          const showBadge = (item as any).showUnreadBadge && inboxUnreadCount > 0;
-          const itemDescription = (item as any).description || item.label;
-          return (
-            <Tooltip key={item.href} delayDuration={300}>
-              <TooltipTrigger asChild>
-                <Link 
-                  href={item.href}
-                  onClick={onNavClick}
-                  className={cn(
-                    "flex items-center gap-3 px-4 py-3 md:py-2.5 rounded-lg transition-all duration-150 group min-h-[44px]",
-                    isActive 
-                      ? "bg-primary text-primary-foreground shadow-md" 
-                      : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                  )}
-                  onMouseEnter={() => handlePrefetch(item.href)}
-                  data-testid={`link-nav-${item.href.replace("/", "") || "dashboard"}`}
-                >
-                  <item.icon className={cn(
-                    "w-5 h-5 transition-colors", 
-                    isActive ? "text-primary-foreground" : "text-muted-foreground group-hover:text-sidebar-foreground"
-                  )} />
-                  <span className="font-medium text-sm flex-1">{item.label}</span>
-                  {showBadge && (
-                    <Badge 
-                      variant="secondary" 
-                      className="text-xs"
-                      data-testid="badge-inbox-unread"
-                    >
-                      {inboxUnreadCount > 99 ? "99+" : inboxUnreadCount}
-                    </Badge>
-                  )}
-                </Link>
-              </TooltipTrigger>
-              <TooltipContent side="right" className="max-w-xs">
-                <p>{itemDescription}</p>
-              </TooltipContent>
-            </Tooltip>
-          );
-        })}
+        {resolvedSidebarItems.map((item) => renderNavItem(item, onNavClick))}
       </nav>
 
+      {/* Footer */}
       <div className="p-4 border-t border-sidebar-border safe-area-bottom space-y-2">
         <div className="flex items-center justify-between px-2">
           <span className="text-xs text-muted-foreground">Theme</span>
           <ThemeToggle />
         </div>
-        <button 
+        <button
+          onClick={() => {
+            onNavClick?.();
+            setCustomizerOpen(true);
+          }}
+          data-testid="button-customize-nav"
+          className="flex items-center gap-3 px-4 py-2.5 w-full rounded-lg text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors min-h-[40px]"
+        >
+          <SlidersHorizontal className="w-4 h-4" />
+          <span className="font-medium text-sm">Customize nav</span>
+        </button>
+        <button
           onClick={() => logout()}
           data-testid="button-logout"
           className="flex items-center gap-3 px-4 py-3 md:py-2.5 w-full rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors min-h-[44px]"
@@ -230,10 +176,21 @@ export function Sidebar() {
         </Sheet>
       </div>
 
-      {/* Desktop Sidebar - macOS Tahoe style floating panel */}
+      {/* Desktop Sidebar */}
       <aside className="hidden md:flex w-64 flex-col fixed inset-y-0 left-0 z-50 m-2 rounded-xl border border-sidebar-border shadow-xl overflow-hidden vibrancy-sidebar">
         <NavContent />
       </aside>
+
+      {/* Nav Customizer Sheet */}
+      <NavCustomizer
+        open={customizerOpen}
+        onOpenChange={setCustomizerOpen}
+        sidebarItems={sidebarItems}
+        mobileItems={mobileItems}
+        onSidebarChange={setSidebarItems}
+        onMobileChange={setMobileItems}
+        onReset={reset}
+      />
     </>
   );
 }

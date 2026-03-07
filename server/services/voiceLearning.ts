@@ -21,7 +21,7 @@ import {
   properties,
   deals,
   notes,
-  communications,
+  sellerCommunications as communications,
   organizations,
 } from '../../shared/schema';
 import { eq, desc, and, isNotNull, not } from 'drizzle-orm';
