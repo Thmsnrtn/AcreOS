@@ -193,6 +193,8 @@ export interface EnrichmentResult {
     source?: string;
   };
 
+  completenessScore?: number;
+  completenessBreakdown?: Record<string, boolean>;
   errors?: Record<string, string>;
 }
 
@@ -643,22 +645,53 @@ export class PropertyEnrichmentService {
     };
   }
   
+  private calculateCompleteness(enrichment: EnrichmentResult): { score: number; breakdown: Record<string, boolean> } {
+    const breakdown: Record<string, boolean> = {
+      flood: !!enrichment.hazards?.floodZone,
+      wetlands: enrichment.hazards?.wetlandsPresent !== undefined,
+      soil: !!enrichment.environment?.soilType,
+      epaEnvironmental: enrichment.environment?.epaRiskLevel !== undefined,
+      epaFacilities: enrichment.epaFacilities?.totalCount !== undefined,
+      stormHistory: !!enrichment.stormHistory?.tornadoRisk,
+      infrastructure: enrichment.infrastructure?.nearestHospitalMiles !== undefined,
+      demographics: !!enrichment.demographics?.population,
+      publicLands: enrichment.publicLands !== undefined,
+      transportation: enrichment.transportation?.nearestHighwayMiles !== undefined,
+      water: enrichment.water?.nearestStreamMiles !== undefined,
+      elevation: enrichment.elevation?.elevationFeet !== undefined,
+      climate: enrichment.climate?.avgHighTempF !== undefined,
+      agriculturalValues: enrichment.agriculturalValues?.stateAvgPerAcre !== undefined,
+      landCover: enrichment.landCover?.nlcdClass !== undefined,
+      cropland: enrichment.cropland?.cropCode !== undefined,
+      plss: !!(enrichment.plss?.township || enrichment.plss?.section),
+      watershed: !!(enrichment.watershed?.huc8 || enrichment.watershed?.watershedName),
+      femaNri: !!(enrichment.femaNri?.compositeScore !== undefined && enrichment.femaNri.compositeScore !== null),
+      naturalHazards: !!(enrichment.hazards?.earthquakeRisk || enrichment.hazards?.wildfireRisk),
+    };
+    const filledCount = Object.values(breakdown).filter(Boolean).length;
+    const score = Math.round((filledCount / Object.keys(breakdown).length) * 100);
+    return { score, breakdown };
+  }
+
   private async savePropertyEnrichment(organizationId: number, propertyId: number, enrichment: EnrichmentResult): Promise<void> {
     try {
+      const completeness = this.calculateCompleteness(enrichment);
       await storage.updateProperty(propertyId, {
         enrichmentData: {
           ...enrichment,
           lastEnrichedAt: new Date().toISOString(),
+          completenessScore: completeness.score,
+          completenessBreakdown: completeness.breakdown,
         } as any,
         enrichmentStatus: "complete",
         enrichedAt: new Date(),
       });
-      
+
       const categoriesEnriched = Object.keys(enrichment).filter(
-        k => enrichment[k as keyof EnrichmentResult] !== undefined && 
+        k => enrichment[k as keyof EnrichmentResult] !== undefined &&
              !['propertyId', 'latitude', 'longitude', 'enrichedAt', 'lookupTimeMs'].includes(k)
       );
-      console.log(`[PropertyEnrichment] Property enrichment persisted for propertyId=${propertyId}, orgId=${organizationId}, categories: ${categoriesEnriched.join(', ')}`);
+      console.log(`[PropertyEnrichment] Property enrichment persisted for propertyId=${propertyId}, orgId=${organizationId}, completeness=${completeness.score}%, categories: ${categoriesEnriched.join(', ')}`);
     } catch (error) {
       console.error("Failed to save property enrichment:", error);
     }

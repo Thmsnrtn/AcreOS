@@ -8,6 +8,7 @@ import { smsService, sendOrgSMS } from "../services/smsService";
 import { getComparableProperties } from "../services/comps";
 import { checkTcpaConsentFromLead } from "../services/tcpaCompliance";
 import { DataSourceBroker } from "../services/data-source-broker";
+import { propertyEnrichmentService } from "../services/propertyEnrichment";
 
 // Tool parameter schemas (OpenAI function calling format)
 export const toolDefinitions = {
@@ -487,11 +488,24 @@ export const toolDefinitions = {
 
   research_property: {
     name: "research_property",
-    description: "Research comprehensive property data using multiple data sources. Returns tax info, ownership details, assessments, liens, and other available records.",
+    description: "Research comprehensive property data using ALL available data sources: flood zone, wetlands, soil, environmental, infrastructure proximity, demographics, public lands, transportation access, water resources, elevation, climate, agricultural values, land cover, cropland, PLSS section/township, watershed, FEMA NRI risk scores, and USDA CLU farm data. Use this for deep property due diligence.",
     parameters: {
       type: "object",
       properties: {
-        property_id: { type: "number", description: "The property ID to research" }
+        property_id: { type: "number", description: "The property ID to research" },
+        force_refresh: { type: "boolean", description: "Force re-fetch from upstream sources even if cached (default: false)" }
+      },
+      required: ["property_id"]
+    }
+  },
+
+  get_property_enrichment: {
+    name: "get_property_enrichment",
+    description: "Retrieve previously stored enrichment data for a property (flood zone, soil, demographics, hazards, scores, etc.) without making new API calls. Faster than research_property when enrichment has already been run.",
+    parameters: {
+      type: "object",
+      properties: {
+        property_id: { type: "number", description: "The property ID whose enrichment data to retrieve" }
       },
       required: ["property_id"]
     }
@@ -1295,42 +1309,54 @@ export async function executeTool(
           return { success: false, error: "Property does not have coordinates for research" };
         }
 
-        const broker = new DataSourceBroker();
-        const results: Record<string, any> = {};
-        const categories = ["parcel_data", "tax_assessment", "environmental", "zoning"] as const;
+        const lat = Number(property.latitude);
+        const lng = Number(property.longitude);
 
-        for (const category of categories) {
-          try {
-            const lookupResult = await broker.lookup(category, {
-              latitude: Number(property.latitude),
-              longitude: Number(property.longitude),
-              state: property.state,
-              county: property.county,
-              apn: property.apn || undefined,
-            });
-            if (lookupResult.success) {
-              results[category] = {
-                data: lookupResult.data,
-                source: lookupResult.source.title,
-                fromCache: lookupResult.fromCache,
-              };
-            }
-          } catch (err) {
-            console.error(`[research_property] Failed to lookup ${category}:`, err);
-          }
-        }
+        // Run full enrichment via the enrichment service (all 20+ categories)
+        const enrichment = await propertyEnrichmentService.enrichByCoordinates(lat, lng, {
+          propertyId: property.id,
+          state: property.state || undefined,
+          county: property.county || undefined,
+          apn: property.apn || undefined,
+          forceRefresh: args.force_refresh === true,
+        });
 
-        return { 
-          success: Object.keys(results).length > 0, 
+        return {
+          success: true,
           data: {
             propertyId: property.id,
             apn: property.apn,
             address: property.address,
-            researchResults: results,
-            categoriesSearched: categories,
-            categoriesFound: Object.keys(results),
+            coordinates: { lat, lng },
+            enrichment,
+            completenessScore: (enrichment as any).completenessScore ?? null,
           },
-          error: Object.keys(results).length === 0 ? "No data sources returned results" : undefined
+        };
+      }
+
+      case "get_property_enrichment": {
+        const property = await storage.getProperty(org.id, args.property_id);
+        if (!property) return { success: false, error: "Property not found" };
+
+        const enrichmentData = (property as any).enrichmentData;
+        if (!enrichmentData) {
+          return {
+            success: false,
+            error: "No enrichment data found for this property. Run research_property first to fetch data.",
+            hint: "Use research_property tool to trigger enrichment.",
+          };
+        }
+
+        return {
+          success: true,
+          data: {
+            propertyId: property.id,
+            address: property.address,
+            enrichedAt: (property as any).enrichedAt,
+            completenessScore: enrichmentData.completenessScore ?? null,
+            completenessBreakdown: enrichmentData.completenessBreakdown ?? null,
+            enrichment: enrichmentData,
+          },
         };
       }
 

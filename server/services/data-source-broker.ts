@@ -624,27 +624,69 @@ export class DataSourceBroker {
 
   private async querySoilData(lat: number, lng: number): Promise<any> {
     const baseUrl = "https://SDMDataAccess.nrcs.usda.gov/Tabular/post.rest";
-    const query = `SELECT TOP 1 musym, muname FROM mapunit WHERE mukey IN (SELECT mukey FROM mupolygon WHERE mupolygonGeometry.STContains(geometry::Point(${lng}, ${lat}, 4326)) = 1)`;
-    
+
+    // Basic map unit query
+    const basicQuery = `SELECT TOP 1 musym, muname, mukey FROM mapunit WHERE mukey IN (SELECT mukey FROM mupolygon WHERE mupolygonGeometry.STContains(geometry::Point(${lng}, ${lat}, 4326)) = 1)`;
     const response = await fetch(baseUrl, {
       method: "POST",
-      headers: { 
-        "Content-Type": "application/x-www-form-urlencoded",
-        "User-Agent": "AcreOS Land Investment Platform" 
-      },
-      body: `query=${encodeURIComponent(query)}&format=json`,
+      headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "AcreOS Land Investment Platform" },
+      body: `query=${encodeURIComponent(basicQuery)}&format=json`,
       signal: AbortSignal.timeout(15000),
     });
-    
     if (!response.ok) throw new Error(`USDA Soil API error: ${response.status}`);
     const data = await response.json();
-    
+    const basicRow = data.Table?.[0];
+    const mukey = basicRow?.mukey;
+
+    // Extended SDA query for capability class, drainage, flooding, hydric soil, farmland class
+    let extended: Record<string, any> = {};
+    if (mukey) {
+      try {
+        const extQuery = `SELECT TOP 1 mu.mukey, mu.muname, c.capclass, c.hydgrpdcd, c.drainagecl, c.flodfreqdcd, c.hydricrating, muag.farmlndcl FROM mapunit mu
+          LEFT JOIN component c ON c.mukey = mu.mukey AND c.majcompflag = 'Yes'
+          LEFT JOIN muaggatt muag ON muag.mukey = mu.mukey
+          WHERE mu.mukey = '${mukey}'`;
+        const extRes = await fetch(baseUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "AcreOS Land Investment Platform" },
+          body: `query=${encodeURIComponent(extQuery)}&format=json`,
+          signal: AbortSignal.timeout(12000),
+        });
+        if (extRes.ok) {
+          const extData = await extRes.json();
+          const row = extData.Table?.[0];
+          if (row) {
+            extended = {
+              capabilityClass: row.capclass || null,
+              hydrologicGroup: row.hydgrpdcd || null,
+              drainage: row.drainagecl || "Unknown",
+              floodingFrequency: row.flodfreqdcd || "None",
+              hydricRating: row.hydricrating || null,
+              farmlandClass: row.farmlndcl || null,
+              primeFarmland: row.farmlndcl?.toLowerCase().includes("prime") || false,
+            };
+          }
+        }
+      } catch (_) { /* extended data optional */ }
+    }
+
+    const capClass = extended.capabilityClass;
+    const suitability = capClass
+      ? (["I","II","III"].includes(capClass) ? "prime" : ["IV","V"].includes(capClass) ? "suitable" : "limited")
+      : "good";
+
     return {
-      soilType: data.Table?.[0]?.muname || "Unknown",
-      soilSymbol: data.Table?.[0]?.musym || "Unknown",
-      suitability: "good",
-      drainage: "Well drained",
-      source: "USDA NRCS",
+      soilType: basicRow?.muname || "Unknown",
+      soilSymbol: basicRow?.musym || "Unknown",
+      suitability,
+      drainage: extended.drainage || "Unknown",
+      capabilityClass: extended.capabilityClass || null,
+      hydrologicGroup: extended.hydrologicGroup || null,
+      floodingFrequency: extended.floodingFrequency || null,
+      hydricRating: extended.hydricRating || null,
+      farmlandClass: extended.farmlandClass || null,
+      primeFarmland: extended.primeFarmland || false,
+      source: "USDA NRCS SDA",
       lastUpdated: new Date().toISOString(),
     };
   }
@@ -814,12 +856,42 @@ export class DataSourceBroker {
       results.activeWildfires = [];
     }
 
-    const earthquakeRisk = (results.recentEarthquakes || []).length > 5 ? "high" : 
+    const earthquakeRisk = (results.recentEarthquakes || []).length > 5 ? "high" :
       (results.recentEarthquakes || []).length > 0 ? "medium" : "low";
     const wildfireRisk = (results.activeWildfires || []).length > 0 ? "high" : "low";
 
+    // FEMA FIRM panel lookup (panel ID, effective date, digitized flag)
+    try {
+      const firmUrl = `https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer/3/query?geometry=${geometryParam}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=FIRM_PAN,PANEL,SUFFIX,EFF_DATE,CASE_NO,STATUS,NP_DATE,SOURCE_CIT&returnGeometry=false&f=json`;
+      const firmResponse = await fetch(firmUrl, {
+        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+      });
+      if (firmResponse.ok) {
+        const firmData = await firmResponse.json();
+        const firmAttr = firmData.features?.[0]?.attributes;
+        if (firmAttr) {
+          results.firmPanel = {
+            panelId: firmAttr.FIRM_PAN,
+            panelNumber: firmAttr.PANEL,
+            suffix: firmAttr.SUFFIX,
+            effectiveDate: firmAttr.EFF_DATE ? new Date(firmAttr.EFF_DATE).toISOString().split("T")[0] : null,
+            caseNumber: firmAttr.CASE_NO,
+            status: firmAttr.STATUS,
+            newPanel: firmAttr.NP_DATE ? true : false,
+            sourceCitation: firmAttr.SOURCE_CIT,
+          };
+        } else {
+          results.firmPanel = null;
+        }
+      }
+    } catch (_) {
+      results.firmPanel = null;
+    }
+
     return {
       floodHazard: results.floodHazard,
+      firmPanel: results.firmPanel,
       recentEarthquakes: results.recentEarthquakes || [],
       activeWildfires: results.activeWildfires || [],
       riskAssessment: {
@@ -863,7 +935,7 @@ export class DataSourceBroker {
       const countyCode = tract.COUNTY || county?.COUNTY;
       const tractCode = tract.TRACT;
 
-      const acsUrl = `https://api.census.gov/data/2022/acs/acs5?get=B01003_001E,B19013_001E,B25077_001E,B25001_001E,B23025_002E,B23025_005E&for=tract:${tractCode}&in=state:${stateCode}&in=county:${countyCode}`;
+      const acsUrl = `https://api.census.gov/data/2022/acs/acs5?get=B01003_001E,B19013_001E,B25077_001E,B25001_001E,B23025_002E,B23025_005E,B25002_002E,B25002_003E,B25003_002E,B25003_003E,B08303_001E,B15003_022E&for=tract:${tractCode}&in=state:${stateCode}&in=county:${countyCode}`;
       
       const acsResponse = await fetch(acsUrl, {
         headers: { "User-Agent": "AcreOS Land Investment Platform" },
@@ -894,6 +966,19 @@ export class DataSourceBroker {
       const housingUnits = parseInt(values[3]) || null;
       const laborForce = parseInt(values[4]) || null;
       const unemployed = parseInt(values[5]) || null;
+      const occupiedUnits = parseInt(values[6]) || null;
+      const vacantUnits = parseInt(values[7]) || null;
+      const ownerOccupied = parseInt(values[8]) || null;
+      const renterOccupied = parseInt(values[9]) || null;
+      const commuteMinutes = parseInt(values[10]) || null;
+      const bachelorsPlus = parseInt(values[11]) || null;
+
+      const ownerOccupancyRate = occupiedUnits && ownerOccupied
+        ? Math.round((ownerOccupied / occupiedUnits) * 100)
+        : null;
+      const vacancyRate = housingUnits && vacantUnits
+        ? parseFloat(((vacantUnits / housingUnits) * 100).toFixed(1))
+        : null;
 
       return {
         tractInfo: {
@@ -906,6 +991,14 @@ export class DataSourceBroker {
         medianHouseholdIncome: medianIncome,
         medianHomeValue,
         housingUnits,
+        occupiedUnits,
+        vacantUnits,
+        ownerOccupied,
+        renterOccupied,
+        ownerOccupancyRate,
+        vacancyRate,
+        avgCommuteMinutes: commuteMinutes,
+        bachelorsOrHigher: bachelorsPlus,
         unemployment: laborForce && unemployed ? ((unemployed / laborForce) * 100).toFixed(1) + "%" : null,
         source: "Census ACS 5-Year Estimates",
         lastUpdated: new Date().toISOString(),
@@ -1060,16 +1153,47 @@ export class DataSourceBroker {
       results.railroads = [];
     }
 
+    // Census TIGER/Line roads — captures local, private, 4WD roads missed by NHPN
+    try {
+      const tigerUrl = `https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_Current/MapServer/6/query?geometry=${geometryParam}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&distance=3219&units=esriSRUnit_Meter&outFields=FULLNAME,MTFCC,RTTYP&returnGeometry=false&f=json`;
+      const tigerResponse = await fetch(tigerUrl, {
+        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+      });
+      if (tigerResponse.ok) {
+        const tigerData = await tigerResponse.json();
+        const roads = (tigerData.features || []).slice(0, 20).map((f: any) => ({
+          name: f.attributes.FULLNAME,
+          mtfcc: f.attributes.MTFCC, // road classification code
+          type: f.attributes.RTTYP,
+        }));
+        // Classify road types by MTFCC codes
+        const pavedCodes = ["S1100","S1200","S1400"]; // primary, secondary, local
+        const dirtCodes = ["S1500","S1630","S1640"]; // dirt, 4WD, alley
+        results.tigerRoads = roads;
+        results.hasPavedRoad = roads.some((r: any) => pavedCodes.includes(r.mtfcc));
+        results.hasDirtRoad = roads.some((r: any) => dirtCodes.includes(r.mtfcc));
+        results.localRoadCount = roads.length;
+      }
+    } catch (error) {
+      results.tigerRoads = [];
+    }
+
     return {
       highways: results.highways || [],
       bridges: results.bridges || [],
       railroads: results.railroads || [],
+      tigerRoads: results.tigerRoads || [],
+      hasPavedRoad: results.hasPavedRoad ?? null,
+      hasDirtRoad: results.hasDirtRoad ?? null,
+      localRoadCount: results.localRoadCount ?? 0,
       summary: {
         nearbyHighways: (results.highways || []).length,
         nearbyBridges: (results.bridges || []).length,
         nearbyRailroads: (results.railroads || []).length,
+        nearbyLocalRoads: results.localRoadCount ?? 0,
       },
-      source: "DOT/ESRI",
+      source: "DOT/ESRI/Census TIGER",
       lastUpdated: new Date().toISOString(),
     };
   }
