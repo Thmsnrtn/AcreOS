@@ -1107,7 +1107,7 @@ export const supportToolDefinitions = {
 
   enrich_property_coordinates: {
     name: "enrich_property_coordinates",
-    description: "Run a full free-data enrichment on a lat/lng: flood zone, wetlands, soil, EPA, infrastructure, hazards, demographics, public lands, transportation, water, elevation, climate, ag values, and land cover — all from free public APIs in one call.",
+    description: "Run a full free-data enrichment on a lat/lng: flood zone, wetlands, soil, EPA TRI + FRS, infrastructure, hazards, demographics, public lands, transportation, water, elevation, climate, ag values, land cover, crop type (USDA CDL), and storm risk — all from free public APIs in one call.",
     parameters: {
       type: "object",
       properties: {
@@ -1116,6 +1116,46 @@ export const supportToolDefinitions = {
         state: { type: "string", description: "Two-letter state code (optional)" },
         county: { type: "string", description: "County name (optional)" },
         apn: { type: "string", description: "Assessor Parcel Number (optional)" },
+      },
+      required: ["latitude", "longitude"],
+    },
+  },
+
+  lookup_cropland: {
+    name: "lookup_cropland",
+    description: "Identify the crop type at a coordinate using USDA NASS CropScape Cropland Data Layer (CDL) 2023. Returns crop code, crop name, and land use classification. Free — no key required.",
+    parameters: {
+      type: "object",
+      properties: {
+        latitude: { type: "number", description: "Decimal latitude (WGS84)" },
+        longitude: { type: "number", description: "Decimal longitude (WGS84)" },
+      },
+      required: ["latitude", "longitude"],
+    },
+  },
+
+  lookup_epa_facilities: {
+    name: "lookup_epa_facilities",
+    description: "Find all EPA-registered facilities within 5 miles using EPA FRS — covers Superfund, Clean Air Act, Clean Water Act, RCRA hazardous waste, and more. Free — no key required.",
+    parameters: {
+      type: "object",
+      properties: {
+        latitude: { type: "number" },
+        longitude: { type: "number" },
+      },
+      required: ["latitude", "longitude"],
+    },
+  },
+
+  lookup_storm_history: {
+    name: "lookup_storm_history",
+    description: "Get storm risk estimates (tornado, hurricane, hail) for a coordinate based on geographic NOAA patterns. Free — no key required.",
+    parameters: {
+      type: "object",
+      properties: {
+        latitude: { type: "number" },
+        longitude: { type: "number" },
+        state: { type: "string", description: "Two-letter state abbreviation (optional)" },
       },
       required: ["latitude", "longitude"],
     },
@@ -4820,6 +4860,27 @@ export async function executeSupportTool(
         return { success: true, data: enrichment };
       }
 
+      case "lookup_cropland": {
+        const result = await dataSourceBroker.lookup("cropland", {
+          latitude: args.latitude, longitude: args.longitude,
+        });
+        return { success: result.success, data: result.data };
+      }
+
+      case "lookup_epa_facilities": {
+        const result = await dataSourceBroker.lookup("epa_frs", {
+          latitude: args.latitude, longitude: args.longitude,
+        });
+        return { success: result.success, data: result.data };
+      }
+
+      case "lookup_storm_history": {
+        const result = await dataSourceBroker.lookup("storm_history", {
+          latitude: args.latitude, longitude: args.longitude, state: args.state,
+        });
+        return { success: result.success, data: result.data };
+      }
+
       case "geocode_address": {
         const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(args.address)}&countrycodes=us&format=jsonv2&addressdetails=1&limit=5`;
         const res = await fetch(url, {
@@ -4900,7 +4961,10 @@ LAND DATA TOOLS (free public APIs — use any time a user asks about a property 
 26. lookup_agricultural_values: USDA farm real estate $/acre by county (free)
 27. lookup_land_cover: USGS NLCD 2021 land cover class — cropland, forest, wetland, etc. (free)
 28. lookup_public_lands: BLM/NPS/USFS public land status (free)
-29. enrich_property_coordinates: Full enrichment across ALL above categories in one call (free)
+29. lookup_cropland: USDA NASS CropScape CDL 2023 — exact crop type at any coordinate (free)
+30. lookup_epa_facilities: EPA FRS — all registered facilities (Superfund, CAA, CWA, RCRA) within 5 miles (free)
+31. lookup_storm_history: NOAA storm risk estimates — tornado, hurricane, hail risk by geography (free)
+32. enrich_property_coordinates: Full enrichment across ALL above categories in one call (free)
 
 ISSUE TYPE CATEGORIES (for decision trees):
 - login_auth: Login, authentication, session issues

@@ -121,6 +121,38 @@ export interface EnrichmentResult {
     source?: string;
   };
 
+  cropland?: {
+    cropCode?: number | null;
+    cropName?: string;
+    year?: number;
+    isAgriculturalCrop?: boolean;
+    isPastureOrHay?: boolean;
+    isCultivatedCrop?: boolean;
+    isForest?: boolean;
+    isWetland?: boolean;
+    source?: string;
+  };
+
+  epaFacilities?: {
+    totalCount?: number;
+    superfundCount?: number;
+    airViolationCount?: number;
+    waterViolationCount?: number;
+    hazWasteCount?: number;
+    riskLevel?: "low" | "medium" | "high";
+    searchRadiusMiles?: number;
+    source?: string;
+  };
+
+  stormHistory?: {
+    tornadoRisk?: string;
+    hurricaneRisk?: string;
+    hailRisk?: string;
+    countyName?: string;
+    note?: string;
+    source?: string;
+  };
+
   errors?: Record<string, string>;
 }
 
@@ -156,6 +188,9 @@ export class PropertyEnrichmentService {
       "climate",
       "agricultural_values",
       "land_cover",
+      "cropland",
+      "epa_frs",
+      "storm_history",
     ];
     
     const categories = options?.categories || defaultCategories;
@@ -316,6 +351,44 @@ export class PropertyEnrichmentService {
             isForested: data.isForested,
             isWetland: data.isWetland,
             year: data.year,
+            source: data.source,
+          };
+          break;
+
+        case "cropland":
+          result.cropland = {
+            cropCode: data.cropCode,
+            cropName: data.cropName,
+            year: data.year,
+            isAgriculturalCrop: data.isAgriculturalCrop,
+            isPastureOrHay: data.isPastureOrHay,
+            isCultivatedCrop: data.isCultivatedCrop,
+            isForest: data.isForest,
+            isWetland: data.isWetland,
+            source: data.source,
+          };
+          break;
+
+        case "epa_frs":
+          result.epaFacilities = {
+            totalCount: data.totalCount,
+            superfundCount: data.superfundCount,
+            airViolationCount: data.airViolationCount,
+            waterViolationCount: data.waterViolationCount,
+            hazWasteCount: data.hazWasteCount,
+            riskLevel: data.riskLevel,
+            searchRadiusMiles: data.searchRadiusMiles,
+            source: data.source,
+          };
+          break;
+
+        case "storm_history":
+          result.stormHistory = {
+            tornadoRisk: data.tornadoRisk,
+            hurricaneRisk: data.hurricaneRisk,
+            hailRisk: data.hailRisk,
+            countyName: data.countyName,
+            note: data.note,
             source: data.source,
           };
           break;
