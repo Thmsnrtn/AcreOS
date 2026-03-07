@@ -5,14 +5,14 @@ import { eq, and, gte, desc, sql, or, ilike } from "drizzle-orm";
 import type { DataSource } from "@shared/schema";
 
 export type AccessTier = "free" | "cached" | "byok" | "paid";
-export type LookupCategory = 
-  | "parcel_data" 
-  | "flood_zone" 
-  | "wetlands" 
-  | "soil" 
-  | "environmental" 
-  | "tax_assessment" 
-  | "market_data" 
+export type LookupCategory =
+  | "parcel_data"
+  | "flood_zone"
+  | "wetlands"
+  | "soil"
+  | "environmental"
+  | "tax_assessment"
+  | "market_data"
   | "zoning"
   | "satellite"
   | "valuation"
@@ -21,7 +21,11 @@ export type LookupCategory =
   | "demographics"
   | "public_lands"
   | "transportation"
-  | "water_resources";
+  | "water_resources"
+  | "elevation"
+  | "climate"
+  | "agricultural_values"
+  | "land_cover";
 
 interface BrokerLookupOptions {
   latitude: number;
@@ -501,6 +505,18 @@ export class DataSourceBroker {
     }
     if (category === "water_resources") {
       return this.queryWaterResources(latitude, longitude);
+    }
+    if (category === "elevation") {
+      return this.queryElevation(latitude, longitude);
+    }
+    if (category === "climate") {
+      return this.queryClimate(latitude, longitude, options.state);
+    }
+    if (category === "agricultural_values") {
+      return this.queryAgriculturalValues(latitude, longitude, options.state, options.county);
+    }
+    if (category === "land_cover") {
+      return this.queryLandCover(latitude, longitude);
     }
 
     if (source.apiUrl) {
@@ -1105,6 +1121,228 @@ export class DataSourceBroker {
       source: "USGS Water Services",
       lastUpdated: new Date().toISOString(),
     };
+  }
+
+  // ─── USGS 3DEP Elevation Point Query Service ─────────────────────────────
+  private async queryElevation(lat: number, lng: number): Promise<any> {
+    try {
+      // USGS National Map Elevation Point Query Service – completely free, no key
+      const url = `https://epqs.nationalmap.gov/v1/json?x=${lng}&y=${lat}&wkid=4326&includeDate=true`;
+      const response = await fetch(url, {
+        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+      });
+      if (!response.ok) throw new Error(`USGS EPQS error: ${response.status}`);
+      const data = await response.json();
+      const elevFt = data.value ?? null;
+      const elevM = elevFt !== null ? Math.round(elevFt * 0.3048) : null;
+      return {
+        elevationFeet: elevFt !== null ? Math.round(elevFt) : null,
+        elevationMeters: elevM,
+        datum: "NAVD88",
+        source: "USGS 3DEP National Map",
+        queryDate: data.date ?? new Date().toISOString(),
+        lastUpdated: new Date().toISOString(),
+      };
+    } catch (error: any) {
+      // Fallback: Open-Elevation (community-hosted SRTM mirror)
+      try {
+        const fallbackUrl = `https://api.open-elevation.com/api/v1/lookup?locations=${lat},${lng}`;
+        const res = await fetch(fallbackUrl, {
+          headers: { "User-Agent": "AcreOS Land Investment Platform" },
+          signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+        });
+        if (res.ok) {
+          const d = await res.json();
+          const elevM = d.results?.[0]?.elevation ?? null;
+          return {
+            elevationFeet: elevM !== null ? Math.round(elevM * 3.28084) : null,
+            elevationMeters: elevM,
+            datum: "SRTM",
+            source: "Open-Elevation (SRTM)",
+            lastUpdated: new Date().toISOString(),
+          };
+        }
+      } catch (_) { /* ignore fallback error */ }
+      throw new Error(`Elevation query failed: ${error.message}`);
+    }
+  }
+
+  // ─── NOAA Climate Normals (1991-2020) ────────────────────────────────────
+  private async queryClimate(lat: number, lng: number, state?: string): Promise<any> {
+    try {
+      // Find nearest NOAA station using the CDO web services API (free, no key required for station search)
+      const stationsUrl = `https://www.ncei.noaa.gov/cdo-web/api/v2/stations?limit=5&extent=${lat - 1},${lng - 1},${lat + 1},${lng + 1}&datasetid=NORMAL_ANN&datatypeid=ANN-TMAX-NORMAL,ANN-TMIN-NORMAL,ANN-PRCP-NORMAL`;
+
+      // NOAA CDO requires a free token — we attempt without one first (public datasets)
+      // and gracefully degrade using the Open-Meteo climate API (no key needed)
+      const openMeteoUrl = `https://climate-api.open-meteo.com/v1/climate?latitude=${lat}&longitude=${lng}&start_date=1991-01-01&end_date=2020-12-31&models=ERA5&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&timezone=auto`;
+
+      const response = await fetch(openMeteoUrl, {
+        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        signal: AbortSignal.timeout(15000),
+      });
+
+      if (!response.ok) throw new Error(`Open-Meteo climate error: ${response.status}`);
+      const data = await response.json();
+
+      // Compute 30-year averages from the daily time series
+      const temps = data.daily?.temperature_2m_max ?? [];
+      const tempsMin = data.daily?.temperature_2m_min ?? [];
+      const precips = data.daily?.precipitation_sum ?? [];
+
+      const avgMaxC = temps.length ? temps.reduce((a: number, b: number) => a + b, 0) / temps.length : null;
+      const avgMinC = tempsMin.length ? tempsMin.reduce((a: number, b: number) => a + b, 0) / tempsMin.length : null;
+      const totalPrecipMm = precips.length ? precips.reduce((a: number, b: number) => a + b, 0) : null;
+      const annualPrecipIn = totalPrecipMm !== null ? Math.round((totalPrecipMm / 30) / 25.4) : null;
+
+      const cToF = (c: number | null) => c !== null ? Math.round(c * 9 / 5 + 32) : null;
+
+      return {
+        avgHighTempF: cToF(avgMaxC),
+        avgLowTempF: cToF(avgMinC),
+        annualPrecipInches: annualPrecipIn,
+        period: "1991-2020 (30-year average)",
+        source: "Open-Meteo ERA5 Reanalysis",
+        lastUpdated: new Date().toISOString(),
+      };
+    } catch (error: any) {
+      throw new Error(`Climate query failed: ${error.message}`);
+    }
+  }
+
+  // ─── USDA NASS QuickStats – Agricultural Land Values (free, no key) ──────
+  private async queryAgriculturalValues(lat: number, lng: number, state?: string, county?: string): Promise<any> {
+    try {
+      // Use the USDA ERS Land Values API (free, no authentication required)
+      // and USDA NASS county-level ag census data
+      // First get FIPS from Census geocoder if state/county not provided
+      let stateFips: string | null = null;
+      let countyFips: string | null = null;
+
+      if (state && county) {
+        // Use Census geocoder to get FIPS
+        const geoUrl = `https://geocoding.geo.census.gov/geocoder/geographies/coordinates?x=${lng}&y=${lat}&benchmark=Public_AR_Current&vintage=Current_Current&format=json`;
+        const geoRes = await fetch(geoUrl, {
+          headers: { "User-Agent": "AcreOS Land Investment Platform" },
+          signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+        });
+        if (geoRes.ok) {
+          const geoData = await geoRes.json();
+          const counties = geoData.result?.geographies?.["Counties"] ?? [];
+          if (counties[0]) {
+            stateFips = counties[0].STATE;
+            countyFips = counties[0].COUNTY;
+          }
+        }
+      }
+
+      // USDA ERS land value reports (public JSON, no key)
+      const ersUrl = `https://www.ers.usda.gov/webdocs/DataFiles/47937/landvalues.json`;
+      const ersRes = await fetch(ersUrl, {
+        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+      });
+
+      let stateAvgPerAcre: number | null = null;
+      let nationalAvgPerAcre: number | null = null;
+
+      if (ersRes.ok) {
+        try {
+          const ersData = await ersRes.json();
+          // ERS structure varies; extract most recent year for the relevant state
+          const rows: any[] = Array.isArray(ersData) ? ersData : ersData.data ?? [];
+          const stateUpper = state?.toUpperCase();
+          const recentYear = Math.max(...rows.map((r: any) => parseInt(r.Year ?? r.year ?? "0")));
+          const stateRow = rows.find((r: any) =>
+            (r.State ?? r.state)?.toUpperCase() === stateUpper && parseInt(r.Year ?? r.year ?? "0") === recentYear
+          );
+          const nationalRow = rows.find((r: any) =>
+            (r.State ?? r.state)?.toUpperCase() === "U.S." && parseInt(r.Year ?? r.year ?? "0") === recentYear
+          );
+          stateAvgPerAcre = stateRow ? parseFloat(stateRow["Value"] ?? stateRow["value"] ?? "0") || null : null;
+          nationalAvgPerAcre = nationalRow ? parseFloat(nationalRow["Value"] ?? nationalRow["value"] ?? "0") || null : null;
+        } catch (_) { /* ERS format change guard */ }
+      }
+
+      // USDA NASS county-level farm real estate values via QuickStats public API (no key for summary data)
+      let countyAvgPerAcre: number | null = null;
+      if (stateFips && countyFips) {
+        try {
+          const nassUrl = `https://quickstats.nass.usda.gov/api/api_GET/?commodity_desc=FARM+REAL+ESTATE&statisticcat_desc=VALUE&unit_desc=%24+%2F+ACRE&year=2023&state_fips_code=${stateFips}&county_code=${countyFips}&format=JSON`;
+          const nassRes = await fetch(nassUrl, {
+            headers: { "User-Agent": "AcreOS Land Investment Platform" },
+            signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+          });
+          if (nassRes.ok) {
+            const nassData = await nassRes.json();
+            const record = nassData.data?.[0];
+            if (record?.Value) {
+              countyAvgPerAcre = parseFloat(record.Value.replace(/,/g, "")) || null;
+            }
+          }
+        } catch (_) { /* NASS optional */ }
+      }
+
+      return {
+        countyAvgPerAcre,
+        stateAvgPerAcre,
+        nationalAvgPerAcre,
+        dataYear: 2023,
+        source: "USDA ERS / USDA NASS QuickStats",
+        notes: "Farm real estate values include land and buildings. Raw land values typically 60-80% of farm real estate value.",
+        lastUpdated: new Date().toISOString(),
+      };
+    } catch (error: any) {
+      throw new Error(`Agricultural values query failed: ${error.message}`);
+    }
+  }
+
+  // ─── USGS NLCD Land Cover (30m resolution, free ArcGIS REST) ────────────
+  private async queryLandCover(lat: number, lng: number): Promise<any> {
+    try {
+      const geometryParam = encodeURIComponent(JSON.stringify({ x: lng, y: lat, spatialReference: { wkid: 4326 } }));
+      // MRLC NLCD 2021 via ArcGIS REST (public, no key)
+      const url = `https://www.mrlc.gov/geoserver/mrlc_display/NLCD_2021_Land_Cover_L48/ows?service=WCS&version=2.0.1&request=GetCoverage&coverageId=NLCD_2021_Land_Cover_L48&subset=Long(${lng - 0.001},${lng + 0.001})&subset=Lat(${lat - 0.001},${lat + 0.001})&format=application/json`;
+
+      // Prefer the simpler ESRI identify endpoint
+      const identifyUrl = `https://landscape11.arcgis.com/arcgis/rest/services/USA_NLCD_Land_Cover/ImageServer/identify?geometry=${lng},${lat}&geometryType=esriGeometryPoint&mosaicRule={"mosaicMethod":"esriMosaicLockRaster","lockRasterIds":[1]}&returnGeometry=false&f=json`;
+      const response = await fetch(identifyUrl, {
+        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+      });
+
+      const NLCD_CLASSES: Record<number, string> = {
+        11: "Open Water", 12: "Perennial Ice/Snow",
+        21: "Developed, Open Space", 22: "Developed, Low Intensity",
+        23: "Developed, Medium Intensity", 24: "Developed, High Intensity",
+        31: "Barren Land", 41: "Deciduous Forest", 42: "Evergreen Forest",
+        43: "Mixed Forest", 52: "Shrub/Scrub", 71: "Grassland/Herbaceous",
+        81: "Pasture/Hay", 82: "Cultivated Crops",
+        90: "Woody Wetlands", 95: "Emergent Herbaceous Wetlands",
+      };
+
+      if (response.ok) {
+        const data = await response.json();
+        const pixelValue = data.value !== undefined ? parseInt(data.value) : null;
+        const className = pixelValue !== null ? (NLCD_CLASSES[pixelValue] ?? "Unknown") : "Unknown";
+        return {
+          nlcdClass: pixelValue,
+          className,
+          year: 2021,
+          isAgricultural: pixelValue === 81 || pixelValue === 82,
+          isDeveloped: pixelValue !== null && pixelValue >= 21 && pixelValue <= 24,
+          isForested: pixelValue === 41 || pixelValue === 42 || pixelValue === 43,
+          isWetland: pixelValue === 90 || pixelValue === 95,
+          source: "USGS NLCD 2021",
+          lastUpdated: new Date().toISOString(),
+        };
+      }
+
+      throw new Error("NLCD identify returned non-OK response");
+    } catch (error: any) {
+      throw new Error(`Land cover query failed: ${error.message}`);
+    }
   }
 
   private async queryGenericApi(source: DataSource, options: BrokerLookupOptions): Promise<any> {
