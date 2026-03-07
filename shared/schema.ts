@@ -9499,3 +9499,17 @@ export const aiTelemetryEvents = pgTable("ai_telemetry_events", {
   index("ai_telemetry_created_idx").on(table.createdAt),
   index("ai_telemetry_provider_idx").on(table.provider),
 ]);
+
+// ─── User Map Layer Preferences ──────────────────────────────────────────────
+// Persists per-user map layer toggle/opacity settings across devices.
+export const userMapLayerPreferences = pgTable("user_map_layer_preferences", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  layerId: integer("layer_id").notNull().references(() => dataSources.id, { onDelete: "cascade" }),
+  enabled: boolean("enabled").notNull().default(false),
+  opacity: numeric("opacity", { precision: 4, scale: 2 }).notNull().default("0.70"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("user_map_layer_prefs_user_idx").on(table.userId),
+  index("user_map_layer_prefs_unique_idx").on(table.userId, table.layerId),
+]);

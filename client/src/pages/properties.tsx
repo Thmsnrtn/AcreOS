@@ -1559,6 +1559,11 @@ interface EnrichmentData {
   environment?: {
     soilType?: string;
     soilSuitability?: string;
+    soilDrainage?: string;
+    capabilityClass?: string;
+    hydrologicGroup?: string;
+    primeFarmland?: boolean;
+    farmlandClass?: string;
     epaFacilitiesNearby?: number;
     epaRiskLevel?: "low" | "medium" | "high";
   };
@@ -1574,9 +1579,14 @@ interface EnrichmentData {
   demographics?: {
     population?: number;
     medianIncome?: number;
+    medianHouseholdIncome?: number;
     medianHomeValue?: number;
     povertyRate?: number;
     collegeEducated?: number;
+    ownerOccupancyRate?: number;
+    vacancyRate?: number;
+    avgCommuteMinutes?: number;
+    unemployment?: string;
   };
   publicLands?: {
     nearBLM?: boolean;
@@ -1589,6 +1599,9 @@ interface EnrichmentData {
     nearestBridgeMiles?: number;
     nearestRailMiles?: number;
     roadAccessScore?: number;
+    hasPavedRoad?: boolean | null;
+    hasDirtRoad?: boolean | null;
+    localRoadCount?: number;
   };
   water?: {
     nearestStreamMiles?: number;
@@ -1781,6 +1794,52 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
         </Button>
       </div>
 
+      {/* Data Completeness Widget */}
+      {hasData && (enrichmentData as any)?.completenessScore !== undefined && (
+        <Card data-testid="card-completeness">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 text-primary" />
+                <h4 className="font-semibold text-sm">Data Completeness</h4>
+              </div>
+              <span className="text-lg font-bold tabular-nums">
+                {(enrichmentData as any).completenessScore}%
+              </span>
+            </div>
+            <div className="w-full bg-muted rounded-full h-2 mb-3">
+              <div
+                className={`h-2 rounded-full transition-all ${
+                  (enrichmentData as any).completenessScore >= 80
+                    ? "bg-green-500"
+                    : (enrichmentData as any).completenessScore >= 50
+                    ? "bg-yellow-500"
+                    : "bg-red-500"
+                }`}
+                style={{ width: `${(enrichmentData as any).completenessScore}%` }}
+              />
+            </div>
+            {(enrichmentData as any).completenessBreakdown && (
+              <div className="grid grid-cols-4 gap-1 mt-2">
+                {Object.entries((enrichmentData as any).completenessBreakdown as Record<string, boolean>).map(
+                  ([key, value]) => (
+                    <div
+                      key={key}
+                      className={`text-xs px-1.5 py-0.5 rounded text-center truncate ${
+                        value ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-muted text-muted-foreground"
+                      }`}
+                      title={key}
+                    >
+                      {key.replace(/([A-Z])/g, " $1").toLowerCase()}
+                    </div>
+                  )
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {!property.latitude || !property.longitude ? (
         <Card className="border-dashed">
           <CardContent className="py-8 text-center">
@@ -1940,6 +1999,20 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
                     <span className="text-muted-foreground">Soil Suitability</span>
                     <span className="capitalize">{enrichmentData.environment.soilSuitability || "Unknown"}</span>
                   </div>
+                  {enrichmentData.environment.capabilityClass && (
+                    <div className="flex items-center justify-between" data-testid="capability-class">
+                      <span className="text-muted-foreground">Capability Class</span>
+                      <Badge variant="outline">Class {enrichmentData.environment.capabilityClass}</Badge>
+                    </div>
+                  )}
+                  {enrichmentData.environment.primeFarmland !== undefined && (
+                    <div className="flex items-center justify-between" data-testid="prime-farmland">
+                      <span className="text-muted-foreground">Prime Farmland</span>
+                      <span className={enrichmentData.environment.primeFarmland ? "text-green-600" : "text-muted-foreground"}>
+                        {enrichmentData.environment.primeFarmland ? "Yes" : "No"}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -1990,9 +2063,10 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
                   </div>
                   <div className="flex items-center justify-between" data-testid="median-income">
                     <span className="text-muted-foreground">Median Income</span>
-                    <span>{enrichmentData.demographics.medianIncome 
-                      ? `$${enrichmentData.demographics.medianIncome.toLocaleString()}` 
-                      : "N/A"}
+                    <span>
+                      {(enrichmentData.demographics.medianHouseholdIncome ?? enrichmentData.demographics.medianIncome)
+                        ? `$${(enrichmentData.demographics.medianHouseholdIncome ?? enrichmentData.demographics.medianIncome)!.toLocaleString()}`
+                        : "N/A"}
                     </span>
                   </div>
                   <div className="flex items-center justify-between" data-testid="median-home-value">
@@ -2006,6 +2080,24 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
                     <div className="flex items-center justify-between" data-testid="poverty-rate">
                       <span className="text-muted-foreground">Poverty Rate</span>
                       <span>{enrichmentData.demographics.povertyRate.toFixed(1)}%</span>
+                    </div>
+                  )}
+                  {enrichmentData.demographics.ownerOccupancyRate !== undefined && (
+                    <div className="flex items-center justify-between" data-testid="owner-occupancy-rate">
+                      <span className="text-muted-foreground">Owner Occupancy</span>
+                      <span>{enrichmentData.demographics.ownerOccupancyRate}%</span>
+                    </div>
+                  )}
+                  {enrichmentData.demographics.vacancyRate !== undefined && (
+                    <div className="flex items-center justify-between" data-testid="vacancy-rate">
+                      <span className="text-muted-foreground">Vacancy Rate</span>
+                      <span>{enrichmentData.demographics.vacancyRate}%</span>
+                    </div>
+                  )}
+                  {enrichmentData.demographics.avgCommuteMinutes !== undefined && (
+                    <div className="flex items-center justify-between" data-testid="avg-commute">
+                      <span className="text-muted-foreground">Avg Commute</span>
+                      <span>{enrichmentData.demographics.avgCommuteMinutes} min</span>
                     </div>
                   )}
                 </div>
@@ -2036,6 +2128,15 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
                       <span className="text-muted-foreground">Nearest Rail</span>
                       <span>{formatDistance(enrichmentData.transportation.nearestRailMiles)}</span>
                     </div>
+                  )}
+                  {enrichmentData.transportation.hasPavedRoad !== null &&
+                    enrichmentData.transportation.hasPavedRoad !== undefined && (
+                      <div className="flex items-center justify-between" data-testid="paved-road">
+                        <span className="text-muted-foreground">Paved Road Access</span>
+                        <span className={enrichmentData.transportation.hasPavedRoad ? "text-green-600" : "text-yellow-600"}>
+                          {enrichmentData.transportation.hasPavedRoad ? "Yes" : "No"}
+                        </span>
+                      </div>
                   )}
                   {enrichmentData.transportation.roadAccessScore !== undefined && (
                     <div className="flex items-center justify-between" data-testid="road-access-score">

@@ -2018,6 +2018,70 @@ export function registerAdminRoutes(app: Express): void {
     }
   });
 
+  // ─── User map layer preferences (DB-persisted per user) ──────────────────
+  api.get("/api/user/map-layer-preferences", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId: string = user?.claims?.sub || user?.id;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+      const { userMapLayerPreferences } = await import("@shared/schema");
+      const prefs = await db.select().from(userMapLayerPreferences).where(eq(userMapLayerPreferences.userId, userId));
+
+      // Return as { [layerId]: { enabled, opacity } }
+      const result: Record<number, { enabled: boolean; opacity: number }> = {};
+      for (const pref of prefs) {
+        result[pref.layerId] = { enabled: pref.enabled, opacity: parseFloat(String(pref.opacity)) };
+      }
+      res.json(result);
+    } catch (err: any) {
+      console.error("Get map layer prefs error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.put("/api/user/map-layer-preferences/:layerId", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId: string = user?.claims?.sub || user?.id;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+      const layerId = Number(req.params.layerId);
+      const { enabled, opacity } = req.body as { enabled?: boolean; opacity?: number };
+
+      const { userMapLayerPreferences } = await import("@shared/schema");
+
+      // Upsert — update if exists, insert otherwise
+      const existing = await db
+        .select()
+        .from(userMapLayerPreferences)
+        .where(and(eq(userMapLayerPreferences.userId, userId), eq(userMapLayerPreferences.layerId, layerId)));
+
+      if (existing.length > 0) {
+        await db
+          .update(userMapLayerPreferences)
+          .set({
+            ...(enabled !== undefined && { enabled }),
+            ...(opacity !== undefined && { opacity: String(opacity) }),
+            updatedAt: new Date(),
+          })
+          .where(and(eq(userMapLayerPreferences.userId, userId), eq(userMapLayerPreferences.layerId, layerId)));
+      } else {
+        await db.insert(userMapLayerPreferences).values({
+          userId,
+          layerId,
+          enabled: enabled ?? false,
+          opacity: String(opacity ?? 0.7),
+        });
+      }
+
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("Update map layer pref error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   api.get("/api/map-layers/categories", isAuthenticated, async (req, res) => {
     try {
       const categories = await db.selectDistinct({ 
@@ -2027,6 +2091,56 @@ export function registerAdminRoutes(app: Express): void {
       res.json(categories.map((c: any) => c.category).filter(Boolean));
     } catch (err: any) {
       console.error("Get map layer categories error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Batch enrich all properties that have coordinates but missing enrichment
+  api.post("/api/admin/enrich-all-properties", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { forceRefresh = false, orgId: targetOrgId } = req.body as { forceRefresh?: boolean; orgId?: number };
+      const { propertyEnrichmentService } = await import("./services/propertyEnrichment");
+
+      const rows: any[] = await db.execute(sql`
+        SELECT id, organization_id, latitude, longitude, state, county, apn
+        FROM properties
+        WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+          AND (${forceRefresh ? sql`TRUE` : sql`(enrichment_status IS NULL OR enrichment_status NOT IN ('complete', 'pending'))`})
+          ${targetOrgId ? sql`AND organization_id = ${targetOrgId}` : sql``}
+        ORDER BY id ASC
+        LIMIT 500
+      `);
+
+      const eligible: any[] = rows;
+      res.json({ queued: eligible.length, forceRefresh, message: "Enrichment running in background" });
+
+      // Serial background enrichment — rate-limited to respect upstream APIs
+      (async () => {
+        let done = 0;
+        let failed = 0;
+        for (const prop of eligible) {
+          try {
+            const lat = parseFloat(String(prop.latitude));
+            const lng = parseFloat(String(prop.longitude));
+            if (isNaN(lat) || isNaN(lng)) continue;
+            await propertyEnrichmentService.enrichByCoordinates(lat, lng, {
+              propertyId: prop.id,
+              state: prop.state || undefined,
+              county: prop.county || undefined,
+              apn: prop.apn || undefined,
+              forceRefresh,
+            });
+            done++;
+            await new Promise(r => setTimeout(r, 500));
+          } catch (err) {
+            failed++;
+            console.warn(`[BatchEnrich] Failed property ${prop.id}:`, err);
+          }
+        }
+        console.log(`[BatchEnrich] Done: ${done} enriched, ${failed} failed of ${eligible.length} queued`);
+      })();
+    } catch (err: any) {
+      console.error("Batch enrich error:", err);
       res.status(500).json({ message: err.message });
     }
   });
