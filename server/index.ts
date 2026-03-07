@@ -167,8 +167,9 @@ app.use("/api", csrfProtection);
         "search_properties", "get_property", "search_leads", "get_deals",
         "get_portfolio_summary",
         "get_cropland", "get_epa_facilities", "get_storm_history",
+        "get_plss", "get_watershed", "get_fema_nri", "get_usda_clu",
       ],
-      description: "25 tools exposing AcreOS property intelligence and free public land data APIs",
+      description: "29 tools exposing AcreOS property intelligence and free public land data APIs",
     });
   });
 

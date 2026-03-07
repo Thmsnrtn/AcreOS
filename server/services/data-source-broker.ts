@@ -28,7 +28,11 @@ export type LookupCategory =
   | "land_cover"
   | "cropland"
   | "epa_frs"
-  | "storm_history";
+  | "storm_history"
+  | "plss"
+  | "watershed"
+  | "fema_nri"
+  | "usda_clu";
 
 interface BrokerLookupOptions {
   latitude: number;
@@ -139,6 +143,10 @@ export class DataSourceBroker {
       cropland: ["cropland", "cropscape", "usda_cdl"],
       epa_frs: ["epa_frs", "epa", "frs"],
       storm_history: ["storm_history", "noaa_storms", "weather_hazards"],
+      plss: ["plss", "cadastral", "blm_cadnsdI"],
+      watershed: ["watershed", "nhd", "huc", "waters"],
+      fema_nri: ["fema_nri", "national_risk_index", "fema"],
+      usda_clu: ["usda_clu", "common_land_units", "fsa"],
     };
 
     const categories = categoryMappings[category] || [category];
@@ -536,6 +544,18 @@ export class DataSourceBroker {
     }
     if (category === "storm_history") {
       return this.queryStormHistory(latitude, longitude, options.state);
+    }
+    if (category === "plss") {
+      return this.queryPlss(latitude, longitude);
+    }
+    if (category === "watershed") {
+      return this.queryWatershed(latitude, longitude);
+    }
+    if (category === "fema_nri") {
+      return this.queryFemaNri(latitude, longitude);
+    }
+    if (category === "usda_clu") {
+      return this.queryUsdaClu(latitude, longitude);
     }
 
     if (source.apiUrl) {
@@ -1553,6 +1573,159 @@ export class DataSourceBroker {
       };
     } catch (error: any) {
       throw new Error(`Storm history query failed: ${error.message}`);
+    }
+  }
+
+  private async queryPlss(lat: number, lng: number): Promise<any> {
+    try {
+      // BLM CadNSDI PLSS - Public Land Survey System
+      const url = `https://gis.blm.gov/arcgis/rest/services/Cadastral/BLM_Natl_PLSS_CadNSDI/MapServer/0/query?geometry=${lng}%2C${lat}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=TWNSHPLAB%2CRANGEDIR%2CSECTIONLABEL%2CPLSSID%2CTOWNSHIP%2CRANGE%2CSECTION&f=json`;
+      const response = await fetch(url, {
+        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        signal: AbortSignal.timeout(12000),
+      });
+      if (!response.ok) throw new Error(`BLM PLSS API error: ${response.status}`);
+      const data = await response.json();
+
+      const feature = data?.features?.[0]?.attributes;
+      if (!feature) {
+        return { section: null, township: null, range: null, legalDescription: "Not in PLSS area (may be outside contiguous US)", source: "BLM CadNSDI" };
+      }
+
+      const section = feature.SECTIONLABEL || feature.SECTION || null;
+      const township = feature.TWNSHPLAB || feature.TOWNSHIP || null;
+      const range = feature.RANGEDIR || feature.RANGE || null;
+      const legalDescription = [section && `Sec. ${section}`, township && `T${township}`, range && `R${range}`].filter(Boolean).join(", ") || "See PLSS ID";
+
+      return {
+        section,
+        township,
+        range,
+        legalDescription,
+        plssId: feature.PLSSID,
+        source: "BLM CadNSDI",
+        lastUpdated: new Date().toISOString(),
+      };
+    } catch (error: any) {
+      throw new Error(`PLSS query failed: ${error.message}`);
+    }
+  }
+
+  private async queryWatershed(lat: number, lng: number): Promise<any> {
+    try {
+      // EPA WATERS NHD Plus - Watershed lookup by point
+      const url = `https://ofmpub.epa.gov/waters10/PointIndexing.Service?pGeometry=POINT%28${lng}%20${lat}%29&pLayer=NHDPLUS_HYDROCODE&pOutputFlag=MINIMAL&f=json`;
+      const response = await fetch(url, {
+        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!response.ok) throw new Error(`EPA WATERS API error: ${response.status}`);
+      const data = await response.json();
+
+      // Fallback: EPA WBD HUC query
+      let huc8 = null, huc12 = null, watershedName = null;
+
+      const output = data?.output;
+      if (output?.rez_measures) {
+        for (const m of output.rez_measures) {
+          if (m.measure_name === "HUC8") huc8 = m.measure_value;
+          if (m.measure_name === "HUC12") huc12 = m.measure_value;
+        }
+      }
+      if (output?.hydro_code) {
+        huc12 = huc12 || output.hydro_code;
+        watershedName = output.wbd_name || null;
+      }
+
+      // Try WBD ArcGIS if EPA WATERS returned nothing
+      if (!huc8 && !huc12) {
+        const wbdUrl = `https://hydrowfs.nationalmap.gov/arcgis/rest/services/wbd/MapServer/4/query?geometry=${lng}%2C${lat}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=huc8%2Cname&f=json`;
+        const wbdRes = await fetch(wbdUrl, {
+          headers: { "User-Agent": "AcreOS Land Investment Platform" },
+          signal: AbortSignal.timeout(12000),
+        });
+        if (wbdRes.ok) {
+          const wbdData = await wbdRes.json();
+          const feat = wbdData?.features?.[0]?.attributes;
+          if (feat) {
+            huc8 = feat.huc8;
+            watershedName = feat.name;
+          }
+        }
+      }
+
+      return {
+        huc8,
+        huc12,
+        watershedName,
+        source: "EPA WATERS / USGS NHD Plus",
+        lastUpdated: new Date().toISOString(),
+      };
+    } catch (error: any) {
+      throw new Error(`Watershed query failed: ${error.message}`);
+    }
+  }
+
+  private async queryFemaNri(lat: number, lng: number): Promise<any> {
+    try {
+      // FEMA National Risk Index - county-level hazard risk scores
+      const url = `https://hazards.fema.gov/nri/rest/services/NRI/MapServer/3/query?geometry=${lng}%2C${lat}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=RISK_SCORE%2CCFLD_RISKR%2CHWAV_RISKR%2CTRND_RISKR%2CHAIL_RISKR%2CWFIR_RISKR%2CLTNG_RISKR%2CEQK_RISKR%2CDRGT_RISKR%2CCOUNTY%2CSTATE&f=json`;
+      const response = await fetch(url, {
+        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!response.ok) throw new Error(`FEMA NRI API error: ${response.status}`);
+      const data = await response.json();
+
+      const attrs = data?.features?.[0]?.attributes;
+      if (!attrs) throw new Error("No FEMA NRI data for location");
+
+      return {
+        compositeScore: attrs.RISK_SCORE ? parseFloat(attrs.RISK_SCORE) : null,
+        riverineFloodRisk: attrs.CFLD_RISKR || null,
+        hurricaneRisk: attrs.HWAV_RISKR || null,
+        tornadoRisk: attrs.TRND_RISKR || null,
+        hailRisk: attrs.HAIL_RISKR || null,
+        wildfireRisk: attrs.WFIR_RISKR || null,
+        lightningRisk: attrs.LTNG_RISKR || null,
+        earthquakeRisk: attrs.EQK_RISKR || null,
+        droughtRisk: attrs.DRGT_RISKR || null,
+        county: attrs.COUNTY || null,
+        state: attrs.STATE || null,
+        source: "FEMA National Risk Index",
+        lastUpdated: new Date().toISOString(),
+      };
+    } catch (error: any) {
+      throw new Error(`FEMA NRI query failed: ${error.message}`);
+    }
+  }
+
+  private async queryUsdaClu(lat: number, lng: number): Promise<any> {
+    try {
+      // USDA FSA Common Land Units
+      const url = `https://gis.sc.egov.usda.gov/arcgis/rest/services/common_land_units/common_land_units/FeatureServer/0/query?geometry=${lng}%2C${lat}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=clu_identifier%2Cclu_number%2Cfarm_number%2Ctract_number%2Ccalculated_acres&f=json`;
+      const response = await fetch(url, {
+        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        signal: AbortSignal.timeout(12000),
+      });
+      if (!response.ok) throw new Error(`USDA CLU API error: ${response.status}`);
+      const data = await response.json();
+
+      const attrs = data?.features?.[0]?.attributes;
+      if (!attrs) {
+        return { cluId: null, farmNumber: null, tractNumber: null, calculatedAcres: null, note: "No CLU record found for this location (may be non-agricultural land)", source: "USDA FSA CLU" };
+      }
+
+      return {
+        cluId: attrs.clu_identifier || attrs.clu_number || null,
+        farmNumber: attrs.farm_number ? String(attrs.farm_number) : null,
+        tractNumber: attrs.tract_number ? String(attrs.tract_number) : null,
+        calculatedAcres: attrs.calculated_acres ? parseFloat(attrs.calculated_acres) : null,
+        source: "USDA FSA Common Land Units",
+        lastUpdated: new Date().toISOString(),
+      };
+    } catch (error: any) {
+      throw new Error(`USDA CLU query failed: ${error.message}`);
     }
   }
 

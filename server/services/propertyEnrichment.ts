@@ -153,6 +153,46 @@ export interface EnrichmentResult {
     source?: string;
   };
 
+  plss?: {
+    section?: string | null;
+    township?: string | null;
+    range?: string | null;
+    legalDescription?: string;
+    plssId?: string;
+    source?: string;
+  };
+
+  watershed?: {
+    huc8?: string | null;
+    huc12?: string | null;
+    watershedName?: string | null;
+    source?: string;
+  };
+
+  femaNri?: {
+    compositeScore?: number | null;
+    riverineFloodRisk?: string | null;
+    hurricaneRisk?: string | null;
+    tornadoRisk?: string | null;
+    hailRisk?: string | null;
+    wildfireRisk?: string | null;
+    lightningRisk?: string | null;
+    earthquakeRisk?: string | null;
+    droughtRisk?: string | null;
+    county?: string | null;
+    state?: string | null;
+    source?: string;
+  };
+
+  usdaClu?: {
+    cluId?: string | null;
+    farmNumber?: string | null;
+    tractNumber?: string | null;
+    calculatedAcres?: number | null;
+    note?: string;
+    source?: string;
+  };
+
   errors?: Record<string, string>;
 }
 
@@ -191,6 +231,10 @@ export class PropertyEnrichmentService {
       "cropland",
       "epa_frs",
       "storm_history",
+      "plss",
+      "watershed",
+      "fema_nri",
+      "usda_clu",
     ];
     
     const categories = options?.categories || defaultCategories;
@@ -392,6 +436,54 @@ export class PropertyEnrichmentService {
             source: data.source,
           };
           break;
+
+        case "plss":
+          result.plss = {
+            section: data.section,
+            township: data.township,
+            range: data.range,
+            legalDescription: data.legalDescription,
+            plssId: data.plssId,
+            source: data.source,
+          };
+          break;
+
+        case "watershed":
+          result.watershed = {
+            huc8: data.huc8,
+            huc12: data.huc12,
+            watershedName: data.watershedName,
+            source: data.source,
+          };
+          break;
+
+        case "fema_nri":
+          result.femaNri = {
+            compositeScore: data.compositeScore,
+            riverineFloodRisk: data.riverineFloodRisk,
+            hurricaneRisk: data.hurricaneRisk,
+            tornadoRisk: data.tornadoRisk,
+            hailRisk: data.hailRisk,
+            wildfireRisk: data.wildfireRisk,
+            lightningRisk: data.lightningRisk,
+            earthquakeRisk: data.earthquakeRisk,
+            droughtRisk: data.droughtRisk,
+            county: data.county,
+            state: data.state,
+            source: data.source,
+          };
+          break;
+
+        case "usda_clu":
+          result.usdaClu = {
+            cluId: data.cluId,
+            farmNumber: data.farmNumber,
+            tractNumber: data.tractNumber,
+            calculatedAcres: data.calculatedAcres,
+            note: data.note,
+            source: data.source,
+          };
+          break;
       }
     }
     
@@ -409,14 +501,24 @@ export class PropertyEnrichmentService {
     if (!property) {
       throw new Error("Property not found");
     }
-    
+
+    // Smart 30-day refresh: skip if enriched recently and not forcing
+    if (!forceRefresh && property.enrichedAt) {
+      const enrichedAt = new Date(property.enrichedAt);
+      const daysSinceEnrichment = (Date.now() - enrichedAt.getTime()) / (1000 * 60 * 60 * 24);
+      if (daysSinceEnrichment < 30) {
+        console.log(`[PropertyEnrichment] Skipping enrichment for property ${propertyId} — enriched ${Math.round(daysSinceEnrichment)} days ago (< 30 day threshold). Use forceRefresh=true to override.`);
+        return (property.enrichmentData || {}) as unknown as EnrichmentResult;
+      }
+    }
+
     const lat = property.latitude ? parseFloat(property.latitude) : null;
     const lng = property.longitude ? parseFloat(property.longitude) : null;
-    
+
     if (!lat || !lng) {
       throw new Error("Property missing coordinates");
     }
-    
+
     const result = await this.enrichByCoordinates(lat, lng, {
       propertyId,
       state: property.state || undefined,
@@ -424,9 +526,9 @@ export class PropertyEnrichmentService {
       apn: property.apn || undefined,
       forceRefresh,
     });
-    
+
     await this.savePropertyEnrichment(organizationId, propertyId, result);
-    
+
     return result;
   }
   
@@ -544,10 +646,12 @@ export class PropertyEnrichmentService {
   private async savePropertyEnrichment(organizationId: number, propertyId: number, enrichment: EnrichmentResult): Promise<void> {
     try {
       await storage.updateProperty(propertyId, {
-        dueDiligenceData: {
+        enrichmentData: {
           ...enrichment,
           lastEnrichedAt: new Date().toISOString(),
         } as any,
+        enrichmentStatus: "complete",
+        enrichedAt: new Date(),
       });
       
       const categoriesEnriched = Object.keys(enrichment).filter(

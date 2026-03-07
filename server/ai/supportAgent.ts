@@ -1161,6 +1161,58 @@ export const supportToolDefinitions = {
     },
   },
 
+  lookup_plss: {
+    name: "lookup_plss",
+    description: "Look up the Public Land Survey System (PLSS) legal description for a coordinate using BLM CadNSDI. Returns section, township, range, and formatted legal description. Critical for rural land title research. Free — no key required.",
+    parameters: {
+      type: "object",
+      properties: {
+        latitude: { type: "number" },
+        longitude: { type: "number" },
+      },
+      required: ["latitude", "longitude"],
+    },
+  },
+
+  lookup_watershed: {
+    name: "lookup_watershed",
+    description: "Get the NHD Plus watershed name and HUC-8/HUC-12 hydrologic unit codes for a coordinate using EPA WATERS. Free — no key required.",
+    parameters: {
+      type: "object",
+      properties: {
+        latitude: { type: "number" },
+        longitude: { type: "number" },
+      },
+      required: ["latitude", "longitude"],
+    },
+  },
+
+  lookup_fema_nri: {
+    name: "lookup_fema_nri",
+    description: "Get official FEMA National Risk Index hazard ratings for a location — composite risk score plus ratings for riverine flood, hurricane, tornado, hail, wildfire, lightning, earthquake, and drought at county level. Free — no key required.",
+    parameters: {
+      type: "object",
+      properties: {
+        latitude: { type: "number" },
+        longitude: { type: "number" },
+      },
+      required: ["latitude", "longitude"],
+    },
+  },
+
+  lookup_usda_clu: {
+    name: "lookup_usda_clu",
+    description: "Retrieve USDA FSA Common Land Unit (CLU) farm records for a coordinate — farm number, tract number, CLU ID, and officially calculated acreage. Free — no key required.",
+    parameters: {
+      type: "object",
+      properties: {
+        latitude: { type: "number" },
+        longitude: { type: "number" },
+      },
+      required: ["latitude", "longitude"],
+    },
+  },
+
   geocode_address: {
     name: "geocode_address",
     description: "Convert a street address or place name to latitude/longitude using Nominatim (OpenStreetMap). Free — no API key needed.",
@@ -4881,6 +4933,34 @@ export async function executeSupportTool(
         return { success: result.success, data: result.data };
       }
 
+      case "lookup_plss": {
+        const result = await dataSourceBroker.lookup("plss", {
+          latitude: args.latitude, longitude: args.longitude,
+        });
+        return { success: result.success, data: result.data };
+      }
+
+      case "lookup_watershed": {
+        const result = await dataSourceBroker.lookup("watershed", {
+          latitude: args.latitude, longitude: args.longitude,
+        });
+        return { success: result.success, data: result.data };
+      }
+
+      case "lookup_fema_nri": {
+        const result = await dataSourceBroker.lookup("fema_nri", {
+          latitude: args.latitude, longitude: args.longitude,
+        });
+        return { success: result.success, data: result.data };
+      }
+
+      case "lookup_usda_clu": {
+        const result = await dataSourceBroker.lookup("usda_clu", {
+          latitude: args.latitude, longitude: args.longitude,
+        });
+        return { success: result.success, data: result.data };
+      }
+
       case "geocode_address": {
         const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(args.address)}&countrycodes=us&format=jsonv2&addressdetails=1&limit=5`;
         const res = await fetch(url, {
@@ -4964,7 +5044,11 @@ LAND DATA TOOLS (free public APIs — use any time a user asks about a property 
 29. lookup_cropland: USDA NASS CropScape CDL 2023 — exact crop type at any coordinate (free)
 30. lookup_epa_facilities: EPA FRS — all registered facilities (Superfund, CAA, CWA, RCRA) within 5 miles (free)
 31. lookup_storm_history: NOAA storm risk estimates — tornado, hurricane, hail risk by geography (free)
-32. enrich_property_coordinates: Full enrichment across ALL above categories in one call (free)
+32. lookup_plss: BLM CadNSDI — PLSS section/township/range legal description for rural land (free)
+33. lookup_watershed: EPA WATERS / NHD Plus — watershed name and HUC-8/HUC-12 codes (free)
+34. lookup_fema_nri: FEMA National Risk Index — official composite + per-hazard risk ratings (free)
+35. lookup_usda_clu: USDA FSA Common Land Units — farm number, tract, CLU ID, calculated acres (free)
+36. enrich_property_coordinates: Full enrichment across ALL above categories in one call (free)
 
 ISSUE TYPE CATEGORIES (for decision trees):
 - login_auth: Login, authentication, session issues
