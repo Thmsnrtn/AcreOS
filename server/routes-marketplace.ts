@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { marketplaceService } from './services/marketplace';
+import { matchmaking } from './services/matchmaking';
 import { isAuthenticated } from './auth';
 
 const router = Router();
@@ -215,6 +216,58 @@ router.get('/search', async (req: Request, res: Response) => {
     res.json({ listings });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// =====================
+// MATCHMAKING
+// =====================
+
+router.get('/matches', async (req: Request, res: Response) => {
+  try {
+    const org = getOrg(req);
+    const matches = await matchmaking.findMatchesForInvestor(org.id);
+    res.json({ matches });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/listings/:id/buyers', async (req: Request, res: Response) => {
+  try {
+    const buyers = await matchmaking.findBuyersForListing(parseInt(req.params.id));
+    res.json({ buyers });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// =====================
+// DEAL ROOMS
+// =====================
+
+router.post('/deal-rooms', async (req: Request, res: Response) => {
+  try {
+    const org = getOrg(req);
+    const { listingId, sellerOrgId } = req.body;
+    const dealRoom = await marketplaceService.createDealRoom(listingId, org.id, sellerOrgId);
+    res.json({ dealRoom, success: true });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// =====================
+// PREMIUM UPGRADE
+// =====================
+
+router.post('/listings/:id/upgrade', async (req: Request, res: Response) => {
+  try {
+    const org = getOrg(req);
+    const result = await marketplaceService.upgradeToPremium(org.id, parseInt(req.params.id));
+    res.json({ result, success: true });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
   }
 });
 
