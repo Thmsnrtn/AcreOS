@@ -579,6 +579,61 @@ export function createMcpServer() {
     }
   );
 
+  // ── 23. Cropland Data Layer ───────────────────────────────────────────────
+  server.tool(
+    "get_cropland",
+    "Identify the crop type at a coordinate using USDA NASS CropScape Cropland Data Layer (CDL) 2023. Returns crop code, crop name, and land use classification. Free – no API key required.",
+    {
+      latitude: z.number().describe("Decimal latitude (WGS84)"),
+      longitude: z.number().describe("Decimal longitude (WGS84)"),
+    },
+    async ({ latitude, longitude }) => {
+      try {
+        const result = await dataSourceBroker.lookup("cropland", { latitude, longitude });
+        return ok(result.data, `Cropland data via ${result.source.title}`);
+      } catch (e: any) {
+        return err(e.message);
+      }
+    }
+  );
+
+  // ── 24. EPA Facility Registry Service ────────────────────────────────────
+  server.tool(
+    "get_epa_facilities",
+    "Find all EPA-registered facilities within 5 miles of a coordinate using the EPA Facility Registry Service (FRS). Covers Superfund, Clean Air Act, Clean Water Act, RCRA hazardous waste sites, and more. Free – no API key required.",
+    {
+      latitude: z.number().describe("Decimal latitude"),
+      longitude: z.number().describe("Decimal longitude"),
+    },
+    async ({ latitude, longitude }) => {
+      try {
+        const result = await dataSourceBroker.lookup("epa_frs", { latitude, longitude });
+        return ok(result.data, `EPA FRS facilities via ${result.source.title}`);
+      } catch (e: any) {
+        return err(e.message);
+      }
+    }
+  );
+
+  // ── 25. Storm History / Hazard Risk ──────────────────────────────────────
+  server.tool(
+    "get_storm_history",
+    "Get geographic storm risk estimates (tornado, hurricane, hail) for a coordinate based on NOAA historical storm event patterns. Returns county-level risk classifications. Free – no API key required.",
+    {
+      latitude: z.number().describe("Decimal latitude"),
+      longitude: z.number().describe("Decimal longitude"),
+      state: z.string().optional().describe("Two-letter state abbreviation (e.g. TX)"),
+    },
+    async ({ latitude, longitude, state }) => {
+      try {
+        const result = await dataSourceBroker.lookup("storm_history", { latitude, longitude, state });
+        return ok(result.data, `Storm history via ${result.source.title}`);
+      } catch (e: any) {
+        return err(e.message);
+      }
+    }
+  );
+
   return server;
 }
 

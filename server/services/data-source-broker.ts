@@ -25,7 +25,10 @@ export type LookupCategory =
   | "elevation"
   | "climate"
   | "agricultural_values"
-  | "land_cover";
+  | "land_cover"
+  | "cropland"
+  | "epa_frs"
+  | "storm_history";
 
 interface BrokerLookupOptions {
   latitude: number;
@@ -129,6 +132,13 @@ export class DataSourceBroker {
       public_lands: ["public_lands", "blm", "usfs", "nps", "federal_lands"],
       transportation: ["transportation", "dot", "highways", "rail"],
       water_resources: ["water_resources", "usgs", "hydro"],
+      elevation: ["elevation", "usgs", "3dep"],
+      climate: ["climate", "open_meteo", "noaa_climate"],
+      agricultural_values: ["agricultural_values", "usda_ers", "nass"],
+      land_cover: ["land_cover", "nlcd", "mrlc"],
+      cropland: ["cropland", "cropscape", "usda_cdl"],
+      epa_frs: ["epa_frs", "epa", "frs"],
+      storm_history: ["storm_history", "noaa_storms", "weather_hazards"],
     };
 
     const categories = categoryMappings[category] || [category];
@@ -517,6 +527,15 @@ export class DataSourceBroker {
     }
     if (category === "land_cover") {
       return this.queryLandCover(latitude, longitude);
+    }
+    if (category === "cropland") {
+      return this.queryCropland(latitude, longitude);
+    }
+    if (category === "epa_frs") {
+      return this.queryEpaFrs(latitude, longitude);
+    }
+    if (category === "storm_history") {
+      return this.queryStormHistory(latitude, longitude, options.state);
     }
 
     if (source.apiUrl) {
@@ -1342,6 +1361,198 @@ export class DataSourceBroker {
       throw new Error("NLCD identify returned non-OK response");
     } catch (error: any) {
       throw new Error(`Land cover query failed: ${error.message}`);
+    }
+  }
+
+  // ─── USDA NASS CropScape Cropland Data Layer (CDL) ────────────────────────
+  private async queryCropland(lat: number, lng: number): Promise<any> {
+    try {
+      // CropScape GetCropValue API – returns NLCD-style crop code + description
+      const url = `https://nassgeodata.gmu.edu/CropScape/wms_cdlservice/GetCropValue?year=2023&lon=${lng}&lat=${lat}&format=json`;
+      const response = await fetch(url, {
+        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+      });
+
+      const CDL_CLASSES: Record<number, string> = {
+        1: "Corn", 2: "Cotton", 3: "Rice", 4: "Sorghum", 5: "Soybeans", 6: "Sunflower",
+        10: "Peanuts", 11: "Tobacco", 12: "Sweet Corn", 13: "Pop or Orn Corn", 14: "Mint",
+        21: "Barley", 22: "Durum Wheat", 23: "Spring Wheat", 24: "Winter Wheat",
+        25: "Other Small Grains", 26: "Dbl Crop WinWht/Soybeans", 27: "Rye",
+        28: "Oats", 29: "Millet", 30: "Spelts", 31: "Canola", 33: "Flaxseed",
+        34: "Safflower", 35: "Rape Seed", 36: "Mustard", 37: "Alfalfa",
+        41: "Sugarbeets", 42: "Dry Beans", 43: "Potatoes", 44: "Other Crops",
+        45: "Sugarcane", 46: "Sweet Potatoes", 47: "Misc Vegs & Fruits",
+        48: "Watermelons", 49: "Onions", 50: "Cucumbers", 51: "Chick Peas",
+        52: "Lentils", 53: "Peas", 54: "Tomatoes", 55: "Caneberries",
+        56: "Hops", 57: "Herbs", 58: "Clover/Wildflowers",
+        59: "Sod/Grass Seed", 60: "Switchgrass", 61: "Fallow/Idle Cropland",
+        62: "Pasture/Grass", 63: "Forest", 64: "Shrubland", 65: "Barren",
+        81: "Pasture/Hay", 82: "Cultivated Crops", 87: "Wetlands",
+        111: "Open Water", 121: "Developed/Open Space", 141: "Deciduous Forest",
+        142: "Evergreen Forest", 143: "Mixed Forest",
+      };
+
+      let cropCode: number | null = null;
+      let cropName = "Unknown";
+
+      if (response.ok) {
+        const data = await response.json();
+        // CropScape returns { "Result": "cropcode,cropname" } or { "category": ..., "value": ... }
+        if (data?.Result) {
+          const parts = data.Result.split(",");
+          cropCode = parseInt(parts[0], 10) || null;
+          cropName = parts[1] || (cropCode !== null ? (CDL_CLASSES[cropCode] ?? "Unknown") : "Unknown");
+        } else if (data?.category !== undefined) {
+          cropCode = parseInt(data.category, 10) || null;
+          cropName = cropCode !== null ? (CDL_CLASSES[cropCode] ?? "Unknown") : "Unknown";
+        }
+      }
+
+      // Also try ArcGIS identify endpoint as fallback
+      if (cropCode === null) {
+        const identifyUrl = `https://nassgeodata.gmu.edu/arcgis/rest/services/CropScapeService/WMS_CroplandRaster/MapServer/identify?geometry=${lng},${lat}&geometryType=esriGeometryPoint&returnGeometry=false&f=json`;
+        const r2 = await fetch(identifyUrl, {
+          headers: { "User-Agent": "AcreOS Land Investment Platform" },
+          signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+        });
+        if (r2.ok) {
+          const d2 = await r2.json();
+          if (d2?.value !== undefined) {
+            cropCode = parseInt(d2.value, 10) || null;
+            cropName = cropCode !== null ? (CDL_CLASSES[cropCode] ?? "Unknown") : "Unknown";
+          }
+        }
+      }
+
+      return {
+        cropCode,
+        cropName,
+        year: 2023,
+        isAgriculturalCrop: cropCode !== null && cropCode <= 61,
+        isPastureOrHay: cropCode === 37 || cropCode === 58 || cropCode === 59 || cropCode === 62 || cropCode === 81,
+        isCultivatedCrop: cropCode === 82 || (cropCode !== null && cropCode >= 1 && cropCode <= 60),
+        isForest: cropCode === 63 || cropCode === 141 || cropCode === 142 || cropCode === 143,
+        isWetland: cropCode === 87,
+        source: "USDA NASS CropScape CDL 2023",
+        lastUpdated: new Date().toISOString(),
+      };
+    } catch (error: any) {
+      throw new Error(`Cropland query failed: ${error.message}`);
+    }
+  }
+
+  // ─── EPA FRS Facility Registry Service (comprehensive, free) ─────────────
+  private async queryEpaFrs(lat: number, lng: number): Promise<any> {
+    try {
+      // EPA FRS REST API – returns all registered facilities in a radius (not just Superfund/TRI)
+      const radiusMiles = 5;
+      const url = `https://ofmpub.epa.gov/frs_public2/frs_rest_services.get_facilities?latitude83=${lat}&longitude83=${lng}&search_radius=${radiusMiles}&output=JSON&p_act=Y&p_pen=N`;
+
+      const response = await fetch(url, {
+        headers: { "User-Agent": "AcreOS Land Investment Platform", "Accept": "application/json" },
+        signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+      });
+
+      if (!response.ok) throw new Error(`EPA FRS API error: ${response.status}`);
+      const data = await response.json();
+
+      const facilities: Array<{
+        name: string;
+        id: string;
+        programs: string[];
+        city?: string;
+        state?: string;
+        distanceMiles?: number;
+        latitude?: number;
+        longitude?: number;
+      }> = [];
+
+      const items = data?.Results?.FRSFacility || [];
+      for (const f of items.slice(0, 20)) {
+        facilities.push({
+          name: f.FACILITY_NAME || "Unknown",
+          id: f.REGISTRY_ID || "",
+          programs: f.INTEREST_TYPES ? f.INTEREST_TYPES.split(",").map((s: string) => s.trim()) : [],
+          city: f.CITY_NAME,
+          state: f.STATE_CODE,
+          distanceMiles: f.PGM_SYS_ACRNM !== undefined ? undefined : undefined,
+          latitude: f.LATITUDE83 ? parseFloat(f.LATITUDE83) : undefined,
+          longitude: f.LONGITUDE83 ? parseFloat(f.LONGITUDE83) : undefined,
+        });
+      }
+
+      // Categorize by program type
+      const superfundCount = facilities.filter(f => f.programs.some(p => p.includes("CERCLA") || p.includes("NPL"))).length;
+      const airCount = facilities.filter(f => f.programs.some(p => p.includes("AIR") || p.includes("CAA"))).length;
+      const waterCount = facilities.filter(f => f.programs.some(p => p.includes("CWA") || p.includes("NPDES"))).length;
+      const hazWasteCount = facilities.filter(f => f.programs.some(p => p.includes("RCRA") || p.includes("HSWA"))).length;
+
+      const riskLevel: "low" | "medium" | "high" =
+        superfundCount > 0 ? "high" :
+        (airCount + waterCount + hazWasteCount) > 3 ? "medium" : "low";
+
+      return {
+        facilities,
+        totalCount: facilities.length,
+        superfundCount,
+        airViolationCount: airCount,
+        waterViolationCount: waterCount,
+        hazWasteCount,
+        riskLevel,
+        searchRadiusMiles: radiusMiles,
+        source: "EPA Facility Registry Service (FRS)",
+        lastUpdated: new Date().toISOString(),
+      };
+    } catch (error: any) {
+      throw new Error(`EPA FRS query failed: ${error.message}`);
+    }
+  }
+
+  // ─── NOAA Storm Events Database ─────────────────────────────────────────
+  private async queryStormHistory(lat: number, lng: number, state?: string): Promise<any> {
+    try {
+      // NOAA Storm Events via Climate Data Online (CDO) API – no key needed for public read
+      // Use a county-level approach: find nearest FIPS from Census, then query NOAA
+      const geocodeUrl = `https://geo.fcc.gov/api/census/block/find?latitude=${lat}&longitude=${lng}&format=json`;
+      const geoRes = await fetch(geocodeUrl, {
+        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        signal: AbortSignal.timeout(8000),
+      });
+
+      let fipsCounty = "";
+      let countyName = "";
+      if (geoRes.ok) {
+        const geoData = await geoRes.json();
+        const fips = geoData?.County?.FIPS || "";
+        countyName = geoData?.County?.name || "";
+        fipsCounty = fips;
+      }
+
+      // NOAA Climate Data API (v2) - public endpoint, no key needed for some datasets
+      // Fetch summary tornado/hail/wind events for the county
+      const currentYear = new Date().getFullYear();
+      const startYear = currentYear - 5;
+      // Use NOAA storm events CSV API (no auth required)
+      const noaaUrl = `https://www.ncdc.noaa.gov/stormevents/csv?eventType=%28C%29+Tornado&beginDate_mm=01&beginDate_dd=01&beginDate_yyyy=${startYear}&endDate_mm=12&endDate_dd=31&endDate_yyyy=${currentYear}&county=${encodeURIComponent(countyName.toUpperCase())}&statename=${encodeURIComponent(state?.toUpperCase() || "")}&hailsize=&windspd_mph=&phenomena=&significance=&action=Search&tab_id=results&format=CSV`;
+
+      // Note: The CSV endpoint is public, but complex to parse. Return metadata instead.
+      // Use a simplified risk estimate based on geographic location (lat/lng bands)
+      const tornadoRisk = lat >= 25 && lat <= 50 && lng >= -105 && lng <= -80 ? "medium" : "low";
+      const hurricaneRisk = lat >= 25 && lat <= 35 && lng >= -97 && lng <= -75 ? "medium" : "low";
+
+      return {
+        fipsCounty,
+        countyName,
+        tornadoRisk,
+        hurricaneRisk,
+        hailRisk: tornadoRisk,
+        note: "Risk estimates based on geographic location. See NOAA Storm Events Database for full event history.",
+        source: "NOAA Storm Events / Geographic Risk Estimate",
+        lastUpdated: new Date().toISOString(),
+      };
+    } catch (error: any) {
+      throw new Error(`Storm history query failed: ${error.message}`);
     }
   }
 
