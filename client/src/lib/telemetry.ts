@@ -57,6 +57,12 @@ export const telemetry = {
     trackEvent('action_completed', { action, ...details }),
   aiUsed: (agent: string, tokensUsed?: number) => 
     trackEvent('ai_used', { agent, tokensUsed }),
-  error: (errorType: string, message: string) => 
+  error: (errorType: string, message: string) =>
     trackEvent('error', { errorType, message }),
+  sessionStart: () => trackEvent('session_start'),
 };
+
+/** Check whether the user qualifies for beta activation (stub — extend as needed). */
+export function checkBetaActivation(usageMinutes: number): boolean {
+  return usageMinutes >= 30;
+}

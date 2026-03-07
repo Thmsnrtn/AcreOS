@@ -1,3 +1,4 @@
+import React from "react";
 import { Switch, Route, Redirect, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -5,6 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/use-auth";
 import { Loader2 } from "lucide-react";
+import { telemetry } from "@/lib/telemetry";
 import { ThemeProvider } from "@/contexts/theme-context";
 import { AnimatePresence, motion } from "framer-motion";
 import { pageTransition } from "@/lib/animations";
@@ -14,6 +16,10 @@ import { KeyboardShortcutsProvider } from "@/hooks/use-keyboard-shortcuts";
 import { KeyboardShortcutsModal } from "@/components/keyboard-shortcuts";
 import { NewItemMenu } from "@/components/new-item-menu";
 import { QuickActionsMenu } from "@/components/quick-actions-menu";
+import TodayPage from "@/pages/today";
+import PipelinePage from "@/pages/pipeline";
+import MoneyPage from "@/pages/money";
+import AtlasPage from "@/pages/atlas";
 import Dashboard from "@/pages/dashboard";
 import LeadsPage from "@/pages/leads";
 import PropertiesPage from "@/pages/properties";
@@ -62,7 +68,12 @@ import AuthPage from "@/pages/auth-page";
 import BorrowerPortal from "@/pages/borrower-portal";
 import TermsOfService from "@/pages/terms";
 import PrivacyPolicy from "@/pages/privacy";
+import LandingPage from "@/pages/landing";
 import NotFound from "@/pages/not-found";
+import SafetyGatesPage from "@/pages/safety-gates";
+import DecisionQueuePage from "@/pages/decision-queue";
+import OpsDashboardPage from "@/pages/ops-dashboard";
+import BetaIntakePage from "@/pages/beta-intake";
 import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
 import { ConversationTray } from "@/components/conversation-tray";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -72,6 +83,8 @@ import { FloatingHelpButton } from "@/components/floating-help-button";
 import { CommandPalette } from "@/components/command-palette";
 import { useSwipeNavigation } from "@/hooks/use-swipe-gesture";
 import { MobileBottomNav } from "@/components/mobile";
+import { BetaFeedbackWidget } from "@/components/beta-feedback-widget";
+import { BetaActivationDetector } from "@/components/beta-activation-detector";
 
 // Protected Route Wrapper
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
@@ -116,6 +129,19 @@ function FounderProtectedRoute({ component: Component }: { component: React.Comp
   return <Component />;
 }
 
+// Landing/Dashboard split: unauth sees landing, auth sees today
+function HomeRoute() {
+  const { user, isLoading } = useAuth();
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+  return user ? <Redirect to="/today" /> : <LandingPage />;
+}
+
 function Router() {
   return (
     <Switch>
@@ -127,9 +153,19 @@ function Router() {
       <Route path="/portal" component={BorrowerPortal} />
       <Route path="/portal/:accessToken" component={BorrowerPortal} />
       
-      {/* Protected Routes */}
-      <Route path="/">
-        {() => <ProtectedRoute component={Dashboard} />}
+      {/* Home: landing page (unauth) or today hub (auth) */}
+      <Route path="/" component={HomeRoute} />
+      <Route path="/today">
+        {() => <ProtectedRoute component={TodayPage} />}
+      </Route>
+      <Route path="/pipeline">
+        {() => <ProtectedRoute component={PipelinePage} />}
+      </Route>
+      <Route path="/money">
+        {() => <ProtectedRoute component={MoneyPage} />}
+      </Route>
+      <Route path="/atlas">
+        {() => <ProtectedRoute component={AtlasPage} />}
       </Route>
       <Route path="/leads">
         {() => <ProtectedRoute component={LeadsPage} />}
@@ -266,6 +302,21 @@ function Router() {
       <Route path="/document-intelligence">
         {() => <ProtectedRoute component={DocumentIntelligencePage} />}
       </Route>
+      <Route path="/admin/beta">
+        {() => <FounderProtectedRoute component={React.lazy(() => import("@/pages/beta-dashboard"))} />}
+      </Route>
+      <Route path="/admin/safety-gates">
+        {() => <FounderProtectedRoute component={SafetyGatesPage} />}
+      </Route>
+      <Route path="/admin/decisions">
+        {() => <FounderProtectedRoute component={DecisionQueuePage} />}
+      </Route>
+      <Route path="/admin/ops">
+        {() => <FounderProtectedRoute component={OpsDashboardPage} />}
+      </Route>
+      <Route path="/admin/beta-intake">
+        {() => <FounderProtectedRoute component={BetaIntakePage} />}
+      </Route>
 
       <Route component={NotFound} />
     </Switch>
@@ -294,6 +345,13 @@ function PageWrapper({ children }: { children: React.ReactNode }) {
 function AppContent() {
   const { user } = useAuth();
   useSwipeNavigation();
+
+  // Fire session_start telemetry on app mount (once per page load)
+  React.useEffect(() => {
+    if (user) {
+      telemetry.sessionStart();
+    }
+  }, [user]);
   
   return (
     <>
@@ -307,6 +365,8 @@ function AppContent() {
       {user && <CommandPalette />}
       {user && <NewItemMenu />}
       {user && <MobileBottomNav />}
+      {user && <BetaFeedbackWidget />}
+      {user && <BetaActivationDetector />}
       <PWAInstallPrompt />
     </>
   );
