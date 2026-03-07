@@ -43,6 +43,21 @@ import AnalyticsPage from "@/pages/analytics";
 import EmailSettingsPage from "@/pages/email-settings";
 import MailSettingsPage from "@/pages/mail-settings";
 import InboxPage from "@/pages/inbox";
+import MarketplacePage from "@/pages/marketplace";
+import AcademyPage from "@/pages/academy";
+import LandCreditPage from "@/pages/land-credit";
+import AcquisitionRadarPage from "@/pages/acquisition-radar";
+import PortfolioOptimizerPage from "@/pages/portfolio-optimizer";
+import AVMPage from "@/pages/avm";
+import NegotiationCopilotPage from "@/pages/negotiation-copilot";
+import CashFlowPage from "@/pages/cash-flow";
+import DealHunterPage from "@/pages/deal-hunter";
+import VisionAIPage from "@/pages/vision-ai";
+import CapitalMarketsPage from "@/pages/capital-markets";
+import MarketIntelligencePage from "@/pages/market-intelligence";
+import CompliancePage from "@/pages/compliance";
+import TaxResearcherPage from "@/pages/tax-researcher";
+import DocumentIntelligencePage from "@/pages/document-intelligence";
 import AuthPage from "@/pages/auth-page";
 import BorrowerPortal from "@/pages/borrower-portal";
 import TermsOfService from "@/pages/terms";
@@ -205,6 +220,51 @@ function Router() {
       </Route>
       <Route path="/founder">
         {() => <FounderProtectedRoute component={FounderDashboard} />}
+      </Route>
+      <Route path="/marketplace">
+        {() => <ProtectedRoute component={MarketplacePage} />}
+      </Route>
+      <Route path="/academy">
+        {() => <ProtectedRoute component={AcademyPage} />}
+      </Route>
+      <Route path="/land-credit">
+        {() => <ProtectedRoute component={LandCreditPage} />}
+      </Route>
+      <Route path="/radar">
+        {() => <ProtectedRoute component={AcquisitionRadarPage} />}
+      </Route>
+      <Route path="/portfolio-optimizer">
+        {() => <ProtectedRoute component={PortfolioOptimizerPage} />}
+      </Route>
+      <Route path="/avm">
+        {() => <ProtectedRoute component={AVMPage} />}
+      </Route>
+      <Route path="/negotiation">
+        {() => <ProtectedRoute component={NegotiationCopilotPage} />}
+      </Route>
+      <Route path="/cash-flow">
+        {() => <ProtectedRoute component={CashFlowPage} />}
+      </Route>
+      <Route path="/deal-hunter">
+        {() => <ProtectedRoute component={DealHunterPage} />}
+      </Route>
+      <Route path="/vision-ai">
+        {() => <ProtectedRoute component={VisionAIPage} />}
+      </Route>
+      <Route path="/capital-markets">
+        {() => <ProtectedRoute component={CapitalMarketsPage} />}
+      </Route>
+      <Route path="/market-intelligence">
+        {() => <ProtectedRoute component={MarketIntelligencePage} />}
+      </Route>
+      <Route path="/compliance">
+        {() => <ProtectedRoute component={CompliancePage} />}
+      </Route>
+      <Route path="/tax-researcher">
+        {() => <ProtectedRoute component={TaxResearcherPage} />}
+      </Route>
+      <Route path="/document-intelligence">
+        {() => <ProtectedRoute component={DocumentIntelligencePage} />}
       </Route>
 
       <Route component={NotFound} />

@@ -11,6 +11,25 @@ import { setupAuth, registerAuthRoutes, isAuthenticated } from "./auth";
 import { registerAIOperationsRoutes } from "./routes-ai-operations";
 import marketplaceRouter from "./routes-marketplace";
 import predictionsRouter from "./routes-predictions";
+import landCreditRouter from "./routes-land-credit";
+import acquisitionRadarRouter from "./routes-acquisition-radar";
+import portfolioOptimizerRouter from "./routes-portfolio-optimizer";
+import avmRouter from "./routes-avm";
+import negotiationRouter from "./routes-negotiation";
+import cashFlowRouter from "./routes-cash-flow";
+import dealHunterRouter from "./routes-deal-hunter";
+import academyRouter from "./routes-academy";
+import visionAIRouter from "./routes-vision-ai";
+import capitalMarketsRouter from "./routes-capital-markets";
+import documentIntelligenceRouter from "./routes-document-intelligence";
+import marketIntelligenceRouter from "./routes-market-intelligence";
+import complianceRouter from "./routes-compliance";
+import taxResearcherRouter from "./routes-tax-researcher";
+
+// Phase 2-4 new feature routes
+import voiceLearningRouter from "./routes-voice-learning";
+import whiteLabelRouter from "./routes-white-label";
+import realtimeRouter from "./routes-realtime";
 
 // Rate limiting middleware
 import { createRateLimiter, rateLimiters, RATE_LIMIT_CONFIGS } from "./middleware/rateLimit";
@@ -184,6 +203,25 @@ export async function registerRoutes(
   // ============================================
   app.use('/api/marketplace', isAuthenticated, getOrCreateOrg, marketplaceRouter);
   app.use('/api/predictions', isAuthenticated, getOrCreateOrg, predictionsRouter);
+  app.use('/api/land-credit', isAuthenticated, getOrCreateOrg, landCreditRouter);
+  app.use('/api/radar', isAuthenticated, getOrCreateOrg, acquisitionRadarRouter);
+  app.use('/api/portfolio-optimizer', isAuthenticated, getOrCreateOrg, portfolioOptimizerRouter);
+  app.use('/api/avm', isAuthenticated, getOrCreateOrg, avmRouter);
+  app.use('/api/negotiation', isAuthenticated, getOrCreateOrg, negotiationRouter);
+  app.use('/api/cash-flow', isAuthenticated, getOrCreateOrg, cashFlowRouter);
+  app.use('/api/deal-hunter', isAuthenticated, getOrCreateOrg, dealHunterRouter);
+  app.use('/api/academy', isAuthenticated, getOrCreateOrg, academyRouter);
+  app.use('/api/vision-ai', isAuthenticated, getOrCreateOrg, visionAIRouter);
+  app.use('/api/capital-markets', isAuthenticated, getOrCreateOrg, capitalMarketsRouter);
+  app.use('/api/document-intelligence', isAuthenticated, getOrCreateOrg, documentIntelligenceRouter);
+  app.use('/api/market-intelligence', isAuthenticated, marketIntelligenceRouter);
+  app.use('/api/compliance', isAuthenticated, getOrCreateOrg, complianceRouter);
+  app.use('/api/tax-researcher', isAuthenticated, getOrCreateOrg, taxResearcherRouter);
+
+  // Phase 2-4: Voice Learning, Context Profile, White-Label, Real-Time
+  app.use('/api/intelligence', isAuthenticated, getOrCreateOrg, voiceLearningRouter);
+  app.use('/api/white-label', isAuthenticated, getOrCreateOrg, whiteLabelRouter);
+  app.use('/api/realtime', isAuthenticated, getOrCreateOrg, realtimeRouter);
 
   // ============================================
   // DOMAIN ROUTE MODULES
