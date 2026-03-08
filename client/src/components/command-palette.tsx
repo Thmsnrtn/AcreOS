@@ -45,6 +45,7 @@ import {
   Loader2,
   Send,
   MessageSquare,
+  Map,
 } from "lucide-react";
 
 interface RecentItem {
@@ -79,6 +80,7 @@ const pages = [
   { name: "Compliance AI", icon: ShieldCheck, path: "/compliance" },
   { name: "Tax Researcher", icon: Gavel, path: "/tax-researcher" },
   { name: "Document Intelligence", icon: FileSearch, path: "/document-intelligence" },
+  { name: "Property Map", icon: Map, path: "/maps" },
   { name: "Marketplace", icon: Store, path: "/marketplace" },
   { name: "Academy", icon: GraduationCap, path: "/academy" },
   { name: "AI Assistant", icon: Bot, path: "/command-center" },
@@ -212,17 +214,17 @@ export function CommandPalette() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-            className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm"
+            transition={{ duration: 0.18 }}
+            className="fixed inset-0 z-50 command-backdrop"
             onClick={() => setOpen(false)}
             data-testid="command-palette-backdrop"
           />
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: -20 }}
+            initial={{ opacity: 0, scale: 0.92, y: -16 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: -20 }}
-            transition={{ duration: 0.15, ease: "easeOut" }}
-            className="fixed left-1/2 top-1/2 z-50 w-full max-w-[640px] -translate-x-1/2 -translate-y-1/2 p-4"
+            exit={{ opacity: 0, scale: 0.94, y: -12 }}
+            transition={{ type: "spring", stiffness: 500, damping: 32, mass: 0.8 }}
+            className="fixed left-1/2 top-[20%] z-50 w-full max-w-[640px] -translate-x-1/2 p-4"
             data-testid="command-palette-dialog"
           >
             <Command className="glass-panel floating-window overflow-hidden rounded-xl border" shouldFilter={!showAIMode}>

@@ -896,3 +896,197 @@ export async function generatePropertyFlyer(
   const arrayBuffer = doc.output("arraybuffer");
   return Buffer.from(arrayBuffer);
 }
+
+// ─── Deed of Trust ───────────────────────────────────────────────────────────
+
+export interface DeedOfTrustData {
+  trustorName: string;
+  trustorAddress: string;
+  beneficiaryName: string;
+  beneficiaryAddress: string;
+  trusteeName: string;
+  trusteeAddress: string;
+  propertyAddress: string;
+  propertyDescription: string; // APN / legal description
+  loanAmount: number;
+  interestRate: number;
+  maturityDate: string;
+  county: string;
+  state: string;
+  executionDate: string;
+  orgName: string;
+}
+
+export async function generateDeedOfTrust(data: DeedOfTrustData): Promise<Buffer> {
+  const doc = new jsPDF({ unit: "mm", format: "letter" });
+  let y = addHeader(doc, data.orgName);
+
+  // Title
+  doc.setFontSize(16);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(40, 40, 40);
+  doc.text("DEED OF TRUST", 105, y, { align: "center" });
+  y += 10;
+
+  // Intro paragraph
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(40, 40, 40);
+  const introText = `THIS DEED OF TRUST ("Deed") is made as of ${data.executionDate}, by and among ${data.trustorName} ("Trustor"), whose address is ${data.trustorAddress}; ${data.trusteeName} ("Trustee"), whose address is ${data.trusteeAddress}; and ${data.beneficiaryName} ("Beneficiary"), whose address is ${data.beneficiaryAddress}.`;
+  const introLines = doc.splitTextToSize(introText, 170);
+  doc.text(introLines, 20, y);
+  y += introLines.length * 5 + 6;
+
+  y = checkPageBreak(doc, y, 40);
+  y = addSection(doc, "RECITALS", y);
+  y += 2;
+
+  y = addField(doc, "Property Address", data.propertyAddress, y);
+  y = addField(doc, "Legal Description", data.propertyDescription, y);
+  y = addField(doc, "County", data.county, y);
+  y = addField(doc, "State", data.state, y);
+  y += 4;
+
+  y = checkPageBreak(doc, y, 40);
+  y = addSection(doc, "LOAN TERMS", y);
+  y += 2;
+  y = addField(doc, "Principal Amount", formatCurrency(data.loanAmount), y);
+  y = addField(doc, "Interest Rate", `${data.interestRate}% per annum`, y);
+  y = addField(doc, "Maturity Date", data.maturityDate, y);
+  y += 6;
+
+  y = checkPageBreak(doc, y, 60);
+  y = addSection(doc, "GRANT IN TRUST", y);
+  y += 2;
+  const grantText = `Trustor hereby irrevocably grants, transfers, conveys and assigns to Trustee, in trust, with power of sale, the Property described above, together with all appurtenances thereto, for the benefit of Beneficiary, as security for the payment and performance of the Note and all other obligations secured hereby.`;
+  const grantLines = doc.splitTextToSize(grantText, 170);
+  doc.text(grantLines, 20, y);
+  y += grantLines.length * 5 + 6;
+
+  y = checkPageBreak(doc, y, 60);
+  y = addSection(doc, "SIGNATURES", y);
+  y += 6;
+
+  // Trustor signature block
+  doc.text("TRUSTOR:", 20, y);
+  y += 8;
+  doc.line(20, y, 100, y);
+  y += 4;
+  doc.setFontSize(9);
+  doc.text(data.trustorName, 20, y);
+  doc.text("Date: _______________", 110, y);
+  y += 12;
+
+  // Notary block
+  y = checkPageBreak(doc, y, 40);
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "bold");
+  doc.text("ACKNOWLEDGMENT", 20, y);
+  y += 6;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  const notaryText = `State of ${data.state}\nCounty of ${data.county}\n\nOn _____________, before me, _________________________, a Notary Public, personally appeared ${data.trustorName}, known to me (or proved on the basis of satisfactory evidence) to be the person(s) whose name(s) is/are subscribed to the within instrument and acknowledged to me that he/she/they executed the same in his/her/their authorized capacity(ies).`;
+  const notaryLines = doc.splitTextToSize(notaryText, 170);
+  doc.text(notaryLines, 20, y);
+  y += notaryLines.length * 4 + 6;
+  doc.text("Notary Signature: _______________________   My Commission Expires: ___________", 20, y);
+
+  const arrayBuffer = doc.output("arraybuffer");
+  return Buffer.from(arrayBuffer);
+}
+
+// ─── Land Contract (Contract for Deed) ──────────────────────────────────────
+
+export interface LandContractData {
+  vendorName: string;       // Seller
+  vendorAddress: string;
+  vendeeName: string;       // Buyer
+  vendeeAddress: string;
+  propertyAddress: string;
+  propertyDescription: string;
+  purchasePrice: number;
+  downPayment: number;
+  monthlyPayment: number;
+  interestRate: number;
+  firstPaymentDate: string;
+  balloonDate?: string;
+  county: string;
+  state: string;
+  executionDate: string;
+  orgName: string;
+}
+
+export async function generateLandContract(data: LandContractData): Promise<Buffer> {
+  const doc = new jsPDF({ unit: "mm", format: "letter" });
+  let y = addHeader(doc, data.orgName);
+
+  doc.setFontSize(16);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(40, 40, 40);
+  doc.text("CONTRACT FOR DEED (LAND CONTRACT)", 105, y, { align: "center" });
+  y += 12;
+
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "normal");
+  const introText = `THIS CONTRACT FOR DEED ("Agreement") is entered into as of ${data.executionDate}, between ${data.vendorName} ("Vendor/Seller") of ${data.vendorAddress}, and ${data.vendeeName} ("Vendee/Buyer") of ${data.vendeeAddress}.`;
+  const introLines = doc.splitTextToSize(introText, 170);
+  doc.text(introLines, 20, y);
+  y += introLines.length * 5 + 6;
+
+  y = checkPageBreak(doc, y, 40);
+  y = addSection(doc, "PROPERTY", y);
+  y += 2;
+  y = addField(doc, "Property Address", data.propertyAddress, y);
+  y = addField(doc, "Description/APN", data.propertyDescription, y);
+  y = addField(doc, "County", data.county, y);
+  y = addField(doc, "State", data.state, y);
+  y += 4;
+
+  y = checkPageBreak(doc, y, 60);
+  y = addSection(doc, "PURCHASE TERMS", y);
+  y += 2;
+  y = addField(doc, "Purchase Price", formatCurrency(data.purchasePrice), y);
+  y = addField(doc, "Down Payment", formatCurrency(data.downPayment), y);
+  y = addField(doc, "Balance Financed", formatCurrency(data.purchasePrice - data.downPayment), y);
+  y = addField(doc, "Monthly Payment", formatCurrency(data.monthlyPayment), y);
+  y = addField(doc, "Interest Rate", `${data.interestRate}% per annum`, y);
+  y = addField(doc, "First Payment Date", data.firstPaymentDate, y);
+  if (data.balloonDate) y = addField(doc, "Balloon Payment Date", data.balloonDate, y);
+  y += 6;
+
+  y = checkPageBreak(doc, y, 40);
+  y = addSection(doc, "VENDOR OBLIGATIONS", y);
+  y += 2;
+  const vendorText = `Vendor agrees to convey marketable title to Vendee upon full payment of the purchase price. Vendor shall maintain clear title free of encumbrances during the term of this contract. Vendor shall provide a warranty deed upon payoff.`;
+  const vendorLines = doc.splitTextToSize(vendorText, 170);
+  doc.text(vendorLines, 20, y);
+  y += vendorLines.length * 5 + 6;
+
+  y = checkPageBreak(doc, y, 40);
+  y = addSection(doc, "VENDEE OBLIGATIONS", y);
+  y += 2;
+  const vendeeText = `Vendee agrees to make timely payments as specified, maintain the property, pay all taxes and assessments, and maintain adequate insurance. Failure to make payments within 30 days of due date shall constitute default.`;
+  const vendeeLines = doc.splitTextToSize(vendeeText, 170);
+  doc.text(vendeeLines, 20, y);
+  y += vendeeLines.length * 5 + 6;
+
+  y = checkPageBreak(doc, y, 60);
+  y = addSection(doc, "SIGNATURES", y);
+  y += 8;
+
+  doc.text("VENDOR (Seller):", 20, y);
+  doc.text("VENDEE (Buyer):", 110, y);
+  y += 10;
+  doc.line(20, y, 100, y);
+  doc.line(110, y, 190, y);
+  y += 4;
+  doc.setFontSize(9);
+  doc.text(data.vendorName, 20, y);
+  doc.text(data.vendeeName, 110, y);
+  y += 5;
+  doc.text("Date: _______________", 20, y);
+  doc.text("Date: _______________", 110, y);
+
+  const arrayBuffer = doc.output("arraybuffer");
+  return Buffer.from(arrayBuffer);
+}

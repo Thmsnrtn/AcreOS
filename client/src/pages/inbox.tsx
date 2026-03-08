@@ -1,4 +1,4 @@
-import { Sidebar } from "@/components/layout-sidebar";
+import { Sidebar, useSidebarCollapsed } from "@/components/layout-sidebar";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -645,6 +645,7 @@ function SMSConversationDetail({
 }
 
 export default function InboxPage() {
+  const { isCollapsed } = useSidebarCollapsed();
   const [channelFilter, setChannelFilter] = useState<ChannelFilter>("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -792,7 +793,7 @@ export default function InboxPage() {
     <div className="flex min-h-screen bg-background">
       <Sidebar />
       
-      <main className="flex-1 md:ml-[17rem] pt-16 md:pt-0 flex flex-col h-screen">
+      <main className={`flex-1 pt-16 md:pt-0 flex flex-col h-screen transition-all duration-200 ${isCollapsed ? "md:ml-[76px]" : "md:ml-[17rem]"}`}>
         <div className="flex items-center justify-between gap-4 p-4 border-b flex-wrap">
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold" data-testid="text-inbox-title">Inbox</h1>

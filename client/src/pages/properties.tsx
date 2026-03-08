@@ -107,7 +107,7 @@ import { PropertiesEmptyState } from "@/components/empty-states";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { SinglePropertyMap, StaticPropertyMap } from "@/components/property-map";
+import { PropertyMap, SinglePropertyMap, StaticPropertyMap } from "@/components/property-map";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
@@ -125,7 +125,10 @@ export default function PropertiesPage() {
   const searchString = useSearch();
   const urlParams = new URLSearchParams(searchString);
   const actionFromUrl = urlParams.get("action");
-  
+
+  const [viewMode, setViewMode] = useState<"list" | "map">(() => {
+    try { return (localStorage.getItem("properties-view-mode") as "list" | "map") || "list"; } catch { return "list"; }
+  });
   const [isCreateOpen, setIsCreateOpen] = useState(actionFromUrl === "new");
   const [deletingProperty, setDeletingProperty] = useState<Property | null>(null);
   const [isExporting, setIsExporting] = useState(false);
@@ -367,6 +370,24 @@ export default function PropertiesPage() {
               <p className="text-muted-foreground">Track land parcels and their status.</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              {/* List / Map view toggle */}
+              <div className="flex items-center rounded-lg border overflow-hidden">
+                <button
+                  onClick={() => { setViewMode("list"); try { localStorage.setItem("properties-view-mode", "list"); } catch {} }}
+                  className={`px-3 py-1.5 text-sm font-medium transition-colors flex items-center gap-1.5 ${viewMode === "list" ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}
+                  aria-pressed={viewMode === "list"}
+                >
+                  <MapIcon className="w-4 h-4 rotate-0" style={{ display: "none" }} />
+                  ☰ List
+                </button>
+                <button
+                  onClick={() => { setViewMode("map"); try { localStorage.setItem("properties-view-mode", "map"); } catch {} }}
+                  className={`px-3 py-1.5 text-sm font-medium transition-colors flex items-center gap-1.5 ${viewMode === "map" ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}
+                  aria-pressed={viewMode === "map"}
+                >
+                  <MapPin className="w-3.5 h-3.5" /> Map
+                </button>
+              </div>
               <Button 
                 variant="outline" 
                 onClick={handleExport} 
@@ -482,7 +503,31 @@ export default function PropertiesPage() {
             </div>
           )}
 
-          {isLoading ? (
+          {viewMode === "map" && !isLoading && (
+            <div className="rounded-xl overflow-hidden border" style={{ height: "600px" }}>
+              <PropertyMap
+                properties={filteredProperties.filter(p => p.latitude && p.longitude).map(p => {
+                  const lat = parseFloat(String(p.latitude));
+                  const lng = parseFloat(String(p.longitude));
+                  const d = 0.003;
+                  return {
+                    id: p.id,
+                    apn: p.apn,
+                    name: p.address || `${p.county}, ${p.state}`,
+                    boundary: (p.parcelBoundary as any) || { type: "Polygon" as const, coordinates: [[[lng-d, lat-d],[lng+d, lat-d],[lng+d, lat+d],[lng-d, lat+d],[lng-d, lat-d]]] },
+                    centroid: (p.parcelCentroid as any) || { lat, lng },
+                    status: p.status || "default",
+                  };
+                })}
+                height="600px"
+                showLabels={(filteredProperties?.length ?? 0) < 50}
+                interactive
+                showControls
+              />
+            </div>
+          )}
+
+          {(viewMode === "list" || isLoading) && (isLoading ? (
             <div data-testid="skeleton-properties-grid">
               <ListSkeleton count={6} variant="card" />
             </div>
@@ -498,8 +543,8 @@ export default function PropertiesPage() {
                       className="bg-background/80"
                     />
                   </div>
-                  <PropertyCard 
-                    property={property} 
+                  <PropertyCard
+                    property={property}
                     onDelete={() => setDeletingProperty(property)}
                   />
                 </div>
@@ -518,7 +563,7 @@ export default function PropertiesPage() {
                 </div>
               )}
             </div>
-          )}
+          ))}
 
       <ConfirmDialog
         open={!!deletingProperty}

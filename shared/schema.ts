@@ -9513,3 +9513,36 @@ export const userMapLayerPreferences = pgTable("user_map_layer_preferences", {
   index("user_map_layer_prefs_user_idx").on(table.userId),
   index("user_map_layer_prefs_unique_idx").on(table.userId, table.layerId),
 ]);
+
+// ─── AI Model Configurations ─────────────────────────────────────────────────
+// Founder-managed table of available AI models with routing weights per task type.
+export const aiModelConfigs = pgTable("ai_model_configs", {
+  id: serial("id").primaryKey(),
+  provider: text("provider").notNull().default("openrouter"),
+  modelId: text("model_id").notNull(),
+  displayName: text("display_name").notNull(),
+  costPerMillionInput: numeric("cost_per_million_input", { precision: 10, scale: 4 }),
+  costPerMillionOutput: numeric("cost_per_million_output", { precision: 10, scale: 4 }),
+  maxTokens: integer("max_tokens").default(4096),
+  taskTypes: text("task_types").array().default([]),
+  weight: integer("weight").default(50),
+  enabled: boolean("enabled").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("ai_model_configs_enabled_idx").on(table.enabled),
+]);
+
+// ─── System API Keys ──────────────────────────────────────────────────────────
+// Founder-managed system-wide API keys. Users' BYOK keys override these.
+export const systemApiKeys = pgTable("system_api_keys", {
+  id: serial("id").primaryKey(),
+  provider: text("provider").notNull().unique(),
+  displayName: text("display_name").notNull(),
+  apiKey: text("api_key"),
+  isActive: boolean("is_active").default(true),
+  lastValidatedAt: timestamp("last_validated_at"),
+  validationStatus: text("validation_status").default("pending"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
