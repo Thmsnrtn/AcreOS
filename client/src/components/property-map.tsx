@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState, useCallback } from "react";
 import mapboxgl from "mapbox-gl";
-import { MapPin, Maximize2, Minimize2, Mountain, Satellite, Map as MapIcon, Play, Pause, Layers, ChevronDown, ChevronUp, Loader2, Ruler, Square, Camera, Download, X, Clipboard, MapPinned, BarChart3, CircleDot, Database } from "lucide-react";
+import { MapPin, Maximize2, Minimize2, Mountain, Satellite, Map as MapIcon, Play, Pause, Layers, ChevronDown, ChevronUp, Loader2, Ruler, Square, Camera, Download, X, Clipboard, MapPinned, BarChart3, CircleDot, Database, Box, TreePine, Tractor, Sun } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -34,6 +34,10 @@ const MAP_STYLES: Record<MapStyle, string> = {
 
 const FEMA_NFHL_URL = "https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer";
 const USGS_LAND_USE_URL = "https://www.sciencebase.gov/arcgis/rest/services/Catalog/5f9637fad34eb2e5df3d40a2/MapServer";
+const USDA_CDL_URL = "https://nassgeodata.gmu.edu/arcgis/rest/services/CropScapeService/WMS_CroplandRaster/MapServer";
+const USDA_CLU_URL = "https://gis.sc.egov.usda.gov/appgeodb/rest/services/common_land_unit/MapServer";
+const USGS_HILLSHADE_URL = "https://carto.nationalmap.gov/arcgis/rest/services/USGSShadedReliefOnly/MapServer";
+const USGS_TOPO_URL = "https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer";
 
 const LAYER_STORAGE_KEY = "property-map-layers";
 const MEASUREMENT_UNITS_KEY = "property-map-measurement-units";
@@ -138,6 +142,11 @@ interface LayerState {
   propertyHeatmap: boolean;
   zoningDistricts: boolean;
   heatmapOpacity: number;
+  osmBuildings: boolean;
+  terrainContours: boolean;
+  usdaCropland: boolean;
+  usdaClu: boolean;
+  usgsHillshade: boolean;
 }
 
 const DEFAULT_LAYER_STATE: LayerState = {
@@ -145,6 +154,11 @@ const DEFAULT_LAYER_STATE: LayerState = {
   propertyHeatmap: true,
   zoningDistricts: false,
   heatmapOpacity: 0.35,
+  osmBuildings: false,
+  terrainContours: false,
+  usdaCropland: false,
+  usdaClu: false,
+  usgsHillshade: false,
 };
 
 function loadLayerState(): LayerState {
@@ -318,6 +332,7 @@ export function PropertyMap({
   } = useDynamicMapLayers();
   
   const [dynamicLayersSectionOpen, setDynamicLayersSectionOpen] = useState(false);
+  const [is3DExtrudeMode, setIs3DExtrudeMode] = useState(false);
 
   const updateLayerState = useCallback((updates: Partial<LayerState>) => {
     setLayerState(prev => {
@@ -431,6 +446,140 @@ export function PropertyMap({
       removeZoningLayer();
     }
   }, [updateLayerState, addZoningLayer, removeZoningLayer]);
+
+  const addOsmBuildingsLayer = useCallback(() => {
+    if (!map.current) return;
+    if (map.current.getLayer("osm-3d-buildings")) return;
+    const firstSymbolId = map.current.getStyle()?.layers?.find(l => l.type === "symbol")?.id;
+    map.current.addLayer({
+      id: "osm-3d-buildings",
+      source: "composite",
+      "source-layer": "building",
+      filter: ["==", "extrude", "true"],
+      type: "fill-extrusion",
+      minzoom: 14,
+      paint: {
+        "fill-extrusion-color": ["case", ["boolean", ["feature-state", "hover"], false], "#ddd", "#aaa"],
+        "fill-extrusion-height": ["interpolate", ["linear"], ["zoom"], 14, 0, 14.05, ["get", "height"]],
+        "fill-extrusion-base": ["interpolate", ["linear"], ["zoom"], 14, 0, 14.05, ["get", "min_height"]],
+        "fill-extrusion-opacity": 0.65,
+      },
+    }, firstSymbolId);
+  }, []);
+
+  const removeOsmBuildingsLayer = useCallback(() => {
+    if (!map.current) return;
+    if (map.current.getLayer("osm-3d-buildings")) map.current.removeLayer("osm-3d-buildings");
+  }, []);
+
+  const addTerrainContoursLayer = useCallback(() => {
+    if (!map.current) return;
+    if (map.current.getSource("mapbox-terrain-contours")) return;
+    map.current.addSource("mapbox-terrain-contours", {
+      type: "vector",
+      url: "mapbox://mapbox.mapbox-terrain-v2",
+    });
+    map.current.addLayer({
+      id: "terrain-contour-lines",
+      type: "line",
+      source: "mapbox-terrain-contours",
+      "source-layer": "contour",
+      layout: { "line-join": "round", "line-cap": "round" },
+      paint: {
+        "line-color": "#c6a35e",
+        "line-width": ["match", ["get", "index"], [1, 2], 0.6, 1.0],
+        "line-opacity": 0.7,
+      },
+    });
+    map.current.addLayer({
+      id: "terrain-contour-labels",
+      type: "symbol",
+      source: "mapbox-terrain-contours",
+      "source-layer": "contour",
+      filter: [">", ["get", "index"], 0],
+      layout: {
+        "symbol-placement": "line",
+        "text-field": ["concat", ["get", "ele"], "m"],
+        "text-font": ["DIN Offc Pro Italic", "Arial Unicode MS Regular"],
+        "text-size": 10,
+      },
+      paint: {
+        "text-color": "#c6a35e",
+        "text-halo-color": "rgba(0,0,0,0.6)",
+        "text-halo-width": 1,
+      },
+    });
+  }, []);
+
+  const removeTerrainContoursLayer = useCallback(() => {
+    if (!map.current) return;
+    if (map.current.getLayer("terrain-contour-labels")) map.current.removeLayer("terrain-contour-labels");
+    if (map.current.getLayer("terrain-contour-lines")) map.current.removeLayer("terrain-contour-lines");
+    if (map.current.getSource("mapbox-terrain-contours")) map.current.removeSource("mapbox-terrain-contours");
+  }, []);
+
+  const addArcGISOverlayLayer = useCallback((id: string, url: string) => {
+    if (!map.current) return;
+    if (map.current.getLayer(`${id}-layer`)) return;
+    if (!map.current.getSource(id)) {
+      map.current.addSource(id, {
+        type: "raster",
+        tiles: [`${url}/export?bbox={bbox-epsg-3857}&bboxSR=3857&imageSR=3857&size=256,256&format=png32&transparent=true&f=image`],
+        tileSize: 256,
+      });
+    }
+    const firstSymbolId = map.current.getStyle()?.layers?.find(l => l.type === "symbol")?.id;
+    map.current.addLayer({
+      id: `${id}-layer`,
+      type: "raster",
+      source: id,
+      paint: { "raster-opacity": 0.7, "raster-fade-duration": 0 },
+    }, firstSymbolId);
+  }, []);
+
+  const removeArcGISOverlayLayer = useCallback((id: string) => {
+    if (!map.current) return;
+    if (map.current.getLayer(`${id}-layer`)) map.current.setLayoutProperty(`${id}-layer`, "visibility", "none");
+  }, []);
+
+  const toggle3DExtrude = useCallback(() => {
+    if (!map.current || !mapLoaded) return;
+    const entering = !is3DExtrudeMode;
+    setIs3DExtrudeMode(entering);
+
+    if (entering) {
+      // Extrude parcels as 3D fill-extrusion columns
+      if (map.current.getLayer("property-fill")) map.current.setLayoutProperty("property-fill", "visibility", "none");
+      if (map.current.getLayer("property-outline")) {
+        map.current.setPaintProperty("property-outline", "line-width", 2);
+      }
+      if (!map.current.getLayer("property-extrusion")) {
+        map.current.addLayer({
+          id: "property-extrusion",
+          type: "fill-extrusion",
+          source: "properties",
+          paint: {
+            "fill-extrusion-color": ["get", "color"],
+            "fill-extrusion-height": 120,
+            "fill-extrusion-base": 0,
+            "fill-extrusion-opacity": 0.75,
+          },
+        });
+      } else {
+        map.current.setLayoutProperty("property-extrusion", "visibility", "visible");
+      }
+      map.current.easeTo({ pitch: 55, bearing: -20, duration: 800 });
+      // Boost terrain exaggeration
+      map.current.setTerrain({ source: "mapbox-dem", exaggeration: 2.5 });
+    } else {
+      if (map.current.getLayer("property-extrusion")) {
+        map.current.setLayoutProperty("property-extrusion", "visibility", "none");
+      }
+      if (map.current.getLayer("property-fill")) map.current.setLayoutProperty("property-fill", "visibility", "visible");
+      map.current.easeTo({ pitch: 0, bearing: 0, duration: 800 });
+      map.current.setTerrain({ source: "mapbox-dem", exaggeration: 1.5 });
+    }
+  }, [is3DExtrudeMode, mapLoaded]);
 
   const fetchNearbyParcels = useCallback(async () => {
     if (!selectedPropertyId) {
@@ -1157,13 +1306,36 @@ export function PropertyMap({
 
   useEffect(() => {
     if (!mapLoaded || !map.current) return;
-    
-    if (layerState.femaFloodZone) {
-      addFemaFloodLayer();
-    } else {
-      removeFemaFloodLayer();
-    }
+    if (layerState.femaFloodZone) addFemaFloodLayer(); else removeFemaFloodLayer();
   }, [layerState.femaFloodZone, mapLoaded, addFemaFloodLayer, removeFemaFloodLayer]);
+
+  useEffect(() => {
+    if (!mapLoaded || !map.current) return;
+    if (layerState.osmBuildings) addOsmBuildingsLayer(); else removeOsmBuildingsLayer();
+  }, [layerState.osmBuildings, mapLoaded, addOsmBuildingsLayer, removeOsmBuildingsLayer]);
+
+  useEffect(() => {
+    if (!mapLoaded || !map.current) return;
+    if (layerState.terrainContours) addTerrainContoursLayer(); else removeTerrainContoursLayer();
+  }, [layerState.terrainContours, mapLoaded, addTerrainContoursLayer, removeTerrainContoursLayer]);
+
+  useEffect(() => {
+    if (!mapLoaded || !map.current) return;
+    if (layerState.usdaCropland) addArcGISOverlayLayer("usda-cdl", USDA_CDL_URL);
+    else removeArcGISOverlayLayer("usda-cdl");
+  }, [layerState.usdaCropland, mapLoaded, addArcGISOverlayLayer, removeArcGISOverlayLayer]);
+
+  useEffect(() => {
+    if (!mapLoaded || !map.current) return;
+    if (layerState.usdaClu) addArcGISOverlayLayer("usda-clu", USDA_CLU_URL);
+    else removeArcGISOverlayLayer("usda-clu");
+  }, [layerState.usdaClu, mapLoaded, addArcGISOverlayLayer, removeArcGISOverlayLayer]);
+
+  useEffect(() => {
+    if (!mapLoaded || !map.current) return;
+    if (layerState.usgsHillshade) addArcGISOverlayLayer("usgs-hillshade", USGS_HILLSHADE_URL);
+    else removeArcGISOverlayLayer("usgs-hillshade");
+  }, [layerState.usgsHillshade, mapLoaded, addArcGISOverlayLayer, removeArcGISOverlayLayer]);
 
   useEffect(() => {
     if (!mapLoaded || !map.current) return;
@@ -1293,6 +1465,15 @@ export function PropertyMap({
             </div>
 
             <div className="flex gap-1 bg-background/80 backdrop-blur-sm rounded-md p-1 shadow-lg">
+              <Button
+                size="icon"
+                variant={is3DExtrudeMode ? "default" : "ghost"}
+                onClick={toggle3DExtrude}
+                title={is3DExtrudeMode ? "Exit 3D View" : "3D Parcel View"}
+                data-testid="button-3d-extrude"
+              >
+                <Box className="h-4 w-4" />
+              </Button>
               <Button
                 size="icon"
                 variant={isFlyoverActive ? "default" : "ghost"}
@@ -1662,6 +1843,77 @@ export function PropertyMap({
                         />
                         <Label htmlFor="zoning-districts" className="text-sm cursor-pointer text-muted-foreground">
                           Zoning Districts
+                        </Label>
+                      </div>
+
+                      <Separator />
+                      <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide pt-1">3D &amp; Terrain</div>
+
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="osm-buildings"
+                          checked={layerState.osmBuildings}
+                          onCheckedChange={(checked) => updateLayerState({ osmBuildings: !!checked })}
+                          data-testid="checkbox-osm-buildings"
+                        />
+                        <Label htmlFor="osm-buildings" className="text-sm cursor-pointer flex items-center gap-1">
+                          <Box className="h-3 w-3 text-muted-foreground" />
+                          OSM 3D Buildings
+                        </Label>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="terrain-contours"
+                          checked={layerState.terrainContours}
+                          onCheckedChange={(checked) => updateLayerState({ terrainContours: !!checked })}
+                          data-testid="checkbox-terrain-contours"
+                        />
+                        <Label htmlFor="terrain-contours" className="text-sm cursor-pointer flex items-center gap-1">
+                          <Mountain className="h-3 w-3 text-muted-foreground" />
+                          Terrain Contours
+                        </Label>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="usgs-hillshade"
+                          checked={layerState.usgsHillshade}
+                          onCheckedChange={(checked) => updateLayerState({ usgsHillshade: !!checked })}
+                          data-testid="checkbox-usgs-hillshade"
+                        />
+                        <Label htmlFor="usgs-hillshade" className="text-sm cursor-pointer flex items-center gap-1">
+                          <Sun className="h-3 w-3 text-muted-foreground" />
+                          USGS Hillshade
+                        </Label>
+                      </div>
+
+                      <Separator />
+                      <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide pt-1">Agriculture (USDA Free)</div>
+
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="usda-cropland"
+                          checked={layerState.usdaCropland}
+                          onCheckedChange={(checked) => updateLayerState({ usdaCropland: !!checked })}
+                          data-testid="checkbox-usda-cropland"
+                        />
+                        <Label htmlFor="usda-cropland" className="text-sm cursor-pointer flex items-center gap-1">
+                          <Tractor className="h-3 w-3 text-muted-foreground" />
+                          Cropland Data Layer
+                        </Label>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="usda-clu"
+                          checked={layerState.usdaClu}
+                          onCheckedChange={(checked) => updateLayerState({ usdaClu: !!checked })}
+                          data-testid="checkbox-usda-clu"
+                        />
+                        <Label htmlFor="usda-clu" className="text-sm cursor-pointer flex items-center gap-1">
+                          <TreePine className="h-3 w-3 text-muted-foreground" />
+                          Common Land Units
                         </Label>
                       </div>
 

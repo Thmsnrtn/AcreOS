@@ -97,7 +97,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, MapPin, Ruler, DollarSign, Trash2, Loader2, Map as MapIcon, RefreshCw, FileText, Download, Upload, CheckCircle, AlertCircle, ClipboardCheck, Printer, Calculator, BarChart2, X, CheckSquare, Droplets, Leaf, Building2, Flame, Users, Brain, Shield, Zap, Mountain, TreePine, Car, TrendingUp } from "lucide-react";
+import { Plus, MapPin, Ruler, DollarSign, Trash2, Loader2, Map as MapIcon, RefreshCw, FileText, Download, Upload, CheckCircle, AlertCircle, ClipboardCheck, Printer, Calculator, BarChart2, X, CheckSquare, Droplets, Leaf, Building2, Flame, Users, Brain, Shield, Zap, Mountain, TreePine, Car, TrendingUp, Thermometer, Cloud, Waves, Wheat, Factory, Grid3x3 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { DealCalculator } from "@/components/deal-calculator";
@@ -107,7 +107,7 @@ import { PropertiesEmptyState } from "@/components/empty-states";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { SinglePropertyMap, StaticPropertyMap } from "@/components/property-map";
+import { PropertyMap, SinglePropertyMap, StaticPropertyMap } from "@/components/property-map";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
@@ -125,7 +125,10 @@ export default function PropertiesPage() {
   const searchString = useSearch();
   const urlParams = new URLSearchParams(searchString);
   const actionFromUrl = urlParams.get("action");
-  
+
+  const [viewMode, setViewMode] = useState<"list" | "map">(() => {
+    try { return (localStorage.getItem("properties-view-mode") as "list" | "map") || "list"; } catch { return "list"; }
+  });
   const [isCreateOpen, setIsCreateOpen] = useState(actionFromUrl === "new");
   const [deletingProperty, setDeletingProperty] = useState<Property | null>(null);
   const [isExporting, setIsExporting] = useState(false);
@@ -367,6 +370,24 @@ export default function PropertiesPage() {
               <p className="text-muted-foreground">Track land parcels and their status.</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              {/* List / Map view toggle */}
+              <div className="flex items-center rounded-lg border overflow-hidden">
+                <button
+                  onClick={() => { setViewMode("list"); try { localStorage.setItem("properties-view-mode", "list"); } catch {} }}
+                  className={`px-3 py-1.5 text-sm font-medium transition-colors flex items-center gap-1.5 ${viewMode === "list" ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}
+                  aria-pressed={viewMode === "list"}
+                >
+                  <MapIcon className="w-4 h-4 rotate-0" style={{ display: "none" }} />
+                  ☰ List
+                </button>
+                <button
+                  onClick={() => { setViewMode("map"); try { localStorage.setItem("properties-view-mode", "map"); } catch {} }}
+                  className={`px-3 py-1.5 text-sm font-medium transition-colors flex items-center gap-1.5 ${viewMode === "map" ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}
+                  aria-pressed={viewMode === "map"}
+                >
+                  <MapPin className="w-3.5 h-3.5" /> Map
+                </button>
+              </div>
               <Button 
                 variant="outline" 
                 onClick={handleExport} 
@@ -482,7 +503,31 @@ export default function PropertiesPage() {
             </div>
           )}
 
-          {isLoading ? (
+          {viewMode === "map" && !isLoading && (
+            <div className="rounded-xl overflow-hidden border" style={{ height: "600px" }}>
+              <PropertyMap
+                properties={filteredProperties.filter(p => p.latitude && p.longitude).map(p => {
+                  const lat = parseFloat(String(p.latitude));
+                  const lng = parseFloat(String(p.longitude));
+                  const d = 0.003;
+                  return {
+                    id: p.id,
+                    apn: p.apn,
+                    name: p.address || `${p.county}, ${p.state}`,
+                    boundary: (p.parcelBoundary as any) || { type: "Polygon" as const, coordinates: [[[lng-d, lat-d],[lng+d, lat-d],[lng+d, lat+d],[lng-d, lat+d],[lng-d, lat-d]]] },
+                    centroid: (p.parcelCentroid as any) || { lat, lng },
+                    status: p.status || "default",
+                  };
+                })}
+                height="600px"
+                showLabels={(filteredProperties?.length ?? 0) < 50}
+                interactive
+                showControls
+              />
+            </div>
+          )}
+
+          {(viewMode === "list" || isLoading) && (isLoading ? (
             <div data-testid="skeleton-properties-grid">
               <ListSkeleton count={6} variant="card" />
             </div>
@@ -498,8 +543,8 @@ export default function PropertiesPage() {
                       className="bg-background/80"
                     />
                   </div>
-                  <PropertyCard 
-                    property={property} 
+                  <PropertyCard
+                    property={property}
                     onDelete={() => setDeletingProperty(property)}
                   />
                 </div>
@@ -518,7 +563,7 @@ export default function PropertiesPage() {
                 </div>
               )}
             </div>
-          )}
+          ))}
 
       <ConfirmDialog
         open={!!deletingProperty}
@@ -1559,6 +1604,11 @@ interface EnrichmentData {
   environment?: {
     soilType?: string;
     soilSuitability?: string;
+    soilDrainage?: string;
+    capabilityClass?: string;
+    hydrologicGroup?: string;
+    primeFarmland?: boolean;
+    farmlandClass?: string;
     epaFacilitiesNearby?: number;
     epaRiskLevel?: "low" | "medium" | "high";
   };
@@ -1574,9 +1624,14 @@ interface EnrichmentData {
   demographics?: {
     population?: number;
     medianIncome?: number;
+    medianHouseholdIncome?: number;
     medianHomeValue?: number;
     povertyRate?: number;
     collegeEducated?: number;
+    ownerOccupancyRate?: number;
+    vacancyRate?: number;
+    avgCommuteMinutes?: number;
+    unemployment?: string;
   };
   publicLands?: {
     nearBLM?: boolean;
@@ -1589,6 +1644,9 @@ interface EnrichmentData {
     nearestBridgeMiles?: number;
     nearestRailMiles?: number;
     roadAccessScore?: number;
+    hasPavedRoad?: boolean | null;
+    hasDirtRoad?: boolean | null;
+    localRoadCount?: number;
   };
   water?: {
     nearestStreamMiles?: number;
@@ -1600,6 +1658,95 @@ interface EnrichmentData {
     developmentScore?: number;
     riskScore?: number;
     overallScore?: number;
+  };
+  elevation?: {
+    elevationFeet?: number;
+    elevationMeters?: number;
+    datum?: string;
+    source?: string;
+  };
+  climate?: {
+    avgHighTempF?: number;
+    avgLowTempF?: number;
+    annualPrecipInches?: number;
+    period?: string;
+    source?: string;
+  };
+  agriculturalValues?: {
+    countyAvgPerAcre?: number | null;
+    stateAvgPerAcre?: number | null;
+    nationalAvgPerAcre?: number | null;
+    dataYear?: number;
+    notes?: string;
+    source?: string;
+  };
+  landCover?: {
+    nlcdClass?: number | null;
+    className?: string;
+    isAgricultural?: boolean;
+    isDeveloped?: boolean;
+    isForested?: boolean;
+    isWetland?: boolean;
+    year?: number;
+    source?: string;
+  };
+  cropland?: {
+    cropCode?: number | null;
+    cropName?: string;
+    year?: number;
+    isAgriculturalCrop?: boolean;
+    isPastureOrHay?: boolean;
+    isCultivatedCrop?: boolean;
+    isForest?: boolean;
+    isWetland?: boolean;
+    source?: string;
+  };
+  epaFacilities?: {
+    totalCount?: number;
+    superfundCount?: number;
+    airViolationCount?: number;
+    waterViolationCount?: number;
+    hazWasteCount?: number;
+    riskLevel?: "low" | "medium" | "high";
+    searchRadiusMiles?: number;
+    source?: string;
+  };
+  stormHistory?: {
+    tornadoRisk?: string;
+    hurricaneRisk?: string;
+    hailRisk?: string;
+    countyName?: string;
+    note?: string;
+    source?: string;
+  };
+  plss?: {
+    section?: string;
+    township?: string;
+    range?: string;
+    legalDescription?: string;
+    source?: string;
+  };
+  watershed?: {
+    huc8?: string;
+    huc12?: string;
+    watershedName?: string;
+    source?: string;
+  };
+  femaNri?: {
+    compositeScore?: number;
+    riverineFloodRisk?: string;
+    hurricaneRisk?: string;
+    tornadoRisk?: string;
+    wildfireRisk?: string;
+    hailRisk?: string;
+    source?: string;
+  };
+  usdaClu?: {
+    cluId?: string;
+    farmNumber?: string;
+    tractNumber?: string;
+    calculatedAcres?: number;
+    source?: string;
   };
   errors?: Record<string, string>;
 }
@@ -1632,7 +1779,7 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
   const { mutate: enrichProperty, isPending: isEnriching } = useEnrichProperty();
   const { toast } = useToast();
   
-  const enrichmentData = property.dueDiligenceData as EnrichmentData | null;
+  const enrichmentData = (property.enrichmentData as EnrichmentData | null) || (property.dueDiligenceData as EnrichmentData | null);
   const hasData = enrichmentData && (
     enrichmentData.hazards ||
     enrichmentData.environment ||
@@ -1691,6 +1838,52 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
           )}
         </Button>
       </div>
+
+      {/* Data Completeness Widget */}
+      {hasData && (enrichmentData as any)?.completenessScore !== undefined && (
+        <Card data-testid="card-completeness">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 text-primary" />
+                <h4 className="font-semibold text-sm">Data Completeness</h4>
+              </div>
+              <span className="text-lg font-bold tabular-nums">
+                {(enrichmentData as any).completenessScore}%
+              </span>
+            </div>
+            <div className="w-full bg-muted rounded-full h-2 mb-3">
+              <div
+                className={`h-2 rounded-full transition-all ${
+                  (enrichmentData as any).completenessScore >= 80
+                    ? "bg-green-500"
+                    : (enrichmentData as any).completenessScore >= 50
+                    ? "bg-yellow-500"
+                    : "bg-red-500"
+                }`}
+                style={{ width: `${(enrichmentData as any).completenessScore}%` }}
+              />
+            </div>
+            {(enrichmentData as any).completenessBreakdown && (
+              <div className="grid grid-cols-4 gap-1 mt-2">
+                {Object.entries((enrichmentData as any).completenessBreakdown as Record<string, boolean>).map(
+                  ([key, value]) => (
+                    <div
+                      key={key}
+                      className={`text-xs px-1.5 py-0.5 rounded text-center truncate ${
+                        value ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-muted text-muted-foreground"
+                      }`}
+                      title={key}
+                    >
+                      {key.replace(/([A-Z])/g, " $1").toLowerCase()}
+                    </div>
+                  )
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {!property.latitude || !property.longitude ? (
         <Card className="border-dashed">
@@ -1851,6 +2044,20 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
                     <span className="text-muted-foreground">Soil Suitability</span>
                     <span className="capitalize">{enrichmentData.environment.soilSuitability || "Unknown"}</span>
                   </div>
+                  {enrichmentData.environment.capabilityClass && (
+                    <div className="flex items-center justify-between" data-testid="capability-class">
+                      <span className="text-muted-foreground">Capability Class</span>
+                      <Badge variant="outline">Class {enrichmentData.environment.capabilityClass}</Badge>
+                    </div>
+                  )}
+                  {enrichmentData.environment.primeFarmland !== undefined && (
+                    <div className="flex items-center justify-between" data-testid="prime-farmland">
+                      <span className="text-muted-foreground">Prime Farmland</span>
+                      <span className={enrichmentData.environment.primeFarmland ? "text-green-600" : "text-muted-foreground"}>
+                        {enrichmentData.environment.primeFarmland ? "Yes" : "No"}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -1901,9 +2108,10 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
                   </div>
                   <div className="flex items-center justify-between" data-testid="median-income">
                     <span className="text-muted-foreground">Median Income</span>
-                    <span>{enrichmentData.demographics.medianIncome 
-                      ? `$${enrichmentData.demographics.medianIncome.toLocaleString()}` 
-                      : "N/A"}
+                    <span>
+                      {(enrichmentData.demographics.medianHouseholdIncome ?? enrichmentData.demographics.medianIncome)
+                        ? `$${(enrichmentData.demographics.medianHouseholdIncome ?? enrichmentData.demographics.medianIncome)!.toLocaleString()}`
+                        : "N/A"}
                     </span>
                   </div>
                   <div className="flex items-center justify-between" data-testid="median-home-value">
@@ -1917,6 +2125,24 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
                     <div className="flex items-center justify-between" data-testid="poverty-rate">
                       <span className="text-muted-foreground">Poverty Rate</span>
                       <span>{enrichmentData.demographics.povertyRate.toFixed(1)}%</span>
+                    </div>
+                  )}
+                  {enrichmentData.demographics.ownerOccupancyRate !== undefined && (
+                    <div className="flex items-center justify-between" data-testid="owner-occupancy-rate">
+                      <span className="text-muted-foreground">Owner Occupancy</span>
+                      <span>{enrichmentData.demographics.ownerOccupancyRate}%</span>
+                    </div>
+                  )}
+                  {enrichmentData.demographics.vacancyRate !== undefined && (
+                    <div className="flex items-center justify-between" data-testid="vacancy-rate">
+                      <span className="text-muted-foreground">Vacancy Rate</span>
+                      <span>{enrichmentData.demographics.vacancyRate}%</span>
+                    </div>
+                  )}
+                  {enrichmentData.demographics.avgCommuteMinutes !== undefined && (
+                    <div className="flex items-center justify-between" data-testid="avg-commute">
+                      <span className="text-muted-foreground">Avg Commute</span>
+                      <span>{enrichmentData.demographics.avgCommuteMinutes} min</span>
                     </div>
                   )}
                 </div>
@@ -1947,6 +2173,15 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
                       <span className="text-muted-foreground">Nearest Rail</span>
                       <span>{formatDistance(enrichmentData.transportation.nearestRailMiles)}</span>
                     </div>
+                  )}
+                  {enrichmentData.transportation.hasPavedRoad !== null &&
+                    enrichmentData.transportation.hasPavedRoad !== undefined && (
+                      <div className="flex items-center justify-between" data-testid="paved-road">
+                        <span className="text-muted-foreground">Paved Road Access</span>
+                        <span className={enrichmentData.transportation.hasPavedRoad ? "text-green-600" : "text-yellow-600"}>
+                          {enrichmentData.transportation.hasPavedRoad ? "Yes" : "No"}
+                        </span>
+                      </div>
                   )}
                   {enrichmentData.transportation.roadAccessScore !== undefined && (
                     <div className="flex items-center justify-between" data-testid="road-access-score">
@@ -2006,6 +2241,399 @@ function PropertyIntelligenceTab({ property }: { property: Property }) {
                       <span className="font-medium">{enrichmentData.water.waterAvailabilityScore}/100</span>
                     </div>
                   )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {enrichmentData?.elevation && (
+            <Card data-testid="card-elevation">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Mountain className="w-4 h-4 text-slate-500" />
+                  <h4 className="font-semibold">Elevation & Terrain</h4>
+                </div>
+                <div className="space-y-2 text-sm">
+                  {enrichmentData.elevation.elevationFeet !== undefined && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Elevation</span>
+                      <span className="font-medium">{enrichmentData.elevation.elevationFeet?.toLocaleString()} ft ({enrichmentData.elevation.elevationMeters?.toFixed(0)} m)</span>
+                    </div>
+                  )}
+                  {enrichmentData.elevation.datum && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Datum</span>
+                      <span className="text-xs">{enrichmentData.elevation.datum}</span>
+                    </div>
+                  )}
+                  {enrichmentData.elevation.source && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Source</span>
+                      <Badge variant="outline" className="text-xs">{enrichmentData.elevation.source}</Badge>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {enrichmentData?.climate && (
+            <Card data-testid="card-climate">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Thermometer className="w-4 h-4 text-orange-400" />
+                  <h4 className="font-semibold">Climate & Growing</h4>
+                </div>
+                <div className="space-y-2 text-sm">
+                  {enrichmentData.climate.avgHighTempF !== undefined && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Avg High Temp</span>
+                      <span>{enrichmentData.climate.avgHighTempF}°F</span>
+                    </div>
+                  )}
+                  {enrichmentData.climate.avgLowTempF !== undefined && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Avg Low Temp</span>
+                      <span>{enrichmentData.climate.avgLowTempF}°F</span>
+                    </div>
+                  )}
+                  {enrichmentData.climate.annualPrecipInches !== undefined && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Annual Precip</span>
+                      <span>{enrichmentData.climate.annualPrecipInches}" / yr</span>
+                    </div>
+                  )}
+                  {enrichmentData.climate.period && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Period</span>
+                      <span className="text-xs text-muted-foreground">{enrichmentData.climate.period}</span>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {enrichmentData?.agriculturalValues && (
+            <Card data-testid="card-agricultural-values">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Wheat className="w-4 h-4 text-yellow-600" />
+                  <h4 className="font-semibold">Agricultural Values</h4>
+                </div>
+                <div className="space-y-2 text-sm">
+                  {enrichmentData.agriculturalValues.countyAvgPerAcre != null && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">County Avg / Acre</span>
+                      <span className="font-medium">${enrichmentData.agriculturalValues.countyAvgPerAcre.toLocaleString()}</span>
+                    </div>
+                  )}
+                  {enrichmentData.agriculturalValues.stateAvgPerAcre != null && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">State Avg / Acre</span>
+                      <span>${enrichmentData.agriculturalValues.stateAvgPerAcre.toLocaleString()}</span>
+                    </div>
+                  )}
+                  {enrichmentData.agriculturalValues.nationalAvgPerAcre != null && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">National Avg / Acre</span>
+                      <span>${enrichmentData.agriculturalValues.nationalAvgPerAcre.toLocaleString()}</span>
+                    </div>
+                  )}
+                  {enrichmentData.agriculturalValues.dataYear && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Data Year</span>
+                      <span className="text-xs text-muted-foreground">{enrichmentData.agriculturalValues.dataYear} (USDA NASS)</span>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {enrichmentData?.landCover && (
+            <Card data-testid="card-land-cover">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Leaf className="w-4 h-4 text-emerald-500" />
+                  <h4 className="font-semibold">Land Cover</h4>
+                </div>
+                <div className="space-y-2 text-sm">
+                  {enrichmentData.landCover.className && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Cover Type</span>
+                      <Badge variant="outline" className="capitalize">{enrichmentData.landCover.className}</Badge>
+                    </div>
+                  )}
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {enrichmentData.landCover.isAgricultural && <Badge variant="secondary" className="text-xs">Agricultural</Badge>}
+                    {enrichmentData.landCover.isDeveloped && <Badge variant="secondary" className="text-xs">Developed</Badge>}
+                    {enrichmentData.landCover.isForested && <Badge variant="secondary" className="text-xs">Forested</Badge>}
+                    {enrichmentData.landCover.isWetland && <Badge variant="secondary" className="text-xs">Wetland</Badge>}
+                  </div>
+                  {enrichmentData.landCover.year && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Year</span>
+                      <span className="text-xs text-muted-foreground">NLCD {enrichmentData.landCover.year}</span>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {enrichmentData?.cropland && (
+            <Card data-testid="card-cropland">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Wheat className="w-4 h-4 text-amber-500" />
+                  <h4 className="font-semibold">Cropland Data</h4>
+                </div>
+                <div className="space-y-2 text-sm">
+                  {enrichmentData.cropland.cropName && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Dominant Crop</span>
+                      <span className="font-medium capitalize">{enrichmentData.cropland.cropName}</span>
+                    </div>
+                  )}
+                  {enrichmentData.cropland.year && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Survey Year</span>
+                      <span className="text-xs text-muted-foreground">{enrichmentData.cropland.year} (USDA CDL)</span>
+                    </div>
+                  )}
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {enrichmentData.cropland.isCultivatedCrop && <Badge variant="secondary" className="text-xs">Cultivated</Badge>}
+                    {enrichmentData.cropland.isPastureOrHay && <Badge variant="secondary" className="text-xs">Pasture/Hay</Badge>}
+                    {enrichmentData.cropland.isForest && <Badge variant="secondary" className="text-xs">Forest</Badge>}
+                    {enrichmentData.cropland.isWetland && <Badge variant="secondary" className="text-xs">Wetland</Badge>}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {enrichmentData?.epaFacilities && (
+            <Card data-testid="card-epa-facilities">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Factory className="w-4 h-4 text-gray-500" />
+                  <h4 className="font-semibold">EPA Facilities Nearby</h4>
+                </div>
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Total Facilities</span>
+                    <span className={enrichmentData.epaFacilities.totalCount && enrichmentData.epaFacilities.totalCount > 0 ? "text-yellow-600 font-medium" : "text-green-600"}>{enrichmentData.epaFacilities.totalCount ?? 0}</span>
+                  </div>
+                  {(enrichmentData.epaFacilities.superfundCount ?? 0) > 0 && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Superfund Sites</span>
+                      <span className="text-red-600 font-medium">{enrichmentData.epaFacilities.superfundCount}</span>
+                    </div>
+                  )}
+                  {(enrichmentData.epaFacilities.airViolationCount ?? 0) > 0 && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Air Violations</span>
+                      <span className="text-orange-500">{enrichmentData.epaFacilities.airViolationCount}</span>
+                    </div>
+                  )}
+                  {(enrichmentData.epaFacilities.hazWasteCount ?? 0) > 0 && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Hazardous Waste</span>
+                      <span className="text-orange-500">{enrichmentData.epaFacilities.hazWasteCount}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Risk Level</span>
+                    <Badge variant={getRiskBadgeVariant(enrichmentData.epaFacilities.riskLevel)} className="capitalize">
+                      {enrichmentData.epaFacilities.riskLevel || "Unknown"}
+                    </Badge>
+                  </div>
+                  {enrichmentData.epaFacilities.searchRadiusMiles && (
+                    <p className="text-xs text-muted-foreground">Within {enrichmentData.epaFacilities.searchRadiusMiles} mile radius (EPA FRS)</p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {enrichmentData?.stormHistory && (
+            <Card data-testid="card-storm-history">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Cloud className="w-4 h-4 text-blue-400" />
+                  <h4 className="font-semibold">Storm Risk</h4>
+                </div>
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Tornado Risk</span>
+                    <span className="capitalize font-medium">{enrichmentData.stormHistory.tornadoRisk || "Unknown"}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Hurricane Risk</span>
+                    <span className="capitalize font-medium">{enrichmentData.stormHistory.hurricaneRisk || "Unknown"}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Hail Risk</span>
+                    <span className="capitalize font-medium">{enrichmentData.stormHistory.hailRisk || "Unknown"}</span>
+                  </div>
+                  {enrichmentData.stormHistory.source && (
+                    <p className="text-xs text-muted-foreground">{enrichmentData.stormHistory.source}</p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {enrichmentData?.plss && (
+            <Card data-testid="card-plss">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Grid3x3 className="w-4 h-4 text-teal-600" />
+                  <h4 className="font-semibold">PLSS Legal Description</h4>
+                </div>
+                <div className="space-y-2 text-sm">
+                  {enrichmentData.plss.legalDescription && (
+                    <div>
+                      <span className="text-muted-foreground text-xs">Legal Description</span>
+                      <p className="font-mono font-medium mt-0.5">{enrichmentData.plss.legalDescription}</p>
+                    </div>
+                  )}
+                  {enrichmentData.plss.section && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Section</span>
+                      <span>{enrichmentData.plss.section}</span>
+                    </div>
+                  )}
+                  {enrichmentData.plss.township && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Township</span>
+                      <span>{enrichmentData.plss.township}</span>
+                    </div>
+                  )}
+                  {enrichmentData.plss.range && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Range</span>
+                      <span>{enrichmentData.plss.range}</span>
+                    </div>
+                  )}
+                  <p className="text-xs text-muted-foreground">BLM CadNSDI</p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {enrichmentData?.watershed && (
+            <Card data-testid="card-watershed">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Waves className="w-4 h-4 text-blue-500" />
+                  <h4 className="font-semibold">Watershed</h4>
+                </div>
+                <div className="space-y-2 text-sm">
+                  {enrichmentData.watershed.watershedName && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Watershed Name</span>
+                      <span className="font-medium text-right max-w-[60%]">{enrichmentData.watershed.watershedName}</span>
+                    </div>
+                  )}
+                  {enrichmentData.watershed.huc8 && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">HUC-8</span>
+                      <span className="font-mono text-xs">{enrichmentData.watershed.huc8}</span>
+                    </div>
+                  )}
+                  {enrichmentData.watershed.huc12 && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">HUC-12</span>
+                      <span className="font-mono text-xs">{enrichmentData.watershed.huc12}</span>
+                    </div>
+                  )}
+                  <p className="text-xs text-muted-foreground">EPA NHD Plus / WATERS</p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {enrichmentData?.femaNri && (
+            <Card data-testid="card-fema-nri">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Shield className="w-4 h-4 text-red-500" />
+                  <h4 className="font-semibold">FEMA National Risk Index</h4>
+                </div>
+                <div className="space-y-2 text-sm">
+                  {enrichmentData.femaNri.compositeScore !== undefined && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Composite Risk Score</span>
+                      <span className={`font-bold text-lg ${enrichmentData.femaNri.compositeScore > 70 ? "text-red-600" : enrichmentData.femaNri.compositeScore > 40 ? "text-yellow-600" : "text-green-600"}`}>
+                        {enrichmentData.femaNri.compositeScore.toFixed(1)}
+                      </span>
+                    </div>
+                  )}
+                  {enrichmentData.femaNri.riverineFloodRisk && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Riverine Flood</span>
+                      <span className="capitalize">{enrichmentData.femaNri.riverineFloodRisk}</span>
+                    </div>
+                  )}
+                  {enrichmentData.femaNri.tornadoRisk && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Tornado</span>
+                      <span className="capitalize">{enrichmentData.femaNri.tornadoRisk}</span>
+                    </div>
+                  )}
+                  {enrichmentData.femaNri.wildfireRisk && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Wildfire</span>
+                      <span className="capitalize">{enrichmentData.femaNri.wildfireRisk}</span>
+                    </div>
+                  )}
+                  {enrichmentData.femaNri.hailRisk && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Hail</span>
+                      <span className="capitalize">{enrichmentData.femaNri.hailRisk}</span>
+                    </div>
+                  )}
+                  <p className="text-xs text-muted-foreground">FEMA National Risk Index (Official)</p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {enrichmentData?.usdaClu && (
+            <Card data-testid="card-usda-clu">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Wheat className="w-4 h-4 text-green-600" />
+                  <h4 className="font-semibold">USDA Farm Records (CLU)</h4>
+                </div>
+                <div className="space-y-2 text-sm">
+                  {enrichmentData.usdaClu.farmNumber && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Farm Number</span>
+                      <span className="font-mono">{enrichmentData.usdaClu.farmNumber}</span>
+                    </div>
+                  )}
+                  {enrichmentData.usdaClu.tractNumber && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Tract Number</span>
+                      <span className="font-mono">{enrichmentData.usdaClu.tractNumber}</span>
+                    </div>
+                  )}
+                  {enrichmentData.usdaClu.calculatedAcres !== undefined && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Calculated Acres</span>
+                      <span className="font-medium">{enrichmentData.usdaClu.calculatedAcres.toFixed(2)} ac</span>
+                    </div>
+                  )}
+                  {enrichmentData.usdaClu.cluId && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">CLU ID</span>
+                      <span className="font-mono text-xs">{enrichmentData.usdaClu.cluId}</span>
+                    </div>
+                  )}
+                  <p className="text-xs text-muted-foreground">USDA FSA Common Land Units</p>
                 </div>
               </CardContent>
             </Card>
