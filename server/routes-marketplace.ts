@@ -2,6 +2,9 @@ import { Router, type Request, type Response } from 'express';
 import { marketplaceService } from './services/marketplace';
 import { matchmaking } from './services/matchmaking';
 import { isAuthenticated } from './auth';
+import { db } from './db';
+import { investorProfiles, organizations } from '@shared/schema';
+import { eq, desc } from 'drizzle-orm';
 
 const router = Router();
 
@@ -252,6 +255,88 @@ router.post('/deal-rooms', async (req: Request, res: Response) => {
     const { listingId, sellerOrgId } = req.body;
     const dealRoom = await marketplaceService.createDealRoom(listingId, org.id, sellerOrgId);
     res.json({ dealRoom, success: true });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// =====================
+// INVESTOR DIRECTORY
+// =====================
+
+router.get('/investors', async (req: Request, res: Response) => {
+  try {
+    const profiles = await db
+      .select({
+        profile: investorProfiles,
+        org: {
+          id: organizations.id,
+          name: organizations.name,
+        },
+      })
+      .from(investorProfiles)
+      .leftJoin(organizations, eq(investorProfiles.organizationId, organizations.id))
+      .orderBy(desc(investorProfiles.isVerified), desc(investorProfiles.dealsClosed));
+    res.json({ investors: profiles });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/investors/:id', async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id);
+    const results = await db
+      .select({
+        profile: investorProfiles,
+        org: {
+          id: organizations.id,
+          name: organizations.name,
+        },
+      })
+      .from(investorProfiles)
+      .leftJoin(organizations, eq(investorProfiles.organizationId, organizations.id))
+      .where(eq(investorProfiles.id, id))
+      .limit(1);
+
+    if (results.length === 0) {
+      return res.status(404).json({ error: 'Investor profile not found' });
+    }
+    res.json({ investor: results[0] });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.patch('/investors/me', async (req: Request, res: Response) => {
+  try {
+    const org = getOrg(req);
+    const data = req.body;
+
+    // Upsert: try update first, then insert if not found
+    const existing = await db
+      .select({ id: investorProfiles.id })
+      .from(investorProfiles)
+      .where(eq(investorProfiles.organizationId, org.id))
+      .limit(1);
+
+    if (existing.length > 0) {
+      const [updated] = await db
+        .update(investorProfiles)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(investorProfiles.organizationId, org.id))
+        .returning();
+      return res.json({ profile: updated, success: true });
+    }
+
+    // Create new profile
+    const profile = await marketplaceService.getInvestorProfile(org.id);
+    const [updated] = await db
+      .update(investorProfiles)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(investorProfiles.organizationId, org.id))
+      .returning();
+    res.json({ profile: updated, success: true });
   } catch (error: any) {
     res.status(400).json({ error: error.message });
   }

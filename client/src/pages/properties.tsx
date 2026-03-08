@@ -98,6 +98,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Plus, MapPin, Ruler, DollarSign, Trash2, Loader2, Map as MapIcon, RefreshCw, FileText, Download, Upload, CheckCircle, AlertCircle, ClipboardCheck, Printer, Calculator, BarChart2, X, CheckSquare, Droplets, Leaf, Building2, Flame, Users, Brain, Shield, Zap, Mountain, TreePine, Car, TrendingUp, Thermometer, Cloud, Waves, Wheat, Factory, Grid3x3 } from "lucide-react";
+import { LandCreditBadge } from "@/components/land-credit-badge";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { DealCalculator } from "@/components/deal-calculator";
@@ -830,7 +831,8 @@ function PropertyCard({ property, onDelete }: {
             </div>
           </div>
         )}
-        <div className="absolute top-2 right-2 flex gap-1 z-10">
+        <div className="absolute top-2 right-2 flex gap-1 z-10 items-center">
+          <LandCreditBadge propertyId={property.id} size="sm" />
           <Badge variant={property.status === 'available' ? 'default' : 'secondary'} className="capitalize shadow-sm text-xs">
             {property.status.replace('_', ' ')}
           </Badge>
