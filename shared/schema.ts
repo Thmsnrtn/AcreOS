@@ -216,6 +216,35 @@ export const insertOrganizationIntegrationSchema = createInsertSchema(organizati
 export type InsertOrganizationIntegration = z.infer<typeof insertOrganizationIntegrationSchema>;
 export type OrganizationIntegration = typeof organizationIntegrations.$inferSelect;
 
+// White-label tenant configurations — persisted so configs survive server restarts
+export const whiteLabelConfigs = pgTable("white_label_configs", {
+  id: serial("id").primaryKey(),
+  tenantId: text("tenant_id").notNull().unique(), // UUID assigned on create
+  organizationId: integer("organization_id").references(() => organizations.id).notNull().unique(),
+  parentOrganizationId: integer("parent_organization_id").references(() => organizations.id).notNull(),
+  brandName: text("brand_name").notNull(),
+  logoUrl: text("logo_url"),
+  faviconUrl: text("favicon_url"),
+  primaryColor: text("primary_color").notNull().default("#2563eb"),
+  accentColor: text("accent_color").notNull().default("#16a34a"),
+  customDomain: text("custom_domain").unique(),
+  supportEmail: text("support_email").notNull(),
+  supportPhone: text("support_phone"),
+  footerText: text("footer_text").notNull().default("Powered by AcreOS"),
+  features: jsonb("features").$type<{
+    marketplace: boolean; academy: boolean; dealHunter: boolean; voiceAI: boolean;
+    visionAI: boolean; capitalMarkets: boolean; negotiationCopilot: boolean;
+    portfolioOptimizer: boolean; complianceAI: boolean; taxResearcher: boolean;
+  }>().notNull(),
+  revenueShare: jsonb("revenue_share").$type<{ platformFeePercent: number; resellerFeePercent: number }>().notNull(),
+  limits: jsonb("limits").$type<{ maxUsers: number; maxLeads: number; maxProperties: number; maxCampaigns: number }>().notNull(),
+  plan: text("plan").notNull().default("starter"), // starter | professional | enterprise
+  billingEmail: text("billing_email").notNull(),
+  status: text("status").notNull().default("active"), // active | suspended | cancelled
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // Borrower payment profiles - maps borrowers to Stripe Customer IDs for connected accounts
 export const borrowerPaymentProfiles = pgTable("borrower_payment_profiles", {
   id: serial("id").primaryKey(),
@@ -704,6 +733,18 @@ export const notes = pgTable("notes", {
   serviceFee: numeric("service_fee").default("0"), // Monthly note servicing fee
   lateFee: numeric("late_fee").default("0"),
   gracePeriodDays: integer("grace_period_days").default(10),
+
+  // Property Tax Escrow (GeekPay parity)
+  // Collects pro-rated property taxes monthly from borrower alongside loan payment
+  taxEscrowEnabled: boolean("tax_escrow_enabled").default(false),
+  annualPropertyTax: numeric("annual_property_tax").default("0"), // Annual tax amount for this property
+  monthlyTaxEscrow: numeric("monthly_tax_escrow").default("0"), // = annualPropertyTax / 12
+  taxEscrowBalance: numeric("tax_escrow_balance").default("0"), // Accumulated escrow balance
+  taxEscrowAccountId: text("tax_escrow_account_id"), // Reference to escrow account
+  lastTaxPaymentDate: timestamp("last_tax_payment_date"), // Last time taxes were paid from escrow
+  nextTaxDueDate: timestamp("next_tax_due_date"), // Next county tax due date
+  taxPaymentYear: integer("tax_payment_year"), // Tax year currently being escrowed
+  countyTaxPortalUrl: text("county_tax_portal_url"), // Direct link to county payment portal
   
   // Dates
   startDate: timestamp("start_date").notNull(),
@@ -720,9 +761,20 @@ export const notes = pgTable("notes", {
   downPaymentReceived: boolean("down_payment_received").default(false),
   
   // Payment method info (for automation)
-  paymentMethod: text("payment_method"), // ach, card, manual
-  paymentAccountId: text("payment_account_id"), // Reference to stored payment method
+  paymentMethod: text("payment_method"), // ach_actum, ach_authorize, card_stripe, card_authorize, manual
+  paymentAccountId: text("payment_account_id"), // Reference to stored payment method (primary)
   autoPayEnabled: boolean("auto_pay_enabled").default(false),
+
+  // Fallback payment cascade (GeekPay parity)
+  // If primary payment fails, system tries fallback accounts in order
+  fallbackPaymentAccounts: jsonb("fallback_payment_accounts").$type<{
+    profileId: string;
+    method: "ach_actum" | "ach_authorize" | "card_stripe" | "card_authorize";
+    last4?: string;
+    bankName?: string;
+    order: number; // 1 = first fallback, 2 = second, etc.
+    isActive: boolean;
+  }[]>(),
   
   // Amortization schedule stored as JSON
   amortizationSchedule: jsonb("amortization_schedule").$type<{
@@ -787,6 +839,34 @@ export const payments = pgTable("payments", {
   index("payments_status_idx").on(table.status),
   index("payments_due_date_idx").on(table.dueDate),
 ]);
+
+// Property tax escrow payments — tracks actual county tax payments made from escrow
+export const taxEscrowPayments = pgTable("tax_escrow_payments", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  noteId: integer("note_id").references(() => notes.id).notNull(),
+  propertyId: integer("property_id").references(() => properties.id),
+
+  taxYear: integer("tax_year").notNull(),
+  installment: text("installment").default("annual"), // annual, first_half, second_half, quarterly
+  amountPaid: numeric("amount_paid").notNull(),
+  escrowBalanceUsed: numeric("escrow_balance_used").notNull(),
+  shortfall: numeric("shortfall").default("0"), // if escrow insufficient
+  excessRefunded: numeric("excess_refunded").default("0"),
+
+  paymentDate: timestamp("payment_date").notNull(),
+  countyConfirmationNumber: text("county_confirmation_number"),
+  paymentMethod: text("payment_method").default("manual"), // manual, portal, check
+  countyTaxPortalUrl: text("county_tax_portal_url"),
+
+  notes: text("notes"),
+  receiptUrl: text("receipt_url"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertTaxEscrowPaymentSchema = createInsertSchema(taxEscrowPayments).omit({ id: true, createdAt: true });
+export type InsertTaxEscrowPayment = z.infer<typeof insertTaxEscrowPaymentSchema>;
+export type TaxEscrowPayment = typeof taxEscrowPayments.$inferSelect;
 
 // Payment reminders for automated delinquency management
 export const paymentReminders = pgTable("payment_reminders", {
@@ -9546,3 +9626,22 @@ export const systemApiKeys = pgTable("system_api_keys", {
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+// ─── Goals ───────────────────────────────────────────────────────────────────
+// Acquisition / revenue targets for the org.
+// current_value is computed dynamically — not stored here.
+export const goals = pgTable("goals", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  label: text("label").notNull(),
+  goalType: text("goal_type").notNull(), // deals_closed | notes_deployed | revenue_earned | leads_contacted
+  targetValue: numeric("target_value", { precision: 14, scale: 2 }).notNull(),
+  periodStart: timestamp("period_start").notNull(),
+  periodEnd: timestamp("period_end").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertGoalSchema = createInsertSchema(goals).omit({ id: true, createdAt: true, updatedAt: true });
+export type Goal = typeof goals.$inferSelect;
+export type InsertGoal = typeof goals.$inferInsert;

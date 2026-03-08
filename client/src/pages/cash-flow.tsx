@@ -103,6 +103,17 @@ export default function CashFlowPage() {
     },
   });
 
+  // 24-month portfolio timeline
+  const { data: portfolioTimelineData } = useQuery({
+    queryKey: ['cash-flow', 'portfolio', 'timeline'],
+    queryFn: async () => {
+      const res = await fetch('/api/cash-flow/portfolio/timeline?months=24', { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to fetch portfolio timeline');
+      return res.json();
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
   const generateMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch('/api/cash-flow/forecast', {
@@ -232,7 +243,7 @@ export default function CashFlowPage() {
       {summary && (
         <Tabs defaultValue="timeline">
           <TabsList>
-            <TabsTrigger value="timeline">12-Month Timeline</TabsTrigger>
+            <TabsTrigger value="timeline">Portfolio Timeline</TabsTrigger>
             <TabsTrigger value="breakdown">Income Breakdown</TabsTrigger>
             <TabsTrigger value="risk">High-Risk Notes ({highRisk.length})</TabsTrigger>
             {insights.length > 0 && <TabsTrigger value="insights">AI Insights ({insights.length})</TabsTrigger>}
@@ -240,7 +251,83 @@ export default function CashFlowPage() {
           </TabsList>
 
           {/* ── TIMELINE ── */}
-          <TabsContent value="timeline">
+          <TabsContent value="timeline" className="space-y-4">
+            {/* 24-month portfolio income timeline with uncertainty band */}
+            {portfolioTimelineData?.timeline && portfolioTimelineData.timeline.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>24-Month Income Projection</CardTitle>
+                  <CardDescription>
+                    Expected monthly income across all active notes and owned properties.
+                    Shaded band shows uncertainty range. Balloon payments are highlighted.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <AreaChart data={portfolioTimelineData.timeline}>
+                      <defs>
+                        <linearGradient id="incomeGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="#10b981" stopOpacity={0.05} />
+                        </linearGradient>
+                        <linearGradient id="bandGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.1} />
+                          <stop offset="95%" stopColor="#10b981" stopOpacity={0.02} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="month" tick={{ fontSize: 10 }} interval={2} />
+                      <YAxis tickFormatter={(v) => formatDollar(v)} width={80} />
+                      <Tooltip
+                        formatter={(v: any, name: string) => [
+                          formatDollar(v),
+                          name === 'incomeLow' ? 'Low estimate' :
+                          name === 'incomeHigh' ? 'High estimate' : 'Expected income',
+                        ]}
+                        labelFormatter={(label: string) => {
+                          const row = portfolioTimelineData.timeline.find((r: any) => r.month === label);
+                          return row?.isBalloon ? `${label} 🎈 Balloon payment due` : label;
+                        }}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="incomeHigh"
+                        stroke="none"
+                        fill="url(#bandGrad)"
+                        legendType="none"
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="income"
+                        stroke="#10b981"
+                        strokeWidth={2}
+                        fill="url(#incomeGrad)"
+                        name="Expected income"
+                        dot={(props: any) => {
+                          const { cx, cy, payload } = props;
+                          if (!payload.isBalloon) return <g key={`dot-${cx}-${cy}`} />;
+                          return (
+                            <circle key={`balloon-${cx}-${cy}`} cx={cx} cy={cy} r={6}
+                              fill="#f59e0b" stroke="#fff" strokeWidth={2} />
+                          );
+                        }}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="incomeLow"
+                        stroke="none"
+                        fill="white"
+                        legendType="none"
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Yellow dots indicate balloon payment months. Band represents ±25% uncertainty.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+
             <Card>
               <CardHeader>
                 <CardTitle>Monthly Cash Flow Projection</CardTitle>

@@ -1,8 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, lazy, Suspense } from "react";
 import { PageShell } from "@/components/page-shell";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Button } from "@/components/ui/button";
-import { Link } from "wouter";
 import {
   Banknote,
   PieChart,
@@ -11,6 +9,11 @@ import {
   Landmark,
 } from "lucide-react";
 import FinancePage from "@/pages/finance";
+
+const PortfolioOptimizerPage = lazy(() => import("@/pages/portfolio-optimizer"));
+const CashFlowPage = lazy(() => import("@/pages/cash-flow"));
+const CapitalMarketsPage = lazy(() => import("@/pages/capital-markets"));
+const PortfolioPage = lazy(() => import("@/pages/portfolio"));
 
 type TabValue = "notes" | "finance" | "portfolio" | "forecast" | "capital";
 
@@ -22,27 +25,10 @@ function getTabFromHash(): TabValue {
   return "notes";
 }
 
-function LinkPanel({
-  icon: Icon,
-  title,
-  description,
-  href,
-  cta,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  title: string;
-  description: string;
-  href: string;
-  cta: string;
-}) {
+function TabFallback() {
   return (
-    <div className="flex flex-col items-center justify-center py-20 gap-4">
-      <Icon className="w-10 h-10 text-muted-foreground" />
-      <h3 className="text-lg font-medium">{title}</h3>
-      <p className="text-sm text-muted-foreground text-center max-w-xs">{description}</p>
-      <Button asChild>
-        <Link href={href}>{cta}</Link>
-      </Button>
+    <div className="flex items-center justify-center py-20">
+      <div className="animate-pulse text-muted-foreground text-sm">Loading...</div>
     </div>
   );
 }
@@ -106,43 +92,27 @@ export default function MoneyPage() {
         </TabsContent>
 
         <TabsContent value="finance" data-testid="tab-content-finance">
-          <LinkPanel
-            icon={BarChart3}
-            title="Finance"
-            description="Full financial management: income tracking, expense reports, and loan details."
-            href="/finance"
-            cta="Open Finance"
-          />
+          <Suspense fallback={<TabFallback />}>
+            <PortfolioPage />
+          </Suspense>
         </TabsContent>
 
         <TabsContent value="portfolio" data-testid="tab-content-portfolio">
-          <LinkPanel
-            icon={PieChart}
-            title="Portfolio"
-            description="View your investment portfolio performance and asset allocation."
-            href="/portfolio"
-            cta="Open Portfolio"
-          />
+          <Suspense fallback={<TabFallback />}>
+            <PortfolioOptimizerPage />
+          </Suspense>
         </TabsContent>
 
         <TabsContent value="forecast" data-testid="tab-content-forecast">
-          <LinkPanel
-            icon={TrendingUp}
-            title="Cash Flow Forecast"
-            description="Project future cash flows based on existing notes and pipeline."
-            href="/analytics"
-            cta="Open Forecast"
-          />
+          <Suspense fallback={<TabFallback />}>
+            <CashFlowPage />
+          </Suspense>
         </TabsContent>
 
         <TabsContent value="capital" data-testid="tab-content-capital">
-          <LinkPanel
-            icon={Landmark}
-            title="Capital Markets"
-            description="Access lending options, note buyers, and capital partners."
-            href="/analytics"
-            cta="Open Capital Markets"
-          />
+          <Suspense fallback={<TabFallback />}>
+            <CapitalMarketsPage />
+          </Suspense>
         </TabsContent>
       </Tabs>
     </PageShell>

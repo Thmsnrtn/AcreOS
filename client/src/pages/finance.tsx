@@ -51,6 +51,7 @@ export default function FinancePage() {
   const [selectedNote, setSelectedNote] = useState<NoteWithDetails | null>(null);
   const [deletingNote, setDeletingNote] = useState<NoteWithDetails | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [isQboSyncing, setIsQboSyncing] = useState(false);
   const { mutate: deleteNote, isPending: isDeleting } = useDeleteNote();
 
   const handleExport = async () => {
@@ -72,6 +73,20 @@ export default function FinancePage() {
       console.error('Export error:', error);
     } finally {
       setIsExporting(false);
+    }
+  };
+
+  const handleQboSync = async () => {
+    setIsQboSyncing(true);
+    try {
+      const res = await fetch('/api/bookkeeping/quickbooks/sync', { method: 'POST', credentials: 'include' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Sync failed');
+      toast({ title: "QuickBooks sync complete", description: `Synced ${data.synced} payment(s)${data.errors > 0 ? `, ${data.errors} error(s)` : ''}.` });
+    } catch (err: any) {
+      toast({ title: "QuickBooks sync failed", description: err.message, variant: "destructive" });
+    } finally {
+      setIsQboSyncing(false);
     }
   };
 
@@ -124,14 +139,23 @@ export default function FinancePage() {
               <p className="text-muted-foreground">Manage promissory notes and track payments.</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Button 
-                variant="outline" 
-                onClick={handleExport} 
+              <Button
+                variant="outline"
+                onClick={handleExport}
                 disabled={isExporting}
                 data-testid="button-export-notes"
               >
                 {isExporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
                 Export CSV
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handleQboSync}
+                disabled={isQboSyncing}
+                data-testid="button-qbo-sync"
+              >
+                {isQboSyncing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+                Sync to QuickBooks
               </Button>
               <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
                 <DialogTrigger asChild>

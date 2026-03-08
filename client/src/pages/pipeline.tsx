@@ -1,9 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, lazy, Suspense } from "react";
 import { PageShell } from "@/components/page-shell";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Link } from "wouter";
 import {
   GitBranch,
   Users,
@@ -12,6 +9,10 @@ import {
   Mail,
 } from "lucide-react";
 import DealsPage from "@/pages/deals";
+
+const LeadsPage = lazy(() => import("@/pages/leads"));
+const PropertiesPage = lazy(() => import("@/pages/properties"));
+const CampaignsPage = lazy(() => import("@/pages/campaigns"));
 
 type TabValue = "board" | "leads" | "properties" | "deals" | "outreach";
 
@@ -23,27 +24,10 @@ function getTabFromHash(): TabValue {
   return "board";
 }
 
-function LinkPanel({
-  icon: Icon,
-  title,
-  description,
-  href,
-  cta,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  title: string;
-  description: string;
-  href: string;
-  cta: string;
-}) {
+function TabFallback() {
   return (
-    <div className="flex flex-col items-center justify-center py-20 gap-4">
-      <Icon className="w-10 h-10 text-muted-foreground" />
-      <h3 className="text-lg font-medium">{title}</h3>
-      <p className="text-sm text-muted-foreground text-center max-w-xs">{description}</p>
-      <Button asChild>
-        <Link href={href}>{cta}</Link>
-      </Button>
+    <div className="flex items-center justify-center py-20">
+      <div className="animate-pulse text-muted-foreground text-sm">Loading...</div>
     </div>
   );
 }
@@ -107,43 +91,27 @@ export default function PipelinePage() {
         </TabsContent>
 
         <TabsContent value="leads" data-testid="tab-content-leads">
-          <LinkPanel
-            icon={Users}
-            title="Leads CRM"
-            description="Manage your land seller leads, skip trace, and track nurturing stages."
-            href="/leads"
-            cta="Open Leads CRM"
-          />
+          <Suspense fallback={<TabFallback />}>
+            <LeadsPage />
+          </Suspense>
         </TabsContent>
 
         <TabsContent value="properties" data-testid="tab-content-properties">
-          <LinkPanel
-            icon={Map}
-            title="Property Inventory"
-            description="Track properties you own, are evaluating, or have listed for sale."
-            href="/properties"
-            cta="Open Properties"
-          />
+          <Suspense fallback={<TabFallback />}>
+            <PropertiesPage />
+          </Suspense>
         </TabsContent>
 
         <TabsContent value="deals" data-testid="tab-content-deals">
-          <LinkPanel
-            icon={Briefcase}
-            title="Deal Pipeline"
-            description="Visualize and manage your deal flow from offer to close."
-            href="/deals"
-            cta="Open Deals"
-          />
+          <Suspense fallback={<TabFallback />}>
+            <DealsPage />
+          </Suspense>
         </TabsContent>
 
         <TabsContent value="outreach" data-testid="tab-content-outreach">
-          <LinkPanel
-            icon={Mail}
-            title="Campaigns & Outreach"
-            description="Run email, SMS, and direct mail campaigns to reach sellers."
-            href="/campaigns"
-            cta="Open Campaigns"
-          />
+          <Suspense fallback={<TabFallback />}>
+            <CampaignsPage />
+          </Suspense>
         </TabsContent>
       </Tabs>
     </PageShell>

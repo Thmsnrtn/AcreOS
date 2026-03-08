@@ -7,7 +7,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { alertingService } from "./services/alerting";
 import { usageMeteringService, creditService } from "./services/credits";
-import { organizationIntegrations } from "@shared/schema";
+import { organizationIntegrations, callTranscripts } from "@shared/schema";
 import { requireAdminOrAbove } from "./utils/permissions";
 import { registerAIOperationsRoutes } from "./routes-ai-operations";
 
@@ -332,6 +332,51 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
     } catch (error: any) {
       console.error("Twilio webhook error:", error);
       res.status(500).send("Webhook processing error");
+    }
+  });
+
+  // POST /api/webhooks/twilio/recording-status
+  // Twilio posts here when a call recording is ready.
+  // Looks up the pending transcript by CallSid, then triggers Whisper transcription.
+  api.post("/api/webhooks/twilio/recording-status", async (req, res) => {
+    // Always respond 200 immediately so Twilio doesn't retry
+    res.status(200).send("OK");
+
+    const { CallSid, RecordingUrl, RecordingSid, RecordingStatus } = req.body;
+
+    if (RecordingStatus !== "completed" || !RecordingUrl || !CallSid) return;
+
+    try {
+      // MP3 format requires appending .mp3 to the Twilio URL
+      const audioUrl = RecordingUrl.endsWith(".mp3") ? RecordingUrl : `${RecordingUrl}.mp3`;
+
+      // Find the transcript that corresponds to this call
+      const [transcript] = await db
+        .select()
+        .from(callTranscripts)
+        .where(eq(callTranscripts.callId, CallSid))
+        .limit(1);
+
+      if (!transcript) {
+        console.log(`[Twilio Recording] No transcript found for CallSid ${CallSid}`);
+        return;
+      }
+
+      // Update the audioUrl on the transcript record
+      await db
+        .update(callTranscripts)
+        .set({ audioUrl })
+        .where(eq(callTranscripts.id, transcript.id));
+
+      // Trigger Whisper transcription asynchronously
+      const { voiceCallAIService } = await import("./services/voiceCallAI");
+      voiceCallAIService.transcribeCall(transcript.id, audioUrl).catch((err: any) => {
+        console.error(`[Twilio Recording] Whisper transcription failed for transcript ${transcript.id}:`, err.message);
+      });
+
+      console.log(`[Twilio Recording] Queued transcription for transcript ${transcript.id} (CallSid ${CallSid})`);
+    } catch (error: any) {
+      console.error("[Twilio Recording] Webhook error:", error.message);
     }
   });
 

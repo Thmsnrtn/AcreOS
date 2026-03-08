@@ -1091,6 +1091,37 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       res.status(400).json({ message: err.message || "Failed to update stage" });
     }
   });
-  
+
+  // Bulk operations
+  api.post("/api/deals/bulk-delete", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { ids } = req.body;
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ message: "ids must be a non-empty array" });
+      }
+      const deletedCount = await storage.bulkDeleteDeals(org.id, ids);
+      res.json({ deletedCount });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to bulk delete deals" });
+    }
+  });
+
+  api.post("/api/deals/bulk-update", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { ids, updates } = req.body;
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ message: "ids must be a non-empty array" });
+      }
+      if (!updates || typeof updates !== "object") {
+        return res.status(400).json({ message: "updates must be an object" });
+      }
+      const updatedCount = await storage.bulkUpdateDeals(org.id, ids, updates);
+      res.json({ updatedCount });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to bulk update deals" });
+    }
+  });
 
 }
