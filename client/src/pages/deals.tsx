@@ -82,6 +82,11 @@ export default function DealsPage() {
   const [deletingDeal, setDeletingDeal] = useState<DealWithProperty | null>(null);
   const { mutate: deleteDeal, isPending: isDeleting } = useDeleteDeal();
   const [isExporting, setIsExporting] = useState(false);
+  const [selectedDealIds, setSelectedDealIds] = useState<Set<number>>(new Set());
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const [isBulkUpdating, setIsBulkUpdating] = useState(false);
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+  const { toast } = useToast();
   const [mobileViewMode, setMobileViewMode] = useState<'kanban' | 'list'>('kanban');
   const [selectedStageIndex, setSelectedStageIndex] = useState(0);
   const [activeDragId, setActiveDragId] = useState<number | null>(null);
@@ -119,6 +124,58 @@ export default function DealsPage() {
     } finally {
       setIsExporting(false);
     }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedDealIds.size === 0) return;
+    setIsBulkDeleting(true);
+    try {
+      const res = await apiRequest("POST", "/api/deals/bulk-delete", { ids: Array.from(selectedDealIds) });
+      const result = await res.json();
+      toast({ title: "Deleted", description: `Deleted ${result.deletedCount} deal(s).` });
+      setSelectedDealIds(new Set());
+      queryClient.invalidateQueries({ queryKey: ['/api/deals'] });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to delete deals", variant: "destructive" });
+    } finally {
+      setIsBulkDeleting(false);
+      setShowBulkDeleteConfirm(false);
+    }
+  };
+
+  const handleBulkStageChange = async (status: string) => {
+    if (selectedDealIds.size === 0) return;
+    setIsBulkUpdating(true);
+    try {
+      const res = await apiRequest("POST", "/api/deals/bulk-update", { ids: Array.from(selectedDealIds), updates: { status } });
+      const result = await res.json();
+      toast({ title: "Updated", description: `Updated ${result.updatedCount} deal(s) to "${status}".` });
+      setSelectedDealIds(new Set());
+      queryClient.invalidateQueries({ queryKey: ['/api/deals'] });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to update deals", variant: "destructive" });
+    } finally {
+      setIsBulkUpdating(false);
+    }
+  };
+
+  const handleBulkExport = () => {
+    const selected = enrichedDeals.filter(d => selectedDealIds.has(d.id));
+    const headers = ["id", "type", "status", "offerAmount", "acceptedAmount", "county", "state"];
+    const rows = [headers.join(","), ...selected.map(d =>
+      [d.id, d.type, d.status, d.offerAmount || "", d.acceptedAmount || "", d.property?.county || "", d.property?.state || ""]
+        .map(v => `"${v || ""}"`)
+        .join(",")
+    )];
+    const blob = new Blob([rows.join("\n")], { type: "text/csv" });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `deals-export-${new Date().toISOString().split("T")[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
   };
 
   const enrichedDeals: DealWithProperty[] = (deals || []).map(deal => ({
@@ -248,6 +305,37 @@ export default function DealsPage() {
             </Card>
           </div>
 
+          {selectedDealIds.size > 0 && (
+            <div className="p-3 bg-muted/50 border rounded-md space-y-3 md:space-y-0 md:flex md:flex-wrap md:items-center md:gap-3" data-testid="bulk-actions-toolbar-deals">
+              <div className="flex items-center gap-2">
+                <CheckSquare className="w-4 h-4" />
+                <span className="text-sm font-medium">{selectedDealIds.size} deal{selectedDealIds.size !== 1 ? "s" : ""} selected</span>
+                <Button variant="ghost" size="icon" className="md:hidden min-h-[44px] min-w-[44px] ml-auto" onClick={() => setSelectedDealIds(new Set())}>
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+              <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap md:items-center md:gap-2 md:ml-auto">
+                <Button variant="outline" className="min-h-[44px] md:min-h-8" onClick={handleBulkExport} data-testid="button-bulk-export-deals">
+                  <Download className="w-4 h-4 mr-1" /> Export
+                </Button>
+                <Select onValueChange={handleBulkStageChange} disabled={isBulkUpdating}>
+                  <SelectTrigger className="min-h-[44px] md:min-h-8 w-full md:w-[160px]" data-testid="select-bulk-stage-deals">
+                    <SelectValue placeholder={isBulkUpdating ? "Updating..." : "Change Stage"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {dealStages.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <Button variant="destructive" className="min-h-[44px] md:min-h-8 col-span-2 md:col-span-1" onClick={() => setShowBulkDeleteConfirm(true)} disabled={isBulkDeleting} data-testid="button-bulk-delete-deals">
+                  <Trash2 className="w-4 h-4 mr-1" /> Delete
+                </Button>
+                <Button variant="ghost" size="sm" className="hidden md:flex" onClick={() => setSelectedDealIds(new Set())}>
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+
           {!isLoading && enrichedDeals.length === 0 ? (
             <DealsEmptyState
               onAddDeal={() => setIsCreateOpen(true)}
@@ -339,11 +427,23 @@ export default function DealsPage() {
                         </div>
                         <div className="space-y-2">
                           {stageDeals.map((deal) => (
-                            <DealCard 
-                              key={deal.id} 
-                              deal={deal} 
-                              onSelect={() => setSelectedDeal(deal)}
-                            />
+                            <div key={deal.id} className="flex items-start gap-2">
+                              <Checkbox
+                                checked={selectedDealIds.has(deal.id)}
+                                onCheckedChange={(checked) => {
+                                  const next = new Set(selectedDealIds);
+                                  checked ? next.add(deal.id) : next.delete(deal.id);
+                                  setSelectedDealIds(next);
+                                }}
+                                className="mt-3 h-5 w-5"
+                              />
+                              <div className="flex-1 min-w-0">
+                                <DealCard
+                                  deal={deal}
+                                  onSelect={() => setSelectedDeal(deal)}
+                                />
+                              </div>
+                            </div>
                           ))}
                         </div>
                       </div>
@@ -457,6 +557,17 @@ export default function DealsPage() {
         confirmLabel="Delete Deal"
         onConfirm={handleDelete}
         isLoading={isDeleting}
+        variant="destructive"
+      />
+
+      <ConfirmDialog
+        open={showBulkDeleteConfirm}
+        onOpenChange={(open) => !open && setShowBulkDeleteConfirm(false)}
+        title="Delete Selected Deals"
+        description={`Delete ${selectedDealIds.size} deal${selectedDealIds.size !== 1 ? "s" : ""}? This cannot be undone.`}
+        confirmLabel="Delete All"
+        onConfirm={handleBulkDelete}
+        isLoading={isBulkDeleting}
         variant="destructive"
       />
     </PageShell>
