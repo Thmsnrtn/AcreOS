@@ -586,24 +586,6 @@ export const toolDefinitions = {
     }
   },
 
-  update_lead_status: {
-    name: "update_lead_status",
-    description: "Update a lead's status in the CRM. Updates the lead status in the database, logs an activity entry, and returns confirmation.",
-    parameters: {
-      type: "object",
-      properties: {
-        leadId: { type: "number", description: "The lead ID to update" },
-        status: {
-          type: "string",
-          enum: ["new", "mailed", "responded", "negotiating", "accepted", "closed", "dead", "interested", "qualified", "under_contract"],
-          description: "New status for the lead"
-        },
-        note: { type: "string", description: "Optional note about the status change" }
-      },
-      required: ["leadId", "status"]
-    }
-  },
-
   get_stale_leads: {
     name: "get_stale_leads",
     description: "Find leads that haven't been contacted recently. Queries leads to find those with no activity in N days and returns a list with lead names and last contact dates.",
@@ -673,13 +655,27 @@ export async function executeTool(
       }
       
       case "update_lead_status": {
-        const updated = await storage.updateLead(args.lead_id, { 
+        const leadBeforeUpdate = await storage.getLead(org.id, args.lead_id);
+        const updated = await storage.updateLead(args.lead_id, {
           status: args.status,
-          notes: args.notes 
+          notes: args.notes
         });
+        // Log activity for auditability
+        if (leadBeforeUpdate) {
+          await storage.logActivity({
+            organizationId: org.id,
+            agentType: "atlas",
+            action: "status_changed",
+            entityType: "lead",
+            entityId: args.lead_id,
+            description: `Status changed to "${args.status}"${args.notes ? `: ${args.notes}` : ""}`,
+            changes: { status: { old: leadBeforeUpdate.status, new: args.status } },
+          });
+        }
+        invalidateContextCache(org.id);
         return { success: true, data: { message: `Lead status updated to ${args.status}`, lead: updated } };
       }
-      
+
       case "create_lead": {
         const lead = await storage.createLead({
           organizationId: org.id,
@@ -1682,41 +1678,6 @@ export async function executeTool(
               note: compData.length === 0
                 ? "No internal comparable sales found in this county. Consider using run_comps_analysis for external data sources."
                 : `Based on ${compData.length} comparable properties in ${property.county} County, ${property.state}.`,
-            }
-          }
-        };
-      }
-
-      case "update_lead_status": {
-        const lead = await storage.getLead(org.id, Number(args.leadId));
-        if (!lead) return { success: false, error: "Lead not found" };
-
-        const updated = await storage.updateLead(Number(args.leadId), {
-          status: args.status,
-          notes: args.note ? `${lead.notes ? lead.notes + "\n" : ""}[${new Date().toLocaleDateString()}] Status changed to ${args.status}: ${args.note}` : lead.notes,
-        });
-
-        // Log the status change activity
-        await storage.logActivity({
-          organizationId: org.id,
-          agentType: "atlas",
-          action: "status_changed",
-          entityType: "lead",
-          entityId: Number(args.leadId),
-          description: `Status changed to "${args.status}"${args.note ? `: ${args.note}` : ""}`,
-          changes: { status: { old: lead.status, new: args.status } },
-        });
-
-        invalidateContextCache(org.id);
-        return {
-          success: true,
-          data: {
-            message: `Lead status updated from "${lead.status}" to "${args.status}"`,
-            lead: {
-              id: updated.id,
-              name: `${updated.firstName} ${updated.lastName}`,
-              oldStatus: lead.status,
-              newStatus: updated.status,
             }
           }
         };
