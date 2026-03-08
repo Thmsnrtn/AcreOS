@@ -2,6 +2,7 @@ import { db } from "../db";
 import { eq } from "drizzle-orm";
 import { organizations, campaigns, type Organization } from "@shared/schema";
 import { storage } from "../storage";
+import type { InsertLead, InsertProperty, InsertDeal } from "@shared/schema";
 import OpenAI from "openai";
 
 function getOpenAIClient(): OpenAI | null {
@@ -305,8 +306,127 @@ Generate 3 helpful tips for this step.`,
       throw new Error("Organization not found");
     }
 
+    const onboardingData = (org.onboardingData as OnboardingData) || {};
+    const businessType = onboardingData.businessType || "land_flipper";
+
+    // Create sample data before marking onboarding complete
+    try {
+      if (businessType === "land_flipper" || businessType === "hybrid") {
+        // Sample leads for land flipper
+        const lead1 = await storage.createLead({
+          organizationId: orgId,
+          type: "seller",
+          firstName: "Sarah",
+          lastName: "Martinez",
+          email: "sarah.m@example.com",
+          phone: "555-0101",
+          address: "456 Ranch Rd",
+          city: "Sedona",
+          state: "AZ",
+          zip: "86336",
+          status: "new",
+          source: "direct_mail",
+          tags: ["motivated"],
+          notes: "Inherited property, wants to sell quickly",
+        } as any);
+
+        await storage.createLead({
+          organizationId: orgId,
+          type: "seller",
+          firstName: "Bill",
+          lastName: "Thompson",
+          email: "b.thompson@example.com",
+          phone: "555-0102",
+          address: "789 Meadow Ln",
+          city: "Prescott",
+          state: "AZ",
+          zip: "86301",
+          status: "contacted",
+          source: "cold_call",
+        } as any);
+
+        // Sample property
+        const sampleProperty = await storage.createProperty({
+          organizationId: orgId,
+          apn: "ONBOARD-SAMPLE-001",
+          county: "Yavapai",
+          state: "AZ",
+          address: "123 Sample Parcel Rd",
+          city: "Sedona",
+          zip: "86336",
+          sizeAcres: "5.2",
+          status: "prospect",
+          marketValue: "45000",
+          purchasePrice: null,
+          sellerId: lead1.id,
+        } as any);
+
+        // Sample deal linked to property
+        await storage.createDeal({
+          organizationId: orgId,
+          propertyId: sampleProperty.id,
+          type: "acquisition",
+          status: "negotiating",
+          offerAmount: "45000",
+          notes: "Sedona Parcel - Martinez Deal",
+        } as any);
+      } else if (businessType === "note_investor") {
+        // Sample leads for note investor
+        await storage.createLead({
+          organizationId: orgId,
+          type: "buyer",
+          firstName: "James",
+          lastName: "Rivera",
+          email: "j.rivera@example.com",
+          phone: "555-0201",
+          address: "100 Buyer Blvd",
+          city: "Phoenix",
+          state: "AZ",
+          zip: "85001",
+          status: "new",
+          source: "direct_mail",
+          tags: ["owner_finance"],
+          notes: "Interested in seller financing on rural land",
+        } as any);
+
+        await storage.createLead({
+          organizationId: orgId,
+          type: "seller",
+          firstName: "Carol",
+          lastName: "Jensen",
+          email: "c.jensen@example.com",
+          phone: "555-0202",
+          address: "200 Note Ln",
+          city: "Flagstaff",
+          state: "AZ",
+          zip: "86001",
+          status: "contacted",
+          source: "referral",
+          tags: ["performing_note"],
+        } as any);
+
+        // Sample property for note
+        await storage.createProperty({
+          organizationId: orgId,
+          apn: "ONBOARD-NOTE-001",
+          county: "Coconino",
+          state: "AZ",
+          address: "300 Finance Rd",
+          city: "Flagstaff",
+          zip: "86001",
+          sizeAcres: "2.5",
+          status: "owned",
+          marketValue: "35000",
+          purchasePrice: "28000",
+        } as any);
+      }
+    } catch (sampleDataError) {
+      // Sample data creation failure must not break onboarding completion
+      console.error("[onboarding] Failed to create sample data (non-fatal):", sampleDataError);
+    }
+
     const settings = (org.settings as any) || {};
-    
+
     await storage.updateOrganization(orgId, {
       onboardingCompleted: true,
       settings: {

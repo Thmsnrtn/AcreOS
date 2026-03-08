@@ -1,5 +1,8 @@
 import crypto from "crypto";
 import { log } from "../index";
+import { db } from "../db";
+import { backgroundJobs } from "@shared/schema";
+import { eq, inArray } from "drizzle-orm";
 
 export type JobType = "email" | "webhook" | "payment_sync" | "notification";
 export type JobStatus = "pending" | "processing" | "completed" | "failed" | "retrying";
@@ -54,7 +57,8 @@ export class JobQueueService {
   }
 
   /**
-   * Add a job to the queue
+   * Add a job to the queue.
+   * Dual-writes to DB for durability, then keeps in the in-memory Map.
    */
   addJob(
     type: JobType,
@@ -80,6 +84,29 @@ export class JobQueueService {
 
     this.jobs.set(jobId, job);
     this.pendingQueue.push(jobId);
+
+    // Persist to DB asynchronously — failures are non-fatal so in-memory
+    // processing continues even if the write fails.
+    db.insert(backgroundJobs)
+      .values({
+        type,
+        payload,
+        status: "pending",
+        attempts: 0,
+        maxAttempts,
+        scheduledFor,
+        error: null,
+        result: undefined,
+      })
+      .then(([row]) => {
+        // Annotate the in-memory job with its DB id for later status updates.
+        if (row) {
+          (job as any)._dbId = (row as any).id;
+        }
+      })
+      .catch((err: unknown) => {
+        log(`Failed to persist job ${jobId} to DB: ${err}`, "jobQueue");
+      });
 
     log(`Job added: ${jobId} (type: ${type})`, "jobQueue");
     return job;
@@ -180,6 +207,9 @@ export class JobQueueService {
       job.status = "failed";
       job.error = `No handler registered for job type: ${job.type}`;
       log(`Job failed (no handler): ${job.id}`, "jobQueue");
+      this.syncJobStatusToDb(job).catch((err: unknown) =>
+        log(`DB sync failed for job ${job.id}: ${err}`, "jobQueue")
+      );
       return;
     }
 
@@ -209,6 +239,35 @@ export class JobQueueService {
         log(`Job failed (max retries): ${job.id}`, "jobQueue");
       }
     }
+
+    // Persist terminal / retry state back to DB.
+    this.syncJobStatusToDb(job).catch((err: unknown) =>
+      log(`DB sync failed for job ${job.id}: ${err}`, "jobQueue")
+    );
+  }
+
+  /**
+   * Update the DB row that backs this in-memory job.
+   * Uses the _dbId annotated by addJob; silently skips if not yet available.
+   */
+  private async syncJobStatusToDb(job: Job): Promise<void> {
+    const dbId: number | undefined = (job as any)._dbId;
+    if (!dbId) return;
+
+    // Map internal "retrying" status to "pending" in the DB schema
+    const dbStatus = job.status === "retrying" ? "pending" : job.status;
+
+    await db
+      .update(backgroundJobs)
+      .set({
+        status: dbStatus,
+        attempts: job.attempts,
+        error: job.error ?? null,
+        result: job.result ?? null,
+        scheduledFor: job.scheduledFor,
+        completedAt: job.completedAt ?? null,
+      })
+      .where(eq(backgroundJobs.id, dbId));
   }
 
   /**
@@ -227,7 +286,9 @@ export class JobQueueService {
   }
 
   /**
-   * Start the background worker
+   * Start the background worker.
+   * On first start, loads any pending/processing jobs from the DB that were
+   * left unfinished by a previous server process (crash recovery).
    */
   startWorker(intervalMs = 10000): void {
     if (this.processInterval) {
@@ -237,11 +298,62 @@ export class JobQueueService {
 
     log(`Starting job queue worker (every ${intervalMs}ms)`, "jobQueue");
 
+    // Hydrate queue from DB before the first tick.
+    this.loadPendingJobsFromDb().catch((err: unknown) => {
+      log(`Failed to hydrate job queue from DB: ${err}`, "jobQueue");
+    });
+
     this.processInterval = setInterval(() => {
       this.processJobs().catch((err) => {
         log(`Job queue processing error: ${err}`, "jobQueue");
       });
     }, intervalMs);
+  }
+
+  /**
+   * Load unfinished jobs (pending / processing) from the DB into the
+   * in-memory Map so they are retried after a server restart.
+   * Jobs already present in memory (same _dbId) are skipped to avoid
+   * duplicates when startWorker is called on a warm instance.
+   */
+  private async loadPendingJobsFromDb(): Promise<void> {
+    try {
+      const rows = await db
+        .select()
+        .from(backgroundJobs)
+        .where(inArray(backgroundJobs.status, ["pending", "processing"]));
+
+      let loaded = 0;
+      for (const row of rows) {
+        // Build an in-memory job mirroring the DB row.
+        const job: Job = {
+          id: crypto.randomUUID(), // generate a fresh in-memory id
+          type: row.type as JobType,
+          payload: (row.payload as Record<string, any>) ?? {},
+          status: "pending",
+          attempts: row.attempts ?? 0,
+          maxAttempts: row.maxAttempts ?? 3,
+          createdAt: row.createdAt ?? new Date(),
+          scheduledFor: row.scheduledFor,
+          error: row.error ?? null,
+          result: row.result as Record<string, any> | undefined,
+        };
+
+        // Link back to DB row so status updates work.
+        (job as any)._dbId = row.id;
+
+        this.jobs.set(job.id, job);
+        this.pendingQueue.push(job.id);
+        loaded++;
+      }
+
+      if (loaded > 0) {
+        log(`Loaded ${loaded} unfinished job(s) from DB`, "jobQueue");
+      }
+    } catch (err) {
+      // Non-fatal: in-memory queue still works without DB hydration.
+      log(`loadPendingJobsFromDb error: ${err}`, "jobQueue");
+    }
   }
 
   /**

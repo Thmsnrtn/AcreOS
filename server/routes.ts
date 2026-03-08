@@ -30,10 +30,18 @@ import taxResearcherRouter from "./routes-tax-researcher";
 import voiceLearningRouter from "./routes-voice-learning";
 import whiteLabelRouter from "./routes-white-label";
 import realtimeRouter from "./routes-realtime";
+import atlasInsightsRouter from "./routes-atlas-insights";
+import voiceRouter from "./routes-voice";
 
 // Rate limiting middleware
 import { createRateLimiter, rateLimiters, RATE_LIMIT_CONFIGS } from "./middleware/rateLimit";
 
+
+// White-label domain middleware
+import { whiteLabelDomainMiddleware } from "./middleware/white-label-domain";
+
+// MCP handler
+import { mcpHandler } from "./mcp-server";
 // Named aliases for backwards compatibility
 const apiRateLimit = rateLimiters.default;
 const strictRateLimit = rateLimiters.strict;
@@ -129,6 +137,9 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
+  // White-label domain middleware — runs before auth so custom domains are resolved early
+  app.use(whiteLabelDomainMiddleware);
+
   // Register Auth
   await setupAuth(app);
   registerAuthRoutes(app);
@@ -223,6 +234,12 @@ export async function registerRoutes(
   app.use('/api/intelligence', isAuthenticated, getOrCreateOrg, voiceLearningRouter);
   app.use('/api/white-label', isAuthenticated, getOrCreateOrg, whiteLabelRouter);
   app.use('/api/realtime', isAuthenticated, getOrCreateOrg, realtimeRouter);
+  app.use('/api/atlas', isAuthenticated, getOrCreateOrg, atlasInsightsRouter);
+  app.post('/api/mcp/execute', mcpHandler);
+
+  // Voice pipeline: webhook (no auth) + authenticated API routes
+  app.use('/', voiceRouter); // handles POST /webhook/twilio/recording-complete
+  app.use('/api/voice', isAuthenticated, getOrCreateOrg, voiceRouter);
 
   // ============================================
   // DOMAIN ROUTE MODULES
