@@ -1,14 +1,17 @@
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PageShell } from "@/components/page-shell";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import {
   Clock, PhoneCall, CheckCircle2, XCircle,
-  ChevronRight, CheckCheck, Loader2,
+  ChevronRight, CheckCheck, Loader2, Sparkles, Send,
 } from "lucide-react";
-import { formatDistanceToNow, subDays, addDays } from "date-fns";
+import { formatDistanceToNow, subDays } from "date-fns";
 
 interface Lead {
   id: number;
@@ -28,6 +31,14 @@ interface Deal {
   updatedAt?: string;
 }
 
+interface AtlasPanelState {
+  isOpen: boolean;
+  contextLabel: string;
+  prefillMessage: string;
+  response: string | null;
+  isLoading: boolean;
+}
+
 function SectionHeader({ title, count, description }: { title: string; count: number; description: string }) {
   return (
     <div className="flex items-start gap-3 mb-3">
@@ -42,9 +53,32 @@ function SectionHeader({ title, count, description }: { title: string; count: nu
   );
 }
 
+function AskAtlasButton({ label, message, onAsk }: { label: string; message: string; onAsk: (msg: string, label: string) => void }) {
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      className="text-xs text-purple-600 border-purple-200 hover:bg-purple-50 dark:hover:bg-purple-900/20"
+      onClick={() => onAsk(message, label)}
+    >
+      <Sparkles className="w-3 h-3 mr-1" />
+      Ask Atlas
+    </Button>
+  );
+}
+
 export default function DecisionQueuePage() {
   const { toast } = useToast();
   const qc = useQueryClient();
+
+  const [atlas, setAtlas] = useState<AtlasPanelState>({
+    isOpen: false,
+    contextLabel: '',
+    prefillMessage: '',
+    response: null,
+    isLoading: false,
+  });
+  const [atlasInput, setAtlasInput] = useState('');
 
   const { data: leads = [], isLoading: leadsLoading } = useQuery<Lead[]>({
     queryKey: ["/api/leads"],
@@ -102,13 +136,43 @@ export default function DecisionQueuePage() {
   const terminalStages = new Set(["closed", "cancelled"]);
   const stuckDeals = deals.filter(d => {
     if (terminalStages.has(d.status)) return false;
-    if (d.status === "offer_sent") return false; // handled above
+    if (d.status === "offer_sent") return false;
     if (!d.updatedAt) return false;
     return new Date(d.updatedAt) < subDays(now, 14);
   });
 
   const totalItems = stalledLeads.length + waitingCounters.length + stuckDeals.length;
   const isLoading = leadsLoading || dealsLoading;
+
+  function openAtlas(prefillMessage: string, contextLabel: string) {
+    setAtlas({ isOpen: true, contextLabel, prefillMessage, response: null, isLoading: false });
+    setAtlasInput(prefillMessage);
+  }
+
+  async function sendAtlasMessage() {
+    const message = atlasInput.trim();
+    if (!message) return;
+
+    setAtlas(prev => ({ ...prev, isLoading: true, response: null }));
+
+    try {
+      const res = await fetch('/api/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message }),
+      });
+
+      if (!res.ok) throw new Error('Atlas unavailable');
+
+      const data = await res.json();
+      const replyText: string =
+        data.response ?? data.message ?? data.content ?? data.reply ?? 'No response received.';
+
+      setAtlas(prev => ({ ...prev, response: replyText, isLoading: false }));
+    } catch (err: any) {
+      setAtlas(prev => ({ ...prev, response: `Error: ${err.message}`, isLoading: false }));
+    }
+  }
 
   if (isLoading) {
     return (
@@ -156,42 +220,48 @@ export default function DecisionQueuePage() {
               description="No contact in 14+ days — these sellers may go cold"
             />
             <div className="space-y-2">
-              {stalledLeads.map(lead => (
-                <Card key={lead.id} className="border-l-4 border-red-400">
-                  <CardContent className="py-3 px-4 flex items-center gap-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm">
-                        {[lead.firstName, lead.lastName].filter(Boolean).join(" ") || `Lead #${lead.id}`}
-                      </p>
-                      {lead.propertyAddress && (
-                        <p className="text-xs text-muted-foreground truncate">{lead.propertyAddress}</p>
-                      )}
-                      <p className="text-xs text-red-500 mt-0.5">
-                        {lead.lastContactedAt
-                          ? `Last contact ${formatDistanceToNow(new Date(lead.lastContactedAt), { addSuffix: true })}`
-                          : "Never contacted"}
-                      </p>
-                    </div>
-                    <div className="flex gap-2 shrink-0">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-xs"
-                        onClick={() =>
-                          updateLead.mutate({
-                            id: lead.id,
-                            data: { lastContactedAt: now.toISOString() } as any,
-                          })
-                        }
-                        disabled={updateLead.isPending}
-                      >
-                        <PhoneCall className="w-3 h-3 mr-1" />
-                        Log Contact
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+              {stalledLeads.map(lead => {
+                const name = [lead.firstName, lead.lastName].filter(Boolean).join(" ") || `Lead #${lead.id}`;
+                const lastContact = lead.lastContactedAt
+                  ? `Last contact ${formatDistanceToNow(new Date(lead.lastContactedAt), { addSuffix: true })}`
+                  : "Never contacted";
+                const atlasMsg = `I have a stalled lead named ${name}${lead.propertyAddress ? ` at ${lead.propertyAddress}` : ''}. ${lastContact}. What should I do to re-engage this seller?`;
+                return (
+                  <Card key={lead.id} className="border-l-4 border-red-400">
+                    <CardContent className="py-3 px-4 flex items-center gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm">{name}</p>
+                        {lead.propertyAddress && (
+                          <p className="text-xs text-muted-foreground truncate">{lead.propertyAddress}</p>
+                        )}
+                        <p className="text-xs text-red-500 mt-0.5">{lastContact}</p>
+                      </div>
+                      <div className="flex gap-2 shrink-0">
+                        <AskAtlasButton
+                          label={`Stalled lead: ${name}`}
+                          message={atlasMsg}
+                          onAsk={openAtlas}
+                        />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-xs"
+                          onClick={() =>
+                            updateLead.mutate({
+                              id: lead.id,
+                              data: { lastContactedAt: now.toISOString() } as any,
+                            })
+                          }
+                          disabled={updateLead.isPending}
+                        >
+                          <PhoneCall className="w-3 h-3 mr-1" />
+                          Log Contact
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           </section>
         )}
@@ -205,45 +275,59 @@ export default function DecisionQueuePage() {
               description="Offers sent 7+ days ago with no response"
             />
             <div className="space-y-2">
-              {waitingCounters.map(deal => (
-                <Card key={deal.id} className="border-l-4 border-orange-400">
-                  <CardContent className="py-3 px-4 flex items-center gap-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm">Deal #{deal.id}</p>
-                      {deal.offerAmount && (
-                        <p className="text-xs text-muted-foreground">
-                          Offer: ${parseFloat(deal.offerAmount).toLocaleString()}
+              {waitingCounters.map(deal => {
+                const offerAmt = deal.offerAmount
+                  ? `$${parseFloat(deal.offerAmount).toLocaleString()}`
+                  : 'unknown amount';
+                const sentWhen = deal.offerDate
+                  ? formatDistanceToNow(new Date(deal.offerDate), { addSuffix: true })
+                  : 'recently';
+                const atlasMsg = `Deal #${deal.id} has had an offer of ${offerAmt} sitting with no response since ${sentWhen}. Should I follow up, revise the offer, or walk away?`;
+                return (
+                  <Card key={deal.id} className="border-l-4 border-orange-400">
+                    <CardContent className="py-3 px-4 flex items-center gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm">Deal #{deal.id}</p>
+                        {deal.offerAmount && (
+                          <p className="text-xs text-muted-foreground">
+                            Offer: ${parseFloat(deal.offerAmount).toLocaleString()}
+                          </p>
+                        )}
+                        <p className="text-xs text-orange-500 mt-0.5">
+                          Sent {formatDistanceToNow(new Date(deal.offerDate!), { addSuffix: true })}
                         </p>
-                      )}
-                      <p className="text-xs text-orange-500 mt-0.5">
-                        Sent {formatDistanceToNow(new Date(deal.offerDate!), { addSuffix: true })}
-                      </p>
-                    </div>
-                    <div className="flex gap-2 shrink-0">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-xs text-green-600"
-                        onClick={() => updateDeal.mutate({ id: deal.id, data: { status: "accepted" } })}
-                        disabled={updateDeal.isPending}
-                      >
-                        <CheckCircle2 className="w-3 h-3 mr-1" />
-                        Accepted
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-xs text-red-600"
-                        onClick={() => updateDeal.mutate({ id: deal.id, data: { status: "cancelled" } })}
-                        disabled={updateDeal.isPending}
-                      >
-                        <XCircle className="w-3 h-3 mr-1" />
-                        Rejected
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                      </div>
+                      <div className="flex gap-2 shrink-0 flex-wrap justify-end">
+                        <AskAtlasButton
+                          label={`Waiting counter: Deal #${deal.id}`}
+                          message={atlasMsg}
+                          onAsk={openAtlas}
+                        />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-xs text-green-600"
+                          onClick={() => updateDeal.mutate({ id: deal.id, data: { status: "accepted" } })}
+                          disabled={updateDeal.isPending}
+                        >
+                          <CheckCircle2 className="w-3 h-3 mr-1" />
+                          Accepted
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-xs text-red-600"
+                          onClick={() => updateDeal.mutate({ id: deal.id, data: { status: "cancelled" } })}
+                          disabled={updateDeal.isPending}
+                        >
+                          <XCircle className="w-3 h-3 mr-1" />
+                          Rejected
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           </section>
         )}
@@ -265,6 +349,10 @@ export default function DecisionQueuePage() {
                   in_escrow: "closed",
                 };
                 const nextStage = stageMap[deal.status];
+                const stalledWhen = deal.updatedAt
+                  ? formatDistanceToNow(new Date(deal.updatedAt), { addSuffix: true })
+                  : '';
+                const atlasMsg = `Deal #${deal.id} is stuck in the "${deal.status.replace(/_/g, ' ')}" stage${stalledWhen ? `, last updated ${stalledWhen}` : ''}. What are the best next steps to move this forward?`;
                 return (
                   <Card key={deal.id} className="border-l-4 border-yellow-400">
                     <CardContent className="py-3 px-4 flex items-center gap-3">
@@ -279,18 +367,25 @@ export default function DecisionQueuePage() {
                           </p>
                         )}
                       </div>
-                      {nextStage && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-xs shrink-0"
-                          onClick={() => updateDeal.mutate({ id: deal.id, data: { status: nextStage } })}
-                          disabled={updateDeal.isPending}
-                        >
-                          <ChevronRight className="w-3 h-3 mr-1" />
-                          Advance
-                        </Button>
-                      )}
+                      <div className="flex gap-2 shrink-0">
+                        <AskAtlasButton
+                          label={`Stuck deal: Deal #${deal.id}`}
+                          message={atlasMsg}
+                          onAsk={openAtlas}
+                        />
+                        {nextStage && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-xs"
+                            onClick={() => updateDeal.mutate({ id: deal.id, data: { status: nextStage } })}
+                            disabled={updateDeal.isPending}
+                          >
+                            <ChevronRight className="w-3 h-3 mr-1" />
+                            Advance
+                          </Button>
+                        )}
+                      </div>
                     </CardContent>
                   </Card>
                 );
@@ -299,6 +394,62 @@ export default function DecisionQueuePage() {
           </section>
         )}
       </div>
+
+      {/* Atlas Dialog */}
+      <Dialog open={atlas.isOpen} onOpenChange={(open) => setAtlas(prev => ({ ...prev, isOpen: open }))}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-purple-500" />
+              <DialogTitle>Ask Atlas</DialogTitle>
+            </div>
+            {atlas.contextLabel && (
+              <p className="text-xs text-muted-foreground mt-1">{atlas.contextLabel}</p>
+            )}
+          </DialogHeader>
+
+          <div className="space-y-3 mt-2">
+            <Textarea
+              className="text-sm min-h-[100px]"
+              value={atlasInput}
+              onChange={(e) => setAtlasInput(e.target.value)}
+              placeholder="Ask Atlas about this decision…"
+            />
+
+            <Button
+              className="w-full"
+              onClick={sendAtlasMessage}
+              disabled={atlas.isLoading || !atlasInput.trim()}
+            >
+              {atlas.isLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Thinking…
+                </>
+              ) : (
+                <>
+                  <Send className="w-4 h-4 mr-2" />
+                  Send to Atlas
+                </>
+              )}
+            </Button>
+
+            {atlas.response && (
+              <div className="rounded-lg bg-muted p-4 text-sm whitespace-pre-wrap">
+                <p className="font-semibold text-xs text-purple-600 mb-1">Atlas</p>
+                {atlas.response}
+              </div>
+            )}
+
+            <div className="text-xs text-center text-muted-foreground">
+              For a full conversation,{' '}
+              <a href="/atlas" className="text-purple-600 underline hover:no-underline">
+                open Atlas
+              </a>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </PageShell>
   );
 }
