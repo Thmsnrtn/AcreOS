@@ -9626,3 +9626,22 @@ export const systemApiKeys = pgTable("system_api_keys", {
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+// ─── Goals ───────────────────────────────────────────────────────────────────
+// Acquisition / revenue targets for the org.
+// current_value is computed dynamically — not stored here.
+export const goals = pgTable("goals", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  label: text("label").notNull(),
+  goalType: text("goal_type").notNull(), // deals_closed | notes_deployed | revenue_earned | leads_contacted
+  targetValue: numeric("target_value", { precision: 14, scale: 2 }).notNull(),
+  periodStart: timestamp("period_start").notNull(),
+  periodEnd: timestamp("period_end").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertGoalSchema = createInsertSchema(goals).omit({ id: true, createdAt: true, updatedAt: true });
+export type Goal = typeof goals.$inferSelect;
+export type InsertGoal = typeof goals.$inferInsert;

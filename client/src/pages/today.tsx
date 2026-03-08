@@ -10,6 +10,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Progress } from "@/components/ui/progress";
 import {
   Users,
   Map,
@@ -23,8 +24,21 @@ import {
   Calendar,
   Clock,
   X,
+  Target,
 } from "lucide-react";
 import { format, isToday, isBefore, startOfDay } from "date-fns";
+
+interface GoalWithProgress {
+  id: number;
+  label: string;
+  goalType: string;
+  targetValue: string;
+  periodStart: string;
+  periodEnd: string;
+  currentValue: number;
+  progressPct: number;
+  isActive: boolean;
+}
 
 interface NextBestAction {
   id: string;
@@ -95,6 +109,12 @@ export default function TodayPage() {
     queryKey: ["/api/alerts/active"],
     staleTime: 5 * 60 * 1000,
   });
+  const { data: activeGoals = [] } = useQuery<GoalWithProgress[]>({
+    queryKey: ["/api/goals"],
+    staleTime: 5 * 60 * 1000,
+    select: (data) => data.filter((g) => g.isActive),
+  });
+
   const { data: intelligence, isLoading: intelligenceLoading } =
     useQuery<DashboardIntelligence>({
       queryKey: ["/api/dashboard/intelligence"],
@@ -256,7 +276,48 @@ export default function TodayPage() {
         </div>
       )}
 
-      {/* Section 3: AI Action Queue */}
+      {/* Section 3: Goal Progress */}
+      {activeGoals.length > 0 && (
+        <div data-testid="section-goals">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Target className="w-4 h-4 text-primary" />
+              <h2 className="text-lg font-semibold">Goal Progress</h2>
+              <Badge variant="secondary" className="bg-primary/10 text-primary text-xs">
+                {activeGoals.length}
+              </Badge>
+            </div>
+            <Link href="/settings">
+              <Button variant="ghost" size="sm" className="gap-1 text-xs">
+                Manage Goals <ArrowRight className="w-3 h-3" />
+              </Button>
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {activeGoals.map((goal) => (
+              <Card key={goal.id}>
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium truncate">{goal.label}</span>
+                    <span className="text-xs text-muted-foreground ml-2 shrink-0">
+                      {goal.progressPct}%
+                    </span>
+                  </div>
+                  <Progress value={goal.progressPct} className="h-2 mb-2" />
+                  <p className="text-xs text-muted-foreground">
+                    {typeof goal.currentValue === "number" && goal.goalType === "revenue_earned"
+                      ? `$${goal.currentValue.toLocaleString()} of $${Number(goal.targetValue).toLocaleString()}`
+                      : `${goal.currentValue} of ${Number(goal.targetValue)}`}
+                    {" · "}ends {format(new Date(goal.periodEnd), "MMM d, yyyy")}
+                  </p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Section 4: AI Action Queue */}
       <div data-testid="section-ai-actions">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
