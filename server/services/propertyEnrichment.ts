@@ -85,7 +85,116 @@ export interface EnrichmentResult {
     riskScore?: number;
     overallScore?: number;
   };
-  
+
+  elevation?: {
+    elevationFeet?: number;
+    elevationMeters?: number;
+    datum?: string;
+    source?: string;
+  };
+
+  climate?: {
+    avgHighTempF?: number;
+    avgLowTempF?: number;
+    annualPrecipInches?: number;
+    period?: string;
+    source?: string;
+  };
+
+  agriculturalValues?: {
+    countyAvgPerAcre?: number | null;
+    stateAvgPerAcre?: number | null;
+    nationalAvgPerAcre?: number | null;
+    dataYear?: number;
+    notes?: string;
+    source?: string;
+  };
+
+  landCover?: {
+    nlcdClass?: number | null;
+    className?: string;
+    isAgricultural?: boolean;
+    isDeveloped?: boolean;
+    isForested?: boolean;
+    isWetland?: boolean;
+    year?: number;
+    source?: string;
+  };
+
+  cropland?: {
+    cropCode?: number | null;
+    cropName?: string;
+    year?: number;
+    isAgriculturalCrop?: boolean;
+    isPastureOrHay?: boolean;
+    isCultivatedCrop?: boolean;
+    isForest?: boolean;
+    isWetland?: boolean;
+    source?: string;
+  };
+
+  epaFacilities?: {
+    totalCount?: number;
+    superfundCount?: number;
+    airViolationCount?: number;
+    waterViolationCount?: number;
+    hazWasteCount?: number;
+    riskLevel?: "low" | "medium" | "high";
+    searchRadiusMiles?: number;
+    source?: string;
+  };
+
+  stormHistory?: {
+    tornadoRisk?: string;
+    hurricaneRisk?: string;
+    hailRisk?: string;
+    countyName?: string;
+    note?: string;
+    source?: string;
+  };
+
+  plss?: {
+    section?: string | null;
+    township?: string | null;
+    range?: string | null;
+    legalDescription?: string;
+    plssId?: string;
+    source?: string;
+  };
+
+  watershed?: {
+    huc8?: string | null;
+    huc12?: string | null;
+    watershedName?: string | null;
+    source?: string;
+  };
+
+  femaNri?: {
+    compositeScore?: number | null;
+    riverineFloodRisk?: string | null;
+    hurricaneRisk?: string | null;
+    tornadoRisk?: string | null;
+    hailRisk?: string | null;
+    wildfireRisk?: string | null;
+    lightningRisk?: string | null;
+    earthquakeRisk?: string | null;
+    droughtRisk?: string | null;
+    county?: string | null;
+    state?: string | null;
+    source?: string;
+  };
+
+  usdaClu?: {
+    cluId?: string | null;
+    farmNumber?: string | null;
+    tractNumber?: string | null;
+    calculatedAcres?: number | null;
+    note?: string;
+    source?: string;
+  };
+
+  completenessScore?: number;
+  completenessBreakdown?: Record<string, boolean>;
   errors?: Record<string, string>;
 }
 
@@ -108,7 +217,7 @@ export class PropertyEnrichmentService {
     
     const defaultCategories: LookupCategory[] = [
       "flood_zone",
-      "wetlands", 
+      "wetlands",
       "soil",
       "environmental",
       "infrastructure",
@@ -116,7 +225,18 @@ export class PropertyEnrichmentService {
       "demographics",
       "public_lands",
       "transportation",
-      "water_resources"
+      "water_resources",
+      "elevation",
+      "climate",
+      "agricultural_values",
+      "land_cover",
+      "cropland",
+      "epa_frs",
+      "storm_history",
+      "plss",
+      "watershed",
+      "fema_nri",
+      "usda_clu",
     ];
     
     const categories = options?.categories || defaultCategories;
@@ -237,6 +357,135 @@ export class PropertyEnrichmentService {
             result.water.nearestWaterBodyMiles = data.waterBodies.nearestMiles;
           }
           break;
+
+        case "elevation":
+          result.elevation = {
+            elevationFeet: data.elevationFeet,
+            elevationMeters: data.elevationMeters,
+            datum: data.datum,
+            source: data.source,
+          };
+          break;
+
+        case "climate":
+          result.climate = {
+            avgHighTempF: data.avgHighTempF,
+            avgLowTempF: data.avgLowTempF,
+            annualPrecipInches: data.annualPrecipInches,
+            period: data.period,
+            source: data.source,
+          };
+          break;
+
+        case "agricultural_values":
+          result.agriculturalValues = {
+            countyAvgPerAcre: data.countyAvgPerAcre,
+            stateAvgPerAcre: data.stateAvgPerAcre,
+            nationalAvgPerAcre: data.nationalAvgPerAcre,
+            dataYear: data.dataYear,
+            notes: data.notes,
+            source: data.source,
+          };
+          break;
+
+        case "land_cover":
+          result.landCover = {
+            nlcdClass: data.nlcdClass,
+            className: data.className,
+            isAgricultural: data.isAgricultural,
+            isDeveloped: data.isDeveloped,
+            isForested: data.isForested,
+            isWetland: data.isWetland,
+            year: data.year,
+            source: data.source,
+          };
+          break;
+
+        case "cropland":
+          result.cropland = {
+            cropCode: data.cropCode,
+            cropName: data.cropName,
+            year: data.year,
+            isAgriculturalCrop: data.isAgriculturalCrop,
+            isPastureOrHay: data.isPastureOrHay,
+            isCultivatedCrop: data.isCultivatedCrop,
+            isForest: data.isForest,
+            isWetland: data.isWetland,
+            source: data.source,
+          };
+          break;
+
+        case "epa_frs":
+          result.epaFacilities = {
+            totalCount: data.totalCount,
+            superfundCount: data.superfundCount,
+            airViolationCount: data.airViolationCount,
+            waterViolationCount: data.waterViolationCount,
+            hazWasteCount: data.hazWasteCount,
+            riskLevel: data.riskLevel,
+            searchRadiusMiles: data.searchRadiusMiles,
+            source: data.source,
+          };
+          break;
+
+        case "storm_history":
+          result.stormHistory = {
+            tornadoRisk: data.tornadoRisk,
+            hurricaneRisk: data.hurricaneRisk,
+            hailRisk: data.hailRisk,
+            countyName: data.countyName,
+            note: data.note,
+            source: data.source,
+          };
+          break;
+
+        case "plss":
+          result.plss = {
+            section: data.section,
+            township: data.township,
+            range: data.range,
+            legalDescription: data.legalDescription,
+            plssId: data.plssId,
+            source: data.source,
+          };
+          break;
+
+        case "watershed":
+          result.watershed = {
+            huc8: data.huc8,
+            huc12: data.huc12,
+            watershedName: data.watershedName,
+            source: data.source,
+          };
+          break;
+
+        case "fema_nri":
+          result.femaNri = {
+            compositeScore: data.compositeScore,
+            riverineFloodRisk: data.riverineFloodRisk,
+            hurricaneRisk: data.hurricaneRisk,
+            tornadoRisk: data.tornadoRisk,
+            hailRisk: data.hailRisk,
+            wildfireRisk: data.wildfireRisk,
+            lightningRisk: data.lightningRisk,
+            earthquakeRisk: data.earthquakeRisk,
+            droughtRisk: data.droughtRisk,
+            county: data.county,
+            state: data.state,
+            source: data.source,
+          };
+          break;
+
+        case "usda_clu":
+          result.usdaClu = {
+            cluId: data.cluId,
+            farmNumber: data.farmNumber,
+            tractNumber: data.tractNumber,
+            calculatedAcres: data.calculatedAcres,
+            note: data.note,
+            source: data.source,
+          };
+          break;
       }
     }
     
@@ -254,14 +503,24 @@ export class PropertyEnrichmentService {
     if (!property) {
       throw new Error("Property not found");
     }
-    
+
+    // Smart 30-day refresh: skip if enriched recently and not forcing
+    if (!forceRefresh && property.enrichedAt) {
+      const enrichedAt = new Date(property.enrichedAt);
+      const daysSinceEnrichment = (Date.now() - enrichedAt.getTime()) / (1000 * 60 * 60 * 24);
+      if (daysSinceEnrichment < 30) {
+        console.log(`[PropertyEnrichment] Skipping enrichment for property ${propertyId} — enriched ${Math.round(daysSinceEnrichment)} days ago (< 30 day threshold). Use forceRefresh=true to override.`);
+        return (property.enrichmentData || {}) as unknown as EnrichmentResult;
+      }
+    }
+
     const lat = property.latitude ? parseFloat(property.latitude) : null;
     const lng = property.longitude ? parseFloat(property.longitude) : null;
-    
+
     if (!lat || !lng) {
       throw new Error("Property missing coordinates");
     }
-    
+
     const result = await this.enrichByCoordinates(lat, lng, {
       propertyId,
       state: property.state || undefined,
@@ -269,9 +528,9 @@ export class PropertyEnrichmentService {
       apn: property.apn || undefined,
       forceRefresh,
     });
-    
+
     await this.savePropertyEnrichment(organizationId, propertyId, result);
-    
+
     return result;
   }
   
@@ -386,20 +645,53 @@ export class PropertyEnrichmentService {
     };
   }
   
+  private calculateCompleteness(enrichment: EnrichmentResult): { score: number; breakdown: Record<string, boolean> } {
+    const breakdown: Record<string, boolean> = {
+      flood: !!enrichment.hazards?.floodZone,
+      wetlands: enrichment.hazards?.wetlandsPresent !== undefined,
+      soil: !!enrichment.environment?.soilType,
+      epaEnvironmental: enrichment.environment?.epaRiskLevel !== undefined,
+      epaFacilities: enrichment.epaFacilities?.totalCount !== undefined,
+      stormHistory: !!enrichment.stormHistory?.tornadoRisk,
+      infrastructure: enrichment.infrastructure?.nearestHospitalMiles !== undefined,
+      demographics: !!enrichment.demographics?.population,
+      publicLands: enrichment.publicLands !== undefined,
+      transportation: enrichment.transportation?.nearestHighwayMiles !== undefined,
+      water: enrichment.water?.nearestStreamMiles !== undefined,
+      elevation: enrichment.elevation?.elevationFeet !== undefined,
+      climate: enrichment.climate?.avgHighTempF !== undefined,
+      agriculturalValues: enrichment.agriculturalValues?.stateAvgPerAcre !== undefined,
+      landCover: enrichment.landCover?.nlcdClass !== undefined,
+      cropland: enrichment.cropland?.cropCode !== undefined,
+      plss: !!(enrichment.plss?.township || enrichment.plss?.section),
+      watershed: !!(enrichment.watershed?.huc8 || enrichment.watershed?.watershedName),
+      femaNri: !!(enrichment.femaNri?.compositeScore !== undefined && enrichment.femaNri.compositeScore !== null),
+      naturalHazards: !!(enrichment.hazards?.earthquakeRisk || enrichment.hazards?.wildfireRisk),
+    };
+    const filledCount = Object.values(breakdown).filter(Boolean).length;
+    const score = Math.round((filledCount / Object.keys(breakdown).length) * 100);
+    return { score, breakdown };
+  }
+
   private async savePropertyEnrichment(organizationId: number, propertyId: number, enrichment: EnrichmentResult): Promise<void> {
     try {
+      const completeness = this.calculateCompleteness(enrichment);
       await storage.updateProperty(propertyId, {
-        dueDiligenceData: {
+        enrichmentData: {
           ...enrichment,
           lastEnrichedAt: new Date().toISOString(),
+          completenessScore: completeness.score,
+          completenessBreakdown: completeness.breakdown,
         } as any,
+        enrichmentStatus: "complete",
+        enrichedAt: new Date(),
       });
-      
+
       const categoriesEnriched = Object.keys(enrichment).filter(
-        k => enrichment[k as keyof EnrichmentResult] !== undefined && 
+        k => enrichment[k as keyof EnrichmentResult] !== undefined &&
              !['propertyId', 'latitude', 'longitude', 'enrichedAt', 'lookupTimeMs'].includes(k)
       );
-      console.log(`[PropertyEnrichment] Property enrichment persisted for propertyId=${propertyId}, orgId=${organizationId}, categories: ${categoriesEnriched.join(', ')}`);
+      console.log(`[PropertyEnrichment] Property enrichment persisted for propertyId=${propertyId}, orgId=${organizationId}, completeness=${completeness.score}%, categories: ${categoriesEnriched.join(', ')}`);
     } catch (error) {
       console.error("Failed to save property enrichment:", error);
     }

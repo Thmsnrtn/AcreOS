@@ -10,6 +10,8 @@ import {
   supportTickets, supportTicketMessages, knowledgeBaseArticles,
   sophieMemory, systemAlerts,
   countyGisEndpoints,
+  aiModelConfigs,
+  systemApiKeys,
 } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
@@ -1917,6 +1919,62 @@ export function registerAdminRoutes(app: Express): void {
     }
   });
 
+  // Bulk import data sources from JSON array
+  api.post("/api/data-sources/bulk-import", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { sources } = req.body as { sources: Array<{
+        key: string; title: string; category: string; subcategory?: string;
+        description?: string; portalUrl?: string; apiUrl?: string; coverage?: string;
+        accessLevel?: string; dataTypes?: string[]; endpointType?: string;
+      }> };
+
+      if (!Array.isArray(sources) || sources.length === 0) {
+        return res.status(400).json({ message: "sources must be a non-empty array" });
+      }
+      if (sources.length > 500) {
+        return res.status(400).json({ message: "Cannot import more than 500 sources at once" });
+      }
+
+      let imported = 0;
+      let skipped = 0;
+      const errors: string[] = [];
+
+      for (const s of sources) {
+        if (!s.key || !s.title || !s.category) {
+          errors.push(`Row missing required fields (key, title, category): ${JSON.stringify(s).slice(0, 80)}`);
+          skipped++;
+          continue;
+        }
+        try {
+          await db.insert(dataSources).values({
+            key: String(s.key).toLowerCase().replace(/\s+/g, "_").slice(0, 100),
+            title: String(s.title).slice(0, 200),
+            category: String(s.category).toLowerCase().replace(/\s+/g, "_"),
+            subcategory: s.subcategory ?? null,
+            description: s.description ?? null,
+            portalUrl: s.portalUrl ?? null,
+            apiUrl: s.apiUrl ?? null,
+            coverage: s.coverage ?? null,
+            accessLevel: s.accessLevel ?? "free",
+            dataTypes: s.dataTypes ?? [],
+            endpointType: s.endpointType ?? null,
+            isEnabled: true,
+            isVerified: false,
+          }).onConflictDoNothing();
+          imported++;
+        } catch (e: any) {
+          errors.push(`Error inserting ${s.key}: ${e.message}`);
+          skipped++;
+        }
+      }
+
+      res.json({ imported, skipped, errors: errors.slice(0, 20) });
+    } catch (err: any) {
+      console.error("Bulk import error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // ============================================
   // DATA SOURCE BROKER - Unified Lookup API
   // ============================================
@@ -2018,6 +2076,70 @@ export function registerAdminRoutes(app: Express): void {
     }
   });
 
+  // ─── User map layer preferences (DB-persisted per user) ──────────────────
+  api.get("/api/user/map-layer-preferences", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId: string = user?.claims?.sub || user?.id;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+      const { userMapLayerPreferences } = await import("@shared/schema");
+      const prefs = await db.select().from(userMapLayerPreferences).where(eq(userMapLayerPreferences.userId, userId));
+
+      // Return as { [layerId]: { enabled, opacity } }
+      const result: Record<number, { enabled: boolean; opacity: number }> = {};
+      for (const pref of prefs) {
+        result[pref.layerId] = { enabled: pref.enabled, opacity: parseFloat(String(pref.opacity)) };
+      }
+      res.json(result);
+    } catch (err: any) {
+      console.error("Get map layer prefs error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.put("/api/user/map-layer-preferences/:layerId", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId: string = user?.claims?.sub || user?.id;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+      const layerId = Number(req.params.layerId);
+      const { enabled, opacity } = req.body as { enabled?: boolean; opacity?: number };
+
+      const { userMapLayerPreferences } = await import("@shared/schema");
+
+      // Upsert — update if exists, insert otherwise
+      const existing = await db
+        .select()
+        .from(userMapLayerPreferences)
+        .where(and(eq(userMapLayerPreferences.userId, userId), eq(userMapLayerPreferences.layerId, layerId)));
+
+      if (existing.length > 0) {
+        await db
+          .update(userMapLayerPreferences)
+          .set({
+            ...(enabled !== undefined && { enabled }),
+            ...(opacity !== undefined && { opacity: String(opacity) }),
+            updatedAt: new Date(),
+          })
+          .where(and(eq(userMapLayerPreferences.userId, userId), eq(userMapLayerPreferences.layerId, layerId)));
+      } else {
+        await db.insert(userMapLayerPreferences).values({
+          userId,
+          layerId,
+          enabled: enabled ?? false,
+          opacity: String(opacity ?? 0.7),
+        });
+      }
+
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("Update map layer pref error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   api.get("/api/map-layers/categories", isAuthenticated, async (req, res) => {
     try {
       const categories = await db.selectDistinct({ 
@@ -2027,6 +2149,56 @@ export function registerAdminRoutes(app: Express): void {
       res.json(categories.map((c: any) => c.category).filter(Boolean));
     } catch (err: any) {
       console.error("Get map layer categories error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Batch enrich all properties that have coordinates but missing enrichment
+  api.post("/api/admin/enrich-all-properties", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { forceRefresh = false, orgId: targetOrgId } = req.body as { forceRefresh?: boolean; orgId?: number };
+      const { propertyEnrichmentService } = await import("./services/propertyEnrichment");
+
+      const rows: any[] = await db.execute(sql`
+        SELECT id, organization_id, latitude, longitude, state, county, apn
+        FROM properties
+        WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+          AND (${forceRefresh ? sql`TRUE` : sql`(enrichment_status IS NULL OR enrichment_status NOT IN ('complete', 'pending'))`})
+          ${targetOrgId ? sql`AND organization_id = ${targetOrgId}` : sql``}
+        ORDER BY id ASC
+        LIMIT 500
+      `);
+
+      const eligible: any[] = rows;
+      res.json({ queued: eligible.length, forceRefresh, message: "Enrichment running in background" });
+
+      // Serial background enrichment — rate-limited to respect upstream APIs
+      (async () => {
+        let done = 0;
+        let failed = 0;
+        for (const prop of eligible) {
+          try {
+            const lat = parseFloat(String(prop.latitude));
+            const lng = parseFloat(String(prop.longitude));
+            if (isNaN(lat) || isNaN(lng)) continue;
+            await propertyEnrichmentService.enrichByCoordinates(lat, lng, {
+              propertyId: prop.id,
+              state: prop.state || undefined,
+              county: prop.county || undefined,
+              apn: prop.apn || undefined,
+              forceRefresh,
+            });
+            done++;
+            await new Promise(r => setTimeout(r, 500));
+          } catch (err) {
+            failed++;
+            console.warn(`[BatchEnrich] Failed property ${prop.id}:`, err);
+          }
+        }
+        console.log(`[BatchEnrich] Done: ${done} enriched, ${failed} failed of ${eligible.length} queued`);
+      })();
+    } catch (err: any) {
+      console.error("Batch enrich error:", err);
       res.status(500).json({ message: err.message });
     }
   });
@@ -2044,6 +2216,111 @@ export function registerAdminRoutes(app: Express): void {
       res.json({ health, usage, cost });
     } catch (err: any) {
       console.error("Broker metrics error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // AI MODEL CONFIGURATIONS (Founder only)
+  // ============================================
+
+  api.get("/api/admin/ai-models", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const configs = await db.select().from(aiModelConfigs).orderBy(aiModelConfigs.weight);
+      res.json(configs);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.post("/api/admin/ai-models", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const [created] = await db.insert(aiModelConfigs).values({
+        provider: req.body.provider || "openrouter",
+        modelId: req.body.modelId,
+        displayName: req.body.displayName,
+        costPerMillionInput: req.body.costPerMillionInput,
+        costPerMillionOutput: req.body.costPerMillionOutput,
+        maxTokens: req.body.maxTokens || 4096,
+        taskTypes: req.body.taskTypes || [],
+        weight: req.body.weight ?? 50,
+        enabled: req.body.enabled ?? true,
+      }).returning();
+      const { invalidateDbModelCache } = await import('./services/aiRouter');
+      invalidateDbModelCache();
+      res.json(created);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.put("/api/admin/ai-models/:id", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const [updated] = await db.update(aiModelConfigs)
+        .set({ ...req.body, updatedAt: new Date() })
+        .where(eq(aiModelConfigs.id, id))
+        .returning();
+      const { invalidateDbModelCache } = await import('./services/aiRouter');
+      invalidateDbModelCache();
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.delete("/api/admin/ai-models/:id", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await db.delete(aiModelConfigs).where(eq(aiModelConfigs.id, id));
+      const { invalidateDbModelCache } = await import('./services/aiRouter');
+      invalidateDbModelCache();
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // SYSTEM API KEYS (Founder only)
+  // ============================================
+
+  api.get("/api/admin/system-api-keys", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const keys = await db.select({
+        id: systemApiKeys.id,
+        provider: systemApiKeys.provider,
+        displayName: systemApiKeys.displayName,
+        isActive: systemApiKeys.isActive,
+        lastValidatedAt: systemApiKeys.lastValidatedAt,
+        validationStatus: systemApiKeys.validationStatus,
+        hasKey: sql<boolean>`(api_key IS NOT NULL AND api_key != '')`,
+        updatedAt: systemApiKeys.updatedAt,
+      }).from(systemApiKeys).orderBy(systemApiKeys.provider);
+      res.json(keys);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.put("/api/admin/system-api-keys/:provider", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { provider } = req.params;
+      const { apiKey, isActive } = req.body;
+      const [existing] = await db.select().from(systemApiKeys).where(eq(systemApiKeys.provider, provider));
+      if (existing) {
+        const [updated] = await db.update(systemApiKeys)
+          .set({ ...(apiKey !== undefined && { apiKey }), ...(isActive !== undefined && { isActive }), updatedAt: new Date() })
+          .where(eq(systemApiKeys.provider, provider))
+          .returning({ id: systemApiKeys.id, provider: systemApiKeys.provider, displayName: systemApiKeys.displayName, isActive: systemApiKeys.isActive, validationStatus: systemApiKeys.validationStatus });
+        res.json(updated);
+      } else {
+        const [created] = await db.insert(systemApiKeys)
+          .values({ provider, displayName: provider, apiKey, isActive: isActive ?? true })
+          .returning();
+        res.json(created);
+      }
+    } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
   });

@@ -9,6 +9,7 @@ import { checkUsageLimit } from "./services/usageLimits";
 import { usageMeteringService, creditService } from "./services/credits";
 import multer from "multer";
 import { parseCSV, importProperties, exportPropertiesToCSV, getExpectedColumns, type ExportFilters } from "./services/importExport";
+import { propertyEnrichmentService } from "./services/propertyEnrichment";
 
 // Partial update schema for PUT endpoints
 const updatePropertySchema = insertPropertySchema.partial().omit({ organizationId: true });
@@ -88,7 +89,7 @@ export function registerPropertyRoutes(app: Express): void {
       
       const input = insertPropertySchema.parse({ ...sanitizedBody, organizationId: org.id });
       const property = await storage.createProperty(input);
-      
+
       const user = req.user as any;
       const userId = user?.claims?.sub || user?.id;
       await storage.createAuditLogEntry({
@@ -101,7 +102,14 @@ export function registerPropertyRoutes(app: Express): void {
         ipAddress: req.ip || req.socket?.remoteAddress,
         userAgent: req.headers["user-agent"],
       });
-      
+
+      // Auto-enrich new properties that have GPS coordinates (fire-and-forget, non-blocking)
+      if (property.latitude && property.longitude) {
+        propertyEnrichmentService.enrichProperty(org.id, property.id, false).catch((err: Error) => {
+          console.error(`[AutoEnrich] Background enrichment failed for property ${property.id}:`, err.message);
+        });
+      }
+
       res.status(201).json(property);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -136,7 +144,7 @@ export function registerPropertyRoutes(app: Express): void {
       
       const validated = updatePropertySchema.parse(sanitizedBody);
       const property = await storage.updateProperty(propertyId, validated);
-      
+
       const user = req.user as any;
       const userId = user?.claims?.sub || user?.id;
       await storage.createAuditLogEntry({
@@ -149,7 +157,28 @@ export function registerPropertyRoutes(app: Express): void {
         ipAddress: req.ip || req.socket?.remoteAddress,
         userAgent: req.headers["user-agent"],
       });
-      
+
+      // Auto-enrich when coordinates are newly set or changed
+      const coordChanged =
+        (validated.latitude !== undefined || validated.longitude !== undefined) &&
+        property.latitude && property.longitude &&
+        (String(existingProperty.latitude) !== String(property.latitude) ||
+          String(existingProperty.longitude) !== String(property.longitude));
+      if (coordChanged) {
+        const lat = parseFloat(String(property.latitude));
+        const lng = parseFloat(String(property.longitude));
+        if (!isNaN(lat) && !isNaN(lng)) {
+          propertyEnrichmentService.enrichByCoordinates(lat, lng, {
+            propertyId,
+            state: property.state || undefined,
+            county: property.county || undefined,
+            apn: property.apn || undefined,
+          }).catch(err =>
+            console.warn(`[AutoEnrich] Background enrichment failed for property ${propertyId}:`, err)
+          );
+        }
+      }
+
       res.json(property);
     } catch (err) {
       if (err instanceof z.ZodError) {

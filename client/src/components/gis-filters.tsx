@@ -312,9 +312,10 @@ export function applyGisFiltersToLead<T extends {
 }
 
 export function applyGisFiltersToProperty<T extends {
-  dueDiligenceData?: Record<string, any> | null;
+  dueDiligenceData?: unknown;
+  enrichmentData?: unknown;
 }>(property: T, enrichmentData: Record<string, any> | null | undefined, filters: GisFilterState): boolean {
-  const data = enrichmentData || property.dueDiligenceData || {};
+  const data = enrichmentData || (property.enrichmentData as Record<string, any> | null) || (property.dueDiligenceData as Record<string, any> | null) || {};
   const hazards = data.hazards || {};
   const infrastructure = data.infrastructure || {};
   const scores = data.scores || {};

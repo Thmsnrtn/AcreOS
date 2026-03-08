@@ -1,5 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useCallback, useEffect } from "react";
+import { apiRequest } from "@/lib/queryClient";
 
 export interface MapLayer {
   id: number;
@@ -23,24 +24,18 @@ export interface DynamicLayerState {
 
 const DYNAMIC_LAYERS_STORAGE_KEY = "dynamic-map-layers";
 
-function loadDynamicLayerState(): DynamicLayerState {
+function loadLocalLayerState(): DynamicLayerState {
   try {
     const stored = localStorage.getItem(DYNAMIC_LAYERS_STORAGE_KEY);
-    if (stored) {
-      return JSON.parse(stored);
-    }
-  } catch {
-    console.log("Could not load dynamic layer state from localStorage");
-  }
+    if (stored) return JSON.parse(stored);
+  } catch { /* ignore */ }
   return {};
 }
 
-function saveDynamicLayerState(state: DynamicLayerState): void {
+function saveLocalLayerState(state: DynamicLayerState): void {
   try {
     localStorage.setItem(DYNAMIC_LAYERS_STORAGE_KEY, JSON.stringify(state));
-  } catch {
-    console.log("Could not save dynamic layer state to localStorage");
-  }
+  } catch { /* ignore */ }
 }
 
 export function buildArcGISRasterTileUrl(baseUrl: string): string {
@@ -54,54 +49,71 @@ export function isArcGISMapServerUrl(url: string | null): boolean {
 }
 
 export function useDynamicMapLayers() {
-  const [layerState, setLayerState] = useState<DynamicLayerState>(loadDynamicLayerState);
+  const queryClient = useQueryClient();
 
-  const { data: layers = [], isLoading, error } = useQuery<MapLayer[]>({
+  // Server-persisted preferences (authoritative source)
+  const { data: serverPrefs, isLoading: prefsLoading } = useQuery<DynamicLayerState>({
+    queryKey: ["/api/user/map-layer-preferences"],
+    staleTime: 1000 * 60 * 5,
+  });
+
+  // Local state initialised from localStorage, then overwritten by server prefs once loaded
+  const [layerState, setLayerState] = useState<DynamicLayerState>(loadLocalLayerState);
+
+  // Sync server preferences into local state once loaded
+  useEffect(() => {
+    if (serverPrefs && !prefsLoading) {
+      setLayerState((local) => {
+        // Merge: server wins for any key it knows about
+        const merged = { ...local, ...serverPrefs };
+        saveLocalLayerState(merged);
+        return merged;
+      });
+    }
+  }, [serverPrefs, prefsLoading]);
+
+  const { data: layers = [], isLoading: layersLoading, error } = useQuery<MapLayer[]>({
     queryKey: ["/api/map-layers"],
     staleTime: 1000 * 60 * 5,
+  });
+
+  // Mutation to persist a single layer preference to the server
+  const { mutate: persistPref } = useMutation({
+    mutationFn: ({ layerId, enabled, opacity }: { layerId: number; enabled?: boolean; opacity?: number }) =>
+      apiRequest("PUT", `/api/user/map-layer-preferences/${layerId}`, { enabled, opacity }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/user/map-layer-preferences"] });
+    },
   });
 
   const toggleLayer = useCallback((layerId: number) => {
     setLayerState((prev) => {
       const current = prev[layerId] || { enabled: false, opacity: 0.7 };
-      const newState = {
-        ...prev,
-        [layerId]: {
-          ...current,
-          enabled: !current.enabled,
-        },
-      };
-      saveDynamicLayerState(newState);
+      const newEnabled = !current.enabled;
+      const newState = { ...prev, [layerId]: { ...current, enabled: newEnabled } };
+      saveLocalLayerState(newState);
+      persistPref({ layerId, enabled: newEnabled });
       return newState;
     });
-  }, []);
+  }, [persistPref]);
 
   const setLayerOpacity = useCallback((layerId: number, opacity: number) => {
     setLayerState((prev) => {
       const current = prev[layerId] || { enabled: false, opacity: 0.7 };
-      const newState = {
-        ...prev,
-        [layerId]: {
-          ...current,
-          opacity,
-        },
-      };
-      saveDynamicLayerState(newState);
+      const newState = { ...prev, [layerId]: { ...current, opacity } };
+      saveLocalLayerState(newState);
+      persistPref({ layerId, opacity });
       return newState;
     });
-  }, []);
+  }, [persistPref]);
 
   const isLayerEnabled = useCallback(
-    (layerId: number): boolean => {
-      return layerState[layerId]?.enabled || false;
-    },
+    (layerId: number): boolean => layerState[layerId]?.enabled || false,
     [layerState]
   );
 
   const getLayerOpacity = useCallback(
-    (layerId: number): number => {
-      return layerState[layerId]?.opacity ?? 0.7;
-    },
+    (layerId: number): number => layerState[layerId]?.opacity ?? 0.7,
     [layerState]
   );
 
@@ -109,9 +121,7 @@ export function useDynamicMapLayers() {
 
   const layersByCategory = layers.reduce<Record<string, MapLayer[]>>((acc, layer) => {
     const category = layer.category || "Other";
-    if (!acc[category]) {
-      acc[category] = [];
-    }
+    if (!acc[category]) acc[category] = [];
     acc[category].push(layer);
     return acc;
   }, {});
@@ -120,7 +130,7 @@ export function useDynamicMapLayers() {
     layers,
     layersByCategory,
     enabledLayers,
-    isLoading,
+    isLoading: layersLoading || prefsLoading,
     error,
     layerState,
     toggleLayer,

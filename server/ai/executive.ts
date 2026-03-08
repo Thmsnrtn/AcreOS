@@ -3,13 +3,14 @@ import { db } from "../db";
 import { eq, desc } from "drizzle-orm";
 import { toolDefinitions, executeTool, getOpenAITools, getToolsForRole } from "./tools";
 import { aiConversations, aiMessages, type Organization, type AiConversation, type AiMessage } from "@shared/schema";
-import { 
-  selectProviderAndModel, 
-  classifyFromMessages, 
-  TaskComplexity, 
+import {
+  selectProviderAndModel,
+  classifyFromMessages,
+  TaskComplexity,
   AIProvider,
 } from "../services/aiRouter";
 import mammoth from "mammoth";
+import { storage } from "../storage";
 
 function getChatProviderAndModel(complexity: TaskComplexity): { client: OpenAI; provider: AIProvider; model: string } {
   try {
@@ -186,6 +187,7 @@ interface ChatOptions {
   agentRole?: AgentRole;
   stream?: boolean;
   files?: FileAttachment[];
+  propertyId?: number;
 }
 
 function decodeBase64ToText(base64: string): string {
@@ -387,7 +389,7 @@ export async function processChat(
   userId: string,
   options: ChatOptions = {}
 ): Promise<{ response: string; toolCalls?: any[]; conversationId: number; model?: string; provider?: string; estimatedCost?: number; promptTokens?: number; completionTokens?: number }> {
-  const { agentRole = "executive", files } = options;
+  const { agentRole = "executive", files, propertyId } = options;
   // Map "assistant" to "executive" and fallback to executive for unknown roles
   const roleStr = agentRole as string;
   const normalizedRole = (roleStr === "assistant" || !agentProfiles[roleStr as keyof typeof agentProfiles]) 
@@ -422,23 +424,57 @@ export async function processChat(
   });
 
   const messages = await getMessages(conversation.id);
+
+  // Inject property enrichment context into the system prompt when a property is open
+  let _enrichCtx = "";
+  const _pid = (options as ChatOptions).propertyId;
+  if (_pid) {
+    try {
+      const _prop = await storage.getProperty(org.id, _pid);
+      if (_prop) {
+        const _ed = (_prop as any).enrichmentData;
+        const _lines: string[] = [
+          `\n\n--- ACTIVE PROPERTY CONTEXT (ID: ${_prop.id}) ---`,
+          `Address: ${_prop.address || "N/A"}`,
+          `Size: ${_prop.sizeAcres ? `${_prop.sizeAcres} acres` : "N/A"}`,
+          `State: ${_prop.state || "N/A"}, County: ${_prop.county || "N/A"}`,
+          `APN: ${_prop.apn || "N/A"}`,
+        ];
+        if (_ed) {
+          _lines.push(`Enrichment Completeness: ${_ed.completenessScore ?? "?"}%`);
+          if (_ed.hazards?.floodZone) _lines.push(`Flood Zone: ${_ed.hazards.floodZone}`);
+          if (_ed.environment?.soilType) _lines.push(`Soil: ${_ed.environment.soilType}`);
+          if (_ed.demographics?.population) _lines.push(`Tract Population: ${_ed.demographics.population}, Median Income: $${_ed.demographics.medianHouseholdIncome?.toLocaleString() ?? "N/A"}`);
+          if (_ed.scores) _lines.push(`Scores: ${JSON.stringify(_ed.scores)}`);
+          if (_ed.hazards?.wetlandsPresent !== undefined) _lines.push(`Wetlands Present: ${_ed.hazards.wetlandsPresent}`);
+          if (_ed.elevation?.elevationFeet) _lines.push(`Elevation: ${_ed.elevation.elevationFeet} ft`);
+          if (_ed.transportation?.nearestHighwayMiles !== undefined) _lines.push(`Nearest Highway: ${_ed.transportation.nearestHighwayMiles} mi`);
+        } else {
+          _lines.push("(No enrichment data yet — use research_property to fetch it.)");
+        }
+        _lines.push("--- END PROPERTY CONTEXT ---");
+        _enrichCtx = _lines.join("\n");
+      }
+    } catch (_) { /* non-blocking */ }
+  }
+
   const chatMessages: OpenAI.ChatCompletionMessageParam[] = [
-    { role: "system", content: profile.systemPrompt },
+    { role: "system", content: _enrichCtx ? profile.systemPrompt + _enrichCtx : profile.systemPrompt },
     ...messages.map(m => ({
       role: m.role as "user" | "assistant",
       content: m.content
     }))
   ];
-  
+
   // Replace the last message with full content (including file data) for AI processing
   if (files && files.length > 0 && chatMessages.length > 1) {
     chatMessages[chatMessages.length - 1] = { role: "user", content: fullMessage };
   }
 
   const hasFileAttachments = files && files.length > 0;
-  const complexity = classifyFromMessages("chat", chatMessages.map(m => ({ 
-    role: m.role as string, 
-    content: typeof m.content === 'string' ? m.content : '' 
+  const complexity = classifyFromMessages("chat", chatMessages.map(m => ({
+    role: m.role as string,
+    content: typeof m.content === 'string' ? m.content : ''
   })), hasFileAttachments);
   
   let client: OpenAI;
@@ -612,23 +648,57 @@ export async function* processChatStream(
   });
 
   const messages = await getMessages(conversation.id);
+
+  // Inject property enrichment context into the system prompt when a property is open
+  let _enrichCtx = "";
+  const _pid = (options as ChatOptions).propertyId;
+  if (_pid) {
+    try {
+      const _prop = await storage.getProperty(org.id, _pid);
+      if (_prop) {
+        const _ed = (_prop as any).enrichmentData;
+        const _lines: string[] = [
+          `\n\n--- ACTIVE PROPERTY CONTEXT (ID: ${_prop.id}) ---`,
+          `Address: ${_prop.address || "N/A"}`,
+          `Size: ${_prop.sizeAcres ? `${_prop.sizeAcres} acres` : "N/A"}`,
+          `State: ${_prop.state || "N/A"}, County: ${_prop.county || "N/A"}`,
+          `APN: ${_prop.apn || "N/A"}`,
+        ];
+        if (_ed) {
+          _lines.push(`Enrichment Completeness: ${_ed.completenessScore ?? "?"}%`);
+          if (_ed.hazards?.floodZone) _lines.push(`Flood Zone: ${_ed.hazards.floodZone}`);
+          if (_ed.environment?.soilType) _lines.push(`Soil: ${_ed.environment.soilType}`);
+          if (_ed.demographics?.population) _lines.push(`Tract Population: ${_ed.demographics.population}, Median Income: $${_ed.demographics.medianHouseholdIncome?.toLocaleString() ?? "N/A"}`);
+          if (_ed.scores) _lines.push(`Scores: ${JSON.stringify(_ed.scores)}`);
+          if (_ed.hazards?.wetlandsPresent !== undefined) _lines.push(`Wetlands Present: ${_ed.hazards.wetlandsPresent}`);
+          if (_ed.elevation?.elevationFeet) _lines.push(`Elevation: ${_ed.elevation.elevationFeet} ft`);
+          if (_ed.transportation?.nearestHighwayMiles !== undefined) _lines.push(`Nearest Highway: ${_ed.transportation.nearestHighwayMiles} mi`);
+        } else {
+          _lines.push("(No enrichment data yet — use research_property to fetch it.)");
+        }
+        _lines.push("--- END PROPERTY CONTEXT ---");
+        _enrichCtx = _lines.join("\n");
+      }
+    } catch (_) { /* non-blocking */ }
+  }
+
   const chatMessages: OpenAI.ChatCompletionMessageParam[] = [
-    { role: "system", content: profile.systemPrompt },
+    { role: "system", content: _enrichCtx ? profile.systemPrompt + _enrichCtx : profile.systemPrompt },
     ...messages.map(m => ({
       role: m.role as "user" | "assistant",
       content: m.content
     }))
   ];
-  
+
   // Replace the last message with full content (including file data) for AI processing
   if (files && files.length > 0 && chatMessages.length > 1) {
     chatMessages[chatMessages.length - 1] = { role: "user", content: fullMessage };
   }
 
   const hasFileAttachments = files && files.length > 0;
-  const complexity = classifyFromMessages("chat", chatMessages.map(m => ({ 
-    role: m.role as string, 
-    content: typeof m.content === 'string' ? m.content : '' 
+  const complexity = classifyFromMessages("chat", chatMessages.map(m => ({
+    role: m.role as string,
+    content: typeof m.content === 'string' ? m.content : ''
   })), hasFileAttachments);
   
   let client: OpenAI;

@@ -153,8 +153,8 @@ export function registerAIRoutes(app: Express): void {
       const org = (req as any).organization;
       const user = req.user as any;
       const userId = user.claims?.sub || user.id;
-      const { message, conversationId, agentRole } = req.body;
-      
+      const { message, conversationId, agentRole, propertyId } = req.body;
+
       if (!message) {
         return res.status(400).json({ message: "Message is required" });
       }
@@ -186,7 +186,8 @@ export function registerAIRoutes(app: Express): void {
       
       const result = await processChat(message, org, userId, {
         conversationId,
-        agentRole
+        agentRole,
+        propertyId: propertyId ? Number(propertyId) : undefined,
       });
       
       // Record usage after successful AI chat with provider/model/token info
@@ -213,7 +214,7 @@ export function registerAIRoutes(app: Express): void {
       const org = (req as any).organization;
       const user = req.user as any;
       const userId = user.claims?.sub || user.id;
-      const { message, conversationId, agentRole, files } = req.body;
+      const { message, conversationId, agentRole, files, propertyId: streamPropertyId } = req.body;
       
       if (!message) {
         return res.status(400).json({ message: "Message is required" });
@@ -252,7 +253,8 @@ export function registerAIRoutes(app: Express): void {
       const stream = processChatStream(message, org, userId, {
         conversationId,
         agentRole,
-        files
+        files,
+        propertyId: streamPropertyId ? Number(streamPropertyId) : undefined,
       });
       
       let streamCompleted = false;

@@ -25,15 +25,7 @@ const SERVICES = [
     learnMoreUrl: "https://www.lob.com/docs",
     validationEndpoint: "/api/settings/validate-lob",
   },
-  {
-    id: "regrid",
-    name: "Regrid",
-    description: "Unlimited parcel data and comparable property lookups without using platform credits",
-    placeholder: "sk_live_...",
-    icon: MapPin,
-    learnMoreUrl: "https://regrid.com/api",
-    validationEndpoint: "/api/settings/validate-regrid",
-  },
+  // Regrid is now a system-wide API key managed in Founder Dashboard
   {
     id: "twilio",
     name: "Twilio",
