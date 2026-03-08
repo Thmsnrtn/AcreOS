@@ -5,6 +5,17 @@ import { ListSkeleton } from "@/components/list-skeleton";
 import { telemetry } from "@/lib/telemetry";
 import { useDealChecklist, useChecklistTemplates, useApplyChecklistTemplate, useUpdateChecklistItem, useStageGate } from "@/hooks/use-checklists";
 import { useState } from "react";
+import {
+  DndContext,
+  type DragEndEvent,
+  DragOverlay,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  useDroppable,
+  useDraggable,
+} from "@dnd-kit/core";
+import { CSS } from "@dnd-kit/utilities";
 import { useSearch, Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -73,6 +84,20 @@ export default function DealsPage() {
   const [isExporting, setIsExporting] = useState(false);
   const [mobileViewMode, setMobileViewMode] = useState<'kanban' | 'list'>('kanban');
   const [selectedStageIndex, setSelectedStageIndex] = useState(0);
+  const [activeDragId, setActiveDragId] = useState<number | null>(null);
+  const { mutate: updateDealStage } = useUpdateDeal();
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    setActiveDragId(null);
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const dealId = active.id as number;
+    const newStage = over.id as string;
+    if (!dealStages.find(s => s.value === newStage)) return;
+    // Optimistic update via cache, then persist
+    updateDealStage({ id: dealId, status: newStage });
+  };
 
   const handleExport = async () => {
     setIsExporting(true);
@@ -379,44 +404,36 @@ export default function DealsPage() {
                 </div>
               ) : (
                 <div className="relative">
-                  <div className="overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent">
-                    <div className="flex gap-4 min-w-max px-1">
-                      {dealStages.map((stage) => {
-                        const stageDeals = enrichedDeals.filter(d => d.status === stage.value);
-                        return (
-                          <div key={stage.value} className="w-72 flex-shrink-0">
-                            <div className={`rounded-t-xl px-4 py-3 ${stage.color}`}>
-                              <div className="flex items-center justify-between gap-2">
-                                <h3 className="font-medium">{stage.label}</h3>
-                                <Badge variant="secondary" className="font-mono">
-                                  {stageDeals.length}
-                                </Badge>
-                              </div>
-                            </div>
-                            <div className="bg-muted/30 rounded-b-xl p-2 min-h-[400px] space-y-2">
-                              {isLoading ? (
-                                <div data-testid={`skeleton-deals-${stage.value}`}>
-                                  <ListSkeleton count={2} variant="compact" />
-                                </div>
-                              ) : stageDeals.length === 0 ? (
-                                <div className="text-center py-8 text-muted-foreground text-sm">
-                                  No deals
-                                </div>
-                              ) : (
-                                stageDeals.map((deal) => (
-                                  <DealCard 
-                                    key={deal.id} 
-                                    deal={deal} 
-                                    onSelect={() => setSelectedDeal(deal)}
-                                  />
-                                ))
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
+                  <DndContext
+                    sensors={sensors}
+                    onDragStart={(e) => setActiveDragId(e.active.id as number)}
+                    onDragEnd={handleDragEnd}
+                    onDragCancel={() => setActiveDragId(null)}
+                  >
+                    <div className="overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent">
+                      <div className="flex gap-4 min-w-max px-1">
+                        {dealStages.map((stage) => {
+                          const stageDeals = enrichedDeals.filter(d => d.status === stage.value);
+                          return (
+                            <KanbanColumn
+                              key={stage.value}
+                              stage={stage}
+                              deals={stageDeals}
+                              isLoading={isLoading}
+                              activeDragId={activeDragId}
+                              onSelect={(deal) => setSelectedDeal(deal)}
+                            />
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
+                    <DragOverlay dropAnimation={null}>
+                      {activeDragId != null && (() => {
+                        const deal = enrichedDeals.find(d => d.id === activeDragId);
+                        return deal ? <DealCard deal={deal} onSelect={() => {}} isDragging /> : null;
+                      })()}
+                    </DragOverlay>
+                  </DndContext>
                   <div className="hidden md:block absolute left-0 top-0 bottom-4 w-4 bg-gradient-to-r from-background to-transparent pointer-events-none" />
                   <div className="hidden md:block absolute right-0 top-0 bottom-4 w-4 bg-gradient-to-l from-background to-transparent pointer-events-none" />
                 </div>
@@ -446,16 +463,74 @@ export default function DealsPage() {
   );
 }
 
-function DealCard({ deal, onSelect }: { deal: DealWithProperty; onSelect: () => void }) {
+function KanbanColumn({
+  stage,
+  deals,
+  isLoading,
+  activeDragId,
+  onSelect,
+}: {
+  stage: { value: string; label: string; color: string };
+  deals: DealWithProperty[];
+  isLoading: boolean;
+  activeDragId: number | null;
+  onSelect: (deal: DealWithProperty) => void;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: stage.value });
   return (
-    <Card 
-      className="floating-window cursor-pointer hover-elevate active:scale-[0.98] transition-transform touch-manipulation"
+    <div className="w-72 flex-shrink-0">
+      <div className={`rounded-t-xl px-4 py-3 ${stage.color}`}>
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="font-medium">{stage.label}</h3>
+          <Badge variant="secondary" className="font-mono">{deals.length}</Badge>
+        </div>
+      </div>
+      <div
+        ref={setNodeRef}
+        className={`bg-muted/30 rounded-b-xl p-2 min-h-[400px] space-y-2 transition-colors ${isOver ? "bg-primary/5 ring-2 ring-primary/20 ring-inset" : ""}`}
+        data-testid={`column-${stage.value}`}
+      >
+        {isLoading ? (
+          <div data-testid={`skeleton-deals-${stage.value}`}>
+            <ListSkeleton count={2} variant="compact" />
+          </div>
+        ) : deals.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground text-sm">No deals</div>
+        ) : (
+          deals.map((deal) => (
+            <DealCard
+              key={deal.id}
+              deal={deal}
+              onSelect={() => onSelect(deal)}
+              isDragging={activeDragId === deal.id}
+            />
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DealCard({ deal, onSelect, isDragging = false }: { deal: DealWithProperty; onSelect: () => void; isDragging?: boolean }) {
+  const { attributes, listeners, setNodeRef, transform } = useDraggable({ id: deal.id });
+  const style = transform ? { transform: CSS.Translate.toString(transform) } : undefined;
+
+  return (
+    <Card
+      ref={setNodeRef}
+      style={style}
+      className={`floating-window cursor-pointer hover-elevate active:scale-[0.98] transition-transform touch-manipulation ${isDragging ? "opacity-40" : ""}`}
       onClick={onSelect}
       data-testid={`card-deal-${deal.id}`}
     >
       <CardContent className="p-4 min-h-[88px]">
         <div className="flex items-start gap-3">
-          <GripVertical className="w-4 h-4 text-muted-foreground/50 mt-1 flex-shrink-0 hidden md:block" />
+          <GripVertical
+            className="w-4 h-4 text-muted-foreground/50 mt-1 flex-shrink-0 hidden md:block cursor-grab active:cursor-grabbing"
+            {...listeners}
+            {...attributes}
+            onClick={(e) => e.stopPropagation()}
+          />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               <Badge variant={deal.type === 'acquisition' ? 'default' : 'secondary'} className="text-xs">
