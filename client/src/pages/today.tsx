@@ -25,8 +25,9 @@ import {
   Clock,
   X,
   Target,
+  Sparkles,
 } from "lucide-react";
-import { format, isToday, isBefore, startOfDay } from "date-fns";
+import { format, isToday, isBefore, startOfDay, subDays } from "date-fns";
 
 interface GoalWithProgress {
   id: number;
@@ -75,6 +76,37 @@ interface SystemAlert {
   createdAt: string;
 }
 
+interface AtlasObservation {
+  id: number;
+  type: string;
+  severity: string; // high | medium | low | info
+  title: string;
+  description: string;
+  metadata: Record<string, any> | null;
+  createdAt: string | null;
+}
+
+interface AtlasStaleLead {
+  id: number;
+  firstName: string;
+  lastName: string;
+  daysSinceContact: number;
+}
+
+interface AtlasExpiringOffer {
+  id: number;
+  title: string;
+  offerExpiresAt: string | null;
+  leadName: string;
+}
+
+interface AtlasInsights {
+  observations: AtlasObservation[];
+  staleLeads: AtlasStaleLead[];
+  expiringOffers: AtlasExpiringOffer[];
+  generatedAt: string;
+}
+
 const alertHrefByType: Record<string, string> = {
   note_overdue: "/money",
   stale_leads: "/pipeline#leads",
@@ -121,6 +153,38 @@ export default function TodayPage() {
       staleTime: 5 * 60 * 1000,
     });
 
+  const { data: atlasInsights, isLoading: atlasLoading } =
+    useQuery<AtlasInsights>({
+      queryKey: ["/api/atlas/insights"],
+      staleTime: 5 * 60 * 1000,
+    });
+
+  // Decision queue: derive pending count from leads + deals already fetched
+  const { data: allDeals = [] } = useQuery<{ id: number; status: string; offerDate?: string; updatedAt?: string }[]>({
+    queryKey: ["/api/deals"],
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const pendingDecisionCount = (() => {
+    const nowTs = new Date();
+    const stalledLeads = leads.filter((l: any) => {
+      if (["closed", "dead", "converted"].includes(l.status)) return false;
+      if (!l.lastContactedAt) return true;
+      return new Date(l.lastContactedAt) < subDays(nowTs, 14);
+    }).length;
+    const waitingCounters = allDeals.filter((d) => {
+      if (d.status !== "offer_sent") return false;
+      if (!d.offerDate) return false;
+      return new Date(d.offerDate) < subDays(nowTs, 7);
+    }).length;
+    const stuckDeals = allDeals.filter((d) => {
+      if (["closed", "cancelled", "offer_sent"].includes(d.status)) return false;
+      if (!d.updatedAt) return false;
+      return new Date(d.updatedAt) < subDays(nowTs, 14);
+    }).length;
+    return stalledLeads + waitingCounters + stuckDeals;
+  })();
+
   const dismissMutation = useMutation({
     mutationFn: async (alertId: number) => {
       await apiRequest("DELETE", `/api/alerts/${alertId}/dismiss`);
@@ -147,6 +211,11 @@ export default function TodayPage() {
 
   const aiActions = intelligence?.actions?.slice(0, 5) ?? [];
 
+  const atlasObservations = atlasInsights?.observations ?? [];
+  const atlasStaleLeads = atlasInsights?.staleLeads ?? [];
+  const atlasExpiringOffers = atlasInsights?.expiringOffers ?? [];
+  const atlasItemCount = atlasObservations.length + atlasStaleLeads.length + atlasExpiringOffers.length;
+
   return (
     <PageShell>
       {/* Header */}
@@ -160,6 +229,16 @@ export default function TodayPage() {
         <p className="text-muted-foreground text-sm">
           {format(new Date(), "EEEE, MMMM d, yyyy")} — here's what needs your attention today.
         </p>
+        {pendingDecisionCount > 0 && (
+          <Link href="/decision-queue">
+            <div className="inline-flex items-center gap-2 mt-2 px-3 py-1.5 rounded-full bg-red-50 border border-red-200 dark:bg-red-900/20 dark:border-red-800 text-sm text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors cursor-pointer">
+              <Clock className="w-4 h-4" />
+              <span className="font-medium">{pendingDecisionCount} pending decision{pendingDecisionCount !== 1 ? "s" : ""}</span>
+              <Badge variant="destructive" className="text-xs px-1.5 py-0">{pendingDecisionCount}</Badge>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </div>
+          </Link>
+        )}
       </div>
 
       {/* Section 1: Today's Actions (tasks due today or overdue) */}
@@ -272,6 +351,102 @@ export default function TodayPage() {
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* Section 2b: Atlas Noticed */}
+      {!atlasLoading && atlasItemCount > 0 && (
+        <div data-testid="section-atlas-noticed">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-violet-500" />
+              <h2 className="text-lg font-semibold">Atlas Noticed</h2>
+              <Badge variant="secondary" className="bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300 text-xs">
+                AI
+              </Badge>
+              {atlasItemCount > 0 && (
+                <Badge variant="secondary" className="bg-primary/10 text-primary text-xs">
+                  {atlasItemCount}
+                </Badge>
+              )}
+            </div>
+            <Link href="/atlas#insights">
+              <Button variant="ghost" size="sm" className="gap-1 text-xs">
+                View All <ArrowRight className="w-3 h-3" />
+              </Button>
+            </Link>
+          </div>
+
+          <div className="space-y-2">
+            {/* Observation cards */}
+            {atlasObservations.map((obs) => {
+              const isHigh = obs.severity === "high";
+              const isMedium = obs.severity === "medium";
+              const isLow = obs.severity === "low";
+              const borderClass = isHigh
+                ? "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20"
+                : isMedium
+                ? "border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20"
+                : isLow
+                ? "border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-900/20"
+                : "border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800/20";
+              const badgeClass = isHigh
+                ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
+                : isMedium
+                ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+                : isLow
+                ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+                : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400";
+              return (
+                <div key={`obs-${obs.id}`} className={`flex items-start gap-3 rounded-lg border p-3 ${borderClass}`}>
+                  <Sparkles className="w-4 h-4 shrink-0 mt-0.5 text-violet-500" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-sm font-medium">{obs.title}</p>
+                      <Badge variant="secondary" className={`text-xs ${badgeClass}`}>
+                        {obs.severity}
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">{obs.description}</p>
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Stale lead cards */}
+            {atlasStaleLeads.map((lead) => (
+              <div key={`stale-${lead.id}`} className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20 p-3">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-500" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium">
+                    {lead.firstName} {lead.lastName} hasn't been contacted
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {lead.daysSinceContact >= 999 ? "Never contacted" : `${lead.daysSinceContact} days since last contact`}
+                  </p>
+                </div>
+                <Link href="/leads">
+                  <Button variant="outline" size="sm" className="text-xs h-7 shrink-0">Follow Up</Button>
+                </Link>
+              </div>
+            ))}
+
+            {/* Expiring offer cards */}
+            {atlasExpiringOffers.map((offer) => (
+              <div key={`offer-${offer.id}`} className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20 p-3">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-red-500" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium">{offer.title}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Offer expires {offer.offerExpiresAt ? format(new Date(offer.offerExpiresAt), "MMM d, h:mm a") : "soon"}
+                  </p>
+                </div>
+                <Link href="/deals">
+                  <Button variant="outline" size="sm" className="text-xs h-7 shrink-0">View Deal</Button>
+                </Link>
+              </div>
+            ))}
           </div>
         </div>
       )}
