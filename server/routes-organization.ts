@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 import type { Express } from "express";
 import { storage, db } from "./storage";
 import { z } from "zod";
@@ -168,11 +167,10 @@ export function registerOrganizationRoutes(app: Express): void {
       });
       
       // Log activity
-      await activityLogger.log({
+      await activityLogger.logEvent({
         organizationId: org.id,
-        type: "playbook_started",
-        title: `Started playbook: ${template.name}`,
-        description: `Playbook "${template.name}" was started`,
+        eventType: "playbook_started",
+        description: `Started playbook: ${template.name}`,
         entityType: "playbook",
         entityId: instance.id,
       });
@@ -245,20 +243,18 @@ export function registerOrganizationRoutes(app: Express): void {
       });
       
       // Log activity
-      await activityLogger.log({
+      await activityLogger.logEvent({
         organizationId: org.id,
-        type: "playbook_step_completed",
-        title: `Completed step: ${step.title}`,
+        eventType: "playbook_step_completed",
         description: `Step "${step.title}" was completed in playbook "${template.name}"`,
         entityType: "playbook",
         entityId: instance.id,
       });
       
       if (allComplete) {
-        await activityLogger.log({
+        await activityLogger.logEvent({
           organizationId: org.id,
-          type: "playbook_completed",
-          title: `Completed playbook: ${template.name}`,
+          eventType: "playbook_completed",
           description: `All steps in playbook "${template.name}" have been completed`,
           entityType: "playbook",
           entityId: instance.id,
@@ -864,10 +860,10 @@ export function registerOrganizationRoutes(app: Express): void {
           .where(eq(properties.organizationId, org.id))
           .orderBy(desc(properties.updatedAt))
           .limit(limit),
-        db.select({ 
-          id: deals.id, 
-          name: deals.name, 
-          type: sql`'deal'` 
+        db.select({
+          id: deals.id,
+          name: sql<string>`concat('Deal #', ${deals.id}::text)`,
+          type: sql`'deal'`
         })
           .from(deals)
           .where(eq(deals.organizationId, org.id))
@@ -885,6 +881,74 @@ export function registerOrganizationRoutes(app: Express): void {
       res.status(500).json({ message: "Failed to fetch recent items" });
     }
   });
-  
+
+  // ── Organization settings (lightweight JSONB patch) ───────────────────────
+  // Used by feature-hints and other UI toggles (showTips, checklistDismissed…)
+  api.patch("/api/organization/settings", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const allowed = z.object({
+        showTips: z.boolean().optional(),
+        checklistDismissed: z.boolean().optional(),
+        notificationsConfigured: z.boolean().optional(),
+        mailMode: z.enum(["test", "live"]).optional(),
+        timezone: z.string().optional(),
+        currency: z.string().optional(),
+      }).strict();
+      const parsed = allowed.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid settings", errors: parsed.error.flatten() });
+      }
+      // Merge patch into the existing settings JSONB
+      const current = await storage.getOrganization(org.id);
+      const merged = { ...(current?.settings ?? {}), ...parsed.data };
+      const updated = await storage.updateOrganization(org.id, { settings: merged } as any);
+      res.json({ settings: updated.settings });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to update settings" });
+    }
+  });
+
+  // ── Web Push subscriptions ────────────────────────────────────────────────
+  // VAPID public key — returned to browser to create a PushSubscription
+  api.get("/api/push/vapid-public-key", isAuthenticated, (_req, res) => {
+    const key = process.env.VAPID_PUBLIC_KEY;
+    if (!key) return res.status(503).json({ message: "Push notifications not configured" });
+    res.json({ publicKey: key });
+  });
+
+  // Subscribe — store endpoint + keys
+  api.post("/api/push/subscribe", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = (req as any).user;
+      const userId = user?.claims?.sub ?? user?.id ?? "unknown";
+      const { endpoint, keys } = req.body;
+      if (!endpoint || !keys?.p256dh || !keys?.auth) {
+        return res.status(400).json({ message: "endpoint, keys.p256dh and keys.auth are required" });
+      }
+      // Upsert: ignore if same endpoint already registered
+      await db.execute(
+        sql`INSERT INTO push_subscriptions (organization_id, user_id, endpoint, p256dh, auth)
+            VALUES (${org.id}, ${userId}, ${endpoint}, ${keys.p256dh}, ${keys.auth})
+            ON CONFLICT (endpoint) DO NOTHING`
+      );
+      res.status(201).json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to save subscription" });
+    }
+  });
+
+  // Unsubscribe — remove endpoint
+  api.post("/api/push/unsubscribe", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { endpoint } = req.body;
+      if (!endpoint) return res.status(400).json({ message: "endpoint is required" });
+      await db.execute(sql`DELETE FROM push_subscriptions WHERE endpoint = ${endpoint}`);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to remove subscription" });
+    }
+  });
 
 }
