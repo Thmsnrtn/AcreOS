@@ -621,6 +621,76 @@ export class MarketplaceService {
   }
   
   /**
+   * Get all listings for this org (seller perspective)
+   */
+  async getMyListings(organizationId: number) {
+    return await db.select({
+      listing: marketplaceListings,
+      property: properties,
+    })
+      .from(marketplaceListings)
+      .leftJoin(properties, eq(marketplaceListings.propertyId, properties.id))
+      .where(eq(marketplaceListings.sellerOrganizationId, organizationId))
+      .orderBy(desc(marketplaceListings.createdAt));
+  }
+
+  /**
+   * Get all bids placed by this org (buyer perspective)
+   */
+  async getMyBids(organizationId: number) {
+    return await db.select({
+      bid: marketplaceBids,
+      listing: marketplaceListings,
+      property: properties,
+    })
+      .from(marketplaceBids)
+      .leftJoin(marketplaceListings, eq(marketplaceBids.listingId, marketplaceListings.id))
+      .leftJoin(properties, eq(marketplaceListings.propertyId, properties.id))
+      .where(eq(marketplaceBids.bidderOrganizationId, organizationId))
+      .orderBy(desc(marketplaceBids.createdAt));
+  }
+
+  /**
+   * Deactivate (cancel) a listing owned by this org
+   */
+  async deactivateListing(organizationId: number, listingId: number) {
+    const listing = await db.select()
+      .from(marketplaceListings)
+      .where(and(
+        eq(marketplaceListings.id, listingId),
+        eq(marketplaceListings.sellerOrganizationId, organizationId)
+      ))
+      .limit(1);
+
+    if (listing.length === 0) {
+      throw new Error("Listing not found or you don't have access");
+    }
+
+    const [updated] = await db.update(marketplaceListings)
+      .set({ status: "cancelled", updatedAt: new Date() })
+      .where(eq(marketplaceListings.id, listingId))
+      .returning();
+
+    return updated;
+  }
+
+  /**
+   * Accept a specific bid on a listing owned by this org
+   */
+  async acceptBid(organizationId: number, listingId: number, bidId: number) {
+    return await this.respondToBid(organizationId, bidId, "accept");
+  }
+
+  /**
+   * Calculate platform fee (1.5%)
+   */
+  calculateFee(amount: number) {
+    const fee = amount * 0.015;
+    const net = amount * 0.985;
+    return { fee, net };
+  }
+
+  /**
    * Upgrade listing to premium placement
    */
   async upgradeToPremium(organizationId: number, listingId: number, durationDays: number = 30) {

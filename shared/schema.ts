@@ -9125,6 +9125,7 @@ export const voiceCalls = pgTable("voice_calls", {
   // Results
   wasAnswered: boolean("was_answered"),
   sentimentScore: numeric("sentiment_score"), // -1 to 1
+  motivationScore: numeric("motivation_score"), // 0 to 1 — seller motivation confidence
   objectiveAchieved: boolean("objective_achieved"),
   
   // Follow-up
@@ -9644,4 +9645,28 @@ export const goals = pgTable("goals", {
 
 export const insertGoalSchema = createInsertSchema(goals).omit({ id: true, createdAt: true, updatedAt: true });
 export type Goal = typeof goals.$inferSelect;
+
+// ─── Background Jobs ──────────────────────────────────────────────────────────
+// Persistent backing store for the in-memory JobQueueService.
+// Jobs are dual-written here so they survive server restarts.
+export const backgroundJobs = pgTable("background_jobs", {
+  id: serial("id").primaryKey(),
+  type: text("type").notNull(), // email | webhook | payment_sync | notification
+  payload: jsonb("payload").$type<Record<string, any>>().notNull(),
+  status: text("status").notNull().default("pending"), // pending | processing | completed | failed
+  attempts: integer("attempts").notNull().default(0),
+  maxAttempts: integer("max_attempts").notNull().default(3),
+  scheduledFor: timestamp("scheduled_for").notNull(),
+  error: text("error"),
+  result: jsonb("result").$type<Record<string, any>>(),
+  createdAt: timestamp("created_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+});
+
+export const insertBackgroundJobSchema = createInsertSchema(backgroundJobs).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertBackgroundJob = z.infer<typeof insertBackgroundJobSchema>;
+export type BackgroundJob = typeof backgroundJobs.$inferSelect;
 export type InsertGoal = typeof goals.$inferInsert;

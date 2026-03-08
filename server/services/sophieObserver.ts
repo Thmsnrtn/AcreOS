@@ -7,17 +7,19 @@
  */
 
 import { db } from "../db";
-import { 
-  sophieObservations, 
+import {
+  sophieObservations,
   organizations,
-  InsertSophieObservation, 
+  leads,
+  deals,
+  InsertSophieObservation,
   SophieObservation,
   SophieObservationType,
   ProactiveNotificationLevel,
   PROACTIVE_NOTIFICATION_LEVELS,
   sophieCrossOrgLearnings
 } from "@shared/schema";
-import { eq, and, desc, gte, ne, sql, like } from "drizzle-orm";
+import { eq, and, desc, gte, ne, sql, like, lt, lte } from "drizzle-orm";
 
 export type ObservationSeverity = 'info' | 'low' | 'medium' | 'high';
 export type NotificationType = 'none' | 'passive' | 'active';
@@ -710,7 +712,7 @@ class SophieObserverService {
   }>> {
     try {
       const keywords = issueText.toLowerCase().split(/\s+/).filter(w => w.length > 3);
-      
+
       const patterns = await db
         .select({
           id: sophieCrossOrgLearnings.id,
@@ -722,7 +724,7 @@ class SophieObserverService {
         .where(gte(sophieCrossOrgLearnings.successRate, "70"))
         .orderBy(desc(sophieCrossOrgLearnings.successRate))
         .limit(20);
-      
+
       return patterns.filter(pattern => {
         const patternLower = (pattern.issuePattern || "").toLowerCase();
         return keywords.some(k => patternLower.includes(k));
@@ -731,6 +733,290 @@ class SophieObserverService {
       console.error('[sophieObserver] Error finding matching fix patterns:', error);
       return [];
     }
+  }
+
+  // ============================================================
+  // PROACTIVE MONITORING CHECKS (Atlas-powered)
+  // ============================================================
+
+  /**
+   * Check for leads that haven't been contacted in 14+ days.
+   * Surfaces an actionable insight so Atlas can draft outreach.
+   */
+  async checkStaleLeads(orgId: number): Promise<SophieObservation | null> {
+    try {
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 14);
+
+      const allLeads = await db
+        .select({
+          id: leads.id,
+          firstName: leads.firstName,
+          lastName: leads.lastName,
+          status: leads.status,
+          lastContactedAt: leads.lastContactedAt,
+          createdAt: leads.createdAt,
+        })
+        .from(leads)
+        .where(eq(leads.organizationId, orgId));
+
+      const stale = allLeads.filter(l => {
+        if (["closed", "dead"].includes(l.status)) return false;
+        const lastContact = l.lastContactedAt || l.createdAt;
+        return lastContact && new Date(lastContact) < cutoff;
+      });
+
+      if (stale.length === 0) return null;
+
+      return this.recordObservation({
+        organizationId: orgId,
+        type: 'opportunity',
+        confidenceScore: 90,
+        severity: stale.length >= 5 ? 'medium' : 'low',
+        title: 'Stale leads need attention',
+        description: `I noticed ${stale.length} lead${stale.length === 1 ? '' : 's'} haven't been contacted in the last 14 days. Want me to draft personalized outreach for them?`,
+        metadata: {
+          source: 'proactive_lead_monitor',
+          suggestedAction: 'draft_outreach_message',
+          dataPoints: {
+            staleCount: stale.length,
+            daysSinceContact: 14,
+            leadIds: stale.map(l => l.id).slice(0, 20),
+          },
+          batchKey: `${orgId}:stale_leads:14d`,
+        },
+      });
+    } catch (error) {
+      console.error('[sophieObserver] Error checking stale leads:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Check for deals in offer_sent stage where the offer is 7+ days old with no response.
+   */
+  async checkExpiringOffers(orgId: number): Promise<SophieObservation | null> {
+    try {
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 7);
+
+      const expiringDeals = await db
+        .select({
+          id: deals.id,
+          status: deals.status,
+          offerDate: deals.offerDate,
+          offerAmount: deals.offerAmount,
+          propertyId: deals.propertyId,
+        })
+        .from(deals)
+        .where(
+          and(
+            eq(deals.organizationId, orgId),
+            eq(deals.status, 'offer_sent'),
+            lte(deals.offerDate, cutoff)
+          )
+        );
+
+      if (expiringDeals.length === 0) return null;
+
+      // Calculate average days waiting
+      const now = Date.now();
+      const avgDays = Math.round(
+        expiringDeals.reduce((sum, d) => {
+          const offerMs = d.offerDate ? new Date(d.offerDate).getTime() : now;
+          return sum + (now - offerMs) / (1000 * 60 * 60 * 24);
+        }, 0) / expiringDeals.length
+      );
+
+      return this.recordObservation({
+        organizationId: orgId,
+        type: 'opportunity',
+        confidenceScore: 88,
+        severity: expiringDeals.length >= 3 ? 'high' : 'medium',
+        title: 'Offers waiting without response',
+        description: `You have ${expiringDeals.length} offer${expiringDeals.length === 1 ? '' : 's'} that ${expiringDeals.length === 1 ? 'has' : 'have'} been waiting an average of ${avgDays} days with no response. Want me to draft a follow-up?`,
+        metadata: {
+          source: 'proactive_offer_monitor',
+          suggestedAction: 'draft_outreach_message',
+          dataPoints: {
+            expiringCount: expiringDeals.length,
+            avgDaysWaiting: avgDays,
+            dealIds: expiringDeals.map(d => d.id),
+          },
+          batchKey: `${orgId}:expiring_offers:7d`,
+        },
+      });
+    } catch (error) {
+      console.error('[sophieObserver] Error checking expiring offers:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Compare deals closed this month vs last month.
+   * If velocity has dropped >20%, surface an insight.
+   */
+  async checkPipelineVelocity(orgId: number): Promise<SophieObservation | null> {
+    try {
+      const now = new Date();
+
+      // This month boundaries
+      const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+
+      const allDeals = await db
+        .select({
+          id: deals.id,
+          status: deals.status,
+          closingDate: deals.closingDate,
+          updatedAt: deals.offerDate, // Use offerDate as a proxy timestamp for closed deals
+        })
+        .from(deals)
+        .where(
+          and(
+            eq(deals.organizationId, orgId),
+            eq(deals.status, 'closed')
+          )
+        );
+
+      const closedThisMonth = allDeals.filter(d => {
+        const closedAt = d.closingDate ? new Date(d.closingDate) : null;
+        return closedAt && closedAt >= thisMonthStart && closedAt <= now;
+      }).length;
+
+      const closedLastMonth = allDeals.filter(d => {
+        const closedAt = d.closingDate ? new Date(d.closingDate) : null;
+        return closedAt && closedAt >= lastMonthStart && closedAt <= lastMonthEnd;
+      }).length;
+
+      // Only surface if there was meaningful activity last month
+      if (closedLastMonth === 0) return null;
+
+      const dropPercent = Math.round(((closedLastMonth - closedThisMonth) / closedLastMonth) * 100);
+      if (dropPercent <= 20) return null;
+
+      return this.recordObservation({
+        organizationId: orgId,
+        type: 'performance',
+        confidenceScore: 75,
+        severity: dropPercent >= 50 ? 'high' : 'medium',
+        title: 'Pipeline velocity has slowed',
+        description: `Deals closed this month (${closedThisMonth}) are down ${dropPercent}% compared to last month (${closedLastMonth}). Worth reviewing what's in the pipeline to get things moving.`,
+        metadata: {
+          source: 'proactive_pipeline_monitor',
+          suggestedAction: 'get_deals',
+          dataPoints: {
+            closedThisMonth,
+            closedLastMonth,
+            dropPercent,
+          },
+          batchKey: `${orgId}:pipeline_velocity:${now.getFullYear()}-${now.getMonth()}`,
+        },
+      });
+    } catch (error) {
+      console.error('[sophieObserver] Error checking pipeline velocity:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Check for high-value leads (estimated property value >$50k) with no contact in 7 days.
+   * Surfaces a priority alert.
+   */
+  async checkHighValueInactiveLeads(orgId: number): Promise<SophieObservation | null> {
+    try {
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 7);
+
+      // Import properties to cross-reference
+      const { properties } = await import("@shared/schema");
+
+      const allLeads = await db
+        .select({
+          id: leads.id,
+          firstName: leads.firstName,
+          lastName: leads.lastName,
+          status: leads.status,
+          lastContactedAt: leads.lastContactedAt,
+          createdAt: leads.createdAt,
+        })
+        .from(leads)
+        .where(eq(leads.organizationId, orgId));
+
+      // Find properties with high market value linked to sellers
+      const highValueProperties = await db
+        .select({
+          sellerId: properties.sellerId,
+          marketValue: properties.marketValue,
+          listPrice: properties.listPrice,
+          county: properties.county,
+          state: properties.state,
+        })
+        .from(properties)
+        .where(eq(properties.organizationId, orgId));
+
+      const highValueSellerIds = new Set(
+        highValueProperties
+          .filter(p => {
+            const value = Number(p.marketValue || p.listPrice || 0);
+            return value > 50000 && p.sellerId !== null;
+          })
+          .map(p => p.sellerId!)
+      );
+
+      const inactive = allLeads.filter(l => {
+        if (!highValueSellerIds.has(l.id)) return false;
+        if (["closed", "dead"].includes(l.status)) return false;
+        const lastContact = l.lastContactedAt || l.createdAt;
+        return lastContact && new Date(lastContact) < cutoff;
+      });
+
+      if (inactive.length === 0) return null;
+
+      return this.recordObservation({
+        organizationId: orgId,
+        type: 'opportunity',
+        confidenceScore: 92,
+        severity: 'high',
+        title: 'High-value leads need priority attention',
+        description: `${inactive.length} high-value lead${inactive.length === 1 ? '' : 's'} (property value >$50k) ${inactive.length === 1 ? 'has' : 'have'} not been contacted in 7+ days. These represent significant opportunities — want me to draft outreach?`,
+        metadata: {
+          source: 'proactive_high_value_monitor',
+          suggestedAction: 'draft_outreach_message',
+          dataPoints: {
+            inactiveCount: inactive.length,
+            daysSinceContact: 7,
+            valueThreshold: 50000,
+            leadIds: inactive.map(l => l.id).slice(0, 10),
+          },
+          batchKey: `${orgId}:high_value_inactive:7d`,
+        },
+      });
+    } catch (error) {
+      console.error('[sophieObserver] Error checking high-value inactive leads:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Run all proactive monitoring checks for an organization.
+   * Call this on a schedule (e.g., hourly) to surface insights.
+   */
+  async runProactiveChecks(orgId: number): Promise<{
+    staleLeads: SophieObservation | null;
+    expiringOffers: SophieObservation | null;
+    pipelineVelocity: SophieObservation | null;
+    highValueInactive: SophieObservation | null;
+  }> {
+    console.log(`[sophieObserver] Running proactive checks for org ${orgId}`);
+    const [staleLeads, expiringOffers, pipelineVelocity, highValueInactive] = await Promise.all([
+      this.checkStaleLeads(orgId),
+      this.checkExpiringOffers(orgId),
+      this.checkPipelineVelocity(orgId),
+      this.checkHighValueInactiveLeads(orgId),
+    ]);
+    return { staleLeads, expiringOffers, pipelineVelocity, highValueInactive };
   }
 }
 
