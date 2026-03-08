@@ -27,7 +27,7 @@ import {
   Target,
   Sparkles,
 } from "lucide-react";
-import { format, isToday, isBefore, startOfDay } from "date-fns";
+import { format, isToday, isBefore, startOfDay, subDays } from "date-fns";
 
 interface GoalWithProgress {
   id: number;
@@ -159,6 +159,32 @@ export default function TodayPage() {
       staleTime: 5 * 60 * 1000,
     });
 
+  // Decision queue: derive pending count from leads + deals already fetched
+  const { data: allDeals = [] } = useQuery<{ id: number; status: string; offerDate?: string; updatedAt?: string }[]>({
+    queryKey: ["/api/deals"],
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const pendingDecisionCount = (() => {
+    const nowTs = new Date();
+    const stalledLeads = leads.filter((l: any) => {
+      if (["closed", "dead", "converted"].includes(l.status)) return false;
+      if (!l.lastContactedAt) return true;
+      return new Date(l.lastContactedAt) < subDays(nowTs, 14);
+    }).length;
+    const waitingCounters = allDeals.filter((d) => {
+      if (d.status !== "offer_sent") return false;
+      if (!d.offerDate) return false;
+      return new Date(d.offerDate) < subDays(nowTs, 7);
+    }).length;
+    const stuckDeals = allDeals.filter((d) => {
+      if (["closed", "cancelled", "offer_sent"].includes(d.status)) return false;
+      if (!d.updatedAt) return false;
+      return new Date(d.updatedAt) < subDays(nowTs, 14);
+    }).length;
+    return stalledLeads + waitingCounters + stuckDeals;
+  })();
+
   const dismissMutation = useMutation({
     mutationFn: async (alertId: number) => {
       await apiRequest("DELETE", `/api/alerts/${alertId}/dismiss`);
@@ -203,6 +229,16 @@ export default function TodayPage() {
         <p className="text-muted-foreground text-sm">
           {format(new Date(), "EEEE, MMMM d, yyyy")} — here's what needs your attention today.
         </p>
+        {pendingDecisionCount > 0 && (
+          <Link href="/decision-queue">
+            <div className="inline-flex items-center gap-2 mt-2 px-3 py-1.5 rounded-full bg-red-50 border border-red-200 dark:bg-red-900/20 dark:border-red-800 text-sm text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors cursor-pointer">
+              <Clock className="w-4 h-4" />
+              <span className="font-medium">{pendingDecisionCount} pending decision{pendingDecisionCount !== 1 ? "s" : ""}</span>
+              <Badge variant="destructive" className="text-xs px-1.5 py-0">{pendingDecisionCount}</Badge>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </div>
+          </Link>
+        )}
       </div>
 
       {/* Section 1: Today's Actions (tasks due today or overdue) */}
