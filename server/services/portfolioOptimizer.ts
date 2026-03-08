@@ -1,10 +1,8 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 import { db } from '../db';
-import { 
-  portfolioSimulations, 
+import {
+  portfolioSimulations,
   optimizationRecommendations,
   properties,
-  transactions 
 } from '../../shared/schema';
 import { eq, and, desc, gte, sql } from 'drizzle-orm';
 import OpenAI from 'openai';
@@ -81,7 +79,7 @@ class PortfolioOptimizer {
    * Run Monte Carlo simulation for portfolio over time horizon
    */
   async runMonteCarloSimulation(
-    organizationId: string,
+    organizationId: number,
     holdings: PropertyHolding[],
     yearsForward: number,
     numSimulations: number = 10000
@@ -183,25 +181,26 @@ class PortfolioOptimizer {
         maxDrawdown,
       };
 
-      // Save simulation to database
+      // Save simulation to database — map to actual schema columns
       const [simulation] = await db.insert(portfolioSimulations).values({
         organizationId,
-        simulationType: 'monte_carlo',
-        parameters: {
-          holdings: holdings.length,
-          yearsForward,
-          numSimulations,
-          portfolioValue,
-          portfolioAnnualReturn,
-          portfolioVolatility,
+        name: `Monte Carlo ${new Date().toISOString().slice(0, 10)}`,
+        timeHorizonMonths: yearsForward * 12,
+        iterations: numSimulations,
+        assumptions: {
+          marketVolatility: portfolioVolatility,
         },
-        scenarios,
-        riskMetrics,
-        timeline,
+        results: {
+          portfolioValue: { p10: scenarios.pessimistic.value, p50: scenarios.base.value, p90: scenarios.optimistic.value },
+          totalReturn: { p10: scenarios.pessimistic.roi, p50: scenarios.base.roi, p90: scenarios.optimistic.roi },
+          cashFlow: { p10: 0, p50: 0, p90: 0 },
+          riskOfLoss: riskMetrics.probabilityOfLoss,
+        },
+        status: 'completed',
       }).returning();
 
       return {
-        simulationId: simulation.id,
+        simulationId: String(simulation.id),
         scenarios,
         riskMetrics,
         timeline,
@@ -216,7 +215,7 @@ class PortfolioOptimizer {
    * Calculate comprehensive portfolio metrics
    */
   async calculatePortfolioMetrics(
-    organizationId: string,
+    organizationId: number,
     holdings: PropertyHolding[]
   ): Promise<PortfolioMetrics> {
     try {
@@ -269,7 +268,7 @@ class PortfolioOptimizer {
    * Analyze portfolio diversification across dimensions
    */
   async analyzeDiversification(
-    organizationId: string,
+    organizationId: number,
     holdings: PropertyHolding[]
   ): Promise<DiversificationAnalysis> {
     try {
@@ -334,12 +333,12 @@ class PortfolioOptimizer {
 
       // HHI helper: sum of squared market-share fractions → 0 (monopoly) to 1 (equal spread)
       // We convert to a 0–100 "diversification" score: (1 - HHI) * 100
-      function hhiScore(dist: { [key: string]: number }): number {
+      const hhiScore = (dist: { [key: string]: number }): number => {
         const entries = Object.values(dist).filter(v => v > 0);
         if (entries.length === 0) return 100;
         const hhi = entries.reduce((sum, v) => sum + Math.pow(v / totalValue, 2), 0);
         return (1 - hhi) * 100;
-      }
+      };
 
       // Weighted average: geographic dimensions count more than size
       const stateScore = hhiScore(byState);
@@ -407,7 +406,7 @@ class PortfolioOptimizer {
    * Generate AI-powered optimization recommendations
    */
   async generateOptimizationRecommendations(
-    organizationId: string,
+    organizationId: number,
     holdings: PropertyHolding[],
     portfolioMetrics: PortfolioMetrics,
     monteCarloResult: MonteCarloResult
@@ -541,17 +540,22 @@ Respond in JSON format with array of recommendations.`;
       // Sort by priority (descending)
       recommendations.sort((a, b) => b.priority - a.priority);
 
-      // Save recommendations to database
+      // Save recommendations to database — map to actual schema columns
       for (const rec of recommendations) {
+        const priorityLabel = rec.priority >= 8 ? 'critical' : rec.priority >= 6 ? 'high' : rec.priority >= 4 ? 'medium' : 'low';
         await db.insert(optimizationRecommendations).values({
           organizationId,
-          propertyId: rec.propertyId,
           recommendationType: rec.action,
+          title: `${rec.action.charAt(0).toUpperCase() + rec.action.slice(1)} recommendation`,
+          description: rec.reasoning,
           reasoning: rec.reasoning,
-          expectedImpact: rec.expectedImpact,
-          confidence: rec.confidence,
-          priority: rec.priority,
-          status: 'pending',
+          estimatedImpact: {
+            returnIncrease: rec.expectedImpact.valueChange,
+            riskReduction: -rec.expectedImpact.riskChange,
+            cashFlowImprovement: rec.expectedImpact.cashFlowChange,
+          },
+          priority: priorityLabel,
+          status: 'new',
         });
       }
 
@@ -565,7 +569,7 @@ Respond in JSON format with array of recommendations.`;
   /**
    * Get portfolio holdings from database
    */
-  async getPortfolioHoldings(organizationId: string): Promise<PropertyHolding[]> {
+  async getPortfolioHoldings(organizationId: number): Promise<PropertyHolding[]> {
     try {
       const props = await db.query.properties.findMany({
         where: and(
@@ -575,11 +579,11 @@ Respond in JSON format with array of recommendations.`;
       });
 
       return props.map(p => ({
-        propertyId: p.id,
-        address: p.address,
-        acres: p.acres || 0,
-        acquisitionPrice: p.purchasePrice || 0,
-        currentValue: p.estimatedValue || p.purchasePrice || 0,
+        propertyId: String(p.id),
+        address: p.address ?? '',
+        acres: parseFloat(String(p.sizeAcres ?? 0)),
+        acquisitionPrice: parseFloat(String(p.purchasePrice ?? 0)),
+        currentValue: parseFloat(String(p.marketValue ?? p.purchasePrice ?? 0)),
         annualAppreciation: 5, // Default 5%, would be calculated from market data
         cashFlow: 0, // Would be calculated from income/expenses
         marketRisk: 50, // Default medium risk, would come from market predictions
@@ -594,7 +598,7 @@ Respond in JSON format with array of recommendations.`;
   /**
    * Get all simulations for organization
    */
-  async getSimulations(organizationId: string, limit: number = 10): Promise<any[]> {
+  async getSimulations(organizationId: number, limit: number = 10): Promise<any[]> {
     try {
       return await db.query.portfolioSimulations.findMany({
         where: eq(portfolioSimulations.organizationId, organizationId),
@@ -610,7 +614,7 @@ Respond in JSON format with array of recommendations.`;
   /**
    * Get pending optimization recommendations
    */
-  async getPendingRecommendations(organizationId: string): Promise<any[]> {
+  async getPendingRecommendations(organizationId: number): Promise<any[]> {
     try {
       return await db.query.optimizationRecommendations.findMany({
         where: and(
@@ -629,13 +633,13 @@ Respond in JSON format with array of recommendations.`;
    * Update recommendation status
    */
   async updateRecommendationStatus(
-    organizationId: string,
-    recommendationId: string,
-    status: 'pending' | 'approved' | 'rejected' | 'implemented'
+    organizationId: number,
+    recommendationId: number,
+    status: 'new' | 'reviewed' | 'implemented' | 'dismissed'
   ): Promise<void> {
     try {
       await db.update(optimizationRecommendations)
-        .set({ 
+        .set({
           status,
           implementedAt: status === 'implemented' ? new Date() : null,
         })
@@ -653,7 +657,7 @@ Respond in JSON format with array of recommendations.`;
    * Run complete portfolio analysis
    */
   async runCompleteAnalysis(
-    organizationId: string,
+    organizationId: number,
     yearsForward: number = 5
   ): Promise<{
     metrics: PortfolioMetrics;

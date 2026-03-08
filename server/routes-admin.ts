@@ -509,19 +509,12 @@ export function registerAdminRoutes(app: Express): void {
       return next();
     }
     
+    // Secondary check: owner of the founding org (org ID #1) only
     const firstOrg = await storage.getOrganization(1);
     if (firstOrg && firstOrg.ownerId === userId) {
       return next();
     }
-    
-    const userOrg = await storage.getOrganizationByOwner(userId);
-    if (userOrg) {
-      const teamMember = await storage.getTeamMember(userOrg.id, userId);
-      if (teamMember && teamMember.role === 'owner') {
-        return next();
-      }
-    }
-    
+
     res.status(403).json({ message: "Access denied. Admin privileges required." });
   };
 

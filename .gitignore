@@ -9,6 +9,8 @@ vite.config.ts.*
 .env
 .env.*
 .env*.local
+# Allow the example template (contains no secrets)
+!.env.example
 
 # Local backups
 .acreos-backups/

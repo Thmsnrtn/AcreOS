@@ -7,6 +7,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { leadScoringService } from "./services/leadScoring";
 import { propertyEnrichmentService } from "./services/propertyEnrichment";
+import { checkUsageLimit } from "./services/usageLimits";
 
 // Partial update schema for PUT endpoints
 const updateDealSchema = insertDealSchema.partial().omit({ organizationId: true });
@@ -366,11 +367,16 @@ export function registerDealRoutes(app: Express): void {
         return res.status(400).json({ message: "Message is required" });
       }
       
+      const usageCheck = await checkUsageLimit(org.id, "ai_requests");
+      if (!usageCheck.allowed) {
+        return res.status(429).json({ message: "AI request limit reached. Upgrade to continue." });
+      }
+
       const property = await storage.getProperty(org.id, propertyId);
       if (!property) {
         return res.status(404).json({ message: "Property not found" });
       }
-      
+
       const { ResearchIntelligenceAgent, DealsAcquisitionAgent, skillRegistry } = await import('./services/core-agents');
       const OpenAI = (await import('openai')).default;
       const openai = new OpenAI();
