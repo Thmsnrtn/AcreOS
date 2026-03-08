@@ -1,4 +1,4 @@
-import { Sidebar } from "@/components/layout-sidebar";
+import { Sidebar, useSidebarCollapsed } from "@/components/layout-sidebar";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { PageHeaderSkeleton } from "@/components/list-skeleton";
 
@@ -41,11 +41,16 @@ const MAX_WIDTH_CLASSES = {
 } as const;
 
 export function PageShell({ children, isLoading, loadingFallback, maxWidth = "7xl" }: PageShellProps) {
+  const { isCollapsed } = useSidebarCollapsed();
   return (
     <div className="flex min-h-screen bg-background desert-gradient">
       <Sidebar />
-      <main className="flex-1 md:ml-[17rem] p-4 pt-16 md:pt-8 md:p-8 pb-8 overflow-x-hidden">
-        <div className={`${MAX_WIDTH_CLASSES[maxWidth]} mx-auto space-y-6 md:space-y-8`}>
+      <main
+        className={`flex-1 p-4 pt-16 md:pt-8 md:p-8 pb-8 overflow-x-hidden content-spring ${
+          isCollapsed ? "md:ml-[76px]" : "md:ml-[17rem]"
+        }`}
+      >
+        <div className={`${MAX_WIDTH_CLASSES[maxWidth]} mx-auto space-y-6 md:space-y-8 page-enter`}>
           <ErrorBoundary>
             {isLoading
               ? (loadingFallback ?? <PageShellSkeleton />)
@@ -64,10 +69,10 @@ function PageShellSkeleton() {
       <PageHeaderSkeleton />
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="h-24 rounded-xl bg-muted/50 animate-pulse" />
+          <div key={i} className="h-24 rounded-xl skeleton-shimmer" />
         ))}
       </div>
-      <div className="h-64 rounded-xl bg-muted/50 animate-pulse" />
+      <div className="h-64 rounded-xl skeleton-shimmer" />
     </div>
   );
 }

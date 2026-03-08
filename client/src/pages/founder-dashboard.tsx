@@ -8,6 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
 import { SystemHealth } from "@/components/system-health";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -48,7 +50,9 @@ import {
   Copy,
   Clipboard,
   ExternalLink,
-  HandHelping
+  HandHelping,
+  Key,
+  Search,
 } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 
@@ -373,6 +377,9 @@ export default function FounderDashboard() {
   const [promptDialogOpen, setPromptDialogOpen] = useState(false);
   const [generatedPrompt, setGeneratedPrompt] = useState("");
   const [generatingPromptFor, setGeneratingPromptFor] = useState<number | null>(null);
+  const [bulkImportOpen, setBulkImportOpen] = useState(false);
+  const [bulkImportJson, setBulkImportJson] = useState("");
+  const [dataSourceFilter, setDataSourceFilter] = useState("");
 
   const { data: dashboardData, isLoading } = useQuery<AdminDashboardData>({
     queryKey: ['/api/admin/dashboard'],
@@ -967,6 +974,25 @@ export default function FounderDashboard() {
     onError: (error: Error) => {
       toast({ title: "Validation failed", description: error.message, variant: "destructive" });
     },
+  });
+
+  const bulkImportMutation = useMutation({
+    mutationFn: async (sources: object[]) => {
+      const res = await apiRequest("POST", "/api/data-sources/bulk-import", { sources });
+      if (!res.ok) throw new Error("Import failed");
+      return res.json() as Promise<{ imported: number; skipped: number; errors: string[] }>;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/data-sources"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/data-sources/stats"] });
+      setBulkImportOpen(false);
+      setBulkImportJson("");
+      toast({
+        title: `Imported ${data.imported} sources`,
+        description: data.skipped > 0 ? `${data.skipped} skipped (duplicates or errors)` : "All sources imported successfully",
+      });
+    },
+    onError: (err: Error) => toast({ title: "Import failed", description: err.message, variant: "destructive" }),
   });
 
   const getAgentStatusColor = (status: string) => {
@@ -2026,7 +2052,16 @@ export default function FounderDashboard() {
                     {validationStatus.progress.completed || 0}/{validationStatus.progress.total || 0}
                   </Badge>
                 )}
-                <Button 
+                <Button
+                  onClick={() => setBulkImportOpen(true)}
+                  variant="outline"
+                  size="sm"
+                  data-testid="button-bulk-import-sources"
+                >
+                  <Database className="w-4 h-4 mr-1" />
+                  Bulk Import
+                </Button>
+                <Button
                   onClick={() => testAllDataSourcesMutation.mutate()}
                   disabled={testAllDataSourcesMutation.isPending || validationStatus?.isRunning}
                   variant="outline"
@@ -2043,6 +2078,48 @@ export default function FounderDashboard() {
               </div>
             </CardHeader>
             <CardContent>
+              {/* Bulk Import Dialog */}
+              <Dialog open={bulkImportOpen} onOpenChange={setBulkImportOpen}>
+                <DialogContent className="max-w-2xl">
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                      <Database className="w-5 h-5" />
+                      Bulk Import Data Sources
+                    </DialogTitle>
+                    <DialogDescription>
+                      Paste a JSON array of data source objects. Required fields: <code className="text-xs bg-muted px-1 rounded">key</code>, <code className="text-xs bg-muted px-1 rounded">title</code>, <code className="text-xs bg-muted px-1 rounded">category</code>.
+                      Optional: subcategory, description, portalUrl, apiUrl, coverage, accessLevel, dataTypes[].
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-3">
+                    <Textarea
+                      placeholder={'[\n  {\n    "key": "usgs_topo",\n    "title": "USGS Topographic Maps",\n    "category": "topography",\n    "portalUrl": "https://ngmdb.usgs.gov/topoview/"\n  }\n]'}
+                      value={bulkImportJson}
+                      onChange={(e) => setBulkImportJson(e.target.value)}
+                      className="font-mono text-xs h-64"
+                    />
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setBulkImportOpen(false)}>Cancel</Button>
+                    <Button
+                      onClick={() => {
+                        try {
+                          const parsed = JSON.parse(bulkImportJson);
+                          if (!Array.isArray(parsed)) throw new Error("Must be a JSON array");
+                          bulkImportMutation.mutate(parsed);
+                        } catch (e: any) {
+                          toast({ title: "Invalid JSON", description: e.message, variant: "destructive" });
+                        }
+                      }}
+                      disabled={bulkImportMutation.isPending || !bulkImportJson.trim()}
+                    >
+                      {bulkImportMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                      Import Sources
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+
               {dataSourcesLoading ? (
                 <div className="space-y-2">
                   <Skeleton className="h-10 w-full" />
@@ -2051,6 +2128,16 @@ export default function FounderDashboard() {
                 </div>
               ) : dataSources && dataSources.length > 0 ? (
                 <div className="space-y-4">
+                  {/* Search filter */}
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Filter by title, category, or coverage…"
+                      value={dataSourceFilter}
+                      onChange={(e) => setDataSourceFilter(e.target.value)}
+                      className="pl-8 h-8 text-sm"
+                    />
+                  </div>
                   {/* Category summary */}
                   <div className="flex flex-wrap gap-2 pb-3 border-b">
                     {dataSourceStats && Object.entries(dataSourceStats.byCategory)
@@ -2073,7 +2160,14 @@ export default function FounderDashboard() {
                       <span className="col-span-1">Status</span>
                       <span className="col-span-2">Actions</span>
                     </div>
-                    {dataSources.map((source) => (
+                    {dataSources.filter((source) => {
+                      if (!dataSourceFilter) return true;
+                      const q = dataSourceFilter.toLowerCase();
+                      return source.title?.toLowerCase().includes(q) ||
+                        source.category?.toLowerCase().includes(q) ||
+                        source.coverage?.toLowerCase().includes(q) ||
+                        source.description?.toLowerCase().includes(q);
+                    }).map((source) => (
                       <div 
                         key={source.id} 
                         className={`grid grid-cols-12 gap-2 items-center p-3 rounded-lg border hover-elevate ${!source.isEnabled ? 'opacity-50' : ''}`}
@@ -3283,6 +3377,200 @@ export default function FounderDashboard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* AI Models Management */}
+      <AIModelsSection />
+
+      {/* System API Keys Management */}
+      <SystemApiKeysSection />
     </PageShell>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// AI Models Management section
+// ─────────────────────────────────────────────────────────────────────
+function AIModelsSection() {
+  const { data: models = [], isLoading, refetch } = useQuery<any[]>({
+    queryKey: ["/api/admin/ai-models"],
+  });
+  const { toast } = useToast();
+
+  const toggleMutation = useMutation({
+    mutationFn: async ({ id, enabled }: { id: number; enabled: boolean }) =>
+      apiRequest("PUT", `/api/admin/ai-models/${id}`, { enabled }),
+    onSuccess: () => { refetch(); },
+    onError: () => toast({ title: "Update failed", variant: "destructive" }),
+  });
+
+  const updateWeightMutation = useMutation({
+    mutationFn: async ({ id, weight }: { id: number; weight: number }) =>
+      apiRequest("PUT", `/api/admin/ai-models/${id}`, { weight }),
+    onSuccess: () => { refetch(); },
+    onError: () => toast({ title: "Update failed", variant: "destructive" }),
+  });
+
+  return (
+    <div className="mt-8 p-6 border rounded-xl bg-card space-y-4" data-testid="section-ai-models">
+      <div>
+        <h2 className="text-xl font-semibold flex items-center gap-2">
+          <Bot className="w-5 h-5 text-primary" />
+          AI Model Configuration
+        </h2>
+        <p className="text-muted-foreground text-sm mt-0.5">
+          All models route through OpenRouter. Adjust weights to control model selection by complexity tier.
+        </p>
+      </div>
+
+      {isLoading ? (
+        <div className="animate-pulse h-24 rounded-lg bg-muted/50" />
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b text-muted-foreground text-xs">
+                <th className="text-left py-2 pr-4 font-medium">Model</th>
+                <th className="text-right py-2 pr-4 font-medium">Input $/M</th>
+                <th className="text-right py-2 pr-4 font-medium">Output $/M</th>
+                <th className="text-right py-2 pr-4 font-medium">Weight</th>
+                <th className="text-center py-2 pr-4 font-medium">Enabled</th>
+                <th className="text-left py-2 font-medium">Task Types</th>
+              </tr>
+            </thead>
+            <tbody>
+              {models.map((m: any) => (
+                <tr key={m.id} className="border-b hover:bg-muted/30 transition-colors">
+                  <td className="py-2 pr-4">
+                    <div className="font-medium">{m.displayName}</div>
+                    <div className="text-xs text-muted-foreground font-mono">{m.modelId}</div>
+                  </td>
+                  <td className="py-2 pr-4 text-right font-mono text-xs">
+                    ${parseFloat(m.costPerMillionInput || "0").toFixed(2)}
+                  </td>
+                  <td className="py-2 pr-4 text-right font-mono text-xs">
+                    ${parseFloat(m.costPerMillionOutput || "0").toFixed(2)}
+                  </td>
+                  <td className="py-2 pr-4 text-right">
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      defaultValue={m.weight ?? 50}
+                      onBlur={(e) => updateWeightMutation.mutate({ id: m.id, weight: parseInt(e.target.value) })}
+                      className="w-14 text-right border rounded px-1 py-0.5 text-xs bg-background"
+                    />
+                  </td>
+                  <td className="py-2 pr-4 text-center">
+                    <Switch
+                      checked={m.enabled}
+                      onCheckedChange={(v) => toggleMutation.mutate({ id: m.id, enabled: v })}
+                    />
+                  </td>
+                  <td className="py-2 text-xs text-muted-foreground max-w-xs">
+                    <div className="flex flex-wrap gap-1">
+                      {(m.taskTypes || []).slice(0, 4).map((t: string) => (
+                        <Badge key={t} variant="secondary" className="text-xs px-1 py-0">{t}</Badge>
+                      ))}
+                      {(m.taskTypes || []).length > 4 && (
+                        <Badge variant="outline" className="text-xs px-1 py-0">+{(m.taskTypes || []).length - 4}</Badge>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// System API Keys section
+// ─────────────────────────────────────────────────────────────────────
+function SystemApiKeysSection() {
+  const { data: keys = [], isLoading, refetch } = useQuery<any[]>({
+    queryKey: ["/api/admin/system-api-keys"],
+  });
+  const { toast } = useToast();
+  const [editProvider, setEditProvider] = useState<string | null>(null);
+  const [newKey, setNewKey] = useState("");
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ provider, apiKey }: { provider: string; apiKey: string }) =>
+      apiRequest("PUT", `/api/admin/system-api-keys/${provider}`, { apiKey }),
+    onSuccess: () => {
+      refetch();
+      setEditProvider(null);
+      setNewKey("");
+      toast({ title: "API key saved" });
+    },
+    onError: () => toast({ title: "Save failed", variant: "destructive" }),
+  });
+
+  return (
+    <div className="mt-6 mb-8 p-6 border rounded-xl bg-card space-y-4" data-testid="section-system-api-keys">
+      <div>
+        <h2 className="text-xl font-semibold flex items-center gap-2">
+          <Key className="w-5 h-5 text-primary" />
+          System API Keys
+        </h2>
+        <p className="text-muted-foreground text-sm mt-0.5">
+          Platform-wide API keys. Users' BYOK keys override these for their own usage.
+        </p>
+      </div>
+
+      {isLoading ? (
+        <div className="animate-pulse h-20 rounded-lg bg-muted/50" />
+      ) : (
+        <div className="space-y-2">
+          {(keys as any[]).map((key) => (
+            <div key={key.id} className="flex items-center gap-3 p-3 border rounded-lg">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-sm">{key.displayName}</span>
+                  <Badge variant={key.hasKey ? "default" : "outline"} className="text-xs">
+                    {key.hasKey ? "Configured" : "Not set"}
+                  </Badge>
+                </div>
+                <div className="text-xs text-muted-foreground font-mono">{key.provider}</div>
+              </div>
+              {editProvider === key.provider ? (
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="password"
+                    placeholder="Enter API key…"
+                    value={newKey}
+                    onChange={(e) => setNewKey(e.target.value)}
+                    className="h-8 w-48 text-xs"
+                  />
+                  <Button
+                    size="sm"
+                    className="h-8"
+                    onClick={() => updateMutation.mutate({ provider: key.provider, apiKey: newKey })}
+                    disabled={updateMutation.isPending || !newKey}
+                  >
+                    Save
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-8" onClick={() => { setEditProvider(null); setNewKey(""); }}>
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs shrink-0"
+                  onClick={() => setEditProvider(key.provider)}
+                >
+                  {key.hasKey ? "Update Key" : "Set Key"}
+                </Button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

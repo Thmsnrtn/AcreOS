@@ -253,5 +253,21 @@ export async function registerRoutes(
   // Register AI Operations (Router-based)
   registerAIOperationsRoutes(app);
 
+  // ─── Address Verification ──────────────────────────────────────────
+  const { isAuthenticated } = await import("./auth");
+  const { verifyAddress } = await import("./services/addressVerification");
+  app.post("/api/addresses/verify", isAuthenticated, async (req, res) => {
+    try {
+      const { address1, address2, city, state, zip } = req.body;
+      if (!address1 || !city || !state) {
+        return res.status(400).json({ message: "address1, city, and state are required" });
+      }
+      const result = await verifyAddress({ address1, address2, city, state, zip });
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   return httpServer;
 }

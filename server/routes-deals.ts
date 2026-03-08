@@ -212,7 +212,7 @@ export function registerDealRoutes(app: Express): void {
         forceRefresh,
       });
       
-      // Save enrichment data to deal
+      // Save enrichment data to deal (all categories)
       const updatedDeal = await storage.updateDeal(dealId, {
         enrichmentStatus: "completed",
         enrichedAt: new Date(),
@@ -221,8 +221,22 @@ export function registerDealRoutes(app: Express): void {
           lookupTimeMs: enrichmentResult.lookupTimeMs,
           hazards: enrichmentResult.hazards,
           environment: enrichmentResult.environment,
+          epaFacilities: enrichmentResult.epaFacilities,
+          stormHistory: enrichmentResult.stormHistory,
           infrastructure: enrichmentResult.infrastructure,
           demographics: enrichmentResult.demographics,
+          publicLands: enrichmentResult.publicLands,
+          transportation: enrichmentResult.transportation,
+          water: enrichmentResult.water,
+          elevation: enrichmentResult.elevation,
+          climate: enrichmentResult.climate,
+          agriculturalValues: enrichmentResult.agriculturalValues,
+          landCover: enrichmentResult.landCover,
+          cropland: enrichmentResult.cropland,
+          plss: enrichmentResult.plss,
+          watershed: enrichmentResult.watershed,
+          femaNri: enrichmentResult.femaNri,
+          usdaClu: enrichmentResult.usdaClu,
           scores: enrichmentResult.scores,
           errors: enrichmentResult.errors,
         } as any,

@@ -2,6 +2,8 @@ import OpenAI from "openai";
 import { storage } from "../storage";
 import type { Organization, SupportTicket, KnowledgeBaseArticle } from "@shared/schema";
 import { db } from "../db";
+import { dataSourceBroker } from "../services/data-source-broker.js";
+import { propertyEnrichmentService } from "../services/propertyEnrichment.js";
 import { eq, and, desc, ilike, sql, or, count } from "drizzle-orm";
 import { 
   supportTickets, supportTicketMessages, knowledgeBaseArticles, 
@@ -980,7 +982,261 @@ export const supportToolDefinitions = {
       },
       required: ["job_type"]
     }
-  }
+  },
+
+  // ─── Land Data Tools (free public APIs) ──────────────────────────────────
+  lookup_flood_zone: {
+    name: "lookup_flood_zone",
+    description: "Look up FEMA flood zone for a property coordinate. Returns zone (e.g. Zone AE) and risk level (low/medium/high). Free FEMA NFHL API — no cost.",
+    parameters: {
+      type: "object",
+      properties: {
+        latitude: { type: "number", description: "Decimal latitude (WGS84)" },
+        longitude: { type: "number", description: "Decimal longitude (WGS84)" },
+      },
+      required: ["latitude", "longitude"],
+    },
+  },
+
+  lookup_soil_data: {
+    name: "lookup_soil_data",
+    description: "Get USDA NRCS SSURGO soil type, drainage class, and hydrologic group for a coordinate. Free API — no cost.",
+    parameters: {
+      type: "object",
+      properties: {
+        latitude: { type: "number" },
+        longitude: { type: "number" },
+      },
+      required: ["latitude", "longitude"],
+    },
+  },
+
+  lookup_wetlands: {
+    name: "lookup_wetlands",
+    description: "Check USFWS National Wetlands Inventory for wetlands presence at a coordinate. Free API — no cost.",
+    parameters: {
+      type: "object",
+      properties: {
+        latitude: { type: "number" },
+        longitude: { type: "number" },
+      },
+      required: ["latitude", "longitude"],
+    },
+  },
+
+  lookup_demographics: {
+    name: "lookup_demographics",
+    description: "Get Census ACS 5-year estimates (population, median income, home value, unemployment) for the census tract at a coordinate. Free API — no cost.",
+    parameters: {
+      type: "object",
+      properties: {
+        latitude: { type: "number" },
+        longitude: { type: "number" },
+        state: { type: "string", description: "Two-letter state code (optional)" },
+      },
+      required: ["latitude", "longitude"],
+    },
+  },
+
+  lookup_elevation: {
+    name: "lookup_elevation",
+    description: "Get precise elevation in feet and meters from USGS 3DEP National Elevation Dataset. Free API — no cost.",
+    parameters: {
+      type: "object",
+      properties: {
+        latitude: { type: "number" },
+        longitude: { type: "number" },
+      },
+      required: ["latitude", "longitude"],
+    },
+  },
+
+  lookup_climate: {
+    name: "lookup_climate",
+    description: "Get 30-year climate normals (1991-2020): avg high/low temps (°F) and annual precipitation (inches). Uses Open-Meteo ERA5 — free, no API key.",
+    parameters: {
+      type: "object",
+      properties: {
+        latitude: { type: "number" },
+        longitude: { type: "number" },
+      },
+      required: ["latitude", "longitude"],
+    },
+  },
+
+  lookup_agricultural_values: {
+    name: "lookup_agricultural_values",
+    description: "Get USDA farm real estate land values per acre at county, state, and national levels. Great for pricing land in agricultural areas. Free API — no cost.",
+    parameters: {
+      type: "object",
+      properties: {
+        latitude: { type: "number" },
+        longitude: { type: "number" },
+        state: { type: "string", description: "Two-letter state code" },
+        county: { type: "string", description: "County name" },
+      },
+      required: ["latitude", "longitude"],
+    },
+  },
+
+  lookup_land_cover: {
+    name: "lookup_land_cover",
+    description: "Get USGS NLCD 2021 land cover class (cropland, forest, wetland, developed, grassland, etc.) for a coordinate. Free ArcGIS REST API — no cost.",
+    parameters: {
+      type: "object",
+      properties: {
+        latitude: { type: "number" },
+        longitude: { type: "number" },
+      },
+      required: ["latitude", "longitude"],
+    },
+  },
+
+  lookup_public_lands: {
+    name: "lookup_public_lands",
+    description: "Check if a coordinate is on BLM, NPS, or USFS managed land. Returns managing agency and unit name. Free API — no cost.",
+    parameters: {
+      type: "object",
+      properties: {
+        latitude: { type: "number" },
+        longitude: { type: "number" },
+      },
+      required: ["latitude", "longitude"],
+    },
+  },
+
+  enrich_property_coordinates: {
+    name: "enrich_property_coordinates",
+    description: "Run a full free-data enrichment on a lat/lng: flood zone, wetlands, soil, EPA TRI + FRS, infrastructure, hazards, demographics, public lands, transportation, water, elevation, climate, ag values, land cover, crop type (USDA CDL), and storm risk — all from free public APIs in one call.",
+    parameters: {
+      type: "object",
+      properties: {
+        latitude: { type: "number", description: "Decimal latitude (WGS84)" },
+        longitude: { type: "number", description: "Decimal longitude (WGS84)" },
+        state: { type: "string", description: "Two-letter state code (optional)" },
+        county: { type: "string", description: "County name (optional)" },
+        apn: { type: "string", description: "Assessor Parcel Number (optional)" },
+      },
+      required: ["latitude", "longitude"],
+    },
+  },
+
+  lookup_cropland: {
+    name: "lookup_cropland",
+    description: "Identify the crop type at a coordinate using USDA NASS CropScape Cropland Data Layer (CDL) 2023. Returns crop code, crop name, and land use classification. Free — no key required.",
+    parameters: {
+      type: "object",
+      properties: {
+        latitude: { type: "number", description: "Decimal latitude (WGS84)" },
+        longitude: { type: "number", description: "Decimal longitude (WGS84)" },
+      },
+      required: ["latitude", "longitude"],
+    },
+  },
+
+  lookup_epa_facilities: {
+    name: "lookup_epa_facilities",
+    description: "Find all EPA-registered facilities within 5 miles using EPA FRS — covers Superfund, Clean Air Act, Clean Water Act, RCRA hazardous waste, and more. Free — no key required.",
+    parameters: {
+      type: "object",
+      properties: {
+        latitude: { type: "number" },
+        longitude: { type: "number" },
+      },
+      required: ["latitude", "longitude"],
+    },
+  },
+
+  lookup_storm_history: {
+    name: "lookup_storm_history",
+    description: "Get storm risk estimates (tornado, hurricane, hail) for a coordinate based on geographic NOAA patterns. Free — no key required.",
+    parameters: {
+      type: "object",
+      properties: {
+        latitude: { type: "number" },
+        longitude: { type: "number" },
+        state: { type: "string", description: "Two-letter state abbreviation (optional)" },
+      },
+      required: ["latitude", "longitude"],
+    },
+  },
+
+  lookup_plss: {
+    name: "lookup_plss",
+    description: "Look up the Public Land Survey System (PLSS) legal description for a coordinate using BLM CadNSDI. Returns section, township, range, and formatted legal description. Critical for rural land title research. Free — no key required.",
+    parameters: {
+      type: "object",
+      properties: {
+        latitude: { type: "number" },
+        longitude: { type: "number" },
+      },
+      required: ["latitude", "longitude"],
+    },
+  },
+
+  lookup_watershed: {
+    name: "lookup_watershed",
+    description: "Get the NHD Plus watershed name and HUC-8/HUC-12 hydrologic unit codes for a coordinate using EPA WATERS. Free — no key required.",
+    parameters: {
+      type: "object",
+      properties: {
+        latitude: { type: "number" },
+        longitude: { type: "number" },
+      },
+      required: ["latitude", "longitude"],
+    },
+  },
+
+  lookup_fema_nri: {
+    name: "lookup_fema_nri",
+    description: "Get official FEMA National Risk Index hazard ratings for a location — composite risk score plus ratings for riverine flood, hurricane, tornado, hail, wildfire, lightning, earthquake, and drought at county level. Free — no key required.",
+    parameters: {
+      type: "object",
+      properties: {
+        latitude: { type: "number" },
+        longitude: { type: "number" },
+      },
+      required: ["latitude", "longitude"],
+    },
+  },
+
+  lookup_usda_clu: {
+    name: "lookup_usda_clu",
+    description: "Retrieve USDA FSA Common Land Unit (CLU) farm records for a coordinate — farm number, tract number, CLU ID, and officially calculated acreage. Free — no key required.",
+    parameters: {
+      type: "object",
+      properties: {
+        latitude: { type: "number" },
+        longitude: { type: "number" },
+      },
+      required: ["latitude", "longitude"],
+    },
+  },
+
+  geocode_address: {
+    name: "geocode_address",
+    description: "Convert a street address or place name to latitude/longitude using Nominatim (OpenStreetMap). Free — no API key needed.",
+    parameters: {
+      type: "object",
+      properties: {
+        address: { type: "string", description: "Street address, city, or place name" },
+      },
+      required: ["address"],
+    },
+  },
+
+  reverse_geocode: {
+    name: "reverse_geocode",
+    description: "Convert lat/lng to a street address using Nominatim (OpenStreetMap). Free — no API key needed.",
+    parameters: {
+      type: "object",
+      properties: {
+        latitude: { type: "number" },
+        longitude: { type: "number" },
+      },
+      required: ["latitude", "longitude"],
+    },
+  },
 };
 
 export async function executeSupportTool(
@@ -4583,6 +4839,156 @@ export async function executeSupportTool(
         };
       }
       
+      // ─── Land Data Tools ─────────────────────────────────────────────
+      case "lookup_flood_zone": {
+        const result = await dataSourceBroker.lookup("flood_zone", {
+          latitude: args.latitude, longitude: args.longitude,
+        });
+        return { success: result.success, data: result.data };
+      }
+
+      case "lookup_soil_data": {
+        const result = await dataSourceBroker.lookup("soil", {
+          latitude: args.latitude, longitude: args.longitude,
+        });
+        return { success: result.success, data: result.data };
+      }
+
+      case "lookup_wetlands": {
+        const result = await dataSourceBroker.lookup("wetlands", {
+          latitude: args.latitude, longitude: args.longitude,
+        });
+        return { success: result.success, data: result.data };
+      }
+
+      case "lookup_demographics": {
+        const result = await dataSourceBroker.lookup("demographics", {
+          latitude: args.latitude, longitude: args.longitude, state: args.state,
+        });
+        return { success: result.success, data: result.data };
+      }
+
+      case "lookup_elevation": {
+        const result = await dataSourceBroker.lookup("elevation", {
+          latitude: args.latitude, longitude: args.longitude,
+        });
+        return { success: result.success, data: result.data };
+      }
+
+      case "lookup_climate": {
+        const result = await dataSourceBroker.lookup("climate", {
+          latitude: args.latitude, longitude: args.longitude,
+        });
+        return { success: result.success, data: result.data };
+      }
+
+      case "lookup_agricultural_values": {
+        const result = await dataSourceBroker.lookup("agricultural_values", {
+          latitude: args.latitude, longitude: args.longitude,
+          state: args.state, county: args.county,
+        });
+        return { success: result.success, data: result.data };
+      }
+
+      case "lookup_land_cover": {
+        const result = await dataSourceBroker.lookup("land_cover", {
+          latitude: args.latitude, longitude: args.longitude,
+        });
+        return { success: result.success, data: result.data };
+      }
+
+      case "lookup_public_lands": {
+        const result = await dataSourceBroker.lookup("public_lands", {
+          latitude: args.latitude, longitude: args.longitude,
+        });
+        return { success: result.success, data: result.data };
+      }
+
+      case "enrich_property_coordinates": {
+        const enrichment = await propertyEnrichmentService.enrichByCoordinates(
+          args.latitude, args.longitude,
+          { state: args.state, county: args.county, apn: args.apn }
+        );
+        return { success: true, data: enrichment };
+      }
+
+      case "lookup_cropland": {
+        const result = await dataSourceBroker.lookup("cropland", {
+          latitude: args.latitude, longitude: args.longitude,
+        });
+        return { success: result.success, data: result.data };
+      }
+
+      case "lookup_epa_facilities": {
+        const result = await dataSourceBroker.lookup("epa_frs", {
+          latitude: args.latitude, longitude: args.longitude,
+        });
+        return { success: result.success, data: result.data };
+      }
+
+      case "lookup_storm_history": {
+        const result = await dataSourceBroker.lookup("storm_history", {
+          latitude: args.latitude, longitude: args.longitude, state: args.state,
+        });
+        return { success: result.success, data: result.data };
+      }
+
+      case "lookup_plss": {
+        const result = await dataSourceBroker.lookup("plss", {
+          latitude: args.latitude, longitude: args.longitude,
+        });
+        return { success: result.success, data: result.data };
+      }
+
+      case "lookup_watershed": {
+        const result = await dataSourceBroker.lookup("watershed", {
+          latitude: args.latitude, longitude: args.longitude,
+        });
+        return { success: result.success, data: result.data };
+      }
+
+      case "lookup_fema_nri": {
+        const result = await dataSourceBroker.lookup("fema_nri", {
+          latitude: args.latitude, longitude: args.longitude,
+        });
+        return { success: result.success, data: result.data };
+      }
+
+      case "lookup_usda_clu": {
+        const result = await dataSourceBroker.lookup("usda_clu", {
+          latitude: args.latitude, longitude: args.longitude,
+        });
+        return { success: result.success, data: result.data };
+      }
+
+      case "geocode_address": {
+        const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(args.address)}&countrycodes=us&format=jsonv2&addressdetails=1&limit=5`;
+        const res = await fetch(url, {
+          headers: { "User-Agent": "AcreOS Land Investment Platform", "Accept-Language": "en" },
+          signal: AbortSignal.timeout(10000),
+        });
+        if (!res.ok) return { success: false, error: `Nominatim error: ${res.status}` };
+        const data = await res.json();
+        return { success: true, data: data.map((r: any) => ({
+          displayName: r.display_name,
+          latitude: parseFloat(r.lat),
+          longitude: parseFloat(r.lon),
+          address: r.address,
+          type: r.type,
+        })) };
+      }
+
+      case "reverse_geocode": {
+        const url = `https://nominatim.openstreetmap.org/reverse?lat=${args.latitude}&lon=${args.longitude}&format=jsonv2&addressdetails=1`;
+        const res = await fetch(url, {
+          headers: { "User-Agent": "AcreOS Land Investment Platform", "Accept-Language": "en" },
+          signal: AbortSignal.timeout(10000),
+        });
+        if (!res.ok) return { success: false, error: `Nominatim error: ${res.status}` };
+        const data = await res.json();
+        return { success: true, data: { displayName: data.display_name, address: data.address } };
+      }
+
       default:
         return { success: false, error: `Unknown support tool: ${toolName}` };
     }
@@ -4622,6 +5028,27 @@ ADVANCED INVESTIGATION TOOLS:
 MEMORY TOOLS (for personalized support across sessions):
 16. recall_user_memory: Retrieve memories from past interactions (issues, preferences, solutions tried)
 17. save_user_memory: Store important information for future sessions (issue history, preferences, escalations)
+
+LAND DATA TOOLS (free public APIs — use any time a user asks about a property location):
+18. geocode_address: Convert an address to lat/lng (OpenStreetMap Nominatim — free)
+19. reverse_geocode: Convert lat/lng to street address (free)
+20. lookup_flood_zone: FEMA NFHL flood zone for a coordinate (free)
+21. lookup_soil_data: USDA NRCS soil type and drainage class (free)
+22. lookup_wetlands: USFWS NWI wetlands presence (free)
+23. lookup_demographics: Census ACS income, population, home values for an area (free)
+24. lookup_elevation: USGS 3DEP elevation in feet/meters (free)
+25. lookup_climate: 30-year climate normals — temps and rainfall (free)
+26. lookup_agricultural_values: USDA farm real estate $/acre by county (free)
+27. lookup_land_cover: USGS NLCD 2021 land cover class — cropland, forest, wetland, etc. (free)
+28. lookup_public_lands: BLM/NPS/USFS public land status (free)
+29. lookup_cropland: USDA NASS CropScape CDL 2023 — exact crop type at any coordinate (free)
+30. lookup_epa_facilities: EPA FRS — all registered facilities (Superfund, CAA, CWA, RCRA) within 5 miles (free)
+31. lookup_storm_history: NOAA storm risk estimates — tornado, hurricane, hail risk by geography (free)
+32. lookup_plss: BLM CadNSDI — PLSS section/township/range legal description for rural land (free)
+33. lookup_watershed: EPA WATERS / NHD Plus — watershed name and HUC-8/HUC-12 codes (free)
+34. lookup_fema_nri: FEMA National Risk Index — official composite + per-hazard risk ratings (free)
+35. lookup_usda_clu: USDA FSA Common Land Units — farm number, tract, CLU ID, calculated acres (free)
+36. enrich_property_coordinates: Full enrichment across ALL above categories in one call (free)
 
 ISSUE TYPE CATEGORIES (for decision trees):
 - login_auth: Login, authentication, session issues
