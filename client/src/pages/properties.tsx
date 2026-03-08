@@ -118,6 +118,8 @@ import { CustomFieldValuesEditor } from "@/components/custom-fields";
 import { DueDiligencePanel } from "@/components/due-diligence-panel";
 import { PropertyAnalysisChat } from "@/components/property-analysis-chat";
 import { GisFilters, type GisFilterState, defaultGisFilters, countActiveGisFilters, applyGisFiltersToProperty } from "@/components/gis-filters";
+import { SavedViewsSelector } from "@/components/saved-views-selector";
+import type { SavedView } from "@shared/schema";
 import { Bot } from "lucide-react";
 
 export default function PropertiesPage() {
@@ -154,27 +156,32 @@ export default function PropertiesPage() {
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
   const [gisFilters, setGisFilters] = useState<GisFilterState>(defaultGisFilters);
+  const [statusFilter, setStatusFilter] = useState<string>("all");
   const { toast } = useToast();
   const { mutate: fetchAllParcels, isPending: isFetchingAllParcels } = useFetchAllParcels();
 
   const filteredProperties = useMemo(() => {
     if (!properties) return [];
-    
+
     let result = properties;
-    
-    const hasActiveGisFilters = gisFilters.excludeFloodZones || 
-      gisFilters.nearInfrastructure || 
-      gisFilters.lowHazardRiskOnly || 
+
+    if (statusFilter !== "all") {
+      result = result.filter(p => p.status === statusFilter);
+    }
+
+    const hasActiveGisFilters = gisFilters.excludeFloodZones ||
+      gisFilters.nearInfrastructure ||
+      gisFilters.lowHazardRiskOnly ||
       gisFilters.minimumInvestmentScore > 0;
-    
+
     if (hasActiveGisFilters) {
-      result = result.filter(property => 
+      result = result.filter(property =>
         applyGisFiltersToProperty(property, property.dueDiligenceData as Record<string, any> | null, gisFilters)
       );
     }
-    
+
     return result;
-  }, [properties, gisFilters]);
+  }, [properties, gisFilters, statusFilter]);
 
   const handleSelectAll = (checked: boolean) => {
     if (checked && filteredProperties.length > 0) {
@@ -490,6 +497,18 @@ export default function PropertiesPage() {
                   </span>
                 )}
               </div>
+              <SavedViewsSelector
+                entityType="property"
+                currentFilters={{ status: statusFilter }}
+                onApplyView={(view: SavedView) => {
+                  if (view.filters && Array.isArray(view.filters)) {
+                    const statusDef = view.filters.find((f: any) => f.field === "status");
+                    setStatusFilter(statusDef ? String(statusDef.value) : "all");
+                  } else {
+                    setStatusFilter("all");
+                  }
+                }}
+              />
               <GisFilters
                 filters={gisFilters}
                 onChange={setGisFilters}
