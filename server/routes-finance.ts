@@ -690,5 +690,36 @@ export function registerFinanceRoutes(app: Express): void {
   });
   
   // ============================================
+  // PAYMENTS
+  // ============================================
+
+  // GET /api/payments — list payments, optionally filtered by noteId
+  api.get("/api/payments", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const noteId = req.query.noteId ? Number(req.query.noteId) : undefined;
+      const result = await storage.getPayments(org.id, noteId);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to fetch payments" });
+    }
+  });
+
+  // POST /api/payments — record a payment against a note
+  api.post("/api/payments", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const parsed = insertPaymentSchema.safeParse({ ...req.body, organizationId: org.id });
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid payment data", errors: parsed.error.flatten() });
+      }
+      const payment = await storage.createPayment(parsed.data);
+      res.status(201).json(payment);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to record payment" });
+    }
+  });
+
+  // ============================================
 
 }
