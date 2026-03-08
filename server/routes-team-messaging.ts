@@ -5,7 +5,7 @@ import { z } from "zod";
 import { eq, and, desc, sql, lt } from "drizzle-orm";
 import {
   insertTeamConversationSchema, insertTeamMessageSchema, insertTeamMemberPresenceSchema,
-  teamConversations, teamMessages, teamMemberPresence,
+  teamConversations, teamMessages, teamMemberPresence, teamMembers, notifications,
   insertOfferLetterSchema, insertOfferTemplateSchema,
   insertPropertyListingSchema,
 } from "@shared/schema";
@@ -13,6 +13,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import type { NextFunction } from "express";
 import { inArray } from "drizzle-orm";
+import { wsServer } from "./websocket";
 
 export function registerTeamMessagingRoutes(app: Express): void {
   const api = app;
@@ -262,12 +263,53 @@ export function registerTeamMessagingRoutes(app: Express): void {
       // Update conversation's lastMessageAt
       await db
         .update(teamConversations)
-        .set({ 
+        .set({
           lastMessageAt: new Date(),
           updatedAt: new Date(),
         })
         .where(eq(teamConversations.id, conversationId));
-      
+
+      // Broadcast via WebSocket so recipients get the message in real-time
+      wsServer.broadcastToOrg(org.id, "message.new", {
+        conversationId,
+        message,
+      });
+
+      // Parse @mentions and create notifications
+      const mentionPattern = /@(\w+)/g;
+      let match;
+      const mentionedUsernames: string[] = [];
+      while ((match = mentionPattern.exec(body)) !== null) {
+        mentionedUsernames.push(match[1].toLowerCase());
+      }
+      if (mentionedUsernames.length > 0) {
+        const allMembers = await db
+          .select()
+          .from(teamMembers)
+          .where(eq(teamMembers.organizationId, org.id));
+        const convName = conversation.name ?? (conversation.isDirect ? "direct message" : "group");
+        const notificationsToInsert = allMembers
+          .filter(m =>
+            m.userId !== userId &&
+            mentionedUsernames.some(u =>
+              (m.displayName ?? m.email ?? "").toLowerCase().replace(/\s+/g, "").startsWith(u)
+            )
+          )
+          .map(m => ({
+            organizationId: org.id,
+            userId: m.userId,
+            type: "team_mention" as const,
+            title: `You were mentioned in ${convName}`,
+            message: body.slice(0, 80) + (body.length > 80 ? "…" : ""),
+            entityType: "conversation",
+            entityId: conversationId,
+            metadata: { conversationId, senderId: userId },
+          }));
+        if (notificationsToInsert.length > 0) {
+          await db.insert(notifications).values(notificationsToInsert);
+        }
+      }
+
       res.status(201).json(message);
     } catch (error: any) {
       console.error("Send team message error:", error);
@@ -926,5 +968,139 @@ export function registerTeamMessagingRoutes(app: Express): void {
   });
 
   // ============================================
+
+  // ── Named Channels ─────────────────────────────────────────────────────────
+  // Channels are teamConversations with isDirect=false and a name.
+  // Three seed channels (#general, #acquisitions, #closings) are created when
+  // an org is provisioned. These routes let users create more and list them.
+
+  // GET /api/team-messaging/channels - List named channels for the org
+  api.get("/api/team-messaging/channels", isAuthenticated, getOrCreateOrg, requireMessagingTier, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = req.user as any;
+      const userId = user.claims?.sub || user.id;
+
+      // Ensure seed channels exist for this org
+      const existing = await db
+        .select()
+        .from(teamConversations)
+        .where(and(
+          eq(teamConversations.organizationId, org.id),
+          eq(teamConversations.isDirect, false),
+        ));
+
+      if (existing.length === 0) {
+        const seeds = ["#general", "#acquisitions", "#closings"];
+        for (const name of seeds) {
+          await db.insert(teamConversations).values({
+            organizationId: org.id,
+            name,
+            isDirect: false,
+            createdBy: userId,
+            participantIds: [userId],
+            status: "active",
+          }).onConflictDoNothing();
+        }
+        const seeded = await db
+          .select()
+          .from(teamConversations)
+          .where(and(
+            eq(teamConversations.organizationId, org.id),
+            eq(teamConversations.isDirect, false),
+          ))
+          .orderBy(teamConversations.name);
+        return res.json(seeded);
+      }
+
+      const channels = existing.sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
+      res.json(channels);
+    } catch (error: any) {
+      console.error("Get channels error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch channels" });
+    }
+  });
+
+  // POST /api/team-messaging/channels - Create a new named channel
+  api.post("/api/team-messaging/channels", isAuthenticated, getOrCreateOrg, requireMessagingTier, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = req.user as any;
+      const userId = user.claims?.sub || user.id;
+
+      const schema = z.object({
+        name: z.string().min(1).max(80).transform(n => n.startsWith("#") ? n : `#${n}`),
+      });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Name is required", errors: parsed.error.errors });
+      }
+
+      const { name } = parsed.data;
+
+      // Check for duplicate channel name in org
+      const [dupe] = await db
+        .select()
+        .from(teamConversations)
+        .where(and(
+          eq(teamConversations.organizationId, org.id),
+          eq(teamConversations.isDirect, false),
+          eq(teamConversations.name, name),
+        ));
+      if (dupe) {
+        return res.status(409).json({ message: `Channel ${name} already exists` });
+      }
+
+      const [channel] = await db
+        .insert(teamConversations)
+        .values({
+          organizationId: org.id,
+          name,
+          isDirect: false,
+          createdBy: userId,
+          participantIds: [userId],
+          status: "active",
+        })
+        .returning();
+
+      wsServer.broadcastToOrg(org.id, "channel.created", { channel });
+      res.status(201).json(channel);
+    } catch (error: any) {
+      console.error("Create channel error:", error);
+      res.status(500).json({ message: error.message || "Failed to create channel" });
+    }
+  });
+
+  // POST /api/team-messaging/channels/:id/join - Join a channel
+  api.post("/api/team-messaging/channels/:id/join", isAuthenticated, getOrCreateOrg, requireMessagingTier, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = req.user as any;
+      const userId = user.claims?.sub || user.id;
+      const channelId = parseInt(req.params.id, 10);
+
+      const [channel] = await db
+        .select()
+        .from(teamConversations)
+        .where(and(
+          eq(teamConversations.id, channelId),
+          eq(teamConversations.organizationId, org.id),
+          eq(teamConversations.isDirect, false),
+        ));
+      if (!channel) return res.status(404).json({ message: "Channel not found" });
+
+      const participants: string[] = Array.from(new Set([...(channel.participantIds ?? []), userId]));
+      const [updated] = await db
+        .update(teamConversations)
+        .set({ participantIds: participants, updatedAt: new Date() })
+        .where(eq(teamConversations.id, channelId))
+        .returning();
+
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Join channel error:", error);
+      res.status(500).json({ message: error.message || "Failed to join channel" });
+    }
+  });
 
 }

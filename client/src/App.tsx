@@ -39,6 +39,7 @@ import SequencesPage from "@/pages/sequences";
 import AbTestsPage from "@/pages/ab-tests";
 import TasksPage from "@/pages/tasks";
 import TeamDashboardPage from "@/pages/team-dashboard";
+import TeamInboxPage from "@/pages/team-inbox";
 import AutomationPage from "@/pages/automation";
 import WorkflowsPage from "@/pages/workflows";
 import ActivityPage from "@/pages/activity";
@@ -183,6 +184,9 @@ function Router() {
       </Route>
       <Route path="/team-dashboard">
         {() => <ProtectedRoute component={TeamDashboardPage} />}
+      </Route>
+      <Route path="/team">
+        {() => <ProtectedRoute component={TeamInboxPage} />}
       </Route>
       <Route path="/automation">
         {() => <ProtectedRoute component={AutomationPage} />}
