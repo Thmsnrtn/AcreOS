@@ -19,6 +19,8 @@ import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, Mail, MessageSquare, Send, Calendar, BarChart3, Users, Clock, Play, Pause, CheckCircle, FileText, Target, TrendingUp, Eye, TestTube, Zap, AlertTriangle, DollarSign, Loader2 } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
+import { ListSkeleton } from "@/components/list-skeleton";
+import { CampaignsEmptyState } from "@/components/empty-states";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { format } from "date-fns";
@@ -433,29 +435,11 @@ function CampaignList({ campaigns, isLoading, onSelect, onCreateNew }: {
   onCreateNew: () => void;
 }) {
   if (isLoading) {
-    return (
-      <div className="text-center py-12 text-muted-foreground">
-        Loading campaigns...
-      </div>
-    );
+    return <ListSkeleton count={3} />;
   }
 
   if (campaigns.length === 0) {
-    return (
-      <EmptyState
-        icon={Target}
-        title="No marketing campaigns"
-        description="Campaigns let you reach leads via email, SMS, or direct mail. Create templates and track performance."
-        secondaryDescription="Consistent outreach is key to finding motivated sellers and buyers."
-        tips={[
-          "Send direct mail postcards to absentee owners",
-          "Follow up with email sequences to warm leads",
-          "Track response rates to optimize your messaging"
-        ]}
-        actionLabel="Launch Your First Campaign"
-        onAction={onCreateNew}
-      />
-    );
+    return <CampaignsEmptyState onCreateCampaign={onCreateNew} />;
   }
 
   return (
