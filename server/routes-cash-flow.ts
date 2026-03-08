@@ -88,6 +88,23 @@ router.get('/forecast/:forecastId/insights', async (req: Request, res: Response)
 });
 
 // =====================
+// PORTFOLIO TIMELINE
+// =====================
+
+// GET /api/cash-flow/portfolio/timeline?months=24
+// Returns month-by-month income projections across all active notes + owned properties.
+router.get('/portfolio/timeline', async (req: Request, res: Response) => {
+  try {
+    const org = getOrg(req);
+    const months = Math.min(parseInt((req.query.months as string) || '24', 10), 36);
+    const timeline = await cashFlowForecasterService.getPortfolioTimeline(org.id, months);
+    res.json({ timeline });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// =====================
 // ACCURACY TRACKING
 // =====================
 
