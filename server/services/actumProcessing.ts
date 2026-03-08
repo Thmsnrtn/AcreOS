@@ -273,14 +273,35 @@ export async function runMonthlyActumPaymentBatch(orgId: number): Promise<BatchP
     const serviceFeeAmt = parseFloat(note.serviceFee || "0");
     const taxEscrowAmt = note.taxEscrowEnabled ? parseFloat(note.monthlyTaxEscrow || "0") : 0;
     const totalAmount = monthlyAmt + serviceFeeAmt + taxEscrowAmt;
+    const amountCents = Math.round(totalAmount * 100);
+    const description = `Land Contract Payment — Note #${note.id}`;
 
-    const result = await chargeActumACH({
+    // Try primary account first
+    let result = await chargeActumACH({
       profileId: note.paymentAccountId,
-      amountCents: Math.round(totalAmount * 100),
-      description: `Land Contract Payment — Note #${note.id}`,
+      amountCents,
+      description,
       noteId: note.id,
       orgId,
     });
+
+    // If primary fails, cascade through fallback payment accounts (GeekPay parity)
+    if (!result.success && note.fallbackPaymentAccounts?.length) {
+      const fallbacks = [...note.fallbackPaymentAccounts]
+        .filter((f) => f.isActive && f.method.startsWith("ach"))
+        .sort((a, b) => a.order - b.order);
+
+      for (const fallback of fallbacks) {
+        result = await chargeActumACH({
+          profileId: fallback.profileId,
+          amountCents,
+          description: `${description} (fallback)`,
+          noteId: note.id,
+          orgId,
+        });
+        if (result.success) break;
+      }
+    }
 
     if (result.success) {
       submitted++;
