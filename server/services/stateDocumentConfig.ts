@@ -25,6 +25,7 @@ export type LienInstrument = "deed_of_trust" | "mortgage" | "security_deed";
 
 export type LandContractName =
   | "land_contract"
+  | "land_sale_contract"
   | "contract_for_deed"
   | "installment_sale_agreement"
   | "agreement_for_deed"
@@ -460,6 +461,7 @@ export function getDeedTypeLabel(deedType: DeedType): string {
 export function getLandContractLabel(name: LandContractName): string {
   const labels: Record<LandContractName, string> = {
     land_contract: "Land Contract",
+    land_sale_contract: "Land Sale Contract",
     contract_for_deed: "Contract for Deed",
     installment_sale_agreement: "Installment Sale Agreement",
     agreement_for_deed: "Agreement for Deed",
