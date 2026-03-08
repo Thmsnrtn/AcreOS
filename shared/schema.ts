@@ -704,6 +704,18 @@ export const notes = pgTable("notes", {
   serviceFee: numeric("service_fee").default("0"), // Monthly note servicing fee
   lateFee: numeric("late_fee").default("0"),
   gracePeriodDays: integer("grace_period_days").default(10),
+
+  // Property Tax Escrow (GeekPay parity)
+  // Collects pro-rated property taxes monthly from borrower alongside loan payment
+  taxEscrowEnabled: boolean("tax_escrow_enabled").default(false),
+  annualPropertyTax: numeric("annual_property_tax").default("0"), // Annual tax amount for this property
+  monthlyTaxEscrow: numeric("monthly_tax_escrow").default("0"), // = annualPropertyTax / 12
+  taxEscrowBalance: numeric("tax_escrow_balance").default("0"), // Accumulated escrow balance
+  taxEscrowAccountId: text("tax_escrow_account_id"), // Reference to escrow account
+  lastTaxPaymentDate: timestamp("last_tax_payment_date"), // Last time taxes were paid from escrow
+  nextTaxDueDate: timestamp("next_tax_due_date"), // Next county tax due date
+  taxPaymentYear: integer("tax_payment_year"), // Tax year currently being escrowed
+  countyTaxPortalUrl: text("county_tax_portal_url"), // Direct link to county payment portal
   
   // Dates
   startDate: timestamp("start_date").notNull(),
@@ -787,6 +799,34 @@ export const payments = pgTable("payments", {
   index("payments_status_idx").on(table.status),
   index("payments_due_date_idx").on(table.dueDate),
 ]);
+
+// Property tax escrow payments — tracks actual county tax payments made from escrow
+export const taxEscrowPayments = pgTable("tax_escrow_payments", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  noteId: integer("note_id").references(() => notes.id).notNull(),
+  propertyId: integer("property_id").references(() => properties.id),
+
+  taxYear: integer("tax_year").notNull(),
+  installment: text("installment").default("annual"), // annual, first_half, second_half, quarterly
+  amountPaid: numeric("amount_paid").notNull(),
+  escrowBalanceUsed: numeric("escrow_balance_used").notNull(),
+  shortfall: numeric("shortfall").default("0"), // if escrow insufficient
+  excessRefunded: numeric("excess_refunded").default("0"),
+
+  paymentDate: timestamp("payment_date").notNull(),
+  countyConfirmationNumber: text("county_confirmation_number"),
+  paymentMethod: text("payment_method").default("manual"), // manual, portal, check
+  countyTaxPortalUrl: text("county_tax_portal_url"),
+
+  notes: text("notes"),
+  receiptUrl: text("receipt_url"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertTaxEscrowPaymentSchema = createInsertSchema(taxEscrowPayments).omit({ id: true, createdAt: true });
+export type InsertTaxEscrowPayment = z.infer<typeof insertTaxEscrowPaymentSchema>;
+export type TaxEscrowPayment = typeof taxEscrowPayments.$inferSelect;
 
 // Payment reminders for automated delinquency management
 export const paymentReminders = pgTable("payment_reminders", {
