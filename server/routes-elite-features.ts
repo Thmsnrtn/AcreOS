@@ -29,7 +29,7 @@ import * as bookkeeping from "./services/bookkeeping";
 import * as vaManagement from "./services/vaManagement";
 import { getStateConfig, getDeedTypeLabel, getLandContractLabel, getRecordingEstimate, getTransferTaxAmount } from "./services/stateDocumentConfig";
 import { db } from "./db";
-import { properties, notes, organizations, generatedDocuments } from "@shared/schema";
+import { properties, notes, organizations, generatedDocuments, organizationIntegrations } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 
 const auth = [isAuthenticated, getOrCreateOrg];
@@ -517,6 +517,41 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
       const org = (req as any).organization;
       const url = bookkeeping.getQboOAuthUrl(org.id);
       res.json({ url });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/bookkeeping/quickbooks/sync", ...auth, async (req: Request, res: Response) => {
+    try {
+      const org = (req as any).organization;
+
+      // Retrieve stored QBO tokens from the integrations table
+      const [integration] = await db
+        .select()
+        .from(organizationIntegrations)
+        .where(and(eq(organizationIntegrations.organizationId, org.id), eq(organizationIntegrations.provider, "quickbooks")))
+        .limit(1);
+
+      if (!integration?.credentials) {
+        return res.status(400).json({ message: "QuickBooks is not connected. Visit Settings > Integrations to connect." });
+      }
+
+      const creds = integration.credentials as any;
+      if (!creds.accessToken || !creds.realmId) {
+        return res.status(400).json({ message: "QuickBooks credentials incomplete. Please reconnect." });
+      }
+
+      // Default: sync payments from the last 30 days (or caller-supplied fromDate)
+      const fromDate = req.body?.fromDate ? new Date(req.body.fromDate) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+      const result = await bookkeeping.syncPaymentsToQbo(org.id, {
+        accessToken: creds.accessToken,
+        refreshToken: creds.refreshToken,
+        realmId: creds.realmId,
+      }, fromDate);
+
+      res.json({ success: true, ...result });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
