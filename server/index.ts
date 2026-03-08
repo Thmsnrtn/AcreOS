@@ -18,6 +18,10 @@ import { realtimeAlertsService } from "./services/realtimeAlerts";
 import { createMcpServer } from "./mcp/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import rateLimit from "express-rate-limit";
+import { initSentry, Sentry } from "./utils/sentry";
+
+// Initialize Sentry ASAP — must run before any other code
+initSentry();
 
 const app = express();
 const httpServer = createServer(app);
@@ -130,6 +134,11 @@ app.use(
 
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
+
+// Sentry request/tracing handler — must come before routes, after bodyParsers
+if (process.env.SENTRY_DSN) {
+  app.use(Sentry.expressErrorHandler());
+}
 
 app.use(validateContentType);
 app.use(requestLoggingMiddleware);
@@ -258,6 +267,11 @@ app.use("/api/properties/import", importLimiter);
   await registerRoutes(httpServer, app);
 
   app.use(errorLoggingMiddleware);
+
+  // Sentry error handler — must come before the generic error handler
+  if (process.env.SENTRY_DSN) {
+    app.use(Sentry.expressErrorHandler());
+  }
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;

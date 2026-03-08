@@ -1,4 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
+import { captureException } from "./sentry";
 
 export type LogLevel = "info" | "warn" | "error" | "debug";
 
@@ -187,15 +188,19 @@ export function requestLoggingMiddleware(req: Request, res: Response, next: Next
 
 export function errorLoggingMiddleware(err: Error, req: Request, res: Response, next: NextFunction): void {
   const requestId = (req as Request & { requestId?: string }).requestId;
-  
+  const status = (err as Error & { status?: number; statusCode?: number }).status ||
+                 (err as Error & { status?: number; statusCode?: number }).statusCode || 500;
+
   logger.error(`Request error: ${req.method} ${req.path}`, err, {
     source: "http",
     requestId,
-    metadata: {
-      statusCode: (err as Error & { status?: number; statusCode?: number }).status || 
-                  (err as Error & { status?: number; statusCode?: number }).statusCode || 500,
-    },
+    metadata: { statusCode: status },
   });
+
+  // Forward 5xx errors to Sentry; skip expected client errors
+  if (status >= 500) {
+    captureException(err, { requestId, method: req.method, path: req.path });
+  }
 
   next(err);
 }
