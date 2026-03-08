@@ -4,6 +4,8 @@ import type { Organization } from "@shared/schema";
 
 export interface DashboardStats {
   totalLeads: number;
+  activeLeads: number;
+  activeDeals: number;
   activeProperties: number;
   activeNotes: number;
   monthlyRevenue: number;
