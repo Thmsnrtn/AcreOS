@@ -10,6 +10,8 @@ import {
   supportTickets, supportTicketMessages, knowledgeBaseArticles,
   sophieMemory, systemAlerts,
   countyGisEndpoints,
+  aiModelConfigs,
+  systemApiKeys,
 } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
@@ -1917,6 +1919,62 @@ export function registerAdminRoutes(app: Express): void {
     }
   });
 
+  // Bulk import data sources from JSON array
+  api.post("/api/data-sources/bulk-import", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { sources } = req.body as { sources: Array<{
+        key: string; title: string; category: string; subcategory?: string;
+        description?: string; portalUrl?: string; apiUrl?: string; coverage?: string;
+        accessLevel?: string; dataTypes?: string[]; endpointType?: string;
+      }> };
+
+      if (!Array.isArray(sources) || sources.length === 0) {
+        return res.status(400).json({ message: "sources must be a non-empty array" });
+      }
+      if (sources.length > 500) {
+        return res.status(400).json({ message: "Cannot import more than 500 sources at once" });
+      }
+
+      let imported = 0;
+      let skipped = 0;
+      const errors: string[] = [];
+
+      for (const s of sources) {
+        if (!s.key || !s.title || !s.category) {
+          errors.push(`Row missing required fields (key, title, category): ${JSON.stringify(s).slice(0, 80)}`);
+          skipped++;
+          continue;
+        }
+        try {
+          await db.insert(dataSources).values({
+            key: String(s.key).toLowerCase().replace(/\s+/g, "_").slice(0, 100),
+            title: String(s.title).slice(0, 200),
+            category: String(s.category).toLowerCase().replace(/\s+/g, "_"),
+            subcategory: s.subcategory ?? null,
+            description: s.description ?? null,
+            portalUrl: s.portalUrl ?? null,
+            apiUrl: s.apiUrl ?? null,
+            coverage: s.coverage ?? null,
+            accessLevel: s.accessLevel ?? "free",
+            dataTypes: s.dataTypes ?? [],
+            endpointType: s.endpointType ?? null,
+            isEnabled: true,
+            isVerified: false,
+          }).onConflictDoNothing();
+          imported++;
+        } catch (e: any) {
+          errors.push(`Error inserting ${s.key}: ${e.message}`);
+          skipped++;
+        }
+      }
+
+      res.json({ imported, skipped, errors: errors.slice(0, 20) });
+    } catch (err: any) {
+      console.error("Bulk import error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // ============================================
   // DATA SOURCE BROKER - Unified Lookup API
   // ============================================
@@ -2158,6 +2216,111 @@ export function registerAdminRoutes(app: Express): void {
       res.json({ health, usage, cost });
     } catch (err: any) {
       console.error("Broker metrics error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // AI MODEL CONFIGURATIONS (Founder only)
+  // ============================================
+
+  api.get("/api/admin/ai-models", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const configs = await db.select().from(aiModelConfigs).orderBy(aiModelConfigs.weight);
+      res.json(configs);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.post("/api/admin/ai-models", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const [created] = await db.insert(aiModelConfigs).values({
+        provider: req.body.provider || "openrouter",
+        modelId: req.body.modelId,
+        displayName: req.body.displayName,
+        costPerMillionInput: req.body.costPerMillionInput,
+        costPerMillionOutput: req.body.costPerMillionOutput,
+        maxTokens: req.body.maxTokens || 4096,
+        taskTypes: req.body.taskTypes || [],
+        weight: req.body.weight ?? 50,
+        enabled: req.body.enabled ?? true,
+      }).returning();
+      const { invalidateDbModelCache } = await import('./services/aiRouter');
+      invalidateDbModelCache();
+      res.json(created);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.put("/api/admin/ai-models/:id", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const [updated] = await db.update(aiModelConfigs)
+        .set({ ...req.body, updatedAt: new Date() })
+        .where(eq(aiModelConfigs.id, id))
+        .returning();
+      const { invalidateDbModelCache } = await import('./services/aiRouter');
+      invalidateDbModelCache();
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.delete("/api/admin/ai-models/:id", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await db.delete(aiModelConfigs).where(eq(aiModelConfigs.id, id));
+      const { invalidateDbModelCache } = await import('./services/aiRouter');
+      invalidateDbModelCache();
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // SYSTEM API KEYS (Founder only)
+  // ============================================
+
+  api.get("/api/admin/system-api-keys", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const keys = await db.select({
+        id: systemApiKeys.id,
+        provider: systemApiKeys.provider,
+        displayName: systemApiKeys.displayName,
+        isActive: systemApiKeys.isActive,
+        lastValidatedAt: systemApiKeys.lastValidatedAt,
+        validationStatus: systemApiKeys.validationStatus,
+        hasKey: sql<boolean>`(api_key IS NOT NULL AND api_key != '')`,
+        updatedAt: systemApiKeys.updatedAt,
+      }).from(systemApiKeys).orderBy(systemApiKeys.provider);
+      res.json(keys);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.put("/api/admin/system-api-keys/:provider", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { provider } = req.params;
+      const { apiKey, isActive } = req.body;
+      const [existing] = await db.select().from(systemApiKeys).where(eq(systemApiKeys.provider, provider));
+      if (existing) {
+        const [updated] = await db.update(systemApiKeys)
+          .set({ ...(apiKey !== undefined && { apiKey }), ...(isActive !== undefined && { isActive }), updatedAt: new Date() })
+          .where(eq(systemApiKeys.provider, provider))
+          .returning({ id: systemApiKeys.id, provider: systemApiKeys.provider, displayName: systemApiKeys.displayName, isActive: systemApiKeys.isActive, validationStatus: systemApiKeys.validationStatus });
+        res.json(updated);
+      } else {
+        const [created] = await db.insert(systemApiKeys)
+          .values({ provider, displayName: provider, apiKey, isActive: isActive ?? true })
+          .returning();
+        res.json(created);
+      }
+    } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
   });

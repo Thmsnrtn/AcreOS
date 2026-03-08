@@ -484,6 +484,34 @@ Seller Signature (if applicable)
     }
   });
 
+  // ─── Deed of Trust PDF ───────────────────────────────────────────────────
+  api.post("/api/documents/deed-of-trust", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { generateDeedOfTrust } = await import("./services/documents");
+      const org = (req as any).organization;
+      const pdfBuffer = await generateDeedOfTrust({ ...req.body, orgName: org.name });
+      res.set("Content-Type", "application/pdf");
+      res.set("Content-Disposition", `attachment; filename="deed-of-trust.pdf"`);
+      res.send(pdfBuffer);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── Land Contract PDF ───────────────────────────────────────────────────
+  api.post("/api/documents/land-contract", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { generateLandContract } = await import("./services/documents");
+      const org = (req as any).organization;
+      const pdfBuffer = await generateLandContract({ ...req.body, orgName: org.name });
+      res.set("Content-Type", "application/pdf");
+      res.set("Content-Disposition", `attachment; filename="land-contract.pdf"`);
+      res.send(pdfBuffer);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // ============================================
 
 }

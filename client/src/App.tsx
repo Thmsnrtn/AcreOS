@@ -9,6 +9,7 @@ import { ThemeProvider } from "@/contexts/theme-context";
 import { AnimatePresence, motion } from "framer-motion";
 import { pageTransition } from "@/lib/animations";
 
+import { SidebarProvider } from "@/components/layout-sidebar";
 import { HintsProvider } from "@/components/feature-hints";
 import { KeyboardShortcutsProvider } from "@/hooks/use-keyboard-shortcuts";
 import { KeyboardShortcutsModal } from "@/components/keyboard-shortcuts";
@@ -49,6 +50,7 @@ import LandCreditPage from "@/pages/land-credit";
 import AcquisitionRadarPage from "@/pages/acquisition-radar";
 import PortfolioOptimizerPage from "@/pages/portfolio-optimizer";
 import AVMPage from "@/pages/avm";
+import MapsPage from "@/pages/maps";
 import NegotiationCopilotPage from "@/pages/negotiation-copilot";
 import CashFlowPage from "@/pages/cash-flow";
 import DealHunterPage from "@/pages/deal-hunter";
@@ -239,6 +241,9 @@ function Router() {
       <Route path="/avm">
         {() => <ProtectedRoute component={AVMPage} />}
       </Route>
+      <Route path="/maps">
+        {() => <ProtectedRoute component={MapsPage} />}
+      </Route>
       <Route path="/negotiation">
         {() => <ProtectedRoute component={NegotiationCopilotPage} />}
       </Route>
@@ -316,18 +321,20 @@ function App() {
   return (
     <ErrorBoundary>
       <ThemeProvider>
-        <QueryClientProvider client={queryClient}>
-          <TooltipProvider>
-            <HintsProvider>
-              <KeyboardShortcutsProvider>
-                <OfflineIndicator />
-                <Toaster />
-                <AppContent />
-                <KeyboardShortcutsModal />
-              </KeyboardShortcutsProvider>
-            </HintsProvider>
-          </TooltipProvider>
-        </QueryClientProvider>
+        <SidebarProvider>
+          <QueryClientProvider client={queryClient}>
+            <TooltipProvider>
+              <HintsProvider>
+                <KeyboardShortcutsProvider>
+                  <OfflineIndicator />
+                  <Toaster />
+                  <AppContent />
+                  <KeyboardShortcutsModal />
+                </KeyboardShortcutsProvider>
+              </HintsProvider>
+            </TooltipProvider>
+          </QueryClientProvider>
+        </SidebarProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );

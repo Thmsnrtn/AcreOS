@@ -125,42 +125,119 @@ const COMPLEX_TASKS = [
   "creative",
 ];
 
+// ============================================
+// OPENROUTER-ONLY CLIENTS
+// All AI requests route through OpenRouter's OpenAI-compatible endpoint.
+// This includes Claude, GPT-4o, Gemini, DeepSeek — all via one API key.
+// ============================================
+
+// Fallback hardcoded models (used when DB config unavailable)
 const OPENROUTER_CHEAP_MODEL = "deepseek/deepseek-chat";
 const OPENROUTER_REASONING_MODEL = "deepseek/deepseek-reasoner";
-const OPENAI_PREMIUM_MODEL = "gpt-4o";
-const OPENAI_FAST_MODEL = "gpt-4o-mini";
+const OPENAI_PREMIUM_MODEL = "openai/gpt-4o";
+const OPENAI_FAST_MODEL = "openai/gpt-4o-mini";
 
 let openrouterClient: OpenAI | null = null;
-let openaiClient: OpenAI | null = null;
+let openaiClient: OpenAI | null = null;  // Kept for backward compat but routes to OpenRouter
 
 function getOpenRouterClient(): OpenAI | null {
   if (!openrouterClient) {
     const apiKey = process.env.AI_INTEGRATIONS_OPENROUTER_API_KEY;
-    const baseURL = process.env.AI_INTEGRATIONS_OPENROUTER_BASE_URL;
-    if (!apiKey || !baseURL) {
+    const baseURL = process.env.AI_INTEGRATIONS_OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1";
+    if (!apiKey) {
       return null;
     }
     openrouterClient = new OpenAI({
       apiKey,
       baseURL,
+      defaultHeaders: {
+        "HTTP-Referer": "https://acreos.fly.dev",
+        "X-Title": "AcreOS",
+      },
     });
   }
   return openrouterClient;
 }
 
 function getOpenAIClient(): OpenAI | null {
+  // OpenAI direct client — used as fallback only
   if (!openaiClient) {
     const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
     const baseURL = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
     if (!apiKey) {
       return null;
     }
-    openaiClient = new OpenAI({
-      apiKey,
-      baseURL,
-    });
+    openaiClient = new OpenAI({ apiKey, baseURL });
   }
   return openaiClient;
+}
+
+// ============================================
+// DB-DRIVEN MODEL CONFIG CACHE
+// ============================================
+
+interface DbModelConfig {
+  modelId: string;
+  displayName: string;
+  taskTypes: string[];
+  weight: number;
+  maxTokens: number;
+}
+
+interface DbModelCache {
+  simple: DbModelConfig | null;
+  moderate: DbModelConfig | null;
+  complex: DbModelConfig | null;
+  loadedAt: number;
+}
+
+let dbModelCache: DbModelCache | null = null;
+const DB_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+async function loadDbModelConfigs(): Promise<DbModelCache> {
+  if (dbModelCache && Date.now() - dbModelCache.loadedAt < DB_CACHE_TTL_MS) {
+    return dbModelCache;
+  }
+  try {
+    const { db } = await import('../db');
+    const { aiModelConfigs } = await import('@shared/schema');
+    const { eq } = await import('drizzle-orm');
+    const configs = await db.select().from(aiModelConfigs).where(eq(aiModelConfigs.enabled, true));
+
+    const findBestForTask = (tasks: string[]): DbModelConfig | null => {
+      let best: DbModelConfig | null = null;
+      let bestWeight = -1;
+      for (const cfg of configs) {
+        const types = cfg.taskTypes || [];
+        const matches = tasks.some(t => types.includes(t)) || types.length === 0;
+        if (matches && (cfg.weight || 0) > bestWeight) {
+          bestWeight = cfg.weight || 0;
+          best = {
+            modelId: cfg.modelId,
+            displayName: cfg.displayName,
+            taskTypes: types,
+            weight: cfg.weight || 50,
+            maxTokens: cfg.maxTokens || 4096,
+          };
+        }
+      }
+      return best;
+    };
+
+    dbModelCache = {
+      simple: findBestForTask(SIMPLE_TASKS),
+      moderate: findBestForTask(["basic_analysis", "draft_email"]),
+      complex: findBestForTask(COMPLEX_TASKS),
+      loadedAt: Date.now(),
+    };
+    return dbModelCache;
+  } catch {
+    return { simple: null, moderate: null, complex: null, loadedAt: Date.now() };
+  }
+}
+
+export function invalidateDbModelCache(): void {
+  dbModelCache = null;
 }
 
 export function classifyTaskComplexity(taskType: string, contentLength?: number): TaskComplexity {
@@ -251,67 +328,79 @@ export function classifyFromMessages(
 
 export function selectProviderAndModel(
   complexity: TaskComplexity,
-  config: AIRouterConfig = {}
+  config: AIRouterConfig = {},
+  dbModel?: string
 ): { provider: AIProvider; model: string; client: OpenAI } {
+  // All requests go through OpenRouter by default
   const openrouter = getOpenRouterClient();
   const openai = getOpenAIClient();
-  
+
+  // Use DB-driven model if provided
+  if (dbModel && openrouter) {
+    return { provider: AIProvider.OPENROUTER, model: dbModel, client: openrouter };
+  }
+
+  // Force OpenAI direct (legacy compat / specific use case)
   if (config.forceProvider === AIProvider.OPENAI || config.forcePremium) {
-    if (!openai) {
-      throw new Error("OpenAI not available - AI_INTEGRATIONS_OPENAI_API_KEY not configured");
-    }
-    return {
-      provider: AIProvider.OPENAI,
-      model: complexity === TaskComplexity.COMPLEX ? OPENAI_PREMIUM_MODEL : OPENAI_FAST_MODEL,
-      client: openai,
-    };
-  }
-  
-  if (config.forceProvider === AIProvider.OPENROUTER) {
-    if (!openrouter) {
-      throw new Error("OpenRouter not available - check AI_INTEGRATIONS_OPENROUTER_* env vars");
-    }
-    return {
-      provider: AIProvider.OPENROUTER,
-      model: complexity === TaskComplexity.COMPLEX ? OPENROUTER_REASONING_MODEL : OPENROUTER_CHEAP_MODEL,
-      client: openrouter,
-    };
-  }
-  
-  if (complexity === TaskComplexity.COMPLEX) {
-    if (openai) {
-      return {
-        provider: AIProvider.OPENAI,
-        model: OPENAI_PREMIUM_MODEL,
-        client: openai,
-      };
-    }
     if (openrouter) {
+      // Route through OpenRouter even for OpenAI models
       return {
         provider: AIProvider.OPENROUTER,
-        model: OPENROUTER_REASONING_MODEL,
+        model: complexity === TaskComplexity.COMPLEX ? OPENAI_PREMIUM_MODEL : OPENAI_FAST_MODEL,
         client: openrouter,
       };
     }
+    if (openai) {
+      return {
+        provider: AIProvider.OPENAI,
+        model: complexity === TaskComplexity.COMPLEX ? "gpt-4o" : "gpt-4o-mini",
+        client: openai,
+      };
+    }
+    throw new Error("No AI provider available");
   }
-  
+
+  // Default: route through OpenRouter with complexity-based model selection
   if (openrouter) {
-    return {
-      provider: AIProvider.OPENROUTER,
-      model: OPENROUTER_CHEAP_MODEL,
-      client: openrouter,
-    };
+    const model = complexity === TaskComplexity.COMPLEX
+      ? OPENROUTER_REASONING_MODEL
+      : complexity === TaskComplexity.SIMPLE
+      ? OPENROUTER_CHEAP_MODEL
+      : OPENROUTER_CHEAP_MODEL;
+    return { provider: AIProvider.OPENROUTER, model, client: openrouter };
   }
-  
+
+  // Final fallback: direct OpenAI
   if (openai) {
     return {
       provider: AIProvider.OPENAI,
-      model: complexity === TaskComplexity.SIMPLE ? OPENAI_FAST_MODEL : OPENAI_PREMIUM_MODEL,
+      model: complexity === TaskComplexity.SIMPLE ? "gpt-4o-mini" : "gpt-4o",
       client: openai,
     };
   }
-  
-  throw new Error("No AI providers available - configure OpenAI or OpenRouter");
+
+  throw new Error("No AI providers available - configure OPENROUTER_API_KEY or OPENAI_API_KEY");
+}
+
+export async function selectProviderAndModelAsync(
+  complexity: TaskComplexity,
+  taskType: string,
+  config: AIRouterConfig = {}
+): Promise<{ provider: AIProvider; model: string; client: OpenAI; maxTokens: number }> {
+  // Load DB model configs
+  const dbConfig = await loadDbModelConfigs();
+  const dbModel = complexity === TaskComplexity.COMPLEX
+    ? dbConfig.complex
+    : complexity === TaskComplexity.SIMPLE
+    ? dbConfig.simple
+    : dbConfig.moderate;
+
+  const { provider, model, client } = selectProviderAndModel(
+    complexity,
+    config,
+    dbModel?.modelId
+  );
+  return { provider, model, client, maxTokens: dbModel?.maxTokens || 4096 };
 }
 
 export interface AIResponse {
@@ -379,7 +468,7 @@ export async function routeAITask(
   }
 
   const startTime = Date.now();
-  const { provider, model, client } = selectProviderAndModel(task.complexity, config);
+  const { provider, model, client, maxTokens: dbMaxTokens } = await selectProviderAndModelAsync(task.complexity, task.taskType, config);
   
   console.log(`[AIRouter] Routing ${task.taskType} (${task.complexity}) -> ${provider}/${model}`);
   
@@ -392,7 +481,7 @@ export async function routeAITask(
     const response = await client.chat.completions.create({
       model,
       messages: task.messages,
-      max_tokens: task.maxTokens || 4096,
+      max_tokens: task.maxTokens || dbMaxTokens || 4096,
       temperature: task.temperature ?? 0.7,
       ...(task.responseFormat === "json" && { response_format: { type: "json_object" } }),
     });
@@ -523,6 +612,17 @@ export function getProviderStatus(): Record<AIProvider, boolean> {
     [AIProvider.OPENROUTER]: !!getOpenRouterClient(),
     [AIProvider.OPENAI]: !!getOpenAIClient(),
   };
+}
+
+/** Return DB model configs for founder dashboard display */
+export async function getDbModelConfigs() {
+  try {
+    const { db } = await import('../db');
+    const { aiModelConfigs } = await import('@shared/schema');
+    return db.select().from(aiModelConfigs).orderBy(aiModelConfigs.weight);
+  } catch {
+    return [];
+  }
 }
 
 // ============================================

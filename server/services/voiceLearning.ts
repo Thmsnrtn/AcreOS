@@ -21,7 +21,6 @@ import {
   properties,
   deals,
   notes,
-  communications,
   organizations,
 } from '../../shared/schema';
 import { eq, desc, and, isNotNull, not } from 'drizzle-orm';
@@ -82,28 +81,8 @@ class VoiceLearningService {
       }
     } catch (_) { /* table may not have notes column — skip */ }
 
-    // Outbound communications (emails, SMS)
-    try {
-      const comms = await db
-        .select({ body: communications.body, type: communications.type, createdAt: communications.createdAt })
-        .from(communications)
-        .where(
-          and(
-            eq(communications.organizationId, organizationId),
-            eq(communications.direction, 'outbound'),
-            isNotNull(communications.body),
-          )
-        )
-        .orderBy(desc(communications.createdAt))
-        .limit(Math.floor(limit * 0.6));
-
-      for (const c of comms) {
-        if (c.body && c.body.trim().length > 30) {
-          const source = c.type === 'sms' ? 'sms' : 'email';
-          samples.push({ text: c.body.trim(), source, createdAt: c.createdAt });
-        }
-      }
-    } catch (_) { /* skip */ }
+    // Outbound communications (emails, SMS) — table not yet available, skip
+    // TODO: restore when communications table is created
 
     // Sort by recency, most recent first
     samples.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
