@@ -213,7 +213,7 @@ async function checkWetlands(lat: number, lng: number, acreage: number | null): 
       (sum: number, f: any) => sum + (f.attributes?.ACRES || 0),
       0
     );
-    const wetlandTypes = [...new Set(features.map((f: any) => f.attributes?.WETLAND_TYPE).filter(Boolean))] as string[];
+    const wetlandTypes = Array.from(new Set(features.map((f: any) => f.attributes?.WETLAND_TYPE).filter(Boolean))) as string[];
     const wetlandPercent = acreage ? Math.min(100, (totalWetlandAcres / acreage) * 100) : 0;
 
     let risk: RiskLevel = "low";

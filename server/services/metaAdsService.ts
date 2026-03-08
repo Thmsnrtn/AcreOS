@@ -117,20 +117,13 @@ export async function processLeadAdSubmission(
         `Campaign: ${leadData.campaign_name || campaignName}`,
         `Ad: ${leadData.ad_name || adId}`,
         `Form ID: ${formId}`,
+        `Leadgen ID: ${leadgenId}`,
         propertyInterest ? `Property Interest: ${propertyInterest}` : "",
         budget ? `Budget: ${budget}` : "",
         message ? `Message: ${message}` : "",
       ]
         .filter(Boolean)
         .join("\n"),
-      leadType: "buyer", // Facebook leads are typically buyer inquiries
-      customFields: {
-        meta_leadgen_id: leadgenId,
-        meta_form_id: formId,
-        meta_ad_id: adId,
-        meta_campaign_name: campaignName,
-        raw_fields: fields,
-      },
     })
     .returning({ id: leads.id });
 

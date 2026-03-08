@@ -258,9 +258,9 @@ export async function generate1099IntForms(
 
   return qualifying.map((note) => ({
     payerName: org?.name || "Land Investor",
-    payerAddress: org?.address || "",
-    payerEin: org?.ein || "00-0000000",
-    payerPhone: org?.phone || "",
+    payerAddress: "",
+    payerEin: "00-0000000",
+    payerPhone: "",
     recipientName: note.borrowerName,
     recipientAddress: "",
     recipientTin: "000-00-0000", // Collected during onboarding
