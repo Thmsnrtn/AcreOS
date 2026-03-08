@@ -34,7 +34,7 @@ import atlasInsightsRouter from "./routes-atlas-insights";
 import voiceRouter from "./routes-voice";
 
 // Rate limiting middleware
-import { createRateLimiter, rateLimiters, RATE_LIMIT_CONFIGS } from "./middleware/rateLimit";
+import { createRateLimiter, rateLimiters, RATE_LIMIT_CONFIGS, authLimiter, aiLimiter, webhookLimiter, importLimiter } from "./middleware/rateLimit";
 
 
 // White-label domain middleware
@@ -175,8 +175,11 @@ export async function registerRoutes(
   // ============================================
   // RATE LIMITING MIDDLEWARE (excludes health check)
   // ============================================
-  app.use("/api/ai", strictRateLimit);
-  app.use("/api/auth", authRateLimit);
+  app.use("/api/ai", aiLimiter);
+  app.use("/api/auth", authLimiter);
+  app.use("/api/stripe/connect/webhook", webhookLimiter);
+  app.use("/webhook", webhookLimiter);
+  app.use("/api/import", importLimiter);
   app.use("/api", (req, res, next) => {
     if (req.path.startsWith("/health")) {
       return next();
@@ -234,7 +237,7 @@ export async function registerRoutes(
   app.use('/api/intelligence', isAuthenticated, getOrCreateOrg, voiceLearningRouter);
   app.use('/api/white-label', isAuthenticated, getOrCreateOrg, whiteLabelRouter);
   app.use('/api/realtime', isAuthenticated, getOrCreateOrg, realtimeRouter);
-  app.use('/api/atlas', isAuthenticated, getOrCreateOrg, atlasInsightsRouter);
+  app.use('/api/atlas', aiLimiter, isAuthenticated, getOrCreateOrg, atlasInsightsRouter);
   app.post('/api/mcp/execute', mcpHandler);
 
   // Voice pipeline: webhook (no auth) + authenticated API routes

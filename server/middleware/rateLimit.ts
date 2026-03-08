@@ -195,6 +195,14 @@ export const rateLimiters = {
 };
 
 /**
+ * Named limiters for specific route groups
+ */
+export const authLimiter = createRateLimiter({ maxRequests: 10, windowMs: 15 * 60 * 1000 });
+export const aiLimiter = createAuthenticatedRateLimiter({ maxRequests: 30, windowMs: 60 * 1000 });
+export const webhookLimiter = createRateLimiter({ maxRequests: 100, windowMs: 60 * 1000 });
+export const importLimiter = createAuthenticatedRateLimiter({ maxRequests: 5, windowMs: 60 * 1000 });
+
+/**
  * Helper function to get rate limit stats for a specific key
  * Useful for debugging and monitoring
  */
