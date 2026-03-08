@@ -566,6 +566,11 @@ export const properties = pgTable("properties", {
     lastUpdated?: string;
   }>(),
   
+  // Enrichment data (from PropertyEnrichmentService - free public data sources)
+  enrichmentData: jsonb("enrichment_data"),
+  enrichmentStatus: text("enrichment_status"), // pending, processing, complete, failed
+  enrichedAt: timestamp("enriched_at"),
+
   // Timestamps
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -9494,3 +9499,50 @@ export const aiTelemetryEvents = pgTable("ai_telemetry_events", {
   index("ai_telemetry_created_idx").on(table.createdAt),
   index("ai_telemetry_provider_idx").on(table.provider),
 ]);
+
+// ─── User Map Layer Preferences ──────────────────────────────────────────────
+// Persists per-user map layer toggle/opacity settings across devices.
+export const userMapLayerPreferences = pgTable("user_map_layer_preferences", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  layerId: integer("layer_id").notNull().references(() => dataSources.id, { onDelete: "cascade" }),
+  enabled: boolean("enabled").notNull().default(false),
+  opacity: numeric("opacity", { precision: 4, scale: 2 }).notNull().default("0.70"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("user_map_layer_prefs_user_idx").on(table.userId),
+  index("user_map_layer_prefs_unique_idx").on(table.userId, table.layerId),
+]);
+
+// ─── AI Model Configurations ─────────────────────────────────────────────────
+// Founder-managed table of available AI models with routing weights per task type.
+export const aiModelConfigs = pgTable("ai_model_configs", {
+  id: serial("id").primaryKey(),
+  provider: text("provider").notNull().default("openrouter"),
+  modelId: text("model_id").notNull(),
+  displayName: text("display_name").notNull(),
+  costPerMillionInput: numeric("cost_per_million_input", { precision: 10, scale: 4 }),
+  costPerMillionOutput: numeric("cost_per_million_output", { precision: 10, scale: 4 }),
+  maxTokens: integer("max_tokens").default(4096),
+  taskTypes: text("task_types").array().default([]),
+  weight: integer("weight").default(50),
+  enabled: boolean("enabled").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("ai_model_configs_enabled_idx").on(table.enabled),
+]);
+
+// ─── System API Keys ──────────────────────────────────────────────────────────
+// Founder-managed system-wide API keys. Users' BYOK keys override these.
+export const systemApiKeys = pgTable("system_api_keys", {
+  id: serial("id").primaryKey(),
+  provider: text("provider").notNull().unique(),
+  displayName: text("display_name").notNull(),
+  apiKey: text("api_key"),
+  isActive: boolean("is_active").default(true),
+  lastValidatedAt: timestamp("last_validated_at"),
+  validationStatus: text("validation_status").default("pending"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});

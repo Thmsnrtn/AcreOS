@@ -43,6 +43,7 @@ import { AISettings } from "@/components/ai-settings";
 import { ProviderSettings } from "@/components/provider-settings";
 import { AICostDashboard } from "@/components/ai-cost-dashboard";
 import { ByokSettings } from "@/components/settings/ByokSettings";
+import { ThemeSettings } from "@/components/theme-settings";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
@@ -72,7 +73,7 @@ interface SeatPricing {
   yearly?: { id: string; amount: number; currency: string } | null;
 }
 
-const VALID_TABS = ["general", "team", "payments", "communications", "notifications", "ai", "data", "integrations", "developer"] as const;
+const VALID_TABS = ["general", "appearance", "team", "payments", "communications", "notifications", "ai", "data", "integrations", "developer"] as const;
 type TabValue = typeof VALID_TABS[number];
 
 interface StripeConnectStatusResponse {
@@ -748,6 +749,10 @@ export default function Settings() {
                   <FileText className="w-4 h-4 hidden sm:inline" />
                   Data
                 </TabsTrigger>
+                <TabsTrigger value="appearance" data-testid="tab-appearance" className="gap-1">
+                  <SettingsIcon className="w-4 h-4 hidden sm:inline" />
+                  Appearance
+                </TabsTrigger>
                 <TabsTrigger value="integrations" data-testid="tab-integrations" className="gap-1">
                   <Link2 className="w-4 h-4 hidden sm:inline" />
                   Integrations
@@ -1399,6 +1404,31 @@ export default function Settings() {
                   </p>
                 </div>
                 <ByokSettings />
+              </div>
+            </TabsContent>
+
+            <TabsContent value="appearance" className="space-y-8 mt-6" data-testid="tab-content-appearance">
+              <div className="space-y-4">
+                <div>
+                  <h2 className="text-xl font-semibold flex items-center gap-2">
+                    <SettingsIcon className="w-5 h-5" />
+                    Appearance
+                  </h2>
+                  <p className="text-muted-foreground text-sm">
+                    Customize the look and feel of AcreOS.
+                  </p>
+                </div>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">Theme & Colors</CardTitle>
+                    <CardDescription>
+                      Choose from named presets, accent colors, and light/dark/system mode.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ThemeSettings />
+                  </CardContent>
+                </Card>
               </div>
             </TabsContent>
 

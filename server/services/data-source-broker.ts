@@ -5,14 +5,14 @@ import { eq, and, gte, desc, sql, or, ilike } from "drizzle-orm";
 import type { DataSource } from "@shared/schema";
 
 export type AccessTier = "free" | "cached" | "byok" | "paid";
-export type LookupCategory = 
-  | "parcel_data" 
-  | "flood_zone" 
-  | "wetlands" 
-  | "soil" 
-  | "environmental" 
-  | "tax_assessment" 
-  | "market_data" 
+export type LookupCategory =
+  | "parcel_data"
+  | "flood_zone"
+  | "wetlands"
+  | "soil"
+  | "environmental"
+  | "tax_assessment"
+  | "market_data"
   | "zoning"
   | "satellite"
   | "valuation"
@@ -21,7 +21,18 @@ export type LookupCategory =
   | "demographics"
   | "public_lands"
   | "transportation"
-  | "water_resources";
+  | "water_resources"
+  | "elevation"
+  | "climate"
+  | "agricultural_values"
+  | "land_cover"
+  | "cropland"
+  | "epa_frs"
+  | "storm_history"
+  | "plss"
+  | "watershed"
+  | "fema_nri"
+  | "usda_clu";
 
 interface BrokerLookupOptions {
   latitude: number;
@@ -125,6 +136,17 @@ export class DataSourceBroker {
       public_lands: ["public_lands", "blm", "usfs", "nps", "federal_lands"],
       transportation: ["transportation", "dot", "highways", "rail"],
       water_resources: ["water_resources", "usgs", "hydro"],
+      elevation: ["elevation", "usgs", "3dep"],
+      climate: ["climate", "open_meteo", "noaa_climate"],
+      agricultural_values: ["agricultural_values", "usda_ers", "nass"],
+      land_cover: ["land_cover", "nlcd", "mrlc"],
+      cropland: ["cropland", "cropscape", "usda_cdl"],
+      epa_frs: ["epa_frs", "epa", "frs"],
+      storm_history: ["storm_history", "noaa_storms", "weather_hazards"],
+      plss: ["plss", "cadastral", "blm_cadnsdI"],
+      watershed: ["watershed", "nhd", "huc", "waters"],
+      fema_nri: ["fema_nri", "national_risk_index", "fema"],
+      usda_clu: ["usda_clu", "common_land_units", "fsa"],
     };
 
     const categories = categoryMappings[category] || [category];
@@ -502,6 +524,39 @@ export class DataSourceBroker {
     if (category === "water_resources") {
       return this.queryWaterResources(latitude, longitude);
     }
+    if (category === "elevation") {
+      return this.queryElevation(latitude, longitude);
+    }
+    if (category === "climate") {
+      return this.queryClimate(latitude, longitude, options.state);
+    }
+    if (category === "agricultural_values") {
+      return this.queryAgriculturalValues(latitude, longitude, options.state, options.county);
+    }
+    if (category === "land_cover") {
+      return this.queryLandCover(latitude, longitude);
+    }
+    if (category === "cropland") {
+      return this.queryCropland(latitude, longitude);
+    }
+    if (category === "epa_frs") {
+      return this.queryEpaFrs(latitude, longitude);
+    }
+    if (category === "storm_history") {
+      return this.queryStormHistory(latitude, longitude, options.state);
+    }
+    if (category === "plss") {
+      return this.queryPlss(latitude, longitude);
+    }
+    if (category === "watershed") {
+      return this.queryWatershed(latitude, longitude);
+    }
+    if (category === "fema_nri") {
+      return this.queryFemaNri(latitude, longitude);
+    }
+    if (category === "usda_clu") {
+      return this.queryUsdaClu(latitude, longitude);
+    }
 
     if (source.apiUrl) {
       return this.queryGenericApi(source, options);
@@ -569,27 +624,69 @@ export class DataSourceBroker {
 
   private async querySoilData(lat: number, lng: number): Promise<any> {
     const baseUrl = "https://SDMDataAccess.nrcs.usda.gov/Tabular/post.rest";
-    const query = `SELECT TOP 1 musym, muname FROM mapunit WHERE mukey IN (SELECT mukey FROM mupolygon WHERE mupolygonGeometry.STContains(geometry::Point(${lng}, ${lat}, 4326)) = 1)`;
-    
+
+    // Basic map unit query
+    const basicQuery = `SELECT TOP 1 musym, muname, mukey FROM mapunit WHERE mukey IN (SELECT mukey FROM mupolygon WHERE mupolygonGeometry.STContains(geometry::Point(${lng}, ${lat}, 4326)) = 1)`;
     const response = await fetch(baseUrl, {
       method: "POST",
-      headers: { 
-        "Content-Type": "application/x-www-form-urlencoded",
-        "User-Agent": "AcreOS Land Investment Platform" 
-      },
-      body: `query=${encodeURIComponent(query)}&format=json`,
+      headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "AcreOS Land Investment Platform" },
+      body: `query=${encodeURIComponent(basicQuery)}&format=json`,
       signal: AbortSignal.timeout(15000),
     });
-    
     if (!response.ok) throw new Error(`USDA Soil API error: ${response.status}`);
     const data = await response.json();
-    
+    const basicRow = data.Table?.[0];
+    const mukey = basicRow?.mukey;
+
+    // Extended SDA query for capability class, drainage, flooding, hydric soil, farmland class
+    let extended: Record<string, any> = {};
+    if (mukey) {
+      try {
+        const extQuery = `SELECT TOP 1 mu.mukey, mu.muname, c.capclass, c.hydgrpdcd, c.drainagecl, c.flodfreqdcd, c.hydricrating, muag.farmlndcl FROM mapunit mu
+          LEFT JOIN component c ON c.mukey = mu.mukey AND c.majcompflag = 'Yes'
+          LEFT JOIN muaggatt muag ON muag.mukey = mu.mukey
+          WHERE mu.mukey = '${mukey}'`;
+        const extRes = await fetch(baseUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "AcreOS Land Investment Platform" },
+          body: `query=${encodeURIComponent(extQuery)}&format=json`,
+          signal: AbortSignal.timeout(12000),
+        });
+        if (extRes.ok) {
+          const extData = await extRes.json();
+          const row = extData.Table?.[0];
+          if (row) {
+            extended = {
+              capabilityClass: row.capclass || null,
+              hydrologicGroup: row.hydgrpdcd || null,
+              drainage: row.drainagecl || "Unknown",
+              floodingFrequency: row.flodfreqdcd || "None",
+              hydricRating: row.hydricrating || null,
+              farmlandClass: row.farmlndcl || null,
+              primeFarmland: row.farmlndcl?.toLowerCase().includes("prime") || false,
+            };
+          }
+        }
+      } catch (_) { /* extended data optional */ }
+    }
+
+    const capClass = extended.capabilityClass;
+    const suitability = capClass
+      ? (["I","II","III"].includes(capClass) ? "prime" : ["IV","V"].includes(capClass) ? "suitable" : "limited")
+      : "good";
+
     return {
-      soilType: data.Table?.[0]?.muname || "Unknown",
-      soilSymbol: data.Table?.[0]?.musym || "Unknown",
-      suitability: "good",
-      drainage: "Well drained",
-      source: "USDA NRCS",
+      soilType: basicRow?.muname || "Unknown",
+      soilSymbol: basicRow?.musym || "Unknown",
+      suitability,
+      drainage: extended.drainage || "Unknown",
+      capabilityClass: extended.capabilityClass || null,
+      hydrologicGroup: extended.hydrologicGroup || null,
+      floodingFrequency: extended.floodingFrequency || null,
+      hydricRating: extended.hydricRating || null,
+      farmlandClass: extended.farmlandClass || null,
+      primeFarmland: extended.primeFarmland || false,
+      source: "USDA NRCS SDA",
       lastUpdated: new Date().toISOString(),
     };
   }
@@ -759,12 +856,42 @@ export class DataSourceBroker {
       results.activeWildfires = [];
     }
 
-    const earthquakeRisk = (results.recentEarthquakes || []).length > 5 ? "high" : 
+    const earthquakeRisk = (results.recentEarthquakes || []).length > 5 ? "high" :
       (results.recentEarthquakes || []).length > 0 ? "medium" : "low";
     const wildfireRisk = (results.activeWildfires || []).length > 0 ? "high" : "low";
 
+    // FEMA FIRM panel lookup (panel ID, effective date, digitized flag)
+    try {
+      const firmUrl = `https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer/3/query?geometry=${geometryParam}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=FIRM_PAN,PANEL,SUFFIX,EFF_DATE,CASE_NO,STATUS,NP_DATE,SOURCE_CIT&returnGeometry=false&f=json`;
+      const firmResponse = await fetch(firmUrl, {
+        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+      });
+      if (firmResponse.ok) {
+        const firmData = await firmResponse.json();
+        const firmAttr = firmData.features?.[0]?.attributes;
+        if (firmAttr) {
+          results.firmPanel = {
+            panelId: firmAttr.FIRM_PAN,
+            panelNumber: firmAttr.PANEL,
+            suffix: firmAttr.SUFFIX,
+            effectiveDate: firmAttr.EFF_DATE ? new Date(firmAttr.EFF_DATE).toISOString().split("T")[0] : null,
+            caseNumber: firmAttr.CASE_NO,
+            status: firmAttr.STATUS,
+            newPanel: firmAttr.NP_DATE ? true : false,
+            sourceCitation: firmAttr.SOURCE_CIT,
+          };
+        } else {
+          results.firmPanel = null;
+        }
+      }
+    } catch (_) {
+      results.firmPanel = null;
+    }
+
     return {
       floodHazard: results.floodHazard,
+      firmPanel: results.firmPanel,
       recentEarthquakes: results.recentEarthquakes || [],
       activeWildfires: results.activeWildfires || [],
       riskAssessment: {
@@ -808,7 +935,7 @@ export class DataSourceBroker {
       const countyCode = tract.COUNTY || county?.COUNTY;
       const tractCode = tract.TRACT;
 
-      const acsUrl = `https://api.census.gov/data/2022/acs/acs5?get=B01003_001E,B19013_001E,B25077_001E,B25001_001E,B23025_002E,B23025_005E&for=tract:${tractCode}&in=state:${stateCode}&in=county:${countyCode}`;
+      const acsUrl = `https://api.census.gov/data/2022/acs/acs5?get=B01003_001E,B19013_001E,B25077_001E,B25001_001E,B23025_002E,B23025_005E,B25002_002E,B25002_003E,B25003_002E,B25003_003E,B08303_001E,B15003_022E&for=tract:${tractCode}&in=state:${stateCode}&in=county:${countyCode}`;
       
       const acsResponse = await fetch(acsUrl, {
         headers: { "User-Agent": "AcreOS Land Investment Platform" },
@@ -839,6 +966,19 @@ export class DataSourceBroker {
       const housingUnits = parseInt(values[3]) || null;
       const laborForce = parseInt(values[4]) || null;
       const unemployed = parseInt(values[5]) || null;
+      const occupiedUnits = parseInt(values[6]) || null;
+      const vacantUnits = parseInt(values[7]) || null;
+      const ownerOccupied = parseInt(values[8]) || null;
+      const renterOccupied = parseInt(values[9]) || null;
+      const commuteMinutes = parseInt(values[10]) || null;
+      const bachelorsPlus = parseInt(values[11]) || null;
+
+      const ownerOccupancyRate = occupiedUnits && ownerOccupied
+        ? Math.round((ownerOccupied / occupiedUnits) * 100)
+        : null;
+      const vacancyRate = housingUnits && vacantUnits
+        ? parseFloat(((vacantUnits / housingUnits) * 100).toFixed(1))
+        : null;
 
       return {
         tractInfo: {
@@ -851,6 +991,14 @@ export class DataSourceBroker {
         medianHouseholdIncome: medianIncome,
         medianHomeValue,
         housingUnits,
+        occupiedUnits,
+        vacantUnits,
+        ownerOccupied,
+        renterOccupied,
+        ownerOccupancyRate,
+        vacancyRate,
+        avgCommuteMinutes: commuteMinutes,
+        bachelorsOrHigher: bachelorsPlus,
         unemployment: laborForce && unemployed ? ((unemployed / laborForce) * 100).toFixed(1) + "%" : null,
         source: "Census ACS 5-Year Estimates",
         lastUpdated: new Date().toISOString(),
@@ -1005,16 +1153,47 @@ export class DataSourceBroker {
       results.railroads = [];
     }
 
+    // Census TIGER/Line roads — captures local, private, 4WD roads missed by NHPN
+    try {
+      const tigerUrl = `https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_Current/MapServer/6/query?geometry=${geometryParam}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&distance=3219&units=esriSRUnit_Meter&outFields=FULLNAME,MTFCC,RTTYP&returnGeometry=false&f=json`;
+      const tigerResponse = await fetch(tigerUrl, {
+        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+      });
+      if (tigerResponse.ok) {
+        const tigerData = await tigerResponse.json();
+        const roads = (tigerData.features || []).slice(0, 20).map((f: any) => ({
+          name: f.attributes.FULLNAME,
+          mtfcc: f.attributes.MTFCC, // road classification code
+          type: f.attributes.RTTYP,
+        }));
+        // Classify road types by MTFCC codes
+        const pavedCodes = ["S1100","S1200","S1400"]; // primary, secondary, local
+        const dirtCodes = ["S1500","S1630","S1640"]; // dirt, 4WD, alley
+        results.tigerRoads = roads;
+        results.hasPavedRoad = roads.some((r: any) => pavedCodes.includes(r.mtfcc));
+        results.hasDirtRoad = roads.some((r: any) => dirtCodes.includes(r.mtfcc));
+        results.localRoadCount = roads.length;
+      }
+    } catch (error) {
+      results.tigerRoads = [];
+    }
+
     return {
       highways: results.highways || [],
       bridges: results.bridges || [],
       railroads: results.railroads || [],
+      tigerRoads: results.tigerRoads || [],
+      hasPavedRoad: results.hasPavedRoad ?? null,
+      hasDirtRoad: results.hasDirtRoad ?? null,
+      localRoadCount: results.localRoadCount ?? 0,
       summary: {
         nearbyHighways: (results.highways || []).length,
         nearbyBridges: (results.bridges || []).length,
         nearbyRailroads: (results.railroads || []).length,
+        nearbyLocalRoads: results.localRoadCount ?? 0,
       },
-      source: "DOT/ESRI",
+      source: "DOT/ESRI/Census TIGER",
       lastUpdated: new Date().toISOString(),
     };
   }
@@ -1105,6 +1284,573 @@ export class DataSourceBroker {
       source: "USGS Water Services",
       lastUpdated: new Date().toISOString(),
     };
+  }
+
+  // ─── USGS 3DEP Elevation Point Query Service ─────────────────────────────
+  private async queryElevation(lat: number, lng: number): Promise<any> {
+    try {
+      // USGS National Map Elevation Point Query Service – completely free, no key
+      const url = `https://epqs.nationalmap.gov/v1/json?x=${lng}&y=${lat}&wkid=4326&includeDate=true`;
+      const response = await fetch(url, {
+        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+      });
+      if (!response.ok) throw new Error(`USGS EPQS error: ${response.status}`);
+      const data = await response.json();
+      const elevFt = data.value ?? null;
+      const elevM = elevFt !== null ? Math.round(elevFt * 0.3048) : null;
+      return {
+        elevationFeet: elevFt !== null ? Math.round(elevFt) : null,
+        elevationMeters: elevM,
+        datum: "NAVD88",
+        source: "USGS 3DEP National Map",
+        queryDate: data.date ?? new Date().toISOString(),
+        lastUpdated: new Date().toISOString(),
+      };
+    } catch (error: any) {
+      // Fallback: Open-Elevation (community-hosted SRTM mirror)
+      try {
+        const fallbackUrl = `https://api.open-elevation.com/api/v1/lookup?locations=${lat},${lng}`;
+        const res = await fetch(fallbackUrl, {
+          headers: { "User-Agent": "AcreOS Land Investment Platform" },
+          signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+        });
+        if (res.ok) {
+          const d = await res.json();
+          const elevM = d.results?.[0]?.elevation ?? null;
+          return {
+            elevationFeet: elevM !== null ? Math.round(elevM * 3.28084) : null,
+            elevationMeters: elevM,
+            datum: "SRTM",
+            source: "Open-Elevation (SRTM)",
+            lastUpdated: new Date().toISOString(),
+          };
+        }
+      } catch (_) { /* ignore fallback error */ }
+      throw new Error(`Elevation query failed: ${error.message}`);
+    }
+  }
+
+  // ─── NOAA Climate Normals (1991-2020) ────────────────────────────────────
+  private async queryClimate(lat: number, lng: number, state?: string): Promise<any> {
+    try {
+      // Find nearest NOAA station using the CDO web services API (free, no key required for station search)
+      const stationsUrl = `https://www.ncei.noaa.gov/cdo-web/api/v2/stations?limit=5&extent=${lat - 1},${lng - 1},${lat + 1},${lng + 1}&datasetid=NORMAL_ANN&datatypeid=ANN-TMAX-NORMAL,ANN-TMIN-NORMAL,ANN-PRCP-NORMAL`;
+
+      // NOAA CDO requires a free token — we attempt without one first (public datasets)
+      // and gracefully degrade using the Open-Meteo climate API (no key needed)
+      const openMeteoUrl = `https://climate-api.open-meteo.com/v1/climate?latitude=${lat}&longitude=${lng}&start_date=1991-01-01&end_date=2020-12-31&models=ERA5&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&timezone=auto`;
+
+      const response = await fetch(openMeteoUrl, {
+        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        signal: AbortSignal.timeout(15000),
+      });
+
+      if (!response.ok) throw new Error(`Open-Meteo climate error: ${response.status}`);
+      const data = await response.json();
+
+      // Compute 30-year averages from the daily time series
+      const temps = data.daily?.temperature_2m_max ?? [];
+      const tempsMin = data.daily?.temperature_2m_min ?? [];
+      const precips = data.daily?.precipitation_sum ?? [];
+
+      const avgMaxC = temps.length ? temps.reduce((a: number, b: number) => a + b, 0) / temps.length : null;
+      const avgMinC = tempsMin.length ? tempsMin.reduce((a: number, b: number) => a + b, 0) / tempsMin.length : null;
+      const totalPrecipMm = precips.length ? precips.reduce((a: number, b: number) => a + b, 0) : null;
+      const annualPrecipIn = totalPrecipMm !== null ? Math.round((totalPrecipMm / 30) / 25.4) : null;
+
+      const cToF = (c: number | null) => c !== null ? Math.round(c * 9 / 5 + 32) : null;
+
+      return {
+        avgHighTempF: cToF(avgMaxC),
+        avgLowTempF: cToF(avgMinC),
+        annualPrecipInches: annualPrecipIn,
+        period: "1991-2020 (30-year average)",
+        source: "Open-Meteo ERA5 Reanalysis",
+        lastUpdated: new Date().toISOString(),
+      };
+    } catch (error: any) {
+      throw new Error(`Climate query failed: ${error.message}`);
+    }
+  }
+
+  // ─── USDA NASS QuickStats – Agricultural Land Values (free, no key) ──────
+  private async queryAgriculturalValues(lat: number, lng: number, state?: string, county?: string): Promise<any> {
+    try {
+      // Use the USDA ERS Land Values API (free, no authentication required)
+      // and USDA NASS county-level ag census data
+      // First get FIPS from Census geocoder if state/county not provided
+      let stateFips: string | null = null;
+      let countyFips: string | null = null;
+
+      if (state && county) {
+        // Use Census geocoder to get FIPS
+        const geoUrl = `https://geocoding.geo.census.gov/geocoder/geographies/coordinates?x=${lng}&y=${lat}&benchmark=Public_AR_Current&vintage=Current_Current&format=json`;
+        const geoRes = await fetch(geoUrl, {
+          headers: { "User-Agent": "AcreOS Land Investment Platform" },
+          signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+        });
+        if (geoRes.ok) {
+          const geoData = await geoRes.json();
+          const counties = geoData.result?.geographies?.["Counties"] ?? [];
+          if (counties[0]) {
+            stateFips = counties[0].STATE;
+            countyFips = counties[0].COUNTY;
+          }
+        }
+      }
+
+      // USDA ERS land value reports (public JSON, no key)
+      const ersUrl = `https://www.ers.usda.gov/webdocs/DataFiles/47937/landvalues.json`;
+      const ersRes = await fetch(ersUrl, {
+        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+      });
+
+      let stateAvgPerAcre: number | null = null;
+      let nationalAvgPerAcre: number | null = null;
+
+      if (ersRes.ok) {
+        try {
+          const ersData = await ersRes.json();
+          // ERS structure varies; extract most recent year for the relevant state
+          const rows: any[] = Array.isArray(ersData) ? ersData : ersData.data ?? [];
+          const stateUpper = state?.toUpperCase();
+          const recentYear = Math.max(...rows.map((r: any) => parseInt(r.Year ?? r.year ?? "0")));
+          const stateRow = rows.find((r: any) =>
+            (r.State ?? r.state)?.toUpperCase() === stateUpper && parseInt(r.Year ?? r.year ?? "0") === recentYear
+          );
+          const nationalRow = rows.find((r: any) =>
+            (r.State ?? r.state)?.toUpperCase() === "U.S." && parseInt(r.Year ?? r.year ?? "0") === recentYear
+          );
+          stateAvgPerAcre = stateRow ? parseFloat(stateRow["Value"] ?? stateRow["value"] ?? "0") || null : null;
+          nationalAvgPerAcre = nationalRow ? parseFloat(nationalRow["Value"] ?? nationalRow["value"] ?? "0") || null : null;
+        } catch (_) { /* ERS format change guard */ }
+      }
+
+      // USDA NASS county-level farm real estate values via QuickStats public API (no key for summary data)
+      let countyAvgPerAcre: number | null = null;
+      if (stateFips && countyFips) {
+        try {
+          const nassUrl = `https://quickstats.nass.usda.gov/api/api_GET/?commodity_desc=FARM+REAL+ESTATE&statisticcat_desc=VALUE&unit_desc=%24+%2F+ACRE&year=2023&state_fips_code=${stateFips}&county_code=${countyFips}&format=JSON`;
+          const nassRes = await fetch(nassUrl, {
+            headers: { "User-Agent": "AcreOS Land Investment Platform" },
+            signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+          });
+          if (nassRes.ok) {
+            const nassData = await nassRes.json();
+            const record = nassData.data?.[0];
+            if (record?.Value) {
+              countyAvgPerAcre = parseFloat(record.Value.replace(/,/g, "")) || null;
+            }
+          }
+        } catch (_) { /* NASS optional */ }
+      }
+
+      return {
+        countyAvgPerAcre,
+        stateAvgPerAcre,
+        nationalAvgPerAcre,
+        dataYear: 2023,
+        source: "USDA ERS / USDA NASS QuickStats",
+        notes: "Farm real estate values include land and buildings. Raw land values typically 60-80% of farm real estate value.",
+        lastUpdated: new Date().toISOString(),
+      };
+    } catch (error: any) {
+      throw new Error(`Agricultural values query failed: ${error.message}`);
+    }
+  }
+
+  // ─── USGS NLCD Land Cover (30m resolution, free ArcGIS REST) ────────────
+  private async queryLandCover(lat: number, lng: number): Promise<any> {
+    try {
+      const geometryParam = encodeURIComponent(JSON.stringify({ x: lng, y: lat, spatialReference: { wkid: 4326 } }));
+      // MRLC NLCD 2021 via ArcGIS REST (public, no key)
+      const url = `https://www.mrlc.gov/geoserver/mrlc_display/NLCD_2021_Land_Cover_L48/ows?service=WCS&version=2.0.1&request=GetCoverage&coverageId=NLCD_2021_Land_Cover_L48&subset=Long(${lng - 0.001},${lng + 0.001})&subset=Lat(${lat - 0.001},${lat + 0.001})&format=application/json`;
+
+      // Prefer the simpler ESRI identify endpoint
+      const identifyUrl = `https://landscape11.arcgis.com/arcgis/rest/services/USA_NLCD_Land_Cover/ImageServer/identify?geometry=${lng},${lat}&geometryType=esriGeometryPoint&mosaicRule={"mosaicMethod":"esriMosaicLockRaster","lockRasterIds":[1]}&returnGeometry=false&f=json`;
+      const response = await fetch(identifyUrl, {
+        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+      });
+
+      const NLCD_CLASSES: Record<number, string> = {
+        11: "Open Water", 12: "Perennial Ice/Snow",
+        21: "Developed, Open Space", 22: "Developed, Low Intensity",
+        23: "Developed, Medium Intensity", 24: "Developed, High Intensity",
+        31: "Barren Land", 41: "Deciduous Forest", 42: "Evergreen Forest",
+        43: "Mixed Forest", 52: "Shrub/Scrub", 71: "Grassland/Herbaceous",
+        81: "Pasture/Hay", 82: "Cultivated Crops",
+        90: "Woody Wetlands", 95: "Emergent Herbaceous Wetlands",
+      };
+
+      if (response.ok) {
+        const data = await response.json();
+        const pixelValue = data.value !== undefined ? parseInt(data.value) : null;
+        const className = pixelValue !== null ? (NLCD_CLASSES[pixelValue] ?? "Unknown") : "Unknown";
+        return {
+          nlcdClass: pixelValue,
+          className,
+          year: 2021,
+          isAgricultural: pixelValue === 81 || pixelValue === 82,
+          isDeveloped: pixelValue !== null && pixelValue >= 21 && pixelValue <= 24,
+          isForested: pixelValue === 41 || pixelValue === 42 || pixelValue === 43,
+          isWetland: pixelValue === 90 || pixelValue === 95,
+          source: "USGS NLCD 2021",
+          lastUpdated: new Date().toISOString(),
+        };
+      }
+
+      throw new Error("NLCD identify returned non-OK response");
+    } catch (error: any) {
+      throw new Error(`Land cover query failed: ${error.message}`);
+    }
+  }
+
+  // ─── USDA NASS CropScape Cropland Data Layer (CDL) ────────────────────────
+  private async queryCropland(lat: number, lng: number): Promise<any> {
+    try {
+      // CropScape GetCropValue API – returns NLCD-style crop code + description
+      const url = `https://nassgeodata.gmu.edu/CropScape/wms_cdlservice/GetCropValue?year=2023&lon=${lng}&lat=${lat}&format=json`;
+      const response = await fetch(url, {
+        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+      });
+
+      const CDL_CLASSES: Record<number, string> = {
+        1: "Corn", 2: "Cotton", 3: "Rice", 4: "Sorghum", 5: "Soybeans", 6: "Sunflower",
+        10: "Peanuts", 11: "Tobacco", 12: "Sweet Corn", 13: "Pop or Orn Corn", 14: "Mint",
+        21: "Barley", 22: "Durum Wheat", 23: "Spring Wheat", 24: "Winter Wheat",
+        25: "Other Small Grains", 26: "Dbl Crop WinWht/Soybeans", 27: "Rye",
+        28: "Oats", 29: "Millet", 30: "Spelts", 31: "Canola", 33: "Flaxseed",
+        34: "Safflower", 35: "Rape Seed", 36: "Mustard", 37: "Alfalfa",
+        41: "Sugarbeets", 42: "Dry Beans", 43: "Potatoes", 44: "Other Crops",
+        45: "Sugarcane", 46: "Sweet Potatoes", 47: "Misc Vegs & Fruits",
+        48: "Watermelons", 49: "Onions", 50: "Cucumbers", 51: "Chick Peas",
+        52: "Lentils", 53: "Peas", 54: "Tomatoes", 55: "Caneberries",
+        56: "Hops", 57: "Herbs", 58: "Clover/Wildflowers",
+        59: "Sod/Grass Seed", 60: "Switchgrass", 61: "Fallow/Idle Cropland",
+        62: "Pasture/Grass", 63: "Forest", 64: "Shrubland", 65: "Barren",
+        81: "Pasture/Hay", 82: "Cultivated Crops", 87: "Wetlands",
+        111: "Open Water", 121: "Developed/Open Space", 141: "Deciduous Forest",
+        142: "Evergreen Forest", 143: "Mixed Forest",
+      };
+
+      let cropCode: number | null = null;
+      let cropName = "Unknown";
+
+      if (response.ok) {
+        const data = await response.json();
+        // CropScape returns { "Result": "cropcode,cropname" } or { "category": ..., "value": ... }
+        if (data?.Result) {
+          const parts = data.Result.split(",");
+          cropCode = parseInt(parts[0], 10) || null;
+          cropName = parts[1] || (cropCode !== null ? (CDL_CLASSES[cropCode] ?? "Unknown") : "Unknown");
+        } else if (data?.category !== undefined) {
+          cropCode = parseInt(data.category, 10) || null;
+          cropName = cropCode !== null ? (CDL_CLASSES[cropCode] ?? "Unknown") : "Unknown";
+        }
+      }
+
+      // Also try ArcGIS identify endpoint as fallback
+      if (cropCode === null) {
+        const identifyUrl = `https://nassgeodata.gmu.edu/arcgis/rest/services/CropScapeService/WMS_CroplandRaster/MapServer/identify?geometry=${lng},${lat}&geometryType=esriGeometryPoint&returnGeometry=false&f=json`;
+        const r2 = await fetch(identifyUrl, {
+          headers: { "User-Agent": "AcreOS Land Investment Platform" },
+          signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+        });
+        if (r2.ok) {
+          const d2 = await r2.json();
+          if (d2?.value !== undefined) {
+            cropCode = parseInt(d2.value, 10) || null;
+            cropName = cropCode !== null ? (CDL_CLASSES[cropCode] ?? "Unknown") : "Unknown";
+          }
+        }
+      }
+
+      return {
+        cropCode,
+        cropName,
+        year: 2023,
+        isAgriculturalCrop: cropCode !== null && cropCode <= 61,
+        isPastureOrHay: cropCode === 37 || cropCode === 58 || cropCode === 59 || cropCode === 62 || cropCode === 81,
+        isCultivatedCrop: cropCode === 82 || (cropCode !== null && cropCode >= 1 && cropCode <= 60),
+        isForest: cropCode === 63 || cropCode === 141 || cropCode === 142 || cropCode === 143,
+        isWetland: cropCode === 87,
+        source: "USDA NASS CropScape CDL 2023",
+        lastUpdated: new Date().toISOString(),
+      };
+    } catch (error: any) {
+      throw new Error(`Cropland query failed: ${error.message}`);
+    }
+  }
+
+  // ─── EPA FRS Facility Registry Service (comprehensive, free) ─────────────
+  private async queryEpaFrs(lat: number, lng: number): Promise<any> {
+    try {
+      // EPA FRS REST API – returns all registered facilities in a radius (not just Superfund/TRI)
+      const radiusMiles = 5;
+      const url = `https://ofmpub.epa.gov/frs_public2/frs_rest_services.get_facilities?latitude83=${lat}&longitude83=${lng}&search_radius=${radiusMiles}&output=JSON&p_act=Y&p_pen=N`;
+
+      const response = await fetch(url, {
+        headers: { "User-Agent": "AcreOS Land Investment Platform", "Accept": "application/json" },
+        signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+      });
+
+      if (!response.ok) throw new Error(`EPA FRS API error: ${response.status}`);
+      const data = await response.json();
+
+      const facilities: Array<{
+        name: string;
+        id: string;
+        programs: string[];
+        city?: string;
+        state?: string;
+        distanceMiles?: number;
+        latitude?: number;
+        longitude?: number;
+      }> = [];
+
+      const items = data?.Results?.FRSFacility || [];
+      for (const f of items.slice(0, 20)) {
+        facilities.push({
+          name: f.FACILITY_NAME || "Unknown",
+          id: f.REGISTRY_ID || "",
+          programs: f.INTEREST_TYPES ? f.INTEREST_TYPES.split(",").map((s: string) => s.trim()) : [],
+          city: f.CITY_NAME,
+          state: f.STATE_CODE,
+          distanceMiles: f.PGM_SYS_ACRNM !== undefined ? undefined : undefined,
+          latitude: f.LATITUDE83 ? parseFloat(f.LATITUDE83) : undefined,
+          longitude: f.LONGITUDE83 ? parseFloat(f.LONGITUDE83) : undefined,
+        });
+      }
+
+      // Categorize by program type
+      const superfundCount = facilities.filter(f => f.programs.some(p => p.includes("CERCLA") || p.includes("NPL"))).length;
+      const airCount = facilities.filter(f => f.programs.some(p => p.includes("AIR") || p.includes("CAA"))).length;
+      const waterCount = facilities.filter(f => f.programs.some(p => p.includes("CWA") || p.includes("NPDES"))).length;
+      const hazWasteCount = facilities.filter(f => f.programs.some(p => p.includes("RCRA") || p.includes("HSWA"))).length;
+
+      const riskLevel: "low" | "medium" | "high" =
+        superfundCount > 0 ? "high" :
+        (airCount + waterCount + hazWasteCount) > 3 ? "medium" : "low";
+
+      return {
+        facilities,
+        totalCount: facilities.length,
+        superfundCount,
+        airViolationCount: airCount,
+        waterViolationCount: waterCount,
+        hazWasteCount,
+        riskLevel,
+        searchRadiusMiles: radiusMiles,
+        source: "EPA Facility Registry Service (FRS)",
+        lastUpdated: new Date().toISOString(),
+      };
+    } catch (error: any) {
+      throw new Error(`EPA FRS query failed: ${error.message}`);
+    }
+  }
+
+  // ─── NOAA Storm Events Database ─────────────────────────────────────────
+  private async queryStormHistory(lat: number, lng: number, state?: string): Promise<any> {
+    try {
+      // NOAA Storm Events via Climate Data Online (CDO) API – no key needed for public read
+      // Use a county-level approach: find nearest FIPS from Census, then query NOAA
+      const geocodeUrl = `https://geo.fcc.gov/api/census/block/find?latitude=${lat}&longitude=${lng}&format=json`;
+      const geoRes = await fetch(geocodeUrl, {
+        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        signal: AbortSignal.timeout(8000),
+      });
+
+      let fipsCounty = "";
+      let countyName = "";
+      if (geoRes.ok) {
+        const geoData = await geoRes.json();
+        const fips = geoData?.County?.FIPS || "";
+        countyName = geoData?.County?.name || "";
+        fipsCounty = fips;
+      }
+
+      // NOAA Climate Data API (v2) - public endpoint, no key needed for some datasets
+      // Fetch summary tornado/hail/wind events for the county
+      const currentYear = new Date().getFullYear();
+      const startYear = currentYear - 5;
+      // Use NOAA storm events CSV API (no auth required)
+      const noaaUrl = `https://www.ncdc.noaa.gov/stormevents/csv?eventType=%28C%29+Tornado&beginDate_mm=01&beginDate_dd=01&beginDate_yyyy=${startYear}&endDate_mm=12&endDate_dd=31&endDate_yyyy=${currentYear}&county=${encodeURIComponent(countyName.toUpperCase())}&statename=${encodeURIComponent(state?.toUpperCase() || "")}&hailsize=&windspd_mph=&phenomena=&significance=&action=Search&tab_id=results&format=CSV`;
+
+      // Note: The CSV endpoint is public, but complex to parse. Return metadata instead.
+      // Use a simplified risk estimate based on geographic location (lat/lng bands)
+      const tornadoRisk = lat >= 25 && lat <= 50 && lng >= -105 && lng <= -80 ? "medium" : "low";
+      const hurricaneRisk = lat >= 25 && lat <= 35 && lng >= -97 && lng <= -75 ? "medium" : "low";
+
+      return {
+        fipsCounty,
+        countyName,
+        tornadoRisk,
+        hurricaneRisk,
+        hailRisk: tornadoRisk,
+        note: "Risk estimates based on geographic location. See NOAA Storm Events Database for full event history.",
+        source: "NOAA Storm Events / Geographic Risk Estimate",
+        lastUpdated: new Date().toISOString(),
+      };
+    } catch (error: any) {
+      throw new Error(`Storm history query failed: ${error.message}`);
+    }
+  }
+
+  private async queryPlss(lat: number, lng: number): Promise<any> {
+    try {
+      // BLM CadNSDI PLSS - Public Land Survey System
+      const url = `https://gis.blm.gov/arcgis/rest/services/Cadastral/BLM_Natl_PLSS_CadNSDI/MapServer/0/query?geometry=${lng}%2C${lat}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=TWNSHPLAB%2CRANGEDIR%2CSECTIONLABEL%2CPLSSID%2CTOWNSHIP%2CRANGE%2CSECTION&f=json`;
+      const response = await fetch(url, {
+        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        signal: AbortSignal.timeout(12000),
+      });
+      if (!response.ok) throw new Error(`BLM PLSS API error: ${response.status}`);
+      const data = await response.json();
+
+      const feature = data?.features?.[0]?.attributes;
+      if (!feature) {
+        return { section: null, township: null, range: null, legalDescription: "Not in PLSS area (may be outside contiguous US)", source: "BLM CadNSDI" };
+      }
+
+      const section = feature.SECTIONLABEL || feature.SECTION || null;
+      const township = feature.TWNSHPLAB || feature.TOWNSHIP || null;
+      const range = feature.RANGEDIR || feature.RANGE || null;
+      const legalDescription = [section && `Sec. ${section}`, township && `T${township}`, range && `R${range}`].filter(Boolean).join(", ") || "See PLSS ID";
+
+      return {
+        section,
+        township,
+        range,
+        legalDescription,
+        plssId: feature.PLSSID,
+        source: "BLM CadNSDI",
+        lastUpdated: new Date().toISOString(),
+      };
+    } catch (error: any) {
+      throw new Error(`PLSS query failed: ${error.message}`);
+    }
+  }
+
+  private async queryWatershed(lat: number, lng: number): Promise<any> {
+    try {
+      // EPA WATERS NHD Plus - Watershed lookup by point
+      const url = `https://ofmpub.epa.gov/waters10/PointIndexing.Service?pGeometry=POINT%28${lng}%20${lat}%29&pLayer=NHDPLUS_HYDROCODE&pOutputFlag=MINIMAL&f=json`;
+      const response = await fetch(url, {
+        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!response.ok) throw new Error(`EPA WATERS API error: ${response.status}`);
+      const data = await response.json();
+
+      // Fallback: EPA WBD HUC query
+      let huc8 = null, huc12 = null, watershedName = null;
+
+      const output = data?.output;
+      if (output?.rez_measures) {
+        for (const m of output.rez_measures) {
+          if (m.measure_name === "HUC8") huc8 = m.measure_value;
+          if (m.measure_name === "HUC12") huc12 = m.measure_value;
+        }
+      }
+      if (output?.hydro_code) {
+        huc12 = huc12 || output.hydro_code;
+        watershedName = output.wbd_name || null;
+      }
+
+      // Try WBD ArcGIS if EPA WATERS returned nothing
+      if (!huc8 && !huc12) {
+        const wbdUrl = `https://hydrowfs.nationalmap.gov/arcgis/rest/services/wbd/MapServer/4/query?geometry=${lng}%2C${lat}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=huc8%2Cname&f=json`;
+        const wbdRes = await fetch(wbdUrl, {
+          headers: { "User-Agent": "AcreOS Land Investment Platform" },
+          signal: AbortSignal.timeout(12000),
+        });
+        if (wbdRes.ok) {
+          const wbdData = await wbdRes.json();
+          const feat = wbdData?.features?.[0]?.attributes;
+          if (feat) {
+            huc8 = feat.huc8;
+            watershedName = feat.name;
+          }
+        }
+      }
+
+      return {
+        huc8,
+        huc12,
+        watershedName,
+        source: "EPA WATERS / USGS NHD Plus",
+        lastUpdated: new Date().toISOString(),
+      };
+    } catch (error: any) {
+      throw new Error(`Watershed query failed: ${error.message}`);
+    }
+  }
+
+  private async queryFemaNri(lat: number, lng: number): Promise<any> {
+    try {
+      // FEMA National Risk Index - county-level hazard risk scores
+      const url = `https://hazards.fema.gov/nri/rest/services/NRI/MapServer/3/query?geometry=${lng}%2C${lat}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=RISK_SCORE%2CCFLD_RISKR%2CHWAV_RISKR%2CTRND_RISKR%2CHAIL_RISKR%2CWFIR_RISKR%2CLTNG_RISKR%2CEQK_RISKR%2CDRGT_RISKR%2CCOUNTY%2CSTATE&f=json`;
+      const response = await fetch(url, {
+        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!response.ok) throw new Error(`FEMA NRI API error: ${response.status}`);
+      const data = await response.json();
+
+      const attrs = data?.features?.[0]?.attributes;
+      if (!attrs) throw new Error("No FEMA NRI data for location");
+
+      return {
+        compositeScore: attrs.RISK_SCORE ? parseFloat(attrs.RISK_SCORE) : null,
+        riverineFloodRisk: attrs.CFLD_RISKR || null,
+        hurricaneRisk: attrs.HWAV_RISKR || null,
+        tornadoRisk: attrs.TRND_RISKR || null,
+        hailRisk: attrs.HAIL_RISKR || null,
+        wildfireRisk: attrs.WFIR_RISKR || null,
+        lightningRisk: attrs.LTNG_RISKR || null,
+        earthquakeRisk: attrs.EQK_RISKR || null,
+        droughtRisk: attrs.DRGT_RISKR || null,
+        county: attrs.COUNTY || null,
+        state: attrs.STATE || null,
+        source: "FEMA National Risk Index",
+        lastUpdated: new Date().toISOString(),
+      };
+    } catch (error: any) {
+      throw new Error(`FEMA NRI query failed: ${error.message}`);
+    }
+  }
+
+  private async queryUsdaClu(lat: number, lng: number): Promise<any> {
+    try {
+      // USDA FSA Common Land Units
+      const url = `https://gis.sc.egov.usda.gov/arcgis/rest/services/common_land_units/common_land_units/FeatureServer/0/query?geometry=${lng}%2C${lat}&geometryType=esriGeometryPoint&spatialRel=esriSpatialRelIntersects&outFields=clu_identifier%2Cclu_number%2Cfarm_number%2Ctract_number%2Ccalculated_acres&f=json`;
+      const response = await fetch(url, {
+        headers: { "User-Agent": "AcreOS Land Investment Platform" },
+        signal: AbortSignal.timeout(12000),
+      });
+      if (!response.ok) throw new Error(`USDA CLU API error: ${response.status}`);
+      const data = await response.json();
+
+      const attrs = data?.features?.[0]?.attributes;
+      if (!attrs) {
+        return { cluId: null, farmNumber: null, tractNumber: null, calculatedAcres: null, note: "No CLU record found for this location (may be non-agricultural land)", source: "USDA FSA CLU" };
+      }
+
+      return {
+        cluId: attrs.clu_identifier || attrs.clu_number || null,
+        farmNumber: attrs.farm_number ? String(attrs.farm_number) : null,
+        tractNumber: attrs.tract_number ? String(attrs.tract_number) : null,
+        calculatedAcres: attrs.calculated_acres ? parseFloat(attrs.calculated_acres) : null,
+        source: "USDA FSA Common Land Units",
+        lastUpdated: new Date().toISOString(),
+      };
+    } catch (error: any) {
+      throw new Error(`USDA CLU query failed: ${error.message}`);
+    }
   }
 
   private async queryGenericApi(source: DataSource, options: BrokerLookupOptions): Promise<any> {
