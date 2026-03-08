@@ -1,8 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, lazy, Suspense } from "react";
 import { PageShell } from "@/components/page-shell";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Button } from "@/components/ui/button";
-import { Link } from "wouter";
 import {
   MessageSquare,
   Activity,
@@ -10,6 +8,9 @@ import {
   Zap,
 } from "lucide-react";
 import CommandCenterPage from "@/pages/command-center";
+
+const ActivityPage = lazy(() => import("@/pages/activity"));
+const AutomationPage = lazy(() => import("@/pages/automation"));
 
 type TabValue = "chat" | "activity" | "agents" | "automation";
 
@@ -21,27 +22,10 @@ function getTabFromHash(): TabValue {
   return "chat";
 }
 
-function LinkPanel({
-  icon: Icon,
-  title,
-  description,
-  href,
-  cta,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  title: string;
-  description: string;
-  href: string;
-  cta: string;
-}) {
+function TabFallback() {
   return (
-    <div className="flex flex-col items-center justify-center py-20 gap-4">
-      <Icon className="w-10 h-10 text-muted-foreground" />
-      <h3 className="text-lg font-medium">{title}</h3>
-      <p className="text-sm text-muted-foreground text-center max-w-xs">{description}</p>
-      <Button asChild>
-        <Link href={href}>{cta}</Link>
-      </Button>
+    <div className="flex items-center justify-center py-20">
+      <div className="animate-pulse text-muted-foreground text-sm">Loading...</div>
     </div>
   );
 }
@@ -101,33 +85,19 @@ export default function AtlasPage() {
         </TabsContent>
 
         <TabsContent value="activity" data-testid="tab-content-activity">
-          <LinkPanel
-            icon={Activity}
-            title="Agent Activity"
-            description="Monitor what your AI agents are working on and review their actions."
-            href="/activity"
-            cta="Open Activity"
-          />
+          <Suspense fallback={<TabFallback />}>
+            <ActivityPage />
+          </Suspense>
         </TabsContent>
 
         <TabsContent value="agents" data-testid="tab-content-agents">
-          <LinkPanel
-            icon={Bot}
-            title="AI Agents"
-            description="Configure and manage your AI agents — lead screener, follow-up coach, deal analyzer, and more."
-            href="/command-center"
-            cta="Open Command Center"
-          />
+          <CommandCenterPage />
         </TabsContent>
 
         <TabsContent value="automation" data-testid="tab-content-automation">
-          <LinkPanel
-            icon={Zap}
-            title="Automation"
-            description="Set up automated rules and workflows to handle repetitive tasks."
-            href="/automation"
-            cta="Open Automation"
-          />
+          <Suspense fallback={<TabFallback />}>
+            <AutomationPage />
+          </Suspense>
         </TabsContent>
       </Tabs>
     </PageShell>
