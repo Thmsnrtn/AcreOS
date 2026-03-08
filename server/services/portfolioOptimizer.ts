@@ -273,99 +273,126 @@ class PortfolioOptimizer {
     holdings: PropertyHolding[]
   ): Promise<DiversificationAnalysis> {
     try {
-      // This would normally fetch from property details
-      // For now, we'll use placeholder logic
-      
       const totalValue = holdings.reduce((sum, h) => sum + h.currentValue, 0);
+      if (totalValue === 0 || holdings.length === 0) {
+        return {
+          byState: [], byCounty: [], byPropertyType: [], byAcreSize: [],
+          concentrationScore: 100, topRisks: [], recommendations: ['Add properties to begin diversification analysis'],
+        };
+      }
 
-      // Geographic diversification
+      // Fetch geographic + type data for each holding from the properties table
+      const propertyIds = holdings.map(h => parseInt(h.propertyId, 10)).filter(id => !isNaN(id));
+      const propertyRows = propertyIds.length > 0
+        ? await db.select({ id: properties.id, state: properties.state, county: properties.county, zoning: properties.zoning })
+            .from(properties)
+            .where(sql`${properties.id} = ANY(${propertyIds})`)
+        : [];
+
+      const propMeta: Map<string, { state: string; county: string; zoning: string | null }> = new Map();
+      for (const row of propertyRows) {
+        propMeta.set(String(row.id), { state: row.state, county: row.county, zoning: row.zoning });
+      }
+
+      // Accumulate value by state, county, property type (zoning), and acre size
       const byState: { [key: string]: number } = {};
       const byCounty: { [key: string]: number } = {};
-      
-      // Property type diversification
       const byPropertyType: { [key: string]: number } = {};
-      
-      // Acre size diversification
       const byAcreSize: { [key: string]: number } = {
-        '0-5': 0,
-        '5-20': 0,
-        '20-50': 0,
-        '50-100': 0,
-        '100+': 0,
+        '0-5': 0, '5-20': 0, '20-50': 0, '50-100': 0, '100+': 0,
       };
 
       for (const holding of holdings) {
-        // Acre size bucketing
-        if (holding.acres < 5) byAcreSize['0-5'] += holding.currentValue;
-        else if (holding.acres < 20) byAcreSize['5-20'] += holding.currentValue;
-        else if (holding.acres < 50) byAcreSize['20-50'] += holding.currentValue;
-        else if (holding.acres < 100) byAcreSize['50-100'] += holding.currentValue;
-        else byAcreSize['100+'] += holding.currentValue;
+        const meta = propMeta.get(holding.propertyId);
+        const val = holding.currentValue;
+
+        // Geographic
+        const state = meta?.state ?? 'Unknown';
+        const county = meta?.county ? `${meta.county}, ${state}` : `Unknown, ${state}`;
+        byState[state] = (byState[state] ?? 0) + val;
+        byCounty[county] = (byCounty[county] ?? 0) + val;
+
+        // Property type — normalize zoning to a readable category
+        const rawZoning = meta?.zoning ?? '';
+        let propType = 'Other';
+        const z = rawZoning.toLowerCase();
+        if (z.includes('ag') || z.includes('agricultural') || z.includes('farm') || z.includes('rural')) propType = 'Agricultural';
+        else if (z.includes('res') || z.includes('residential')) propType = 'Residential';
+        else if (z.includes('comm') || z.includes('commercial')) propType = 'Commercial';
+        else if (z.includes('ind') || z.includes('industrial')) propType = 'Industrial';
+        else if (z.includes('timb') || z.includes('forest')) propType = 'Timberland';
+        else if (rawZoning) propType = rawZoning;
+        byPropertyType[propType] = (byPropertyType[propType] ?? 0) + val;
+
+        // Acre size buckets
+        if (holding.acres < 5) byAcreSize['0-5'] += val;
+        else if (holding.acres < 20) byAcreSize['5-20'] += val;
+        else if (holding.acres < 50) byAcreSize['20-50'] += val;
+        else if (holding.acres < 100) byAcreSize['50-100'] += val;
+        else byAcreSize['100+'] += val;
       }
 
-      // Calculate concentration score (100 = perfectly diversified)
-      const distributions = [byAcreSize];
-      let avgConcentration = 0;
-      
-      for (const dist of distributions) {
-        const values = Object.values(dist);
-        const hhi = values.reduce((sum, v) => sum + Math.pow(v / totalValue, 2), 0);
-        avgConcentration += (1 - hhi) * 100;
+      // HHI helper: sum of squared market-share fractions → 0 (monopoly) to 1 (equal spread)
+      // We convert to a 0–100 "diversification" score: (1 - HHI) * 100
+      function hhiScore(dist: { [key: string]: number }): number {
+        const entries = Object.values(dist).filter(v => v > 0);
+        if (entries.length === 0) return 100;
+        const hhi = entries.reduce((sum, v) => sum + Math.pow(v / totalValue, 2), 0);
+        return (1 - hhi) * 100;
       }
-      const concentrationScore = avgConcentration / distributions.length;
+
+      // Weighted average: geographic dimensions count more than size
+      const stateScore = hhiScore(byState);
+      const countyScore = hhiScore(byCounty);
+      const typeScore = hhiScore(byPropertyType);
+      const sizeScore = hhiScore(byAcreSize);
+      const concentrationScore = stateScore * 0.30 + countyScore * 0.30 + typeScore * 0.25 + sizeScore * 0.15;
 
       // Identify top risks
       const topRisks: string[] = [];
-      
-      // Check for geographic concentration
+
       const topState = Object.entries(byState).sort((a, b) => b[1] - a[1])[0];
       if (topState && topState[1] / totalValue > 0.5) {
-        topRisks.push(`Over 50% concentrated in ${topState[0]}`);
+        topRisks.push(`Over ${Math.round((topState[1] / totalValue) * 100)}% concentrated in ${topState[0]}`);
       }
 
-      // Check for property type concentration
+      const topCounty = Object.entries(byCounty).sort((a, b) => b[1] - a[1])[0];
+      if (topCounty && topCounty[1] / totalValue > 0.4) {
+        topRisks.push(`Over ${Math.round((topCounty[1] / totalValue) * 100)}% in a single county (${topCounty[0]})`);
+      }
+
       const topType = Object.entries(byPropertyType).sort((a, b) => b[1] - a[1])[0];
       if (topType && topType[1] / totalValue > 0.6) {
-        topRisks.push(`Over 60% in ${topType[0]} properties`);
+        topRisks.push(`Over ${Math.round((topType[1] / totalValue) * 100)}% in ${topType[0]} properties`);
       }
 
-      // Check for size concentration
       const topSize = Object.entries(byAcreSize).sort((a, b) => b[1] - a[1])[0];
       if (topSize && topSize[1] / totalValue > 0.5) {
-        topRisks.push(`Over 50% in ${topSize[0]} acre properties`);
+        topRisks.push(`Over ${Math.round((topSize[1] / totalValue) * 100)}% in ${topSize[0]} acre properties`);
       }
 
-      // Generate recommendations
+      // Recommendations
       const recommendations: string[] = [];
-      if (concentrationScore < 50) {
-        recommendations.push('Consider acquiring properties in different regions');
-        recommendations.push('Diversify across multiple property sizes');
-      }
-      if (holdings.length < 5) {
-        recommendations.push('Build portfolio to at least 5-10 properties for adequate diversification');
-      }
+      if (stateScore < 40) recommendations.push('Expand into additional states to reduce geographic concentration risk');
+      if (countyScore < 40) recommendations.push('Diversify across more counties to limit local market exposure');
+      if (typeScore < 40) recommendations.push('Consider adding different property types (residential, commercial, timberland) to balance the portfolio');
+      if (sizeScore < 30) recommendations.push('Mix small and large acreage properties to diversify liquidity profiles');
+      if (holdings.length < 5) recommendations.push('Build to at least 5–10 properties for adequate diversification');
+      if (concentrationScore > 70 && recommendations.length === 0) recommendations.push('Portfolio is well-diversified — maintain current balance as you grow');
 
       return {
-        byState: Object.entries(byState).map(([state, value]) => ({
-          state,
-          value,
-          percentage: (value / totalValue) * 100,
-        })),
-        byCounty: Object.entries(byCounty).map(([county, value]) => ({
-          county,
-          value,
-          percentage: (value / totalValue) * 100,
-        })),
-        byPropertyType: Object.entries(byPropertyType).map(([type, value]) => ({
-          type,
-          value,
-          percentage: (value / totalValue) * 100,
-        })),
-        byAcreSize: Object.entries(byAcreSize).map(([range, value]) => ({
-          range,
-          value,
-          percentage: (value / totalValue) * 100,
-        })),
+        byState: Object.entries(byState)
+          .sort((a, b) => b[1] - a[1])
+          .map(([state, value]) => ({ state, value, percentage: (value / totalValue) * 100 })),
+        byCounty: Object.entries(byCounty)
+          .sort((a, b) => b[1] - a[1])
+          .map(([county, value]) => ({ county, value, percentage: (value / totalValue) * 100 })),
+        byPropertyType: Object.entries(byPropertyType)
+          .sort((a, b) => b[1] - a[1])
+          .map(([type, value]) => ({ type, value, percentage: (value / totalValue) * 100 })),
+        byAcreSize: Object.entries(byAcreSize)
+          .filter(([, v]) => v > 0)
+          .map(([range, value]) => ({ range, value, percentage: (value / totalValue) * 100 })),
         concentrationScore,
         topRisks,
         recommendations,

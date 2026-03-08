@@ -151,8 +151,9 @@ class AcreOSValuationModel {
         request.acres
       );
 
+      // Stage 2 fallback: if no comparables, use AI to estimate from county/state context
       if (comparables.length === 0) {
-        throw new Error('Insufficient comparable sales data for valuation');
+        return await this.generateMarketEstimate(organizationId, request);
       }
 
       // Step 2: Calculate baseline from comparables
@@ -225,6 +226,89 @@ class AcreOSValuationModel {
       console.error('Valuation generation failed:', error);
       throw error;
     }
+  }
+
+  /**
+   * Stage 2 fallback: generate a market estimate using OpenAI when no comparables exist.
+   * Returns a lower-confidence valuation clearly labeled as a market estimate.
+   */
+  private async generateMarketEstimate(
+    organizationId: string,
+    request: ValuationRequest
+  ): Promise<ValuationResult> {
+    const { county, state } = request.location;
+    const { zoning, roadAccess, floodZone } = request.characteristics;
+
+    let pricePerAcreEstimate = 1000; // fallback baseline
+    let estimateSource = 'baseline';
+
+    if (process.env.OPENAI_API_KEY) {
+      try {
+        const prompt = `You are a rural land valuation expert. Provide a realistic price-per-acre estimate for vacant land with these characteristics:
+
+County: ${county}, ${state}
+Acres: ${request.acres}
+Zoning: ${zoning || 'unknown'}
+Road access: ${roadAccess || 'unknown'}
+Flood zone: ${floodZone || 'unknown'}
+
+Return ONLY a JSON object with this exact format (no markdown, no explanation):
+{"pricePerAcre": <number>, "lowPerAcre": <number>, "highPerAcre": <number>, "rationale": "<one sentence>"}
+
+Base your estimate on typical rural land market conditions in ${county} County, ${state}. Be conservative.`;
+
+        const completion = await openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.2,
+          max_tokens: 200,
+        });
+
+        const raw = completion.choices[0]?.message?.content?.trim() || '';
+        const parsed = JSON.parse(raw);
+        if (parsed.pricePerAcre && typeof parsed.pricePerAcre === 'number') {
+          pricePerAcreEstimate = parsed.pricePerAcre;
+          estimateSource = 'ai_market_estimate';
+        }
+      } catch {
+        // If AI call fails, fall back to static regional baseline
+        estimateSource = 'regional_baseline';
+      }
+    }
+
+    const estimatedValue = Math.round(pricePerAcreEstimate * request.acres);
+    const confidence = 45; // Low confidence — no local comps
+    const confidenceInterval = {
+      low: Math.round(estimatedValue * 0.6),
+      high: Math.round(estimatedValue * 1.5),
+    };
+
+    // Save as a low-confidence prediction
+    try {
+      await db.insert(valuationPredictions).values({
+        organizationId,
+        propertyId: request.propertyId,
+        estimatedValue,
+        pricePerAcre: Math.round(pricePerAcreEstimate),
+        confidence,
+        methodology: estimateSource,
+        comparablesUsed: 0,
+        adjustments: [],
+        confidenceInterval,
+      });
+    } catch {
+      // Non-fatal — continue even if save fails
+    }
+
+    return {
+      estimatedValue,
+      pricePerAcre: Math.round(pricePerAcreEstimate),
+      confidenceInterval,
+      confidence,
+      methodology: `AcreOS Market Estimate (no local comparables — ${estimateSource.replace(/_/g, ' ')})`,
+      comparables: [],
+      marketAdjustments: [],
+    };
   }
 
   /**

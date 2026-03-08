@@ -5,6 +5,17 @@ import { ListSkeleton } from "@/components/list-skeleton";
 import { telemetry } from "@/lib/telemetry";
 import { useDealChecklist, useChecklistTemplates, useApplyChecklistTemplate, useUpdateChecklistItem, useStageGate } from "@/hooks/use-checklists";
 import { useState } from "react";
+import {
+  DndContext,
+  type DragEndEvent,
+  DragOverlay,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  useDroppable,
+  useDraggable,
+} from "@dnd-kit/core";
+import { CSS } from "@dnd-kit/utilities";
 import { useSearch, Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -25,6 +36,8 @@ import { Badge } from "@/components/ui/badge";
 import { Plus, MapPin, DollarSign, Calendar, Building, TrendingUp, CheckCircle, X, GripVertical, FileText, Trash2, Loader2, Briefcase, Calculator, ClipboardCheck, Upload, AlertTriangle, CheckSquare, Square, Clock, Download, Package, Play, Eye, FolderPlus, Sparkles, Flame, Snowflake, Minus, LayoutGrid, List, ChevronLeft, ChevronRight } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { DealsEmptyState } from "@/components/empty-states";
+import { SavedViewsSelector } from "@/components/saved-views-selector";
+import type { SavedView } from "@shared/schema";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -71,8 +84,28 @@ export default function DealsPage() {
   const [deletingDeal, setDeletingDeal] = useState<DealWithProperty | null>(null);
   const { mutate: deleteDeal, isPending: isDeleting } = useDeleteDeal();
   const [isExporting, setIsExporting] = useState(false);
+  const [selectedDealIds, setSelectedDealIds] = useState<Set<number>>(new Set());
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const [isBulkUpdating, setIsBulkUpdating] = useState(false);
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+  const { toast } = useToast();
   const [mobileViewMode, setMobileViewMode] = useState<'kanban' | 'list'>('kanban');
   const [selectedStageIndex, setSelectedStageIndex] = useState(0);
+  const [activeDragId, setActiveDragId] = useState<number | null>(null);
+  const [typeFilter, setTypeFilter] = useState<string>("all");
+  const { mutate: updateDealStage } = useUpdateDeal();
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    setActiveDragId(null);
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const dealId = active.id as number;
+    const newStage = over.id as string;
+    if (!dealStages.find(s => s.value === newStage)) return;
+    // Optimistic update via cache, then persist
+    updateDealStage({ id: dealId, status: newStage });
+  };
 
   const handleExport = async () => {
     setIsExporting(true);
@@ -96,10 +129,64 @@ export default function DealsPage() {
     }
   };
 
-  const enrichedDeals: DealWithProperty[] = (deals || []).map(deal => ({
-    ...deal,
-    property: properties?.find(p => p.id === deal.propertyId),
-  }));
+  const handleBulkDelete = async () => {
+    if (selectedDealIds.size === 0) return;
+    setIsBulkDeleting(true);
+    try {
+      const res = await apiRequest("POST", "/api/deals/bulk-delete", { ids: Array.from(selectedDealIds) });
+      const result = await res.json();
+      toast({ title: "Deleted", description: `Deleted ${result.deletedCount} deal(s).` });
+      setSelectedDealIds(new Set());
+      queryClient.invalidateQueries({ queryKey: ['/api/deals'] });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to delete deals", variant: "destructive" });
+    } finally {
+      setIsBulkDeleting(false);
+      setShowBulkDeleteConfirm(false);
+    }
+  };
+
+  const handleBulkStageChange = async (status: string) => {
+    if (selectedDealIds.size === 0) return;
+    setIsBulkUpdating(true);
+    try {
+      const res = await apiRequest("POST", "/api/deals/bulk-update", { ids: Array.from(selectedDealIds), updates: { status } });
+      const result = await res.json();
+      toast({ title: "Updated", description: `Updated ${result.updatedCount} deal(s) to "${status}".` });
+      setSelectedDealIds(new Set());
+      queryClient.invalidateQueries({ queryKey: ['/api/deals'] });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to update deals", variant: "destructive" });
+    } finally {
+      setIsBulkUpdating(false);
+    }
+  };
+
+  const handleBulkExport = () => {
+    const selected = enrichedDeals.filter(d => selectedDealIds.has(d.id));
+    const headers = ["id", "type", "status", "offerAmount", "acceptedAmount", "county", "state"];
+    const rows = [headers.join(","), ...selected.map(d =>
+      [d.id, d.type, d.status, d.offerAmount || "", d.acceptedAmount || "", d.property?.county || "", d.property?.state || ""]
+        .map(v => `"${v || ""}"`)
+        .join(",")
+    )];
+    const blob = new Blob([rows.join("\n")], { type: "text/csv" });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `deals-export-${new Date().toISOString().split("T")[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  };
+
+  const enrichedDeals: DealWithProperty[] = (deals || [])
+    .filter(deal => typeFilter === "all" || deal.type === typeFilter)
+    .map(deal => ({
+      ...deal,
+      property: properties?.find(p => p.id === deal.propertyId),
+    }));
 
   const acquisitions = enrichedDeals.filter(d => d.type === 'acquisition' && d.status !== 'cancelled');
   const dispositions = enrichedDeals.filter(d => d.type === 'disposition' && d.status !== 'cancelled');
@@ -223,6 +310,52 @@ export default function DealsPage() {
             </Card>
           </div>
 
+          <div className="flex items-center gap-2">
+            <SavedViewsSelector
+              entityType="deal"
+              currentFilters={{ type: typeFilter }}
+              onApplyView={(view: SavedView) => {
+                if (view.filters && Array.isArray(view.filters)) {
+                  const typeDef = view.filters.find((f: any) => f.field === "type");
+                  setTypeFilter(typeDef ? String(typeDef.value) : "all");
+                } else {
+                  setTypeFilter("all");
+                }
+              }}
+            />
+          </div>
+
+          {selectedDealIds.size > 0 && (
+            <div className="p-3 bg-muted/50 border rounded-md space-y-3 md:space-y-0 md:flex md:flex-wrap md:items-center md:gap-3" data-testid="bulk-actions-toolbar-deals">
+              <div className="flex items-center gap-2">
+                <CheckSquare className="w-4 h-4" />
+                <span className="text-sm font-medium">{selectedDealIds.size} deal{selectedDealIds.size !== 1 ? "s" : ""} selected</span>
+                <Button variant="ghost" size="icon" className="md:hidden min-h-[44px] min-w-[44px] ml-auto" onClick={() => setSelectedDealIds(new Set())}>
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+              <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap md:items-center md:gap-2 md:ml-auto">
+                <Button variant="outline" className="min-h-[44px] md:min-h-8" onClick={handleBulkExport} data-testid="button-bulk-export-deals">
+                  <Download className="w-4 h-4 mr-1" /> Export
+                </Button>
+                <Select onValueChange={handleBulkStageChange} disabled={isBulkUpdating}>
+                  <SelectTrigger className="min-h-[44px] md:min-h-8 w-full md:w-[160px]" data-testid="select-bulk-stage-deals">
+                    <SelectValue placeholder={isBulkUpdating ? "Updating..." : "Change Stage"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {dealStages.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <Button variant="destructive" className="min-h-[44px] md:min-h-8 col-span-2 md:col-span-1" onClick={() => setShowBulkDeleteConfirm(true)} disabled={isBulkDeleting} data-testid="button-bulk-delete-deals">
+                  <Trash2 className="w-4 h-4 mr-1" /> Delete
+                </Button>
+                <Button variant="ghost" size="sm" className="hidden md:flex" onClick={() => setSelectedDealIds(new Set())}>
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+
           {!isLoading && enrichedDeals.length === 0 ? (
             <DealsEmptyState
               onAddDeal={() => setIsCreateOpen(true)}
@@ -314,11 +447,23 @@ export default function DealsPage() {
                         </div>
                         <div className="space-y-2">
                           {stageDeals.map((deal) => (
-                            <DealCard 
-                              key={deal.id} 
-                              deal={deal} 
-                              onSelect={() => setSelectedDeal(deal)}
-                            />
+                            <div key={deal.id} className="flex items-start gap-2">
+                              <Checkbox
+                                checked={selectedDealIds.has(deal.id)}
+                                onCheckedChange={(checked) => {
+                                  const next = new Set(selectedDealIds);
+                                  checked ? next.add(deal.id) : next.delete(deal.id);
+                                  setSelectedDealIds(next);
+                                }}
+                                className="mt-3 h-5 w-5"
+                              />
+                              <div className="flex-1 min-w-0">
+                                <DealCard
+                                  deal={deal}
+                                  onSelect={() => setSelectedDeal(deal)}
+                                />
+                              </div>
+                            </div>
                           ))}
                         </div>
                       </div>
@@ -379,44 +524,36 @@ export default function DealsPage() {
                 </div>
               ) : (
                 <div className="relative">
-                  <div className="overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent">
-                    <div className="flex gap-4 min-w-max px-1">
-                      {dealStages.map((stage) => {
-                        const stageDeals = enrichedDeals.filter(d => d.status === stage.value);
-                        return (
-                          <div key={stage.value} className="w-72 flex-shrink-0">
-                            <div className={`rounded-t-xl px-4 py-3 ${stage.color}`}>
-                              <div className="flex items-center justify-between gap-2">
-                                <h3 className="font-medium">{stage.label}</h3>
-                                <Badge variant="secondary" className="font-mono">
-                                  {stageDeals.length}
-                                </Badge>
-                              </div>
-                            </div>
-                            <div className="bg-muted/30 rounded-b-xl p-2 min-h-[400px] space-y-2">
-                              {isLoading ? (
-                                <div data-testid={`skeleton-deals-${stage.value}`}>
-                                  <ListSkeleton count={2} variant="compact" />
-                                </div>
-                              ) : stageDeals.length === 0 ? (
-                                <div className="text-center py-8 text-muted-foreground text-sm">
-                                  No deals
-                                </div>
-                              ) : (
-                                stageDeals.map((deal) => (
-                                  <DealCard 
-                                    key={deal.id} 
-                                    deal={deal} 
-                                    onSelect={() => setSelectedDeal(deal)}
-                                  />
-                                ))
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
+                  <DndContext
+                    sensors={sensors}
+                    onDragStart={(e) => setActiveDragId(e.active.id as number)}
+                    onDragEnd={handleDragEnd}
+                    onDragCancel={() => setActiveDragId(null)}
+                  >
+                    <div className="overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent">
+                      <div className="flex gap-4 min-w-max px-1">
+                        {dealStages.map((stage) => {
+                          const stageDeals = enrichedDeals.filter(d => d.status === stage.value);
+                          return (
+                            <KanbanColumn
+                              key={stage.value}
+                              stage={stage}
+                              deals={stageDeals}
+                              isLoading={isLoading}
+                              activeDragId={activeDragId}
+                              onSelect={(deal) => setSelectedDeal(deal)}
+                            />
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
+                    <DragOverlay dropAnimation={null}>
+                      {activeDragId != null && (() => {
+                        const deal = enrichedDeals.find(d => d.id === activeDragId);
+                        return deal ? <DealCard deal={deal} onSelect={() => {}} isDragging /> : null;
+                      })()}
+                    </DragOverlay>
+                  </DndContext>
                   <div className="hidden md:block absolute left-0 top-0 bottom-4 w-4 bg-gradient-to-r from-background to-transparent pointer-events-none" />
                   <div className="hidden md:block absolute right-0 top-0 bottom-4 w-4 bg-gradient-to-l from-background to-transparent pointer-events-none" />
                 </div>
@@ -442,20 +579,89 @@ export default function DealsPage() {
         isLoading={isDeleting}
         variant="destructive"
       />
+
+      <ConfirmDialog
+        open={showBulkDeleteConfirm}
+        onOpenChange={(open) => !open && setShowBulkDeleteConfirm(false)}
+        title="Delete Selected Deals"
+        description={`Delete ${selectedDealIds.size} deal${selectedDealIds.size !== 1 ? "s" : ""}? This cannot be undone.`}
+        confirmLabel="Delete All"
+        onConfirm={handleBulkDelete}
+        isLoading={isBulkDeleting}
+        variant="destructive"
+      />
     </PageShell>
   );
 }
 
-function DealCard({ deal, onSelect }: { deal: DealWithProperty; onSelect: () => void }) {
+function KanbanColumn({
+  stage,
+  deals,
+  isLoading,
+  activeDragId,
+  onSelect,
+}: {
+  stage: { value: string; label: string; color: string };
+  deals: DealWithProperty[];
+  isLoading: boolean;
+  activeDragId: number | null;
+  onSelect: (deal: DealWithProperty) => void;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: stage.value });
   return (
-    <Card 
-      className="floating-window cursor-pointer hover-elevate active:scale-[0.98] transition-transform touch-manipulation"
+    <div className="w-72 flex-shrink-0">
+      <div className={`rounded-t-xl px-4 py-3 ${stage.color}`}>
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="font-medium">{stage.label}</h3>
+          <Badge variant="secondary" className="font-mono">{deals.length}</Badge>
+        </div>
+      </div>
+      <div
+        ref={setNodeRef}
+        className={`bg-muted/30 rounded-b-xl p-2 min-h-[400px] space-y-2 transition-colors ${isOver ? "bg-primary/5 ring-2 ring-primary/20 ring-inset" : ""}`}
+        data-testid={`column-${stage.value}`}
+      >
+        {isLoading ? (
+          <div data-testid={`skeleton-deals-${stage.value}`}>
+            <ListSkeleton count={2} variant="compact" />
+          </div>
+        ) : deals.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground text-sm">No deals</div>
+        ) : (
+          deals.map((deal) => (
+            <DealCard
+              key={deal.id}
+              deal={deal}
+              onSelect={() => onSelect(deal)}
+              isDragging={activeDragId === deal.id}
+            />
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DealCard({ deal, onSelect, isDragging = false }: { deal: DealWithProperty; onSelect: () => void; isDragging?: boolean }) {
+  const { attributes, listeners, setNodeRef, transform } = useDraggable({ id: deal.id });
+  const style = transform ? { transform: CSS.Translate.toString(transform) } : undefined;
+
+  return (
+    <Card
+      ref={setNodeRef}
+      style={style}
+      className={`floating-window cursor-pointer hover-elevate active:scale-[0.98] transition-transform touch-manipulation ${isDragging ? "opacity-40" : ""}`}
       onClick={onSelect}
       data-testid={`card-deal-${deal.id}`}
     >
       <CardContent className="p-4 min-h-[88px]">
         <div className="flex items-start gap-3">
-          <GripVertical className="w-4 h-4 text-muted-foreground/50 mt-1 flex-shrink-0 hidden md:block" />
+          <GripVertical
+            className="w-4 h-4 text-muted-foreground/50 mt-1 flex-shrink-0 hidden md:block cursor-grab active:cursor-grabbing"
+            {...listeners}
+            {...attributes}
+            onClick={(e) => e.stopPropagation()}
+          />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               <Badge variant={deal.type === 'acquisition' ? 'default' : 'secondary'} className="text-xs">

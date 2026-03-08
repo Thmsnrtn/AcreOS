@@ -1,10 +1,99 @@
 // @ts-nocheck — ORM type refinement deferred; runtime-correct
 import type { Express } from "express";
 import { storage } from "./storage";
+import { db } from "./db";
 import { z } from "zod";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { usageMeteringService, creditService } from "./services/credits";
+import { deals, properties, leads, notes } from "@shared/schema";
+import { eq, and } from "drizzle-orm";
+import { format as formatDate } from "date-fns";
+
+/**
+ * Resolve standard context variables from deal/property context.
+ * Maps DB fields to the {{variable_name}} namespace used in templates.
+ */
+async function resolveContextVariables(
+  orgId: number,
+  dealId?: number | null,
+  propertyId?: number | null
+): Promise<Record<string, string>> {
+  const ctx: Record<string, string> = {};
+
+  // Resolve property context
+  let propId = propertyId;
+  let deal: any = null;
+
+  if (dealId) {
+    const [d] = await db.select().from(deals).where(and(eq(deals.id, dealId), eq(deals.organizationId, orgId))).limit(1);
+    if (d) {
+      deal = d;
+      if (!propId) propId = d.propertyId ?? undefined;
+    }
+  }
+
+  if (propId) {
+    const [prop] = await db.select().from(properties).where(and(eq(properties.id, propId), eq(properties.organizationId, orgId))).limit(1);
+    if (prop) {
+      ctx['property_address'] = [prop.address, prop.city, prop.state, prop.zip].filter(Boolean).join(', ') || '';
+      ctx['property_county'] = prop.county ?? '';
+      ctx['property_state'] = prop.state ?? '';
+      ctx['property_acres'] = prop.sizeAcres != null ? String(prop.sizeAcres) : '';
+      ctx['county'] = prop.county ?? '';
+      ctx['state'] = prop.state ?? '';
+      ctx['acres'] = prop.sizeAcres != null ? String(prop.sizeAcres) : '';
+      ctx['apn'] = prop.apn ?? '';
+      ctx['zoning'] = prop.zoning ?? '';
+
+      if (prop.purchasePrice) ctx['purchase_price'] = `$${Number(prop.purchasePrice).toLocaleString()}`;
+      if (prop.listPrice) ctx['list_price'] = `$${Number(prop.listPrice).toLocaleString()}`;
+      if (prop.marketValue) ctx['market_value'] = `$${Number(prop.marketValue).toLocaleString()}`;
+
+      // Seller
+      if (prop.sellerId) {
+        const [seller] = await db.select().from(leads).where(eq(leads.id, prop.sellerId)).limit(1);
+        if (seller) {
+          ctx['seller_name'] = [seller.firstName, seller.lastName].filter(Boolean).join(' ');
+          ctx['seller_first_name'] = seller.firstName ?? '';
+          ctx['seller_last_name'] = seller.lastName ?? '';
+          ctx['seller_email'] = seller.email ?? '';
+          ctx['seller_phone'] = seller.phone ?? '';
+        }
+      }
+
+      // Buyer
+      if (prop.buyerId) {
+        const [buyer] = await db.select().from(leads).where(eq(leads.id, prop.buyerId)).limit(1);
+        if (buyer) {
+          ctx['buyer_name'] = [buyer.firstName, buyer.lastName].filter(Boolean).join(' ');
+          ctx['buyer_first_name'] = buyer.firstName ?? '';
+          ctx['buyer_last_name'] = buyer.lastName ?? '';
+          ctx['buyer_email'] = buyer.email ?? '';
+          ctx['buyer_phone'] = buyer.phone ?? '';
+        }
+      }
+    }
+  }
+
+  // Deal-level fields
+  if (deal) {
+    if (deal.offerAmount) ctx['offer_amount'] = `$${Number(deal.offerAmount).toLocaleString()}`;
+    if (deal.acceptedAmount) ctx['accepted_amount'] = `$${Number(deal.acceptedAmount).toLocaleString()}`;
+    if (deal.acceptedAmount || deal.offerAmount) {
+      ctx['purchase_price'] = ctx['purchase_price'] || `$${Number(deal.acceptedAmount || deal.offerAmount).toLocaleString()}`;
+    }
+    if (deal.closingDate) ctx['closing_date'] = formatDate(new Date(deal.closingDate), 'MMMM d, yyyy');
+    ctx['deal_type'] = deal.type ?? '';
+    ctx['deal_status'] = deal.status ?? '';
+  }
+
+  // Standard date fields
+  ctx['today'] = formatDate(new Date(), 'MMMM d, yyyy');
+  ctx['today_short'] = formatDate(new Date(), 'MM/dd/yyyy');
+
+  return ctx;
+}
 
 export function registerDocSystemRoutes(app: Express): void {
   const api = app;
@@ -498,15 +587,19 @@ export function registerDocSystemRoutes(app: Express): void {
         return res.status(404).json({ message: "Template not found" });
       }
       
-      // Generate content by replacing variables
+      // Auto-resolve context from deal/property, then merge with caller-supplied variables
+      // (caller-supplied values take precedence over auto-resolved ones)
+      const resolvedCtx = await resolveContextVariables(org.id, dealId, propertyId);
+      const mergedVars: Record<string, string> = {
+        ...resolvedCtx,
+        ...(variables && typeof variables === 'object' ? variables : {}),
+      };
       let generatedContent = template.content;
-      if (variables && typeof variables === 'object') {
-        for (const [key, value] of Object.entries(variables)) {
-          const regex = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
-          generatedContent = generatedContent.replace(regex, String(value));
-        }
+      for (const [key, value] of Object.entries(mergedVars)) {
+        const regex = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
+        generatedContent = generatedContent.replace(regex, String(value));
       }
-      
+
       const document = await storage.createGeneratedDocument({
         organizationId: org.id,
         templateId,
@@ -515,15 +608,29 @@ export function registerDocSystemRoutes(app: Express): void {
         name: name || `${template.name} - ${new Date().toLocaleDateString()}`,
         type: template.type,
         content: generatedContent,
-        variables: variables || {},
+        variables: mergedVars,
         status: "draft",
         createdBy: user?.id ? parseInt(user.id) : undefined,
       });
-      
+
       res.status(201).json(document);
     } catch (error: any) {
       console.error("Generate document error:", error);
       res.status(500).json({ message: error.message || "Failed to generate document" });
+    }
+  });
+
+  // GET /api/documents/resolve-context - Preview resolved template variables for a deal/property
+  api.get("/api/documents/resolve-context", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const dealId = req.query.dealId ? parseInt(req.query.dealId as string) : null;
+      const propertyId = req.query.propertyId ? parseInt(req.query.propertyId as string) : null;
+      const ctx = await resolveContextVariables(org.id, dealId, propertyId);
+      res.json(ctx);
+    } catch (error: any) {
+      console.error("Resolve context error:", error);
+      res.status(500).json({ message: error.message || "Failed to resolve context" });
     }
   });
 
@@ -581,15 +688,18 @@ export function registerDocSystemRoutes(app: Express): void {
         return res.status(404).json({ message: "Template not found" });
       }
       
-      // Generate content by replacing variables
+      // Auto-resolve context from deal/property, merge with caller-supplied variables
+      const resolvedCtx = await resolveContextVariables(org.id, dealId, propertyId);
+      const mergedVars: Record<string, string> = {
+        ...resolvedCtx,
+        ...(variables && typeof variables === 'object' ? variables : {}),
+      };
       let generatedContent = template.content;
-      if (variables && typeof variables === 'object') {
-        for (const [key, value] of Object.entries(variables)) {
-          const regex = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
-          generatedContent = generatedContent.replace(regex, String(value));
-        }
+      for (const [key, value] of Object.entries(mergedVars)) {
+        const regex = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
+        generatedContent = generatedContent.replace(regex, String(value));
       }
-      
+
       const document = await storage.createGeneratedDocument({
         organizationId: org.id,
         templateId,
@@ -598,11 +708,11 @@ export function registerDocSystemRoutes(app: Express): void {
         name: name || `${template.name} - ${new Date().toLocaleDateString()}`,
         type: template.type,
         content: generatedContent,
-        variables: variables || {},
+        variables: mergedVars,
         status: "draft",
         createdBy: user?.id ? parseInt(user.id) : undefined,
       });
-      
+
       res.status(201).json(document);
     } catch (error: any) {
       console.error("Create generated document error:", error);
