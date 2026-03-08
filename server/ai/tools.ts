@@ -541,6 +541,91 @@ export const toolDefinitions = {
       },
       required: ["url"]
     }
+  },
+
+  draft_offer: {
+    name: "draft_offer",
+    description: "Draft a purchase offer letter for a land deal. Queries deal and property from the database, generates a professional offer letter using AI, and returns the draft text.",
+    parameters: {
+      type: "object",
+      properties: {
+        dealId: { type: "number", description: "The deal ID to draft an offer for" },
+        offerAmount: { type: "number", description: "The offer amount in dollars" },
+        closingDays: { type: "number", description: "Number of days to close (default: 30)" },
+        contingencies: { type: "array", items: { type: "string" }, description: "List of contingencies (e.g., ['financing', 'inspection', 'title_clear'])" }
+      },
+      required: ["dealId", "offerAmount"]
+    }
+  },
+
+  schedule_follow_up: {
+    name: "schedule_follow_up",
+    description: "Schedule a follow-up task for a lead or deal. Creates a task record in the database and returns confirmation with the task details.",
+    parameters: {
+      type: "object",
+      properties: {
+        entityType: { type: "string", enum: ["lead", "deal"], description: "Type of entity to link the follow-up to" },
+        entityId: { type: "number", description: "ID of the lead or deal" },
+        followUpDate: { type: "string", description: "Follow-up date in ISO format (YYYY-MM-DD)" },
+        note: { type: "string", description: "Note or description for the follow-up task" }
+      },
+      required: ["entityType", "entityId", "followUpDate", "note"]
+    }
+  },
+
+  run_comps: {
+    name: "run_comps",
+    description: "Find comparable sales for a property to estimate market value. Queries properties table for similar properties in the same county/state, calculates median price per acre, and returns a comp analysis summary.",
+    parameters: {
+      type: "object",
+      properties: {
+        propertyId: { type: "number", description: "The property ID to find comps for" },
+        radiusMiles: { type: "number", description: "Search radius in miles (default: 25 — used for context; comps are filtered by county/state)" }
+      },
+      required: ["propertyId"]
+    }
+  },
+
+  update_lead_status: {
+    name: "update_lead_status",
+    description: "Update a lead's status in the CRM. Updates the lead status in the database, logs an activity entry, and returns confirmation.",
+    parameters: {
+      type: "object",
+      properties: {
+        leadId: { type: "number", description: "The lead ID to update" },
+        status: {
+          type: "string",
+          enum: ["new", "mailed", "responded", "negotiating", "accepted", "closed", "dead", "interested", "qualified", "under_contract"],
+          description: "New status for the lead"
+        },
+        note: { type: "string", description: "Optional note about the status change" }
+      },
+      required: ["leadId", "status"]
+    }
+  },
+
+  get_stale_leads: {
+    name: "get_stale_leads",
+    description: "Find leads that haven't been contacted recently. Queries leads to find those with no activity in N days and returns a list with lead names and last contact dates.",
+    parameters: {
+      type: "object",
+      properties: {
+        daysSinceContact: { type: "number", description: "Days since last contact threshold (default: 14)" }
+      }
+    }
+  },
+
+  draft_outreach_message: {
+    name: "draft_outreach_message",
+    description: "Draft a personalized outreach message for a seller. Queries lead details and property info, then generates a personalized message appropriate for the medium and seller situation.",
+    parameters: {
+      type: "object",
+      properties: {
+        leadId: { type: "number", description: "The lead ID to draft a message for" },
+        messageType: { type: "string", enum: ["email", "sms", "voicemail_script"], description: "Type of message to draft" }
+      },
+      required: ["leadId", "messageType"]
+    }
   }
 };
 
@@ -1417,6 +1502,330 @@ export async function executeTool(
         };
       }
       
+      case "draft_offer": {
+        const deal = await storage.getDeal(org.id, Number(args.dealId));
+        if (!deal) return { success: false, error: "Deal not found" };
+        const property = await storage.getProperty(org.id, deal.propertyId);
+        if (!property) return { success: false, error: "Property not found for this deal" };
+
+        const closingDays = args.closingDays || 30;
+        const contingencies: string[] = args.contingencies || ["title_clear", "financing"];
+        const contingencyText = contingencies.length > 0
+          ? `Subject to the following contingencies: ${contingencies.join(", ")}.`
+          : "No contingencies.";
+
+        const offerAmountFormatted = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(args.offerAmount);
+        const propertyDesc = [
+          property.sizeAcres ? `${property.sizeAcres} acres` : null,
+          property.county && property.state ? `${property.county} County, ${property.state}` : null,
+          property.apn ? `APN: ${property.apn}` : null,
+          property.address || null,
+        ].filter(Boolean).join(", ");
+
+        const { selectProviderAndModel, TaskComplexity } = await import("../services/aiRouter");
+        const { client, model } = selectProviderAndModel(TaskComplexity.MODERATE);
+
+        const aiResponse = await client.chat.completions.create({
+          model,
+          messages: [
+            {
+              role: "system",
+              content: "You are a professional land investment offer writer. Draft clear, concise, and professional land purchase offer letters."
+            },
+            {
+              role: "user",
+              content: `Draft a professional land purchase offer letter with these details:\n- Property: ${propertyDesc}\n- Offer Amount: ${offerAmountFormatted}\n- Closing Timeline: ${closingDays} days from acceptance\n- ${contingencyText}\n- Deal ID: ${deal.id}\n\nWrite a professional 2-3 paragraph offer letter suitable for sending to a seller. Include the offer amount, closing timeline, and contingencies. Keep it friendly and professional.`
+            }
+          ],
+          max_tokens: 800
+        });
+
+        const draftText = aiResponse.choices[0].message.content || "";
+
+        // Store in sophieMemory for reference
+        try {
+          const { db: dbInstance } = await import("../db");
+          const { sophieMemory } = await import("@shared/schema");
+          await dbInstance.insert(sophieMemory).values({
+            organizationId: org.id,
+            userId: "ai-assistant",
+            memoryType: "context",
+            key: `offer_draft_deal_${deal.id}`,
+            value: {
+              summary: `Offer draft for deal ${deal.id}: ${offerAmountFormatted}`,
+              details: { dealId: deal.id, propertyId: property.id, offerAmount: args.offerAmount, closingDays, contingencies, draftText },
+              timestamp: new Date().toISOString(),
+            },
+            importance: 6,
+          });
+        } catch (_) { /* non-blocking */ }
+
+        invalidateContextCache(org.id);
+        return {
+          success: true,
+          data: {
+            message: `Offer letter drafted for deal #${deal.id}`,
+            draftText,
+            dealId: deal.id,
+            propertyId: property.id,
+            offerAmount: args.offerAmount,
+            closingDays,
+            contingencies,
+          }
+        };
+      }
+
+      case "schedule_follow_up": {
+        const entityType = args.entityType as "lead" | "deal";
+        const entityId = Number(args.entityId);
+
+        // Validate the entity exists and belongs to this org
+        if (entityType === "lead") {
+          const lead = await storage.getLead(org.id, entityId);
+          if (!lead) return { success: false, error: "Lead not found" };
+        } else if (entityType === "deal") {
+          const deal = await storage.getDeal(org.id, entityId);
+          if (!deal) return { success: false, error: "Deal not found" };
+        }
+
+        const task = await storage.createTask({
+          organizationId: org.id,
+          title: `Follow-up: ${args.note}`,
+          description: args.note,
+          priority: "medium",
+          status: "pending",
+          dueDate: args.followUpDate ? new Date(args.followUpDate) : null,
+          entityType,
+          entityId,
+          createdBy: "ai-assistant",
+        });
+
+        invalidateContextCache(org.id);
+        return {
+          success: true,
+          data: {
+            message: `Follow-up scheduled for ${args.followUpDate}`,
+            task: {
+              id: task.id,
+              title: task.title,
+              dueDate: task.dueDate,
+              entityType: task.entityType,
+              entityId: task.entityId,
+              status: task.status,
+            }
+          }
+        };
+      }
+
+      case "run_comps": {
+        const property = await storage.getProperty(org.id, Number(args.propertyId));
+        if (!property) return { success: false, error: "Property not found" };
+        if (!property.county || !property.state) {
+          return { success: false, error: "Property is missing county or state information" };
+        }
+
+        // Query all sold/listed properties in same county+state for this org as internal comps
+        const allProperties = await storage.getProperties(org.id);
+        const subjectAcres = Number(property.sizeAcres) || 0;
+
+        const comps = allProperties.filter(p => {
+          if (p.id === property.id) return false;
+          if (p.county !== property.county || p.state !== property.state) return false;
+          if (!["sold", "listed", "owned"].includes(p.status)) return false;
+          if (!p.listPrice && !p.soldPrice && !p.marketValue) return false;
+          return true;
+        });
+
+        const compData = comps.map(p => {
+          const price = Number(p.soldPrice || p.listPrice || p.marketValue || 0);
+          const acres = Number(p.sizeAcres) || 0;
+          const pricePerAcre = acres > 0 ? price / acres : 0;
+          return {
+            id: p.id,
+            apn: p.apn,
+            address: p.address,
+            sizeAcres: acres,
+            status: p.status,
+            price,
+            pricePerAcre: Math.round(pricePerAcre * 100) / 100,
+          };
+        }).filter(c => c.pricePerAcre > 0);
+
+        let medianPricePerAcre = 0;
+        let estimatedValue = 0;
+        if (compData.length > 0) {
+          const sorted = [...compData].sort((a, b) => a.pricePerAcre - b.pricePerAcre);
+          const mid = Math.floor(sorted.length / 2);
+          medianPricePerAcre = sorted.length % 2 === 0
+            ? (sorted[mid - 1].pricePerAcre + sorted[mid].pricePerAcre) / 2
+            : sorted[mid].pricePerAcre;
+          estimatedValue = subjectAcres > 0 ? Math.round(medianPricePerAcre * subjectAcres * 100) / 100 : 0;
+        }
+
+        return {
+          success: true,
+          data: {
+            subjectProperty: {
+              id: property.id,
+              apn: property.apn,
+              county: property.county,
+              state: property.state,
+              sizeAcres: subjectAcres,
+              currentMarketValue: property.marketValue ? Number(property.marketValue) : null,
+            },
+            compsFound: compData.length,
+            comparables: compData.slice(0, 10),
+            analysis: {
+              medianPricePerAcre: Math.round(medianPricePerAcre * 100) / 100,
+              estimatedValue,
+              compsSearchedIn: `${property.county} County, ${property.state}`,
+              note: compData.length === 0
+                ? "No internal comparable sales found in this county. Consider using run_comps_analysis for external data sources."
+                : `Based on ${compData.length} comparable properties in ${property.county} County, ${property.state}.`,
+            }
+          }
+        };
+      }
+
+      case "update_lead_status": {
+        const lead = await storage.getLead(org.id, Number(args.leadId));
+        if (!lead) return { success: false, error: "Lead not found" };
+
+        const updated = await storage.updateLead(Number(args.leadId), {
+          status: args.status,
+          notes: args.note ? `${lead.notes ? lead.notes + "\n" : ""}[${new Date().toLocaleDateString()}] Status changed to ${args.status}: ${args.note}` : lead.notes,
+        });
+
+        // Log the status change activity
+        await storage.logActivity({
+          organizationId: org.id,
+          agentType: "atlas",
+          action: "status_changed",
+          entityType: "lead",
+          entityId: Number(args.leadId),
+          description: `Status changed to "${args.status}"${args.note ? `: ${args.note}` : ""}`,
+          changes: { status: { old: lead.status, new: args.status } },
+        });
+
+        invalidateContextCache(org.id);
+        return {
+          success: true,
+          data: {
+            message: `Lead status updated from "${lead.status}" to "${args.status}"`,
+            lead: {
+              id: updated.id,
+              name: `${updated.firstName} ${updated.lastName}`,
+              oldStatus: lead.status,
+              newStatus: updated.status,
+            }
+          }
+        };
+      }
+
+      case "get_stale_leads": {
+        const daysSinceContact = Number(args.daysSinceContact) || 14;
+        const cutoffDate = new Date();
+        cutoffDate.setDate(cutoffDate.getDate() - daysSinceContact);
+
+        const allLeads = await storage.getLeads(org.id);
+        const staleLeads = allLeads.filter(lead => {
+          if (["closed", "dead"].includes(lead.status)) return false;
+          if (!lead.lastContactedAt && !lead.createdAt) return true;
+          const lastContact = lead.lastContactedAt || lead.createdAt;
+          return new Date(lastContact) < cutoffDate;
+        });
+
+        return {
+          success: true,
+          data: {
+            daysSinceContact,
+            staleCount: staleLeads.length,
+            staleLeads: staleLeads.map(l => ({
+              id: l.id,
+              name: `${l.firstName} ${l.lastName}`,
+              email: l.email,
+              phone: l.phone,
+              status: l.status,
+              lastContactedAt: l.lastContactedAt || null,
+              createdAt: l.createdAt,
+              daysSinceContact: Math.floor(
+                (Date.now() - new Date(l.lastContactedAt || l.createdAt).getTime()) / (1000 * 60 * 60 * 24)
+              ),
+            })).sort((a, b) => b.daysSinceContact - a.daysSinceContact),
+            message: staleLeads.length > 0
+              ? `Found ${staleLeads.length} leads with no contact in the last ${daysSinceContact} days.`
+              : `All leads have been contacted within the last ${daysSinceContact} days.`,
+          }
+        };
+      }
+
+      case "draft_outreach_message": {
+        const lead = await storage.getLead(org.id, Number(args.leadId));
+        if (!lead) return { success: false, error: "Lead not found" };
+
+        const messageType = args.messageType as "email" | "sms" | "voicemail_script";
+        const sellerName = `${lead.firstName} ${lead.lastName}`.trim();
+
+        // Build context about the lead and their property
+        let propertyContext = "";
+        const allProperties = await storage.getProperties(org.id);
+        const sellerProperty = allProperties.find(p => p.sellerId === lead.id);
+        if (sellerProperty) {
+          propertyContext = `Property: ${sellerProperty.sizeAcres} acres in ${sellerProperty.county} County, ${sellerProperty.state}${sellerProperty.apn ? ` (APN: ${sellerProperty.apn})` : ""}.`;
+        }
+
+        const leadContext = [
+          `Lead: ${sellerName}`,
+          lead.status ? `Status: ${lead.status}` : null,
+          lead.source ? `Source: ${lead.source}` : null,
+          lead.notes ? `Notes: ${lead.notes.substring(0, 200)}` : null,
+          propertyContext || null,
+          lead.lastContactedAt ? `Last contacted: ${new Date(lead.lastContactedAt).toLocaleDateString()}` : "Never contacted",
+        ].filter(Boolean).join("\n");
+
+        const mediumInstructions: Record<string, string> = {
+          email: "Write a personalized email. Include a subject line on the first line (format: 'Subject: ...'), then a blank line, then the email body. Keep it warm, personal, and focused on the seller's situation. 150-250 words.",
+          sms: "Write a brief, friendly SMS text message under 160 characters. Be conversational and include your name/company at the end.",
+          voicemail_script: "Write a voicemail script the caller can read aloud. Include: greeting, brief reason for calling, call to action, callback number placeholder [YOUR PHONE], and sign-off. Keep it under 30 seconds when spoken (about 75 words).",
+        };
+
+        const { selectProviderAndModel, TaskComplexity } = await import("../services/aiRouter");
+        const { client, model } = selectProviderAndModel(TaskComplexity.SIMPLE);
+
+        const aiResponse = await client.chat.completions.create({
+          model,
+          messages: [
+            {
+              role: "system",
+              content: "You are an expert land investment outreach specialist. Write personalized, empathetic messages that connect with landowners. Never be pushy. Focus on helping the seller understand their options."
+            },
+            {
+              role: "user",
+              content: `Draft a ${messageType.replace("_", " ")} for this seller:\n\n${leadContext}\n\n${mediumInstructions[messageType]}`
+            }
+          ],
+          max_tokens: 400
+        });
+
+        const draftMessage = aiResponse.choices[0].message.content || "";
+
+        return {
+          success: true,
+          data: {
+            message: `${messageType.replace("_", " ")} draft created for ${sellerName}`,
+            leadId: lead.id,
+            leadName: sellerName,
+            messageType,
+            draft: draftMessage,
+            hint: messageType === "email" && lead.email
+              ? `Ready to send to ${lead.email} using send_email tool`
+              : messageType === "sms" && lead.phone
+              ? `Ready to send to ${lead.phone} using send_sms tool`
+              : undefined,
+          }
+        };
+      }
+
       default:
         return { success: false, error: `Unknown tool: ${toolName}` };
     }
@@ -1440,11 +1849,11 @@ export function getToolsForRole(role: string) {
   
   const roleToolMap: Record<string, string[]> = {
     executive: allTools,
-    acquisitions: [...coreTools, "get_leads", "get_lead_details", "update_lead_status", "create_lead", "get_properties", "create_property", "get_deals", "create_deal", "get_tasks", "create_task", "get_pipeline_summary", "generate_offer", "generate_offer_letter", "send_email", "send_sms", "run_comps_analysis", "schedule_followup"],
-    underwriting: [...coreTools, "get_properties", "get_property_details", "update_property", "get_notes", "calculate_amortization", "get_cashflow_summary", "get_deals", "update_deal", "run_comps_analysis", "calculate_roi", "calculate_payment_schedule", "research_property"],
-    marketing: [...coreTools, "get_leads", "get_properties", "get_pipeline_summary", "create_task", "send_email", "send_sms"],
-    research: [...coreTools, "get_properties", "get_property_details", "get_leads", "create_property", "update_property", "run_comps_analysis", "research_property", "calculate_roi", "browse_web"],
-    documents: [...coreTools, "get_leads", "get_lead_details", "get_properties", "get_property_details", "get_notes", "get_deals", "generate_offer_letter"],
+    acquisitions: [...coreTools, "get_leads", "get_lead_details", "update_lead_status", "create_lead", "get_properties", "create_property", "get_deals", "create_deal", "get_tasks", "create_task", "get_pipeline_summary", "generate_offer", "generate_offer_letter", "send_email", "send_sms", "run_comps_analysis", "schedule_followup", "draft_offer", "schedule_follow_up", "run_comps", "update_lead_status", "get_stale_leads", "draft_outreach_message"],
+    underwriting: [...coreTools, "get_properties", "get_property_details", "update_property", "get_notes", "calculate_amortization", "get_cashflow_summary", "get_deals", "update_deal", "run_comps_analysis", "run_comps", "calculate_roi", "calculate_payment_schedule", "research_property", "draft_offer"],
+    marketing: [...coreTools, "get_leads", "get_properties", "get_pipeline_summary", "create_task", "send_email", "send_sms", "get_stale_leads", "draft_outreach_message"],
+    research: [...coreTools, "get_properties", "get_property_details", "get_leads", "create_property", "update_property", "run_comps_analysis", "run_comps", "research_property", "calculate_roi", "browse_web"],
+    documents: [...coreTools, "get_leads", "get_lead_details", "get_properties", "get_property_details", "get_notes", "get_deals", "generate_offer_letter", "draft_offer"],
     assistant: allTools // Full access for the main assistant
   };
   
