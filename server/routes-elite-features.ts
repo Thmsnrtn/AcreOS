@@ -37,6 +37,104 @@ const auth = [isAuthenticated, getOrCreateOrg];
 export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
 
   // ============================================
+  // GEEKPAY-PARITY: SCHEDULED vs UNSCHEDULED PAYMENT TYPES
+  // Scheduled: moves next payment date forward, triggers service fees
+  // Unscheduled: early/extra payment, no date change, no service fee trigger
+  // ============================================
+
+  app.post("/api/notes/:id/record-payment", ...auth, async (req: Request, res: Response) => {
+    try {
+      const org = (req as any).organization;
+      const noteId = parseInt(req.params.id);
+      const {
+        amount,
+        paymentDate,
+        paymentType = "scheduled", // "scheduled" | "unscheduled"
+        paymentMethod,
+        transactionId,
+        notes: paymentNotes,
+      } = req.body;
+
+      if (!amount || !paymentDate) {
+        return res.status(400).json({ message: "amount and paymentDate are required" });
+      }
+
+      const [note] = await db.select().from(notes)
+        .where(and(eq(notes.id, noteId), eq(notes.organizationId, org.id)));
+
+      if (!note) return res.status(404).json({ message: "Note not found" });
+
+      const currentBalance = parseFloat(note.currentBalance || "0");
+      const interestRate = parseFloat(note.interestRate || "0");
+      const monthlyRate = interestRate / 100 / 12;
+      const paidAmount = parseFloat(amount);
+
+      // Calculate principal/interest split
+      const interestDue = currentBalance * monthlyRate;
+      const principalPaid = Math.max(0, paidAmount - interestDue);
+      const newBalance = Math.max(0, currentBalance - principalPaid);
+
+      // Service fee only applies to SCHEDULED payments (GeekPay parity)
+      const serviceFeeAmount = paymentType === "scheduled"
+        ? parseFloat(note.serviceFee || "0")
+        : 0;
+
+      // Tax escrow credit only on SCHEDULED payments
+      if (paymentType === "scheduled" && note.taxEscrowEnabled) {
+        await propertyTaxService.creditMonthlyTaxEscrow(noteId, org.id);
+      }
+
+      // Insert payment record
+      await db.insert((await import("@shared/schema")).payments).values({
+        organizationId: org.id,
+        noteId,
+        amount: String(paidAmount),
+        principalAmount: String(principalPaid),
+        interestAmount: String(Math.min(paidAmount, interestDue)),
+        feeAmount: String(serviceFeeAmount),
+        lateFeeAmount: "0",
+        paymentDate: new Date(paymentDate),
+        dueDate: note.nextPaymentDate || new Date(paymentDate),
+        paymentMethod: paymentMethod || note.paymentMethod || "manual",
+        transactionId,
+        status: "completed",
+        processedAt: new Date(),
+      });
+
+      // Update note balance
+      const updateData: any = { currentBalance: String(newBalance) };
+
+      // Only advance next payment date for SCHEDULED payments
+      if (paymentType === "scheduled" && note.nextPaymentDate) {
+        const nextDate = new Date(note.nextPaymentDate);
+        nextDate.setMonth(nextDate.getMonth() + 1);
+        updateData.nextPaymentDate = nextDate;
+      }
+
+      // Check if paid off
+      if (newBalance <= 0) {
+        updateData.status = "paid_off";
+        updateData.autoPayEnabled = false;
+      }
+
+      await db.update(notes).set(updateData).where(eq(notes.id, noteId));
+
+      res.json({
+        success: true,
+        paymentType,
+        principalPaid: Math.round(principalPaid * 100) / 100,
+        interestPaid: Math.round(Math.min(paidAmount, interestDue) * 100) / 100,
+        serviceFeeTrigger: serviceFeeAmount > 0,
+        newBalance: Math.round(newBalance * 100) / 100,
+        paidOff: newBalance <= 0,
+        nextPaymentDateAdvanced: paymentType === "scheduled",
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
   // PROPERTY TAX ESCROW
   // ============================================
 

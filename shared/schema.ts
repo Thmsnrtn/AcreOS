@@ -732,9 +732,20 @@ export const notes = pgTable("notes", {
   downPaymentReceived: boolean("down_payment_received").default(false),
   
   // Payment method info (for automation)
-  paymentMethod: text("payment_method"), // ach, card, manual
-  paymentAccountId: text("payment_account_id"), // Reference to stored payment method
+  paymentMethod: text("payment_method"), // ach_actum, ach_authorize, card_stripe, card_authorize, manual
+  paymentAccountId: text("payment_account_id"), // Reference to stored payment method (primary)
   autoPayEnabled: boolean("auto_pay_enabled").default(false),
+
+  // Fallback payment cascade (GeekPay parity)
+  // If primary payment fails, system tries fallback accounts in order
+  fallbackPaymentAccounts: jsonb("fallback_payment_accounts").$type<{
+    profileId: string;
+    method: "ach_actum" | "ach_authorize" | "card_stripe" | "card_authorize";
+    last4?: string;
+    bankName?: string;
+    order: number; // 1 = first fallback, 2 = second, etc.
+    isActive: boolean;
+  }[]>(),
   
   // Amortization schedule stored as JSON
   amortizationSchedule: jsonb("amortization_schedule").$type<{
