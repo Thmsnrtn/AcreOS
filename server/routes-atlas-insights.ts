@@ -190,7 +190,36 @@ router.get("/insights", async (req, res) => {
       leadName: propertyMap[d.propertyId] ?? `Deal #${d.id}`,
     }));
 
-    // ── 4. Motivated callers: leads with urgency tags or keywords in notes ──
+    // ── 4a. Voice pipeline motivated callers: calls in past 7 days with motivationScore > 0.7 ──
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+    const motivatedVoiceCalls = await db
+      .select()
+      .from(voiceCalls)
+      .where(
+        and(
+          eq(voiceCalls.organizationId, org.id),
+          gt(voiceCalls.motivationScore, "0.7"),
+          gte(voiceCalls.createdAt, sevenDaysAgo)
+        )
+      )
+      .orderBy(desc(voiceCalls.createdAt))
+      .limit(10);
+
+    const motivatedVoiceCallsSummary = motivatedVoiceCalls.map((c) => ({
+      id: c.id,
+      callSid: c.callSid,
+      leadId: c.leadId,
+      contactId: c.contactId,
+      motivationScore: c.motivationScore,
+      sentimentScore: c.sentimentScore,
+      direction: c.direction,
+      durationSeconds: c.durationSeconds,
+      recordingUrl: c.recordingUrl,
+      createdAt: c.createdAt,
+    }));
+
+    // ── 4b. Motivated callers: leads with urgency tags or keywords in notes ──
     const urgencyKeywords = ["motivated", "quick", "urgent", "sell fast", "inherited", "divorce", "foreclosure"];
 
     // Full lead fetch to access tags and notes fields
@@ -235,6 +264,10 @@ router.get("/insights", async (req, res) => {
       staleLeads,
       expiringOffers,
       motivatedCallers: motivatedLeads,
+      motivatedVoiceCallers: {
+        count: motivatedVoiceCallsSummary.length,
+        calls: motivatedVoiceCallsSummary,
+      },
       generatedAt: now.toISOString(),
     });
   } catch (error: any) {
