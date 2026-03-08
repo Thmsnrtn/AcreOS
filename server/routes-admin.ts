@@ -499,19 +499,15 @@ export function registerAdminRoutes(app: Express): void {
       res.status(401).json({ message: "Unauthorized" });
       return;
     }
-    
+
     const user = (req as any).user;
     const userId = user.claims?.sub || user.id;
     const userEmail = user.claims?.email || user.email;
-    
-    const founderEmail = process.env.FOUNDER_EMAIL;
-    if (founderEmail && userEmail === founderEmail) {
-      return next();
-    }
-    
-    // Secondary check: owner of the founding org (org ID #1) only
-    const firstOrg = await storage.getOrganization(1);
-    if (firstOrg && firstOrg.ownerId === userId) {
+
+    const founderEmails = (process.env.FOUNDER_EMAIL || "").split(",").map(e => e.trim()).filter(Boolean);
+    const founderUserIds = (process.env.FOUNDER_USER_IDS || "").split(",").map(id => id.trim()).filter(Boolean);
+    const isFounder = founderEmails.includes(userEmail) || founderUserIds.includes(String(userId));
+    if (isFounder) {
       return next();
     }
 
