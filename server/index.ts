@@ -137,6 +137,21 @@ app.use(requestLoggingMiddleware);
 app.use("/api", csrfProtection);
 
 (async () => {
+  // Run DB migrations on startup (production-safe versioned migrations)
+  if (process.env.NODE_ENV === "production") {
+    try {
+      const { migrate } = await import("drizzle-orm/node-postgres/migrator");
+      const { pool } = await import("./db");
+      const { drizzle } = await import("drizzle-orm/node-postgres");
+      const migrationDb = drizzle(pool);
+      await migrate(migrationDb, { migrationsFolder: "./migrations" });
+      log("Database migrations applied successfully", "db");
+    } catch (err: any) {
+      log(`DB migration warning: ${err.message}`, "db");
+      // Non-fatal — server continues even if migration check fails
+    }
+  }
+
   await initStripe();
   
   // ── MCP HTTP endpoint (stateless StreamableHTTP transport) ───────────────
