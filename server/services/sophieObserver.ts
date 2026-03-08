@@ -7,17 +7,19 @@
  */
 
 import { db } from "../db";
-import { 
-  sophieObservations, 
+import {
+  sophieObservations,
   organizations,
-  InsertSophieObservation, 
+  leads,
+  deals,
+  InsertSophieObservation,
   SophieObservation,
   SophieObservationType,
   ProactiveNotificationLevel,
   PROACTIVE_NOTIFICATION_LEVELS,
   sophieCrossOrgLearnings
 } from "@shared/schema";
-import { eq, and, desc, gte, ne, sql, like } from "drizzle-orm";
+import { eq, and, desc, gte, ne, sql, like, lt, lte } from "drizzle-orm";
 
 export type ObservationSeverity = 'info' | 'low' | 'medium' | 'high';
 export type NotificationType = 'none' | 'passive' | 'active';
