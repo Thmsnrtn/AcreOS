@@ -3,7 +3,8 @@ import type { Express } from "express";
 import { storage, db } from "./storage";
 import { z } from "zod";
 import { eq, sql, and, desc } from "drizzle-orm";
-import { leads, deals, properties, payments, notes, activityLog } from "@shared/schema";
+import { leads, deals, properties, payments, notes, activityLog, goals, insertGoalSchema } from "@shared/schema";
+import { gte, lte, count as sqlCount } from "drizzle-orm";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { runPortfolioHealthJob, getActiveAlerts, dismissAlert } from "./services/portfolioHealth";
@@ -364,6 +365,86 @@ export function registerDashboardRoutes(app: Express): void {
       const org = (req as any).organization;
       const alertId = parseInt(req.params.id);
       await dismissAlert(org.id, alertId);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // GOALS
+  // ============================================
+
+  // GET /api/goals — list goals with computed current_value
+  api.get("/api/goals", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const now = new Date();
+
+      const orgGoals = await db
+        .select()
+        .from(goals)
+        .where(eq(goals.organizationId, org.id));
+
+      // Compute current values dynamically per goal type
+      const [
+        dealsClosedRow,
+        notesDeployedRow,
+        revenueEarnedRow,
+        leadsContactedRow,
+      ] = await Promise.all([
+        db.select({ count: sqlCount() }).from(deals)
+          .where(and(eq(deals.organizationId, org.id), eq(deals.status, "closed"))),
+        db.select({ count: sqlCount() }).from(notes)
+          .where(and(eq(notes.organizationId, org.id), eq(notes.status, "active"))),
+        db.select({ total: sql<number>`coalesce(sum(amount::numeric), 0)` }).from(payments)
+          .where(eq(payments.organizationId, org.id)),
+        db.select({ count: sqlCount() }).from(activityLog)
+          .where(and(eq(activityLog.organizationId, org.id), eq(activityLog.type, "contact_logged"))),
+      ]);
+
+      const currentValues: Record<string, number> = {
+        deals_closed: Number(dealsClosedRow[0]?.count ?? 0),
+        notes_deployed: Number(notesDeployedRow[0]?.count ?? 0),
+        revenue_earned: Number(revenueEarnedRow[0]?.total ?? 0),
+        leads_contacted: Number(leadsContactedRow[0]?.count ?? 0),
+      };
+
+      const result = orgGoals.map(g => ({
+        ...g,
+        currentValue: currentValues[g.goalType] ?? 0,
+        progressPct: Math.min(100, Math.round(
+          (currentValues[g.goalType] ?? 0) / Number(g.targetValue) * 100
+        )),
+        isActive: new Date(g.periodStart) <= now && now <= new Date(g.periodEnd),
+      }));
+
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/goals — create a goal
+  api.post("/api/goals", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const parsed = insertGoalSchema.safeParse({ ...req.body, organizationId: org.id });
+      if (!parsed.success) return res.status(400).json({ message: "Invalid goal data", errors: parsed.error.flatten() });
+
+      const [goal] = await db.insert(goals).values(parsed.data).returning();
+      res.status(201).json(goal);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // DELETE /api/goals/:id — remove a goal
+  api.delete("/api/goals/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      await db.delete(goals).where(and(eq(goals.id, id), eq(goals.organizationId, org.id)));
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
