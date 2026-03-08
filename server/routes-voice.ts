@@ -56,7 +56,7 @@ async function extractMotivationSignals(callId: number): Promise<{
       return { isMotivated: false, signals: [], confidence: 0 };
     }
 
-    const text = (transcript.fullTranscript || '').toLowerCase();
+    const text = (transcript.transcriptRaw || '').toLowerCase();
     const signals: string[] = [];
 
     for (const keyword of MOTIVATION_KEYWORDS) {
