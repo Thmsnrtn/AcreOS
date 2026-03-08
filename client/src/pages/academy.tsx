@@ -1,291 +1,362 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { useQuery, useMutation } from '@tanstack/react-query';
-import { BookOpen, Trophy, MessageCircle, PlayCircle, CheckCircle, Clock } from 'lucide-react';
+import { BookOpen, CheckCircle, Clock, PlayCircle } from 'lucide-react';
+
+// ─── Course Data ──────────────────────────────────────────────────────────────
+
+interface Course {
+  id: string;
+  title: string;
+  description: string;
+  estimatedTime: string; // e.g. "25 min"
+  difficulty: 'Beginner' | 'Intermediate' | 'Advanced';
+  section: 'getting-started' | 'intermediate' | 'advanced';
+  outline: string[]; // 3-5 bullet points
+}
+
+const COURSES: Course[] = [
+  // Getting Started
+  {
+    id: 'mao-basics',
+    title: 'Understanding MAO (Maximum Allowable Offer)',
+    description: 'Learn how to calculate the most you can pay for raw land and still profit.',
+    estimatedTime: '20 min',
+    difficulty: 'Beginner',
+    section: 'getting-started',
+    outline: [
+      'What MAO means and why it protects your margins',
+      'The land-specific MAO formula: ARV minus rehab, holding costs, and profit',
+      'How to estimate ARV for vacant land without comparable sales',
+      'Common MAO mistakes that kill deals',
+      'Hands-on: calculating MAO on a real sample parcel',
+    ],
+  },
+  {
+    id: 'mail-campaign',
+    title: 'Building Your First Mail Campaign',
+    description: 'Step-by-step guide to sending your first direct mail piece to motivated land sellers.',
+    estimatedTime: '30 min',
+    difficulty: 'Beginner',
+    section: 'getting-started',
+    outline: [
+      'Choosing a target county: population trends, tax delinquency rates, and demand signals',
+      'Sourcing your first list from the county assessor or a data provider',
+      'Writing a simple, effective offer letter (template included)',
+      'Print vs. postcard: cost breakdown and response rate comparison',
+      'Tracking inbound calls and managing response chaos',
+    ],
+  },
+  {
+    id: 'due-diligence',
+    title: 'Due Diligence Checklist for Raw Land',
+    description: 'Everything you need to verify before closing on a vacant land parcel.',
+    estimatedTime: '35 min',
+    difficulty: 'Beginner',
+    section: 'getting-started',
+    outline: [
+      'Title search basics: liens, back taxes, and encumbrances',
+      'Zoning and land use: what you can and cannot build',
+      'Access: deeded road access vs. prescriptive easements',
+      'Utilities and soil: perc tests, well permits, and utility hookups',
+      'Environmental red flags: wetlands, flood zones, and superfund sites',
+    ],
+  },
+  // Intermediate
+  {
+    id: 'owner-financing',
+    title: 'Owner Financing Basics',
+    description: 'How to sell land on terms, collect monthly payments, and create passive income.',
+    estimatedTime: '40 min',
+    difficulty: 'Intermediate',
+    section: 'intermediate',
+    outline: [
+      'Why owner financing beats cash sales for long-term wealth',
+      'Setting the right price, down payment, interest rate, and term length',
+      'Drafting a simple land contract or deed of trust',
+      'Servicing payments: manual vs. loan servicing companies',
+      'What happens when a buyer defaults — and how to handle it',
+    ],
+  },
+  {
+    id: 'gis-maps',
+    title: 'Reading County GIS Maps',
+    description: 'Use free government mapping tools to evaluate any parcel like a pro.',
+    estimatedTime: '25 min',
+    difficulty: 'Intermediate',
+    section: 'intermediate',
+    outline: [
+      'Finding your county GIS portal and navigating the interface',
+      'Identifying parcel boundaries, acreage, and ownership history',
+      'Overlaying flood zone, wetland, and zoning layers',
+      'Measuring road frontage and checking access points',
+      'Exporting parcel data to build a targeted mail list',
+    ],
+  },
+  {
+    id: 'tax-delinquent',
+    title: 'Tax Delinquent List Strategy',
+    description: 'Tap into county tax delinquent records to find highly motivated sellers.',
+    estimatedTime: '30 min',
+    difficulty: 'Intermediate',
+    section: 'intermediate',
+    outline: [
+      'How to request the delinquent tax list from the county treasurer',
+      'Filtering the list: years delinquent, parcel size, and location',
+      'Skip tracing owners who have moved or are hard to reach',
+      'Crafting a letter that speaks to the seller\'s urgency',
+      'Timing your outreach around tax sale deadlines for maximum response',
+    ],
+  },
+  // Advanced
+  {
+    id: 'negotiation',
+    title: 'Negotiating with Motivated Sellers',
+    description: 'Scripts, psychology, and tactics to close more deals at lower prices.',
+    estimatedTime: '45 min',
+    difficulty: 'Advanced',
+    section: 'advanced',
+    outline: [
+      'The motivated seller profile: who sells cheap and why',
+      'Inbound call script: building rapport before quoting a price',
+      'Price anchoring and bracketing to land below your MAO',
+      'Handling common objections: "I need more," "My neighbor got $X," and "Let me think about it"',
+      'When to walk away — and how to leave the door open for follow-up',
+    ],
+  },
+  {
+    id: 'buyers-list',
+    title: 'Building a Buyers List',
+    description: 'Create a reliable pool of cash buyers so you can flip land fast.',
+    estimatedTime: '35 min',
+    difficulty: 'Advanced',
+    section: 'advanced',
+    outline: [
+      'Why your buyers list is your most valuable business asset',
+      'Where to find land buyers: Facebook groups, Craigslist, land forums, and local investors',
+      'Qualifying buyers: cash-only, geography, lot size preferences',
+      'Your first deal blast: how to present a property to your list',
+      'Automating follow-up and keeping your list warm between deals',
+    ],
+  },
+];
+
+const SECTIONS: { key: Course['section']; label: string; description: string }[] = [
+  {
+    key: 'getting-started',
+    label: 'Getting Started',
+    description: 'Core concepts every land investor needs before making their first offer.',
+  },
+  {
+    key: 'intermediate',
+    label: 'Intermediate Strategies',
+    description: 'Level up your deal flow, financing, and market research skills.',
+  },
+  {
+    key: 'advanced',
+    label: 'Advanced Tactics',
+    description: 'High-leverage tactics used by full-time land investors.',
+  },
+];
+
+const DIFFICULTY_COLORS: Record<Course['difficulty'], string> = {
+  Beginner: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+  Intermediate: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+  Advanced: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+};
+
+// ─── localStorage Progress Tracking ──────────────────────────────────────────
+
+const STORAGE_KEY = 'acreos_academy_completed';
+
+function getCompleted(): Set<string> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return new Set();
+    return new Set(JSON.parse(raw) as string[]);
+  } catch {
+    return new Set();
+  }
+}
+
+function toggleCompleted(courseId: string): Set<string> {
+  const current = getCompleted();
+  if (current.has(courseId)) {
+    current.delete(courseId);
+  } else {
+    current.add(courseId);
+  }
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([...current]));
+  } catch {
+    // localStorage full — ignore
+  }
+  return new Set(current);
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export default function AcademyPage() {
-  const [selectedCourse, setSelectedCourse] = useState<any>(null);
-  const [tutorOpen, setTutorOpen] = useState(false);
-  const [tutorMessage, setTutorMessage] = useState('');
-  const [tutorHistory, setTutorHistory] = useState<any[]>([]);
+  const [completed, setCompleted] = useState<Set<string>>(new Set());
+  const [activeCourse, setActiveCourse] = useState<Course | null>(null);
 
-  // Fetch courses
-  const { data: courses = [] } = useQuery({
-    queryKey: ['academy-courses'],
-    queryFn: async () => {
-      const res = await fetch('/api/academy/courses');
-      if (!res.ok) throw new Error('Failed to fetch courses');
-      return res.json();
-    },
-  });
+  // Hydrate from localStorage on mount
+  useEffect(() => {
+    setCompleted(getCompleted());
+  }, []);
 
-  // Fetch enrollments
-  const { data: enrollments = [] } = useQuery({
-    queryKey: ['academy-enrollments'],
-    queryFn: async () => {
-      const res = await fetch('/api/academy/enrollments');
-      if (!res.ok) throw new Error('Failed to fetch enrollments');
-      return res.json();
-    },
-  });
+  function handleStart(course: Course) {
+    setActiveCourse(course);
+  }
 
-  // Send tutor message
-  const sendTutorMessage = useMutation({
-    mutationFn: async (message: string) => {
-      const res = await fetch('/api/academy/tutor/message', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message }),
-      });
-      if (!res.ok) throw new Error('Failed to send message');
-      return res.json();
-    },
-    onSuccess: (data) => {
-      setTutorHistory((prev) => [
-        ...prev,
-        { role: 'user', content: tutorMessage },
-        { role: 'assistant', content: data.response },
-      ]);
-      setTutorMessage('');
-    },
-  });
+  function handleMarkComplete(courseId: string) {
+    setCompleted(toggleCompleted(courseId));
+  }
 
-  const handleSendMessage = () => {
-    if (!tutorMessage.trim()) return;
-    sendTutorMessage.mutate(tutorMessage);
-  };
+  const completedCount = COURSES.filter((c) => completed.has(c.id)).length;
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
+    <div className="container mx-auto p-6 space-y-10 max-w-5xl">
+      {/* Page Header */}
+      <div className="space-y-1">
+        <div className="flex items-center gap-3">
+          <BookOpen className="w-7 h-7 text-primary" />
           <h1 className="text-3xl font-bold">AcreOS Academy</h1>
-          <p className="text-muted-foreground">Master land investment with expert courses</p>
         </div>
-        <Button onClick={() => setTutorOpen(true)}>
-          <MessageCircle className="w-4 h-4 mr-2" />
-          AI Tutor
-        </Button>
+        <p className="text-muted-foreground text-sm">
+          Master land investing with AI-powered learning
+        </p>
+        <p className="text-xs text-muted-foreground">
+          {completedCount} of {COURSES.length} courses completed
+        </p>
       </div>
 
-      {/* Stats */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Courses Completed</CardTitle>
-            <Trophy className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {enrollments.filter((e: any) => e.status === 'completed').length}
+      {/* Sections */}
+      {SECTIONS.map((section) => {
+        const sectionCourses = COURSES.filter((c) => c.section === section.key);
+        return (
+          <section key={section.key} className="space-y-4">
+            <div>
+              <h2 className="text-xl font-semibold">{section.label}</h2>
+              <p className="text-sm text-muted-foreground mt-0.5">{section.description}</p>
             </div>
-            <p className="text-xs text-muted-foreground">Keep learning!</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">In Progress</CardTitle>
-            <BookOpen className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {enrollments.filter((e: any) => e.status === 'active').length}
-            </div>
-            <p className="text-xs text-muted-foreground">Continue where you left off</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Available Courses</CardTitle>
-            <CheckCircle className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{courses.length}</div>
-            <p className="text-xs text-muted-foreground">Ready to explore</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Enrolled</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{enrollments.length}</div>
-            <p className="text-xs text-muted-foreground">Your courses</p>
-          </CardContent>
-        </Card>
-      </div>
 
-      {/* Main Content */}
-      <Tabs defaultValue="courses" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="courses">All Courses</TabsTrigger>
-          <TabsTrigger value="enrolled">My Courses</TabsTrigger>
-          <TabsTrigger value="recommended">Recommended</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="courses" className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {courses.map((course: any) => (
-              <Card key={course.id} className="hover:shadow-lg transition-shadow">
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <CardTitle className="text-lg">{course.title}</CardTitle>
-                      <CardDescription className="mt-2">{course.description}</CardDescription>
-                    </div>
-                    <Badge variant="secondary">{course.level}</Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Category</span>
-                      <span className="font-medium">{course.category}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Duration</span>
-                      <span>{course.duration} min</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Enrolled</span>
-                      <span>{course.enrollmentCount} students</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Rating</span>
-                      <span>⭐ {course.rating?.toFixed(1) || 'New'}</span>
-                    </div>
-                  </div>
-
-                  <Button
-                    size="sm"
-                    className="w-full"
-                    onClick={() => setSelectedCourse(course)}
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {sectionCourses.map((course) => {
+                const isDone = completed.has(course.id);
+                return (
+                  <Card
+                    key={course.id}
+                    className={`relative flex flex-col transition-shadow hover:shadow-md ${isDone ? 'border-emerald-300 dark:border-emerald-700' : ''}`}
                   >
-                    <PlayCircle className="w-4 h-4 mr-2" />
-                    {course.price > 0 ? `Enroll - $${course.price}` : 'Start Free'}
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-
-          {courses.length === 0 && (
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center py-12">
-                <BookOpen className="w-12 h-12 text-muted-foreground mb-4" />
-                <p className="text-muted-foreground">No courses available yet</p>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
-
-        <TabsContent value="enrolled" className="space-y-4">
-          {enrollments.length > 0 ? (
-            <div className="space-y-4">
-              {enrollments.map((enrollment: any) => (
-                <Card key={enrollment.id}>
-                  <CardHeader>
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <CardTitle>{enrollment.course?.title}</CardTitle>
-                        <CardDescription>{enrollment.course?.description}</CardDescription>
+                    {isDone && (
+                      <div className="absolute top-3 right-3">
+                        <CheckCircle className="w-5 h-5 text-emerald-500" />
                       </div>
-                      <Badge variant={enrollment.status === 'completed' ? 'default' : 'secondary'}>
-                        {enrollment.status}
-                      </Badge>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div>
-                      <div className="flex justify-between text-sm mb-2">
-                        <span>Progress</span>
-                        <span>{enrollment.progress}%</span>
+                    )}
+                    <CardHeader className="pb-2 pr-10">
+                      <div className="flex items-start gap-2">
+                        <Badge
+                          variant="secondary"
+                          className={`text-xs shrink-0 ${DIFFICULTY_COLORS[course.difficulty]}`}
+                        >
+                          {course.difficulty}
+                        </Badge>
                       </div>
-                      <Progress value={enrollment.progress} />
-                    </div>
-                    <Button size="sm">
-                      {enrollment.status === 'completed' ? 'Review Course' : 'Continue Learning'}
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))}
+                      <CardTitle className="text-base mt-2 leading-snug">{course.title}</CardTitle>
+                      <CardDescription className="text-xs mt-1">{course.description}</CardDescription>
+                    </CardHeader>
+                    <CardContent className="flex flex-col gap-3 pt-0 mt-auto">
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <Clock className="w-3 h-3" />
+                        {course.estimatedTime}
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          className="flex-1 text-xs"
+                          variant={isDone ? 'outline' : 'default'}
+                          onClick={() => handleStart(course)}
+                        >
+                          <PlayCircle className="w-3.5 h-3.5 mr-1.5" />
+                          {isDone ? 'Review' : 'Start'}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className={`text-xs px-2 ${isDone ? 'text-emerald-600' : 'text-muted-foreground'}`}
+                          onClick={() => handleMarkComplete(course.id)}
+                          title={isDone ? 'Mark incomplete' : 'Mark complete'}
+                        >
+                          <CheckCircle className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
-          ) : (
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center py-12">
-                <BookOpen className="w-12 h-12 text-muted-foreground mb-4" />
-                <p className="text-muted-foreground">No enrolled courses</p>
-                <Button className="mt-4">Browse Courses</Button>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
+          </section>
+        );
+      })}
 
-        <TabsContent value="recommended" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Recommended for You</CardTitle>
-              <CardDescription>Based on your learning history and goals</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-center text-muted-foreground py-8">
-                Complete more courses to get personalized recommendations
-              </p>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-
-      {/* AI Tutor Dialog */}
-      <Dialog open={tutorOpen} onOpenChange={setTutorOpen}>
-        <DialogContent className="max-w-2xl max-h-[600px]">
+      {/* Course Outline Dialog */}
+      <Dialog open={!!activeCourse} onOpenChange={(open) => { if (!open) setActiveCourse(null); }}>
+        <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>AI Tutor - Land Investment Expert</DialogTitle>
-          </DialogHeader>
-          <div className="flex flex-col h-[450px]">
-            <div className="flex-1 overflow-y-auto space-y-4 p-4 border rounded-lg">
-              {tutorHistory.length === 0 ? (
-                <div className="text-center text-muted-foreground py-8">
-                  <MessageCircle className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                  <p>Ask me anything about land investment!</p>
-                  <p className="text-sm mt-2">
-                    I can help with due diligence, financing, market analysis, and more.
-                  </p>
-                </div>
-              ) : (
-                tutorHistory.map((msg, i) => (
-                  <div
-                    key={i}
-                    className={`p-3 rounded-lg ${
-                      msg.role === 'user'
-                        ? 'bg-primary text-primary-foreground ml-auto max-w-[80%]'
-                        : 'bg-muted mr-auto max-w-[80%]'
-                    }`}
-                  >
-                    {msg.content}
-                  </div>
-                ))
+            <div className="flex items-center gap-2 mb-1">
+              {activeCourse && (
+                <Badge
+                  variant="secondary"
+                  className={`text-xs ${DIFFICULTY_COLORS[activeCourse.difficulty]}`}
+                >
+                  {activeCourse.difficulty}
+                </Badge>
+              )}
+              {activeCourse && (
+                <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <Clock className="w-3 h-3" />
+                  {activeCourse.estimatedTime}
+                </span>
               )}
             </div>
-            <div className="flex gap-2 mt-4">
-              <Input
-                placeholder="Ask a question..."
-                value={tutorMessage}
-                onChange={(e) => setTutorMessage(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-              />
-              <Button onClick={handleSendMessage} disabled={sendTutorMessage.isPending}>
-                Send
-              </Button>
-            </div>
+            <DialogTitle className="text-lg leading-snug">
+              {activeCourse?.title}
+            </DialogTitle>
+            <p className="text-sm text-muted-foreground mt-1">{activeCourse?.description}</p>
+          </DialogHeader>
+
+          <div className="space-y-3 mt-2">
+            <p className="text-sm font-medium">What you'll learn:</p>
+            <ul className="space-y-2">
+              {activeCourse?.outline.map((point, i) => (
+                <li key={i} className="flex items-start gap-2 text-sm">
+                  <span className="mt-0.5 w-5 h-5 rounded-full bg-primary/10 text-primary text-xs flex items-center justify-center shrink-0 font-medium">
+                    {i + 1}
+                  </span>
+                  <span className="text-muted-foreground">{point}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="flex gap-2 mt-4">
+            <Button
+              className="flex-1"
+              onClick={() => {
+                if (activeCourse) handleMarkComplete(activeCourse.id);
+                setActiveCourse(null);
+              }}
+            >
+              {activeCourse && completed.has(activeCourse.id)
+                ? 'Mark Incomplete'
+                : 'Mark as Complete'}
+            </Button>
+            <Button variant="outline" onClick={() => setActiveCourse(null)}>
+              Close
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
