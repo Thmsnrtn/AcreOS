@@ -36,6 +36,8 @@ import { Badge } from "@/components/ui/badge";
 import { Plus, MapPin, DollarSign, Calendar, Building, TrendingUp, CheckCircle, X, GripVertical, FileText, Trash2, Loader2, Briefcase, Calculator, ClipboardCheck, Upload, AlertTriangle, CheckSquare, Square, Clock, Download, Package, Play, Eye, FolderPlus, Sparkles, Flame, Snowflake, Minus, LayoutGrid, List, ChevronLeft, ChevronRight } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { DealsEmptyState } from "@/components/empty-states";
+import { SavedViewsSelector } from "@/components/saved-views-selector";
+import type { SavedView } from "@shared/schema";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -90,6 +92,7 @@ export default function DealsPage() {
   const [mobileViewMode, setMobileViewMode] = useState<'kanban' | 'list'>('kanban');
   const [selectedStageIndex, setSelectedStageIndex] = useState(0);
   const [activeDragId, setActiveDragId] = useState<number | null>(null);
+  const [typeFilter, setTypeFilter] = useState<string>("all");
   const { mutate: updateDealStage } = useUpdateDeal();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
@@ -178,10 +181,12 @@ export default function DealsPage() {
     document.body.removeChild(a);
   };
 
-  const enrichedDeals: DealWithProperty[] = (deals || []).map(deal => ({
-    ...deal,
-    property: properties?.find(p => p.id === deal.propertyId),
-  }));
+  const enrichedDeals: DealWithProperty[] = (deals || [])
+    .filter(deal => typeFilter === "all" || deal.type === typeFilter)
+    .map(deal => ({
+      ...deal,
+      property: properties?.find(p => p.id === deal.propertyId),
+    }));
 
   const acquisitions = enrichedDeals.filter(d => d.type === 'acquisition' && d.status !== 'cancelled');
   const dispositions = enrichedDeals.filter(d => d.type === 'disposition' && d.status !== 'cancelled');
@@ -303,6 +308,21 @@ export default function DealsPage() {
                 </div>
               </CardContent>
             </Card>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <SavedViewsSelector
+              entityType="deal"
+              currentFilters={{ type: typeFilter }}
+              onApplyView={(view: SavedView) => {
+                if (view.filters && Array.isArray(view.filters)) {
+                  const typeDef = view.filters.find((f: any) => f.field === "type");
+                  setTypeFilter(typeDef ? String(typeDef.value) : "all");
+                } else {
+                  setTypeFilter("all");
+                }
+              }}
+            />
           </div>
 
           {selectedDealIds.size > 0 && (
