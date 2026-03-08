@@ -1,4 +1,6 @@
 import { PageShell } from "@/components/page-shell";
+import { ListSkeleton } from "@/components/list-skeleton";
+import { TasksEmptyState } from "@/components/empty-states";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -532,14 +534,9 @@ export default function TasksPage() {
           <Card>
             <CardContent className="p-0">
               {isLoading ? (
-                <div className="flex items-center justify-center py-20">
-                  <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-                </div>
+                <ListSkeleton count={4} />
               ) : !tasks?.length ? (
-                <div className="text-center py-20 text-muted-foreground">
-                  <ListTodo className="w-12 h-12 mx-auto mb-4 opacity-30" />
-                  <p>No tasks found. Create your first task!</p>
-                </div>
+                <TasksEmptyState onAddTask={() => setIsCreateOpen(true)} />
               ) : (
                 <div className="divide-y">
                   {tasks.map((task) => {
