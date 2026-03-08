@@ -982,6 +982,79 @@ Return valid JSON array with objects containing: type (string), message (string)
     };
   }
 
+  /**
+   * Returns a month-indexed portfolio cash flow timeline for the next N months.
+   * Sums income from all active notes + owned properties across every month.
+   */
+  async getPortfolioTimeline(organizationId: number, months: number = 24): Promise<{
+    month: string;
+    income: number;
+    incomeHigh: number;
+    incomeLow: number;
+    isBalloon: boolean;
+  }[]> {
+    const activeNotes = await db
+      .select()
+      .from(notes)
+      .where(and(eq(notes.organizationId, organizationId), eq(notes.status, "active")));
+
+    const ownedProperties = await db
+      .select()
+      .from(properties)
+      .where(and(eq(properties.organizationId, organizationId), eq(properties.status, "owned")));
+
+    // Accumulate income by month string (YYYY-MM)
+    const byMonth: Record<string, { income: number; probability: number; count: number; isBalloon: boolean }> = {};
+
+    const addToMonth = (m: string, amount: number, probability: number, isBalloon = false) => {
+      if (!byMonth[m]) byMonth[m] = { income: 0, probability: 0, count: 0, isBalloon: false };
+      byMonth[m].income += amount * probability;
+      byMonth[m].probability += probability;
+      byMonth[m].count += 1;
+      if (isBalloon) byMonth[m].isBalloon = true;
+    };
+
+    for (const note of activeNotes) {
+      const projections = await this.projectNoteIncome(note.id, months);
+      const maturityDate = note.maturityDate ? new Date(note.maturityDate) : null;
+
+      for (const p of projections) {
+        const isBalloon = maturityDate
+          ? p.month === maturityDate.toISOString().slice(0, 7)
+          : false;
+        addToMonth(p.month, p.expectedAmount, p.probability, isBalloon);
+      }
+    }
+
+    for (const property of ownedProperties) {
+      const projections = await this.projectPropertyIncome(property.id, months);
+      for (const p of projections) {
+        addToMonth(p.month, p.expectedAmount, p.probability);
+      }
+    }
+
+    // Build sorted timeline covering the full requested window
+    const today = new Date();
+    const result = [];
+    for (let i = 0; i < months; i++) {
+      const d = new Date(today.getFullYear(), today.getMonth() + i, 1);
+      const key = d.toISOString().slice(0, 7);
+      const row = byMonth[key];
+      const income = row ? Math.round(row.income) : 0;
+      // ±30% uncertainty band widened for low-probability months
+      const uncertainty = row && row.count > 0 ? 0.25 : 0.4;
+      result.push({
+        month: key,
+        income,
+        incomeHigh: Math.round(income * (1 + uncertainty)),
+        incomeLow: Math.round(income * (1 - uncertainty)),
+        isBalloon: row?.isBalloon ?? false,
+      });
+    }
+
+    return result;
+  }
+
   private async logAgentEvent(
     organizationId: number,
     eventType: string,
