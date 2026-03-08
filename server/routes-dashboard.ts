@@ -6,6 +6,7 @@ import { eq, sql, and, desc } from "drizzle-orm";
 import { leads, deals, properties, payments, notes, activityLog } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
+import { runPortfolioHealthJob, getActiveAlerts, dismissAlert } from "./services/portfolioHealth";
 
 const logger = {
   info: (msg: string, meta?: Record<string, any>) => console.log(JSON.stringify({ level: 'INFO', timestamp: new Date().toISOString(), message: msg, ...meta })),
@@ -343,5 +344,30 @@ export function registerDashboardRoutes(app: Express): void {
   });
   
   // ============================================
+  // PORTFOLIO HEALTH ALERTS
+  // ============================================
+
+  api.get("/api/alerts/active", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      // Refresh alerts on each fetch (lightweight scan)
+      await runPortfolioHealthJob(org.id);
+      const alerts = await getActiveAlerts(org.id);
+      res.json(alerts);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.delete("/api/alerts/:id/dismiss", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const alertId = parseInt(req.params.id);
+      await dismissAlert(org.id, alertId);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
 
 }

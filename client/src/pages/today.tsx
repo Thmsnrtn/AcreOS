@@ -3,10 +3,10 @@ import { StatCard } from "@/components/stat-card";
 import { useOrganization, useDashboardStats } from "@/hooks/use-organization";
 import { useLeads } from "@/hooks/use-leads";
 import { useProperties } from "@/hooks/use-properties";
-import { useNotes } from "@/hooks/use-notes";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Link } from "wouter";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -22,8 +22,9 @@ import {
   Bell,
   Calendar,
   Clock,
+  X,
 } from "lucide-react";
-import { format, differenceInDays, isToday, isBefore, startOfDay, endOfDay } from "date-fns";
+import { format, isToday, isBefore, startOfDay } from "date-fns";
 
 interface NextBestAction {
   id: string;
@@ -50,13 +51,29 @@ interface Task {
   entityId?: number;
 }
 
-interface Alert {
-  id: string;
-  severity: "high" | "medium" | "low";
+interface SystemAlert {
+  id: number;
+  type: string;
+  severity: string; // info | warning | critical
+  title: string;
   message: string;
-  href: string;
-  linkLabel: string;
+  status: string;
+  createdAt: string;
 }
+
+const alertHrefByType: Record<string, string> = {
+  note_overdue: "/money",
+  stale_leads: "/pipeline#leads",
+  stuck_deals: "/pipeline#board",
+  stale_avm: "/pipeline#properties",
+};
+
+const alertLinkLabelByType: Record<string, string> = {
+  note_overdue: "View Notes",
+  stale_leads: "View Leads",
+  stuck_deals: "View Deals",
+  stale_avm: "View Properties",
+};
 
 const priorityColors: Record<string, string> = {
   high: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300",
@@ -64,33 +81,34 @@ const priorityColors: Record<string, string> = {
   low: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
 };
 
-const severityColors: Record<string, string> = {
-  high: "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20",
-  medium: "border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20",
-  low: "border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-900/20",
-};
-
-const severityIconColors: Record<string, string> = {
-  high: "text-red-500",
-  medium: "text-amber-500",
-  low: "text-blue-500",
-};
 
 export default function TodayPage() {
   const { data: organization } = useOrganization();
   const { data: stats, isLoading: statsLoading } = useDashboardStats();
   const { data: leads = [] } = useLeads();
   const { data: properties = [] } = useProperties();
-  const { data: notes = [] } = useNotes();
   const { data: tasks = [], isLoading: tasksLoading } = useQuery<Task[]>({
     queryKey: ["/api/tasks"],
     staleTime: 2 * 60 * 1000,
+  });
+  const { data: systemAlerts = [], isLoading: alertsLoading } = useQuery<SystemAlert[]>({
+    queryKey: ["/api/alerts/active"],
+    staleTime: 5 * 60 * 1000,
   });
   const { data: intelligence, isLoading: intelligenceLoading } =
     useQuery<DashboardIntelligence>({
       queryKey: ["/api/dashboard/intelligence"],
       staleTime: 5 * 60 * 1000,
     });
+
+  const dismissMutation = useMutation({
+    mutationFn: async (alertId: number) => {
+      await apiRequest("DELETE", `/api/alerts/${alertId}/dismiss`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/alerts/active"] });
+    },
+  });
 
   const greeting = () => {
     const hour = new Date().getHours();
@@ -106,58 +124,6 @@ export default function TodayPage() {
     const due = new Date(t.dueDate);
     return isToday(due) || isBefore(due, startOfDay(new Date()));
   });
-
-  // --- Portfolio Health Alerts ---
-  const alerts: Alert[] = [];
-
-  // Notes past maturity
-  const overdueNotes = (notes as any[]).filter((n: any) => {
-    if (n.status !== "active") return false;
-    if (!n.maturityDate) return false;
-    return isBefore(new Date(n.maturityDate), new Date());
-  });
-  if (overdueNotes.length > 0) {
-    alerts.push({
-      id: "notes-overdue",
-      severity: "high",
-      message: `${overdueNotes.length} note${overdueNotes.length > 1 ? "s" : ""} past maturity date`,
-      href: "/money",
-      linkLabel: "View Notes",
-    });
-  }
-
-  // Leads unreachable > 90 days
-  const staleLeads = leads.filter((l) => {
-    if (l.status === "converted" || l.status === "dead") return false;
-    const lastContact = l.updatedAt ? new Date(l.updatedAt) : l.createdAt ? new Date(l.createdAt) : null;
-    if (!lastContact) return false;
-    return differenceInDays(new Date(), lastContact) > 90;
-  });
-  if (staleLeads.length > 0) {
-    alerts.push({
-      id: "stale-leads",
-      severity: "medium",
-      message: `${staleLeads.length} lead${staleLeads.length > 1 ? "s" : ""} with no activity in 90+ days`,
-      href: "/pipeline#leads",
-      linkLabel: "View Leads",
-    });
-  }
-
-  // Properties with no AVM in 90 days (using updatedAt as proxy)
-  const staleProperties = properties.filter((p) => {
-    if (p.status === "sold") return false;
-    if (!p.updatedAt) return false;
-    return differenceInDays(new Date(), new Date(p.updatedAt)) > 90;
-  });
-  if (staleProperties.length > 0) {
-    alerts.push({
-      id: "stale-properties",
-      severity: "low",
-      message: `${staleProperties.length} propert${staleProperties.length > 1 ? "ies" : "y"} not updated in 90+ days`,
-      href: "/pipeline#properties",
-      linkLabel: "View Properties",
-    });
-  }
 
   const aiActions = intelligence?.actions?.slice(0, 5) ?? [];
 
@@ -241,30 +207,51 @@ export default function TodayPage() {
       </div>
 
       {/* Section 2: Portfolio Health Alerts */}
-      {alerts.length > 0 && (
+      {!alertsLoading && systemAlerts.length > 0 && (
         <div data-testid="section-alerts">
           <div className="flex items-center gap-2 mb-3">
             <Bell className="w-4 h-4 text-amber-500" />
             <h2 className="text-lg font-semibold">Portfolio Alerts</h2>
             <Badge variant="secondary" className="bg-amber-100 text-amber-700 text-xs">
-              {alerts.length}
+              {systemAlerts.length}
             </Badge>
           </div>
           <div className="space-y-2">
-            {alerts.map((alert) => (
-              <div
-                key={alert.id}
-                className={`flex items-center gap-3 rounded-lg border p-3 ${severityColors[alert.severity]}`}
-              >
-                <AlertTriangle className={`w-4 h-4 shrink-0 ${severityIconColors[alert.severity]}`} />
-                <p className="text-sm flex-1">{alert.message}</p>
-                <Link href={alert.href}>
-                  <Button variant="outline" size="sm" className="text-xs shrink-0 h-7">
-                    {alert.linkLabel}
-                  </Button>
-                </Link>
-              </div>
-            ))}
+            {systemAlerts.map((alert) => {
+              const isCritical = alert.severity === "critical";
+              const isWarning = alert.severity === "warning";
+              const borderClass = isCritical
+                ? "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20"
+                : isWarning
+                ? "border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20"
+                : "border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-900/20";
+              const iconClass = isCritical ? "text-red-500" : isWarning ? "text-amber-500" : "text-blue-500";
+              const href = alertHrefByType[alert.type] ?? "/";
+              const linkLabel = alertLinkLabelByType[alert.type] ?? "View";
+              return (
+                <div key={alert.id} className={`flex items-start gap-3 rounded-lg border p-3 ${borderClass}`}>
+                  <AlertTriangle className={`w-4 h-4 shrink-0 mt-0.5 ${iconClass}`} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium">{alert.title}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{alert.message}</p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Link href={href}>
+                      <Button variant="outline" size="sm" className="text-xs h-7">{linkLabel}</Button>
+                    </Link>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={() => dismissMutation.mutate(alert.id)}
+                      disabled={dismissMutation.isPending}
+                    >
+                      <X className="w-3 h-3" />
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
