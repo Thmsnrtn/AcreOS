@@ -55,6 +55,7 @@ import { registerAIRoutes } from "./routes-ai";
 import { registerBillingRoutes } from "./routes-billing";
 import { registerBorrowerRoutes } from "./routes-borrower";
 import { registerAdminRoutes } from "./routes-admin";
+import { registerEliteFeatureRoutes } from "./routes-elite-features";
 import { registerCoreAIRoutes } from "./routes-core-ai";
 import { registerIntegrationRoutes } from "./routes-integrations";
 import { registerCRMExtrasRoutes } from "./routes-crm-extras";
@@ -252,6 +253,9 @@ export async function registerRoutes(
 
   // Register AI Operations (Router-based)
   registerAIOperationsRoutes(app);
+
+  // ─── Elite Features (Tax Escrow, E-Signing, DD Engine, Meta Ads, Actum, Syndication, Bookkeeping, VA) ──
+  await registerEliteFeatureRoutes(app);
 
   // ─── Address Verification ──────────────────────────────────────────
   const { isAuthenticated } = await import("./auth");
