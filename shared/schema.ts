@@ -216,6 +216,35 @@ export const insertOrganizationIntegrationSchema = createInsertSchema(organizati
 export type InsertOrganizationIntegration = z.infer<typeof insertOrganizationIntegrationSchema>;
 export type OrganizationIntegration = typeof organizationIntegrations.$inferSelect;
 
+// White-label tenant configurations — persisted so configs survive server restarts
+export const whiteLabelConfigs = pgTable("white_label_configs", {
+  id: serial("id").primaryKey(),
+  tenantId: text("tenant_id").notNull().unique(), // UUID assigned on create
+  organizationId: integer("organization_id").references(() => organizations.id).notNull().unique(),
+  parentOrganizationId: integer("parent_organization_id").references(() => organizations.id).notNull(),
+  brandName: text("brand_name").notNull(),
+  logoUrl: text("logo_url"),
+  faviconUrl: text("favicon_url"),
+  primaryColor: text("primary_color").notNull().default("#2563eb"),
+  accentColor: text("accent_color").notNull().default("#16a34a"),
+  customDomain: text("custom_domain").unique(),
+  supportEmail: text("support_email").notNull(),
+  supportPhone: text("support_phone"),
+  footerText: text("footer_text").notNull().default("Powered by AcreOS"),
+  features: jsonb("features").$type<{
+    marketplace: boolean; academy: boolean; dealHunter: boolean; voiceAI: boolean;
+    visionAI: boolean; capitalMarkets: boolean; negotiationCopilot: boolean;
+    portfolioOptimizer: boolean; complianceAI: boolean; taxResearcher: boolean;
+  }>().notNull(),
+  revenueShare: jsonb("revenue_share").$type<{ platformFeePercent: number; resellerFeePercent: number }>().notNull(),
+  limits: jsonb("limits").$type<{ maxUsers: number; maxLeads: number; maxProperties: number; maxCampaigns: number }>().notNull(),
+  plan: text("plan").notNull().default("starter"), // starter | professional | enterprise
+  billingEmail: text("billing_email").notNull(),
+  status: text("status").notNull().default("active"), // active | suspended | cancelled
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // Borrower payment profiles - maps borrowers to Stripe Customer IDs for connected accounts
 export const borrowerPaymentProfiles = pgTable("borrower_payment_profiles", {
   id: serial("id").primaryKey(),

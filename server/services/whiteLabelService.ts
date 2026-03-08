@@ -15,7 +15,7 @@
 
 // @ts-nocheck — ORM type refinement deferred; runtime-correct
 import { db } from '../db';
-import { organizations } from '../../shared/schema';
+import { organizations, whiteLabelConfigs } from '../../shared/schema';
 import { eq, and } from 'drizzle-orm';
 import crypto from 'crypto';
 
@@ -65,14 +65,32 @@ export interface WhiteLabelConfig {
   updatedAt: string;
 }
 
-// In-memory store for white-label configs (would be a DB table in production)
-// Key: organizationId
-const whiteLabelStore = new Map<number, WhiteLabelConfig>();
-
-// Key: customDomain
-const domainToOrgMap = new Map<string, number>();
-
 class WhiteLabelService {
+  private rowToConfig(row: typeof whiteLabelConfigs.$inferSelect): WhiteLabelConfig {
+    return {
+      tenantId: row.tenantId,
+      organizationId: row.organizationId,
+      parentOrganizationId: row.parentOrganizationId,
+      brandName: row.brandName,
+      logoUrl: row.logoUrl ?? undefined,
+      faviconUrl: row.faviconUrl ?? undefined,
+      primaryColor: row.primaryColor,
+      accentColor: row.accentColor,
+      customDomain: row.customDomain ?? undefined,
+      supportEmail: row.supportEmail,
+      supportPhone: row.supportPhone ?? undefined,
+      footerText: row.footerText,
+      features: row.features as WhiteLabelConfig['features'],
+      revenueShare: row.revenueShare as WhiteLabelConfig['revenueShare'],
+      limits: row.limits as WhiteLabelConfig['limits'],
+      plan: row.plan as WhiteLabelConfig['plan'],
+      billingEmail: row.billingEmail,
+      status: row.status as WhiteLabelConfig['status'],
+      createdAt: (row.createdAt ?? new Date()).toISOString(),
+      updatedAt: (row.updatedAt ?? new Date()).toISOString(),
+    };
+  }
+
   /**
    * Create a white-label tenant configuration for an organization.
    * Called by the parent (reseller) organization to set up a sub-tenant.
@@ -82,12 +100,13 @@ class WhiteLabelService {
     tenantOrganizationId: number,
     config: Partial<WhiteLabelConfig>
   ): Promise<WhiteLabelConfig> {
-    const existing = whiteLabelStore.get(tenantOrganizationId);
+    const [existing] = await db.select().from(whiteLabelConfigs)
+      .where(eq(whiteLabelConfigs.organizationId, tenantOrganizationId)).limit(1);
     if (existing) {
       throw new Error('White-label configuration already exists for this organization');
     }
 
-    const tenantConfig: WhiteLabelConfig = {
+    const [row] = await db.insert(whiteLabelConfigs).values({
       tenantId: crypto.randomUUID(),
       organizationId: tenantOrganizationId,
       parentOrganizationId,
@@ -101,51 +120,28 @@ class WhiteLabelService {
       supportPhone: config.supportPhone,
       footerText: config.footerText || 'Powered by AcreOS',
       features: {
-        marketplace: true,
-        academy: true,
-        dealHunter: true,
-        voiceAI: false,
-        visionAI: true,
-        capitalMarkets: false,
-        negotiationCopilot: true,
-        portfolioOptimizer: true,
-        complianceAI: false,
-        taxResearcher: false,
+        marketplace: true, academy: true, dealHunter: true, voiceAI: false,
+        visionAI: true, capitalMarkets: false, negotiationCopilot: true,
+        portfolioOptimizer: true, complianceAI: false, taxResearcher: false,
         ...config.features,
       },
-      revenueShare: {
-        platformFeePercent: 70,
-        resellerFeePercent: 30,
-        ...config.revenueShare,
-      },
-      limits: {
-        maxUsers: 5,
-        maxLeads: 1000,
-        maxProperties: 500,
-        maxCampaigns: 10,
-        ...config.limits,
-      },
+      revenueShare: { platformFeePercent: 70, resellerFeePercent: 30, ...config.revenueShare },
+      limits: { maxUsers: 5, maxLeads: 1000, maxProperties: 500, maxCampaigns: 10, ...config.limits },
       plan: config.plan || 'starter',
       billingEmail: config.billingEmail || config.supportEmail || '',
       status: 'active',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+    }).returning();
 
-    whiteLabelStore.set(tenantOrganizationId, tenantConfig);
-
-    if (tenantConfig.customDomain) {
-      domainToOrgMap.set(tenantConfig.customDomain, tenantOrganizationId);
-    }
-
-    return tenantConfig;
+    return this.rowToConfig(row);
   }
 
   /**
    * Get white-label config for an organization.
    */
   async getConfig(organizationId: number): Promise<WhiteLabelConfig | null> {
-    return whiteLabelStore.get(organizationId) || null;
+    const [row] = await db.select().from(whiteLabelConfigs)
+      .where(eq(whiteLabelConfigs.organizationId, organizationId)).limit(1);
+    return row ? this.rowToConfig(row) : null;
   }
 
   /**
@@ -155,71 +151,65 @@ class WhiteLabelService {
     organizationId: number,
     updates: Partial<WhiteLabelConfig>
   ): Promise<WhiteLabelConfig> {
-    const existing = whiteLabelStore.get(organizationId);
+    const [existing] = await db.select().from(whiteLabelConfigs)
+      .where(eq(whiteLabelConfigs.organizationId, organizationId)).limit(1);
     if (!existing) {
       throw new Error('White-label configuration not found');
     }
 
-    // Handle domain change
-    if (updates.customDomain && updates.customDomain !== existing.customDomain) {
-      if (existing.customDomain) {
-        domainToOrgMap.delete(existing.customDomain);
-      }
-      domainToOrgMap.set(updates.customDomain, organizationId);
-    }
+    const [row] = await db.update(whiteLabelConfigs).set({
+      ...(updates.brandName && { brandName: updates.brandName }),
+      ...(updates.logoUrl !== undefined && { logoUrl: updates.logoUrl }),
+      ...(updates.faviconUrl !== undefined && { faviconUrl: updates.faviconUrl }),
+      ...(updates.primaryColor && { primaryColor: updates.primaryColor }),
+      ...(updates.accentColor && { accentColor: updates.accentColor }),
+      ...(updates.customDomain !== undefined && { customDomain: updates.customDomain }),
+      ...(updates.supportEmail && { supportEmail: updates.supportEmail }),
+      ...(updates.supportPhone !== undefined && { supportPhone: updates.supportPhone }),
+      ...(updates.footerText && { footerText: updates.footerText }),
+      ...(updates.features && { features: { ...(existing.features as object), ...updates.features } }),
+      ...(updates.revenueShare && { revenueShare: { ...(existing.revenueShare as object), ...updates.revenueShare } }),
+      ...(updates.limits && { limits: { ...(existing.limits as object), ...updates.limits } }),
+      ...(updates.plan && { plan: updates.plan }),
+      ...(updates.billingEmail && { billingEmail: updates.billingEmail }),
+      updatedAt: new Date(),
+    }).where(eq(whiteLabelConfigs.organizationId, organizationId)).returning();
 
-    const updated: WhiteLabelConfig = {
-      ...existing,
-      ...updates,
-      features: { ...existing.features, ...updates.features },
-      revenueShare: { ...existing.revenueShare, ...updates.revenueShare },
-      limits: { ...existing.limits, ...updates.limits },
-      organizationId,
-      updatedAt: new Date().toISOString(),
-    };
-
-    whiteLabelStore.set(organizationId, updated);
-    return updated;
+    return this.rowToConfig(row);
   }
 
   /**
    * Suspend a tenant.
    */
   async suspendTenant(organizationId: number): Promise<void> {
-    const config = whiteLabelStore.get(organizationId);
-    if (config) {
-      config.status = 'suspended';
-      config.updatedAt = new Date().toISOString();
-    }
+    await db.update(whiteLabelConfigs)
+      .set({ status: 'suspended', updatedAt: new Date() })
+      .where(eq(whiteLabelConfigs.organizationId, organizationId));
   }
 
   /**
    * Resolve white-label config from a custom domain.
    */
   async resolveFromDomain(domain: string): Promise<WhiteLabelConfig | null> {
-    const orgId = domainToOrgMap.get(domain);
-    if (!orgId) return null;
-    return whiteLabelStore.get(orgId) || null;
+    const [row] = await db.select().from(whiteLabelConfigs)
+      .where(eq(whiteLabelConfigs.customDomain, domain)).limit(1);
+    return row ? this.rowToConfig(row) : null;
   }
 
   /**
    * List all tenants managed by a parent organization.
    */
   async listTenants(parentOrganizationId: number): Promise<WhiteLabelConfig[]> {
-    const tenants: WhiteLabelConfig[] = [];
-    for (const config of whiteLabelStore.values()) {
-      if (config.parentOrganizationId === parentOrganizationId) {
-        tenants.push(config);
-      }
-    }
-    return tenants;
+    const rows = await db.select().from(whiteLabelConfigs)
+      .where(eq(whiteLabelConfigs.parentOrganizationId, parentOrganizationId));
+    return rows.map(r => this.rowToConfig(r));
   }
 
   /**
    * Check if a feature is enabled for an organization.
    */
   async isFeatureEnabled(organizationId: number, feature: keyof WhiteLabelConfig['features']): Promise<boolean> {
-    const config = whiteLabelStore.get(organizationId);
+    const config = await this.getConfig(organizationId);
     if (!config) return true; // No white-label restriction = all features enabled
     return config.features[feature] ?? false;
   }
