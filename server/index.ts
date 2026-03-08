@@ -17,6 +17,7 @@ import { wsServer } from "./websocket";
 import { realtimeAlertsService } from "./services/realtimeAlerts";
 import { createMcpServer } from "./mcp/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import rateLimit from "express-rate-limit";
 
 const app = express();
 const httpServer = createServer(app);
@@ -136,6 +137,55 @@ app.use(requestLoggingMiddleware);
 // CSRF protection for state-changing API requests
 app.use("/api", csrfProtection);
 
+// ── Rate limiting ────────────────────────────────────────────────────────────
+// Auth routes: 20 requests per 15 min per IP
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many requests. Please try again later." },
+});
+app.use("/api/auth", authLimiter);
+app.use("/api/login", authLimiter);
+app.use("/api/register", authLimiter);
+
+// AI endpoints: 60 requests per minute per IP
+const aiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "AI request limit reached. Please wait a moment." },
+});
+app.use("/api/ai", aiLimiter);
+app.use("/api/atlas", aiLimiter);
+app.use("/api/chat", aiLimiter);
+app.use("/api/executive", aiLimiter);
+app.use("/api/document-generation", aiLimiter);
+
+// Webhook endpoints: 200 requests per minute per IP
+const webhookLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Webhook rate limit exceeded." },
+});
+app.use("/api/webhooks", webhookLimiter);
+
+// CSV / bulk import endpoints: 10 requests per 15 min per IP
+const importLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Import rate limit exceeded. Please wait before importing again." },
+});
+app.use("/api/import", importLimiter);
+app.use("/api/leads/import", importLimiter);
+app.use("/api/properties/import", importLimiter);
+
 (async () => {
   // Run DB migrations on startup (production-safe versioned migrations)
   if (process.env.NODE_ENV === "production") {
@@ -156,9 +206,26 @@ app.use("/api", csrfProtection);
   
   // ── MCP HTTP endpoint (stateless StreamableHTTP transport) ───────────────
   // Accessible at POST /mcp — Claude Desktop or any MCP client can connect here.
-  // Auth note: currently open; add session/API key check before production public exposure.
+  // Auth: requires Bearer token matching MCP_API_KEY env var.
   const mcpServer = createMcpServer();
-  app.post("/mcp", async (req, res) => {
+
+  const mcpAuthMiddleware = (req: Request, res: Response, next: NextFunction) => {
+    const mcpApiKey = process.env.MCP_API_KEY;
+    if (!mcpApiKey) {
+      // Not configured — block all access until key is set
+      res.status(503).json({ error: "MCP endpoint not configured. Set MCP_API_KEY." });
+      return;
+    }
+    const authHeader = req.headers["authorization"] ?? "";
+    const provided = Array.isArray(authHeader) ? authHeader[0] : authHeader;
+    if (provided !== `Bearer ${mcpApiKey}`) {
+      res.status(401).json({ error: "Invalid or missing MCP API key." });
+      return;
+    }
+    next();
+  };
+
+  app.post("/mcp", mcpAuthMiddleware, async (req, res) => {
     try {
       const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
       await mcpServer.connect(transport);
@@ -167,7 +234,7 @@ app.use("/api", csrfProtection);
       res.status(500).json({ error: e.message });
     }
   });
-  app.get("/mcp", (_req, res) => {
+  app.get("/mcp", mcpAuthMiddleware, (_req, res) => {
     res.json({
       name: "AcreOS MCP Server",
       version: "1.0.0",
