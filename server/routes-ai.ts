@@ -765,11 +765,16 @@ export function registerAIRoutes(app: Express): void {
       const org = (req as any).organization;
       const agentType = req.params.type as any;
       const { task } = req.body;
-      
+
       if (!task) {
         return res.status(400).json({ message: "Task description is required" });
       }
-      
+
+      const usageCheck = await checkUsageLimit(org.id, "ai_requests");
+      if (!usageCheck.allowed) {
+        return res.status(429).json({ message: "AI request limit reached. Upgrade to continue." });
+      }
+
       const result = await vaAgentService.processAgentTask(org.id, agentType, task);
       res.json(result);
     } catch (error: any) {
@@ -845,6 +850,10 @@ export function registerAIRoutes(app: Express): void {
     try {
       const { vaAgentService } = await import("./ai/vaService");
       const org = (req as any).organization;
+      const usageCheck = await checkUsageLimit(org.id, "ai_requests");
+      if (!usageCheck.allowed) {
+        return res.status(429).json({ message: "AI request limit reached. Upgrade to continue." });
+      }
       const briefing = await vaAgentService.generateBriefing(org.id);
       res.json(briefing);
     } catch (error: any) {

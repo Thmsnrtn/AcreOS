@@ -2,6 +2,7 @@ import { Component, type ReactNode } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { AlertTriangle, RefreshCcw, Home } from "lucide-react";
+import { Sentry } from "@/lib/sentry";
 
 interface Props {
   children: ReactNode;
@@ -33,9 +34,14 @@ function logErrorToService(error: Error, errorInfo: React.ErrorInfo): string {
 
   console.error("[ErrorBoundary] Error captured:", errorReport);
 
-  if (process.env.NODE_ENV === "production") {
-    console.log("[ErrorBoundary] Production logging placeholder - would send to error tracking service:", errorId);
-  }
+  // Forward to Sentry (no-op when VITE_SENTRY_DSN is unset)
+  Sentry.captureException(error, {
+    extra: {
+      errorId,
+      componentStack: errorInfo.componentStack,
+      url: errorReport.url,
+    },
+  });
 
   return errorId;
 }
