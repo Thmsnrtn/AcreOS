@@ -23,6 +23,10 @@ import { initSentry, Sentry } from "./utils/sentry";
 // Initialize Sentry ASAP — must run before any other code
 initSentry();
 
+// T15: Validate required secrets at startup
+import { validateSecrets } from "./middleware/secretsValidation";
+validateSecrets();
+
 const app = express();
 const httpServer = createServer(app);
 
