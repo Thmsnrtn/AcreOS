@@ -61,6 +61,9 @@ import propertyEnrichmentRouter from "./routes-property-enrichment";
 import exchange1031Router from "./routes-exchange-1031";
 import dunningRouter from "./routes-dunning";
 import onboardingRouter from "./routes-onboarding";
+import taxDelinquentRouter from "./routes-tax-delinquent";
+import matchingRouter from "./routes-matching";
+import kpisRouter from "./routes-kpis";
 
 // Rate limiting middleware
 import { createRateLimiter, rateLimiters, RATE_LIMIT_CONFIGS, authLimiter, aiLimiter, webhookLimiter, importLimiter } from "./middleware/rateLimit";
@@ -340,6 +343,9 @@ export async function registerRoutes(
   app.use('/api/exchange-1031', isAuthenticated, getOrCreateOrg, exchange1031Router);
   app.use('/api/dunning', isAuthenticated, dunningRouter);
   app.use('/api/onboarding', isAuthenticated, getOrCreateOrg, onboardingRouter);
+  app.use('/api/tax-delinquent', isAuthenticated, getOrCreateOrg, taxDelinquentRouter);
+  app.use('/api/matching', isAuthenticated, getOrCreateOrg, matchingRouter);
+  app.use('/api/kpis', isAuthenticated, getOrCreateOrg, kpisRouter);
 
   // ============================================
   // DOMAIN ROUTE MODULES
