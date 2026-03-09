@@ -46,16 +46,52 @@ function syntheticBoundary(lat: number, lng: number) {
   };
 }
 
+// Deal status → color mapping for portfolio view
+const DEAL_STATUS_COLORS: Record<string, string> = {
+  negotiating: "#f59e0b",
+  offer_sent: "#3b82f6",
+  countered: "#8b5cf6",
+  accepted: "#10b981",
+  in_escrow: "#06b6d4",
+  closed: "#22c55e",
+  cancelled: "#6b7280",
+  dead: "#ef4444",
+};
+
+interface DealWithProperty {
+  id: number;
+  status: string;
+  propertyId: number;
+  acceptedAmount?: number | null;
+}
+
 export default function MapsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedPropertyId, setSelectedPropertyId] = useState<number | undefined>();
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [minAcres, setMinAcres] = useState(0);
+  const [mapMode, setMapMode] = useState<"properties" | "deals">("properties");
 
   const { data: properties = [], isLoading } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
   });
+
+  const { data: deals = [] } = useQuery<DealWithProperty[]>({
+    queryKey: ["/api/deals"],
+    queryFn: () => fetch("/api/deals").then((r) => r.json()),
+  });
+
+  // Build a map of propertyId → deal for deal-mode coloring
+  const dealByPropertyId = useMemo(() => {
+    const map: Record<number, DealWithProperty> = {};
+    for (const d of deals) {
+      if (!map[d.propertyId] || d.id > map[d.propertyId].id) {
+        map[d.propertyId] = d;
+      }
+    }
+    return map;
+  }, [deals]);
 
   const filteredProperties = useMemo(() => {
     return properties.filter((p) => {
@@ -72,21 +108,34 @@ export default function MapsPage() {
       const acres = parseFloat(String(p.sizeAcres || "0"));
       const matchAcres = acres >= minAcres;
 
+      // In deal mode, only show properties that have deals
+      if (mapMode === "deals") {
+        return matchSearch && matchStatus && matchAcres && !!dealByPropertyId[p.id];
+      }
+
       return matchSearch && matchStatus && matchAcres;
     });
-  }, [properties, searchQuery, statusFilter, minAcres]);
+  }, [properties, searchQuery, statusFilter, minAcres, mapMode, dealByPropertyId]);
 
   // Convert to PropertyBoundary format expected by PropertyMap
   const mapProperties = filteredProperties.map((p) => {
     const lat = parseFloat(String(p.latitude));
     const lng = parseFloat(String(p.longitude));
+
+    // In deal mode, color by deal status
+    let status = p.status || "default";
+    if (mapMode === "deals") {
+      const deal = dealByPropertyId[p.id];
+      status = deal?.status || status;
+    }
+
     return {
       id: p.id,
       apn: p.apn,
       name: `${p.county}, ${p.state}`,
       boundary: (p.parcelBoundary as any) || syntheticBoundary(lat, lng),
       centroid: (p.parcelCentroid as any) || { lat, lng },
-      status: p.status || "default",
+      status,
     };
   });
 
@@ -96,6 +145,14 @@ export default function MapsPage() {
 
   const propertiesWithCoords = properties.filter((p) => p.latitude && p.longitude).length;
 
+  // Portfolio stats for deals mode
+  const dealStats = useMemo(() => {
+    const active = deals.filter((d) => !["closed", "dead", "cancelled"].includes(d.status));
+    const closed = deals.filter((d) => d.status === "closed");
+    const totalVolume = closed.reduce((s, d) => s + Number(d.acceptedAmount || 0), 0);
+    return { active: active.length, closed: closed.length, totalVolume };
+  }, [deals]);
+
   return (
     <PageShell>
       <div className="-mx-4 -my-8 md:-mx-8 md:-my-8">
@@ -103,10 +160,34 @@ export default function MapsPage() {
         <div className="flex items-center gap-3 px-4 md:px-6 py-3 border-b bg-background/80 backdrop-blur-sm sticky top-0 z-10">
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <MapPin className="w-5 h-5 text-primary shrink-0" />
-            <h1 className="text-lg font-semibold truncate">Property Map</h1>
+            <h1 className="text-lg font-semibold truncate">
+              {mapMode === "deals" ? "Portfolio Map" : "Property Map"}
+            </h1>
             <Badge variant="secondary" className="text-xs shrink-0">
               {filteredProperties.length} / {propertiesWithCoords} mapped
             </Badge>
+            {mapMode === "deals" && (
+              <Badge variant="outline" className="text-xs shrink-0 hidden md:flex">
+                {dealStats.active} active · {dealStats.closed} closed · $
+                {(dealStats.totalVolume / 1000).toFixed(0)}k volume
+              </Badge>
+            )}
+          </div>
+
+          {/* Mode toggle */}
+          <div className="flex items-center rounded-md border overflow-hidden shrink-0">
+            <button
+              className={`px-3 py-1.5 text-xs font-medium transition-colors ${mapMode === "properties" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+              onClick={() => setMapMode("properties")}
+            >
+              Properties
+            </button>
+            <button
+              className={`px-3 py-1.5 text-xs font-medium transition-colors ${mapMode === "deals" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+              onClick={() => setMapMode("deals")}
+            >
+              Deals
+            </button>
           </div>
 
           {/* Search */}

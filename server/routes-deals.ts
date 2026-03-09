@@ -8,6 +8,13 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { leadScoringService } from "./services/leadScoring";
 import { propertyEnrichmentService } from "./services/propertyEnrichment";
 import { checkUsageLimit } from "./services/usageLimits";
+import {
+  initiateHandoff,
+  updateHandoffChecklist,
+  completeHandoff,
+  getHandoffsForDeal,
+  getAllHandoffs,
+} from "./services/dealHandoffService";
 
 // Partial update schema for PUT endpoints
 const updateDealSchema = insertDealSchema.partial().omit({ organizationId: true });
@@ -158,6 +165,26 @@ export function registerDealRoutes(app: Express): void {
         } catch (conversionErr) {
           console.error("Failed to record conversion:", conversionErr);
         }
+      }
+
+      // Push notification when deal is accepted (T61)
+      if (validated.status === "accepted" && existingDeal.status !== "accepted") {
+        setImmediate(async () => {
+          try {
+            const { notifyDealAccepted } = await import("./services/pushNotificationService");
+            const user = req.user as any;
+            const userId = user?.claims?.sub ?? user?.id;
+            if (userId) {
+              const property = await storage.getProperty(org.id, deal.propertyId);
+              await notifyDealAccepted(
+                org.id,
+                userId,
+                deal.id,
+                (property as any)?.address || `Property #${deal.propertyId}`
+              );
+            }
+          } catch (_) {}
+        });
       }
       
       res.json(deal);
@@ -1173,6 +1200,78 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       res.send(buffer);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // Deal Handoff Workflow (T55)
+  // -----------------------------------------------------------------------
+
+  // GET /api/deals/handoffs — list all handoffs for the org
+  app.get("/api/deals/handoffs", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const handoffs = await getAllHandoffs(req.org.id);
+      res.json(handoffs);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/deals/:dealId/handoffs — handoffs for a specific deal
+  app.get("/api/deals/:dealId/handoffs", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const handoffs = await getHandoffsForDeal(req.org.id, parseInt(req.params.dealId));
+      res.json(handoffs);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/deals/:dealId/handoffs — initiate a handoff
+  app.post("/api/deals/:dealId/handoffs", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { fromTeamMemberId, toTeamMemberId, fromRole, toRole, notes, customChecklist } = req.body;
+      if (!fromTeamMemberId || !toTeamMemberId || !fromRole || !toRole) {
+        return res.status(400).json({ message: "fromTeamMemberId, toTeamMemberId, fromRole, and toRole are required" });
+      }
+      const handoff = await initiateHandoff(req.org.id, {
+        dealId: parseInt(req.params.dealId),
+        fromTeamMemberId,
+        toTeamMemberId,
+        fromRole,
+        toRole,
+        notes: notes || "",
+        customChecklist,
+      });
+      res.status(201).json(handoff);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // PATCH /api/deals/handoffs/:handoffId/checklist/:itemId — toggle checklist item
+  app.patch("/api/deals/handoffs/:handoffId/checklist/:itemId", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { completed } = req.body;
+      const handoff = await updateHandoffChecklist(
+        req.org.id,
+        req.params.handoffId,
+        req.params.itemId,
+        !!completed
+      );
+      res.json(handoff);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/deals/handoffs/:handoffId/complete — complete the handoff
+  app.post("/api/deals/handoffs/:handoffId/complete", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const handoff = await completeHandoff(req.org.id, req.params.handoffId);
+      res.json(handoff);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
     }
   });
 

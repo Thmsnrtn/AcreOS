@@ -11,6 +11,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { usageMeteringService, creditService } from "./services/credits";
 import { exportLeadsToCSV, exportPropertiesToCSV, exportDealsToCSV, exportNotesToCSV, type ExportFilters } from "./services/importExport";
 import { workflowEngine } from "./services/workflow-engine";
+import { processMentions } from "./services/mentionService";
 
 export function registerCommunicationRoutes(app: Express): void {
   const api = app;
@@ -501,12 +502,59 @@ export function registerCommunicationRoutes(app: Express): void {
       const entityType = req.query.entityType as string | undefined;
       const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
       const offset = req.query.offset ? parseInt(req.query.offset as string) : 0;
-      
+
       const activities = await storage.getActivityFeed(org.id, { entityType, limit, offset });
       res.json(activities);
     } catch (error: any) {
       console.error("Get activity feed error:", error);
       res.status(500).json({ message: error.message || "Failed to fetch activity feed" });
+    }
+  });
+
+  // POST /api/activity-feed — Add a note/activity entry with @mention support (T57)
+  api.post("/api/activity-feed", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = req.user as any;
+      const userId = user?.claims?.sub ?? user?.id ?? "";
+      const { entityType, entityId, content, eventType = "note_added" } = req.body;
+
+      if (!entityType || !entityId || !content) {
+        return res.status(400).json({ message: "entityType, entityId, and content are required" });
+      }
+
+      const event = await storage.createActivityEvent({
+        organizationId: org.id,
+        entityType,
+        entityId: parseInt(entityId),
+        eventType,
+        description: content,
+        userId,
+        eventDate: new Date(),
+        metadata: { hasContent: true },
+      });
+
+      // Process @mentions asynchronously (non-blocking)
+      if (content.includes("@")) {
+        const authorName = user?.displayName || user?.email?.split("@")[0] || "A team member";
+        setImmediate(async () => {
+          try {
+            await processMentions(org.id, content, {
+              entityType,
+              entityId: parseInt(entityId),
+              authorName,
+              notePreview: content,
+            });
+          } catch (err) {
+            console.error("[Mention] processMentions failed:", err);
+          }
+        });
+      }
+
+      res.status(201).json(event);
+    } catch (error: any) {
+      console.error("Create activity event error:", error);
+      res.status(500).json({ message: error.message || "Failed to create activity event" });
     }
   });
 
