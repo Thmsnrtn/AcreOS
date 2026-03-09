@@ -100,6 +100,7 @@ import SellerIntentPage from "@/pages/seller-intent";
 import DealPatternsPage from "@/pages/deal-patterns";
 import PortfolioPnLPage from "@/pages/portfolio-pnl";
 import BuyerQualificationPage from "@/pages/buyer-qualification";
+import PrivacySettingsPage from "@/pages/privacy-settings";
 import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
 import { ConversationTray } from "@/components/conversation-tray";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -420,6 +421,9 @@ function Router() {
       </Route>
       <Route path="/buyer-qualification">
         {() => <ProtectedRoute component={BuyerQualificationPage} />}
+      </Route>
+      <Route path="/settings/privacy">
+        {() => <ProtectedRoute component={PrivacySettingsPage} />}
       </Route>
 
       <Route component={NotFound} />

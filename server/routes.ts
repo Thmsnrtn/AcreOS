@@ -50,6 +50,7 @@ import dealPatternsRouter from "./routes-deal-patterns";
 import priceOptimizerRouter from "./routes-price-optimizer";
 import portfolioHealthRouter from "./routes-portfolio-health";
 import gdprRouter from "./routes-gdpr";
+import metricsRouter from "./routes-metrics";
 
 // Rate limiting middleware
 import { createRateLimiter, rateLimiters, RATE_LIMIT_CONFIGS, authLimiter, aiLimiter, webhookLimiter, importLimiter } from "./middleware/rateLimit";
@@ -318,6 +319,7 @@ export async function registerRoutes(
   app.use('/api/price-optimizer', isAuthenticated, getOrCreateOrg, priceOptimizerRouter);
   app.use('/api/portfolio-health', isAuthenticated, getOrCreateOrg, portfolioHealthRouter);
   app.use('/api/privacy', isAuthenticated, gdprRouter);
+  app.use('/api/metrics', isAuthenticated, metricsRouter);
 
   // ============================================
   // DOMAIN ROUTE MODULES
