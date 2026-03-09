@@ -42,6 +42,7 @@ import {
   MapPin,
   Package,
   CreditCard,
+  Phone,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import {
@@ -137,6 +138,7 @@ const NAV_MODULES: NavModule[] = [
       { label: "Campaigns", icon: Mail, href: "/campaigns", description: "Email, SMS, and direct mail campaigns" },
       { label: "Sequences", icon: Zap, href: "/sequences", description: "Automated follow-up sequences" },
       { label: "A/B Tests", icon: BarChart2, href: "/ab-tests", description: "Campaign split tests" },
+      { label: "Voice Analytics", icon: Phone, href: "/voice-analytics", description: "Call recording analysis and insights" },
     ],
   },
   {
@@ -161,6 +163,7 @@ const NAV_MODULES: NavModule[] = [
       { label: "Deal Pipeline", icon: GitBranch, href: "/deals", description: "Visualize your deal flow" },
       { label: "Marketplace", icon: Store, href: "/marketplace", description: "Buy and sell deals" },
       { label: "Listings", icon: FileText, href: "/listings", description: "Properties for sale" },
+      { label: "Mkt Analytics", icon: BarChart2, href: "/marketplace-analytics", description: "Marketplace performance metrics" },
     ],
   },
   {
@@ -187,6 +190,7 @@ const NAV_MODULES: NavModule[] = [
       { label: "Capital Mkts", icon: DollarSign, href: "/capital-markets", description: "Note securitization and lenders" },
       { label: "Portfolio", icon: PieChart, href: "/portfolio", description: "Investment portfolio view" },
       { label: "Optimizer", icon: BarChart2, href: "/portfolio-optimizer", description: "Monte Carlo simulation" },
+      { label: "Fee Dashboard", icon: CreditCard, href: "/fee-dashboard", description: "Transaction fee tracking" },
     ],
   },
   {
@@ -198,6 +202,7 @@ const NAV_MODULES: NavModule[] = [
     children: [
       { label: "Insights", icon: TrendingUp, href: "/analytics", description: "Analytics and market insights" },
       { label: "AVM™", icon: TrendingUp, href: "/avm", description: "AcreOS Valuation Model" },
+      { label: "Bulk AVM", icon: TrendingUp, href: "/avm-bulk", description: "Bulk valuations via CSV upload" },
       { label: "Markets", icon: Globe, href: "/market-intelligence", description: "Market analysis and price trends" },
       { label: "Watchlist", icon: Eye, href: "/market-watchlist", description: "Monitor counties for market alerts" },
       { label: "Acq. Radar", icon: Target, href: "/radar", description: "AI-scored deal opportunities" },
@@ -225,6 +230,7 @@ const NAV_MODULES: NavModule[] = [
     children: [
       { label: "Settings", icon: Settings, href: "/settings", description: "Account and preferences" },
       { label: "Tools", icon: Calculator, href: "/tools", description: "Calculators and utilities" },
+      { label: "VA Dashboard", icon: Users, href: "/va-dashboard", description: "Virtual assistant management" },
       { label: "Data Export", icon: Package, href: "/data-export", description: "Export your data as CSV or JSON" },
       { label: "Help & Support", icon: HelpCircle, href: "/help", description: "Help topics and support" },
     ],

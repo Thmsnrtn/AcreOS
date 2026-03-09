@@ -124,6 +124,13 @@ import ClosingCostsPage from "@/pages/closing-costs";
 import BookkeepingPage from "@/pages/bookkeeping";
 import DoddFrankCheckerPage from "@/pages/dodd-frank-checker";
 import StateDocumentsPage from "@/pages/state-documents";
+import AvmBulkPage from "@/pages/avm-bulk";
+import ResellerDashboardPage from "@/pages/reseller-dashboard";
+import DataMoatDashboardPage from "@/pages/data-moat-dashboard";
+import FeeDashboardPage from "@/pages/fee-dashboard";
+import MarketplaceAnalyticsPage from "@/pages/marketplace-analytics";
+import VoiceAnalyticsPage from "@/pages/voice-analytics";
+import VaDashboardPage from "@/pages/va-dashboard";
 import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
 import { ConversationTray } from "@/components/conversation-tray";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -516,6 +523,29 @@ function Router() {
       </Route>
       <Route path="/state-documents">
         {() => <ProtectedRoute component={StateDocumentsPage} />}
+      </Route>
+
+      {/* Additional Feature Pages */}
+      <Route path="/avm-bulk">
+        {() => <ProtectedRoute component={AvmBulkPage} />}
+      </Route>
+      <Route path="/reseller">
+        {() => <FounderProtectedRoute component={ResellerDashboardPage} />}
+      </Route>
+      <Route path="/data-moat">
+        {() => <FounderProtectedRoute component={DataMoatDashboardPage} />}
+      </Route>
+      <Route path="/fee-dashboard">
+        {() => <FounderProtectedRoute component={FeeDashboardPage} />}
+      </Route>
+      <Route path="/marketplace-analytics">
+        {() => <ProtectedRoute component={MarketplaceAnalyticsPage} />}
+      </Route>
+      <Route path="/voice-analytics">
+        {() => <ProtectedRoute component={VoiceAnalyticsPage} />}
+      </Route>
+      <Route path="/va-dashboard">
+        {() => <ProtectedRoute component={VaDashboardPage} />}
       </Route>
 
       <Route component={NotFound} />
