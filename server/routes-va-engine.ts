@@ -1777,10 +1777,12 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
         updatedAt: new Date().toISOString(),
       };
 
-      await storage.updateOrganizationSettings(org.id, {
-        ...(orgRecord as any)?.settings,
-        va_tasks: tasks,
-      });
+      await storage.updateOrganization(org.id, {
+        settings: {
+          ...(orgRecord as any)?.settings,
+          va_tasks: tasks,
+        },
+      } as any);
 
       res.json({ success: true, task: tasks[taskIndex] });
     } catch (error: any) {
@@ -1815,10 +1817,12 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const escalations: any[] = (orgRecord as any)?.settings?.va_escalations || [];
       escalations.push(escalation);
 
-      await storage.updateOrganizationSettings(org.id, {
-        ...(orgRecord as any)?.settings,
-        va_escalations: escalations,
-      });
+      await storage.updateOrganization(org.id, {
+        settings: {
+          ...(orgRecord as any)?.settings,
+          va_escalations: escalations,
+        },
+      } as any);
 
       res.status(201).json({ success: true, escalation });
     } catch (error: any) {
@@ -1904,10 +1908,12 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
       const workflows: any[] = (orgRecord as any)?.settings?.va_workflows || [];
       workflows.push(workflow);
 
-      await storage.updateOrganizationSettings(org.id, {
-        ...(orgRecord as any)?.settings,
-        va_workflows: workflows,
-      });
+      await storage.updateOrganization(org.id, {
+        settings: {
+          ...(orgRecord as any)?.settings,
+          va_workflows: workflows,
+        },
+      } as any);
 
       res.status(201).json({ success: true, workflow });
     } catch (error: any) {
