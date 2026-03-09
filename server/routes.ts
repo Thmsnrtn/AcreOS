@@ -57,6 +57,7 @@ import buyerNetworkRouter from "./routes-buyer-network";
 import taxOptimizationRouter from "./routes-tax-optimization";
 import dealRoomsRouter from "./routes-deal-rooms";
 import dataApiRouter from "./routes-data-api";
+import apiDocsRouter from "./routes-api-docs";
 import portfolioHealthRouter from "./routes-portfolio-health";
 import gdprRouter from "./routes-gdpr";
 import metricsRouter from "./routes-metrics";
@@ -376,6 +377,7 @@ export async function registerRoutes(
   app.use('/api/tax-optimization', isAuthenticated, getOrCreateOrg, taxOptimizationRouter);
   app.use('/api/deal-rooms', isAuthenticated, getOrCreateOrg, dealRoomsRouter);
   app.use('/api/data-api', dataApiRouter); // API key auth handled internally
+  app.use('/api/docs', apiDocsRouter); // Swagger UI — no auth required
 
   // ============================================
   // DOMAIN ROUTE MODULES
