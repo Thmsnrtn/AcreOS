@@ -9,9 +9,10 @@ interface StatCardProps {
   trend?: string;
   className?: string;
   color?: "default" | "terracotta" | "sage" | "sand" | "emerald" | "blue" | "purple";
+  "data-testid"?: string;
 }
 
-export function StatCard({ title, value, icon: Icon, trend, className, color = "default" }: StatCardProps) {
+export function StatCard({ title, value, icon: Icon, trend, className, color = "default", "data-testid": testId }: StatCardProps) {
   const colorStyles = {
     default: "",
     terracotta: "bg-primary/5 dark:bg-primary/10 border-primary/20",
@@ -33,19 +34,24 @@ export function StatCard({ title, value, icon: Icon, trend, className, color = "
   };
 
   return (
-    <Card className={cn("floating-window border card-hover", colorStyles[color], className)}>
+    <Card
+      className={cn("floating-window border card-hover", colorStyles[color], className)}
+      data-testid={testId}
+      role="region"
+      aria-label={`${title}: ${value}`}
+    >
       <CardContent className="p-5">
         <div className="flex items-center justify-between gap-4">
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium text-muted-foreground mb-1">{title}</p>
-            <h3 className="text-2xl font-bold tracking-tight text-foreground">{value}</h3>
+            <p className="text-2xl font-bold tracking-tight text-foreground">{value}</p>
             {trend && (
               <p className="text-xs font-medium text-accent mt-2">
                 {trend}
               </p>
             )}
           </div>
-          <div className={cn("p-3 rounded-xl shrink-0", iconStyles[color])}>
+          <div className={cn("p-3 rounded-xl shrink-0", iconStyles[color])} aria-hidden="true">
             <Icon className="w-5 h-5" />
           </div>
         </div>
