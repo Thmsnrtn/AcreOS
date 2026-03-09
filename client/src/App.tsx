@@ -94,6 +94,10 @@ import InvestorDirectoryPage from "@/pages/investor-directory";
 import RegulatoryIntelPage from "@/pages/regulatory-intel";
 import DataExportPage from "@/pages/data-export";
 import MarketWatchlistPage from "@/pages/market-watchlist";
+import PriceOptimizerPage from "@/pages/price-optimizer";
+import PortfolioHealthPage from "@/pages/portfolio-health";
+import SellerIntentPage from "@/pages/seller-intent";
+import DealPatternsPage from "@/pages/deal-patterns";
 import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
 import { ConversationTray } from "@/components/conversation-tray";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -394,6 +398,20 @@ function Router() {
       </Route>
       <Route path="/market-watchlist">
         {() => <ProtectedRoute component={MarketWatchlistPage} />}
+      </Route>
+
+      {/* Wave 9: New service UI pages */}
+      <Route path="/price-optimizer">
+        {() => <ProtectedRoute component={PriceOptimizerPage} />}
+      </Route>
+      <Route path="/portfolio-health">
+        {() => <ProtectedRoute component={PortfolioHealthPage} />}
+      </Route>
+      <Route path="/seller-intent">
+        {() => <ProtectedRoute component={SellerIntentPage} />}
+      </Route>
+      <Route path="/deal-patterns">
+        {() => <ProtectedRoute component={DealPatternsPage} />}
       </Route>
 
       <Route component={NotFound} />
