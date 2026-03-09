@@ -32,6 +32,10 @@ import whiteLabelRouter from "./routes-white-label";
 import realtimeRouter from "./routes-realtime";
 import atlasInsightsRouter from "./routes-atlas-insights";
 import voiceRouter from "./routes-voice";
+import betaRouter from "./routes-beta";
+import regulatoryRouter from "./routes-regulatory";
+import notificationsRouter from "./routes-notifications";
+import marketWatchlistRouter from "./routes-market-watchlist";
 
 // Rate limiting middleware
 import { createRateLimiter, rateLimiters, RATE_LIMIT_CONFIGS, authLimiter, aiLimiter, webhookLimiter, importLimiter } from "./middleware/rateLimit";
@@ -274,6 +278,18 @@ export async function registerRoutes(
   // Voice pipeline: webhook (no auth) + authenticated API routes
   app.use('/', voiceRouter); // handles POST /webhook/twilio/recording-complete
   app.use('/api/voice', isAuthenticated, getOrCreateOrg, voiceRouter);
+
+  // Beta program: /api/beta/waitlist is public, /api/beta/admin/* requires founder auth
+  app.use('/api/beta', betaRouter);
+
+  // Regulatory intelligence: state profiles, alerts, checklists, risk assessment
+  app.use('/api/regulatory', regulatoryRouter);
+
+  // Notification preferences
+  app.use('/api/notifications', isAuthenticated, notificationsRouter);
+
+  // Market watchlist and alerts
+  app.use('/api/market/watchlist', isAuthenticated, getOrCreateOrg, marketWatchlistRouter);
 
   // ============================================
   // DOMAIN ROUTE MODULES

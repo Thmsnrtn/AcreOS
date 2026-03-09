@@ -199,6 +199,7 @@ const NAV_MODULES: NavModule[] = [
       { label: "Insights", icon: TrendingUp, href: "/analytics", description: "Analytics and market insights" },
       { label: "AVM™", icon: TrendingUp, href: "/avm", description: "AcreOS Valuation Model" },
       { label: "Markets", icon: Globe, href: "/market-intelligence", description: "Market analysis and price trends" },
+      { label: "Watchlist", icon: Eye, href: "/market-watchlist", description: "Monitor counties for market alerts" },
       { label: "Acq. Radar", icon: Target, href: "/radar", description: "AI-scored deal opportunities" },
       { label: "Land Credit", icon: Shield, href: "/land-credit", description: "Proprietary 300–850 land scoring" },
       { label: "Deal Hunter", icon: Search, href: "/deal-hunter", description: "Automated deal sourcing" },
@@ -206,6 +207,7 @@ const NAV_MODULES: NavModule[] = [
       { label: "Negotiation", icon: Brain, href: "/negotiation", description: "AI negotiation copilot" },
       { label: "Tax Research", icon: Gavel, href: "/tax-researcher", description: "Tax lien auctions and delinquent properties" },
       { label: "Compliance", icon: ShieldCheck, href: "/compliance", description: "Regulatory monitoring" },
+      { label: "Regulatory", icon: ShieldCheck, href: "/regulatory-intel", description: "State regulatory profiles and alerts" },
       { label: "Doc Intel", icon: FileSearch, href: "/document-intelligence", description: "AI contract parsing" },
       { label: "AI Assistant", icon: Bot, href: "/command-center", description: "AI assistants and automation" },
       { label: "Academy", icon: GraduationCap, href: "/academy", description: "Land investment education" },
@@ -220,6 +222,7 @@ const NAV_MODULES: NavModule[] = [
     children: [
       { label: "Settings", icon: Settings, href: "/settings", description: "Account and preferences" },
       { label: "Tools", icon: Calculator, href: "/tools", description: "Calculators and utilities" },
+      { label: "Data Export", icon: Package, href: "/data-export", description: "Export your data as CSV or JSON" },
       { label: "Help & Support", icon: HelpCircle, href: "/help", description: "Help topics and support" },
     ],
   },

@@ -528,4 +528,76 @@ export function registerAnalyticsRoutes(app: Express): void {
     }
   });
 
+  // ============================================
+  // T91 — COHORT ANALYSIS
+  // Segment leads by source, state, campaign, import month/quarter
+  // and track them through the conversion funnel over time.
+  // ============================================
+
+  api.get("/api/analytics/cohorts", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const segmentBy = ((req.query.segmentBy as string) || "source") as any;
+      const from = req.query.from ? new Date(req.query.from as string) : undefined;
+      const to = req.query.to ? new Date(req.query.to as string) : undefined;
+      const { buildCohortReport } = await import("./services/cohortAnalysis");
+      const report = await buildCohortReport(org.id, segmentBy, from, to);
+      res.json(report);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // T92 — ATTRIBUTION ANALYTICS
+  // Which campaigns, channels, and touch numbers convert leads?
+  // Provides ROI scoring per campaign and channel.
+  // ============================================
+
+  api.get("/api/analytics/attribution", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const from = req.query.from ? new Date(req.query.from as string) : new Date(Date.now() - 90 * 86400000);
+      const to = req.query.to ? new Date(req.query.to as string) : new Date();
+      const { getAttributionReport } = await import("./services/attributionService");
+      const report = await getAttributionReport(org.id, from, to);
+      res.json(report);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // T93 — OFFER BATCH ROUTES
+  // Create and manage automated offer batches.
+  // ============================================
+
+  api.post("/api/offers/batch", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = (req as any).user;
+      const { createOfferBatch } = await import("./services/offerBatchService");
+      const batch = await createOfferBatch({
+        ...req.body,
+        orgId: org.id,
+        userId: user.id,
+      });
+      res.json(batch);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  api.get("/api/offers/batch/:id/status", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { getBatchStatus } = await import("./services/offerBatchService");
+      const batch = await getBatchStatus(parseInt(req.params.id, 10), org.id);
+      if (!batch) return res.status(404).json({ message: "Batch not found" });
+      res.json(batch);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
 }
