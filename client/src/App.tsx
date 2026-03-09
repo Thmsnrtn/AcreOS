@@ -91,6 +91,9 @@ import ProactiveMonitorPage from "@/pages/proactive-monitor";
 import SyndicationPage from "@/pages/syndication";
 import ModelTrainingPage from "@/pages/model-training";
 import InvestorDirectoryPage from "@/pages/investor-directory";
+import RegulatoryIntelPage from "@/pages/regulatory-intel";
+import DataExportPage from "@/pages/data-export";
+import MarketWatchlistPage from "@/pages/market-watchlist";
 import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
 import { ConversationTray } from "@/components/conversation-tray";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -380,6 +383,17 @@ function Router() {
       </Route>
       <Route path="/investor-network">
         {() => <ProtectedRoute component={InvestorDirectoryPage} />}
+      </Route>
+
+      {/* Wave 4-6: Beta, Regulatory Intel, Analytics Enhancements */}
+      <Route path="/regulatory-intel">
+        {() => <ProtectedRoute component={RegulatoryIntelPage} />}
+      </Route>
+      <Route path="/data-export">
+        {() => <ProtectedRoute component={DataExportPage} />}
+      </Route>
+      <Route path="/market-watchlist">
+        {() => <ProtectedRoute component={MarketWatchlistPage} />}
       </Route>
 
       <Route component={NotFound} />
