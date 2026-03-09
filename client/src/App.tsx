@@ -77,6 +77,9 @@ import SafetyGatesPage from "@/pages/safety-gates";
 import DecisionQueuePage from "@/pages/decision-queue";
 import OpsDashboardPage from "@/pages/ops-dashboard";
 import BetaIntakePage from "@/pages/beta-intake";
+import QueueMonitorPage from "@/pages/queue-monitor";
+import IntegrationsHealthPage from "@/pages/integrations-health";
+import AuditLogPage from "@/pages/audit-log";
 import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
 import { ConversationTray } from "@/components/conversation-tray";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -325,6 +328,15 @@ function Router() {
       </Route>
       <Route path="/admin/beta-intake">
         {() => <FounderProtectedRoute component={BetaIntakePage} />}
+      </Route>
+      <Route path="/admin/queues">
+        {() => <FounderProtectedRoute component={QueueMonitorPage} />}
+      </Route>
+      <Route path="/admin/integrations-health">
+        {() => <FounderProtectedRoute component={IntegrationsHealthPage} />}
+      </Route>
+      <Route path="/audit-log">
+        {() => <ProtectedRoute component={AuditLogPage} />}
       </Route>
 
       <Route component={NotFound} />

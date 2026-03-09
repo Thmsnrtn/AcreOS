@@ -1130,4 +1130,50 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
     }
   });
 
+  // ─── T23 + T49: Generate Offer Letter PDF + (optionally) send for e-signature ─
+  api.post("/api/deals/:id/offer-letter-pdf", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const deal = await storage.getDeal(org.id, Number(req.params.id));
+      if (!deal) return res.status(404).json({ message: "Deal not found" });
+
+      const { generateOfferLetterPdf } = await import("./services/offerLetterPdf");
+      const { sendForEsign, sellerEmail, sellerName, ...offerData } = req.body;
+
+      const buffer = await generateOfferLetterPdf({
+        orgName: org.name || "Buyer",
+        orgEmail: org.email,
+        orgPhone: org.phone,
+        sellerName: sellerName || "Property Owner",
+        apn: deal.apn || "Unknown",
+        propertyAddress: deal.propertyAddress,
+        purchasePrice: Number(deal.offerAmount || deal.purchasePrice || 0),
+        earnestMoneyDeposit: offerData.earnestMoneyDeposit,
+        closingDays: offerData.closingDays ?? 30,
+        offerExpirationDays: offerData.offerExpirationDays ?? 10,
+        ...offerData,
+      });
+
+      if (sendForEsign && sellerEmail) {
+        // Save as a generated document first, then send for e-sign
+        const { eSigningService } = await import("./services/eSigningService");
+        const result = await eSigningService.sendOfferLetterForSignature({
+          organizationId: org.id,
+          dealId: deal.id,
+          pdfBuffer: buffer,
+          title: `Purchase Offer — ${deal.propertyAddress || deal.apn}`,
+          sellerName: sellerName || "Seller",
+          sellerEmail,
+        });
+        return res.json({ ...result, pdfGenerated: true });
+      }
+
+      res.set("Content-Type", "application/pdf");
+      res.set("Content-Disposition", `attachment; filename="offer-${deal.id}.pdf"`);
+      res.send(buffer);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
 }

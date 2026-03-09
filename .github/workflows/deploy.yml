@@ -1,0 +1,92 @@
+name: Deploy to Fly.io
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false # Never cancel a production deploy mid-flight
+
+jobs:
+  test:
+    name: TypeScript + Tests (pre-deploy gate)
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://acreos:acreos@localhost:5432/acreos_test
+      SESSION_SECRET: ci-session-secret-placeholder-32-chars-long
+      APP_URL: http://localhost:5000
+      NODE_ENV: test
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: acreos
+          POSTGRES_PASSWORD: acreos
+          POSTGRES_DB: acreos_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript check
+        run: npx tsc --noEmit
+
+      - name: Run tests
+        run: npx vitest run
+        env:
+          CI: true
+
+  deploy:
+    name: Deploy to Fly.io
+    needs: test
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Fly CLI
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Check for pending migrations
+        run: |
+          # If new migration files exist, they will be applied by the release command
+          MIGRATION_COUNT=$(find drizzle -name "*.sql" -newer fly.toml 2>/dev/null | wc -l)
+          echo "New migrations since last deploy: $MIGRATION_COUNT"
+          echo "MIGRATION_COUNT=$MIGRATION_COUNT" >> $GITHUB_ENV
+
+      - name: Deploy to Fly.io
+        run: flyctl deploy --remote-only --wait-timeout 300
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Health check post-deploy
+        run: |
+          sleep 10
+          curl --fail --retry 5 --retry-delay 5 \
+            "https://$(flyctl info --json | jq -r '.Hostname')/api/health" \
+            || (echo "Health check failed after deploy" && exit 1)
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        continue-on-error: true
+
+      - name: Notify on failure
+        if: failure()
+        run: echo "Deploy failed — check Fly.io dashboard for rollback options"

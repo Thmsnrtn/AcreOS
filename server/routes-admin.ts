@@ -2315,5 +2315,98 @@ export function registerAdminRoutes(app: Express): void {
   });
 
   // ============================================
+  // T3 — BullMQ Queue Monitoring API
+  // Returns live queue stats from BullMQ (when Redis is configured)
+  // or returns empty/disabled status when running in-memory fallback.
+  // ============================================
+
+  api.get("/api/admin/queues", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const redisUrl = process.env.REDIS_URL;
+      if (!redisUrl) {
+        return res.json({
+          enabled: false,
+          message: "Redis not configured — running in-memory job queue. Set REDIS_URL to enable BullMQ.",
+          queues: [],
+        });
+      }
+
+      const { Queue } = await import("bullmq");
+      const IORedis = (await import("ioredis")).default;
+
+      const connection = new IORedis(redisUrl, { maxRetriesPerRequest: 1, enableReadyCheck: false });
+
+      const queueNames = ["acreos-jobs"];
+      const queueStats = await Promise.all(
+        queueNames.map(async (name) => {
+          const q = new Queue(name, { connection });
+          const counts = await q.getJobCounts(
+            "waiting", "active", "completed", "failed", "delayed", "paused"
+          );
+          const [waiting, active, completed, failed, delayed] = await Promise.all([
+            q.getJobs(["waiting"], 0, 9),
+            q.getJobs(["active"], 0, 9),
+            q.getJobs(["failed"], 0, 9),
+            q.getJobs(["delayed"], 0, 9),
+            Promise.resolve([]),
+          ]);
+          await q.close();
+          return {
+            name,
+            counts,
+            recentWaiting: waiting.map(j => ({ id: j.id, name: j.name, data: j.data, timestamp: j.timestamp })),
+            recentActive: active.map(j => ({ id: j.id, name: j.name, data: j.data, processedOn: j.processedOn })),
+            recentFailed: failed.map(j => ({ id: j.id, name: j.name, failedReason: j.failedReason, finishedOn: j.finishedOn })),
+            recentDelayed: delayed.map(j => ({ id: j.id, name: j.name, delay: j.opts?.delay })),
+          };
+        })
+      );
+
+      await connection.quit();
+
+      res.json({ enabled: true, queues: queueStats, timestamp: new Date().toISOString() });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.delete("/api/admin/queues/:queueName/failed", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { queueName } = req.params;
+      const redisUrl = process.env.REDIS_URL;
+      if (!redisUrl) return res.status(400).json({ message: "Redis not configured" });
+
+      const { Queue } = await import("bullmq");
+      const IORedis = (await import("ioredis")).default;
+      const connection = new IORedis(redisUrl, { maxRetriesPerRequest: 1, enableReadyCheck: false });
+      const q = new Queue(queueName, { connection });
+      await q.clean(0, 0, "failed");
+      await q.close();
+      await connection.quit();
+      res.json({ message: "Failed jobs cleared" });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.post("/api/admin/queues/:queueName/retry-failed", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { queueName } = req.params;
+      const redisUrl = process.env.REDIS_URL;
+      if (!redisUrl) return res.status(400).json({ message: "Redis not configured" });
+
+      const { Queue } = await import("bullmq");
+      const IORedis = (await import("ioredis")).default;
+      const connection = new IORedis(redisUrl, { maxRetriesPerRequest: 1, enableReadyCheck: false });
+      const q = new Queue(queueName, { connection });
+      const failed = await q.getFailed();
+      await Promise.all(failed.map(j => j.retry()));
+      await q.close();
+      await connection.quit();
+      res.json({ retried: failed.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
 
 }

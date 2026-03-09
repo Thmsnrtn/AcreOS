@@ -144,6 +144,14 @@ export async function registerRoutes(
   await setupAuth(app);
   registerAuthRoutes(app);
 
+  // T11: Two-Factor Auth routes
+  const { register2FARoutes } = await import("./routes-2fa");
+  register2FARoutes(app);
+
+  // T12: OAuth/SSO routes (Google + Microsoft)
+  const { registerOAuthRoutes } = await import("./auth/oauth");
+  registerOAuthRoutes(app);
+
   // ============================================
   // HEALTH CHECK (Public endpoint - no rate limiting)
   // ============================================
@@ -170,6 +178,29 @@ export async function registerRoutes(
       return res.status(404).json({ message: "Unknown service" });
     }
     res.json(service);
+  });
+
+  // ============================================
+  // T4 — FULL-TEXT SEARCH
+  // Cross-entity search across leads, properties, deals.
+  // Uses PostgreSQL tsvector with ILIKE fallback.
+  // ============================================
+  app.get("/api/search", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const query = (req.query.q as string) || "";
+      const limit = Math.min(parseInt((req.query.limit as string) || "20", 10), 50);
+
+      if (!query || query.trim().length < 2) {
+        return res.json({ results: [], query });
+      }
+
+      const { fullTextSearch } = await import("./services/fullTextSearch");
+      const results = await fullTextSearch.search(org.id, query, limit);
+      res.json({ results, query, total: results.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
   // ============================================
@@ -291,6 +322,14 @@ export async function registerRoutes(
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
+  });
+
+  // ─── T7: API Versioning — /api/v1/ passthrough alias ─────────────────────
+  // Allows clients to pin to /api/v1/* without breaking existing /api/* routes.
+  // When a breaking v2 is needed, add a separate versioned router here.
+  app.use("/api/v1/*", (req, res) => {
+    const newPath = req.originalUrl.replace("/api/v1/", "/api/");
+    res.redirect(307, newPath);
   });
 
   return httpServer;
