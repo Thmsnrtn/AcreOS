@@ -84,6 +84,13 @@ import BetaIntakePage from "@/pages/beta-intake";
 import QueueMonitorPage from "@/pages/queue-monitor";
 import IntegrationsHealthPage from "@/pages/integrations-health";
 import AuditLogPage from "@/pages/audit-log";
+import GoalsPage from "@/pages/goals";
+import TaxOptimizerPage from "@/pages/tax-optimizer";
+import WebhooksPage from "@/pages/webhooks";
+import ProactiveMonitorPage from "@/pages/proactive-monitor";
+import SyndicationPage from "@/pages/syndication";
+import ModelTrainingPage from "@/pages/model-training";
+import InvestorDirectoryPage from "@/pages/investor-directory";
 import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
 import { ConversationTray } from "@/components/conversation-tray";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -350,6 +357,29 @@ function Router() {
       </Route>
       <Route path="/audit-log">
         {() => <ProtectedRoute component={AuditLogPage} />}
+      </Route>
+
+      {/* T76-T90 New Feature Pages */}
+      <Route path="/goals">
+        {() => <ProtectedRoute component={GoalsPage} />}
+      </Route>
+      <Route path="/tax-optimizer">
+        {() => <ProtectedRoute component={TaxOptimizerPage} />}
+      </Route>
+      <Route path="/webhooks">
+        {() => <ProtectedRoute component={WebhooksPage} />}
+      </Route>
+      <Route path="/admin/monitor">
+        {() => <ProtectedRoute component={ProactiveMonitorPage} />}
+      </Route>
+      <Route path="/syndication">
+        {() => <ProtectedRoute component={SyndicationPage} />}
+      </Route>
+      <Route path="/model-training">
+        {() => <ProtectedRoute component={ModelTrainingPage} />}
+      </Route>
+      <Route path="/investor-network">
+        {() => <ProtectedRoute component={InvestorDirectoryPage} />}
       </Route>
 
       <Route component={NotFound} />

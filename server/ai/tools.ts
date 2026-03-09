@@ -608,6 +608,104 @@ export const toolDefinitions = {
       },
       required: ["leadId", "messageType"]
     }
+  },
+
+  // ─── Negotiation Tools ───────────────────────────────────────────────────
+  get_negotiation_threads: {
+    name: "get_negotiation_threads",
+    description: "Get all active negotiation threads for the organization, including seller psychology, offers made, and current status.",
+    parameters: {
+      type: "object",
+      properties: {
+        leadId: { type: "number", description: "Filter by specific lead ID (optional)" },
+        status: { type: "string", enum: ["active", "paused", "closed_won", "closed_lost"], description: "Filter by thread status (optional)" }
+      }
+    }
+  },
+  suggest_counter_offer: {
+    name: "suggest_counter_offer",
+    description: "Analyze a negotiation thread and suggest the optimal counter-offer amount, timing, and messaging strategy based on seller psychology and market data.",
+    parameters: {
+      type: "object",
+      properties: {
+        threadId: { type: "number", description: "The negotiation thread ID to analyze" },
+        currentOfferAmount: { type: "number", description: "The seller's current asking price or last counter-offer" }
+      },
+      required: ["threadId"]
+    }
+  },
+  analyze_negotiation_psychology: {
+    name: "analyze_negotiation_psychology",
+    description: "Analyze a seller's communication patterns and sentiment to determine their motivation, urgency, and receptiveness to offers.",
+    parameters: {
+      type: "object",
+      properties: {
+        leadId: { type: "number", description: "The lead ID to analyze" },
+        recentMessages: { type: "string", description: "Recent messages from the seller to analyze (optional, uses stored messages if not provided)" }
+      },
+      required: ["leadId"]
+    }
+  },
+  create_negotiation_move: {
+    name: "create_negotiation_move",
+    description: "Record a negotiation move (offer, counter-offer, question, or closing attempt) in the negotiation thread and get AI guidance on the next step.",
+    parameters: {
+      type: "object",
+      properties: {
+        threadId: { type: "number", description: "The negotiation thread ID" },
+        moveType: { type: "string", enum: ["initial_offer", "counter_offer", "question", "information_share", "closing_attempt", "walkaway"], description: "Type of negotiation move" },
+        offerAmount: { type: "number", description: "Offer amount in dollars (for offer/counter-offer moves)" },
+        message: { type: "string", description: "Message or script for this negotiation move" }
+      },
+      required: ["threadId", "moveType"]
+    }
+  },
+
+  // ─── Goals & OKR Tools ───────────────────────────────────────────────────
+  get_goals: {
+    name: "get_goals",
+    description: "Get all organizational goals and their current progress. Returns goals with target values, current values, and completion percentages.",
+    parameters: {
+      type: "object",
+      properties: {
+        category: { type: "string", enum: ["revenue", "deals", "leads", "properties", "custom"], description: "Filter by goal category (optional)" }
+      }
+    }
+  },
+  create_goal: {
+    name: "create_goal",
+    description: "Create a new organizational goal with a target value, deadline, and category. Goals track KPIs like revenue targets, deal counts, or lead volumes.",
+    parameters: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Goal name (e.g., 'Close 10 deals this quarter')" },
+        category: { type: "string", enum: ["revenue", "deals", "leads", "properties", "custom"], description: "Goal category" },
+        targetValue: { type: "number", description: "Target value to reach" },
+        unit: { type: "string", description: "Unit of measurement (e.g., 'dollars', 'deals', 'leads')" },
+        deadline: { type: "string", description: "Deadline in ISO format (e.g., '2026-06-30')" }
+      },
+      required: ["name", "category", "targetValue"]
+    }
+  },
+
+  // ─── Tax Optimization Tools ──────────────────────────────────────────────
+  analyze_tax_position: {
+    name: "analyze_tax_position",
+    description: "Analyze the organization's current year tax position including capital gains, depreciation, 1031 exchange opportunities, and recommended tax strategies.",
+    parameters: {
+      type: "object",
+      properties: {
+        taxYear: { type: "number", description: "Tax year to analyze (defaults to current year)" }
+      }
+    }
+  },
+  find_1031_opportunities: {
+    name: "find_1031_opportunities",
+    description: "Find properties in the portfolio that are candidates for 1031 exchange based on gain amounts, holding periods, and available replacement properties.",
+    parameters: {
+      type: "object",
+      properties: {}
+    }
   }
 };
 
@@ -1423,8 +1521,7 @@ export async function executeTool(
         if (!enrichmentData) {
           return {
             success: false,
-            error: "No enrichment data found for this property. Run research_property first to fetch data.",
-            hint: "Use research_property tool to trigger enrichment.",
+            error: "No enrichment data found for this property. Use research_property tool to trigger enrichment.",
           };
         }
 
@@ -1692,7 +1789,7 @@ export async function executeTool(
         const staleLeads = allLeads.filter(lead => {
           if (["closed", "dead"].includes(lead.status)) return false;
           if (!lead.lastContactedAt && !lead.createdAt) return true;
-          const lastContact = lead.lastContactedAt || lead.createdAt;
+          const lastContact = lead.lastContactedAt || lead.createdAt || new Date();
           return new Date(lastContact) < cutoffDate;
         });
 
@@ -1710,7 +1807,7 @@ export async function executeTool(
               lastContactedAt: l.lastContactedAt || null,
               createdAt: l.createdAt,
               daysSinceContact: Math.floor(
-                (Date.now() - new Date(l.lastContactedAt || l.createdAt).getTime()) / (1000 * 60 * 60 * 24)
+                (Date.now() - new Date(l.lastContactedAt || l.createdAt || new Date()).getTime()) / (1000 * 60 * 60 * 24)
               ),
             })).sort((a, b) => b.daysSinceContact - a.daysSinceContact),
             message: staleLeads.length > 0
@@ -1785,6 +1882,153 @@ export async function executeTool(
               : undefined,
           }
         };
+      }
+
+      // ── Negotiation Tools ─────────────────────────────────────────────────
+      case "get_negotiation_threads": {
+        const { db } = await import("../db");
+        const { negotiationThreads, leads } = await import("@shared/schema");
+        const { eq, and } = await import("drizzle-orm");
+        let query = db.select().from(negotiationThreads).where(eq(negotiationThreads.organizationId, org.id));
+        const threads = await query;
+        const filtered = args.leadId
+          ? threads.filter(t => t.leadId === args.leadId)
+          : args.status
+          ? threads.filter(t => t.status === args.status)
+          : threads;
+        return { success: true, data: { threads: filtered.slice(0, 20), count: filtered.length } };
+      }
+
+      case "suggest_counter_offer": {
+        const { db } = await import("../db");
+        const { negotiationThreads, negotiationMoves } = await import("@shared/schema");
+        const { eq, desc } = await import("drizzle-orm");
+        const [thread] = await db.select().from(negotiationThreads).where(eq(negotiationThreads.id, args.threadId));
+        if (!thread) return { success: false, error: "Negotiation thread not found" };
+        const moves = await db.select().from(negotiationMoves).where(eq(negotiationMoves.threadId, args.threadId));
+        const { selectProviderAndModel, TaskComplexity } = await import("../services/aiRouter");
+        const { client, model } = selectProviderAndModel(TaskComplexity.COMPLEX);
+        const completion = await client.chat.completions.create({
+          model,
+          messages: [
+            { role: "system", content: "You are an expert land acquisition negotiator. Analyze the negotiation context and provide specific counter-offer recommendations with reasoning." },
+            { role: "user", content: `Negotiation thread: ${JSON.stringify(thread)}\nMoves history: ${JSON.stringify(moves.slice(-5))}\nCurrent offer: ${args.currentOfferAmount || 'not specified'}\n\nProvide: (1) recommended counter-offer amount, (2) optimal timing, (3) key message points, (4) psychology assessment, (5) success probability.` }
+          ],
+          max_tokens: 600
+        });
+        return {
+          success: true,
+          data: {
+            threadId: args.threadId,
+            analysis: completion.choices[0].message.content,
+            movesCount: moves.length,
+            sellerSentiment: thread.overallSentiment
+          }
+        };
+      }
+
+      case "analyze_negotiation_psychology": {
+        const { db } = await import("../db");
+        const { negotiationThreads } = await import("@shared/schema");
+        const { eq } = await import("drizzle-orm");
+        const lead = await storage.getLead(org.id, args.leadId);
+        if (!lead) return { success: false, error: "Lead not found" };
+        const threads = await db.select().from(negotiationThreads).where(eq(negotiationThreads.leadId, args.leadId));
+        const { selectProviderAndModel, TaskComplexity } = await import("../services/aiRouter");
+        const { client, model } = selectProviderAndModel(TaskComplexity.COMPLEX);
+        const completion = await client.chat.completions.create({
+          model,
+          messages: [
+            { role: "system", content: "You are a behavioral psychologist specializing in real estate negotiations. Analyze seller psychology from available data." },
+            { role: "user", content: `Lead info: ${JSON.stringify({ name: lead.firstName + ' ' + lead.lastName, status: lead.status, notes: lead.notes, source: lead.source })}\nNegotiation history: ${JSON.stringify(threads)}\nMessages: ${args.recentMessages || 'N/A'}\n\nAnalyze: (1) seller motivation level (1-10), (2) urgency signals, (3) price sensitivity, (4) objection patterns, (5) recommended approach, (6) red flags or opportunities.` }
+          ],
+          max_tokens: 500
+        });
+        return {
+          success: true,
+          data: {
+            leadId: args.leadId,
+            leadName: `${lead.firstName || ''} ${lead.lastName || ''}`.trim(),
+            psychologyAnalysis: completion.choices[0].message.content,
+            activeThreads: threads.length
+          }
+        };
+      }
+
+      case "create_negotiation_move": {
+        const { db } = await import("../db");
+        const { negotiationMoves, negotiationThreads } = await import("@shared/schema");
+        const { eq } = await import("drizzle-orm");
+        const [thread] = await db.select().from(negotiationThreads).where(eq(negotiationThreads.id, args.threadId));
+        if (!thread) return { success: false, error: "Negotiation thread not found" };
+        const existingMoves = await db.select().from(negotiationMoves).where(eq(negotiationMoves.threadId, args.threadId));
+        const [move] = await db.insert(negotiationMoves).values({
+          threadId: args.threadId,
+          moveNumber: existingMoves.length + 1,
+          moveType: args.moveType,
+          party: "buyer",
+          offerAmount: args.offerAmount?.toString(),
+          terms: args.message,
+          generatedByAI: false,
+        }).returning();
+        const { selectProviderAndModel, TaskComplexity } = await import("../services/aiRouter");
+        const { client, model } = selectProviderAndModel(TaskComplexity.SIMPLE);
+        const guidance = await client.chat.completions.create({
+          model,
+          messages: [
+            { role: "system", content: "You are a land acquisition coach. Give brief, actionable guidance on the next negotiation step." },
+            { role: "user", content: `Just made a ${args.moveType} move${args.offerAmount ? ` at $${args.offerAmount}` : ''}. Message: "${args.message || 'none'}". Seller context: ${thread.overallSentiment || 'unknown sentiment'}. What's the ideal next step? (2-3 sentences)` }
+          ],
+          max_tokens: 150
+        });
+        return {
+          success: true,
+          data: {
+            moveId: move.id,
+            moveType: args.moveType,
+            nextStepGuidance: guidance.choices[0].message.content,
+            message: `${args.moveType.replace(/_/g, ' ')} recorded in negotiation thread`
+          }
+        };
+      }
+
+      // ── Goals & OKR Tools ─────────────────────────────────────────────────
+      case "get_goals": {
+        const { db } = await import("../db");
+        const { goals } = await import("@shared/schema");
+        const { eq } = await import("drizzle-orm");
+        const allGoals = await db.select().from(goals).where(eq(goals.organizationId, org.id));
+        const filtered = args.category ? allGoals.filter(g => g.goalType === args.category) : allGoals;
+        return { success: true, data: { goals: filtered, count: filtered.length } };
+      }
+
+      case "create_goal": {
+        const { db } = await import("../db");
+        const { goals } = await import("@shared/schema");
+        const now = new Date();
+        const yearEnd = new Date(now.getFullYear(), 11, 31);
+        const [goal] = await db.insert(goals).values({
+          organizationId: org.id,
+          label: args.name,
+          goalType: args.category || "custom",
+          targetValue: args.targetValue?.toString() || "0",
+          periodStart: now,
+          periodEnd: args.deadline ? new Date(args.deadline) : yearEnd,
+        }).returning();
+        return { success: true, data: { goal, message: `Goal "${args.name}" created with target of ${args.targetValue} ${args.unit || 'units'}` } };
+      }
+
+      // ── Tax Optimization Tools ────────────────────────────────────────────
+      case "analyze_tax_position": {
+        const { taxOptimizerService } = await import("../services/taxOptimizer");
+        const analysis = await taxOptimizerService.analyzeYearEndPosition(org.id, args.taxYear || new Date().getFullYear());
+        return { success: true, data: analysis };
+      }
+
+      case "find_1031_opportunities": {
+        const { taxOptimizerService } = await import("../services/taxOptimizer");
+        const position = await taxOptimizerService.analyzeYearEndPosition(org.id, new Date().getFullYear());
+        return { success: true, data: { opportunities: position.exchange1031Candidates, count: position.exchange1031Candidates.length } };
       }
 
       default:

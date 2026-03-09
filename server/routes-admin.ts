@@ -2438,4 +2438,54 @@ export function registerAdminRoutes(app: Express): void {
     }
   });
 
+  // -----------------------------------------------------------------------
+  // Proactive Monitor API (T83)
+  // -----------------------------------------------------------------------
+
+  // GET /api/monitor/alerts — get all active alerts for current org
+  api.get("/api/monitor/alerts", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { proactiveMonitor } = await import("./services/proactiveMonitor");
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+      const alerts = await proactiveMonitor.getAllAlerts(org.id, limit);
+      res.json({ alerts, count: alerts.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/monitor/run — run all checks for current org
+  api.post("/api/monitor/run", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { proactiveMonitor } = await import("./services/proactiveMonitor");
+      const activityResult = await proactiveMonitor.checkActivityDrop(org.id);
+      const integrityIssues = await proactiveMonitor.checkDataIntegrity(org.id);
+      const anomalyResult = await proactiveMonitor.runAnomalyDetection(org.id);
+      res.json({
+        success: true,
+        activityAnomaly: activityResult,
+        integrityIssues,
+        anomalies: anomalyResult,
+        checkedAt: new Date().toISOString(),
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/monitor/alerts/:id/resolve — resolve an alert
+  api.post("/api/monitor/alerts/:id/resolve", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const alertId = parseInt(req.params.id);
+      const { details } = req.body;
+      const { proactiveMonitor } = await import("./services/proactiveMonitor");
+      const resolved = await proactiveMonitor.autoResolveAlert(alertId, details || "Manually resolved", "user");
+      res.json({ success: resolved });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
 }

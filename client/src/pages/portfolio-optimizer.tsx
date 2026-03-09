@@ -267,6 +267,7 @@ export default function PortfolioOptimizerPage() {
           <TabsList>
             <TabsTrigger value="monte-carlo">Monte Carlo</TabsTrigger>
             <TabsTrigger value="diversification">Diversification</TabsTrigger>
+            <TabsTrigger value="stress-test">Stress Test</TabsTrigger>
             <TabsTrigger value="recommendations">AI Recommendations ({recommendations.length})</TabsTrigger>
           </TabsList>
 
@@ -580,8 +581,208 @@ export default function PortfolioOptimizerPage() {
               );
             })}
           </TabsContent>
+
+          {/* ── STRESS TEST ── */}
+          <TabsContent value="stress-test" className="space-y-6">
+            <StressTestTab />
+          </TabsContent>
         </Tabs>
       )}
+    </div>
+  );
+}
+
+// ─── Stress Test Component ────────────────────────────────────────────────────
+
+const STRESS_SCENARIOS = [
+  {
+    id: "recession_mild",
+    label: "Mild Recession",
+    description: "10-15% land price decline, credit tightening",
+    priceImpact: -0.12,
+    liquidityImpact: -0.25,
+    color: "#f59e0b",
+  },
+  {
+    id: "recession_severe",
+    label: "Severe Recession",
+    description: "25-35% price decline, 2008-level market freeze",
+    priceImpact: -0.30,
+    liquidityImpact: -0.60,
+    color: "#ef4444",
+  },
+  {
+    id: "rate_shock",
+    label: "Interest Rate Shock",
+    description: "Fed rates jump 300bps, financing dries up",
+    priceImpact: -0.15,
+    liquidityImpact: -0.40,
+    color: "#8b5cf6",
+  },
+  {
+    id: "drought",
+    label: "Agricultural Drought",
+    description: "Severe drought reducing agricultural land values",
+    priceImpact: -0.20,
+    liquidityImpact: -0.30,
+    color: "#d97706",
+  },
+  {
+    id: "inflation_surge",
+    label: "Inflation Surge",
+    description: "High inflation — land as hard asset may appreciate",
+    priceImpact: 0.08,
+    liquidityImpact: -0.15,
+    color: "#10b981",
+  },
+];
+
+function StressTestTab() {
+  const [selectedScenario, setSelectedScenario] = useState(STRESS_SCENARIOS[0]);
+  const { data: portfolioData } = useQuery<{ simulation: any }>({
+    queryKey: ["/api/portfolio-optimizer/simulate"],
+    queryFn: () => fetch("/api/portfolio-optimizer/simulate").then(r => r.json()).catch(() => ({ simulation: null })),
+  });
+
+  const totalValue = portfolioData?.simulation?.totalPortfolioValue || 500000;
+  const stressedValue = totalValue * (1 + selectedScenario.priceImpact);
+  const loss = totalValue - stressedValue;
+  const lossPercent = Math.abs(selectedScenario.priceImpact * 100).toFixed(0);
+
+  const barData = STRESS_SCENARIOS.map(s => ({
+    name: s.label.split(" ").slice(0, 2).join(" "),
+    impact: Math.round(s.priceImpact * 100),
+    color: s.color,
+  }));
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Scenario selector */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Select Stress Scenario</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {STRESS_SCENARIOS.map(s => (
+                <button
+                  key={s.id}
+                  onClick={() => setSelectedScenario(s)}
+                  className={`w-full text-left p-3 rounded-lg border transition-colors ${
+                    selectedScenario.id === s.id ? "border-primary bg-primary/5" : "border-border hover:bg-muted/40"
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: s.color }} />
+                    <span className="text-sm font-medium">{s.label}</span>
+                    <span className={`text-sm ml-auto font-semibold ${s.priceImpact < 0 ? "text-red-600" : "text-emerald-600"}`}>
+                      {s.priceImpact > 0 ? "+" : ""}{(s.priceImpact * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5 ml-5">{s.description}</p>
+                </button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Stress test results */}
+        <div className="space-y-3">
+          <Card className={selectedScenario.priceImpact < 0 ? "border-red-200 dark:border-red-800" : "border-emerald-200 dark:border-emerald-800"}>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">{selectedScenario.label} Impact</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-xs text-muted-foreground">Current Value</p>
+                  <p className="text-xl font-bold">{formatDollar(totalValue)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Stressed Value</p>
+                  <p className={`text-xl font-bold ${selectedScenario.priceImpact < 0 ? "text-red-600" : "text-emerald-600"}`}>
+                    {formatDollar(stressedValue)}
+                  </p>
+                </div>
+              </div>
+              <div className="p-3 bg-muted/40 rounded-lg">
+                <p className="text-sm font-medium">
+                  {selectedScenario.priceImpact < 0 ? "Portfolio Loss:" : "Portfolio Gain:"}
+                  <span className={`ml-2 ${selectedScenario.priceImpact < 0 ? "text-red-600" : "text-emerald-600"}`}>
+                    {selectedScenario.priceImpact < 0 ? "-" : "+"}{formatDollar(Math.abs(loss))} ({lossPercent}%)
+                  </span>
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">Liquidity Impact</p>
+                <Progress value={Math.max(0, 100 + selectedScenario.liquidityImpact * 100)} className="h-2" />
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Estimated {Math.abs(Math.round(selectedScenario.liquidityImpact * 100))}% reduction in market liquidity
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Mitigation Strategies</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-1.5">
+                {selectedScenario.priceImpact < -0.2 && (
+                  <li className="text-xs flex items-start gap-1.5">
+                    <Shield className="h-3 w-3 text-blue-500 flex-shrink-0 mt-0.5" />
+                    Build cash reserves (6-12 months of expenses)
+                  </li>
+                )}
+                <li className="text-xs flex items-start gap-1.5">
+                  <Shield className="h-3 w-3 text-blue-500 flex-shrink-0 mt-0.5" />
+                  Diversify across states to reduce geographic concentration
+                </li>
+                <li className="text-xs flex items-start gap-1.5">
+                  <Shield className="h-3 w-3 text-blue-500 flex-shrink-0 mt-0.5" />
+                  Prioritize seller-financed notes for stable cash flow
+                </li>
+                {selectedScenario.id === "rate_shock" && (
+                  <li className="text-xs flex items-start gap-1.5">
+                    <Shield className="h-3 w-3 text-blue-500 flex-shrink-0 mt-0.5" />
+                    Lock in fixed-rate financing before rate increases
+                  </li>
+                )}
+                {selectedScenario.id === "recession_severe" && (
+                  <li className="text-xs flex items-start gap-1.5">
+                    <Shield className="h-3 w-3 text-blue-500 flex-shrink-0 mt-0.5" />
+                    Identify distressed sellers — opportunistic buying window
+                  </li>
+                )}
+              </ul>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {/* Scenario comparison chart */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm">All Scenarios Comparison</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={barData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+              <YAxis tickFormatter={v => `${v}%`} tick={{ fontSize: 11 }} />
+              <Tooltip formatter={(v: any) => [`${v}%`, "Price Impact"]} />
+              <Bar dataKey="impact" radius={[3, 3, 0, 0]}>
+                {barData.map((entry, index) => (
+                  <Cell key={index} fill={entry.color} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
     </div>
   );
 }

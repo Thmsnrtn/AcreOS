@@ -24,6 +24,13 @@ import {
   MapPin,
   Tag,
   Layers,
+  Target,
+  Receipt,
+  Webhook,
+  Share2,
+  Brain,
+  UserCheck,
+  Shield,
 } from "lucide-react";
 
 export interface MasterNavItem {
@@ -60,6 +67,13 @@ export const ALL_NAV_ITEMS: MasterNavItem[] = [
   { id: "offers",        label: "Offers",          icon: Tag,         href: "/offers",         description: "Offer tracking" },
   { id: "sequences",     label: "Sequences",       icon: Layers,      href: "/sequences",      description: "Follow-up sequences" },
   { id: "help",          label: "Help",            icon: HelpCircle,  href: "/help",           description: "Help and support" },
+  // T76-T90 New Feature Pages
+  { id: "goals",         label: "Goals & OKRs",    icon: Target,      href: "/goals",          description: "Track organizational goals and KPIs" },
+  { id: "tax-optimizer", label: "Tax Optimizer",   icon: Receipt,     href: "/tax-optimizer",  description: "Capital gains and year-end tax planning" },
+  { id: "webhooks",      label: "Webhooks",        icon: Webhook,     href: "/webhooks",       description: "Outbound webhook management" },
+  { id: "syndication",   label: "Syndication",     icon: Share2,      href: "/syndication",    description: "Publish listings to Land.com, LandWatch, etc." },
+  { id: "model-training",label: "Valuation Model", icon: Brain,       href: "/model-training", description: "AcreOS Market Value model training and insights" },
+  { id: "investor-network", label: "Investor Network", icon: UserCheck, href: "/investor-network", description: "Verified investor directory and profiles" },
 ];
 
 export const NAV_ITEM_MAP = new Map<string, MasterNavItem>(

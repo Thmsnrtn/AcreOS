@@ -722,5 +722,170 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
   registerAIOperationsRoutes(api);
 
   // ============================================
+  // TAX OPTIMIZER ROUTES (T79)
+  // ============================================
+
+  // GET /api/tax-optimizer/position — year-end tax position analysis
+  api.get("/api/tax-optimizer/position", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const taxYear = req.query.year ? parseInt(req.query.year as string) : new Date().getFullYear();
+      const { taxOptimizerService } = await import("./services/taxOptimizer");
+      const position = await taxOptimizerService.analyzeYearEndPosition(org.id, taxYear);
+      res.json(position);
+    } catch (err: any) {
+      console.error("Tax optimizer error:", err);
+      res.status(500).json({ message: err.message || "Failed to analyze tax position" });
+    }
+  });
+
+  // GET /api/tax-optimizer/deal/:dealId — quick tax estimate for a deal
+  api.get("/api/tax-optimizer/deal/:dealId", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const dealId = parseInt(req.params.dealId);
+      const { taxOptimizerService } = await import("./services/taxOptimizer");
+      const estimate = await taxOptimizerService.estimateDealTax(org.id, dealId);
+      res.json(estimate);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to estimate deal tax" });
+    }
+  });
+
+  // POST /api/tax-optimizer/report — AI-generated tax planning report
+  api.post("/api/tax-optimizer/report", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const taxYear = req.body.taxYear || new Date().getFullYear();
+      const { taxOptimizerService } = await import("./services/taxOptimizer");
+      const report = await taxOptimizerService.generateTaxPlanningReport(org.id, taxYear);
+      res.json({ report, taxYear });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to generate tax report" });
+    }
+  });
+
+  // ============================================
+  // INVESTOR VERIFICATION ROUTES (T82)
+  // ============================================
+
+  // GET /api/investor-profiles/my — get or create own investor profile
+  api.get("/api/investor-profiles/my", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = (req as any).user;
+      const { db: database } = await import("./db");
+      const { investorProfiles } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+      const [profile] = await database
+        .select()
+        .from(investorProfiles)
+        .where(eq(investorProfiles.organizationId, org.id));
+      res.json({ profile: profile || null });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/investor-profiles — create/update investor profile
+  api.post("/api/investor-profiles", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = (req as any).user;
+      const body = req.body;
+      const { db: database } = await import("./db");
+      const { investorProfiles } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+
+      const [existing] = await database
+        .select()
+        .from(investorProfiles)
+        .where(eq(investorProfiles.organizationId, org.id));
+
+      if (existing) {
+        const [updated] = await database
+          .update(investorProfiles)
+          .set({ ...body, updatedAt: new Date() })
+          .where(eq(investorProfiles.id, existing.id))
+          .returning();
+        res.json({ profile: updated });
+      } else {
+        const [created] = await database
+          .insert(investorProfiles)
+          .values({
+            organizationId: org.id,
+            userId: user?.id || "unknown",
+            ...body,
+            verificationStatus: "pending",
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .returning();
+        res.json({ profile: created });
+      }
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/investor-profiles/verify — submit verification documents
+  api.post("/api/investor-profiles/verify", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { verificationType, documentUrl, selfAttestation } = req.body;
+      const { db: database } = await import("./db");
+      const { investorProfiles } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+
+      // Simple self-attestation verification (production would integrate with Stripe Identity or Persona)
+      const verificationData = {
+        verificationType: verificationType || "self_attestation",
+        submittedAt: new Date().toISOString(),
+        documentUrl: documentUrl || null,
+        selfAttestation: selfAttestation || null,
+        reviewStatus: selfAttestation ? "approved" : "pending_review",
+      };
+
+      const [updated] = await database
+        .update(investorProfiles)
+        .set({
+          verificationStatus: selfAttestation ? "verified" : "pending",
+          verificationData,
+          verifiedAt: selfAttestation ? new Date() : null,
+          updatedAt: new Date(),
+        })
+        .where(eq(investorProfiles.organizationId, org.id))
+        .returning();
+
+      res.json({
+        success: true,
+        profile: updated,
+        message: selfAttestation
+          ? "Identity verified via self-attestation. Investor badge enabled."
+          : "Verification documents submitted for review (1-2 business days).",
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/investor-profiles/directory — browse verified investors in marketplace
+  api.get("/api/investor-profiles/directory", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { db: database } = await import("./db");
+      const { investorProfiles } = await import("@shared/schema");
+      const { eq, and } = await import("drizzle-orm");
+      const profiles = await database
+        .select()
+        .from(investorProfiles)
+        .where(eq(investorProfiles.verificationStatus, "verified"))
+        .limit(50);
+      res.json({ profiles, count: profiles.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
 
 }

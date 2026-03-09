@@ -136,6 +136,7 @@ export default function CompliancePage() {
         <TabsList>
           <TabsTrigger value="alerts">Alerts</TabsTrigger>
           <TabsTrigger value="rules">Active Rules</TabsTrigger>
+          <TabsTrigger value="calendar">Compliance Calendar</TabsTrigger>
         </TabsList>
 
         <TabsContent value="alerts" className="mt-4">
@@ -223,7 +224,130 @@ export default function CompliancePage() {
             </Card>
           )}
         </TabsContent>
+
+        {/* ── COMPLIANCE CALENDAR ── */}
+        <TabsContent value="calendar" className="mt-4">
+          <ComplianceCalendar />
+        </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+// ─── Compliance Calendar Component ───────────────────────────────────────────
+
+const COMPLIANCE_DEADLINES = [
+  { month: 1, day: 31, title: "1099-MISC Filing", description: "Report payments to contractors and sellers (paper filing)", category: "Federal Tax", severity: "high" },
+  { month: 3, day: 15, title: "S-Corp Tax Return", description: "Form 1120-S due (or extension)", category: "Federal Tax", severity: "high" },
+  { month: 4, day: 15, title: "Individual Tax Return", description: "Form 1040 due (or extension)", category: "Federal Tax", severity: "critical" },
+  { month: 4, day: 15, title: "Q1 Estimated Tax", description: "First quarter estimated tax payment", category: "Federal Tax", severity: "high" },
+  { month: 6, day: 15, title: "Q2 Estimated Tax", description: "Second quarter estimated tax payment", category: "Federal Tax", severity: "high" },
+  { month: 7, day: 31, title: "FBAR Filing", description: "Foreign Bank Account Report (if applicable)", category: "Compliance", severity: "medium" },
+  { month: 9, day: 15, title: "Q3 Estimated Tax", description: "Third quarter estimated tax payment", category: "Federal Tax", severity: "high" },
+  { month: 9, day: 15, title: "Extended Tax Returns", description: "Extended S-Corp and Partnership returns due", category: "Federal Tax", severity: "high" },
+  { month: 10, day: 15, title: "Extended Individual Returns", description: "Extended Form 1040 due", category: "Federal Tax", severity: "high" },
+  { month: 12, day: 31, title: "QOZ Investment Deadline", description: "Invest gains in Qualified Opportunity Zone by year-end", category: "Tax Strategy", severity: "critical" },
+  { month: 12, day: 31, title: "Year-End Harvesting", description: "Last day for tax loss harvesting and timing strategies", category: "Tax Strategy", severity: "high" },
+  // RESPA / Real Estate Compliance
+  { month: 1, day: 1, title: "Annual RESPA Review", description: "Review settlement procedures and disclosure compliance", category: "RESPA", severity: "medium" },
+  // TCPA
+  { month: 6, day: 1, title: "TCPA List Hygiene", description: "Scrub marketing lists against DNC registry (renew annually)", category: "TCPA", severity: "high" },
+  { month: 12, day: 1, title: "TCPA List Hygiene", description: "Second annual DNC registry scrub", category: "TCPA", severity: "high" },
+  // Dodd-Frank
+  { month: 3, day: 31, title: "Dodd-Frank Property Count Review", description: "Verify seller-financing count vs. 3-property exemption limit", category: "Dodd-Frank", severity: "medium" },
+];
+
+const CATEGORY_COLORS: Record<string, string> = {
+  "Federal Tax": "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
+  "Tax Strategy": "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300",
+  "RESPA": "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300",
+  "TCPA": "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
+  "Dodd-Frank": "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300",
+  "Compliance": "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300",
+};
+
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function ComplianceCalendar() {
+  const now = new Date();
+  const currentMonth = now.getMonth() + 1;
+  const currentDay = now.getDate();
+
+  const upcomingDeadlines = COMPLIANCE_DEADLINES.filter(d => {
+    if (d.month > currentMonth) return true;
+    if (d.month === currentMonth && d.day >= currentDay) return true;
+    return false;
+  }).sort((a, b) => {
+    if (a.month !== b.month) return a.month - b.month;
+    return a.day - b.day;
+  });
+
+  const pastDeadlines = COMPLIANCE_DEADLINES.filter(d =>
+    d.month < currentMonth || (d.month === currentMonth && d.day < currentDay)
+  );
+
+  const daysUntil = (month: number, day: number) => {
+    const target = new Date(now.getFullYear(), month - 1, day);
+    const diff = Math.ceil((target.getTime() - now.getTime()) / 86400000);
+    return diff;
+  };
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Clock className="h-4 w-4 text-amber-500" />
+            Upcoming Compliance Deadlines
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            {upcomingDeadlines.map((d, i) => {
+              const days = daysUntil(d.month, d.day);
+              const isUrgent = days <= 14;
+              return (
+                <div key={i} className={`flex items-start gap-3 p-3 rounded-lg border ${isUrgent ? "border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/10" : "border-border"}`}>
+                  <div className="text-center min-w-[48px]">
+                    <p className="text-xs text-muted-foreground">{MONTH_NAMES[d.month - 1]}</p>
+                    <p className="text-lg font-bold">{d.day}</p>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium text-sm">{d.title}</span>
+                      <Badge className={`text-xs py-0 ${CATEGORY_COLORS[d.category] || ""}`}>{d.category}</Badge>
+                      {d.severity === "critical" && <Badge variant="destructive" className="text-xs py-0">Critical</Badge>}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">{d.description}</p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className={`text-xs font-medium ${isUrgent ? "text-amber-600" : "text-muted-foreground"}`}>
+                      {days === 0 ? "Today!" : `${days}d`}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm text-muted-foreground">Past Deadlines (This Year)</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            {pastDeadlines.map((d, i) => (
+              <div key={i} className="flex items-center gap-3 opacity-60">
+                <CheckCircle className="h-4 w-4 text-emerald-500 flex-shrink-0" />
+                <span className="text-sm">{MONTH_NAMES[d.month - 1]} {d.day} — {d.title}</span>
+                <Badge className={`text-xs py-0 ml-auto ${CATEGORY_COLORS[d.category] || ""}`}>{d.category}</Badge>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
