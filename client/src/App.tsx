@@ -106,6 +106,11 @@ import TerritoryManagerPage from "@/pages/territory-manager";
 import ZoningLookupPage from "@/pages/zoning-lookup";
 import TitleSearchPage from "@/pages/title-search";
 import UsageQuotaPage from "@/pages/usage-quota";
+import OnboardingWizardPage from "@/pages/onboarding-wizard";
+import DunningManagerPage from "@/pages/dunning-manager";
+import Exchange1031Page from "@/pages/exchange-1031";
+import PropertyEnrichmentPage from "@/pages/property-enrichment";
+import DirectMailCampaignsPage from "@/pages/direct-mail-campaigns";
 import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
 import { ConversationTray } from "@/components/conversation-tray";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -444,6 +449,21 @@ function Router() {
       </Route>
       <Route path="/usage">
         {() => <ProtectedRoute component={UsageQuotaPage} />}
+      </Route>
+      <Route path="/onboarding">
+        {() => <OnboardingWizardPage />}
+      </Route>
+      <Route path="/dunning">
+        {() => <ProtectedRoute component={DunningManagerPage} />}
+      </Route>
+      <Route path="/exchange-1031">
+        {() => <ProtectedRoute component={Exchange1031Page} />}
+      </Route>
+      <Route path="/property-enrichment">
+        {() => <ProtectedRoute component={PropertyEnrichmentPage} />}
+      </Route>
+      <Route path="/direct-mail">
+        {() => <ProtectedRoute component={DirectMailCampaignsPage} />}
       </Route>
 
       <Route component={NotFound} />

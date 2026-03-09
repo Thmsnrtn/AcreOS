@@ -57,6 +57,10 @@ import skipTracingRouter from "./routes-skip-tracing";
 import territoriesRouter from "./routes-territories";
 import zoningRouter from "./routes-zoning";
 import titleSearchRouter from "./routes-title-search";
+import propertyEnrichmentRouter from "./routes-property-enrichment";
+import exchange1031Router from "./routes-exchange-1031";
+import dunningRouter from "./routes-dunning";
+import onboardingRouter from "./routes-onboarding";
 
 // Rate limiting middleware
 import { createRateLimiter, rateLimiters, RATE_LIMIT_CONFIGS, authLimiter, aiLimiter, webhookLimiter, importLimiter } from "./middleware/rateLimit";
@@ -332,6 +336,10 @@ export async function registerRoutes(
   app.use('/api/territories', isAuthenticated, getOrCreateOrg, territoriesRouter);
   app.use('/api/zoning', isAuthenticated, zoningRouter);
   app.use('/api/title-search', isAuthenticated, getOrCreateOrg, titleSearchRouter);
+  app.use('/api/properties', isAuthenticated, getOrCreateOrg, propertyEnrichmentRouter);
+  app.use('/api/exchange-1031', isAuthenticated, getOrCreateOrg, exchange1031Router);
+  app.use('/api/dunning', isAuthenticated, dunningRouter);
+  app.use('/api/onboarding', isAuthenticated, getOrCreateOrg, onboardingRouter);
 
   // ============================================
   // DOMAIN ROUTE MODULES
