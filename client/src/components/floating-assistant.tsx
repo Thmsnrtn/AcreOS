@@ -7,10 +7,10 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { 
-  Minus, 
-  X, 
-  Send, 
+import {
+  Minus,
+  X,
+  Send,
   Loader2,
   Sparkles,
   Plus,
@@ -30,7 +30,9 @@ import {
   Search,
   ChevronDown,
   MapPin,
-  Gauge
+  Gauge,
+  Mic,
+  MicOff,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -166,6 +168,8 @@ export function FloatingAssistant() {
   const [isMinimized, setIsMinimized] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef<any>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [hasActivity, setHasActivity] = useState(false);
@@ -351,6 +355,43 @@ export function FloatingAssistant() {
   const handleAttachClick = () => {
     fileInputRef.current?.click();
   };
+
+  // Web Speech API voice input
+  const startVoiceInput = useCallback(() => {
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert('Voice input is not supported in this browser. Try Chrome or Edge.');
+      return;
+    }
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+      return;
+    }
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'en-US';
+    recognition.interimResults = true;
+    recognition.continuous = false;
+    recognitionRef.current = recognition;
+    setIsListening(true);
+
+    recognition.onresult = (event: any) => {
+      const transcript = Array.from(event.results)
+        .map((r: any) => r[0].transcript)
+        .join('');
+      setInputValue(transcript);
+    };
+    recognition.onend = () => {
+      setIsListening(false);
+      recognitionRef.current = null;
+    };
+    recognition.onerror = () => {
+      setIsListening(false);
+      recognitionRef.current = null;
+    };
+    recognition.start();
+  }, []);
 
   const handleSendMessage = async () => {
     if ((!inputValue.trim() && attachments.length === 0) || isLoading || isStreaming || isGeneratingImage) return;
@@ -1470,6 +1511,28 @@ export function FloatingAssistant() {
                 rows={1}
                 data-testid="input-assistant-message"
               />
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant={isListening ? "destructive" : "ghost"}
+                    onClick={startVoiceInput}
+                    disabled={isLoading || isStreaming || isGeneratingImage}
+                    className="h-[44px] w-[44px] rounded-xl shrink-0"
+                    data-testid="button-voice-input"
+                    title="Voice input"
+                  >
+                    {isListening ? (
+                      <MicOff className="w-4 h-4 animate-pulse" />
+                    ) : (
+                      <Mic className="w-4 h-4" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  {isListening ? "Stop listening" : "Voice input (push to talk)"}
+                </TooltipContent>
+              </Tooltip>
               <Button
                 size="icon"
                 onClick={handleSendMessage}

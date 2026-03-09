@@ -313,6 +313,31 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
 
       if (matchingOrg) {
         try {
+          // Check for STOP/START opt keywords BEFORE storing the message
+          const { processOptKeyword } = await import("./services/tcpaCompliance");
+          const optResult = await processOptKeyword(
+            matchingOrg.organizationId,
+            From,
+            Body,
+            MessageSid
+          );
+
+          if (optResult.action === 'opt_out') {
+            console.log(`[Twilio Webhook] STOP keyword received from ${From} — lead ${optResult.leadId} opted out`);
+            // Respond with TCPA-required opt-out confirmation message
+            res.status(200).send(
+              '<?xml version="1.0" encoding="UTF-8"?><Response><Message>You have been unsubscribed and will receive no further messages. Reply START to re-subscribe.</Message></Response>'
+            );
+            return;
+          }
+          if (optResult.action === 'opt_in') {
+            console.log(`[Twilio Webhook] START keyword received from ${From} — lead ${optResult.leadId} opted in`);
+            res.status(200).send(
+              '<?xml version="1.0" encoding="UTF-8"?><Response><Message>You have been re-subscribed. Reply STOP at any time to unsubscribe.</Message></Response>'
+            );
+            return;
+          }
+
           await smsServiceModule.handleIncomingSMS(
             matchingOrg.organizationId,
             From,
@@ -327,11 +352,41 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       } else {
         console.log("[Twilio Webhook] No matching organization found for phone:", To);
       }
-      
+
       res.status(200).send("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response></Response>");
     } catch (error: any) {
       console.error("Twilio webhook error:", error);
       res.status(500).send("Webhook processing error");
+    }
+  });
+
+  // POST /api/webhooks/twilio/sms-status
+  // Twilio posts delivery status updates for outbound messages here.
+  api.post("/api/webhooks/twilio/sms-status", async (req, res) => {
+    res.status(200).send("OK");
+    const { MessageSid, MessageStatus, ErrorCode, ErrorMessage } = req.body;
+    if (!MessageSid || !MessageStatus) return;
+
+    try {
+      const { messages } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+      const statusMap: Record<string, string> = {
+        sent: 'sent',
+        delivered: 'delivered',
+        failed: 'failed',
+        undelivered: 'failed',
+        read: 'delivered',
+      };
+      const mappedStatus = statusMap[MessageStatus] || MessageStatus;
+      await db.update(messages)
+        .set({ status: mappedStatus, updatedAt: new Date() } as any)
+        .where(eq(messages.externalId, MessageSid));
+
+      if (ErrorCode) {
+        console.warn(`[Twilio] SMS ${MessageSid} error ${ErrorCode}: ${ErrorMessage}`);
+      }
+    } catch (err: any) {
+      console.error("[Twilio SMS Status] Update failed:", err.message);
     }
   });
 

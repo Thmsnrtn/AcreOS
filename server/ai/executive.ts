@@ -458,8 +458,18 @@ export async function processChat(
     } catch (_) { /* non-blocking */ }
   }
 
+  // Inject Atlas episodic memory into system prompt
+  let _memoryCtx = "";
+  try {
+    const { getRelevantMemories, formatMemoriesForContext } = await import("../services/atlasMemory");
+    const memories = await getRelevantMemories(org.id, agentRole || 'atlas', 15);
+    _memoryCtx = formatMemoriesForContext(memories);
+  } catch (_memErr) { /* non-blocking */ }
+
+  const _systemContent = profile.systemPrompt + (_memoryCtx || "") + (_enrichCtx || "");
+
   const chatMessages: OpenAI.ChatCompletionMessageParam[] = [
-    { role: "system", content: _enrichCtx ? profile.systemPrompt + _enrichCtx : profile.systemPrompt },
+    { role: "system", content: _systemContent },
     ...messages.map(m => ({
       role: m.role as "user" | "assistant",
       content: m.content
@@ -582,6 +592,16 @@ export async function processChat(
     await updateConversation(conversation.id, { title });
   }
 
+  // Async memory extraction — fire and forget (don't block response)
+  setImmediate(async () => {
+    try {
+      const { processConversationMemories } = await import("../services/atlasMemory");
+      const allMsgs = await getMessages(conversation.id);
+      const msgHistory = allMsgs.map(m => ({ role: m.role, content: m.content || '' }));
+      await processConversationMemories(org.id, msgHistory, client, agentRole || 'atlas');
+    } catch (_) { /* non-blocking */ }
+  });
+
   const usage = response.usage;
   let estimatedCost: number | undefined;
   if (usage) {
@@ -682,8 +702,18 @@ export async function* processChatStream(
     } catch (_) { /* non-blocking */ }
   }
 
+  // Inject Atlas episodic memory into system prompt
+  let _memoryCtx = "";
+  try {
+    const { getRelevantMemories, formatMemoriesForContext } = await import("../services/atlasMemory");
+    const memories = await getRelevantMemories(org.id, agentRole || 'atlas', 15);
+    _memoryCtx = formatMemoriesForContext(memories);
+  } catch (_memErr) { /* non-blocking */ }
+
+  const _systemContent = profile.systemPrompt + (_memoryCtx || "") + (_enrichCtx || "");
+
   const chatMessages: OpenAI.ChatCompletionMessageParam[] = [
-    { role: "system", content: _enrichCtx ? profile.systemPrompt + _enrichCtx : profile.systemPrompt },
+    { role: "system", content: _systemContent },
     ...messages.map(m => ({
       role: m.role as "user" | "assistant",
       content: m.content
