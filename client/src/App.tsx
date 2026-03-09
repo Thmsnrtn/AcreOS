@@ -122,6 +122,7 @@ import CohortAnalysisPage from "@/pages/cohort-analysis";
 import PropertyTaxPage from "@/pages/property-tax";
 import ClosingCostsPage from "@/pages/closing-costs";
 import BookkeepingPage from "@/pages/bookkeeping";
+import DoddFrankCheckerPage from "@/pages/dodd-frank-checker";
 import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
 import { ConversationTray } from "@/components/conversation-tray";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -508,6 +509,9 @@ function Router() {
       </Route>
       <Route path="/bookkeeping">
         {() => <ProtectedRoute component={BookkeepingPage} />}
+      </Route>
+      <Route path="/dodd-frank">
+        {() => <ProtectedRoute component={DoddFrankCheckerPage} />}
       </Route>
 
       <Route component={NotFound} />
