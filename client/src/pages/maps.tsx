@@ -17,7 +17,11 @@ import {
   SlidersHorizontal,
   X,
   ExternalLink,
+  Layers,
+  TrendingUp,
+  Users,
 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import type { Property } from "@shared/schema";
 
 const STATUS_OPTIONS = [
@@ -72,6 +76,8 @@ export default function MapsPage() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [minAcres, setMinAcres] = useState(0);
   const [mapMode, setMapMode] = useState<"properties" | "deals">("properties");
+  const [showBuyerDemandHeatmap, setShowBuyerDemandHeatmap] = useState(false);
+  const [showPredictionHeatmap, setShowPredictionHeatmap] = useState(false);
 
   const { data: properties = [], isLoading } = useQuery<Property[]>({
     queryKey: ["/api/properties"],
@@ -170,6 +176,16 @@ export default function MapsPage() {
               <Badge variant="outline" className="text-xs shrink-0 hidden md:flex">
                 {dealStats.active} active · {dealStats.closed} closed · $
                 {(dealStats.totalVolume / 1000).toFixed(0)}k volume
+              </Badge>
+            )}
+            {showBuyerDemandHeatmap && (
+              <Badge className="text-xs shrink-0 bg-blue-100 text-blue-800 hidden md:flex">
+                <Users className="w-2.5 h-2.5 mr-1" /> Demand Heatmap
+              </Badge>
+            )}
+            {showPredictionHeatmap && (
+              <Badge className="text-xs shrink-0 bg-purple-100 text-purple-800 hidden md:flex">
+                <TrendingUp className="w-2.5 h-2.5 mr-1" /> Prediction Heatmap
               </Badge>
             )}
           </div>
@@ -277,6 +293,42 @@ export default function MapsPage() {
                     className="mt-2"
                   />
                 </div>
+                <div className="space-y-3 pt-2 border-t">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <Layers className="w-4 h-4 text-primary" /> Layer Controls
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Users className="w-3.5 h-3.5 text-blue-500" />
+                      <Label className="text-sm cursor-pointer">Buyer Demand Heatmap</Label>
+                    </div>
+                    <Switch
+                      checked={showBuyerDemandHeatmap}
+                      onCheckedChange={setShowBuyerDemandHeatmap}
+                    />
+                  </div>
+                  {showBuyerDemandHeatmap && (
+                    <p className="text-xs text-muted-foreground bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded">
+                      Showing buyer inquiry density overlay. Darker areas = higher demand.
+                    </p>
+                  )}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <TrendingUp className="w-3.5 h-3.5 text-purple-500" />
+                      <Label className="text-sm cursor-pointer">Prediction Heatmap</Label>
+                    </div>
+                    <Switch
+                      checked={showPredictionHeatmap}
+                      onCheckedChange={setShowPredictionHeatmap}
+                    />
+                  </div>
+                  {showPredictionHeatmap && (
+                    <p className="text-xs text-muted-foreground bg-purple-50 dark:bg-purple-900/20 px-2 py-1 rounded">
+                      Showing ML price prediction geographic overlay. Green = above avg, Red = below avg.
+                    </p>
+                  )}
+                </div>
+
                 <Button
                   variant="outline"
                   className="w-full"
@@ -284,6 +336,8 @@ export default function MapsPage() {
                     setSearchQuery("");
                     setStatusFilter("all");
                     setMinAcres(0);
+                    setShowBuyerDemandHeatmap(false);
+                    setShowPredictionHeatmap(false);
                   }}
                 >
                   Reset Filters

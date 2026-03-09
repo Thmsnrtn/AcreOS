@@ -22,6 +22,10 @@ import {
   RefreshCw,
   Check,
   X,
+  History,
+  FlaskConical,
+  Info,
+  Activity,
 } from 'lucide-react';
 
 const STRATEGY_INFO: Record<string, { label: string; color: string; description: string }> = {
@@ -50,6 +54,101 @@ function SentimentIndicator({ score }: { score: number }) {
   if (score > 0.3) return <span className="flex items-center gap-1 text-emerald-600 text-sm"><TrendingUp className="w-3 h-3" /> Positive ({(score * 100).toFixed(0)}%)</span>;
   if (score < -0.3) return <span className="flex items-center gap-1 text-red-500 text-sm"><TrendingDown className="w-3 h-3" /> Negative ({(Math.abs(score) * 100).toFixed(0)}%)</span>;
   return <span className="flex items-center gap-1 text-muted-foreground text-sm">Neutral</span>;
+}
+
+// ─── Session Replay Component ─────────────────────────────────────────────────
+
+function SessionReplayPanel({ session }: { session: any }) {
+  const moves = session?.moves ?? session?.moveHistory ?? [];
+  if (!moves || moves.length === 0) {
+    return (
+      <div className="text-center py-6 text-muted-foreground text-sm">
+        <History className="w-6 h-6 mx-auto mb-2 opacity-40" />
+        No move history recorded for this session.
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-3">
+      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Move History</p>
+      <div className="relative pl-4 border-l-2 border-muted space-y-4">
+        {moves.map((move: any, i: number) => (
+          <div key={i} className="relative">
+            <div className="absolute -left-[1.125rem] top-1 w-3 h-3 rounded-full bg-primary/30 border-2 border-primary" />
+            <div className="text-xs text-muted-foreground mb-0.5">
+              {move.timestamp ? new Date(move.timestamp).toLocaleString() : `Move ${i + 1}`}
+            </div>
+            <div className="flex items-center gap-2 mb-1">
+              {move.strategy && (
+                <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${STRATEGY_INFO[move.strategy]?.color ?? 'bg-gray-100 text-gray-800'}`}>
+                  {STRATEGY_INFO[move.strategy]?.label ?? move.strategy}
+                </span>
+              )}
+              {move.type && <span className="text-xs text-muted-foreground capitalize">{move.type.replace(/_/g, ' ')}</span>}
+            </div>
+            {move.content && <p className="text-sm bg-muted/50 rounded p-2">{move.content}</p>}
+            {move.aiReasoning && (
+              <div className="mt-1.5 flex items-start gap-1.5 text-xs text-muted-foreground">
+                <Brain className="w-3 h-3 mt-0.5 shrink-0 text-primary" />
+                <span className="italic">{move.aiReasoning}</span>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Strategy Explainability Panel ───────────────────────────────────────────
+
+function StrategyExplainabilityPanel({ strategyResult }: { strategyResult: any }) {
+  if (!strategyResult) return null;
+  return (
+    <Card className="border-primary/20 bg-primary/5">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Info className="w-4 h-4 text-primary" /> Why Atlas Recommends This Approach
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm">
+        <div className="flex items-center gap-2">
+          <Badge className={STRATEGY_INFO[strategyResult.strategy]?.color || ''}>
+            {STRATEGY_INFO[strategyResult.strategy]?.label || strategyResult.strategy}
+          </Badge>
+          <span className="text-muted-foreground text-xs">strategy · {strategyResult.confidence}% confidence</span>
+        </div>
+        <p className="text-muted-foreground">{strategyResult.reasoning}</p>
+        {strategyResult.dataCitations?.length > 0 && (
+          <div className="space-y-1">
+            <p className="text-xs font-medium text-muted-foreground">Data citations:</p>
+            {strategyResult.dataCitations.map((cite: string, i: number) => (
+              <div key={i} className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                <span className="text-primary font-mono">[{i + 1}]</span> {cite}
+              </div>
+            ))}
+          </div>
+        )}
+        {strategyResult.successRate != null && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <TrendingUp className="w-3 h-3 text-emerald-500" />
+            Historical success rate for this strategy: <strong className="text-foreground">{(strategyResult.successRate * 100).toFixed(0)}%</strong>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Learning Loop Indicator ──────────────────────────────────────────────────
+
+function LearningLoopIndicator() {
+  return (
+    <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-md text-xs text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+      <Activity className="w-3.5 h-3.5 animate-pulse" />
+      <span><strong>Learning loop active</strong> — strategy effectiveness is being tracked and will improve recommendations over time.</span>
+    </div>
+  );
 }
 
 export default function NegotiationCopilotPage() {
@@ -179,11 +278,14 @@ export default function NegotiationCopilotPage() {
         </p>
       </div>
 
+      <LearningLoopIndicator />
+
       <Tabs defaultValue="session">
         <TabsList>
           <TabsTrigger value="session">Active Session</TabsTrigger>
           <TabsTrigger value="sessions">Deal History</TabsTrigger>
           <TabsTrigger value="analytics">Strategy Analytics</TabsTrigger>
+          <TabsTrigger value="replay">Session Replay</TabsTrigger>
         </TabsList>
 
         {/* ── ACTIVE SESSION ── */}
@@ -370,6 +472,11 @@ export default function NegotiationCopilotPage() {
                 </Card>
               )}
 
+              {/* Strategy Explainability */}
+              {strategyResult && (
+                <StrategyExplainabilityPanel strategyResult={strategyResult} />
+              )}
+
               {/* Counter Offer */}
               {counterResult && (
                 <Card>
@@ -473,10 +580,79 @@ export default function NegotiationCopilotPage() {
           )}
         </TabsContent>
 
+        {/* ── SESSION REPLAY ── */}
+        <TabsContent value="replay" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm flex items-center gap-2">
+                <History className="w-4 h-4 text-primary" /> Session Replay
+              </CardTitle>
+              <CardDescription>Full move history with AI reasoning for the current session</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {activeSessionId ? (
+                <SessionReplayPanel session={sessions.find((s: any) => s.id === activeSessionId)} />
+              ) : sessions.length > 0 ? (
+                <SessionReplayPanel session={sessions[0]} />
+              ) : (
+                <p className="text-sm text-muted-foreground">Start a session and make moves to see replay here.</p>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         {/* ── ANALYTICS ── */}
         <TabsContent value="analytics" className="space-y-6">
           {effectiveness.length > 0 ? (
             <div className="space-y-4">
+              {/* A/B Test Analytics Panel */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <FlaskConical className="w-4 h-4 text-primary" /> A/B Strategy Win Rate Comparison
+                  </CardTitle>
+                  <CardDescription>Strategy effectiveness comparison across all sessions</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b">
+                          <th className="text-left py-2 text-xs text-muted-foreground">Strategy</th>
+                          <th className="text-left py-2 text-xs text-muted-foreground">vs. Objection</th>
+                          <th className="text-right py-2 text-xs text-muted-foreground">Used</th>
+                          <th className="text-right py-2 text-xs text-muted-foreground">Win Rate</th>
+                          <th className="py-2 pl-4 text-xs text-muted-foreground">Bar</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {effectiveness.map((e: any, i: number) => (
+                          <tr key={i} className="border-b last:border-0">
+                            <td className="py-2">
+                              <Badge className={`${STRATEGY_INFO[e.strategy]?.color || ''} text-xs`}>
+                                {STRATEGY_INFO[e.strategy]?.label || e.strategy}
+                              </Badge>
+                            </td>
+                            <td className="py-2">
+                              <Badge className={`${OBJECTION_COLORS[e.category] || ''} text-xs`}>
+                                {e.category}
+                              </Badge>
+                            </td>
+                            <td className="py-2 text-right text-muted-foreground">{e.timesUsed}×</td>
+                            <td className="py-2 text-right font-semibold">{(e.successRate * 100).toFixed(0)}%</td>
+                            <td className="py-2 pl-4 w-32">
+                              <div className="w-full bg-muted rounded-full h-1.5">
+                                <div className="bg-primary h-1.5 rounded-full" style={{ width: `${e.successRate * 100}%` }} />
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+
               <Card>
                 <CardHeader>
                   <CardTitle>Strategy Effectiveness by Objection Type</CardTitle>

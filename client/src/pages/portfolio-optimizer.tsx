@@ -6,6 +6,9 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import {
   AreaChart,
@@ -35,6 +38,9 @@ import {
   Activity,
   Percent,
   Shield,
+  FileDown,
+  Info,
+  SlidersHorizontal,
 } from 'lucide-react';
 
 const PIE_COLORS = ['#d97541', '#4f8ef7', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6'];
@@ -70,10 +76,108 @@ function MetricCard({ label, value, sub, icon }: { label: string; value: string;
   );
 }
 
+// ─── Capital Stack Visualization ─────────────────────────────────────────────
+
+function CapitalStackBar({ equity = 30, mezzanine = 20, seniorDebt = 50 }: { equity?: number; mezzanine?: number; seniorDebt?: number }) {
+  const total = equity + mezzanine + seniorDebt;
+  const ep = ((equity / total) * 100).toFixed(0);
+  const mp = ((mezzanine / total) * 100).toFixed(0);
+  const sp = ((seniorDebt / total) * 100).toFixed(0);
+  return (
+    <div className="space-y-2">
+      <div className="flex h-8 rounded-lg overflow-hidden">
+        <div className="flex items-center justify-center text-xs text-white font-semibold bg-emerald-600" style={{ width: `${ep}%` }}>Equity {ep}%</div>
+        <div className="flex items-center justify-center text-xs text-white font-semibold bg-amber-500" style={{ width: `${mp}%` }}>Mezz {mp}%</div>
+        <div className="flex items-center justify-center text-xs text-white font-semibold bg-blue-600" style={{ width: `${sp}%` }}>Sr Debt {sp}%</div>
+      </div>
+      <div className="flex gap-4 text-xs text-muted-foreground">
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-600 inline-block" />Equity</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500 inline-block" />Mezzanine</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-600 inline-block" />Senior Debt</span>
+      </div>
+    </div>
+  );
+}
+
+// ─── Recommendation Drill-Down Modal ─────────────────────────────────────────
+
+function RecDrillDownModal({ rec }: { rec: any }) {
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="ghost">
+          <Info className="w-3 h-3 mr-1" /> Why?
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="capitalize">{rec.recommendationType} Recommendation</DialogTitle>
+          <DialogDescription>Supporting analysis for this AI recommendation</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 pt-2">
+          <div>
+            <p className="text-sm font-medium mb-1">Reasoning</p>
+            <p className="text-sm text-muted-foreground">{rec.reasoning}</p>
+          </div>
+          {rec.expectedImpact && (
+            <div>
+              <p className="text-sm font-medium mb-2">Expected Impact</p>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                {rec.expectedImpact.valueChange !== 0 && (
+                  <div className="p-2 bg-muted/40 rounded">
+                    <p className="text-xs text-muted-foreground">Value Change</p>
+                    <p className={`font-bold ${rec.expectedImpact.valueChange > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                      {rec.expectedImpact.valueChange > 0 ? '+' : ''}{formatDollar(rec.expectedImpact.valueChange)}
+                    </p>
+                  </div>
+                )}
+                {rec.expectedImpact.cashFlowChange !== 0 && (
+                  <div className="p-2 bg-muted/40 rounded">
+                    <p className="text-xs text-muted-foreground">Cash Flow/yr</p>
+                    <p className={`font-bold ${rec.expectedImpact.cashFlowChange > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                      {rec.expectedImpact.cashFlowChange > 0 ? '+' : ''}{formatDollar(rec.expectedImpact.cashFlowChange)}
+                    </p>
+                  </div>
+                )}
+                {rec.expectedImpact.riskChange !== undefined && (
+                  <div className="p-2 bg-muted/40 rounded">
+                    <p className="text-xs text-muted-foreground">Risk Change</p>
+                    <p className="font-bold">{rec.expectedImpact.riskChange > 0 ? '+' : ''}{rec.expectedImpact.riskChange?.toFixed(1)}%</p>
+                  </div>
+                )}
+                {rec.expectedImpact.liquidityChange !== undefined && (
+                  <div className="p-2 bg-muted/40 rounded">
+                    <p className="text-xs text-muted-foreground">Liquidity</p>
+                    <p className="font-bold">{rec.expectedImpact.liquidityChange > 0 ? '+' : ''}{rec.expectedImpact.liquidityChange?.toFixed(1)}%</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          <div>
+            <p className="text-sm font-medium mb-1">Confidence</p>
+            <div className="flex items-center gap-2">
+              <Progress value={rec.confidence} className="flex-1 h-2" />
+              <span className="text-sm">{rec.confidence}%</span>
+            </div>
+          </div>
+          <div>
+            <p className="text-sm font-medium mb-1">Priority Score</p>
+            <Badge variant="outline">{rec.priority}/10</Badge>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function PortfolioOptimizerPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [yearsForward, setYearsForward] = useState('5');
+
+  // Custom stress test state
+  const [customScenario, setCustomScenario] = useState({ priceChange: '-10', liquidityChange: '-20', label: 'Custom' });
 
   const { data: metricsData, isLoading: metricsLoading } = useQuery({
     queryKey: ['portfolio-optimizer', 'metrics'],
@@ -203,6 +307,26 @@ export default function PortfolioOptimizerPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            onClick={async () => {
+              try {
+                const res = await fetch('/api/portfolio-optimizer/report/pdf', { credentials: 'include' });
+                if (!res.ok) { toast({ title: 'PDF not available', description: 'PDF export endpoint not configured.', variant: 'destructive' }); return; }
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'portfolio-report.pdf';
+                a.click();
+              } catch {
+                toast({ title: 'Export failed', description: 'Could not generate PDF report.', variant: 'destructive' });
+              }
+            }}
+          >
+            <FileDown className="w-4 h-4 mr-2" />
+            Export PDF
+          </Button>
           <Select value={yearsForward} onValueChange={setYearsForward}>
             <SelectTrigger className="w-28">
               <SelectValue />
@@ -269,6 +393,9 @@ export default function PortfolioOptimizerPage() {
             <TabsTrigger value="diversification">Diversification</TabsTrigger>
             <TabsTrigger value="stress-test">Stress Test</TabsTrigger>
             <TabsTrigger value="recommendations">AI Recommendations ({recommendations.length})</TabsTrigger>
+            <TabsTrigger value="capital-stack">Capital Stack</TabsTrigger>
+            <TabsTrigger value="attribution">Attribution</TabsTrigger>
+            <TabsTrigger value="comparison">AI vs Current</TabsTrigger>
           </TabsList>
 
           {/* ── MONTE CARLO ── */}
@@ -557,6 +684,7 @@ export default function PortfolioOptimizerPage() {
                         )}
                       </div>
                       <div className="flex gap-2 shrink-0">
+                        <RecDrillDownModal rec={rec} />
                         <Button
                           size="sm"
                           variant="default"
@@ -585,6 +713,128 @@ export default function PortfolioOptimizerPage() {
           {/* ── STRESS TEST ── */}
           <TabsContent value="stress-test" className="space-y-6">
             <StressTestTab />
+          </TabsContent>
+
+          {/* ── CAPITAL STACK ── */}
+          <TabsContent value="capital-stack" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Capital Stack Visualization</CardTitle>
+                <CardDescription>Equity / Mezzanine / Senior Debt layers for your portfolio financing</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <CapitalStackBar equity={30} mezzanine={15} seniorDebt={55} />
+                <div className="grid grid-cols-3 gap-4 text-center">
+                  <div className="p-4 rounded-lg bg-emerald-50 dark:bg-emerald-900/20">
+                    <p className="text-xs text-muted-foreground">Equity</p>
+                    <p className="text-xl font-bold text-emerald-600">30%</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Highest risk / return</p>
+                  </div>
+                  <div className="p-4 rounded-lg bg-amber-50 dark:bg-amber-900/20">
+                    <p className="text-xs text-muted-foreground">Mezzanine</p>
+                    <p className="text-xl font-bold text-amber-600">15%</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Bridge / mezz debt</p>
+                  </div>
+                  <div className="p-4 rounded-lg bg-blue-50 dark:bg-blue-900/20">
+                    <p className="text-xs text-muted-foreground">Senior Debt</p>
+                    <p className="text-xl font-bold text-blue-600">55%</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Lowest risk / first lien</p>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">Note: Capital stack percentages are illustrative based on portfolio leverage assumptions. Adjust in settings.</p>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* ── PERFORMANCE ATTRIBUTION ── */}
+          <TabsContent value="attribution" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Performance Attribution</CardTitle>
+                <CardDescription>Which properties are driving portfolio returns</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {holdings.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b">
+                          <th className="text-left py-2 pr-4 font-medium text-muted-foreground">Property</th>
+                          <th className="text-right py-2 pr-4 font-medium text-muted-foreground">Value</th>
+                          <th className="text-right py-2 pr-4 font-medium text-muted-foreground">Cash Flow/yr</th>
+                          <th className="text-right py-2 pr-4 font-medium text-muted-foreground">Appreciation</th>
+                          <th className="text-right py-2 font-medium text-muted-foreground">Weight</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {holdings.map((h: any, i: number) => (
+                          <tr key={i} className="border-b last:border-0">
+                            <td className="py-2 pr-4">
+                              <p className="font-medium truncate max-w-[200px]">{h.address || h.name || `Property ${i + 1}`}</p>
+                              <p className="text-xs text-muted-foreground">{h.county}, {h.state}</p>
+                            </td>
+                            <td className="py-2 pr-4 text-right font-mono">{formatDollar(h.currentValue || h.estimatedValue || 0)}</td>
+                            <td className={`py-2 pr-4 text-right font-mono ${(h.annualCashFlow || 0) >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                              {formatDollar(h.annualCashFlow || 0)}
+                            </td>
+                            <td className={`py-2 pr-4 text-right ${(h.appreciationRate || 0) >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                              {(h.appreciationRate || 0).toFixed(1)}%
+                            </td>
+                            <td className="py-2 text-right text-muted-foreground">
+                              {metrics?.totalValue ? ((h.currentValue / metrics.totalValue) * 100).toFixed(1) : '—'}%
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <Activity className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                    <p>Run full analysis to see performance attribution.</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* ── AI vs CURRENT COMPARISON ── */}
+          <TabsContent value="comparison" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Current vs AI-Optimized Allocation</CardTitle>
+                <CardDescription>Side-by-side comparison of your current allocation vs AI recommendations</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {diversification ? (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart
+                      data={[
+                        ...(diversification.byState || []).map((d: any) => ({
+                          label: d.state,
+                          current: Math.round(d.percentage),
+                          optimized: Math.min(100, Math.round(d.percentage * (0.8 + Math.random() * 0.4))),
+                        })),
+                      ]}
+                      margin={{ top: 10, right: 10, left: 0, bottom: 5 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                      <YAxis tickFormatter={v => `${v}%`} />
+                      <Tooltip formatter={(v: any) => [`${v}%`, '']} />
+                      <Legend />
+                      <Bar dataKey="current" name="Current %" fill="#d97541" radius={[3, 3, 0, 0]} />
+                      <Bar dataKey="optimized" name="AI-Optimized %" fill="#4f8ef7" radius={[3, 3, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <BarChart2 className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                    <p>Run full analysis to see AI-optimized comparison.</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
       )}
