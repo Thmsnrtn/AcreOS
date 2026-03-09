@@ -31,6 +31,12 @@ import {
   Brain,
   UserCheck,
   Shield,
+  Phone,
+  BarChart2,
+  Database,
+  Percent,
+  Building2,
+  TrendingUp,
 } from "lucide-react";
 
 export interface MasterNavItem {
@@ -74,6 +80,14 @@ export const ALL_NAV_ITEMS: MasterNavItem[] = [
   { id: "syndication",   label: "Syndication",     icon: Share2,      href: "/syndication",    description: "Publish listings to Land.com, LandWatch, etc." },
   { id: "model-training",label: "Valuation Model", icon: Brain,       href: "/model-training", description: "AcreOS Market Value model training and insights" },
   { id: "investor-network", label: "Investor Network", icon: UserCheck, href: "/investor-network", description: "Verified investor directory and profiles" },
+  // Additional Pages
+  { id: "avm-bulk",             label: "Bulk AVM",            icon: TrendingUp,  href: "/avm-bulk",             description: "Bulk AI valuations via CSV upload" },
+  { id: "reseller",             label: "Reseller Dashboard",  icon: Building2,   href: "/reseller",             description: "White-label reseller management" },
+  { id: "data-moat",            label: "Data Moat",           icon: Database,    href: "/data-moat",            description: "Proprietary data assets and API keys" },
+  { id: "fee-dashboard",        label: "Fee Dashboard",       icon: Percent,     href: "/fee-dashboard",        description: "Transaction fee tracking and revenue" },
+  { id: "marketplace-analytics",label: "Marketplace Analytics", icon: BarChart2, href: "/marketplace-analytics",description: "Marketplace performance and metrics" },
+  { id: "voice-analytics",      label: "Voice Analytics",     icon: Phone,       href: "/voice-analytics",      description: "Call recording analysis and insights" },
+  { id: "va-dashboard",         label: "VA Dashboard",        icon: Users,       href: "/va-dashboard",         description: "Virtual assistant task management" },
 ];
 
 export const NAV_ITEM_MAP = new Map<string, MasterNavItem>(
