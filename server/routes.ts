@@ -37,6 +37,19 @@ import regulatoryRouter from "./routes-regulatory";
 import notificationsRouter from "./routes-notifications";
 import marketWatchlistRouter from "./routes-market-watchlist";
 
+// Wave 8: New service routes (T141-T160)
+import dispositionRouter from "./routes-disposition";
+import sellerIntentRouter from "./routes-seller-intent";
+import portfolioSentinelRouter from "./routes-portfolio-sentinel";
+import portfolioPnlRouter from "./routes-portfolio-pnl";
+import commissionsRouter from "./routes-commissions";
+import certificationRouter from "./routes-certification";
+import buyerQualificationRouter from "./routes-buyer-qualification";
+import dueDiligenceRouter from "./routes-due-diligence";
+import dealPatternsRouter from "./routes-deal-patterns";
+import priceOptimizerRouter from "./routes-price-optimizer";
+import portfolioHealthRouter from "./routes-portfolio-health";
+
 // Rate limiting middleware
 import { createRateLimiter, rateLimiters, RATE_LIMIT_CONFIGS, authLimiter, aiLimiter, webhookLimiter, importLimiter } from "./middleware/rateLimit";
 
@@ -290,6 +303,19 @@ export async function registerRoutes(
 
   // Market watchlist and alerts
   app.use('/api/market/watchlist', isAuthenticated, getOrCreateOrg, marketWatchlistRouter);
+
+  // Wave 8: New service routes (T141-T160)
+  app.use('/api/disposition', isAuthenticated, getOrCreateOrg, dispositionRouter);
+  app.use('/api/seller-intent', isAuthenticated, getOrCreateOrg, sellerIntentRouter);
+  app.use('/api/portfolio-sentinel', isAuthenticated, getOrCreateOrg, portfolioSentinelRouter);
+  app.use('/api/portfolio-pnl', isAuthenticated, getOrCreateOrg, portfolioPnlRouter);
+  app.use('/api/commissions', isAuthenticated, getOrCreateOrg, commissionsRouter);
+  app.use('/api/certification', isAuthenticated, certificationRouter);
+  app.use('/api/buyer-qualification', isAuthenticated, getOrCreateOrg, buyerQualificationRouter);
+  app.use('/api/due-diligence', isAuthenticated, getOrCreateOrg, dueDiligenceRouter);
+  app.use('/api/deal-patterns', isAuthenticated, getOrCreateOrg, dealPatternsRouter);
+  app.use('/api/price-optimizer', isAuthenticated, getOrCreateOrg, priceOptimizerRouter);
+  app.use('/api/portfolio-health', isAuthenticated, getOrCreateOrg, portfolioHealthRouter);
 
   // ============================================
   // DOMAIN ROUTE MODULES
