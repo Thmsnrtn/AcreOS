@@ -66,6 +66,8 @@ import matchingRouter from "./routes-matching";
 import kpisRouter from "./routes-kpis";
 import cohortAnalysisRouter from "./routes-cohort-analysis";
 import propertyTaxRouter from "./routes-property-tax";
+import recordingFeesRouter from "./routes-recording-fees";
+import bookkeepingRouter from "./routes-bookkeeping";
 
 // Rate limiting middleware
 import { createRateLimiter, rateLimiters, RATE_LIMIT_CONFIGS, authLimiter, aiLimiter, webhookLimiter, importLimiter } from "./middleware/rateLimit";
@@ -350,6 +352,8 @@ export async function registerRoutes(
   app.use('/api/kpis', isAuthenticated, getOrCreateOrg, kpisRouter);
   app.use('/api/analytics/cohorts', isAuthenticated, getOrCreateOrg, cohortAnalysisRouter);
   app.use('/api/property-tax', isAuthenticated, getOrCreateOrg, propertyTaxRouter);
+  app.use('/api/recording-fees', isAuthenticated, recordingFeesRouter);
+  app.use('/api/bookkeeping', isAuthenticated, getOrCreateOrg, bookkeepingRouter);
 
   // ============================================
   // DOMAIN ROUTE MODULES
