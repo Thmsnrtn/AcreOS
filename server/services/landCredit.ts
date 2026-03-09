@@ -701,7 +701,6 @@ class LandCreditScoring {
       throw error;
     }
   }
-}
 
   /**
    * Get ranked feature importance — which factors most affect the score
