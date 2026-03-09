@@ -2409,4 +2409,33 @@ export function registerAdminRoutes(app: Express): void {
     }
   });
 
+  // -----------------------------------------------------------------------
+  // Database Index Analysis (T75)
+  // -----------------------------------------------------------------------
+
+  // GET /api/admin/index-analysis — get the latest report
+  api.get("/api/admin/index-analysis", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { getLastReport } = await import("./jobs/indexAnalyzer");
+      const report = await getLastReport();
+      if (!report) {
+        return res.json({ report: null, message: "No analysis run yet. POST to /api/admin/index-analysis/run to generate." });
+      }
+      res.json({ report });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/admin/index-analysis/run — trigger an on-demand analysis
+  api.post("/api/admin/index-analysis/run", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { runIndexAnalysis } = await import("./jobs/indexAnalyzer");
+      const report = await runIndexAnalysis();
+      res.json({ report, success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
 }

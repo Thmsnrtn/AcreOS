@@ -5,6 +5,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/use-auth";
+import { useWhiteLabel } from "@/hooks/use-white-label";
 import { Loader2 } from "lucide-react";
 import { telemetry } from "@/lib/telemetry";
 import { ThemeProvider } from "@/contexts/theme-context";
@@ -40,6 +41,9 @@ import AbTestsPage from "@/pages/ab-tests";
 import TasksPage from "@/pages/tasks";
 import TeamDashboardPage from "@/pages/team-dashboard";
 import TeamInboxPage from "@/pages/team-inbox";
+import CommissionsPage from "@/pages/commissions";
+import TeamLeaderboardPage from "@/pages/team-leaderboard";
+import ForecastingPage from "@/pages/forecasting";
 import AutomationPage from "@/pages/automation";
 import WorkflowsPage from "@/pages/workflows";
 import ActivityPage from "@/pages/activity";
@@ -190,6 +194,15 @@ function Router() {
       </Route>
       <Route path="/team">
         {() => <ProtectedRoute component={TeamInboxPage} />}
+      </Route>
+      <Route path="/commissions">
+        {() => <ProtectedRoute component={CommissionsPage} />}
+      </Route>
+      <Route path="/team-leaderboard">
+        {() => <ProtectedRoute component={TeamLeaderboardPage} />}
+      </Route>
+      <Route path="/forecasting">
+        {() => <ProtectedRoute component={ForecastingPage} />}
       </Route>
       <Route path="/automation">
         {() => <ProtectedRoute component={AutomationPage} />}
@@ -366,6 +379,8 @@ function PageWrapper({ children }: { children: React.ReactNode }) {
 function AppContent() {
   const { user } = useAuth();
   useSwipeNavigation();
+  // Apply white-label CSS variables / branding (T67) — runs only when config is present
+  useWhiteLabel();
 
   // Fire session_start telemetry on app mount (once per page load)
   React.useEffect(() => {

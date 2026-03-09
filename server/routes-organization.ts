@@ -12,6 +12,15 @@ import { SUBSCRIPTION_TIERS } from "@shared/schema";
 import { activityLogger } from "./services/activityLogger";
 import { getAllUsageLimits, TIER_LIMITS, type SubscriptionTier } from "./services/usageLimits";
 import { getUserPermissionContext, getPermissionsForRole, ROLES, type UserPermissionContext } from "./utils/permissions";
+import {
+  getCommissionConfig,
+  saveCommissionConfig,
+  getCommissionRecords,
+  getAgentCommissionSummaries,
+  recordDealCommission,
+  recordCommissionPayment,
+  generateCommissionStatement,
+} from "./services/commissionService";
 
 const logger = {
   info: (msg: string, meta?: Record<string, any>) => console.log(JSON.stringify({ level: 'INFO', timestamp: new Date().toISOString(), message: msg, ...meta })),
@@ -948,6 +957,118 @@ export function registerOrganizationRoutes(app: Express): void {
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ message: err.message || "Failed to remove subscription" });
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // Commission Tracking (T54)
+  // -----------------------------------------------------------------------
+
+  // GET /api/commissions/config — get tier configuration
+  api.get("/api/commissions/config", isAuthenticated, getOrCreateOrg, requireAdminOrAbove, async (req, res) => {
+    try {
+      const config = await getCommissionConfig((req as any).org.id);
+      res.json(config);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // PUT /api/commissions/config — save tier configuration
+  api.put("/api/commissions/config", isAuthenticated, getOrCreateOrg, requireAdminOrAbove, async (req, res) => {
+    try {
+      await saveCommissionConfig((req as any).org.id, req.body);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/commissions/summaries — YTD summary per agent
+  api.get("/api/commissions/summaries", isAuthenticated, getOrCreateOrg, requireAdminOrAbove, async (req, res) => {
+    try {
+      const year = parseInt(req.query.year as string) || new Date().getFullYear();
+      const summaries = await getAgentCommissionSummaries((req as any).org.id, year);
+      res.json(summaries);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/commissions — list records, optional filters
+  api.get("/api/commissions", isAuthenticated, getOrCreateOrg, requireAdminOrAbove, async (req, res) => {
+    try {
+      const { teamMemberId, dealId, status, fromDate, toDate } = req.query;
+      const records = await getCommissionRecords((req as any).org.id, {
+        teamMemberId: teamMemberId ? parseInt(teamMemberId as string) : undefined,
+        dealId: dealId ? parseInt(dealId as string) : undefined,
+        status: status as any,
+        fromDate: fromDate ? new Date(fromDate as string) : undefined,
+        toDate: toDate ? new Date(toDate as string) : undefined,
+      });
+      res.json(records);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/commissions — manually record a commission
+  api.post("/api/commissions", isAuthenticated, getOrCreateOrg, requireAdminOrAbove, async (req, res) => {
+    try {
+      const { teamMemberId, dealId, salePriceCents, closedAt } = req.body;
+      if (!teamMemberId || !dealId || !salePriceCents) {
+        return res.status(400).json({ message: "teamMemberId, dealId, and salePriceCents are required" });
+      }
+      const record = await recordDealCommission(
+        (req as any).org.id,
+        teamMemberId,
+        dealId,
+        salePriceCents,
+        closedAt ? new Date(closedAt) : undefined
+      );
+      res.status(201).json(record);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/commissions/:id/pay — record a payment against a commission
+  api.post("/api/commissions/:id/pay", isAuthenticated, getOrCreateOrg, requireAdminOrAbove, async (req, res) => {
+    try {
+      const { paidCents } = req.body;
+      if (!paidCents || paidCents <= 0) {
+        return res.status(400).json({ message: "paidCents must be a positive number" });
+      }
+      const updated = await recordCommissionPayment(
+        (req as any).org.id,
+        req.params.id,
+        paidCents
+      );
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/commissions/statement/:teamMemberId — download plain-text statement
+  api.get("/api/commissions/statement/:teamMemberId", isAuthenticated, getOrCreateOrg, requireAdminOrAbove, async (req, res) => {
+    try {
+      const year = parseInt(req.query.year as string) || new Date().getFullYear();
+      const summaries = await getAgentCommissionSummaries((req as any).org.id, year);
+      const summary = summaries.find(s => s.teamMemberId === parseInt(req.params.teamMemberId));
+      if (!summary) return res.status(404).json({ message: "Team member not found" });
+
+      const org = (req as any).org;
+      const statement = generateCommissionStatement(summary, org.name || "Organization", year);
+
+      res.setHeader("Content-Type", "text/plain");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="commission-${summary.displayName.replace(/\s+/g, "-")}-${year}.txt"`
+      );
+      res.send(statement);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
     }
   });
 

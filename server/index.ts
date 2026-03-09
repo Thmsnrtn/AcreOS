@@ -1,3 +1,7 @@
+// Initialize OpenTelemetry BEFORE any other imports (T74)
+import { initTracing } from "./tracing";
+// initTracing() is called at startup below — see startupInit()
+
 import express, { type Request, Response, NextFunction } from "express";
 import path from "path";
 import cookieParser from "cookie-parser";
@@ -267,6 +271,9 @@ app.use("/api/properties/import", importLimiter);
       description: "29 tools exposing AcreOS property intelligence and free public land data APIs",
     });
   });
+
+  // Initialize distributed tracing before routes so Express instrumentation captures all routes
+  await initTracing();
 
   await registerRoutes(httpServer, app);
 

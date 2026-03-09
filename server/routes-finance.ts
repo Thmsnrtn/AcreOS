@@ -714,6 +714,24 @@ export function registerFinanceRoutes(app: Express): void {
         return res.status(400).json({ message: "Invalid payment data", errors: parsed.error.flatten() });
       }
       const payment = await storage.createPayment(parsed.data);
+
+      // Push notification for payment received (T61)
+      setImmediate(async () => {
+        try {
+          const { notifyPaymentReceived } = await import("./services/pushNotificationService");
+          const user = req.user as any;
+          const userId = user?.claims?.sub ?? user?.id;
+          if (userId && parsed.data.amount) {
+            await notifyPaymentReceived(
+              (req as any).organization.id,
+              userId,
+              parsed.data.noteId,
+              Math.round(Number(parsed.data.amount))
+            );
+          }
+        } catch (_) {}
+      });
+
       res.status(201).json(payment);
     } catch (err: any) {
       res.status(500).json({ message: err.message || "Failed to record payment" });
