@@ -120,6 +120,8 @@ import ListingSyndicationPage from "@/pages/listing-syndication";
 import DripSequencesPage from "@/pages/drip-sequences";
 import CohortAnalysisPage from "@/pages/cohort-analysis";
 import PropertyTaxPage from "@/pages/property-tax";
+import ClosingCostsPage from "@/pages/closing-costs";
+import BookkeepingPage from "@/pages/bookkeeping";
 import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
 import { ConversationTray } from "@/components/conversation-tray";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -500,6 +502,12 @@ function Router() {
       </Route>
       <Route path="/property-tax">
         {() => <ProtectedRoute component={PropertyTaxPage} />}
+      </Route>
+      <Route path="/closing-costs">
+        {() => <ProtectedRoute component={ClosingCostsPage} />}
+      </Route>
+      <Route path="/bookkeeping">
+        {() => <ProtectedRoute component={BookkeepingPage} />}
       </Route>
 
       <Route component={NotFound} />
