@@ -101,6 +101,11 @@ import DealPatternsPage from "@/pages/deal-patterns";
 import PortfolioPnLPage from "@/pages/portfolio-pnl";
 import BuyerQualificationPage from "@/pages/buyer-qualification";
 import PrivacySettingsPage from "@/pages/privacy-settings";
+import SkipTracingPage from "@/pages/skip-tracing";
+import TerritoryManagerPage from "@/pages/territory-manager";
+import ZoningLookupPage from "@/pages/zoning-lookup";
+import TitleSearchPage from "@/pages/title-search";
+import UsageQuotaPage from "@/pages/usage-quota";
 import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
 import { ConversationTray } from "@/components/conversation-tray";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -424,6 +429,21 @@ function Router() {
       </Route>
       <Route path="/settings/privacy">
         {() => <ProtectedRoute component={PrivacySettingsPage} />}
+      </Route>
+      <Route path="/skip-tracing">
+        {() => <ProtectedRoute component={SkipTracingPage} />}
+      </Route>
+      <Route path="/territories">
+        {() => <ProtectedRoute component={TerritoryManagerPage} />}
+      </Route>
+      <Route path="/zoning">
+        {() => <ProtectedRoute component={ZoningLookupPage} />}
+      </Route>
+      <Route path="/title-search">
+        {() => <ProtectedRoute component={TitleSearchPage} />}
+      </Route>
+      <Route path="/usage">
+        {() => <ProtectedRoute component={UsageQuotaPage} />}
       </Route>
 
       <Route component={NotFound} />

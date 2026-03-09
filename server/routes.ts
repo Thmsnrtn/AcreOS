@@ -52,6 +52,11 @@ import portfolioHealthRouter from "./routes-portfolio-health";
 import gdprRouter from "./routes-gdpr";
 import metricsRouter from "./routes-metrics";
 import bulkRouter from "./routes-bulk";
+import leadEnrichmentRouter from "./routes-lead-enrichment";
+import skipTracingRouter from "./routes-skip-tracing";
+import territoriesRouter from "./routes-territories";
+import zoningRouter from "./routes-zoning";
+import titleSearchRouter from "./routes-title-search";
 
 // Rate limiting middleware
 import { createRateLimiter, rateLimiters, RATE_LIMIT_CONFIGS, authLimiter, aiLimiter, webhookLimiter, importLimiter } from "./middleware/rateLimit";
@@ -322,6 +327,11 @@ export async function registerRoutes(
   app.use('/api/privacy', isAuthenticated, gdprRouter);
   app.use('/api/metrics', isAuthenticated, metricsRouter);
   app.use('/api/bulk', isAuthenticated, getOrCreateOrg, bulkRouter);
+  app.use('/api/leads', isAuthenticated, getOrCreateOrg, leadEnrichmentRouter);
+  app.use('/api/skip-tracing', isAuthenticated, getOrCreateOrg, skipTracingRouter);
+  app.use('/api/territories', isAuthenticated, getOrCreateOrg, territoriesRouter);
+  app.use('/api/zoning', isAuthenticated, zoningRouter);
+  app.use('/api/title-search', isAuthenticated, getOrCreateOrg, titleSearchRouter);
 
   // ============================================
   // DOMAIN ROUTE MODULES
