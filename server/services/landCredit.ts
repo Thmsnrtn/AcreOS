@@ -703,4 +703,221 @@ class LandCreditScoring {
   }
 }
 
+  /**
+   * Get ranked feature importance — which factors most affect the score
+   */
+  getFeatureImportance(): { factor: string; weight: number; description: string }[] {
+    return [
+      { factor: 'Location', weight: this.WEIGHTS.location, description: 'Market strength, population growth, economic health, accessibility' },
+      { factor: 'Financial', weight: this.WEIGHTS.financial, description: 'Cash flow, appreciation, liquidity, tax burden, maintenance cost' },
+      { factor: 'Physical', weight: this.WEIGHTS.physical, description: 'Topography, soil quality, water access, utilities, road access' },
+      { factor: 'Legal', weight: this.WEIGHTS.legal, description: 'Zoning, restrictions, mineral rights, water rights, clear title' },
+      { factor: 'Environmental', weight: this.WEIGHTS.environmental, description: 'Flood risk, wildfire, contamination, wetlands, endangered species' },
+      { factor: 'Market', weight: this.WEIGHTS.market, description: 'Demand, supply, price history, days on market, comparables' },
+    ].sort((a, b) => b.weight - a.weight);
+  }
+
+  /**
+   * Compare score to industry benchmarks — returns percentile rank
+   */
+  compareToIndustryBenchmarks(
+    score: number,
+    propertyType: string,
+    state: string
+  ): {
+    percentile: number;
+    benchmarkAvg: number;
+    benchmarkMedian: number;
+    outperforms: boolean;
+  } {
+    // Industry benchmark scores by property type and state (simplified lookup)
+    // In production these would come from aggregated transaction data
+    const benchmarks: Record<string, { avg: number; median: number }> = {
+      agricultural: { avg: 620, median: 610 },
+      residential: { avg: 650, median: 640 },
+      commercial: { avg: 670, median: 660 },
+      industrial: { avg: 640, median: 630 },
+      recreational: { avg: 590, median: 580 },
+    };
+
+    const stateBonus: Record<string, number> = {
+      TX: 10, FL: 8, GA: 5, TN: 5, NC: 5,
+      CA: -5, NY: -5, NJ: -3,
+    };
+
+    const base = benchmarks[propertyType?.toLowerCase()] || { avg: 625, median: 615 };
+    const stateAdj = stateBonus[state?.toUpperCase()] || 0;
+    const benchmarkAvg = base.avg + stateAdj;
+    const benchmarkMedian = base.median + stateAdj;
+
+    // Percentile approximation: assume normal distribution around benchmark avg (std dev ~80)
+    const stdDev = 80;
+    const z = (score - benchmarkAvg) / stdDev;
+    // Approximate CDF for percentile
+    const percentile = Math.min(99, Math.max(1, Math.round(50 + 50 * Math.tanh(z * 0.8))));
+
+    return {
+      percentile,
+      benchmarkAvg: Math.round(benchmarkAvg),
+      benchmarkMedian: Math.round(benchmarkMedian),
+      outperforms: score > benchmarkAvg,
+    };
+  }
+
+  /**
+   * Personalize score based on investor strategy
+   */
+  personalizeScore(
+    baseScore: number,
+    strategy: 'cash_flow' | 'appreciation' | 'flip'
+  ): {
+    adjustedScore: number;
+    strategy: string;
+    adjustments: { factor: string; change: number; reason: string }[];
+  } {
+    const adjustments: { factor: string; change: number; reason: string }[] = [];
+    let total = 0;
+
+    if (strategy === 'cash_flow') {
+      adjustments.push({ factor: 'Financial (cash flow weight x1.5)', change: 5, reason: 'Cash flow investors prioritize income generation' });
+      adjustments.push({ factor: 'Liquidity (lower weight)', change: -2, reason: 'Long hold periods reduce liquidity importance' });
+      total = 3;
+    } else if (strategy === 'appreciation') {
+      adjustments.push({ factor: 'Location (growth markets x1.3)', change: 8, reason: 'Appreciation driven by population and job growth' });
+      adjustments.push({ factor: 'Market (demand weight x1.4)', change: 5, reason: 'Strong demand markets drive appreciation' });
+      adjustments.push({ factor: 'Cash flow (lower weight)', change: -5, reason: 'Appreciation investors tolerate lower current income' });
+      total = 8;
+    } else if (strategy === 'flip') {
+      adjustments.push({ factor: 'Liquidity (x2.0 weight)', change: 10, reason: 'Flippers need to sell quickly' });
+      adjustments.push({ factor: 'Market (days on market)', change: 6, reason: 'Fast-selling markets essential for flip strategy' });
+      adjustments.push({ factor: 'Legal (zoning flexibility)', change: 5, reason: 'Rezoning potential increases flip upside' });
+      adjustments.push({ factor: 'Environmental (higher penalty)', change: -8, reason: 'Environmental issues kill flip timelines' });
+      total = 13;
+    }
+
+    return {
+      adjustedScore: Math.min(850, Math.max(300, baseScore + total)),
+      strategy,
+      adjustments,
+    };
+  }
+
+  /**
+   * Generate score drill-down with improvement suggestions per factor
+   */
+  async generateScoreDrillDown(
+    propertyId: string,
+    orgId: string
+  ): Promise<{
+    score: number;
+    factors: {
+      name: string;
+      value: number;
+      weight: number;
+      impact: 'positive' | 'negative' | 'neutral';
+      howToImprove: string;
+    }[];
+  }> {
+    const property = await db.query.properties.findFirst({
+      where: and(
+        eq(properties.id, propertyId),
+        eq(properties.organizationId, orgId)
+      ),
+    });
+
+    if (!property) throw new Error('Property not found');
+
+    const location = await this.scoreLocation(property);
+    const physical = await this.scorePhysical(property);
+    const legal = await this.scoreLegal(property);
+    const financial = await this.scoreFinancial(property);
+    const environmental = await this.scoreEnvironmental(property);
+    const market = await this.scoreMarket(property);
+
+    const overall = Math.round(
+      (location.score * this.WEIGHTS.location +
+       physical.score * this.WEIGHTS.physical +
+       legal.score * this.WEIGHTS.legal +
+       financial.score * this.WEIGHTS.financial +
+       environmental.score * this.WEIGHTS.environmental +
+       market.score * this.WEIGHTS.market) / 100
+    );
+    const creditScore = Math.round(300 + (overall / 100) * 550);
+
+    const improvementMap: Record<string, string> = {
+      location: 'Target high-growth markets (TX, FL, GA) for better location scores. Proximity to highways and cities improves accessibility.',
+      physical: 'Add utility connections (electric, water, gas) and improve road access from dirt/gravel to paved.',
+      legal: 'Pursue zoning upgrade to commercial/residential. Acquire severed mineral rights if economically viable.',
+      financial: 'Generate income via leasing, agricultural use, or cell tower ground leases. Reduce holding costs.',
+      environmental: 'Obtain elevation certificate to reduce flood insurance premiums. Implement wildfire defensible space.',
+      market: 'Price competitively to reduce days on market. Improve listing marketing and photos.',
+    };
+
+    const factors = [
+      { name: 'Location', value: location.score, weight: this.WEIGHTS.location, impact: (location.score >= 65 ? 'positive' : location.score >= 45 ? 'neutral' : 'negative') as any, howToImprove: improvementMap.location },
+      { name: 'Physical', value: physical.score, weight: this.WEIGHTS.physical, impact: (physical.score >= 65 ? 'positive' : physical.score >= 45 ? 'neutral' : 'negative') as any, howToImprove: improvementMap.physical },
+      { name: 'Legal', value: legal.score, weight: this.WEIGHTS.legal, impact: (legal.score >= 65 ? 'positive' : legal.score >= 45 ? 'neutral' : 'negative') as any, howToImprove: improvementMap.legal },
+      { name: 'Financial', value: financial.score, weight: this.WEIGHTS.financial, impact: (financial.score >= 65 ? 'positive' : financial.score >= 45 ? 'neutral' : 'negative') as any, howToImprove: improvementMap.financial },
+      { name: 'Environmental', value: environmental.score, weight: this.WEIGHTS.environmental, impact: (environmental.score >= 65 ? 'positive' : environmental.score >= 45 ? 'neutral' : 'negative') as any, howToImprove: improvementMap.environmental },
+      { name: 'Market', value: market.score, weight: this.WEIGHTS.market, impact: (market.score >= 65 ? 'positive' : market.score >= 45 ? 'neutral' : 'negative') as any, howToImprove: improvementMap.market },
+    ];
+
+    return { score: creditScore, factors };
+  }
+
+  /**
+   * Backtest score against historical performance
+   */
+  async backtestScore(
+    propertyId: string
+  ): Promise<{
+    predictedPerformance: { grade: string; appreciationPct: number };
+    actualPerformance: { appreciationPct: number; daysToSell: number | null };
+    accuracy: number;
+  }> {
+    const scores = await db.query.landCreditScores.findMany({
+      where: eq(landCreditScores.propertyId, propertyId),
+      orderBy: [desc(landCreditScores.createdAt)],
+    });
+
+    if (scores.length === 0) {
+      return {
+        predictedPerformance: { grade: 'N/A', appreciationPct: 0 },
+        actualPerformance: { appreciationPct: 0, daysToSell: null },
+        accuracy: 0,
+      };
+    }
+
+    const latestScore = scores[0];
+    // Predicted appreciation based on grade
+    const gradeAppreciation: Record<string, number> = {
+      'A+': 12, 'A': 10, 'B+': 8, 'B': 6, 'C+': 4, 'C': 2, 'D': 0, 'F': -2,
+    };
+    const predictedAppreciation = gradeAppreciation[latestScore.grade] || 5;
+
+    const property = await db.query.properties.findFirst({
+      where: eq(properties.id, propertyId),
+    });
+
+    // Actual appreciation (from property data)
+    let actualAppreciation = 0;
+    if (property?.purchasePrice && property?.estimatedValue) {
+      actualAppreciation = ((property.estimatedValue - property.purchasePrice) / property.purchasePrice) * 100;
+    }
+
+    const accuracy = actualAppreciation > 0
+      ? Math.max(0, Math.min(100, 100 - Math.abs(predictedAppreciation - actualAppreciation) * 5))
+      : 50;
+
+    return {
+      predictedPerformance: { grade: latestScore.grade, appreciationPct: predictedAppreciation },
+      actualPerformance: {
+        appreciationPct: Math.round(actualAppreciation * 10) / 10,
+        daysToSell: (property as any)?.daysOnMarket || null,
+      },
+      accuracy: Math.round(accuracy),
+    };
+  }
+}
+
 export const landCredit = new LandCreditScoring();

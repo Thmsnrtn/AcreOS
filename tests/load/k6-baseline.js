@@ -32,6 +32,9 @@ const leadListTrend = new Trend("lead_list_p95");
 const dashboardTrend = new Trend("dashboard_stats_p95");
 const searchTrend = new Trend("search_p95");
 const aiChatTrend = new Trend("ai_chat_p95");
+const marketplaceListingTrend = new Trend("marketplace_listing_p95");
+const marketplaceBidTrend = new Trend("marketplace_bid_p95");
+const marketplaceFlowTrend = new Trend("marketplace_flow_p95");
 
 // ─── Test scenarios ───────────────────────────────────────────────────────────
 
@@ -72,8 +75,14 @@ export const options = {
     "http_req_duration{endpoint:ai}": [
       "p(95)<2000", // AI endpoints get 2s budget
     ],
-    error_rate: ["rate<0.01"], // < 1% error rate
-    http_req_failed: ["rate<0.01"],
+    "http_req_duration{endpoint:marketplace}": [
+      "p(95)<800", // marketplace endpoints < 800ms
+    ],
+    error_rate:              ["rate<0.01"], // < 1% error rate
+    http_req_failed:         ["rate<0.01"],
+    marketplace_listing_p95: ["p(95)<800"],
+    marketplace_bid_p95:     ["p(95)<1000"],
+    marketplace_flow_p95:    ["p(95)<2000"],
   },
 };
 
@@ -154,6 +163,138 @@ export default function () {
       if (res.status === 200) {
         aiChatTrend.add(res.timings.duration);
       }
+    });
+  }
+
+  // ── Marketplace: listing browse ───────────────────────────────────────────
+  group("Marketplace Listings", () => {
+    const params = new URLSearchParams({
+      limit: "20",
+      status: "active",
+      sort: "listed_at",
+      order: "desc",
+    });
+    const res = http.get(
+      `${BASE_URL}/api/marketplace/listings?${params.toString()}`,
+      { headers: HEADERS, tags: { endpoint: "marketplace" } }
+    );
+    check(res, {
+      "marketplace listings 200": r => r.status === 200,
+      "marketplace listings has data": r => {
+        try {
+          const body = JSON.parse(r.body);
+          return Array.isArray(body) || Array.isArray(body?.listings) || body?.total !== undefined;
+        } catch {
+          return false;
+        }
+      },
+    });
+    errorRate.add(res.status >= 500);
+    marketplaceListingTrend.add(res.timings.duration);
+    sleep(0.3);
+  });
+
+  // ── Marketplace: single listing detail ───────────────────────────────────
+  group("Marketplace Listing Detail", () => {
+    // Use a static listing ID for repeatability; swap for dynamic if needed
+    const listingId = Math.floor(Math.random() * 50) + 1;
+    const res = http.get(
+      `${BASE_URL}/api/marketplace/listings/${listingId}`,
+      { headers: HEADERS, tags: { endpoint: "marketplace" } }
+    );
+    check(res, {
+      "listing detail 200 or 404": r => r.status === 200 || r.status === 404,
+      "listing detail < 500ms": r => r.timings.duration < 500,
+    });
+    errorRate.add(res.status >= 500);
+    marketplaceListingTrend.add(res.timings.duration);
+    sleep(0.2);
+  });
+
+  // ── Marketplace: bidding (sampled — 20% of VUs) ───────────────────────────
+  if (Math.random() < 0.2) {
+    group("Marketplace Bid", () => {
+      const listingId = Math.floor(Math.random() * 50) + 1;
+      const bidPayload = JSON.stringify({
+        listingId,
+        amount: Math.floor(Math.random() * 500_000) + 100_000,
+        message: "Interested in this parcel. Please contact me.",
+      });
+      const res = http.post(
+        `${BASE_URL}/api/marketplace/listings/${listingId}/bids`,
+        bidPayload,
+        {
+          headers: HEADERS,
+          tags: { endpoint: "marketplace" },
+          timeout: "15s",
+        }
+      );
+      check(res, {
+        "bid 200/201 or auth error": r =>
+          r.status === 200 ||
+          r.status === 201 ||
+          r.status === 401 ||
+          r.status === 403 ||
+          r.status === 422,
+      });
+      // Only count as error on server failures
+      errorRate.add(res.status >= 500);
+      marketplaceBidTrend.add(res.timings.duration);
+      sleep(0.5);
+    });
+  }
+
+  // ── Marketplace: full flow (browse → detail → bid) — 10% of VUs ──────────
+  if (Math.random() < 0.1) {
+    group("Marketplace Full Flow", () => {
+      const flowStart = Date.now();
+
+      // Step 1: Search listings
+      const searchRes = http.get(
+        `${BASE_URL}/api/marketplace/listings?limit=10&status=active`,
+        { headers: HEADERS, tags: { endpoint: "marketplace" } }
+      );
+      if (searchRes.status !== 200) {
+        errorRate.add(true);
+        return;
+      }
+      errorRate.add(false);
+
+      let listingId = 1;
+      try {
+        const body = JSON.parse(searchRes.body);
+        const listings = Array.isArray(body) ? body : (body?.listings ?? []);
+        if (listings.length > 0) {
+          listingId = listings[Math.floor(Math.random() * listings.length)].id ?? 1;
+        }
+      } catch { /* use default */ }
+
+      sleep(0.2);
+
+      // Step 2: View listing detail
+      const detailRes = http.get(
+        `${BASE_URL}/api/marketplace/listings/${listingId}`,
+        { headers: HEADERS, tags: { endpoint: "marketplace" } }
+      );
+      check(detailRes, {
+        "flow: detail ok": r => r.status === 200 || r.status === 404,
+      });
+
+      sleep(0.3);
+
+      // Step 3: Place bid
+      const bidRes = http.post(
+        `${BASE_URL}/api/marketplace/listings/${listingId}/bids`,
+        JSON.stringify({ listingId, amount: 250_000 }),
+        { headers: HEADERS, tags: { endpoint: "marketplace" }, timeout: "15s" }
+      );
+      check(bidRes, {
+        "flow: bid submitted": r => r.status < 500,
+      });
+
+      const flowDuration = Date.now() - flowStart;
+      marketplaceFlowTrend.add(flowDuration);
+      sleep(0.5);
     });
   }
 }

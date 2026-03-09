@@ -5,11 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Search, Plus, RefreshCw, Flame, TrendingUp, CheckCircle, Database, Play, ToggleLeft, ToggleRight, MapPin, DollarSign, FileText, Home } from "lucide-react";
+import { Search, Plus, RefreshCw, Flame, TrendingUp, CheckCircle, Database, Play, ToggleLeft, ToggleRight, MapPin, DollarSign, FileText, Home, Bot, Activity, Trash2 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -78,6 +79,219 @@ function StatusBadge({ status }: { status: string }) {
     <span className={`px-2 py-0.5 rounded text-xs font-medium ${map[status] ?? "bg-gray-100 text-gray-600"}`}>
       {status.replace(/_/g, " ")}
     </span>
+  );
+}
+
+// ─── Auto-Bid Rules Panel ─────────────────────────────────────────────────────
+
+interface AutoBidRule {
+  id: number;
+  maxPriceCents: number;
+  minDistressScore: number;
+  counties: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
+function AutoBidRulesPanel() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [maxPrice, setMaxPrice] = useState("");
+  const [minScore, setMinScore] = useState("60");
+  const [counties, setCounties] = useState("");
+
+  const { data: rulesData } = useQuery({
+    queryKey: ["/api/deal-hunter/auto-bid-rules"],
+    queryFn: async () => {
+      const res = await fetch("/api/deal-hunter/auto-bid-rules", { credentials: "include" });
+      if (!res.ok) return { rules: [] };
+      return res.json();
+    },
+  });
+  const rules: AutoBidRule[] = rulesData?.rules ?? [];
+
+  const createRuleMutation = useMutation({
+    mutationFn: async (body: object) => {
+      const res = await fetch("/api/deal-hunter/auto-bid-rules", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error("Failed to create rule");
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Auto-bid rule created" });
+      queryClient.invalidateQueries({ queryKey: ["/api/deal-hunter/auto-bid-rules"] });
+      setMaxPrice(""); setMinScore("60"); setCounties("");
+    },
+    onError: () => toast({ title: "Failed to save rule", variant: "destructive" }),
+  });
+
+  const deleteRuleMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`/api/deal-hunter/auto-bid-rules/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to delete rule");
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Rule deleted" });
+      queryClient.invalidateQueries({ queryKey: ["/api/deal-hunter/auto-bid-rules"] });
+    },
+  });
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Bot className="w-4 h-4 text-primary" /> Create Auto-Bid Rule
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <Label className="text-xs">Max Price ($)</Label>
+              <Input
+                type="number"
+                placeholder="e.g. 50000"
+                value={maxPrice}
+                onChange={e => setMaxPrice(e.target.value)}
+                className="h-8 text-sm"
+              />
+            </div>
+            <div>
+              <Label className="text-xs">Min Distress Score</Label>
+              <Select value={minScore} onValueChange={setMinScore}>
+                <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="40">40+ Moderate</SelectItem>
+                  <SelectItem value="60">60+ Warm</SelectItem>
+                  <SelectItem value="80">80+ Hot</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs">Counties (comma-separated)</Label>
+              <Input
+                placeholder="Travis, Hays, Bastrop"
+                value={counties}
+                onChange={e => setCounties(e.target.value)}
+                className="h-8 text-sm"
+              />
+            </div>
+          </div>
+          <Button
+            size="sm"
+            disabled={!maxPrice || createRuleMutation.isPending}
+            onClick={() => createRuleMutation.mutate({
+              maxPriceCents: Math.round(parseFloat(maxPrice) * 100),
+              minDistressScore: parseInt(minScore),
+              counties,
+            })}
+          >
+            <Plus className="w-3 h-3 mr-1" /> Add Rule
+          </Button>
+        </CardContent>
+      </Card>
+
+      {rules.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-muted-foreground">{rules.length} Active Rule{rules.length !== 1 ? "s" : ""}</p>
+          {rules.map(rule => (
+            <div key={rule.id} className="flex items-center justify-between p-3 border rounded-md text-sm">
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <Badge variant={rule.isActive ? "default" : "secondary"} className="text-xs">
+                    {rule.isActive ? "Active" : "Paused"}
+                  </Badge>
+                  <span className="font-medium">Max ${(rule.maxPriceCents / 100).toLocaleString()}</span>
+                  <span className="text-muted-foreground">· Score ≥{rule.minDistressScore}</span>
+                </div>
+                {rule.counties && <p className="text-xs text-muted-foreground">Counties: {rule.counties}</p>}
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-destructive hover:text-destructive h-7 w-7 p-0"
+                onClick={() => deleteRuleMutation.mutate(rule.id)}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Source Health Monitoring ─────────────────────────────────────────────────
+
+function SourceHealthPanel({ sources }: { sources: any[] }) {
+  if (sources.length === 0) return null;
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Activity className="w-4 h-4 text-primary" /> Source Health Monitor
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-0">
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b bg-muted/40">
+                <th className="text-left px-4 py-2 font-medium">Source</th>
+                <th className="text-left px-4 py-2 font-medium">Last Scraped</th>
+                <th className="text-left px-4 py-2 font-medium">Status</th>
+                <th className="text-left px-4 py-2 font-medium">Failures</th>
+                <th className="text-left px-4 py-2 font-medium">State</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sources.map(source => {
+                const lastScrape = source.lastScrapedAt
+                  ? new Date(source.lastScrapedAt).toLocaleString()
+                  : "Never";
+                const isHealthy = source.consecutiveFailures === 0 && source.isActive;
+                return (
+                  <tr key={source.id} className="border-b last:border-0 hover:bg-muted/20">
+                    <td className="px-4 py-2">
+                      <div>
+                        <p className="font-medium truncate max-w-[160px]">{source.name}</p>
+                        <p className="text-muted-foreground">{source.sourceType.replace(/_/g, " ")}</p>
+                      </div>
+                    </td>
+                    <td className="px-4 py-2 text-muted-foreground">{lastScrape}</td>
+                    <td className="px-4 py-2">
+                      {!source.isActive ? (
+                        <Badge variant="secondary" className="text-xs">Disabled</Badge>
+                      ) : isHealthy ? (
+                        <Badge className="bg-green-100 text-green-800 text-xs">Healthy</Badge>
+                      ) : (
+                        <Badge variant="destructive" className="text-xs">Failing</Badge>
+                      )}
+                    </td>
+                    <td className="px-4 py-2">
+                      <span className={source.consecutiveFailures > 0 ? "text-red-600 font-medium" : "text-muted-foreground"}>
+                        {source.consecutiveFailures}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2 text-muted-foreground">{source.state}{source.county ? ` / ${source.county}` : ""}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -329,6 +543,8 @@ function DealsTab() {
     sourceType: "",
     minDistressScore: "",
   });
+  const [selectedDealIds, setSelectedDealIds] = useState<Set<number>>(new Set());
+  const [bulkConverting, setBulkConverting] = useState(false);
 
   const params = new URLSearchParams({ limit: "50", offset: "0" });
   if (filters.status) params.set("status", filters.status);
@@ -344,6 +560,40 @@ function DealsTab() {
   });
 
   const deals: ScrapedDeal[] = dealsData?.deals ?? [];
+
+  const toggleSelectDeal = (id: number) => {
+    setSelectedDealIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAllNew = () => {
+    const newIds = deals.filter(d => d.status === "new").map(d => d.id);
+    setSelectedDealIds(new Set(newIds));
+  };
+
+  const handleBulkConvert = async () => {
+    if (selectedDealIds.size === 0) return;
+    setBulkConverting(true);
+    let success = 0;
+    for (const id of Array.from(selectedDealIds)) {
+      try {
+        await fetch(`/api/deal-hunter/deals/${id}/convert-lead`, {
+          method: "POST",
+          credentials: "include",
+        });
+        success++;
+      } catch {}
+    }
+    setBulkConverting(false);
+    setSelectedDealIds(new Set());
+    toast({ title: `Bulk converted`, description: `${success} of ${selectedDealIds.size} deals converted to leads` });
+    queryClient.invalidateQueries({ queryKey: ["/api/deal-hunter/deals"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/deal-hunter/stats"] });
+  };
 
   const convertLeadMutation = useMutation({
     mutationFn: async (dealId: number) => {
@@ -424,6 +674,24 @@ function DealsTab() {
         <p className="text-xs text-muted-foreground ml-auto self-end pb-1">{deals.length} deals</p>
       </div>
 
+      {/* Bulk conversion bar */}
+      <div className="flex items-center gap-3">
+        <Button variant="ghost" size="sm" className="text-xs" onClick={selectAllNew}>
+          Select all new
+        </Button>
+        {selectedDealIds.size > 0 && (
+          <>
+            <span className="text-xs text-muted-foreground">{selectedDealIds.size} selected</span>
+            <Button size="sm" className="text-xs" onClick={handleBulkConvert} disabled={bulkConverting}>
+              {bulkConverting ? "Converting…" : `Convert ${selectedDealIds.size} to Leads`}
+            </Button>
+            <Button size="sm" variant="ghost" className="text-xs" onClick={() => setSelectedDealIds(new Set())}>
+              Clear
+            </Button>
+          </>
+        )}
+      </div>
+
       {/* Deal cards */}
       {isLoading ? (
         <div className="space-y-3">
@@ -440,8 +708,18 @@ function DealsTab() {
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {deals.map(deal => (
-            <Card key={deal.id} className="hover:shadow-md transition-shadow">
+            <Card key={deal.id} className={`hover:shadow-md transition-shadow ${selectedDealIds.has(deal.id) ? "ring-2 ring-primary" : ""}`}>
               <CardContent className="p-4">
+                {deal.status === "new" && (
+                  <div className="flex items-center gap-2 mb-2">
+                    <Checkbox
+                      checked={selectedDealIds.has(deal.id)}
+                      onCheckedChange={() => toggleSelectDeal(deal.id)}
+                      id={`chk-${deal.id}`}
+                    />
+                    <label htmlFor={`chk-${deal.id}`} className="text-xs text-muted-foreground cursor-pointer">Select for bulk convert</label>
+                  </div>
+                )}
                 <div className="flex items-start justify-between mb-2">
                   <div>
                     <div className="flex items-center gap-2 mb-0.5">
@@ -527,6 +805,40 @@ function DealsTab() {
   );
 }
 
+// ─── Source Health Tab Content ────────────────────────────────────────────────
+
+function SourceHealthTabContent() {
+  const { data: sourcesData, isLoading } = useQuery({
+    queryKey: ["/api/deal-hunter/sources"],
+    queryFn: async () => {
+      const res = await fetch("/api/deal-hunter/sources", { credentials: "include" });
+      return res.json();
+    },
+  });
+  const sources = sourcesData?.sources ?? [];
+
+  if (isLoading) {
+    return (
+      <div className="space-y-3">
+        {[1, 2, 3].map(i => <div key={i} className="h-12 bg-muted/50 rounded animate-pulse" />)}
+      </div>
+    );
+  }
+
+  if (sources.length === 0) {
+    return (
+      <Card>
+        <CardContent className="py-12 text-center">
+          <Activity className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
+          <p className="text-muted-foreground text-sm">No sources configured. Add sources first.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return <SourceHealthPanel sources={sources} />;
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function DealHunterPage() {
@@ -597,6 +909,8 @@ export default function DealHunterPage() {
         <TabsList>
           <TabsTrigger value="deals">Deals</TabsTrigger>
           <TabsTrigger value="sources">Sources</TabsTrigger>
+          <TabsTrigger value="auto-bid">Auto-Bid Rules</TabsTrigger>
+          <TabsTrigger value="health">Source Health</TabsTrigger>
         </TabsList>
 
         <TabsContent value="deals" className="mt-4">
@@ -605,6 +919,30 @@ export default function DealHunterPage() {
 
         <TabsContent value="sources" className="mt-4">
           <SourcesTab />
+        </TabsContent>
+
+        <TabsContent value="auto-bid" className="mt-4 space-y-4">
+          <div>
+            <h2 className="text-sm font-semibold mb-0.5 flex items-center gap-2">
+              <Bot className="w-4 h-4 text-primary" /> Auto-Bid Rules
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              Define rules to automatically flag or bid on deals matching your criteria.
+            </p>
+          </div>
+          <AutoBidRulesPanel />
+        </TabsContent>
+
+        <TabsContent value="health" className="mt-4 space-y-4">
+          <div>
+            <h2 className="text-sm font-semibold mb-0.5 flex items-center gap-2">
+              <Activity className="w-4 h-4 text-primary" /> Source Health Monitoring
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              Monitor scraping success rates, last-scraped times, and failure counts per source.
+            </p>
+          </div>
+          <SourceHealthTabContent />
         </TabsContent>
       </Tabs>
     </div>

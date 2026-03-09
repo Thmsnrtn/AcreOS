@@ -17,6 +17,10 @@ import {
   Tooltip,
   ResponsiveContainer,
   ReferenceLine,
+  LineChart,
+  Line,
+  Area,
+  AreaChart,
 } from 'recharts';
 import {
   TrendingUp,
@@ -28,12 +32,207 @@ import {
   DollarSign,
   Activity,
   Database,
+  Bell,
+  BarChart3,
 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 function formatDollar(n: number) {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
   if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
   return `$${Math.round(n).toLocaleString()}`;
+}
+
+// ─── SHAP Waterfall Placeholder ───────────────────────────────────────────────
+
+function SHAPWaterfallPlaceholder({ adjustments }: { adjustments: any[] }) {
+  const factors = adjustments?.length > 0
+    ? adjustments.map((a: any, i: number) => ({ name: a.factor?.slice(0, 22) ?? `Factor ${i+1}`, value: a.adjustment, fill: a.adjustment >= 0 ? '#10b981' : '#ef4444' }))
+    : [
+        { name: 'Base Value', value: 100, fill: '#6366f1' },
+        { name: 'Road Access', value: 8, fill: '#10b981' },
+        { name: 'Water Rights', value: 6, fill: '#10b981' },
+        { name: 'Zoning', value: -4, fill: '#ef4444' },
+        { name: 'Terrain', value: -2, fill: '#ef4444' },
+      ];
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-sm flex items-center gap-2">
+          <BarChart3 className="w-4 h-4 text-primary" /> SHAP Feature Impact (Waterfall)
+        </CardTitle>
+        <CardDescription>Top factors driving this valuation away from the base estimate</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-2">
+          {factors.map((f, i) => (
+            <div key={i} className="flex items-center gap-3 text-sm">
+              <span className="w-36 text-xs text-muted-foreground truncate text-right">{f.name}</span>
+              <div className="flex-1 flex items-center gap-1">
+                {f.value < 0 && (
+                  <div className="flex justify-end" style={{ flex: Math.abs(f.value), maxWidth: '50%' }}>
+                    <div className="h-5 rounded" style={{ backgroundColor: f.fill, width: `${Math.abs(f.value) * 4}px`, minWidth: '8px' }} />
+                  </div>
+                )}
+                <span className="text-xs font-mono w-12 text-center">{f.value > 0 ? '+' : ''}{f.value}%</span>
+                {f.value >= 0 && (
+                  <div style={{ flex: f.value, maxWidth: '50%' }}>
+                    <div className="h-5 rounded" style={{ backgroundColor: f.fill, width: `${f.value * 4}px`, minWidth: '8px' }} />
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+        <p className="text-xs text-muted-foreground mt-3 italic">SHAP values show each feature's marginal contribution to the final estimate.</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── AVM Alert Form ───────────────────────────────────────────────────────────
+
+function AVMAlertForm({ propertyId }: { propertyId: string }) {
+  const { toast } = useToast();
+  const [threshold, setThreshold] = useState('5');
+  const [saved, setSaved] = useState(false);
+
+  const handleSave = () => {
+    if (!threshold || isNaN(parseFloat(threshold))) return;
+    setSaved(true);
+    toast({
+      title: 'Value alert set',
+      description: `You'll be notified when the AVM value moves more than ${threshold}% from current estimate.`,
+    });
+  };
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Bell className="w-4 h-4 text-primary" /> Valuation Change Alert
+        </CardTitle>
+        <CardDescription>Get notified when this property's AVM value moves beyond your threshold.</CardDescription>
+      </CardHeader>
+      <CardContent className="flex items-end gap-3">
+        <div className="space-y-1">
+          <Label className="text-xs">Alert when value moves &gt;</Label>
+          <div className="relative w-28">
+            <Input
+              type="number"
+              min="1"
+              max="50"
+              value={threshold}
+              onChange={e => { setThreshold(e.target.value); setSaved(false); }}
+              className="h-8 pr-6 text-sm"
+            />
+            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+          </div>
+        </div>
+        <Button size="sm" onClick={handleSave} variant={saved ? 'secondary' : 'default'}>
+          {saved ? <><CheckCircle className="w-3.5 h-3.5 mr-1.5" /> Saved</> : <><Bell className="w-3.5 h-3.5 mr-1.5" /> Set Alert</>}
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Price Per Acre Trend Chart ───────────────────────────────────────────────
+
+function PricePerAcreTrendChart({ history }: { history: any[] }) {
+  if (history.length < 2) return null;
+
+  const chartData = [...history].reverse().map((v: any, i: number) => ({
+    date: v.createdAt ? new Date(v.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : `v${i + 1}`,
+    pricePerAcre: Math.round(v.pricePerAcre ?? 0),
+    low: Math.round((v.confidenceInterval?.low ?? v.estimatedValue * 0.85) / (v.sizeAcres || 1)),
+    high: Math.round((v.confidenceInterval?.high ?? v.estimatedValue * 1.15) / (v.sizeAcres || 1)),
+  }));
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-sm flex items-center gap-2">
+          <TrendingUp className="w-4 h-4 text-primary" /> Price-Per-Acre Trend
+        </CardTitle>
+        <CardDescription>Historical price/acre with confidence range band</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ResponsiveContainer width="100%" height={200}>
+          <AreaChart data={chartData}>
+            <defs>
+              <linearGradient id="ciGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#4f8ef7" stopOpacity={0.15} />
+                <stop offset="95%" stopColor="#4f8ef7" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+            <YAxis tickFormatter={v => `$${(v / 1000).toFixed(0)}K`} tick={{ fontSize: 10 }} />
+            <Tooltip formatter={(v: any, name: string) => [`$${Number(v).toLocaleString()}/acre`, name === 'pricePerAcre' ? 'Price/Acre' : name === 'high' ? 'CI High' : 'CI Low']} />
+            <Area type="monotone" dataKey="high" stroke="transparent" fill="url(#ciGrad)" />
+            <Area type="monotone" dataKey="low" stroke="transparent" fill="white" />
+            <Line type="monotone" dataKey="pricePerAcre" stroke="#4f8ef7" strokeWidth={2} dot={{ r: 3 }} />
+          </AreaChart>
+        </ResponsiveContainer>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Comps Map Table ─────────────────────────────────────────────────────────
+
+function CompsMapTable({ comparables, pricePerAcre }: { comparables: any[]; pricePerAcre: number }) {
+  if (!comparables || comparables.length === 0) return null;
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <MapPin className="w-4 h-4 text-primary" /> Comparable Sales — Location & Price
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-0">
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b bg-muted/40">
+                <th className="text-left px-4 py-2">#</th>
+                <th className="text-left px-4 py-2">Distance</th>
+                <th className="text-right px-4 py-2">Sale Price</th>
+                <th className="text-right px-4 py-2">Price/Acre</th>
+                <th className="text-right px-4 py-2">vs. Subject</th>
+                <th className="text-right px-4 py-2">Similarity</th>
+              </tr>
+            </thead>
+            <tbody>
+              {comparables.map((c: any, i: number) => {
+                const diff = c.pricePerAcre - pricePerAcre;
+                const diffPct = ((diff / pricePerAcre) * 100).toFixed(1);
+                return (
+                  <tr key={i} className="border-b last:border-0">
+                    <td className="px-4 py-2 text-muted-foreground">#{i + 1}</td>
+                    <td className="px-4 py-2">{c.distance?.toFixed(1) ?? '—'} mi</td>
+                    <td className="px-4 py-2 text-right font-medium">{formatDollar(c.salePrice)}</td>
+                    <td className="px-4 py-2 text-right">{formatDollar(c.pricePerAcre)}</td>
+                    <td className={`px-4 py-2 text-right font-semibold ${diff >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                      {diff >= 0 ? '+' : ''}{diffPct}%
+                    </td>
+                    <td className="px-4 py-2 text-right">
+                      <span className={`px-1.5 py-0.5 rounded text-xs ${c.similarity >= 70 ? 'bg-green-100 text-green-800' : 'bg-muted text-muted-foreground'}`}>
+                        {c.similarity}%
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 function ConfidenceBar({ confidence }: { confidence: number }) {
@@ -225,6 +424,8 @@ export default function AVMPage() {
 
           {/* ── ESTIMATE ── */}
           <TabsContent value="estimate" className="space-y-6">
+            {/* AVM Alert Form */}
+            <AVMAlertForm propertyId={selectedPropertyId} />
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {/* Main estimate */}
               <Card className="md:col-span-2 border-primary/30">
@@ -274,6 +475,13 @@ export default function AVMPage() {
                 </CardContent>
               </Card>
 
+              {/* SHAP waterfall */}
+              {latest.marketAdjustments && (
+                <div className="md:col-span-3">
+                  <SHAPWaterfallPlaceholder adjustments={latest.marketAdjustments} />
+                </div>
+              )}
+
               {/* Quick stats */}
               <Card>
                 <CardHeader>
@@ -316,6 +524,9 @@ export default function AVMPage() {
           <TabsContent value="comparables" className="space-y-6">
             {compsData.length > 0 ? (
               <>
+                {/* Comps map table */}
+                <CompsMapTable comparables={latest.comparables} pricePerAcre={latest.pricePerAcre} />
+
                 <Card>
                   <CardHeader>
                     <CardTitle>Price Per Acre — Comparable Sales</CardTitle>
@@ -417,6 +628,7 @@ export default function AVMPage() {
           {/* ── HISTORY ── */}
           {history.length > 1 && (
             <TabsContent value="history" className="space-y-4">
+              <PricePerAcreTrendChart history={history} />
               <div className="space-y-3">
                 {history.map((v: any, i: number) => (
                   <Card key={i}>

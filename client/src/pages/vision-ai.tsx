@@ -8,7 +8,104 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
-import { Eye, Camera, Satellite, Zap, CheckCircle, AlertTriangle, Image, FileText } from "lucide-react";
+import { Eye, Camera, Satellite, Zap, CheckCircle, AlertTriangle, Image, FileText, ArrowLeftRight, Activity } from "lucide-react";
+import { useState as useLocalState } from "react";
+
+// ─── Before/After Slider Component ───────────────────────────────────────────
+
+function BeforeAfterSlider({ before, after, label }: { before: string; after: string; label?: string }) {
+  const [sliderPos, setSliderPos] = useLocalState(50);
+
+  return (
+    <div className="space-y-2">
+      {label && <p className="text-xs font-medium text-muted-foreground">{label}</p>}
+      <div className="relative overflow-hidden rounded-lg bg-muted" style={{ height: 200 }}>
+        {/* "After" image (full width base) */}
+        <div
+          className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground bg-gradient-to-br from-green-100 to-green-200"
+          style={{ backgroundImage: after ? `url(${after})` : undefined, backgroundSize: 'cover' }}
+        >
+          {!after && <span>After</span>}
+        </div>
+        {/* "Before" image (clipped to left of slider) */}
+        <div
+          className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground bg-gradient-to-br from-orange-100 to-orange-200 overflow-hidden"
+          style={{ width: `${sliderPos}%`, backgroundImage: before ? `url(${before})` : undefined, backgroundSize: 'cover', backgroundPosition: 'left center' }}
+        >
+          {!before && <span>Before</span>}
+        </div>
+        {/* Divider line */}
+        <div
+          className="absolute top-0 bottom-0 w-0.5 bg-white shadow-lg"
+          style={{ left: `${sliderPos}%` }}
+        >
+          <div className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-6 h-6 bg-white rounded-full shadow border flex items-center justify-center">
+            <ArrowLeftRight className="w-3 h-3 text-muted-foreground" />
+          </div>
+        </div>
+        {/* Labels */}
+        <div className="absolute top-2 left-2 px-1.5 py-0.5 bg-black/50 text-white text-xs rounded">Before</div>
+        <div className="absolute top-2 right-2 px-1.5 py-0.5 bg-black/50 text-white text-xs rounded">After</div>
+      </div>
+      <input
+        type="range"
+        min={0}
+        max={100}
+        value={sliderPos}
+        onChange={e => setSliderPos(Number(e.target.value))}
+        className="w-full h-1.5 accent-primary"
+      />
+    </div>
+  );
+}
+
+// ─── Change Detection Display ─────────────────────────────────────────────────
+
+function ChangeDetectionDisplay({ snapshots }: { snapshots: any[] }) {
+  const changedSnaps = snapshots.filter(s => s.changeDetected);
+  const latestSnap = snapshots[0];
+  const prevSnap = snapshots[1];
+
+  if (snapshots.length < 2) return null;
+
+  const changeScore = changedSnaps.length > 0
+    ? Math.min(100, Math.round((changedSnaps.length / snapshots.length) * 100 + 20))
+    : 0;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-3">
+        <p className="text-sm font-medium">Change Detection Results</p>
+        <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold ${changeScore > 40 ? 'bg-red-100 text-red-700' : changeScore > 15 ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>
+          <Activity className="w-3 h-3" />
+          Change Score: {changeScore}/100
+        </div>
+      </div>
+      {changedSnaps.length > 0 ? (
+        <div className="space-y-2">
+          {changedSnaps.map((snap, i) => (
+            <div key={i} className="flex items-center gap-2 text-xs p-2 bg-red-50 rounded border border-red-200">
+              <AlertTriangle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+              <span>Change detected on {snap.capturedAt ? new Date(snap.capturedAt).toLocaleDateString() : '—'} · Zoom {snap.zoom ?? '—'}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 text-xs p-2 bg-green-50 rounded border border-green-200">
+          <CheckCircle className="w-3.5 h-3.5 text-green-500" />
+          <span>No significant changes detected across {snapshots.length} snapshots</span>
+        </div>
+      )}
+
+      {/* Before/after slider using snapshot imagery */}
+      <BeforeAfterSlider
+        before={prevSnap?.imageUrl ?? ''}
+        after={latestSnap?.imageUrl ?? ''}
+        label="Satellite Image Comparison (Drag slider to compare)"
+      />
+    </div>
+  );
+}
 
 function FeaturePill({ label }: { label: string }) {
   return (
@@ -262,6 +359,21 @@ export default function VisionAIPage() {
                 </Card>
               )}
             </div>
+
+            {/* Change detection + before/after slider */}
+            {snapshots.length >= 2 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <ArrowLeftRight className="w-4 h-4 text-primary" /> Satellite Image Diff & Change Detection
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ChangeDetectionDisplay snapshots={snapshots} />
+                </CardContent>
+              </Card>
+            )}
+
             {snapshots.length === 0 && (
               <Card>
                 <CardContent className="py-10 text-center">

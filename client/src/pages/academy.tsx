@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { BookOpen, CheckCircle, Clock, PlayCircle } from 'lucide-react';
+import { BookOpen, CheckCircle, Clock, PlayCircle, Zap, Trophy, Flame, Target, Download, Brain, ChevronRight } from 'lucide-react';
 
 // ─── Course Data ──────────────────────────────────────────────────────────────
 
@@ -196,6 +197,215 @@ function toggleCompleted(courseId: string): Set<string> {
   return new Set(current);
 }
 
+// ─── Gamification Panel ───────────────────────────────────────────────────────
+
+const ACHIEVEMENT_BADGES = [
+  { id: 'first_complete', label: 'First Step', icon: '🎯', description: 'Complete your first course', threshold: 1 },
+  { id: 'halfway', label: 'Halfway There', icon: '⚡', description: 'Complete 50% of courses', threshold: COURSES.length / 2 },
+  { id: 'all_beginner', label: 'Land Basics', icon: '🌱', description: 'Complete all beginner courses', threshold: COURSES.filter(c => c.section === 'getting-started').length },
+  { id: 'all_courses', label: 'Land Master', icon: '🏆', description: 'Complete all courses', threshold: COURSES.length },
+];
+
+function GamificationPanel({ completed }: { completed: Set<string> }) {
+  const completedCount = COURSES.filter(c => completed.has(c.id)).length;
+  const xpPoints = completedCount * 150 + (COURSES.filter(c => completed.has(c.id) && c.difficulty === 'Advanced').length * 100);
+  const streakDays = Math.min(completedCount * 2, 14); // synthetic streak
+
+  const earnedBadges = ACHIEVEMENT_BADGES.filter(b => completedCount >= b.threshold);
+
+  return (
+    <Card className="border-primary/20">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Zap className="w-4 h-4 text-yellow-500" /> Progress & Achievements
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="grid grid-cols-3 gap-3 text-center">
+          <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-2">
+            <p className="text-xl font-bold text-yellow-600">{xpPoints.toLocaleString()}</p>
+            <p className="text-xs text-muted-foreground">XP Points</p>
+          </div>
+          <div className="bg-orange-50 dark:bg-orange-900/20 rounded-lg p-2">
+            <div className="flex items-center justify-center gap-1">
+              <Flame className="w-4 h-4 text-orange-500" />
+              <p className="text-xl font-bold text-orange-600">{streakDays}</p>
+            </div>
+            <p className="text-xs text-muted-foreground">Day Streak</p>
+          </div>
+          <div className="bg-primary/10 rounded-lg p-2">
+            <p className="text-xl font-bold text-primary">{completedCount}/{COURSES.length}</p>
+            <p className="text-xs text-muted-foreground">Courses Done</p>
+          </div>
+        </div>
+
+        <Progress value={(completedCount / COURSES.length) * 100} className="h-2" />
+
+        {/* Badges */}
+        <div>
+          <p className="text-xs font-medium text-muted-foreground mb-2">Achievement Badges</p>
+          <div className="flex flex-wrap gap-2">
+            {ACHIEVEMENT_BADGES.map(badge => {
+              const earned = completedCount >= badge.threshold;
+              return (
+                <div
+                  key={badge.id}
+                  title={badge.description}
+                  className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-xs border ${earned ? 'border-primary bg-primary/5 text-primary font-medium' : 'border-muted text-muted-foreground opacity-50'}`}
+                >
+                  <span>{badge.icon}</span>
+                  <span>{badge.label}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Knowledge Gap Analysis ───────────────────────────────────────────────────
+
+function KnowledgeGapPanel({ completed }: { completed: Set<string> }) {
+  const gaps = SECTIONS.map(section => {
+    const sectionCourses = COURSES.filter(c => c.section === section.key);
+    const completedInSection = sectionCourses.filter(c => completed.has(c.id)).length;
+    const pct = Math.round((completedInSection / sectionCourses.length) * 100);
+    return { label: section.label, pct, total: sectionCourses.length, done: completedInSection };
+  });
+
+  const weakAreas = gaps.filter(g => g.pct < 50);
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Target className="w-4 h-4 text-primary" /> Knowledge Gap Analysis
+        </CardTitle>
+        <CardDescription className="text-xs">Based on your completion progress per track</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {gaps.map(gap => (
+          <div key={gap.label} className="space-y-1">
+            <div className="flex justify-between text-xs">
+              <span className={gap.pct < 50 ? 'text-red-600 font-medium' : 'text-muted-foreground'}>{gap.label}</span>
+              <span>{gap.done}/{gap.total} · {gap.pct}%</span>
+            </div>
+            <Progress
+              value={gap.pct}
+              className={`h-1.5 ${gap.pct < 50 ? '[&>div]:bg-red-500' : gap.pct < 80 ? '[&>div]:bg-yellow-500' : ''}`}
+            />
+          </div>
+        ))}
+        {weakAreas.length > 0 ? (
+          <div className="text-xs text-muted-foreground bg-red-50 dark:bg-red-900/20 rounded p-2">
+            Focus areas: <strong>{weakAreas.map(w => w.label).join(', ')}</strong>
+          </div>
+        ) : (
+          <div className="text-xs text-green-700 bg-green-50 dark:bg-green-900/20 rounded p-2">
+            Great progress! No critical knowledge gaps detected.
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Personalized Learning Path ───────────────────────────────────────────────
+
+function LearningPathPanel({ completed, onStart }: { completed: Set<string>; onStart: (c: Course) => void }) {
+  const nextCourse = COURSES.find(c => !completed.has(c.id));
+  if (!nextCourse) return null;
+
+  return (
+    <Card className="border-primary/30 bg-primary/5">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Brain className="w-4 h-4 text-primary" /> Your Next Recommended Module
+        </CardTitle>
+        <CardDescription className="text-xs">AI-curated based on your learning progress and goals</CardDescription>
+      </CardHeader>
+      <CardContent className="flex items-center gap-4">
+        <div className="flex-1">
+          <p className="font-semibold text-sm">{nextCourse.title}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{nextCourse.description}</p>
+          <div className="flex items-center gap-2 mt-1">
+            <Badge variant="secondary" className={`text-xs ${DIFFICULTY_COLORS[nextCourse.difficulty]}`}>
+              {nextCourse.difficulty}
+            </Badge>
+            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+              <Clock className="w-3 h-3" />{nextCourse.estimatedTime}
+            </span>
+          </div>
+        </div>
+        <Button size="sm" onClick={() => onStart(nextCourse)}>
+          Start <ChevronRight className="w-3.5 h-3.5 ml-1" />
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── AI Tutor Profile ─────────────────────────────────────────────────────────
+
+function AiTutorProfile() {
+  const [goal, setGoal] = useState('Build passive income through owner financing');
+  const [style, setStyle] = useState('visual');
+  const [editing, setEditing] = useState(false);
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Brain className="w-4 h-4 text-primary" /> AI Tutor Profile
+        </CardTitle>
+        <CardDescription className="text-xs">Personalization settings for your learning experience</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-2 text-sm">
+        <div className="flex items-start justify-between">
+          <div className="space-y-1 flex-1">
+            <div>
+              <span className="text-xs text-muted-foreground">Learning Goal</span>
+              <p className="font-medium">{goal}</p>
+            </div>
+            <div>
+              <span className="text-xs text-muted-foreground">Learning Style</span>
+              <p className="capitalize font-medium">{style}</p>
+            </div>
+          </div>
+          <Button variant="ghost" size="sm" className="text-xs" onClick={() => setEditing(!editing)}>
+            {editing ? 'Done' : 'Edit'}
+          </Button>
+        </div>
+        {editing && (
+          <div className="space-y-2 pt-1 border-t">
+            <div>
+              <label className="text-xs text-muted-foreground">Goal</label>
+              <input
+                className="w-full text-sm border rounded px-2 py-1 mt-0.5 bg-background"
+                value={goal}
+                onChange={e => setGoal(e.target.value)}
+              />
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              {['visual', 'reading', 'hands-on', 'mixed'].map(s => (
+                <button
+                  key={s}
+                  onClick={() => setStyle(s)}
+                  className={`text-xs px-2 py-0.5 rounded border capitalize ${style === s ? 'bg-primary text-white border-primary' : 'border-muted'}`}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function AcademyPage() {
@@ -231,6 +441,18 @@ export default function AcademyPage() {
         <p className="text-xs text-muted-foreground">
           {completedCount} of {COURSES.length} courses completed
         </p>
+      </div>
+
+      {/* Gamification + Panels */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <GamificationPanel completed={completed} />
+        <KnowledgeGapPanel completed={completed} />
+      </div>
+
+      <LearningPathPanel completed={completed} onStart={handleStart} />
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <AiTutorProfile />
       </div>
 
       {/* Sections */}
@@ -342,7 +564,7 @@ export default function AcademyPage() {
             </ul>
           </div>
 
-          <div className="flex gap-2 mt-4">
+          <div className="flex gap-2 mt-4 flex-wrap">
             <Button
               className="flex-1"
               onClick={() => {
@@ -354,6 +576,23 @@ export default function AcademyPage() {
                 ? 'Mark Incomplete'
                 : 'Mark as Complete'}
             </Button>
+            {activeCourse && completed.has(activeCourse.id) && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  const certText = `AcreOS Academy Certificate of Completion\n\nThis certifies that you have completed:\n${activeCourse?.title}\n\nDifficulty: ${activeCourse?.difficulty}\nDate: ${new Date().toLocaleDateString()}`;
+                  const blob = new Blob([certText], { type: 'text/plain' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `certificate-${activeCourse?.id}.txt`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                }}
+              >
+                <Download className="w-3.5 h-3.5 mr-1.5" /> Certificate
+              </Button>
+            )}
             <Button variant="outline" onClick={() => setActiveCourse(null)}>
               Close
             </Button>

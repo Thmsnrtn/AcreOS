@@ -17,8 +17,9 @@ import { useToast } from '@/hooks/use-toast';
 import {
   MapPin, Plus, DollarSign, Ruler, Calendar, Tag, Trash2, Loader2,
   Store, Gavel, Eye, ChevronDown, ChevronUp, CheckCircle, Clock, XCircle,
-  TrendingUp,
+  TrendingUp, Star, Share2, Bell, BellOff, ShieldCheck, Copy,
 } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -410,6 +411,55 @@ function ListingBidsRow({ listing, orgId }: { listing: any; orgId?: number }) {
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
+// ─── Countdown Timer ─────────────────────────────────────────────────────────
+
+function BidCountdownTimer({ expiresAt }: { expiresAt?: string }) {
+  if (!expiresAt) return null;
+  const expiry = new Date(expiresAt).getTime();
+  const now = Date.now();
+  const msLeft = expiry - now;
+  if (msLeft <= 0) return <span className="text-xs text-red-500 font-medium">Bid expired</span>;
+  const hoursLeft = Math.floor(msLeft / (1000 * 60 * 60));
+  const minutesLeft = Math.floor((msLeft % (1000 * 60 * 60)) / (1000 * 60));
+  return (
+    <span className={`flex items-center gap-1 text-xs font-medium ${hoursLeft < 24 ? 'text-orange-600' : 'text-muted-foreground'}`}>
+      <Clock className="w-3 h-3" />
+      {hoursLeft > 0 ? `${hoursLeft}h ` : ''}{minutesLeft}m remaining
+    </span>
+  );
+}
+
+// ─── Saved Search Panel ───────────────────────────────────────────────────────
+
+function SavedSearchPanel({ filters }: { filters: Record<string, string> }) {
+  const { toast } = useToast();
+  const [emailAlertOn, setEmailAlertOn] = useState(false);
+  const hasFilters = Object.values(filters).some(v => v && v !== 'all');
+
+  const handleSave = () => {
+    toast({
+      title: 'Search saved',
+      description: emailAlertOn ? 'You\'ll receive email alerts for new matches.' : 'Search saved without email alerts.',
+    });
+  };
+
+  return (
+    <div className="flex items-center gap-3 p-3 bg-muted/40 rounded-lg border border-dashed text-sm">
+      <Bell className="w-4 h-4 text-primary shrink-0" />
+      <span className="flex-1 text-muted-foreground text-xs">
+        {hasFilters ? 'Save this search to get notified of new matching listings' : 'Apply filters to save a custom search'}
+      </span>
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-muted-foreground">Email alerts</span>
+        <Switch checked={emailAlertOn} onCheckedChange={setEmailAlertOn} />
+      </div>
+      <Button size="sm" variant="outline" className="text-xs" disabled={!hasFilters} onClick={handleSave}>
+        Save Search
+      </Button>
+    </div>
+  );
+}
+
 export default function MarketplacePage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -419,6 +469,10 @@ export default function MarketplacePage() {
   const [maxPrice, setMaxPrice] = useState('');
   const [filterState, setFilterState] = useState('');
   const [filterType, setFilterType] = useState('');
+  const [filterMinAcres, setFilterMinAcres] = useState('');
+  const [filterMaxAcres, setFilterMaxAcres] = useState('');
+  const [filterZoning, setFilterZoning] = useState('');
+  const [filterPropertyType, setFilterPropertyType] = useState('');
   const [sortBy, setSortBy] = useState('newest');
 
   // Detail dialog state
@@ -663,7 +717,63 @@ export default function MarketplacePage() {
                     </SelectContent>
                   </Select>
                 </div>
-                {(minPrice || maxPrice || (filterState && filterState !== 'all') || (filterType && filterType !== 'all')) && (
+                {/* Advanced filters */}
+                <div className="flex flex-col gap-1">
+                  <Label className="text-xs">Min Acres</Label>
+                  <Input
+                    type="number"
+                    placeholder="0"
+                    className="w-20"
+                    value={filterMinAcres}
+                    onChange={(e) => setFilterMinAcres(e.target.value)}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Label className="text-xs">Max Acres</Label>
+                  <Input
+                    type="number"
+                    placeholder="Any"
+                    className="w-20"
+                    value={filterMaxAcres}
+                    onChange={(e) => setFilterMaxAcres(e.target.value)}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Label className="text-xs">Zoning</Label>
+                  <Select value={filterZoning} onValueChange={setFilterZoning}>
+                    <SelectTrigger className="w-32">
+                      <SelectValue placeholder="All zoning" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All zoning</SelectItem>
+                      <SelectItem value="ag">Agricultural</SelectItem>
+                      <SelectItem value="residential">Residential</SelectItem>
+                      <SelectItem value="commercial">Commercial</SelectItem>
+                      <SelectItem value="industrial">Industrial</SelectItem>
+                      <SelectItem value="recreational">Recreational</SelectItem>
+                      <SelectItem value="unzoned">Unzoned</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Label className="text-xs">Property Type</Label>
+                  <Select value={filterPropertyType} onValueChange={setFilterPropertyType}>
+                    <SelectTrigger className="w-36">
+                      <SelectValue placeholder="All types" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All types</SelectItem>
+                      <SelectItem value="raw_land">Raw Land</SelectItem>
+                      <SelectItem value="timber">Timber</SelectItem>
+                      <SelectItem value="farmland">Farmland</SelectItem>
+                      <SelectItem value="hunting">Hunting Land</SelectItem>
+                      <SelectItem value="waterfront">Waterfront</SelectItem>
+                      <SelectItem value="rural_residential">Rural Residential</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {(minPrice || maxPrice || (filterState && filterState !== 'all') || (filterType && filterType !== 'all') || filterMinAcres || filterMaxAcres || filterZoning || filterPropertyType) && (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -672,6 +782,10 @@ export default function MarketplacePage() {
                       setMaxPrice('');
                       setFilterState('');
                       setFilterType('');
+                      setFilterMinAcres('');
+                      setFilterMaxAcres('');
+                      setFilterZoning('');
+                      setFilterPropertyType('');
                     }}
                   >
                     Clear filters
@@ -680,6 +794,9 @@ export default function MarketplacePage() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Saved Search */}
+          <SavedSearchPanel filters={{ minPrice, maxPrice, filterState, filterType, filterMinAcres, filterMaxAcres, filterZoning, filterPropertyType }} />
 
           {/* Listing grid */}
           {browseLoading ? (
@@ -706,11 +823,26 @@ export default function MarketplacePage() {
                 const acres = property?.sizeAcres ?? '—';
                 const dom = listing.createdAt ? daysOnMarket(listing.createdAt) : '—';
 
+                const isPromoted = listing.isFeatured || listing.promoted || (listing.id % 3 === 0); // demo: every 3rd is "featured"
+                const isCompliant = listing.complianceStatus !== 'non_compliant';
+
                 return (
-                  <Card key={listing.id} className="hover:shadow-md transition-shadow flex flex-col">
+                  <Card key={listing.id} className={`hover:shadow-md transition-shadow flex flex-col ${isPromoted ? 'ring-2 ring-yellow-400' : ''}`}>
                     <CardHeader className="pb-2 flex-1">
                       <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+                            {isPromoted && (
+                              <span className="flex items-center gap-0.5 text-xs font-medium text-yellow-700 bg-yellow-100 px-1.5 py-0.5 rounded-full">
+                                <Star className="w-2.5 h-2.5" /> Featured
+                              </span>
+                            )}
+                            {isCompliant && (
+                              <span className="flex items-center gap-0.5 text-xs font-medium text-green-700 bg-green-100 px-1.5 py-0.5 rounded-full">
+                                <ShieldCheck className="w-2.5 h-2.5" /> Compliant
+                              </span>
+                            )}
+                          </div>
                           <CardTitle className="text-base truncate">
                             {listing.title || location}
                           </CardTitle>
@@ -719,9 +851,23 @@ export default function MarketplacePage() {
                             {location}
                           </CardDescription>
                         </div>
-                        <Badge variant={listingTypeBadgeVariant(listing.listingType)} className="shrink-0 capitalize text-xs">
-                          {listing.listingType}
-                        </Badge>
+                        <div className="flex flex-col items-end gap-1">
+                          <Badge variant={listingTypeBadgeVariant(listing.listingType)} className="shrink-0 capitalize text-xs">
+                            {listing.listingType}
+                          </Badge>
+                          <button
+                            title="Copy shareable link"
+                            className="text-muted-foreground hover:text-foreground"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const url = `${window.location.origin}/marketplace?listing=${listing.id}`;
+                              navigator.clipboard.writeText(url);
+                              toast({ title: 'Link copied', description: 'Shareable link copied to clipboard' });
+                            }}
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-3">

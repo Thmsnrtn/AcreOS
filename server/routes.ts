@@ -48,6 +48,15 @@ import buyerQualificationRouter from "./routes-buyer-qualification";
 import dueDiligenceRouter from "./routes-due-diligence";
 import dealPatternsRouter from "./routes-deal-patterns";
 import priceOptimizerRouter from "./routes-price-optimizer";
+
+// Phase 5-6 new routes
+import investorVerificationRouter from "./routes-investor-verification";
+import transactionFeesRouter from "./routes-transaction-fees";
+import callRoutingRouter from "./routes-call-routing";
+import buyerNetworkRouter from "./routes-buyer-network";
+import taxOptimizationRouter from "./routes-tax-optimization";
+import dealRoomsRouter from "./routes-deal-rooms";
+import dataApiRouter from "./routes-data-api";
 import portfolioHealthRouter from "./routes-portfolio-health";
 import gdprRouter from "./routes-gdpr";
 import metricsRouter from "./routes-metrics";
@@ -358,6 +367,15 @@ export async function registerRoutes(
   app.use('/api/bookkeeping', isAuthenticated, getOrCreateOrg, bookkeepingRouter);
   app.use('/api/ab-tests', isAuthenticated, getOrCreateOrg, abTestsRouter);
   app.use('/api/dodd-frank', isAuthenticated, doddFrankRouter);
+
+  // Phase 5-6 routes
+  app.use('/api/investor-verification', isAuthenticated, getOrCreateOrg, investorVerificationRouter);
+  app.use('/api/transaction-fees', isAuthenticated, getOrCreateOrg, transactionFeesRouter);
+  app.use('/api/call-routing', isAuthenticated, getOrCreateOrg, callRoutingRouter);
+  app.use('/api/buyer-network', isAuthenticated, getOrCreateOrg, buyerNetworkRouter);
+  app.use('/api/tax-optimization', isAuthenticated, getOrCreateOrg, taxOptimizationRouter);
+  app.use('/api/deal-rooms', isAuthenticated, getOrCreateOrg, dealRoomsRouter);
+  app.use('/api/data-api', dataApiRouter); // API key auth handled internally
 
   // ============================================
   // DOMAIN ROUTE MODULES
