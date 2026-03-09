@@ -111,6 +111,10 @@ import DunningManagerPage from "@/pages/dunning-manager";
 import Exchange1031Page from "@/pages/exchange-1031";
 import PropertyEnrichmentPage from "@/pages/property-enrichment";
 import DirectMailCampaignsPage from "@/pages/direct-mail-campaigns";
+import TaxDelinquentPage from "@/pages/tax-delinquent";
+import MatchingEnginePage from "@/pages/matching-engine";
+import DocumentVersionsPage from "@/pages/document-versions";
+import KPIDashboardPage from "@/pages/kpi-dashboard";
 import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
 import { ConversationTray } from "@/components/conversation-tray";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -464,6 +468,18 @@ function Router() {
       </Route>
       <Route path="/direct-mail">
         {() => <ProtectedRoute component={DirectMailCampaignsPage} />}
+      </Route>
+      <Route path="/tax-delinquent">
+        {() => <ProtectedRoute component={TaxDelinquentPage} />}
+      </Route>
+      <Route path="/matching">
+        {() => <ProtectedRoute component={MatchingEnginePage} />}
+      </Route>
+      <Route path="/documents/versions">
+        {() => <ProtectedRoute component={DocumentVersionsPage} />}
+      </Route>
+      <Route path="/kpis">
+        {() => <ProtectedRoute component={KPIDashboardPage} />}
       </Route>
 
       <Route component={NotFound} />
