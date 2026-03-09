@@ -115,6 +115,11 @@ import TaxDelinquentPage from "@/pages/tax-delinquent";
 import MatchingEnginePage from "@/pages/matching-engine";
 import DocumentVersionsPage from "@/pages/document-versions";
 import KPIDashboardPage from "@/pages/kpi-dashboard";
+import DepreciationCalculatorPage from "@/pages/depreciation-calculator";
+import ListingSyndicationPage from "@/pages/listing-syndication";
+import DripSequencesPage from "@/pages/drip-sequences";
+import CohortAnalysisPage from "@/pages/cohort-analysis";
+import PropertyTaxPage from "@/pages/property-tax";
 import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
 import { ConversationTray } from "@/components/conversation-tray";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -480,6 +485,21 @@ function Router() {
       </Route>
       <Route path="/kpis">
         {() => <ProtectedRoute component={KPIDashboardPage} />}
+      </Route>
+      <Route path="/depreciation">
+        {() => <ProtectedRoute component={DepreciationCalculatorPage} />}
+      </Route>
+      <Route path="/syndication-status">
+        {() => <ProtectedRoute component={ListingSyndicationPage} />}
+      </Route>
+      <Route path="/drip-sequences">
+        {() => <ProtectedRoute component={DripSequencesPage} />}
+      </Route>
+      <Route path="/cohort-analysis">
+        {() => <ProtectedRoute component={CohortAnalysisPage} />}
+      </Route>
+      <Route path="/property-tax">
+        {() => <ProtectedRoute component={PropertyTaxPage} />}
       </Route>
 
       <Route component={NotFound} />
