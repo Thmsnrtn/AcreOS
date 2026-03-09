@@ -98,6 +98,8 @@ import PriceOptimizerPage from "@/pages/price-optimizer";
 import PortfolioHealthPage from "@/pages/portfolio-health";
 import SellerIntentPage from "@/pages/seller-intent";
 import DealPatternsPage from "@/pages/deal-patterns";
+import PortfolioPnLPage from "@/pages/portfolio-pnl";
+import BuyerQualificationPage from "@/pages/buyer-qualification";
 import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
 import { ConversationTray } from "@/components/conversation-tray";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -412,6 +414,12 @@ function Router() {
       </Route>
       <Route path="/deal-patterns">
         {() => <ProtectedRoute component={DealPatternsPage} />}
+      </Route>
+      <Route path="/portfolio-pnl">
+        {() => <ProtectedRoute component={PortfolioPnLPage} />}
+      </Route>
+      <Route path="/buyer-qualification">
+        {() => <ProtectedRoute component={BuyerQualificationPage} />}
       </Route>
 
       <Route component={NotFound} />
