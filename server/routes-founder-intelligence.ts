@@ -22,9 +22,13 @@ import {
   organizations, users, payments, deals, leads, properties,
   supportTickets, subscriptionEvents, systemAlerts, activityLog,
   notes, campaigns, apiUsageLogs,
+  decisionsInboxItems, jobHealthLogs, churnRiskScores, revenueProtectionInterventions,
+  founderDigestHistory,
 } from "@shared/schema";
-import { sql, desc, eq, and, gte, lte, lt, count, sum, avg } from "drizzle-orm";
+import { sql, desc, eq, and, gte, lte, lt, count, sum, avg, ne } from "drizzle-orm";
 import { isFounderEmail } from "./services/founder";
+import { decisionsInboxService } from "./services/decisionsInbox";
+import { founderDigestService } from "./services/founderDigest";
 
 const router = Router();
 
@@ -212,8 +216,76 @@ router.get("/pulse", requireFounder, async (req: Request, res: Response) => {
       });
     }
 
+    // ── Traffic light computations for ThePulse component ──────────────────
+    const pendingInboxItems = await db.select({ c: count() })
+      .from(decisionsInboxItems)
+      .where(eq(decisionsInboxItems.status, "pending"));
+    const pendingInboxCount = Number(pendingInboxItems[0]?.c ?? 0);
+
+    // Job health: count unhealthy jobs
+    const recentJobFailures = await db.select({ jobName: jobHealthLogs.jobName })
+      .from(jobHealthLogs)
+      .where(and(eq(jobHealthLogs.status, "failed"), gte(jobHealthLogs.runStartedAt, sevenDaysAgo)));
+    const failingJobNames = new Set(recentJobFailures.map((r: any) => r.jobName));
+
+    // Sophie auto-resolution rate (last 7d)
+    const sophieResolved7d = await db.select({ c: count() })
+      .from(supportTickets)
+      .where(and(
+        sql`${supportTickets.resolvedAt} IS NOT NULL`,
+        gte(supportTickets.resolvedAt, sevenDaysAgo),
+        eq(supportTickets.assignedAgent, "sophie"),
+      ));
+    const totalResolved7d = await db.select({ c: count() })
+      .from(supportTickets)
+      .where(and(
+        sql`${supportTickets.resolvedAt} IS NOT NULL`,
+        gte(supportTickets.resolvedAt, sevenDaysAgo),
+      ));
+    const sophieResolvedCount = Number(sophieResolved7d[0]?.c ?? 0);
+    const totalResolvedCount = Number(totalResolved7d[0]?.c ?? 1);
+    const sophieAutoResolutionRate = totalResolvedCount > 0 ? (sophieResolvedCount / totalResolvedCount) * 100 : 100;
+
+    // Churn: orgs in red/critical band
+    const criticalChurnOrgs = await db.select({ c: count() })
+      .from(churnRiskScores)
+      .where(sql`${churnRiskScores.riskBand} IN ('red', 'critical')`);
+    const criticalChurnCount = Number(criticalChurnOrgs[0]?.c ?? 0);
+
+    // Dunning restricted+ orgs
+    const restrictedOrgs = await db.select({ c: count() })
+      .from(organizations)
+      .where(sql`${organizations.dunningStage} IN ('restricted', 'suspended')`);
+    const restrictedCount = Number(restrictedOrgs[0]?.c ?? 0);
+
+    const pulseStatus = {
+      revenueHealth: {
+        green: netNew7d >= 0 && restrictedCount === 0,
+        label: netNew7d >= 0 && restrictedCount === 0 ? "Healthy" : "Attention",
+        detail: `Net ${netNew7d >= 0 ? "+" : ""}${netNew7d} orgs this week${restrictedCount > 0 ? `, ${restrictedCount} restricted` : ""}`,
+      },
+      systemHealth: {
+        green: criticalAlertCount === 0 && failingJobNames.size === 0,
+        label: criticalAlertCount === 0 && failingJobNames.size === 0 ? "All Clear" : "Issues Detected",
+        detail: `${criticalAlertCount} critical alerts, ${failingJobNames.size} failing jobs`,
+      },
+      sophieHealth: {
+        green: sophieAutoResolutionRate >= 80 && pendingInboxCount <= 3,
+        label: sophieAutoResolutionRate >= 80 && pendingInboxCount <= 3 ? "Operating Well" : "Needs Review",
+        detail: `${Math.round(sophieAutoResolutionRate)}% auto-resolution rate, ${pendingInboxCount} inbox items`,
+      },
+      churnRisk: {
+        green: criticalChurnCount === 0,
+        label: criticalChurnCount === 0 ? "Low Risk" : `${criticalChurnCount} At Risk`,
+        detail: `${criticalChurnCount} org(s) in red/critical churn band`,
+      },
+      allClear: criticalAlertCount === 0 && pendingInboxCount === 0 && failingJobNames.size === 0 && criticalChurnCount === 0,
+      decisionsInboxCount: pendingInboxCount,
+    };
+
     res.json({
       generatedAt: new Date().toISOString(),
+      pulseStatus,
       platformHealth: {
         score: healthScore,
         status: healthScore >= 90 ? "excellent" : healthScore >= 70 ? "good" : healthScore >= 50 ? "fair" : "needs_attention",
@@ -682,5 +754,310 @@ function generateChurnRecommendations(churnRate: number, atRiskCount: number): s
   recs.push("Feature announcement emails to re-engage dormant accounts consistently reduce churn");
   return recs;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DECISIONS INBOX
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get("/decisions-inbox", requireFounder, async (req: Request, res: Response) => {
+  try {
+    // Re-open any deferred items whose deferral window has passed
+    await decisionsInboxService.processDeferredItems();
+
+    const items = await decisionsInboxService.getPendingItems();
+    const totalPending = items.length;
+    const byType = items.reduce((acc: any, item: any) => {
+      acc[item.itemType] = (acc[item.itemType] ?? 0) + 1;
+      return acc;
+    }, {});
+
+    res.json({ items, totalPending, stats: { byType } });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/decisions-inbox/:id/approve", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id);
+    await decisionsInboxService.approve(id);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/decisions-inbox/:id/reject", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { reason } = req.body;
+    await decisionsInboxService.reject(id, reason);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/decisions-inbox/:id/defer", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { hours } = req.body;
+    await decisionsInboxService.defer(id, hours ?? 24);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/decisions-inbox/:id/override", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { customAction } = req.body;
+    if (!customAction) return res.status(400).json({ error: "customAction required" });
+    await decisionsInboxService.override(id, customAction);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SOPHIE ACTIVITY LOG
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get("/sophie-activity", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const hours = parseInt((req.query.hours as string) ?? "24");
+    const since = new Date(Date.now() - hours * 60 * 60 * 1000);
+
+    const autoResolved = await db.query.supportTickets.findMany({
+      where: and(
+        sql`${supportTickets.resolvedAt} IS NOT NULL`,
+        gte(supportTickets.resolvedAt, since),
+        eq(supportTickets.assignedAgent, "sophie"),
+      ),
+      orderBy: desc(supportTickets.resolvedAt),
+      limit: 50,
+    });
+
+    res.json({
+      autoResolutions: autoResolved,
+      count: autoResolved.length,
+      windowHours: hours,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JOB QUEUE HEALTH
+// ─────────────────────────────────────────────────────────────────────────────
+
+const KNOWN_JOBS = [
+  { name: "lead_nurturing", displayName: "Lead Nurturing", expectedIntervalMs: 5 * 60 * 1000 },
+  { name: "campaign_optimizer", displayName: "Campaign Optimizer", expectedIntervalMs: 5 * 60 * 1000 },
+  { name: "finance_agent", displayName: "Finance Agent", expectedIntervalMs: 5 * 60 * 1000 },
+  { name: "api_queue", displayName: "API Queue", expectedIntervalMs: 10 * 1000 },
+  { name: "alerting", displayName: "Alerting", expectedIntervalMs: 60 * 1000 },
+  { name: "digest", displayName: "Customer Digest", expectedIntervalMs: 60 * 60 * 1000 },
+  { name: "sequences", displayName: "Sequences", expectedIntervalMs: 5 * 60 * 1000 },
+  { name: "scheduled_tasks", displayName: "Scheduled Tasks", expectedIntervalMs: 60 * 1000 },
+  { name: "job_queue_worker", displayName: "Job Queue Worker", expectedIntervalMs: 60 * 1000 },
+  { name: "deal_hunter_scraping", displayName: "Deal Hunter Scraping", expectedIntervalMs: 60 * 60 * 1000 },
+  { name: "distress_recalculation", displayName: "Distress Recalculation", expectedIntervalMs: 60 * 60 * 1000 },
+  { name: "voice_learning_refresh", displayName: "Voice Learning Refresh", expectedIntervalMs: 12 * 60 * 60 * 1000 },
+  { name: "realtime_alert_sync", displayName: "Realtime Alert Sync", expectedIntervalMs: 5 * 60 * 1000 },
+  { name: "county_assessor_ingest", displayName: "County Assessor Ingest", expectedIntervalMs: 24 * 60 * 60 * 1000 },
+  { name: "autonomous_deal_machine", displayName: "Autonomous Deal Machine", expectedIntervalMs: 60 * 60 * 1000 },
+  { name: "revenue_protection", displayName: "Revenue Protection", expectedIntervalMs: 6 * 60 * 60 * 1000 },
+];
+
+router.get("/job-health", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const now = Date.now();
+
+    const jobs = await Promise.all(KNOWN_JOBS.map(async (job) => {
+      const lastSuccess = await db.query.jobHealthLogs.findFirst({
+        where: and(eq(jobHealthLogs.jobName, job.name), eq(jobHealthLogs.status, "success")),
+        orderBy: desc(jobHealthLogs.runStartedAt),
+      });
+      const lastFailure = await db.query.jobHealthLogs.findFirst({
+        where: and(eq(jobHealthLogs.jobName, job.name), eq(jobHealthLogs.status, "failed")),
+        orderBy: desc(jobHealthLogs.runStartedAt),
+      });
+      const consecutiveFailures = await db.select({ c: count() })
+        .from(jobHealthLogs)
+        .where(and(
+          eq(jobHealthLogs.jobName, job.name),
+          eq(jobHealthLogs.status, "failed"),
+          lastSuccess ? gte(jobHealthLogs.runStartedAt, lastSuccess.runStartedAt) : sql`1=1`,
+        ));
+
+      const failCount = Number(consecutiveFailures[0]?.c ?? 0);
+      const lastSuccessMs = lastSuccess?.runStartedAt ? new Date(lastSuccess.runStartedAt).getTime() : null;
+      const overdue = lastSuccessMs ? (now - lastSuccessMs) > 2 * job.expectedIntervalMs : true;
+      const minutesSinceLastRun = lastSuccessMs ? Math.floor((now - lastSuccessMs) / 60000) : null;
+
+      let status: "healthy" | "warning" | "failing" | "overdue" | "unknown" = "unknown";
+      if (failCount >= 3) status = "failing";
+      else if (failCount >= 1) status = "warning";
+      else if (overdue && lastSuccessMs !== null) status = "overdue";
+      else if (!overdue && failCount === 0) status = "healthy";
+
+      return {
+        jobName: job.name,
+        displayName: job.displayName,
+        status,
+        lastSuccessAt: lastSuccess?.runStartedAt ?? null,
+        lastFailureAt: lastFailure?.runStartedAt ?? null,
+        minutesSinceLastRun,
+        consecutiveFailures: failCount,
+        lastErrorMessage: lastFailure?.errorMessage ?? null,
+        expectedIntervalMs: job.expectedIntervalMs,
+        overdue,
+      };
+    }));
+
+    const unhealthyCount = jobs.filter(j => j.status !== "healthy" && j.status !== "unknown").length;
+    const overallStatus = unhealthyCount === 0 ? "healthy" : unhealthyCount <= 2 ? "degraded" : "critical";
+
+    res.json({ jobs, overallStatus, unhealthyCount, totalJobs: jobs.length });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/job-health/:jobName/restart", requireFounder, async (req: Request, res: Response) => {
+  // Async stub — actual restart logic would depend on job infrastructure
+  const { jobName } = req.params;
+  res.status(202).json({ accepted: true, jobName, message: "Restart signal queued (manual restart via PM2 or Fly.io restart command required)" });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REVENUE PROTECTION
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get("/revenue-protection", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const riskDistribution = await db.select({
+      band: churnRiskScores.riskBand,
+      count: count(),
+    })
+      .from(churnRiskScores)
+      .groupBy(churnRiskScores.riskBand);
+
+    const recentInterventions = await db.query.revenueProtectionInterventions.findMany({
+      orderBy: desc(revenueProtectionInterventions.createdAt),
+      limit: 20,
+    });
+
+    // MRR at risk = sum of monthly_price_cents for orgs in red/critical
+    const atRiskOrgIds = await db.select({ orgId: churnRiskScores.organizationId })
+      .from(churnRiskScores)
+      .where(sql`${churnRiskScores.riskBand} IN ('red', 'critical')`);
+    const mrrAtRiskCents = atRiskOrgIds.length > 0
+      ? await db.select({ total: sum(organizations.monthlyPriceCents) })
+          .from(organizations)
+          .where(sql`${organizations.id} IN (${atRiskOrgIds.map((r: any) => r.orgId).join(",") || "NULL"})`)
+          .then((r: any) => Number(r[0]?.total ?? 0))
+      : 0;
+
+    res.json({ riskDistribution, recentInterventions, mrrAtRiskCents });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FOUNDER DIGEST
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.post("/digest/generate", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const result = await founderDigestService.generate();
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/digest/history", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const history = await founderDigestService.getRecentHistory(30);
+    res.json(history);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BUSINESS INTELLIGENCE
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get("/business-intelligence", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+
+    // ARR: MRR × 12
+    const mrrResult = await db.select({ total: sql<number>`COALESCE(SUM(monthly_price_cents), 0)` })
+      .from(organizations)
+      .where(sql`${organizations.subscriptionStatus} IN ('active', 'trialing')`);
+    const mrrCents = Number(mrrResult[0]?.total ?? 0);
+    const arrCents = mrrCents * 12;
+
+    // Churn rate: cancellations last 30d / active orgs
+    const activeLast30 = await db.select({ c: count() })
+      .from(organizations)
+      .where(sql`${organizations.subscriptionStatus} IN ('active', 'trialing')`);
+    const cancellationsLast30 = await db.select({ c: count() })
+      .from(subscriptionEvents)
+      .where(and(
+        eq(subscriptionEvents.eventType, "subscription_cancelled"),
+        gte(subscriptionEvents.createdAt, thirtyDaysAgo),
+      ));
+    const activeCount = Number(activeLast30[0]?.c ?? 1);
+    const cancelCount = Number(cancellationsLast30[0]?.c ?? 0);
+    const churnRate = activeCount > 0 ? (cancelCount / activeCount) * 100 : 0;
+
+    // NRR: (revenue end of period) / (revenue start of period) from subscription events
+    const upgrades = await db.select({ total: sum(subscriptionEvents.amountCents) })
+      .from(subscriptionEvents)
+      .where(and(
+        eq(subscriptionEvents.eventType, "subscription_upgraded"),
+        gte(subscriptionEvents.createdAt, thirtyDaysAgo),
+      ));
+    const downgrades = await db.select({ total: sum(subscriptionEvents.amountCents) })
+      .from(subscriptionEvents)
+      .where(and(
+        eq(subscriptionEvents.eventType, "subscription_downgraded"),
+        gte(subscriptionEvents.createdAt, thirtyDaysAgo),
+      ));
+    const churnRevenue = cancelCount * (mrrCents / (activeCount || 1));
+    const nrr = mrrCents > 0
+      ? ((mrrCents + Number(upgrades[0]?.total ?? 0) - Number(downgrades[0]?.total ?? 0) - churnRevenue) / mrrCents) * 100
+      : 100;
+
+    // Customer health distribution from churnRiskScores
+    const healthDist = await db.select({ band: churnRiskScores.riskBand, count: count() })
+      .from(churnRiskScores)
+      .groupBy(churnRiskScores.riskBand);
+
+    res.set("Cache-Control", "max-age=3600");
+    res.json({
+      arrCents,
+      mrrCents,
+      churnRate: Math.round(churnRate * 100) / 100,
+      nrr: Math.round(nrr * 10) / 10,
+      customerHealthDistribution: healthDist,
+      // LTV:CAC requires founder-entered CAC — return placeholder
+      ltvCac: { ltv: null, cac: null, ratio: null, note: "Enter CAC in org settings to enable LTV:CAC" },
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 export default router;

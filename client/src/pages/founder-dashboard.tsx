@@ -55,6 +55,8 @@ import {
   Search,
 } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
+import { ThePulse, DecisionsInbox, JobQueueHealth, BusinessIntelligence } from "@/components/dashboard";
+import { Suspense, lazy } from "react";
 
 interface AdminDashboardData {
   revenue: {
@@ -353,6 +355,45 @@ type ExpandedTile = 'revenue' | 'health' | 'agents' | 'alerts' | 'revenueAtRisk'
 
 type UserFilter = 'all' | 'active' | 'new' | 'established';
 
+function SophieActivityPreview() {
+  const { data, isLoading } = useQuery<{ autoResolutions: any[]; count: number }>({
+    queryKey: ["/api/founder/intelligence/sophie-activity"],
+    refetchInterval: 30000,
+    refetchIntervalInBackground: false,
+  });
+
+  const recent = data?.autoResolutions?.slice(0, 3) ?? [];
+
+  return (
+    <div className="rounded-lg border bg-card p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+          <Bot className="h-4 w-4 text-blue-500" />
+          Sophie Activity (last 24h)
+          <Badge variant="outline" className="text-xs ml-1">{data?.count ?? 0} auto-resolved</Badge>
+        </h3>
+      </div>
+      {isLoading ? (
+        <div className="space-y-2 animate-pulse">{[0,1,2].map(i => <div key={i} className="h-8 bg-muted rounded" />)}</div>
+      ) : recent.length === 0 ? (
+        <p className="text-xs text-muted-foreground">No autonomous resolutions in the last 24 hours.</p>
+      ) : (
+        <div className="space-y-2">
+          {recent.map((t: any) => (
+            <div key={t.id} className="flex items-center gap-2 text-xs">
+              <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
+              <span className="text-foreground truncate">{t.subject ?? `Ticket #${t.id}`}</span>
+              <span className="text-muted-foreground shrink-0">
+                {t.resolvedAt ? formatDistanceToNow(new Date(t.resolvedAt), { addSuffix: true }) : ""}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function FounderDashboard() {
   const { toast } = useToast();
   const [notesModalOpen, setNotesModalOpen] = useState(false);
@@ -383,6 +424,13 @@ export default function FounderDashboard() {
 
   const { data: dashboardData, isLoading } = useQuery<AdminDashboardData>({
     queryKey: ['/api/admin/dashboard'],
+  });
+
+  // Passive command center queries (30s polling)
+  const { data: decisionsInboxData } = useQuery<{ totalPending: number }>({
+    queryKey: ['/api/founder/intelligence/decisions-inbox'],
+    refetchInterval: 30000,
+    refetchIntervalInBackground: false,
   });
 
   const { data: alerts } = useQuery<SystemAlert[]>({
@@ -1068,6 +1116,32 @@ export default function FounderDashboard() {
               <Activity className="w-3 h-3 mr-1" />
               Live Data
             </Badge>
+          </div>
+
+          {/* ── ZONE 1: Above fold — primary passive command center ─── */}
+          <div className="space-y-6">
+            <ThePulse decisionsInboxCount={decisionsInboxData?.totalPending} />
+            <DecisionsInbox />
+
+            {/* Sophie Activity Log — last 3 auto-resolutions */}
+            <SophieActivityPreview />
+          </div>
+
+          {/* ── ZONE 2: Below fold — on demand ─────────────────────── */}
+          <details className="group">
+            <summary className="cursor-pointer list-none py-3 border-t flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+              <span className="group-open:rotate-90 inline-block transition-transform">▶</span>
+              Infrastructure &amp; Intelligence
+            </summary>
+            <div className="mt-4 space-y-6">
+              <JobQueueHealth />
+              <BusinessIntelligence />
+            </div>
+          </details>
+
+          {/* ── ZONE 3: Operational panels (existing content) ────────── */}
+          <div className="space-y-4">
+            <h2 className="text-lg font-semibold text-foreground border-t pt-4">Operational Panels</h2>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

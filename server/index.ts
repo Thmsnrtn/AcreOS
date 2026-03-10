@@ -11,8 +11,8 @@ import { createServer } from "http";
 import { WebhookHandlers } from "./webhookHandlers";
 import { leadNurturerService } from "./services/leadNurturer";
 import { db, storage } from "./storage";
-import { eq, sql } from "drizzle-orm";
-import { organizations } from "@shared/schema";
+import { eq, sql, lt } from "drizzle-orm";
+import { organizations, jobHealthLogs } from "@shared/schema";
 import { logger, requestLoggingMiddleware, errorLoggingMiddleware } from "./utils/logger";
 import { securityHeaders, corsMiddleware, requestTimeout, validateContentType, sanitizeQueryParams } from "./middleware/security";
 import { csrfProtection } from "./middleware/csrf";
@@ -61,18 +61,57 @@ export function log(message: string, source = "express") {
 
 const instanceId = crypto.randomUUID();
 
+// Track last success log time per job to implement "1 success log per hour per job" sampling
+const _jobLastSuccessLog: Record<string, number> = {};
+
 async function withJobLock<T>(
-  jobName: string, 
-  ttlSeconds: number, 
+  jobName: string,
+  ttlSeconds: number,
   fn: () => Promise<T>
 ): Promise<T | null> {
   const acquired = await storage.acquireJobLock(jobName, instanceId, ttlSeconds);
   if (!acquired) {
     log(`Lock not acquired, skipping execution`, jobName);
+    // Log skipped_lock (fire-and-forget, non-blocking)
+    db.insert(jobHealthLogs).values({
+      jobName,
+      runStartedAt: new Date(),
+      runCompletedAt: new Date(),
+      durationMs: 0,
+      status: "skipped_lock",
+    }).catch(() => {/* best effort */});
     return null;
   }
+  const startedAt = new Date();
   try {
-    return await fn();
+    const result = await fn();
+    const durationMs = Date.now() - startedAt.getTime();
+    // Sample: only log success once per hour per job
+    const now = Date.now();
+    const lastLog = _jobLastSuccessLog[jobName] ?? 0;
+    if (now - lastLog > 60 * 60 * 1000) {
+      _jobLastSuccessLog[jobName] = now;
+      db.insert(jobHealthLogs).values({
+        jobName,
+        runStartedAt: startedAt,
+        runCompletedAt: new Date(),
+        durationMs,
+        status: "success",
+      }).catch(() => {/* best effort */});
+    }
+    return result;
+  } catch (err: any) {
+    const durationMs = Date.now() - startedAt.getTime();
+    // Always log failures
+    db.insert(jobHealthLogs).values({
+      jobName,
+      runStartedAt: startedAt,
+      runCompletedAt: new Date(),
+      durationMs,
+      status: "failed",
+      errorMessage: err?.message ?? String(err),
+    }).catch(() => {/* best effort */});
+    throw err;
   } finally {
     await storage.releaseJobLock(jobName, instanceId);
   }
@@ -379,6 +418,38 @@ app.use("/api/properties/import", importLimiter);
       }).catch(err => {
         log(`Failed to start external status monitoring: ${err}`, "external-monitor");
       });
+
+      // Passive Command Center: Revenue Protection (every 6h) + Founder Digest (daily at 8 AM CST)
+      import("./services/revenueProtection").then(({ startRevenueProtectionJob }) => {
+        startRevenueProtectionJob(withJobLock).catch((err: any) => {
+          log(`Revenue protection job failed: ${err}`, "revenue-protection");
+        });
+        log("Revenue protection job registered (every 6h, 3-min startup delay)", "revenue-protection");
+      }).catch(err => {
+        log(`Failed to start revenue protection job: ${err}`, "revenue-protection");
+      });
+
+      import("./services/founderDigest").then(({ startFounderDigestJob }) => {
+        startFounderDigestJob(withJobLock).catch((err: any) => {
+          log(`Founder digest job error: ${err}`, "founder-digest");
+        });
+        log("Founder digest job registered (hourly check, sends at 8 AM CST)", "founder-digest");
+      }).catch(err => {
+        log(`Failed to start founder digest job: ${err}`, "founder-digest");
+      });
+
+      // Daily job health log cleanup (delete rows older than 30 days)
+      const runJobHealthCleanup = async () => {
+        try {
+          const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+          await db.delete(jobHealthLogs).where(lt(jobHealthLogs.createdAt, cutoff));
+        } catch (err) {
+          log(`Job health log cleanup failed: ${err}`, "job-health-cleanup");
+        }
+      };
+      // Run once at startup, then daily
+      runJobHealthCleanup();
+      setInterval(runJobHealthCleanup, 24 * 60 * 60 * 1000);
     },
   );
 })();

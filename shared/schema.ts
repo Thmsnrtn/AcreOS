@@ -3080,6 +3080,13 @@ export const featureRequests = pgTable("feature_requests", {
   status: text("status").default("submitted"), // submitted, under_review, planned, in_progress, completed, declined
   founderNotes: text("founder_notes"), // Internal notes from founder
   upvotes: integer("upvotes").default(0),
+  aiTriage: jsonb("ai_triage").$type<{
+    estimatedRevImpactCents: number;
+    priorityScore: number;
+    duplicateOfId: number | null;
+    analysisReason: string;
+    autoDisposed: boolean;
+  }>(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -10338,3 +10345,150 @@ export const dealRoomDocuments = pgTable("deal_room_documents", {
 export const insertDealRoomDocumentSchema = createInsertSchema(dealRoomDocuments).omit({ id: true, createdAt: true });
 export type InsertDealRoomDocument = z.infer<typeof insertDealRoomDocumentSchema>;
 export type DealRoomDocument = typeof dealRoomDocuments.$inferSelect;
+
+// ============================================
+// PASSIVE COMMAND CENTER — FOUNDER INTELLIGENCE
+// ============================================
+
+// Decisions Inbox — pre-analyzed items requiring human judgment
+export const decisionsInboxItems = pgTable("decisions_inbox_items", {
+  id: serial("id").primaryKey(),
+  itemType: text("item_type").notNull(), // support_escalation | critical_alert | feature_request_flagged | churn_risk_intervention | dunning_recovery
+  riskLevel: text("risk_level").notNull().default("medium"), // low | medium | high | critical
+  urgencyScore: integer("urgency_score").notNull().default(50), // 0-100
+  estimatedImpactCents: integer("estimated_impact_cents"),
+  sophieAnalysis: text("sophie_analysis").notNull(),
+  sophieConfidenceScore: integer("sophie_confidence_score"),
+  recommendedAction: text("recommended_action").notNull(),
+  recommendedActionLabel: text("recommended_action_label").notNull(),
+  actionPayload: jsonb("action_payload").$type<Record<string, any>>(),
+  sourceTicketId: integer("source_ticket_id").references(() => supportTickets.id),
+  sourceAlertId: integer("source_alert_id").references(() => systemAlerts.id),
+  sourceFeatureRequestId: integer("source_feature_request_id").references(() => featureRequests.id),
+  organizationId: integer("organization_id").references(() => organizations.id),
+  status: text("status").notNull().default("pending"), // pending | approved | rejected | deferred | auto_resolved
+  deferredUntil: timestamp("deferred_until"),
+  resolvedAt: timestamp("resolved_at"),
+  resolvedBy: text("resolved_by"),
+  founderOverrideAction: text("founder_override_action"),
+  contextBundle: jsonb("context_bundle").$type<Record<string, any>>(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("decisions_inbox_status_idx").on(table.status),
+  index("decisions_inbox_urgency_idx").on(table.urgencyScore),
+  index("decisions_inbox_org_idx").on(table.organizationId),
+]);
+
+export const insertDecisionsInboxItemSchema = createInsertSchema(decisionsInboxItems).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertDecisionsInboxItem = z.infer<typeof insertDecisionsInboxItemSchema>;
+export type DecisionsInboxItem = typeof decisionsInboxItems.$inferSelect;
+
+// Churn Risk Scores — per-org composite risk scoring
+export const churnRiskScores = pgTable("churn_risk_scores", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  riskScore: integer("risk_score").notNull(), // 0-100
+  riskBand: text("risk_band").notNull(), // green | yellow | red | critical
+  loginFrequencyScore: integer("login_frequency_score"),    // 0-25
+  featureUsageScore: integer("feature_usage_score"),        // 0-25
+  supportTicketScore: integer("support_ticket_score"),      // 0-20
+  dunningStateScore: integer("dunning_state_score"),        // 0-20
+  engagementTrendScore: integer("engagement_trend_score"),  // 0-10
+  daysSinceLastActive: integer("days_since_last_active"),
+  loginsLast14d: integer("logins_last_14d"),
+  ticketsLast30d: integer("tickets_last_30d"),
+  dunningStage: text("dunning_stage"),
+  featureUsageTrend: text("feature_usage_trend"), // increasing | stable | declining
+  lastInterventionAt: timestamp("last_intervention_at"),
+  lastInterventionType: text("last_intervention_type"),
+  interventionCount: integer("intervention_count").default(0),
+  nextInterventionAt: timestamp("next_intervention_at"),
+  nextInterventionType: text("next_intervention_type"),
+  scoredAt: timestamp("scored_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("churn_risk_org_idx").on(table.organizationId),
+  index("churn_risk_band_idx").on(table.riskBand),
+  index("churn_risk_score_idx").on(table.riskScore),
+]);
+
+export const insertChurnRiskScoreSchema = createInsertSchema(churnRiskScores).omit({ id: true, createdAt: true });
+export type InsertChurnRiskScore = z.infer<typeof insertChurnRiskScoreSchema>;
+export type ChurnRiskScore = typeof churnRiskScores.$inferSelect;
+
+// Job Health Logs — execution records for all background jobs
+export const jobHealthLogs = pgTable("job_health_logs", {
+  id: serial("id").primaryKey(),
+  jobName: text("job_name").notNull(),
+  runStartedAt: timestamp("run_started_at").notNull(),
+  runCompletedAt: timestamp("run_completed_at"),
+  durationMs: integer("duration_ms"),
+  status: text("status").notNull(), // success | failed | timeout | skipped_lock
+  errorMessage: text("error_message"),
+  runMetrics: jsonb("run_metrics").$type<Record<string, any>>(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("job_health_job_name_idx").on(table.jobName),
+  index("job_health_status_idx").on(table.status),
+  index("job_health_started_idx").on(table.runStartedAt),
+]);
+
+export const insertJobHealthLogSchema = createInsertSchema(jobHealthLogs).omit({ id: true, createdAt: true });
+export type InsertJobHealthLog = z.infer<typeof insertJobHealthLogSchema>;
+export type JobHealthLog = typeof jobHealthLogs.$inferSelect;
+
+// Revenue Protection Interventions — automated churn/dunning outreach log
+export const revenueProtectionInterventions = pgTable("revenue_protection_interventions", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  interventionType: text("intervention_type").notNull(), // checkin_email | retention_offer | dunning_recovery | founder_decision
+  triggerRiskScore: integer("trigger_risk_score").notNull(),
+  triggerRiskBand: text("trigger_risk_band").notNull(),
+  executedBy: text("executed_by").notNull().default("sophie"),
+  sophieMessageSubject: text("sophie_message_subject"),
+  sophieMessageBody: text("sophie_message_body"),
+  emailSentAt: timestamp("email_sent_at"),
+  emailDeliveryStatus: text("email_delivery_status"),
+  outcome: text("outcome"), // pending | customer_responded | payment_recovered | churned | no_response
+  outcomeRecordedAt: timestamp("outcome_recorded_at"),
+  revenueRecoveredCents: integer("revenue_recovered_cents"),
+  decisionsInboxItemId: integer("decisions_inbox_item_id").references(() => decisionsInboxItems.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("rev_protection_org_idx").on(table.organizationId),
+  index("rev_protection_type_idx").on(table.interventionType),
+  index("rev_protection_created_idx").on(table.createdAt),
+]);
+
+export const insertRevenueProtectionInterventionSchema = createInsertSchema(revenueProtectionInterventions).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertRevenueProtectionIntervention = z.infer<typeof insertRevenueProtectionInterventionSchema>;
+export type RevenueProtectionIntervention = typeof revenueProtectionInterventions.$inferSelect;
+
+// Founder Digest History — daily automated briefing records
+export const founderDigestHistory = pgTable("founder_digest_history", {
+  id: serial("id").primaryKey(),
+  digestDate: timestamp("digest_date").notNull(),
+  deliveredAt: timestamp("delivered_at"),
+  deliveryStatus: text("delivery_status").notNull().default("pending"),
+  revenueBullet: text("revenue_bullet"),
+  systemHealthBullet: text("system_health_bullet"),
+  supportActivityBullet: text("support_activity_bullet"),
+  topAtRiskBullet: text("top_at_risk_bullet"),
+  recommendedActionBullet: text("recommended_action_bullet"),
+  dataSnapshot: jsonb("data_snapshot").$type<Record<string, any>>(),
+  mrrCents: integer("mrr_cents"),
+  openDecisions: integer("open_decisions"),
+  sophieAutoResolved24h: integer("sophie_auto_resolved_24h"),
+  jobFailures24h: integer("job_failures_24h"),
+  atRiskOrgs: integer("at_risk_orgs"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("founder_digest_date_idx").on(table.digestDate),
+  index("founder_digest_status_idx").on(table.deliveryStatus),
+]);
+
+export const insertFounderDigestHistorySchema = createInsertSchema(founderDigestHistory).omit({ id: true, createdAt: true });
+export type InsertFounderDigestHistory = z.infer<typeof insertFounderDigestHistorySchema>;
+export type FounderDigestHistory = typeof founderDigestHistory.$inferSelect;
