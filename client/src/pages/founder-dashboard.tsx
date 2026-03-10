@@ -64,7 +64,10 @@ import {
   SendHorizonal,
 } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
-import { ThePulse, DecisionsInbox, JobQueueHealth, BusinessIntelligence } from "@/components/dashboard";
+import {
+  ThePulse, DecisionsInbox, JobQueueHealth, BusinessIntelligence,
+  MRRTrajectory, ChurnIntelligence, GrowthEngine, PlatformPassiveScore,
+} from "@/components/dashboard";
 import { Suspense, lazy } from "react";
 
 interface AdminDashboardData {
@@ -590,12 +593,30 @@ export default function FounderDashboard() {
   const [dataSourceFilter, setDataSourceFilter] = useState("");
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
+  const [focusMode, setFocusMode] = useState(false);
+  const [goalCents, setGoalCents] = useState<number>(() => {
+    try { return parseInt(localStorage.getItem("founder_mrr_goal_cents") || "0", 10) || 0; } catch { return 0; }
+  });
+  const [goalDialogOpen, setGoalDialogOpen] = useState(false);
+  const [goalInputValue, setGoalInputValue] = useState("");
 
   const handleRefreshAll = useCallback(() => {
     queryClient.invalidateQueries();
     setLastRefreshed(new Date());
     toast({ title: "All data refreshed" });
   }, [toast]);
+
+  const handleSaveGoal = useCallback(() => {
+    const dollars = parseFloat(goalInputValue.replace(/[^0-9.]/g, ""));
+    if (!isNaN(dollars) && dollars >= 0) {
+      const cents = Math.round(dollars * 100);
+      setGoalCents(cents);
+      try { localStorage.setItem("founder_mrr_goal_cents", String(cents)); } catch {}
+      setGoalDialogOpen(false);
+      setGoalInputValue("");
+      toast({ title: "MRR goal saved", description: `Target: $${dollars.toLocaleString()}/mo` });
+    }
+  }, [goalInputValue, toast]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -607,11 +628,16 @@ export default function FounderDashboard() {
         handleRefreshAll();
       } else if (e.key === "?") {
         setShowShortcuts(prev => !prev);
+      } else if (e.key === "f") {
+        setFocusMode(prev => !prev);
+        toast({ title: focusMode ? "Focus mode off" : "Focus mode on", description: focusMode ? "All sections visible" : "Showing only critical sections" });
+      } else if (e.key === "g") {
+        setGoalDialogOpen(true);
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [handleRefreshAll]);
+  }, [handleRefreshAll, focusMode, toast]);
 
   const { data: dashboardData, isLoading } = useQuery<AdminDashboardData>({
     queryKey: ['/api/admin/dashboard'],
@@ -1314,10 +1340,12 @@ export default function FounderDashboard() {
                   Keyboard Shortcuts
                 </DialogTitle>
               </DialogHeader>
-              <div className="space-y-2 text-sm">
+              <div className="space-y-1 text-sm">
                 {[
                   { key: "R", desc: "Refresh all data" },
-                  { key: "?", desc: "Toggle this shortcuts panel" },
+                  { key: "F", desc: "Toggle focus mode (critical sections only)" },
+                  { key: "G", desc: "Set MRR goal" },
+                  { key: "?", desc: "Toggle this panel" },
                 ].map(({ key, desc }) => (
                   <div key={key} className="flex items-center justify-between py-1.5 border-b last:border-0">
                     <span className="text-muted-foreground">{desc}</span>
@@ -1325,6 +1353,48 @@ export default function FounderDashboard() {
                   </div>
                 ))}
               </div>
+            </DialogContent>
+          </Dialog>
+
+          {/* ── MRR Goal dialog ──────────────────────────────────────── */}
+          <Dialog open={goalDialogOpen} onOpenChange={setGoalDialogOpen}>
+            <DialogContent className="max-w-xs">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Target className="h-4 w-4 text-amber-500" />
+                  Set MRR Goal
+                </DialogTitle>
+                <DialogDescription>
+                  Your goal will appear as a reference line on the revenue chart.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3">
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+                  <Input
+                    className="pl-7"
+                    placeholder="e.g. 10000"
+                    value={goalInputValue}
+                    onChange={e => setGoalInputValue(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") handleSaveGoal(); }}
+                    autoFocus
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">Enter monthly revenue target in USD</p>
+              </div>
+              <DialogFooter>
+                {goalCents > 0 && (
+                  <Button variant="ghost" size="sm" onClick={() => {
+                    setGoalCents(0);
+                    try { localStorage.removeItem("founder_mrr_goal_cents"); } catch {}
+                    setGoalDialogOpen(false);
+                    toast({ title: "Goal cleared" });
+                  }}>
+                    Clear goal
+                  </Button>
+                )}
+                <Button onClick={handleSaveGoal}>Save goal</Button>
+              </DialogFooter>
             </DialogContent>
           </Dialog>
 
@@ -1337,20 +1407,86 @@ export default function FounderDashboard() {
             lastRefreshed={lastRefreshed}
           />
 
+          {/* ── Focus Mode Banner ────────────────────────────────────── */}
+          {focusMode && (
+            <div className="flex items-center justify-between rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-2">
+              <div className="flex items-center gap-2 text-sm text-amber-600">
+                <Flame className="h-4 w-4" />
+                <span className="font-medium">Focus mode — showing critical sections only</span>
+              </div>
+              <Button size="sm" variant="ghost" className="h-7 text-xs text-amber-600 hover:text-amber-700" onClick={() => setFocusMode(false)}>
+                Exit <kbd className="ml-1 rounded bg-amber-500/20 px-1 py-0.5 text-[10px] font-mono">F</kbd>
+              </Button>
+            </div>
+          )}
+
+          {/* ── MRR Goal Progress (when goal is set) ─────────────────── */}
+          {goalCents > 0 && dashboardData && (
+            <div className="rounded-lg border bg-card px-4 py-3">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <Target className="h-4 w-4 text-amber-500" />
+                  <span className="text-sm font-medium">MRR Goal Progress</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold">
+                    {formatCurrency(dashboardData.revenue.mrr)} / {formatCurrency(goalCents)}
+                  </span>
+                  <Button size="sm" variant="ghost" className="h-6 text-xs px-2" onClick={() => { setGoalInputValue(String(goalCents / 100)); setGoalDialogOpen(true); }}>
+                    Edit
+                  </Button>
+                </div>
+              </div>
+              <div className="h-2.5 bg-muted rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${
+                    dashboardData.revenue.mrr >= goalCents
+                      ? "bg-green-500"
+                      : dashboardData.revenue.mrr >= goalCents * 0.75
+                      ? "bg-amber-500"
+                      : "bg-blue-500"
+                  }`}
+                  style={{ width: `${Math.min(100, (dashboardData.revenue.mrr / goalCents) * 100).toFixed(1)}%` }}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {dashboardData.revenue.mrr >= goalCents
+                  ? "🎉 Goal reached!"
+                  : `${((dashboardData.revenue.mrr / goalCents) * 100).toFixed(0)}% to goal — ${formatCurrency(goalCents - dashboardData.revenue.mrr)} remaining`}
+              </p>
+            </div>
+          )}
+
           {/* ── ZONE 1: Above fold — primary passive command center ─── */}
           <div className="space-y-6">
             <ThePulse decisionsInboxCount={decisionsInboxData?.totalPending} />
             <DecisionsInbox />
           </div>
 
-          {/* ── Business Intelligence — promoted above the fold ───────── */}
-          <BusinessIntelligence />
+          {/* ── Revenue Trajectory Chart (full-width) ────────────────── */}
+          <div className={focusMode ? "hidden" : ""}>
+            <MRRTrajectory goalCents={goalCents > 0 ? goalCents : undefined} />
+          </div>
 
-          {/* ── Sophie AI Intelligence ───────────────────────────────── */}
-          <SophieActivityPreview />
+          {/* ── Churn Intelligence + Growth Engine (2-col) ───────────── */}
+          <div className={`grid grid-cols-1 md:grid-cols-2 gap-6 ${focusMode ? "hidden" : ""}`}>
+            <ChurnIntelligence />
+            <GrowthEngine />
+          </div>
+
+          {/* ── Business Intelligence — SaaS KPIs ────────────────────── */}
+          <div className={focusMode ? "hidden" : ""}>
+            <BusinessIntelligence />
+          </div>
+
+          {/* ── Platform Passive Score + Sophie AI (2-col) ───────────── */}
+          <div className={`grid grid-cols-1 md:grid-cols-2 gap-6 ${focusMode ? "hidden" : ""}`}>
+            <PlatformPassiveScore />
+            <SophieActivityPreview />
+          </div>
 
           {/* ── Infrastructure (collapsible — on demand) ─────────────── */}
-          <details className="group">
+          <details className={`group ${focusMode ? "hidden" : ""}`}>
             <summary className="cursor-pointer list-none py-3 border-t flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
               <span className="group-open:rotate-90 inline-block transition-transform">▶</span>
               Infrastructure &amp; Job Queues
@@ -1361,11 +1497,11 @@ export default function FounderDashboard() {
           </details>
 
           {/* ── ZONE 3: Operational panels ───────────────────────────── */}
-          <div className="space-y-4">
+          <div className={`space-y-4 ${focusMode ? "hidden" : ""}`}>
             <h2 className="text-lg font-semibold text-foreground border-t pt-4">Operational Panels</h2>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 ${focusMode ? "hidden" : ""}`}>
             <Card data-testid="card-revenue-analytics">
               <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
                 <CardTitle
