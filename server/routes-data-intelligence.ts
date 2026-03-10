@@ -394,4 +394,116 @@ router.get("/census-profile/:state/:county", async (req: Request, res: Response)
   }
 });
 
+// ---------------------------------------------------------------------------
+// Market Pulse Engine
+// ---------------------------------------------------------------------------
+
+/**
+ * GET /api/data-intel/market-pulse
+ * Generate a proactive market pulse report for one or more counties on the
+ * org's watchlist.  Returns alerts, opportunity windows, and weekly wisdom.
+ *
+ * Query params:
+ *   ?counties=Pinal%2CAZ|Flagler%2CFL   (pipe-separated "county,state" pairs)
+ *   Omit counties to use the default top-target watchlist.
+ */
+router.get("/market-pulse", async (req: Request, res: Response) => {
+  try {
+    const { generateMarketPulseReport, DEFAULT_WATCHLIST_COUNTIES } = await import("./services/marketPulseEngine");
+    const org = getOrg(req);
+
+    let counties: { county: string; state: string }[] = DEFAULT_WATCHLIST_COUNTIES;
+
+    if (req.query.counties) {
+      const raw = String(req.query.counties).split("|");
+      const parsed = raw
+        .map((s) => {
+          const [county, state] = s.split(",").map((x) => x.trim());
+          return county && state ? { county, state } : null;
+        })
+        .filter(Boolean) as { county: string; state: string }[];
+      if (parsed.length > 0) counties = parsed;
+    }
+
+    const report = await generateMarketPulseReport(org?.id ?? "demo", counties);
+    res.json(report);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/data-intel/market-pulse/:state/:county
+ * Single-county pulse snapshot — alerts, opportunity window, pulse score.
+ */
+router.get("/market-pulse/:state/:county", async (req: Request, res: Response) => {
+  try {
+    const { generateCountyPulse, getWeeklyWisdom } = await import("./services/marketPulseEngine");
+    const { state, county } = req.params;
+    const [snapshot, wisdom] = await Promise.all([
+      generateCountyPulse(county, state),
+      Promise.resolve(getWeeklyWisdom()),
+    ]);
+    res.json({ ...snapshot, weeklyWisdom: wisdom });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Lead Intelligence Engine
+// ---------------------------------------------------------------------------
+
+/**
+ * GET /api/data-intel/lead-intelligence/batch
+ * Score up to 200 leads for the authenticated org.
+ * Returns prioritised leads with urgency scores and personalized message angles.
+ *
+ * Query params:
+ *   ?limit=100   (default 100, max 200)
+ */
+router.get("/lead-intelligence/batch", async (req: Request, res: Response) => {
+  try {
+    const { batchScoreLeadsForOrg } = await import("./services/leadIntelligenceEngine");
+    const org = getOrg(req);
+    const limit = Math.min(200, parseInt(String(req.query.limit || "100"), 10));
+    const result = await batchScoreLeadsForOrg(org?.id ?? "demo", limit);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/data-intel/lead-intelligence/score
+ * Score a single lead (or a manually constructed lead object) and return its
+ * full intelligence profile with urgency, message angle, and recommended channel.
+ *
+ * Body: { lead: LeadRecord, nassData?: CountyAgSnapshot }
+ */
+router.post("/lead-intelligence/score", async (req: Request, res: Response) => {
+  try {
+    const { scoreLeadIntelligence } = await import("./services/leadIntelligenceEngine");
+    const { lead, nassData } = req.body;
+    if (!lead) return res.status(400).json({ error: "lead object is required" });
+    const profile = await scoreLeadIntelligence(lead, nassData);
+    res.json(profile);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/data-intel/lead-intelligence/focus
+ * Returns this week's recommended focus action for the org's lead pipeline.
+ */
+router.get("/lead-intelligence/focus", async (req: Request, res: Response) => {
+  try {
+    const { getWeeklyFocus } = await import("./services/leadIntelligenceEngine");
+    res.json({ focus: getWeeklyFocus(), generatedAt: new Date().toISOString() });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;
