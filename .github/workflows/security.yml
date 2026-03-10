@@ -27,21 +27,27 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run npm audit (fail on critical/high)
+      - name: Run npm audit (fail on critical/high, report moderate)
         run: |
-          npm audit --audit-level=high --json > npm-audit-report.json || true
-          # Parse and fail if critical vulnerabilities exist
-          CRITICAL=$(cat npm-audit-report.json | python3 -c "
+          npm audit --json > npm-audit-report.json || true
+          # F-A06-1/F-A06-2: fail on critical/high; print moderate count as a warning
+          python3 -c "
           import json, sys
-          data = json.load(sys.stdin)
+          data = json.load(open('npm-audit-report.json'))
           meta = data.get('metadata', {})
           vulns = meta.get('vulnerabilities', {})
           critical = vulns.get('critical', 0)
           high = vulns.get('high', 0)
-          print(f'Critical: {critical}, High: {high}')
-          sys.exit(1 if critical > 0 else 0)
-          ")
-          echo "$CRITICAL"
+          moderate = vulns.get('moderate', 0)
+          low = vulns.get('low', 0)
+          info = vulns.get('info', 0)
+          print(f'Vulnerabilities — critical: {critical}, high: {high}, moderate: {moderate}, low: {low}, info: {info}')
+          if moderate > 0:
+              print(f'::warning::npm audit found {moderate} moderate vulnerabilities. Review and patch within 30 days per CVE SLA.')
+          if critical > 0 or high > 0:
+              print(f'::error::npm audit found critical/high vulnerabilities. Patch within 24h (critical) or 7d (high) per CVE SLA.')
+              sys.exit(1)
+          "
 
       - name: Upload npm audit report
         if: always()

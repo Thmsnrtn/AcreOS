@@ -9,6 +9,56 @@ import { users } from "@shared/models/auth";
 import { eq } from "drizzle-orm";
 
 // ============================================
+// F-A09-1: Auth failure alerting
+// Rolling per-IP counter; fires a Sentry alert when ≥50 failures in 5 minutes.
+// ============================================
+
+interface FailureRecord {
+  count: number;
+  windowStart: number;
+  alerted: boolean;
+}
+
+const AUTH_FAILURE_WINDOW_MS = 5 * 60 * 1000;
+const AUTH_FAILURE_ALERT_THRESHOLD = 50;
+const authFailures = new Map<string, FailureRecord>();
+
+function recordAuthFailure(ip: string): void {
+  const now = Date.now();
+  const record = authFailures.get(ip);
+
+  if (!record || now - record.windowStart > AUTH_FAILURE_WINDOW_MS) {
+    authFailures.set(ip, { count: 1, windowStart: now, alerted: false });
+    return;
+  }
+
+  record.count += 1;
+
+  if (record.count >= AUTH_FAILURE_ALERT_THRESHOLD && !record.alerted) {
+    record.alerted = true;
+    const msg = `[auth] BRUTE FORCE ALERT: ${record.count} auth failures from IP ${ip} in the last 5 minutes`;
+    console.error(msg);
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { Sentry } = require("../utils/sentry");
+      if (Sentry?.captureMessage) {
+        Sentry.captureMessage(msg, "warning");
+      }
+    } catch {
+      // Sentry optional — swallow import error
+    }
+  }
+}
+
+// Evict stale records every 10 minutes to prevent unbounded memory growth
+setInterval(() => {
+  const cutoff = Date.now() - AUTH_FAILURE_WINDOW_MS * 2;
+  for (const [ip, record] of authFailures) {
+    if (record.windowStart < cutoff) authFailures.delete(ip);
+  }
+}, AUTH_FAILURE_WINDOW_MS * 2).unref();
+
+// ============================================
 // VALIDATION SCHEMAS
 // ============================================
 
@@ -76,6 +126,11 @@ export function registerAuthRoutes(app: Express): void {
         return res.status(500).json({ message: "Login failed" });
       }
       if (!user) {
+        // F-A09-1: Record auth failure for brute-force detection
+        const clientIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim()
+          || req.socket.remoteAddress
+          || "unknown";
+        recordAuthFailure(clientIp);
         return res.status(401).json({ message: info?.message || "Invalid email or password" });
       }
       // Session rotation: regenerate session ID before login to prevent session fixation

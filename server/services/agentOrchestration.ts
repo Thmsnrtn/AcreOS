@@ -743,6 +743,29 @@ class AgentOrchestrationService {
       case "call_webhook":
         if (triggerConfig?.webhookUrl) {
           try {
+            // F-A10-1: Block SSRF — reject RFC 1918, loopback, and cloud metadata targets
+            const parsed = new URL(triggerConfig.webhookUrl);
+            if (!["http:", "https:"].includes(parsed.protocol)) {
+              console.warn(`[orchestration] Webhook blocked — non-HTTP protocol: ${parsed.protocol}`);
+              break;
+            }
+            const hostname = parsed.hostname.toLowerCase();
+            const ssrfDenyPatterns = [
+              /^127\./,
+              /^0\./,
+              /^localhost$/,
+              /^10\./,
+              /^172\.(1[6-9]|2\d|3[01])\./,
+              /^192\.168\./,
+              /^169\.254\./,   // link-local / AWS metadata
+              /^::1$/,         // IPv6 loopback
+              /^fc00:/,        // IPv6 unique local
+              /^fd[0-9a-f]{2}:/,
+            ];
+            if (ssrfDenyPatterns.some((re) => re.test(hostname))) {
+              console.warn(`[orchestration] Webhook blocked — internal/private address: ${hostname}`);
+              break;
+            }
             await fetch(triggerConfig.webhookUrl, {
               method: "POST",
               headers: { "Content-Type": "application/json" },

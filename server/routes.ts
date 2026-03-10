@@ -99,6 +99,10 @@ const authRateLimit = rateLimiters.auth;
 
 // Org middleware
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
+// F-A04-1: Prompt injection guard
+import { promptInjectionMiddleware } from "./middleware/promptInjection";
+// F-A07-1: 2FA enforcement for admin routes
+import { require2FA } from "./middleware/require2FA";
 
 // Domain route modules
 import { registerDashboardRoutes } from "./routes-dashboard";
@@ -318,6 +322,12 @@ export async function registerRoutes(
   app.use('/api/intelligence', isAuthenticated, getOrCreateOrg, voiceLearningRouter);
   app.use('/api/white-label', isAuthenticated, getOrCreateOrg, whiteLabelRouter);
   app.use('/api/realtime', isAuthenticated, getOrCreateOrg, realtimeRouter);
+  // F-A04-1: Prompt injection guard applied to all AI endpoints
+  app.use("/api/ai", promptInjectionMiddleware);
+  app.use("/api/atlas", promptInjectionMiddleware);
+  app.use("/api/chat", promptInjectionMiddleware);
+  app.use("/api/executive", promptInjectionMiddleware);
+
   app.use('/api/atlas', aiLimiter, isAuthenticated, getOrCreateOrg, atlasInsightsRouter);
   app.post('/api/mcp/execute', mcpHandler);
 
@@ -425,6 +435,8 @@ export async function registerRoutes(
   registerAIRoutes(app);
   registerBillingRoutes(app);
   registerBorrowerRoutes(app);
+  // F-A07-1: Require 2FA verification before any admin operation for users who have it enabled
+  app.use("/api/admin", isAuthenticated, require2FA);
   registerAdminRoutes(app);
   registerCoreAIRoutes(app);
   registerIntegrationRoutes(app);
