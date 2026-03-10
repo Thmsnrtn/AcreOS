@@ -71,6 +71,7 @@ import propertyEnrichmentRouter from "./routes-property-enrichment";
 import exchange1031Router from "./routes-exchange-1031";
 import dunningRouter from "./routes-dunning";
 import onboardingRouter from "./routes-onboarding";
+import epicServicesRouter from "./routes-epic-services";
 import taxDelinquentRouter from "./routes-tax-delinquent";
 import matchingRouter from "./routes-matching";
 import kpisRouter from "./routes-kpis";
@@ -359,6 +360,9 @@ export async function registerRoutes(
   app.use('/api/exchange-1031', isAuthenticated, getOrCreateOrg, exchange1031Router);
   app.use('/api/dunning', isAuthenticated, dunningRouter);
   app.use('/api/onboarding', isAuthenticated, getOrCreateOrg, onboardingRouter);
+
+  // EPIC Services: Seller Motivation, County Opportunity, Title Chain, Investor Network, Financial OS, Developer API
+  app.use('/api', isAuthenticated, getOrCreateOrg, epicServicesRouter);
   app.use('/api/tax-delinquent', isAuthenticated, getOrCreateOrg, taxDelinquentRouter);
   app.use('/api/matching', isAuthenticated, getOrCreateOrg, matchingRouter);
   app.use('/api/kpis', isAuthenticated, getOrCreateOrg, kpisRouter);

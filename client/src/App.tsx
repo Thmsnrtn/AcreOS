@@ -167,6 +167,8 @@ const BorrowerPortal = React.lazy(() => import("@/pages/borrower-portal"));
 const TermsOfService = React.lazy(() => import("@/pages/terms"));
 const PrivacyPolicy = React.lazy(() => import("@/pages/privacy"));
 const OnboardingWizardPage = React.lazy(() => import("@/pages/onboarding-wizard"));
+const OnboardingV2Page = React.lazy(() => import("@/pages/onboarding-v2"));
+const FieldScoutPage = React.lazy(() => import("@/pages/field-scout"));
 const DunningManagerPage = React.lazy(() => import("@/pages/dunning-manager"));
 
 // ─── Page loading fallback ──────────────────────────────────────────────────
@@ -231,6 +233,10 @@ function Router() {
         <Route path="/portal" component={BorrowerPortal} />
         <Route path="/portal/:accessToken" component={BorrowerPortal} />
         <Route path="/onboarding">{() => <OnboardingWizardPage />}</Route>
+        <Route path="/onboarding-v2">{() => <OnboardingV2Page />}</Route>
+
+        {/* Field Scout — mobile land investing companion */}
+        <Route path="/field-scout">{() => <ProtectedRoute component={FieldScoutPage} />}</Route>
 
         {/* Home */}
         <Route path="/" component={HomeRoute} />
