@@ -62,6 +62,35 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build (generates source maps)
+        run: npm run build
+        env:
+          NODE_ENV: production
+
+      - name: Upload source maps to Sentry
+        if: env.SENTRY_AUTH_TOKEN != ''
+        run: |
+          npx @sentry/cli releases new "$GITHUB_SHA"
+          npx @sentry/cli releases files "$GITHUB_SHA" upload-sourcemaps ./dist \
+            --url-prefix "~/" \
+            --rewrite
+          npx @sentry/cli releases finalize "$GITHUB_SHA"
+          npx @sentry/cli releases deploys "$GITHUB_SHA" new -e production
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+        continue-on-error: true  # Non-blocking: deploy proceeds even if Sentry upload fails
+
       - name: Setup Fly CLI
         uses: superfly/flyctl-actions/setup-flyctl@master
 

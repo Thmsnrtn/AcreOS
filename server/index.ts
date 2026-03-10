@@ -250,6 +250,52 @@ app.use("/api/import", importLimiter);
 app.use("/api/leads/import", importLimiter);
 app.use("/api/properties/import", importLimiter);
 
+// ── Redis-backed cross-instance rate limiting (Tasks #39-42) ─────────────────
+// Applied to all /api routes as a supplementary layer on top of express-rate-limit.
+// Falls back gracefully to allow if Redis is unavailable.
+import { createOrgRateLimit, createIpRateLimit } from "./middleware/redisRateLimit";
+let _redisRateLimitClient: any = null;
+async function getRedisForRateLimit(): Promise<any> {
+  if (_redisRateLimitClient) return _redisRateLimitClient;
+  const redisUrl = process.env.REDIS_URL;
+  if (!redisUrl) return null;
+  try {
+    const IORedis = (await import("ioredis")).default;
+    _redisRateLimitClient = new IORedis(redisUrl, {
+      maxRetriesPerRequest: 2,
+      enableReadyCheck: false,
+      lazyConnect: true,
+    });
+    _redisRateLimitClient.on("error", () => {}); // swallow — fallback handles it
+    await _redisRateLimitClient.connect().catch(() => { _redisRateLimitClient = null; });
+    return _redisRateLimitClient;
+  } catch {
+    return null;
+  }
+}
+
+// Wire Redis org-level rate limiting for authenticated API routes
+app.use("/api", async (req, res, next) => {
+  try {
+    const redis = await getRedisForRateLimit();
+    if (!redis) return next();
+    return createOrgRateLimit(redis)(req, res, next);
+  } catch {
+    next();
+  }
+});
+
+// Wire Redis IP-level rate limiting as defense-in-depth for unauthenticated paths
+app.use("/api/auth", async (req, res, next) => {
+  try {
+    const redis = await getRedisForRateLimit();
+    if (!redis) return next();
+    return createIpRateLimit(redis, { maxPerMinute: 20, maxPerHour: 100 })(req, res, next);
+  } catch {
+    next();
+  }
+});
+
 (async () => {
   // Run DB migrations on startup (production-safe versioned migrations)
   if (process.env.NODE_ENV === "production") {

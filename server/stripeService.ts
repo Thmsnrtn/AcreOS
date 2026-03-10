@@ -1,5 +1,6 @@
 import { getUncachableStripeClient } from './stripeClient';
 import crypto from 'crypto';
+import { stripeCircuitBreaker } from './utils/circuitBreaker';
 
 /** Deterministic idempotency key for a given operation + seed. */
 function idempotencyKey(operation: string, ...seeds: (string | number | undefined)[]): string {
@@ -10,9 +11,11 @@ function idempotencyKey(operation: string, ...seeds: (string | number | undefine
 export class StripeService {
   async createCustomer(email: string, userId: string, name?: string) {
     const stripe = await getUncachableStripeClient();
-    return await stripe.customers.create(
-      { email, name, metadata: { userId } },
-      { idempotencyKey: idempotencyKey('create_customer', userId, email) }
+    return await stripeCircuitBreaker.call(() =>
+      stripe.customers.create(
+        { email, name, metadata: { userId } },
+        { idempotencyKey: idempotencyKey('create_customer', userId, email) }
+      )
     );
   }
 

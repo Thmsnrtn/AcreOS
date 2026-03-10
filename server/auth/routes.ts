@@ -6,7 +6,7 @@ import { isFounderEmail } from "../services/founder";
 import { setCsrfCookie } from "../middleware/csrf";
 import { db } from "../db";
 import { users } from "@shared/models/auth";
-import { eq, and, gt } from "drizzle-orm";
+import { eq, and, gt, sql } from "drizzle-orm";
 import crypto from "crypto";
 import bcrypt from "bcrypt";
 
@@ -59,6 +59,14 @@ setInterval(() => {
     if (record.windowStart < cutoff) authFailures.delete(ip);
   }
 }, AUTH_FAILURE_WINDOW_MS * 2).unref();
+
+// ============================================
+// Task #8: Account lockout constants
+// 5 failed attempts triggers a 30-minute lock
+// ============================================
+
+const MAX_FAILED_ATTEMPTS = 5;
+const LOCKOUT_DURATION_MS = 30 * 60 * 1000; // 30 minutes
 
 // ============================================
 // VALIDATION SCHEMAS
@@ -115,14 +123,41 @@ export function registerAuthRoutes(app: Express): void {
   });
 
   // Login
-  app.post("/api/auth/login", (req, res, next) => {
+  app.post("/api/auth/login", async (req, res, next) => {
     const parsed = loginSchema.safeParse(req.body);
     if (!parsed.success) {
       const errors = parsed.error.issues.map((i) => i.message);
       return res.status(400).json({ message: errors[0] });
     }
 
-    passport.authenticate("local", (err: any, user: any, info: any) => {
+    // Task #8: Check account lockout BEFORE attempting passport auth.
+    // Avoids unnecessary bcrypt work while lock is active.
+    const loginEmail = parsed.data.email.toLowerCase().trim();
+    try {
+      const [targetUser] = await db
+        .select({ id: users.id, lockedUntil: users.lockedUntil, failedLoginAttempts: users.failedLoginAttempts })
+        .from(users)
+        .where(eq(users.email, loginEmail))
+        .limit(1);
+
+      if (targetUser?.lockedUntil && new Date(targetUser.lockedUntil) > new Date()) {
+        const unlockAt = new Date(targetUser.lockedUntil).toISOString();
+        console.log(JSON.stringify({
+          level: "SECURITY",
+          event: "auth.lockout.blocked",
+          email: loginEmail,
+          lockedUntil: unlockAt,
+          timestamp: new Date().toISOString(),
+        }));
+        return res.status(423).json({
+          message: `Account locked due to too many failed attempts. Try again after ${unlockAt}.`,
+        });
+      }
+    } catch (lockCheckErr) {
+      console.error("[auth] Lockout check error:", lockCheckErr);
+    }
+
+    passport.authenticate("local", async (err: any, user: any, info: any) => {
       if (err) {
         console.error("[auth] Login error:", err);
         return res.status(500).json({ message: "Login failed" });
@@ -133,8 +168,53 @@ export function registerAuthRoutes(app: Express): void {
           || req.socket.remoteAddress
           || "unknown";
         recordAuthFailure(clientIp);
+
+        // Task #8: Increment per-account failed attempts, lock if threshold reached
+        try {
+          const [targetUser] = await db
+            .select({ id: users.id, failedLoginAttempts: users.failedLoginAttempts })
+            .from(users)
+            .where(eq(users.email, loginEmail))
+            .limit(1);
+
+          if (targetUser) {
+            const currentAttempts = parseInt(targetUser.failedLoginAttempts ?? "0", 10) + 1;
+            const shouldLock = currentAttempts >= MAX_FAILED_ATTEMPTS;
+            await db
+              .update(users)
+              .set({
+                failedLoginAttempts: String(currentAttempts),
+                lockedUntil: shouldLock ? new Date(Date.now() + LOCKOUT_DURATION_MS) : null,
+              })
+              .where(eq(users.id, targetUser.id));
+
+            if (shouldLock) {
+              console.log(JSON.stringify({
+                level: "SECURITY",
+                event: "auth.lockout.triggered",
+                userId: targetUser.id,
+                attempts: currentAttempts,
+                timestamp: new Date().toISOString(),
+              }));
+            }
+          }
+        } catch (updateErr) {
+          console.error("[auth] Failed attempt counter error:", updateErr);
+        }
+
         return res.status(401).json({ message: info?.message || "Invalid email or password" });
       }
+
+      // Successful login — reset failed attempt counter
+      try {
+        await db
+          .update(users)
+          .set({ failedLoginAttempts: "0", lockedUntil: null })
+          .where(eq(users.id, user.id));
+      } catch (resetErr) {
+        console.error("[auth] Failed to reset attempt counter:", resetErr);
+      }
+
       // Session rotation: regenerate session ID before login to prevent session fixation
       req.session.regenerate((regenErr) => {
         if (regenErr) {
