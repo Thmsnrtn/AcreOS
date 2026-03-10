@@ -1,0 +1,30 @@
+#!/bin/sh
+# Pre-commit hook: lint, format-check, type-check
+# Task DX-7: Configure pre-commit hooks for code quality gates
+
+set -e
+
+echo "Running pre-commit checks..."
+
+# 1. TypeScript type-check
+echo "→ Type checking..."
+npx tsc --noEmit || {
+  echo "✗ TypeScript errors found. Fix before committing."
+  exit 1
+}
+
+# 2. ESLint
+echo "→ Linting..."
+npx eslint . --ext .ts,.tsx --max-warnings 0 || {
+  echo "✗ ESLint errors found. Run 'npm run lint:fix' to auto-fix."
+  exit 1
+}
+
+# 3. Prettier format check
+echo "→ Checking formatting..."
+npx prettier --check "**/*.{ts,tsx,json,md}" --ignore-path .gitignore || {
+  echo "✗ Formatting issues found. Run 'npm run format' to auto-fix."
+  exit 1
+}
+
+echo "✓ All pre-commit checks passed."

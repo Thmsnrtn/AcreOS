@@ -20,11 +20,16 @@ interface SecretSpec {
 const SECRETS: SecretSpec[] = [
   // Critical — app will not function without these
   { key: "DATABASE_URL", required: true, description: "PostgreSQL connection string" },
-  { key: "SESSION_SECRET", required: true, minLength: 32, description: "Express session secret (64+ random chars)" },
+  // Task #3: SESSION_SECRET must be ≥64 chars in production to prevent brute-force of signed cookies
+  { key: "SESSION_SECRET", required: true, minLength: 64, description: "Express session secret (64+ random chars)" },
   { key: "APP_URL", required: true, description: "Public app URL (no trailing slash, e.g. https://app.example.com)" },
 
   // Founder access
   { key: "FOUNDER_EMAIL", required: false, description: "Comma-separated founder email(s) for admin access" },
+
+  // Task #21: Field encryption key — required in production (AES-256 key = 32 bytes = 64 hex chars)
+  // Generate: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+  { key: "FIELD_ENCRYPTION_KEY", required: false, minLength: 64, description: "AES-256 field encryption key (64 hex chars = 32 bytes)", productionOnly: true },
 
   // AI
   { key: "AI_INTEGRATIONS_OPENAI_API_KEY", required: false, description: "Primary OpenAI API key for Atlas" },

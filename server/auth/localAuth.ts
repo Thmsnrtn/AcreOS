@@ -35,7 +35,9 @@ export function getSession() {
     cookie: {
       httpOnly: true,
       secure: isProduction,
-      sameSite: "lax",
+      // Task #7: Use "strict" in production to prevent CSRF via cross-site navigation.
+      // Use "lax" in development so local OAuth and redirect flows still work.
+      sameSite: isProduction ? "strict" : "lax",
       maxAge: sessionTtl,
     },
   });

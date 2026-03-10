@@ -47,7 +47,8 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
   res.setHeader("Content-Security-Policy", cspDirectives.join("; "));
 
   if (isProduction) {
-    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+    // Task #30: includeSubDomains + preload for HSTS preload list eligibility
+    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
   }
 
   next();
