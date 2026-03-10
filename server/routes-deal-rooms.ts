@@ -291,7 +291,28 @@ router.post('/:id/participants', async (req: Request, res: Response) => {
       .where(eq(dealRooms.id, dealRoomId))
       .returning();
 
-    // TODO: send email invitation to `email`
+    // Send email invitation to the new participant
+    try {
+      const { emailService } = await import('./services/emailService');
+      const org = getOrg(req);
+      const dealRoomUrl = `${process.env.APP_URL ?? 'http://localhost:5000'}/deal-rooms/${dealRoomId}`;
+      await emailService.sendEmail({
+        to: email,
+        subject: `You've been invited to a deal room`,
+        html: `
+          <p>Hi,</p>
+          <p>You have been invited to join a deal room as a <strong>${role}</strong>.</p>
+          <p><a href="${dealRoomUrl}">Click here to access the deal room</a></p>
+          <p>If you don't have an account yet, you'll be prompted to create one.</p>
+          <p>— ${org?.name ?? 'AcreOS'} Team</p>
+        `,
+        text: `You've been invited to join a deal room as a ${role}. Access it here: ${dealRoomUrl}`,
+        organizationId: org?.id,
+      });
+    } catch (emailErr) {
+      // Non-fatal: participant is already added; log and continue
+      console.error('[deal-rooms] Failed to send invitation email:', emailErr);
+    }
 
     broadcastToDealRoom(req, dealRoomId, { type: 'participant_added', participant: newParticipant });
 

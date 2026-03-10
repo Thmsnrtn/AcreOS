@@ -391,7 +391,7 @@ export function Sidebar() {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto overflow-x-hidden">
+      <nav aria-label="Main navigation" className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto overflow-x-hidden">
         {/* Founder link */}
         {isFounder && (
           <DesktopNavItem
@@ -458,6 +458,7 @@ export function Sidebar() {
                   <Link
                     href={module.href}
                     className="flex items-center gap-2 flex-1 min-w-0"
+                    aria-current={active ? "page" : undefined}
                     data-testid={`link-nav-${module.href.replace("/", "") || "dashboard"}`}
                   >
                     <module.icon
@@ -535,6 +536,7 @@ export function Sidebar() {
                             ? "bg-primary text-primary-foreground shadow-sm"
                             : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
                         )}
+                        aria-current={childActive ? "page" : undefined}
                         onMouseEnter={() => handlePrefetch(child.href)}
                         data-testid={`link-nav-${child.href.replace("/", "")}`}
                       >
