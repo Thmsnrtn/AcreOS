@@ -20,6 +20,9 @@ export const users = pgTable("users", {
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
+  // Task #12: Password reset flow — token is a 64-char hex string, one-time use, 1-hour TTL
+  passwordResetToken: varchar("password_reset_token"),
+  passwordResetExpiresAt: timestamp("password_reset_expires_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

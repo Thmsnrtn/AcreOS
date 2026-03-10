@@ -167,6 +167,8 @@ const DataMoatDashboardPage = React.lazy(() => import("@/pages/data-moat-dashboa
 const BorrowerPortal = React.lazy(() => import("@/pages/borrower-portal"));
 const TermsOfService = React.lazy(() => import("@/pages/terms"));
 const PrivacyPolicy = React.lazy(() => import("@/pages/privacy"));
+const ForgotPasswordPage = React.lazy(() => import("@/pages/forgot-password"));
+const ResetPasswordPage = React.lazy(() => import("@/pages/reset-password"));
 const OnboardingWizardPage = React.lazy(() => import("@/pages/onboarding-wizard"));
 const OnboardingV2Page = React.lazy(() => import("@/pages/onboarding-v2"));
 const FieldScoutPage = React.lazy(() => import("@/pages/field-scout"));
@@ -232,6 +234,8 @@ function Router() {
       <Switch>
         {/* Public routes */}
         <Route path="/auth" component={AuthPage} />
+        <Route path="/forgot-password" component={ForgotPasswordPage} />
+        <Route path="/reset-password" component={ResetPasswordPage} />
         <Route path="/terms" component={TermsOfService} />
         <Route path="/privacy" component={PrivacyPolicy} />
         <Route path="/portal" component={BorrowerPortal} />
