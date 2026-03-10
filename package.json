@@ -19,7 +19,10 @@
     "test:e2e:ui": "playwright test --ui",
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "drizzle-kit migrate",
+    "audit:security": "npm audit --audit-level=high",
+    "test:security": "vitest run tests/unit/securityTests.test.ts tests/unit/promptInjection.test.ts tests/unit/fieldEncryptionMiddleware.test.ts tests/unit/securityHeaders.test.ts tests/unit/piiMasking.test.ts",
+    "prepare": "git config core.hooksPath .githooks 2>/dev/null || true"
   },
   "dependencies": {
     "@aws-sdk/client-ses": "^3.962.0",

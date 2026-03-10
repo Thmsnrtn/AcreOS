@@ -1,7 +1,8 @@
 import { useAuth } from "@/hooks/use-auth";
-import { Redirect } from "wouter";
+import { Redirect, Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, Moon, Sun, RefreshCw, AlertCircle } from "lucide-react";
@@ -22,6 +23,7 @@ export default function AuthPage() {
   const [password, setPassword] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
 
   const refreshImage = useCallback(() => {
     setImageLoaded(false);
@@ -50,6 +52,7 @@ export default function AuthPage() {
     if (mode === "login") {
       login({ email, password });
     } else {
+      if (!agreedToTerms) return;
       register({ email, password, firstName, lastName });
     }
   };
@@ -178,11 +181,33 @@ export default function AuthPage() {
               />
             </div>
 
+            {mode === "register" && (
+              <div className="flex items-start gap-3">
+                <Checkbox
+                  id="terms"
+                  checked={agreedToTerms}
+                  onCheckedChange={(checked) => setAgreedToTerms(checked === true)}
+                  className="mt-0.5"
+                  data-testid="checkbox-terms"
+                />
+                <Label htmlFor="terms" className="text-white/70 text-sm leading-relaxed cursor-pointer">
+                  I agree to the{" "}
+                  <Link href="/terms" className="text-primary hover:underline">
+                    Terms of Service
+                  </Link>{" "}
+                  and{" "}
+                  <Link href="/privacy" className="text-primary hover:underline">
+                    Privacy Policy
+                  </Link>
+                </Label>
+              </div>
+            )}
+
             <Button
               type="submit"
               size="lg"
               className="w-full font-bold"
-              disabled={isPending}
+              disabled={isPending || (mode === "register" && !agreedToTerms)}
               data-testid="button-auth-submit"
             >
               {isPending && <Loader2 className="w-4 h-4 animate-spin mr-2" />}

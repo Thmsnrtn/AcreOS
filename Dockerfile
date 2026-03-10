@@ -43,4 +43,8 @@ ENV PUPPETEER_EXECUTABLE_PATH="/usr/bin/chromium"
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD node -e "fetch('http://localhost:5000/api/health/cached').then(r=>{if(!r.ok)throw 1}).catch(()=>process.exit(1))"
 
+# Task #132: Run as non-root user for container security
+# node:slim ships with a built-in "node" user (uid 1000)
+USER node
+
 CMD ["node", "dist/index.cjs"]
