@@ -65,6 +65,25 @@ const NITE_CAP_QUOTES = [
   { quote: "The land investor's superpower: turning unwanted land into cash flow machines.", author: "Land Geek" },
   { quote: "Build systems, not jobs. Your land business should run whether you're watching or not.", author: "Mark Podolsky" },
   { quote: "Tonight's note payment is tomorrow's freedom. Stack them up.", author: "Land Geek" },
+  // Extended Land Geek wisdom — Art of Passive Income methodology
+  { quote: "The best land investors aren't the cleverest — they're the most consistent. Mail. Score. Offer. Repeat.", author: "Land Geek" },
+  { quote: "Your county is your moat. Deep knowledge of one county beats shallow knowledge of ten.", author: "Mark Podolsky" },
+  { quote: "Subdivision is the multiplier. One parcel becomes four. Four deals become passive income.", author: "Land Geek" },
+  { quote: "Owner financing isn't just a payment plan — it's your passive income engine. Every note is a tiny salary.", author: "Mark Podolsky" },
+  { quote: "The seller doesn't need to like the offer. They just need to be more motivated to sell than to hold.", author: "Land Geek" },
+  { quote: "Know your redemption period better than your seller does. Time creates leverage.", author: "Mark Podolsky" },
+  { quote: "Price for the payment, not the total. $199/mo closes more deals than $9,500 cash.", author: "Land Geek" },
+  { quote: "Your buyer list is worth more than your property list. Build it with every single sale.", author: "Mark Podolsky" },
+  { quote: "A deal that doesn't close is just tuition. What did you learn?", author: "Land Geek" },
+  { quote: "The freedom number is not a destination. It's the moment the system takes over.", author: "Mark Podolsky" },
+  { quote: "Out of state + tax delinquent + no mortgage + long ownership = the holy grail of sellers.", author: "Land Geek" },
+  { quote: "You are not in the land business. You are in the marketing business that happens to sell land.", author: "Mark Podolsky" },
+  { quote: "Every failed follow-up is a future deal waiting for the right moment. Keep the sequence running.", author: "Land Geek" },
+  { quote: "The Nite Cap habit: review what came in, plan what goes out, sleep knowing the system is working.", author: "Mark Podolsky" },
+  { quote: "Don't negotiate against yourself. Make the offer. Let the seller negotiate back.", author: "Land Geek" },
+  { quote: "Recreational land buyers are everywhere. They're on Facebook groups, YouTube channels, dreams of escape.", author: "Mark Podolsky" },
+  { quote: "A VA doing your data entry is time arbitrage. Your highest value work is offer strategy and county selection.", author: "Land Geek" },
+  { quote: "The land business scales beautifully because land doesn't call you at 2am with a broken toilet.", author: "Mark Podolsky" },
 ];
 
 function getTodaysQuote(): { quote: string; author: string } {

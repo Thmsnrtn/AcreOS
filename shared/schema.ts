@@ -2623,6 +2623,7 @@ export const SUBSCRIPTION_TIERS = {
   free: {
     name: "Free",
     price: 0,
+    tagline: "Explore the platform",
     limits: {
       leads: 50,
       properties: 10,
@@ -2634,9 +2635,41 @@ export const SUBSCRIPTION_TIERS = {
     },
     features: ["basic_crm", "basic_inventory", "basic_notes"],
   },
+  sprout: {
+    name: "Sprout",
+    price: 20,
+    tagline: "Plant your first seeds",
+    badge: "Best to start",
+    limits: {
+      leads: 250,
+      properties: 50,
+      notes: 25,
+      teamMembers: 1,
+      aiRequestsPerMonth: 500,
+      campaigns: 5,
+      monthlyCredits: 500, // $5.00
+    },
+    features: [
+      "basic_crm", "basic_inventory", "basic_notes",
+      "ai_due_diligence", "email_campaigns",
+      "night_cap_dashboard", "deal_calculator",
+      "tax_delinquent_import", "direct_mail_basic"
+    ],
+    // Superpowers unlocked at this tier (shown to free users as preview)
+    unlocks: [
+      "AI-powered due diligence on every parcel",
+      "Tax delinquent list import & processing",
+      "Night Cap passive income dashboard",
+      "Blind offer calculation wizard",
+      "Direct mail campaign builder",
+      "Deal & ROI calculator",
+    ],
+  },
   starter: {
     name: "Starter",
     price: 49,
+    tagline: "Build momentum",
+    badge: "Most popular solo",
     limits: {
       leads: 500,
       properties: 100,
@@ -2646,11 +2679,29 @@ export const SUBSCRIPTION_TIERS = {
       campaigns: 10,
       monthlyCredits: 1000, // $10.00
     },
-    features: ["basic_crm", "basic_inventory", "basic_notes", "ai_due_diligence", "email_campaigns"],
+    features: [
+      "basic_crm", "basic_inventory", "basic_notes",
+      "ai_due_diligence", "email_campaigns",
+      "night_cap_dashboard", "deal_calculator",
+      "tax_delinquent_import", "direct_mail_basic",
+      "atlas_ai_assistant", "seller_intent", "comps_analysis",
+      "skip_tracing_basic", "avm_basic"
+    ],
+    unlocks: [
+      "Atlas AI executive assistant",
+      "Seller intent prediction",
+      "Automated comps analysis",
+      "Basic skip tracing",
+      "Automated Valuation Model (AVM)",
+      "Email drip sequences",
+      "2 team member seats",
+    ],
   },
   pro: {
     name: "Pro",
     price: 149,
+    tagline: "Scale your operation",
+    badge: "Best value for growth",
     limits: {
       leads: 5000,
       properties: 1000,
@@ -2661,15 +2712,33 @@ export const SUBSCRIPTION_TIERS = {
       monthlyCredits: 5000, // $50.00
     },
     features: [
-      "advanced_crm", "advanced_inventory", "advanced_notes", 
+      "advanced_crm", "advanced_inventory", "advanced_notes",
       "ai_due_diligence", "ai_marketing", "ai_buyer_communication",
       "email_campaigns", "sms_campaigns", "direct_mail",
-      "payment_processing", "reporting"
+      "payment_processing", "reporting",
+      "atlas_ai_assistant", "seller_intent", "comps_analysis",
+      "skip_tracing_full", "avm_full", "deal_hunter", "portfolio_health",
+      "owner_financing_manager", "buyer_network", "negotiation_copilot",
+      "market_intelligence", "deal_patterns", "acquisition_radar"
+    ],
+    unlocks: [
+      "Full skip tracing suite",
+      "Deal Hunter AI (finds opportunities automatically)",
+      "Negotiation Copilot",
+      "Owner financing management & note portfolio",
+      "Buyer network access",
+      "Portfolio health monitoring",
+      "Market intelligence reports",
+      "Acquisition Radar (proactive deal alerts)",
+      "SMS campaigns",
+      "Up to 10 team members",
     ],
   },
   scale: {
     name: "Scale",
     price: 399,
+    tagline: "Operate like a fund",
+    badge: "For serious operators",
     limits: {
       leads: -1, // unlimited
       properties: -1,
@@ -2684,12 +2753,33 @@ export const SUBSCRIPTION_TIERS = {
       "ai_due_diligence", "ai_marketing", "ai_buyer_communication", "ai_custom_agents",
       "email_campaigns", "sms_campaigns", "direct_mail", "marketplace_syndication",
       "payment_processing", "advanced_reporting", "api_access", "webhooks",
-      "priority_support", "custom_branding", "team_messaging"
+      "priority_support", "custom_branding", "team_messaging",
+      "atlas_ai_assistant", "seller_intent", "comps_analysis",
+      "skip_tracing_full", "avm_full", "deal_hunter", "portfolio_health",
+      "owner_financing_manager", "buyer_network", "negotiation_copilot",
+      "market_intelligence", "deal_patterns", "acquisition_radar",
+      "portfolio_optimizer", "portfolio_sentinel", "capital_markets",
+      "va_management", "cohort_analysis", "territory_manager",
+      "vision_ai", "voice_ai", "exchange_1031", "tax_optimization"
+    ],
+    unlocks: [
+      "Unlimited leads, properties & notes",
+      "Portfolio Optimizer & Sentinel (AI-managed portfolio)",
+      "Capital markets access",
+      "VA management system",
+      "Voice AI for calls",
+      "Vision AI for parcel analysis",
+      "1031 Exchange tracker",
+      "Tax optimization engine",
+      "Full API access & webhooks",
+      "Up to 25 team members",
     ],
   },
   enterprise: {
     name: "Enterprise",
     price: 799,
+    tagline: "White-label your empire",
+    badge: "For funds & teams",
     limits: {
       leads: -1, // unlimited
       properties: -1,
@@ -2705,7 +2795,25 @@ export const SUBSCRIPTION_TIERS = {
       "email_campaigns", "sms_campaigns", "direct_mail", "marketplace_syndication",
       "payment_processing", "advanced_reporting", "api_access", "webhooks",
       "priority_support", "custom_branding", "team_messaging",
-      "white_label_portal", "dedicated_support", "compliance_exports", "custom_integrations"
+      "white_label_portal", "dedicated_support", "compliance_exports", "custom_integrations",
+      "atlas_ai_assistant", "seller_intent", "comps_analysis",
+      "skip_tracing_full", "avm_full", "deal_hunter", "portfolio_health",
+      "owner_financing_manager", "buyer_network", "negotiation_copilot",
+      "market_intelligence", "deal_patterns", "acquisition_radar",
+      "portfolio_optimizer", "portfolio_sentinel", "capital_markets",
+      "va_management", "cohort_analysis", "territory_manager",
+      "vision_ai", "voice_ai", "exchange_1031", "tax_optimization",
+      "reseller_dashboard", "multi_org_management", "sso", "audit_logs_export"
+    ],
+    unlocks: [
+      "White-label portal for your brand",
+      "Multi-organization management",
+      "SSO & enterprise authentication",
+      "Dedicated account support",
+      "Full compliance export suite",
+      "Custom integrations",
+      "Reseller dashboard",
+      "Unlimited team members",
     ],
   },
 } as const;

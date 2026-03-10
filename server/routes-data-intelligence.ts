@@ -588,4 +588,144 @@ router.get("/source-health", async (req: Request, res: Response) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// EPIC H: AcreOS Opportunity Scoring Engine
+// POST /api/data-intel/opportunity-score   — Score a parcel from signals
+// GET  /api/data-intel/signal-catalog      — Full signal catalog
+// GET  /api/data-intel/data-freshness/:id  — Property data freshness report
+// GET  /api/data-intel/county-score        — County opportunity score
+// GET  /api/data-intel/freedom-number      — Freedom number analysis
+// GET  /api/data-intel/prospect/:leadId    — Prospect intelligence profile
+// GET  /api/data-intel/campaign-intel      — Campaign intelligence for a county
+// ---------------------------------------------------------------------------
+
+router.post("/opportunity-score", async (req: Request, res: Response) => {
+  try {
+    const { calculateOpportunityScore } = await import("./services/dataIntelligenceEngine");
+    const score = calculateOpportunityScore(req.body || {});
+    res.json(score);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/signal-catalog", async (_req: Request, res: Response) => {
+  try {
+    const { getDataSignalCatalog } = await import("./services/dataIntelligenceEngine");
+    const catalog = getDataSignalCatalog();
+    res.json({
+      signals: catalog,
+      totalSignals: catalog.length,
+      layers: [...new Set(catalog.map((s: any) => s.layer))],
+      freeSignals: catalog.filter((s: any) => s.tier === "free").length,
+      paidSignals: catalog.filter((s: any) => s.tier === "paid").length,
+      summary: "AcreOS fuses data across 5 layers: Parcel Identity, Ownership Signals, Physical Reality, Market Context, and Environmental Overlays.",
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/data-freshness/:propertyId", async (req: Request, res: Response) => {
+  try {
+    const { storage } = await import("./storage");
+    const org = (req as any).organization;
+    const propertyId = parseInt(req.params.propertyId);
+    const property = await storage.getProperty(org.id, propertyId);
+    if (!property) return res.status(404).json({ error: "Property not found" });
+    const { assessDataFreshness } = await import("./services/dataIntelligenceEngine");
+    const report = assessDataFreshness((property as any).enrichmentData, propertyId);
+    res.json(report);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/county-score", async (req: Request, res: Response) => {
+  try {
+    const { scoreCounty } = await import("./services/dataIntelligenceEngine");
+    const score = scoreCounty(req.body || {});
+    res.json(score);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/freedom-number", async (req: Request, res: Response) => {
+  try {
+    const { calculateFreedomNumber } = await import("./services/prospectIntelligence");
+    const { db } = await import("./db");
+    const { payments, notes } = await import("@shared/schema");
+    const { eq, and, sum } = await import("drizzle-orm");
+
+    const org = (req as any).organization;
+    const monthlyExpenses = parseFloat(req.query.monthlyExpenses as string)
+      || (org.settings?.monthlyExpenses || org.freedomNumber || 5000);
+
+    const [incomeResult] = await db
+      .select({ total: sum(payments.amount) })
+      .from(payments)
+      .where(eq(payments.organizationId, org.id));
+
+    const [notesResult] = await db
+      .select({ noteCount: sum(notes.id) })
+      .from(notes)
+      .where(and(eq(notes.organizationId, org.id), eq(notes.status, "active")));
+
+    const monthlyIncome = Number(incomeResult?.total || 0) / 12;
+    const noteCount = Number(notesResult?.noteCount || 0);
+    const avgNotePayment = noteCount > 0 && monthlyIncome > 0 ? monthlyIncome / noteCount : 200;
+
+    const analysis = calculateFreedomNumber(monthlyExpenses, monthlyIncome, avgNotePayment, noteCount);
+    res.json(analysis);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/prospect/:leadId", async (req: Request, res: Response) => {
+  try {
+    const { calculateMotivationScore, getOutreachRecommendation, getEnrichmentPipeline } = await import("./services/prospectIntelligence");
+    const { storage } = await import("./storage");
+    const org = (req as any).organization;
+    const leadId = parseInt(req.params.leadId);
+    const lead = await storage.getLead(org.id, leadId);
+    if (!lead) return res.status(404).json({ error: "Lead not found" });
+
+    const leadData = lead as any;
+    const activeSignals: string[] = [];
+    if (leadData.taxDelinquencyYears >= 5) activeSignals.push("TAX_DELINQUENT_5YR");
+    else if (leadData.taxDelinquencyYears >= 3) activeSignals.push("TAX_DELINQUENT_3YR");
+    else if (leadData.taxDelinquencyYears >= 2) activeSignals.push("TAX_DELINQUENT_2YR");
+    if (leadData.isOutOfState) activeSignals.push("OUT_OF_STATE_OWNER");
+    if (leadData.hasMortgage === false) activeSignals.push("NO_MORTGAGE");
+    if (leadData.ownershipYears >= 10) activeSignals.push("LONG_TERM_OWNER");
+
+    const { score, tier, topSignal } = calculateMotivationScore(activeSignals as any);
+    const enrichmentPipeline = getEnrichmentPipeline(lead);
+    const outreach = getOutreachRecommendation(
+      leadData.touchCount || 0,
+      tier,
+      leadData.daysUntilTaxAuction,
+      leadData.lastContactDaysAgo,
+      leadData.lastResponseSignal
+    );
+
+    res.json({ leadId, motivationScore: score, motivationTier: tier, activeSignals, topSignal, enrichmentPipeline, outreachRecommendation: outreach });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/campaign-intel", async (req: Request, res: Response) => {
+  try {
+    const { getCampaignIntelligence } = await import("./services/prospectIntelligence");
+    const { countyMedianDom = 90, motivationTierDistribution = {}, historicalResponseRate } = req.body;
+    const intel = getCampaignIntelligence(countyMedianDom, motivationTierDistribution, historicalResponseRate);
+    res.json(intel);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;

@@ -384,6 +384,12 @@ export async function registerRoutes(
     app.use('/api/night-cap', isAuthenticated, getOrCreateOrg, nightCapRouter);
   }
 
+  // Founder Intelligence API — passive monitoring & platform analytics
+  {
+    const founderIntelRouter = (await import("./routes-founder-intelligence")).default;
+    app.use('/api/founder/intelligence', isAuthenticated, founderIntelRouter);
+  }
+
   // Epic H: Auto-Delinquent Scraper route
   app.post('/api/import/auto-delinquent', isAuthenticated, getOrCreateOrg, async (req, res) => {
     const { county, state } = req.body as { county: string; state: string };
