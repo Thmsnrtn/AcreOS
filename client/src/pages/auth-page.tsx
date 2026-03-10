@@ -181,6 +181,14 @@ export default function AuthPage() {
               />
             </div>
 
+            {mode === "login" && (
+              <div className="text-right -mt-2">
+                <Link href="/forgot-password" className="text-xs text-white/50 hover:text-white/80">
+                  Forgot password?
+                </Link>
+              </div>
+            )}
+
             {mode === "register" && (
               <div className="flex items-start gap-3">
                 <Checkbox

@@ -6,7 +6,9 @@ import { isFounderEmail } from "../services/founder";
 import { setCsrfCookie } from "../middleware/csrf";
 import { db } from "../db";
 import { users } from "@shared/models/auth";
-import { eq } from "drizzle-orm";
+import { eq, and, gt } from "drizzle-orm";
+import crypto from "crypto";
+import bcrypt from "bcrypt";
 
 // ============================================
 // F-A09-1: Auth failure alerting
@@ -184,6 +186,103 @@ export function registerAuthRoutes(app: Express): void {
     } catch (error) {
       console.error("[auth] Error fetching user:", error);
       res.status(500).json({ message: "Failed to fetch user" });
+    }
+  });
+
+  // ── Task #12: Password Reset (forgot / reset) ─────────────────────────────
+
+  const forgotSchema = z.object({
+    email: z.string().email(),
+  });
+
+  const resetSchema = z.object({
+    token: z.string().min(64).max(64),
+    password: z.string().min(8, "Password must be at least 8 characters"),
+  });
+
+  // Step 1: Request reset — send email with time-limited token
+  // Always returns 200 to prevent account enumeration (Task #11)
+  app.post("/api/auth/forgot-password", async (req, res) => {
+    const parsed = forgotSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Valid email required" });
+    }
+
+    const { email } = parsed.data;
+    // Always respond 200 regardless of whether account exists
+    res.json({ message: "If an account exists for that email, a password reset link has been sent." });
+
+    // Fire-and-forget: find user, set token, send email
+    try {
+      const [user] = await db.select().from(users).where(eq(users.email, email.toLowerCase()));
+      if (!user) return;
+
+      const token = crypto.randomBytes(32).toString("hex"); // 64 hex chars
+      const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+      await db.update(users)
+        .set({ passwordResetToken: token, passwordResetExpiresAt: expiresAt })
+        .where(eq(users.id, user.id));
+
+      const appUrl = process.env.APP_URL || "http://localhost:5000";
+      const resetUrl = `${appUrl}/reset-password?token=${token}`;
+
+      // Send email (best effort — non-blocking)
+      import("../services/emailService").then(({ emailService }) => {
+        emailService.sendEmail({
+          to: email,
+          subject: "Reset your AcreOS password",
+          html: `<p>Click the link below to reset your password. This link expires in 1 hour.</p>
+<p><a href="${resetUrl}">${resetUrl}</a></p>
+<p>If you didn't request this, you can safely ignore this email.</p>`,
+        }).catch(() => {});
+      }).catch(() => {});
+    } catch (err) {
+      console.error("[auth] Forgot password error:", err);
+    }
+  });
+
+  // Step 2: Complete reset — validate token, set new password
+  app.post("/api/auth/reset-password", async (req, res) => {
+    const parsed = resetSchema.safeParse(req.body);
+    if (!parsed.success) {
+      const errors = parsed.error.issues.map((i) => i.message);
+      return res.status(400).json({ message: errors[0] });
+    }
+
+    const { token, password } = parsed.data;
+    const now = new Date();
+
+    try {
+      const [user] = await db.select().from(users)
+        .where(and(
+          eq(users.passwordResetToken, token),
+          gt(users.passwordResetExpiresAt, now)
+        ));
+
+      if (!user) {
+        return res.status(400).json({ message: "Invalid or expired reset token" });
+      }
+
+      const passwordHash = await bcrypt.hash(password, 12);
+
+      // Invalidate token after use (one-time use)
+      await db.update(users)
+        .set({
+          passwordHash,
+          passwordResetToken: null,
+          passwordResetExpiresAt: null,
+        })
+        .where(eq(users.id, user.id));
+
+      // Destroy all existing sessions for this user to force re-login
+      // (session store doesn't support user-scoped deletion; log for awareness)
+      console.log(`[auth] Password reset completed for user ${user.id}`);
+
+      return res.json({ message: "Password reset successful. Please sign in with your new password." });
+    } catch (error) {
+      console.error("[auth] Reset password error:", error);
+      return res.status(500).json({ message: "Password reset failed" });
     }
   });
 }
