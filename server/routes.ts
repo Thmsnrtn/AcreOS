@@ -368,6 +368,29 @@ export async function registerRoutes(
   // Data Intelligence: USDA NASS, Census, Parcel Fusion, Blind Offer Calculator, Freedom Meter
   app.use('/api/data-intel', isAuthenticated, getOrCreateOrg, dataIntelligenceRouter);
 
+  // Epic A: Night Cap Dashboard
+  {
+    const nightCapRouter = (await import("./routes-night-cap")).default;
+    app.use('/api/night-cap', isAuthenticated, getOrCreateOrg, nightCapRouter);
+  }
+
+  // Epic H: Auto-Delinquent Scraper route
+  app.post('/api/import/auto-delinquent', isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const { county, state } = req.body as { county: string; state: string };
+    if (!county || !state) return res.status(400).json({ error: "county and state are required" });
+    const { findAutoScrapeSource, scrapeCountyDelinquentList } = await import("./services/delinquentListScraper");
+    const source = findAutoScrapeSource(county, state);
+    if (!source) {
+      return res.status(404).json({
+        error: "No automated source available for this county",
+        message: `Auto-scraping not yet available for ${county}, ${state}. Use manual CSV upload instead.`,
+        manualUploadUrl: "/api/import/tax-delinquent",
+      });
+    }
+    const result = await scrapeCountyDelinquentList(source);
+    res.json(result);
+  });
+
   app.use('/api/tax-delinquent', isAuthenticated, getOrCreateOrg, taxDelinquentRouter);
   app.use('/api/matching', isAuthenticated, getOrCreateOrg, matchingRouter);
   app.use('/api/kpis', isAuthenticated, getOrCreateOrg, kpisRouter);

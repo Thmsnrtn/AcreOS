@@ -48,6 +48,7 @@ import {
   Compass,
   Landmark,
   Bell,
+  Moon,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import {
@@ -194,6 +195,7 @@ const NAV_MODULES: NavModule[] = [
     children: [
       { label: "Finance", icon: Banknote, href: "/finance", description: "Seller-financed notes" },
       { label: "Freedom Meter", icon: Star, href: "/freedom-meter", description: "Note income vs. expenses — track your path to financial freedom" },
+      { label: "Night Cap", icon: Moon, href: "/night-cap", description: "End-of-day passive income review — Nite Cap command center" },
       { label: "Cash Flow", icon: Activity, href: "/cash-flow", description: "12-month cash flow forecasting" },
       { label: "Capital Mkts", icon: DollarSign, href: "/capital-markets", description: "Note securitization and lenders" },
       { label: "Portfolio", icon: PieChart, href: "/portfolio", description: "Investment portfolio view" },

@@ -26,6 +26,8 @@ import {
   X,
   Target,
   Sparkles,
+  Moon,
+  Zap,
 } from "lucide-react";
 import { format, isToday, isBefore, startOfDay, subDays } from "date-fns";
 
@@ -49,6 +51,23 @@ interface NextBestAction {
   description: string;
   actionLabel: string;
   actionUrl: string;
+}
+
+interface TodayPriority {
+  id: string;
+  type: string;
+  priority: "high" | "medium" | "low";
+  title: string;
+  description: string;
+  actionLabel: string;
+  actionUrl: string;
+  count?: number;
+}
+
+interface TodayPrioritiesData {
+  priorities: TodayPriority[];
+  generatedAt: string;
+  meta: { unscoredLeads: number; staleFollowUps: number; lastCampaignDaysAgo: number };
 }
 
 interface DashboardIntelligence {
@@ -159,6 +178,13 @@ export default function TodayPage() {
       staleTime: 5 * 60 * 1000,
     });
 
+  // Epic J: "3 Things Today" AI-prioritized actions
+  const { data: todayPriorities, isLoading: prioritiesLoading } =
+    useQuery<TodayPrioritiesData>({
+      queryKey: ["/api/dashboard/today-priorities"],
+      staleTime: 10 * 60 * 1000,
+    });
+
   // Decision queue: derive pending count from leads + deals already fetched
   const { data: allDeals = [] } = useQuery<{ id: number; status: string; offerDate?: string; updatedAt?: string }[]>({
     queryKey: ["/api/deals"],
@@ -238,6 +264,61 @@ export default function TodayPage() {
               <ArrowRight className="w-3.5 h-3.5" />
             </div>
           </Link>
+        )}
+      </div>
+
+      {/* Epic J: Section 0 — Start Here Today (3 AI-prioritized actions) */}
+      <div data-testid="section-start-here-today">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Zap className="w-4 h-4 text-amber-500" />
+            <h2 className="text-lg font-semibold">Start Here Today</h2>
+            <Badge variant="secondary" className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 text-xs">
+              AI
+            </Badge>
+          </div>
+          <Link href="/night-cap">
+            <Button variant="ghost" size="sm" className="gap-1 text-xs">
+              <Moon className="w-3 h-3" /> Night Cap
+            </Button>
+          </Link>
+        </div>
+
+        {prioritiesLoading ? (
+          <div className="space-y-2">
+            {[1, 2, 3].map(i => <Skeleton key={i} className="h-16 w-full" />)}
+          </div>
+        ) : (todayPriorities?.priorities ?? []).length > 0 ? (
+          <div className="space-y-2">
+            {(todayPriorities?.priorities ?? []).map((priority, idx) => (
+              <Card key={priority.id} className={`hover:shadow-md transition-shadow ${idx === 0 ? "border-amber-200 dark:border-amber-800" : ""}`}>
+                <CardContent className="flex items-center gap-4 p-4">
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${idx === 0 ? "bg-amber-500 text-white" : "bg-muted text-muted-foreground"}`}>
+                    {idx + 1}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className="font-medium text-sm truncate">{priority.title}</span>
+                      <Badge variant="secondary" className={priorityColors[priority.priority]}>
+                        {priority.priority}
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground line-clamp-1">{priority.description}</p>
+                  </div>
+                  <Button asChild size="sm" variant={idx === 0 ? "default" : "outline"} className="shrink-0 text-xs">
+                    <Link href={priority.actionUrl}>{priority.actionLabel}</Link>
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : (
+          <Card>
+            <CardContent className="flex items-center gap-3 py-5 px-4">
+              <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
+              <p className="text-sm text-muted-foreground">All caught up! No priority actions right now.</p>
+            </CardContent>
+          </Card>
         )}
       </div>
 

@@ -539,4 +539,136 @@ export function getKnownMigrationHotspots(): {
   ];
 }
 
+// ---------------------------------------------------------------------------
+// EPIC B5: OpenFEMA Disaster History
+// OpenFEMA API (no key required)
+// ---------------------------------------------------------------------------
+
+export interface CountyDisasterHistory {
+  recentDisasters: { declarationDate: string; disasterType: string; title: string }[];
+  majorDisasterCount10yr: number;
+  mostCommonDisasterType: string | null;
+  floodDeclarations10yr: number;
+  riskSignal: "low" | "moderate" | "high";
+}
+
+export async function getCountyDisasterHistory(
+  state: string,
+  county: string
+): Promise<CountyDisasterHistory | null> {
+  try {
+    const encodedCounty = encodeURIComponent(county);
+    const url = `https://www.fema.gov/api/open/v2/disasterDeclarationsSummaries?state=${state.toUpperCase()}&designatedCounty=${encodedCounty}&$orderby=declarationDate+desc&$top=20&$format=json`;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    const resp = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
+
+    if (!resp.ok) throw new Error(`FEMA API ${resp.status}`);
+    const data = await resp.json();
+    const disasters = (data.DisasterDeclarationsSummaries || data.data || []) as any[];
+
+    const tenYearsAgo = new Date();
+    tenYearsAgo.setFullYear(tenYearsAgo.getFullYear() - 10);
+
+    const recent10yr = disasters.filter((d: any) => {
+      const dt = new Date(d.declarationDate || d.incidentBeginDate || "");
+      return dt > tenYearsAgo;
+    });
+
+    const typeCounts: Record<string, number> = {};
+    let floodCount = 0;
+    for (const d of recent10yr) {
+      const type = d.incidentType || "Unknown";
+      typeCounts[type] = (typeCounts[type] || 0) + 1;
+      if (type.toLowerCase().includes("flood")) floodCount++;
+    }
+    const mostCommon = Object.entries(typeCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+
+    const riskSignal: CountyDisasterHistory["riskSignal"] =
+      recent10yr.length > 8 ? "high" : recent10yr.length > 4 ? "moderate" : "low";
+
+    return {
+      recentDisasters: recent10yr.slice(0, 10).map((d: any) => ({
+        declarationDate: d.declarationDate || d.incidentBeginDate || "",
+        disasterType: d.incidentType || "Unknown",
+        title: d.declarationTitle || d.title || "",
+      })),
+      majorDisasterCount10yr: recent10yr.length,
+      mostCommonDisasterType: mostCommon,
+      floodDeclarations10yr: floodCount,
+      riskSignal,
+    };
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// EPIC B6: Census Migration Flows
+// Census Flows API (free, key optional)
+// ---------------------------------------------------------------------------
+
+export interface CountyMigrationFlows {
+  totalInflow: number;
+  totalOutflow: number;
+  netFlow: number;
+  inMigrationSignal: "accelerating" | "growing" | "stable" | "declining";
+  topOriginCounties: { name: string; movedIn: number }[];
+}
+
+export async function getCountyMigrationFlows(
+  stateFips: string,
+  countyFips: string
+): Promise<CountyMigrationFlows | null> {
+  try {
+    const url = `${CENSUS_BASE}/2022/acs/flows?get=MOVEDIN,MOVEDOUT,FULL_MCD_NAME&for=county:${countyFips}&in=state:${stateFips}${CENSUS_KEY ? `&key=${CENSUS_KEY}` : ""}`;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
+    const resp = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
+
+    if (!resp.ok) throw new Error(`Census Flows ${resp.status}`);
+    const rows = await resp.json();
+
+    if (!Array.isArray(rows) || rows.length < 2) return null;
+
+    const headers: string[] = rows[0];
+    const movedInIdx = headers.indexOf("MOVEDIN");
+    const movedOutIdx = headers.indexOf("MOVEDOUT");
+    const nameIdx = headers.indexOf("FULL_MCD_NAME");
+
+    let totalIn = 0;
+    let totalOut = 0;
+    const origins: { name: string; movedIn: number }[] = [];
+
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      const inflow = parseInt(row[movedInIdx] || "0") || 0;
+      const outflow = parseInt(row[movedOutIdx] || "0") || 0;
+      const name = row[nameIdx] || "";
+      totalIn += inflow;
+      totalOut += outflow;
+      if (inflow > 0 && name) origins.push({ name, movedIn: inflow });
+    }
+
+    origins.sort((a, b) => b.movedIn - a.movedIn);
+    const netFlow = totalIn - totalOut;
+    const inMigrationSignal: CountyMigrationFlows["inMigrationSignal"] =
+      netFlow > 5000 ? "accelerating" : netFlow > 1000 ? "growing" : netFlow > 0 ? "stable" : "declining";
+
+    return {
+      totalInflow: totalIn,
+      totalOutflow: totalOut,
+      netFlow,
+      inMigrationSignal,
+      topOriginCounties: origins.slice(0, 5),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export { fetchCensusData };

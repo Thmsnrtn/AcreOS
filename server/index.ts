@@ -99,6 +99,14 @@ async function initStripe() {
   }
 }
 
+// F-A09-2: Install PII masking console interceptor at startup
+import("./middleware/piiMasking").then(({ installConsoleInterceptor }) => {
+  try { installConsoleInterceptor(); } catch (_) { /* non-critical */ }
+}).catch(() => {});
+
+// F-A05-3: Remove x-powered-by header
+app.disable("x-powered-by");
+
 app.use(securityHeaders);
 app.use(corsMiddleware);
 app.use(requestTimeout);

@@ -227,28 +227,142 @@ export class LeadScoringService {
   }
 
   private async calculateFactors(
-    lead: Lead, 
-    profile: LeadScoringProfile, 
+    lead: Lead,
+    profile: LeadScoringProfile,
     enrichment: EnrichmentData
   ): Promise<Record<string, ScoreFactorResult>> {
     const factors: Record<string, ScoreFactorResult> = {};
-    
+
+    // Original signals
     factors.ownershipDuration = await this.calcOwnershipDuration(lead, enrichment, profile.ownershipDurationWeight || 15);
     factors.taxDelinquency = await this.calcTaxDelinquency(lead, enrichment, profile.taxDelinquencyWeight || 20);
     factors.absenteeOwner = await this.calcAbsenteeOwner(lead, enrichment, profile.absenteeOwnerWeight || 15);
     factors.propertySize = await this.calcPropertySize(lead, enrichment, profile.propertySizeWeight || 10);
-    
     factors.corporateOwner = await this.calcCorporateOwner(lead, profile.corporateOwnerWeight || 10);
     factors.outOfState = await this.calcOutOfState(lead, enrichment, profile.outOfStateWeight || 15);
     factors.inheritanceIndicator = await this.calcInheritanceIndicator(lead, profile.inheritanceIndicatorWeight || 15);
-    
     factors.floodZone = await this.calcFloodZone(enrichment, profile.floodZoneWeight || 10);
-    
     factors.responseRecency = await this.calcResponseRecency(lead, profile.responseRecencyWeight || 25);
     factors.emailEngagement = await this.calcEmailEngagement(lead, profile.emailEngagementWeight || 15);
     factors.campaignTouches = await this.calcCampaignTouches(lead, profile.campaignTouchesWeight || 10);
-    
+
+    // Epic C: 15 new AcreScore Pro signals
+    factors.distanceOwnerToProperty = await this.calcDistanceOwnerToProperty(lead, enrichment);
+    factors.ownerAgeSignal = await this.calcOwnerAgeSignal(lead, enrichment);
+    factors.blmAdjacency = await this.calcBLMAdjacency(enrichment);
+    factors.wildfireRiskPenalty = await this.calcWildfireRiskPenalty(enrichment);
+    factors.disasterHistoryPenalty = await this.calcDisasterHistoryPenalty(lead, enrichment);
+    factors.endangeredSpeciesPenalty = await this.calcEndangeredSpeciesPenalty(enrichment);
+    factors.multipleLiens = await this.calcMultipleLiens(lead, enrichment);
+    factors.noStructure = await this.calcNoStructure(lead, enrichment);
+    factors.daysOnMarket = await this.calcDaysOnMarket(lead, enrichment);
+    factors.priceReduction = await this.calcPriceReduction(lead, enrichment);
+    factors.countyAbsorption = await this.calcCountyAbsorption(lead, enrichment);
+    factors.outOfStateTaxDelinquent = await this.calcOutOfStateTaxDelinquentCombo(lead, enrichment);
+    factors.forestLandCover = await this.calcForestLandCover(enrichment);
+    factors.lowDevelopmentEncroachment = await this.calcLowDevelopmentEncroachment(enrichment);
+    factors.soilNccpi = await this.calcSoilNccpi(enrichment);
+
     return factors;
+  }
+
+  // ============================================
+  // EPIC C: 15 NEW ACRESCORE PRO SIGNALS
+  // ============================================
+
+  private async calcDistanceOwnerToProperty(lead: Lead, enrichment: EnrichmentData): Promise<ScoreFactorResult> {
+    const ownerState = lead.state;
+    const propState = enrichment.parcelData?.propertyState || enrichment.parcelData?.state;
+    const isDifferentState = ownerState && propState && ownerState.toUpperCase() !== propState.toUpperCase();
+    const score = isDifferentState ? 150 : 0;
+    return { value: isDifferentState ? ">100 miles (different state)" : "local", score, weight: 150, explanation: isDifferentState ? "Owner in different state from property — strong absentee signal (+150)" : "Owner is local", rawData: { ownerState, propState } };
+  }
+
+  private async calcOwnerAgeSignal(lead: Lead, enrichment: EnrichmentData): Promise<ScoreFactorResult> {
+    const ownerAge = enrichment.parcelData?.ownerAge || enrichment.ownerData?.age || 0;
+    const score = ownerAge > 75 ? 75 : ownerAge > 65 ? 40 : 0;
+    return { value: ownerAge, score, weight: 75, explanation: ownerAge > 75 ? "Owner age >75 — estate/probate probability elevated (+75)" : ownerAge > 65 ? "Owner age >65 — approaching estate territory (+40)" : "Owner age unknown or below threshold", rawData: { ownerAge } };
+  }
+
+  private async calcBLMAdjacency(enrichment: EnrichmentData): Promise<ScoreFactorResult> {
+    const adjacent = enrichment.parcelData?.blmAdjacent || enrichment.parcelData?.publicLandAdjacent || false;
+    const score = adjacent ? 75 : 0;
+    return { value: adjacent, score, weight: 75, explanation: adjacent ? "Adjacent to BLM/National Forest — recreational premium (+75)" : "No public land adjacency detected", rawData: { adjacent } };
+  }
+
+  private async calcWildfireRiskPenalty(enrichment: EnrichmentData): Promise<ScoreFactorResult> {
+    const risk = enrichment.parcelData?.wildfireRisk || "unknown";
+    const score = risk === "very_high" ? -50 : risk === "high" ? -25 : 0;
+    return { value: risk, score, weight: 50, explanation: score < 0 ? `High wildfire risk (${risk}) — buyer pool and insurability reduced (${score})` : "Low/acceptable wildfire risk", rawData: { risk } };
+  }
+
+  private async calcDisasterHistoryPenalty(lead: Lead, enrichment: EnrichmentData): Promise<ScoreFactorResult> {
+    const disasters = enrichment.parcelData?.disasterCount10yr || enrichment.parcelData?.femaDeclarations || 0;
+    const score = disasters > 5 ? -75 : disasters > 3 ? -40 : 0;
+    return { value: disasters, score, weight: 75, explanation: disasters > 5 ? `${disasters} FEMA disaster declarations in 10yr — high risk county (-75)` : disasters > 0 ? `${disasters} disaster declarations — moderate risk` : "No significant disaster history", rawData: { disasters } };
+  }
+
+  private async calcEndangeredSpeciesPenalty(enrichment: EnrichmentData): Promise<ScoreFactorResult> {
+    const hasSpecies = enrichment.parcelData?.endangeredSpecies || enrichment.floodData?.endangeredSpecies || false;
+    const score = hasSpecies ? -100 : 0;
+    return { value: hasSpecies, score, weight: 100, explanation: hasSpecies ? "Endangered species present — development severely limited (-100)" : "No listed endangered species detected", rawData: { hasSpecies } };
+  }
+
+  private async calcMultipleLiens(lead: Lead, enrichment: EnrichmentData): Promise<ScoreFactorResult> {
+    const lienCount = enrichment.parcelData?.lienCount || enrichment.taxData?.lienCount || 0;
+    const score = lienCount >= 2 ? 100 : lienCount === 1 ? 50 : 0;
+    return { value: lienCount, score, weight: 100, explanation: lienCount >= 2 ? `${lienCount} liens on property — motivated seller signal (+100)` : lienCount === 1 ? "1 lien — some motivation (+50)" : "No liens detected", rawData: { lienCount } };
+  }
+
+  private async calcNoStructure(lead: Lead, enrichment: EnrichmentData): Promise<ScoreFactorResult> {
+    const hasStructure = enrichment.parcelData?.hasStructure || enrichment.parcelData?.improvementValue > 0 || false;
+    const score = !hasStructure ? 50 : 0;
+    return { value: !hasStructure, score, weight: 50, explanation: !hasStructure ? "No structure on parcel — raw land, ideal for land investing model (+50)" : "Structure present — not raw land", rawData: { hasStructure } };
+  }
+
+  private async calcDaysOnMarket(lead: Lead, enrichment: EnrichmentData): Promise<ScoreFactorResult> {
+    const dom = enrichment.marketData?.daysOnMarket || enrichment.parcelData?.daysOnMarket || 0;
+    const score = dom > 180 ? 100 : dom > 90 ? 50 : 0;
+    return { value: dom, score, weight: 100, explanation: dom > 180 ? `Listed ${dom} days — stale listing, motivated seller (+100)` : dom > 90 ? `Listed ${dom} days — aging listing (+50)` : dom > 0 ? `Listed ${dom} days` : "DOM unknown", rawData: { dom } };
+  }
+
+  private async calcPriceReduction(lead: Lead, enrichment: EnrichmentData): Promise<ScoreFactorResult> {
+    const hasPriceReduction = enrichment.marketData?.priceReduced || enrichment.parcelData?.priceReduced || false;
+    const score = hasPriceReduction ? 75 : 0;
+    return { value: hasPriceReduction, score, weight: 75, explanation: hasPriceReduction ? "Price reduced — seller is motivated, willing to negotiate (+75)" : "No price reduction history", rawData: { hasPriceReduction } };
+  }
+
+  private async calcCountyAbsorption(lead: Lead, enrichment: EnrichmentData): Promise<ScoreFactorResult> {
+    const absorptionMonths = enrichment.marketData?.monthsOfSupply || enrichment.parcelData?.absorptionRate || 0;
+    const score = absorptionMonths < 3 && absorptionMonths > 0 ? 50 : 0;
+    return { value: absorptionMonths, score, weight: 50, explanation: absorptionMonths < 3 && absorptionMonths > 0 ? `County absorption rate ${absorptionMonths} months — fast-moving market (+50)` : `County absorption: ${absorptionMonths} months`, rawData: { absorptionMonths } };
+  }
+
+  private async calcOutOfStateTaxDelinquentCombo(lead: Lead, enrichment: EnrichmentData): Promise<ScoreFactorResult> {
+    const ownerState = lead.state;
+    const propState = enrichment.parcelData?.propertyState;
+    const isOutOfState = ownerState && propState && ownerState.toUpperCase() !== propState.toUpperCase();
+    const isDelinquent = enrichment.taxData?.delinquent || enrichment.parcelData?.taxDelinquent || false;
+    const score = isOutOfState && isDelinquent ? 200 : 0;
+    return { value: isOutOfState && isDelinquent, score, weight: 200, explanation: isOutOfState && isDelinquent ? "COMBO: Out-of-state + tax delinquent — highest motivation signal (+200)" : "Out-of-state + tax delinquent combo not present", rawData: { isOutOfState, isDelinquent } };
+  }
+
+  private async calcForestLandCover(enrichment: EnrichmentData): Promise<ScoreFactorResult> {
+    const forestPct = enrichment.parcelData?.forestPercent || 0;
+    const score = forestPct > 80 ? 50 : forestPct > 60 ? 25 : 0;
+    return { value: forestPct, score, weight: 50, explanation: forestPct > 80 ? `${forestPct}% forest cover — high recreational premium (+50)` : forestPct > 60 ? `${forestPct}% forest cover — recreational signal (+25)` : `${forestPct}% forest cover`, rawData: { forestPct } };
+  }
+
+  private async calcLowDevelopmentEncroachment(enrichment: EnrichmentData): Promise<ScoreFactorResult> {
+    const devPct = enrichment.parcelData?.developedPercent || 0;
+    const score = devPct < 5 && devPct >= 0 ? 25 : 0;
+    return { value: devPct, score, weight: 25, explanation: devPct < 5 ? `Only ${devPct}% developed land nearby — pristine rural character (+25)` : `${devPct}% developed nearby — some encroachment`, rawData: { devPct } };
+  }
+
+  private async calcSoilNccpi(enrichment: EnrichmentData): Promise<ScoreFactorResult> {
+    const nccpi = enrichment.parcelData?.nccpiScore || 0;
+    const score = nccpi > 0.6 ? 100 : nccpi > 0.4 ? 50 : 0;
+    return { value: nccpi, score, weight: 100, explanation: nccpi > 0.6 ? `NCCPI soil score ${nccpi.toFixed(2)} — prime agricultural productivity (+100)` : nccpi > 0 ? `NCCPI soil score ${nccpi.toFixed(2)}` : "NCCPI soil score unavailable", rawData: { nccpi } };
   }
 
   private async calcOwnershipDuration(lead: Lead, enrichment: EnrichmentData, weight: number): Promise<ScoreFactorResult> {

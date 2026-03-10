@@ -172,6 +172,7 @@ const FieldScoutPage = React.lazy(() => import("@/pages/field-scout"));
 const DunningManagerPage = React.lazy(() => import("@/pages/dunning-manager"));
 const FreedomMeterPage = React.lazy(() => import("@/pages/freedom-meter"));
 const BlindOfferWizardPage = React.lazy(() => import("@/pages/blind-offer-wizard"));
+const NightCapPage = React.lazy(() => import("@/pages/night-cap"));
 
 // ─── Page loading fallback ──────────────────────────────────────────────────
 function PageLoader() {
@@ -356,6 +357,7 @@ function Router() {
         <Route path="/dunning">{() => <ProtectedRoute component={DunningManagerPage} />}</Route>
         <Route path="/freedom-meter">{() => <ProtectedRoute component={FreedomMeterPage} />}</Route>
         <Route path="/blind-offer-wizard">{() => <ProtectedRoute component={BlindOfferWizardPage} />}</Route>
+        <Route path="/night-cap">{() => <ProtectedRoute component={NightCapPage} />}</Route>
 
         {/* Education */}
         <Route path="/academy">{() => <ProtectedRoute component={AcademyPage} />}</Route>
