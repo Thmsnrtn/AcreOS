@@ -72,6 +72,7 @@ import exchange1031Router from "./routes-exchange-1031";
 import dunningRouter from "./routes-dunning";
 import onboardingRouter from "./routes-onboarding";
 import epicServicesRouter from "./routes-epic-services";
+import dataIntelligenceRouter from "./routes-data-intelligence";
 import taxDelinquentRouter from "./routes-tax-delinquent";
 import matchingRouter from "./routes-matching";
 import kpisRouter from "./routes-kpis";
@@ -363,6 +364,10 @@ export async function registerRoutes(
 
   // EPIC Services: Seller Motivation, County Opportunity, Title Chain, Investor Network, Financial OS, Developer API
   app.use('/api', isAuthenticated, getOrCreateOrg, epicServicesRouter);
+
+  // Data Intelligence: USDA NASS, Census, Parcel Fusion, Blind Offer Calculator, Freedom Meter
+  app.use('/api/data-intel', isAuthenticated, getOrCreateOrg, dataIntelligenceRouter);
+
   app.use('/api/tax-delinquent', isAuthenticated, getOrCreateOrg, taxDelinquentRouter);
   app.use('/api/matching', isAuthenticated, getOrCreateOrg, matchingRouter);
   app.use('/api/kpis', isAuthenticated, getOrCreateOrg, kpisRouter);
