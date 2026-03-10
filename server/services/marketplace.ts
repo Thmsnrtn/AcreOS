@@ -164,9 +164,17 @@ export class MarketplaceService {
     if (results.length === 0) {
       return null;
     }
-    
+
     const result = results[0];
-    
+
+    // F-A01-2: Non-public listings are only visible to the owning org
+    if (
+      result.listing.visibility !== "public" &&
+      result.listing.sellerOrganizationId !== viewerOrgId
+    ) {
+      return null;
+    }
+
     // Increment view count (only if not seller)
     if (viewerOrgId && result.listing.sellerOrganizationId !== viewerOrgId) {
       await db.update(marketplaceListings)
@@ -217,7 +225,11 @@ export class MarketplaceService {
     if (listing[0].status !== "active") {
       throw new Error("Listing is not active");
     }
-    
+
+    // F-A04-2: Bid sanity check — flag bids more than 5× asking price (money-laundering signal)
+    const askingPrice = parseFloat(listing[0].askingPrice as string) || 0;
+    const flaggedForReview = askingPrice > 0 && data.bidAmount > askingPrice * 5;
+
     // Create bid
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7); // 7 day expiry
@@ -230,9 +242,15 @@ export class MarketplaceService {
       proposedTerms: data.proposedTerms,
       bidType: data.bidType || "purchase",
       partnershipSplit: data.partnershipSplit?.toString(),
-      status: "pending",
+      status: flaggedForReview ? "flagged_for_review" : "pending",
       expiresAt,
     }).returning();
+
+    if (flaggedForReview) {
+      console.warn(
+        `[marketplace] Bid ${bid.id} flagged for review: $${data.bidAmount} is >5× asking price $${askingPrice} on listing ${listingId}`
+      );
+    }
     
     // Update listing inquiry count
     await db.update(marketplaceListings)

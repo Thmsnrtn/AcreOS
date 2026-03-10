@@ -1,5 +1,82 @@
 # AcreOS Security Hardening Guide
 
+---
+
+## CVE Patch SLA (F-A06-1)
+
+Automated vulnerability scanning runs on every PR and weekly via GitHub Actions (`.github/workflows/security.yml`). The following SLA applies to any vulnerability found:
+
+| Severity | Patch Deadline | Owner |
+|----------|---------------|-------|
+| **Critical** | Within 24 hours | On-call engineer |
+| **High** | Within 7 days | Assigned engineer |
+| **Moderate** | Within 30 days | Sprint planning |
+| **Low / Info** | Best effort | Tracked in backlog |
+
+Criteria for declaring a CVE exception (skip/defer):
+- Vulnerable code path is unreachable in production (must be documented)
+- Upstream fix does not yet exist (set a re-review date in 30 days)
+
+The CI pipeline **fails the merge** on critical/high findings and emits a **warning** on moderate findings.
+
+Security on-call rotation: assign a rotating weekly owner in your team calendar. On-call is responsible for reviewing CI security alerts within 4 hours.
+
+---
+
+## Log Retention Policy (F-A09-3)
+
+| Log Type | Retention | Storage |
+|----------|-----------|---------|
+| Application logs (Fly.io) | 7 days (Fly.io default) | Fly.io log drain |
+| Sentry error events | 90 days (Sentry free tier) | Sentry |
+| Audit trail (DB `activityLog` table) | 2 years | PostgreSQL |
+| Auth session records | 7 days (session TTL) | PostgreSQL `sessions` |
+| Prometheus metrics (in-process) | In-memory, last 1000 requests | Ephemeral |
+
+**Setting up a persistent log drain (recommended for production):**
+```bash
+# Example: send Fly.io logs to Papertrail
+flyctl logs --app acreos | papertrail
+
+# Or configure Fly.io log drain to Datadog / Logtail / Axiom:
+flyctl secrets set LOG_DRAIN_URL="https://in.logtail.com/?source_token=YOUR_TOKEN"
+```
+
+For SIEM export: enable log drain to your SIEM endpoint. Minimum recommended retention for security logs is 90 days.
+
+---
+
+## Field Encryption Key Rotation Procedure (F-A02-1)
+
+### Annual Key Rotation (Required)
+
+```bash
+# Step 1: Generate a new 32-byte key
+NEW_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
+echo "New key: $NEW_KEY"
+
+# Step 2: Run the rotation script (re-encrypts all encrypted DB fields)
+OLD_KEY="<current_FIELD_ENCRYPTION_KEY>" \
+NEW_KEY="$NEW_KEY" \
+DATABASE_URL="<production_db_url>" \
+npx tsx server/scripts/rotateEncryptionKey.ts
+
+# Step 3: Verify 0 errors in output, then update the secret
+flyctl secrets set FIELD_ENCRYPTION_KEY="$NEW_KEY"
+
+# Step 4: Deploy
+flyctl deploy --strategy=rolling
+
+# Step 5: Record rotation in this document (date + engineer)
+```
+
+**Key rotation log:**
+| Date | Engineer | Notes |
+|------|----------|-------|
+| (first rotation due) | — | — |
+
+---
+
 ## Key Rotation Procedures
 
 ### Database Credentials

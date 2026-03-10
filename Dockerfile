@@ -19,7 +19,8 @@ RUN apt-get update -qq && \
     apt-get install --no-install-recommends -y build-essential node-gyp pkg-config python-is-python3
 
 COPY package-lock.json package.json ./
-RUN npm ci --include=dev
+# --audit fails the build if npm finds known vulnerabilities in the dependency tree
+RUN npm ci --include=dev --audit
 
 COPY . .
 RUN npm run build

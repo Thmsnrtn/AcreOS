@@ -332,7 +332,23 @@ function buildPrometheusOutput(): string {
 // ─── GET /metrics — Prometheus scrape endpoint ────────────────────────────────
 // Mount this at the app level (not under /api prefix) so Prometheus can reach it.
 // Usage in app: app.use(metricsRouter) — exposes GET /metrics
+//
+// F-A05-2: Require Bearer token matching METRICS_TOKEN env var.
+// Without METRICS_TOKEN set the endpoint is disabled (503) to prevent
+// accidental exposure in misconfigured deployments.
 router.get("/", (req: Request, res: Response) => {
+  const metricsToken = process.env.METRICS_TOKEN;
+  if (!metricsToken) {
+    return res.status(503).json({ error: "Metrics endpoint not configured" });
+  }
+
+  const authHeader = req.headers["authorization"] || "";
+  const provided = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+  if (provided !== metricsToken) {
+    res.set("WWW-Authenticate", 'Bearer realm="AcreOS Metrics"');
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
   res.set("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
   res.send(buildPrometheusOutput());
 });
