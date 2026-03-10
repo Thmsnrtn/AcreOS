@@ -1,4 +1,5 @@
 import { Sidebar, useSidebarCollapsed } from "@/components/layout-sidebar";
+import { sanitizeHtml } from "@/lib/sanitize";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -434,7 +435,7 @@ function EmailMessageDetail({
             {message.bodyHtml ? (
               <div 
                 className="prose prose-sm dark:prose-invert max-w-none"
-                dangerouslySetInnerHTML={{ __html: message.bodyHtml }}
+                dangerouslySetInnerHTML={{ __html: sanitizeHtml(message.bodyHtml) }}
               />
             ) : (
               <div className="whitespace-pre-wrap text-sm">
