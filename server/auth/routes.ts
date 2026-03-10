@@ -146,6 +146,16 @@ export function registerAuthRoutes(app: Express): void {
             console.error("[auth] Session error:", loginErr);
             return res.status(500).json({ message: "Login failed" });
           }
+          // Task #45: Security audit log for successful login
+          const loginIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket.remoteAddress;
+          console.log(JSON.stringify({
+            level: "SECURITY",
+            event: "auth.login",
+            userId: user.id,
+            ip: loginIp,
+            userAgent: req.headers["user-agent"],
+            timestamp: new Date().toISOString(),
+          }));
           setCsrfCookie(req, res);
           const isFounder = isFounderEmail(user.email);
           return res.json(
@@ -162,6 +172,18 @@ export function registerAuthRoutes(app: Express): void {
       if (err) {
         console.error("[auth] Logout error:", err);
         return res.status(500).json({ message: "Logout failed" });
+      }
+      // Task #45: Security audit log for logout
+      const logoutUser = req.user as any;
+      if (logoutUser?.id) {
+        const logoutIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket.remoteAddress;
+        console.log(JSON.stringify({
+          level: "SECURITY",
+          event: "auth.logout",
+          userId: logoutUser.id,
+          ip: logoutIp,
+          timestamp: new Date().toISOString(),
+        }));
       }
       req.session.destroy((destroyErr) => {
         if (destroyErr) {
