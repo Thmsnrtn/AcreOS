@@ -1,10 +1,12 @@
 import { Router, type Request, type Response } from 'express';
 import { marketIntelligence } from './services/marketIntelligence';
+import { cacheResponse } from './middleware/responseCache';
 
 const router = Router();
 
 // GET /analyze?county=&state= — full market analysis for a county
-router.get('/analyze', async (req: Request, res: Response) => {
+// Cached for 10 minutes: expensive AI call, data changes slowly
+router.get('/analyze', cacheResponse(600), async (req: Request, res: Response) => {
   try {
     const { county, state } = req.query;
     if (!county || !state) return res.status(400).json({ error: 'county and state required' });
@@ -16,7 +18,8 @@ router.get('/analyze', async (req: Request, res: Response) => {
 });
 
 // GET /health?county=&state= — market health score
-router.get('/health', async (req: Request, res: Response) => {
+// Cached for 5 minutes
+router.get('/health', cacheResponse(300), async (req: Request, res: Response) => {
   try {
     const { county, state } = req.query;
     if (!county || !state) return res.status(400).json({ error: 'county and state required' });
@@ -28,7 +31,8 @@ router.get('/health', async (req: Request, res: Response) => {
 });
 
 // GET /trends?county=&state= — price trend predictions
-router.get('/trends', async (req: Request, res: Response) => {
+// Cached for 10 minutes: ML inference, stable over short windows
+router.get('/trends', cacheResponse(600), async (req: Request, res: Response) => {
   try {
     const { county, state } = req.query;
     if (!county || !state) return res.status(400).json({ error: 'county and state required' });
@@ -51,7 +55,8 @@ router.post('/compare', async (req: Request, res: Response) => {
 });
 
 // GET /growth-indicators?county=&state= — growth factor breakdown
-router.get('/growth-indicators', async (req: Request, res: Response) => {
+// Cached for 5 minutes
+router.get('/growth-indicators', cacheResponse(300), async (req: Request, res: Response) => {
   try {
     const { county, state } = req.query;
     if (!county || !state) return res.status(400).json({ error: 'county and state required' });
@@ -63,7 +68,8 @@ router.get('/growth-indicators', async (req: Request, res: Response) => {
 });
 
 // GET /accuracy — prediction accuracy tracking
-router.get('/accuracy', async (req: Request, res: Response) => {
+// Cached for 15 minutes: aggregate metric, updated infrequently
+router.get('/accuracy', cacheResponse(900), async (req: Request, res: Response) => {
   try {
     const accuracy = await marketIntelligence.trackPredictionAccuracy();
     res.json({ accuracy });
