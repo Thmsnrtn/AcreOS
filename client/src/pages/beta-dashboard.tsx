@@ -119,7 +119,7 @@ export default function BetaDashboardPage() {
   }>({
     queryKey: ["/api/beta/admin/waitlist", statusFilter],
     queryFn: () =>
-      apiRequest(`/api/beta/admin/waitlist${statusFilter !== "all" ? `?status=${statusFilter}` : ""}`),
+      apiRequest("GET", `/api/beta/admin/waitlist${statusFilter !== "all" ? `?status=${statusFilter}` : ""}`).then(r => r.json()),
   });
 
   const { data: cohorts } = useQuery<BetaCohort[]>({
@@ -132,7 +132,7 @@ export default function BetaDashboardPage() {
 
   const inviteMutation = useMutation({
     mutationFn: (data: { email: string; cohortId?: string }) =>
-      apiRequest("/api/beta/admin/invite", { method: "POST", body: JSON.stringify(data) }),
+      apiRequest("POST", "/api/beta/admin/invite", data).then(r => r.json()),
     onSuccess: (res: any) => {
       toast({ title: res.message || "User invited" });
       setInviteEmail("");
@@ -144,7 +144,7 @@ export default function BetaDashboardPage() {
 
   const activateMutation = useMutation({
     mutationFn: (email: string) =>
-      apiRequest("/api/beta/admin/activate", { method: "POST", body: JSON.stringify({ email }) }),
+      apiRequest("POST", "/api/beta/admin/activate", { email }).then(r => r.json()),
     onSuccess: () => {
       toast({ title: "User activated" });
       queryClient.invalidateQueries({ queryKey: ["/api/beta/admin/waitlist"] });

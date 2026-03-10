@@ -130,10 +130,7 @@ export default function TeamLeaderboardPage() {
   const topAgent = entries[0];
 
   return (
-    <PageShell
-      title="Team Leaderboard"
-      description="Real-time team performance rankings"
-    >
+    <PageShell>
       <div className="space-y-6">
         {/* Period selector */}
         <div className="flex items-center gap-4">

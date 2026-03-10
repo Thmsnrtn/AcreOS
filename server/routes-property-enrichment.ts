@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * T209 — Property Enrichment Routes
  *

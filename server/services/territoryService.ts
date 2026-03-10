@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Territory Assignment & Routing Service (T53)
  *

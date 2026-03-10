@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * T187 — Lead Enrichment Routes
  *

@@ -69,8 +69,8 @@ export default function BetaIntakePage() {
   const [copied, setCopied] = useState(false);
 
   const joinMutation = useMutation({
-    mutationFn: () =>
-      apiRequest("/api/beta/waitlist", { method: "POST", body: JSON.stringify(form) }),
+    mutationFn: (): Promise<JoinResult> =>
+      apiRequest("POST", "/api/beta/waitlist", form).then(r => r.json()),
     onSuccess: (res: JoinResult) => {
       setJoined(res);
     },
@@ -91,8 +91,9 @@ export default function BetaIntakePage() {
     if (!checkEmail) return;
     setChecking(true);
     try {
-      const res = await apiRequest(`/api/beta/waitlist/status?email=${encodeURIComponent(checkEmail)}`);
-      setStatusResult(res);
+      const res = await apiRequest("GET", `/api/beta/waitlist/status?email=${encodeURIComponent(checkEmail)}`);
+      const data: StatusResult = await res.json();
+      setStatusResult(data);
     } catch {
       toast({ title: "Error checking status", variant: "destructive" });
     } finally {

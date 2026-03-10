@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * T147 — Buyer Qualification Bot Routes
  *

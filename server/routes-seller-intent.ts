@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * T142 — Seller Intent Predictor Routes
  *

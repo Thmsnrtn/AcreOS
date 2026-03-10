@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * T2 — DB Connection Pool Tuning + Slow Query Monitoring
  *

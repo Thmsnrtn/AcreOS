@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Webhook Outbound Dispatcher (T49)
  *

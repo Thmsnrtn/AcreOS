@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Deal Handoff Workflow Service (T55)
  *

@@ -69,7 +69,7 @@ export async function buildAtlasContextBlock(
         const daysInStage = Math.floor(
           (now.getTime() - new Date(d.updatedAt || d.createdAt || now).getTime()) / 86400000
         );
-        return `  • ${d.title || d.propertyAddress || `Deal #${d.id}`} — ${d.status} — ${daysInStage}d in stage${d.offerAmount ? ` — $${Number(d.offerAmount).toLocaleString()}` : ""}`;
+        return `  • Deal #${d.id} — ${d.status} — ${daysInStage}d in stage${d.offerAmount ? ` — $${Number(d.offerAmount).toLocaleString()}` : ""}`;
       });
       sections.push(`ACTIVE DEALS (${activeDeals.length}):\n${dealLines.join("\n")}`);
     }
@@ -80,7 +80,7 @@ export async function buildAtlasContextBlock(
         id: leads.id,
         firstName: leads.firstName,
         lastName: leads.lastName,
-        lastContacted: leads.lastContacted,
+        lastContactedAt: leads.lastContactedAt,
         nurturingStage: leads.nurturingStage,
         score: leads.score,
       })
@@ -89,7 +89,7 @@ export async function buildAtlasContextBlock(
         and(
           eq(leads.organizationId, orgId),
           sql`${leads.status} NOT IN ('dead', 'converted')`,
-          sql`(${leads.lastContacted} IS NULL OR ${leads.lastContacted} < ${sevenDaysAgo.toISOString()})`
+          sql`(${leads.lastContactedAt} IS NULL OR ${leads.lastContactedAt} < ${sevenDaysAgo.toISOString()})`
         )
       )
       .orderBy(desc(leads.score))
@@ -98,8 +98,8 @@ export async function buildAtlasContextBlock(
     if (staleLeads.length > 0) {
       const leadLines = staleLeads.map((l) => {
         const name = [l.firstName, l.lastName].filter(Boolean).join(" ") || `Lead #${l.id}`;
-        const daysSince = l.lastContacted
-          ? Math.floor((now.getTime() - new Date(l.lastContacted).getTime()) / 86400000)
+        const daysSince = l.lastContactedAt
+          ? Math.floor((now.getTime() - new Date(l.lastContactedAt).getTime()) / 86400000)
           : "never contacted";
         return `  • ${name} — score ${l.score ?? "?"} — last contact: ${daysSince}d ago — stage: ${l.nurturingStage || "unknown"}`;
       });
@@ -114,7 +114,7 @@ export async function buildAtlasContextBlock(
         and(
           eq(deals.organizationId, orgId),
           eq(deals.status, "offer_sent"),
-          sql`${deals.offerSentAt} < ${tenDaysAgo.toISOString()}`
+          sql`${deals.offerDate} < ${tenDaysAgo.toISOString()}`
         )
       )
       .limit(5);
@@ -122,9 +122,9 @@ export async function buildAtlasContextBlock(
     if (expiringOffers.length > 0) {
       const lines = expiringOffers.map((d) => {
         const daysSent = Math.floor(
-          (now.getTime() - new Date(d.offerSentAt || now).getTime()) / 86400000
+          (now.getTime() - new Date(d.offerDate || now).getTime()) / 86400000
         );
-        return `  • ${d.title || d.propertyAddress || `Deal #${d.id}`} — offer sent ${daysSent}d ago, no response yet`;
+        return `  • Deal #${d.id} — offer sent ${daysSent}d ago, no response yet`;
       });
       sections.push(`OFFERS AWAITING RESPONSE (10+ days, no response):\n${lines.join("\n")}`);
     }
@@ -162,15 +162,15 @@ export async function buildAtlasContextBlock(
         and(
           eq(deals.organizationId, orgId),
           eq(deals.status, "closed"),
-          sql`${deals.closedAt} > ${thirtyDaysAgo.toISOString()}`
+          sql`${deals.closingDate} > ${thirtyDaysAgo.toISOString()}`
         )
       )
-      .orderBy(desc(deals.closedAt))
+      .orderBy(desc(deals.closingDate))
       .limit(3);
 
     if (recentClosings.length > 0) {
       const lines = recentClosings.map(
-        (d) => `  • ${d.title || d.propertyAddress || `Deal #${d.id}`}${d.salePrice ? ` — $${Number(d.salePrice).toLocaleString()}` : ""}`
+        (d) => `  • Deal #${d.id}${d.acceptedAmount ? ` — $${Number(d.acceptedAmount).toLocaleString()}` : ""}`
       );
       sections.push(`RECENT WINS (last 30 days):\n${lines.join("\n")}`);
     }

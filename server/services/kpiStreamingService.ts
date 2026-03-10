@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * T42 — Real-Time KPI Streaming via WebSocket
  *

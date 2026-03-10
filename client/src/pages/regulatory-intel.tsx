@@ -330,16 +330,14 @@ export default function RegulatoryIntelPage() {
     if (!assessState) return;
     setAssessing(true);
     try {
-      const result = await apiRequest("/api/regulatory/assess", {
-        method: "POST",
-        body: JSON.stringify({
-          state: assessState,
-          sellerFinanced: assessOpts.sellerFinanced,
-          acreage: assessOpts.acreage ? parseFloat(assessOpts.acreage) : undefined,
-          nearWater: assessOpts.nearWater,
-          coastal: assessOpts.coastal,
-        }),
+      const res = await apiRequest("POST", "/api/regulatory/assess", {
+        state: assessState,
+        sellerFinanced: assessOpts.sellerFinanced,
+        acreage: assessOpts.acreage ? parseFloat(assessOpts.acreage) : undefined,
+        nearWater: assessOpts.nearWater,
+        coastal: assessOpts.coastal,
       });
+      const result: RiskAssessment = await res.json();
       setAssessment(result);
     } finally {
       setAssessing(false);

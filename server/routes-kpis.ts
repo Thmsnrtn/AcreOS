@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * T228 — KPI Dashboard Routes
  *

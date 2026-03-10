@@ -15,7 +15,7 @@
  */
 
 import { db } from "../db";
-import { deals, notesReceivable, payments, properties } from "@shared/schema";
+import { deals, notes, payments, properties } from "@shared/schema";
 import { eq, and, gte, lte, sql, sum, count } from "drizzle-orm";
 
 export interface PnlPeriod {
@@ -92,10 +92,9 @@ export async function getPortfolioPnl(
   // Closed deals (acquisitions)
   const closedDeals = await db
     .select({
-      purchasePrice: deals.purchasePrice,
-      salePrice: deals.salePrice,
-      closedAt: deals.closedAt,
-      exitStrategy: deals.exitStrategy,
+      purchasePrice: deals.offerAmount,
+      salePrice: deals.acceptedAmount,
+      closedAt: deals.closingDate,
       status: deals.status,
     })
     .from(deals)
@@ -103,8 +102,8 @@ export async function getPortfolioPnl(
       and(
         eq(deals.organizationId, orgId),
         sql`${deals.status} in ('closed', 'closing')`,
-        gte(deals.closedAt, fromDate),
-        lte(deals.closedAt, toDate)
+        gte(deals.closingDate, fromDate),
+        lte(deals.closingDate, toDate)
       )
     );
 
@@ -112,17 +111,17 @@ export async function getPortfolioPnl(
   const notePayments = await db
     .select({
       amount: payments.amount,
-      interestPortion: payments.interestPortion,
-      principalPortion: payments.principalPortion,
-      paidAt: payments.paidAt,
+      interestPortion: payments.interestAmount,
+      principalPortion: payments.principalAmount,
+      paidAt: payments.paymentDate,
     })
     .from(payments)
     .where(
       and(
         eq(payments.organizationId, orgId),
-        eq(payments.status, "paid"),
-        gte(payments.paidAt, fromDate),
-        lte(payments.paidAt, toDate)
+        eq(payments.status, "completed"),
+        gte(payments.paymentDate, fromDate),
+        lte(payments.paymentDate, toDate)
       )
     );
 
@@ -194,20 +193,20 @@ export async function getPortfolioPnl(
   // Notes receivable summary
   const [noteSummary] = await db
     .select({
-      outstanding: sum(notesReceivable.remainingBalance),
-      monthlyIncome: sum(notesReceivable.monthlyPayment),
+      outstanding: sum(notes.currentBalance),
+      monthlyIncome: sum(notes.monthlyPayment),
       avgRate: sql<number>`avg(interest_rate)`,
       noteCount: count(),
     })
-    .from(notesReceivable)
-    .where(and(eq(notesReceivable.organizationId, orgId), eq(notesReceivable.status, "active")));
+    .from(notes)
+    .where(and(eq(notes.organizationId, orgId), eq(notes.status, "active")));
 
   // Pipeline by stage
   const pipelineRows = await db
     .select({
       stage: deals.status,
       dealCount: count(),
-      totalValue: sum(deals.purchasePrice),
+      totalValue: sum(deals.offerAmount),
     })
     .from(deals)
     .where(

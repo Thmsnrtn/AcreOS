@@ -348,10 +348,7 @@ export default function CommissionsPage() {
   ];
 
   return (
-    <PageShell
-      title="Commission Tracking"
-      description="Track team commissions, tier progression, and payments"
-    >
+    <PageShell>
       <div className="space-y-6">
         {/* Year selector + summary stats */}
         <div className="flex items-center justify-between">
