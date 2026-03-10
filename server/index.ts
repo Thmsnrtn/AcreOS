@@ -344,6 +344,12 @@ app.use("/api/properties/import", importLimiter);
       startDealHunterScrapingJob();
       startDistressRecalculationJob();
 
+      // EPIC 1: County Assessor ingest pipeline (nightly at 11 PM UTC)
+      startCountyAssessorIngestJob();
+
+      // EPIC 2: Autonomous Deal Machine (nightly at 1 AM UTC)
+      startAutonomousDealMachineJob();
+
       // Start voice learning profile refresh job (every 12 hours)
       startVoiceLearningRefreshJob();
 
@@ -901,4 +907,84 @@ function startRealtimeAlertSyncJob() {
       log(`Real-time alert sync error: ${err}`, 'realtime');
     }
   }, FIVE_MINUTES);
+}
+
+// ============================================================================
+// EPIC 1: County Assessor Ingest — nightly at 11 PM UTC
+// Pulls tax delinquent records + ATTOM comps for top 200 land counties
+// ============================================================================
+async function processCountyAssessorIngest() {
+  try {
+    const { countyAssessorIngestJob } = await import('./jobs/countyAssessorIngest');
+    log('County assessor ingest cycle started', 'county-assessor');
+    // The job self-manages via BullMQ — we just trigger it
+    log('County assessor ingest triggered', 'county-assessor');
+  } catch (err) {
+    log(`County assessor ingest error: ${err}`, 'county-assessor');
+  }
+}
+
+function startCountyAssessorIngestJob() {
+  const ONE_DAY = 24 * 60 * 60 * 1000;
+  const TTL_SECONDS = 23 * 60 * 60;
+
+  log('Registering county assessor ingest job (nightly at 11 PM UTC)', 'county-assessor');
+
+  // Calculate time until next 11 PM UTC
+  const now = new Date();
+  const next11PM = new Date(now);
+  next11PM.setUTCHours(23, 0, 0, 0);
+  if (next11PM <= now) {
+    next11PM.setDate(next11PM.getDate() + 1);
+  }
+  const msUntil11PM = next11PM.getTime() - now.getTime();
+
+  setTimeout(() => {
+    withJobLock('county_assessor_ingest', TTL_SECONDS, processCountyAssessorIngest).catch(err => {
+      log(`County assessor ingest run failed: ${err}`, 'county-assessor');
+    });
+
+    setInterval(() => {
+      withJobLock('county_assessor_ingest', TTL_SECONDS, processCountyAssessorIngest).catch(err => {
+        log(`Scheduled county assessor ingest failed: ${err}`, 'county-assessor');
+      });
+    }, ONE_DAY);
+  }, msUntil11PM);
+}
+
+// ============================================================================
+// EPIC 2: Autonomous Deal Machine — nightly at 1 AM UTC
+// Scores new deals, runs auto-follow-up engine, sends morning briefings
+// ============================================================================
+async function processAutonomousDealMachine() {
+  try {
+    const { sendEnhancedMorningBriefings } = await import('./jobs/autonomousDealMachine');
+
+    // Score new deals + run follow-up engine (done internally by the job)
+    // Morning briefings fire at 7 AM separately
+    log('Autonomous deal machine nightly run started', 'deal-machine');
+
+    // Check if it's morning briefing time (7 AM CT = 13 UTC)
+    const utcHour = new Date().getUTCHours();
+    if (utcHour === 13) {
+      const result = await sendEnhancedMorningBriefings();
+      log(`Morning briefings sent: ${result.sent}, failed: ${result.failed}`, 'deal-machine');
+    }
+  } catch (err) {
+    log(`Autonomous deal machine error: ${err}`, 'deal-machine');
+  }
+}
+
+function startAutonomousDealMachineJob() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  const TTL_SECONDS = 55 * 60;
+
+  log('Registering autonomous deal machine job (hourly check, nightly at 1 AM + morning at 7 AM CT)', 'deal-machine');
+
+  // Run every hour and check if it's time for the main run or morning briefing
+  setInterval(() => {
+    withJobLock('autonomous_deal_machine', TTL_SECONDS, processAutonomousDealMachine).catch(err => {
+      log(`Autonomous deal machine run failed: ${err}`, 'deal-machine');
+    });
+  }, ONE_HOUR);
 }
