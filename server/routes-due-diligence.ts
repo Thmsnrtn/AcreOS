@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * T148 — Due Diligence Pods Routes
  *

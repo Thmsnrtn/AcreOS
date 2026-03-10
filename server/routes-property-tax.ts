@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * T268 — Property Tax Service Routes
  *

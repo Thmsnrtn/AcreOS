@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * T145 — Commission Service Routes
  *

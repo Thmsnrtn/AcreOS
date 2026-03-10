@@ -102,10 +102,7 @@ export default function ForecastingPage() {
       : "text-green-600";
 
   return (
-    <PageShell
-      title="Revenue Forecasting"
-      description="12-month projected cash flow from active notes and portfolio"
-    >
+    <PageShell>
       {isLoading ? (
         <div className="flex justify-center py-16">
           <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />

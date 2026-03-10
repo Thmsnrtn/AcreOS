@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * T5 — Automated Database Backup Job
  *

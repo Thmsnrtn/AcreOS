@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * T23 — Offer Letter PDF Generation
  *

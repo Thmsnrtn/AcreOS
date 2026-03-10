@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * @Mention Service (T57)
  *

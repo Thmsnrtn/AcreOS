@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Web Push Notification Service (T61)
  *

@@ -69,11 +69,9 @@ export function SellerIntentPanel({ leads }: Props) {
     .slice(0, 10);
 
   const predictMutation = useMutation({
-    mutationFn: async (leadId: number) => {
-      return apiRequest("/api/ai-ops/intent/predict", {
-        method: "POST",
-        body: JSON.stringify({ leadId }),
-      });
+    mutationFn: async (leadId: number): Promise<IntentPrediction> => {
+      const res = await apiRequest("POST", "/api/ai-ops/intent/predict", { leadId });
+      return res.json();
     },
     onSuccess: (data: IntentPrediction, leadId: number) => {
       setPredictions(prev => new Map(prev).set(leadId, data));
@@ -85,10 +83,8 @@ export function SellerIntentPanel({ leads }: Props) {
     setScanning(true);
     for (const lead of candidateLeads) {
       try {
-        const result = await apiRequest("/api/ai-ops/intent/predict", {
-          method: "POST",
-          body: JSON.stringify({ leadId: lead.id }),
-        });
+        const res = await apiRequest("POST", "/api/ai-ops/intent/predict", { leadId: lead.id });
+        const result: IntentPrediction = await res.json();
         setPredictions(prev => new Map(prev).set(lead.id, result));
       } catch {
         // Continue with other leads

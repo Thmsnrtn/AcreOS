@@ -127,7 +127,7 @@ export default function VisionAIPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { data: propertiesData } = useProperties();
-  const properties = propertiesData?.properties ?? propertiesData ?? [];
+  const properties = propertiesData ?? [];
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>("");
 
   const { data: summaryData, isLoading: summaryLoading } = useQuery({

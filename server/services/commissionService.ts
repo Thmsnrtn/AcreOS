@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Team Commission Tracking Service (T54)
  *

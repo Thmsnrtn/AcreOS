@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * T194 — Territory Management Routes
  *

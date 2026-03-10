@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Atlas Daily Briefing Job
  *

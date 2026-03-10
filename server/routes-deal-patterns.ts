@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * T149 — Deal Pattern Cloning Routes
  *

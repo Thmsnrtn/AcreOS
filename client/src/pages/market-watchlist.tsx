@@ -133,7 +133,7 @@ export default function MarketWatchlistPage() {
   });
 
   const addMutation = useMutation({
-    mutationFn: () => apiRequest("/api/market/watchlist", { method: "POST", body: JSON.stringify(newEntry) }),
+    mutationFn: () => apiRequest("POST", "/api/market/watchlist", newEntry),
     onSuccess: () => {
       toast({ title: `${newEntry.county}, ${newEntry.state} added to watchlist` });
       setAddOpen(false);
@@ -144,7 +144,7 @@ export default function MarketWatchlistPage() {
   });
 
   const removeMutation = useMutation({
-    mutationFn: (id: string) => apiRequest(`/api/market/watchlist/${id}`, { method: "DELETE" }),
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/market/watchlist/${id}`),
     onSuccess: () => {
       toast({ title: "Removed from watchlist" });
       queryClient.invalidateQueries({ queryKey: ["/api/market/watchlist"] });
@@ -152,7 +152,7 @@ export default function MarketWatchlistPage() {
   });
 
   const testMutation = useMutation({
-    mutationFn: (id: string) => apiRequest(`/api/market/watchlist/${id}/test`, { method: "POST" }),
+    mutationFn: (id: string) => apiRequest("POST", `/api/market/watchlist/${id}/test`),
     onSuccess: () => {
       toast({ title: "Test alert sent" });
       queryClient.invalidateQueries({ queryKey: ["/api/market/watchlist/alerts"] });
@@ -162,7 +162,7 @@ export default function MarketWatchlistPage() {
 
   const markReadMutation = useMutation({
     mutationFn: (alertIds: string[]) =>
-      apiRequest("/api/market/watchlist/alerts/read", { method: "POST", body: JSON.stringify({ alertIds }) }),
+      apiRequest("POST", "/api/market/watchlist/alerts/read", { alertIds }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/market/watchlist/alerts"] });
       queryClient.invalidateQueries({ queryKey: ["/api/market/watchlist/unread"] });

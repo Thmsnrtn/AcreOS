@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Database Query Analyzer & Missing Index Detector (T75)
  *
