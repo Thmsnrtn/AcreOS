@@ -43,6 +43,11 @@ import {
   Package,
   CreditCard,
   Phone,
+  Star,
+  Wand2,
+  Compass,
+  Landmark,
+  Bell,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import {
@@ -135,10 +140,12 @@ const NAV_MODULES: NavModule[] = [
     description: "Manage your land seller leads",
     children: [
       { label: "All Leads", icon: Users, href: "/leads", description: "All your leads" },
+      { label: "Blind Offer Wizard", icon: Wand2, href: "/blind-offer-wizard", description: "Calculate Podolsky-formula offers step-by-step" },
       { label: "Campaigns", icon: Mail, href: "/campaigns", description: "Email, SMS, and direct mail campaigns" },
       { label: "Sequences", icon: Zap, href: "/sequences", description: "Automated follow-up sequences" },
       { label: "A/B Tests", icon: BarChart2, href: "/ab-tests", description: "Campaign split tests" },
       { label: "Voice Analytics", icon: Phone, href: "/voice-analytics", description: "Call recording analysis and insights" },
+      { label: "Field Scout", icon: Compass, href: "/field-scout", description: "Offline-first mobile companion for field visits" },
     ],
   },
   {
@@ -186,6 +193,7 @@ const NAV_MODULES: NavModule[] = [
     description: "Seller financing and portfolio",
     children: [
       { label: "Finance", icon: Banknote, href: "/finance", description: "Seller-financed notes" },
+      { label: "Freedom Meter", icon: Star, href: "/freedom-meter", description: "Note income vs. expenses — track your path to financial freedom" },
       { label: "Cash Flow", icon: Activity, href: "/cash-flow", description: "12-month cash flow forecasting" },
       { label: "Capital Mkts", icon: DollarSign, href: "/capital-markets", description: "Note securitization and lenders" },
       { label: "Portfolio", icon: PieChart, href: "/portfolio", description: "Investment portfolio view" },
@@ -205,6 +213,7 @@ const NAV_MODULES: NavModule[] = [
       { label: "Bulk AVM", icon: TrendingUp, href: "/avm-bulk", description: "Bulk valuations via CSV upload" },
       { label: "Markets", icon: Globe, href: "/market-intelligence", description: "Market analysis and price trends" },
       { label: "Watchlist", icon: Eye, href: "/market-watchlist", description: "Monitor counties for market alerts" },
+      { label: "Counties", icon: Landmark, href: "/counties", description: "USDA + Census county intelligence" },
       { label: "Acq. Radar", icon: Target, href: "/radar", description: "AI-scored deal opportunities" },
       { label: "Land Credit", icon: Shield, href: "/land-credit", description: "Proprietary 300–850 land scoring" },
       { label: "Deal Hunter", icon: Search, href: "/deal-hunter", description: "Automated deal sourcing" },
