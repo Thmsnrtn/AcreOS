@@ -101,3 +101,38 @@ test.describe("Logout", () => {
     await expect(page).toHaveURL(/\/auth/, { timeout: 5_000 })
   })
 })
+
+test.describe("Forgot Password", () => {
+  test("forgot password page loads and form submits successfully", async ({ page }) => {
+    await page.goto("/forgot-password")
+    await expect(page.getByRole("heading", { name: /forgot/i })).toBeVisible()
+    await page.getByTestId("input-forgot-email").fill("test@example.com")
+    await page.getByTestId("button-forgot-submit").click()
+    // Should show confirmation message (always 200 to prevent enumeration)
+    await expect(page.getByText(/if an account exists/i)).toBeVisible({ timeout: 5_000 })
+  })
+
+  test("forgot password rejects invalid email", async ({ page }) => {
+    await page.goto("/forgot-password")
+    await page.getByTestId("input-forgot-email").fill("not-an-email")
+    await page.getByTestId("button-forgot-submit").click()
+    // HTML5 validation or server error
+    await expect(page).toHaveURL(/\/forgot-password/)
+  })
+})
+
+test.describe("Reset Password", () => {
+  test("reset password page shows invalid token error for missing token", async ({ page }) => {
+    await page.goto("/reset-password")
+    // No token in URL — should show error
+    await expect(page.getByRole("heading", { name: /invalid reset link/i })).toBeVisible()
+  })
+
+  test("reset password with expired token shows error", async ({ page }) => {
+    await page.goto("/reset-password?token=0000000000000000000000000000000000000000000000000000000000000000")
+    await page.getByTestId("input-new-password").fill("NewPass123!")
+    await page.getByTestId("input-confirm-password").fill("NewPass123!")
+    await page.getByTestId("button-reset-submit").click()
+    await expect(page.getByText(/invalid or expired/i)).toBeVisible({ timeout: 5_000 })
+  })
+})
