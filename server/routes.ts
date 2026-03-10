@@ -413,7 +413,6 @@ export async function registerRoutes(
   await registerEliteFeatureRoutes(app);
 
   // ─── Address Verification ──────────────────────────────────────────
-  const { isAuthenticated } = await import("./auth");
   const { verifyAddress } = await import("./services/addressVerification");
   app.post("/api/addresses/verify", isAuthenticated, async (req, res) => {
     try {
