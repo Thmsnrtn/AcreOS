@@ -511,7 +511,20 @@ export function registerAdminRoutes(app: Express): void {
       return next();
     }
 
+    logger.warn("Admin access denied", { userId, userEmail, path: req.path });
     res.status(403).json({ message: "Access denied. Admin privileges required." });
+  };
+
+  // F-A01-1: Cross-org admin guard — validates URL :orgId matches authenticated org
+  // Apply this middleware on any route that accepts :orgId in URL path
+  const crossOrgAdminGuard: RequestHandler = (req, res, next) => {
+    const org = (req as any).organization;
+    const paramOrgId = req.params.orgId ? parseInt(req.params.orgId, 10) : null;
+    if (paramOrgId !== null && org && org.id !== paramOrgId) {
+      logger.warn("Cross-org access attempt blocked", { orgId: org.id, requestedOrgId: paramOrgId, path: req.path });
+      return res.status(403).json({ error: "Access denied: organization mismatch" });
+    }
+    next();
   };
 
   api.get("/api/admin/check", isAuthenticated, isFounderAdmin, async (req, res) => {

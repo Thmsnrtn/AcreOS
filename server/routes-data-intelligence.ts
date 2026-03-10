@@ -506,4 +506,86 @@ router.get("/lead-intelligence/focus", async (req: Request, res: Response) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// EPIC E: Solar Potential Assessment
+// POST /api/data-intel/solar-potential
+// ---------------------------------------------------------------------------
+
+router.post("/solar-potential", async (req: Request, res: Response) => {
+  try {
+    const { lat, lng, acres, state, zoning, floodZone } = req.body as {
+      lat: number;
+      lng: number;
+      acres: number;
+      state: string;
+      zoning?: string;
+      floodZone?: string;
+    };
+
+    if (!lat || !lng || !acres || !state) {
+      return res.status(400).json({ error: "lat, lng, acres, and state are required" });
+    }
+
+    const { calculateSolarPotential } = await import("./services/solarPotentialService");
+    const result = await calculateSolarPotential({ lat, lng, acres, state, zoning, floodZone });
+
+    res.json({
+      ...result,
+      generatedAt: new Date().toISOString(),
+      input: { lat, lng, acres, state, zoning, floodZone },
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Solar potential calculation failed" });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// EPIC B5: County Disaster History
+// GET /api/data-intel/county-disaster-history/:state/:county
+// ---------------------------------------------------------------------------
+
+router.get("/county-disaster-history/:state/:county", async (req: Request, res: Response) => {
+  try {
+    const { state, county } = req.params;
+    const { getCountyDisasterHistory } = await import("./services/censusDataService");
+    const result = await getCountyDisasterHistory(state, county);
+    if (!result) return res.status(404).json({ error: "No disaster data found for this county" });
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// EPIC B6: County Migration Flows
+// GET /api/data-intel/county-migration-flows/:stateFips/:countyFips
+// ---------------------------------------------------------------------------
+
+router.get("/county-migration-flows/:stateFips/:countyFips", async (req: Request, res: Response) => {
+  try {
+    const { stateFips, countyFips } = req.params;
+    const { getCountyMigrationFlows } = await import("./services/censusDataService");
+    const result = await getCountyMigrationFlows(stateFips, countyFips);
+    if (!result) return res.status(404).json({ error: "No migration flow data found" });
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// EPIC G: Data Source Health
+// GET /api/data-intel/source-health
+// ---------------------------------------------------------------------------
+
+router.get("/source-health", async (req: Request, res: Response) => {
+  try {
+    const { getDataSourceHealth } = await import("./services/dataQualityMonitor");
+    const health = await getDataSourceHealth();
+    res.json(health);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;

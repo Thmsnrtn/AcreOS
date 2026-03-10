@@ -178,7 +178,7 @@ export async function generateLandIntelligenceReport(
   const [ddReport, countySnapshot, countyTrend, countyOpportunity, censusProfile] =
     await Promise.allSettled([
       // Due diligence checks (FEMA, NWI, EPA, OSM, USDA soil, USGS)
-      runAutoDueDiligence(0, input.latitude, input.longitude, input.acres).then(r => {
+      runAutoDueDiligence(0, 0, input.latitude, input.longitude, input.acres, input.state).then(r => {
         dataSourcesQueried.push("FEMA NFHL", "USFWS NWI", "EPA ECHO", "OpenStreetMap", "USDA WSS", "USGS 3DEP");
         return r;
       }),
