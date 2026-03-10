@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { storage } from "../storage";
 import type { Organization, SupportTicket, KnowledgeBaseArticle } from "@shared/schema";
+import { decisionsInboxService } from "../services/decisionsInbox";
 import { db } from "../db";
 import { dataSourceBroker } from "../services/data-source-broker.js";
 import { propertyEnrichmentService } from "../services/propertyEnrichment.js";
@@ -112,6 +113,20 @@ export const supportToolDefinitions = {
     }
   },
   
+  draft_customer_response: {
+    name: "draft_customer_response",
+    description: "Draft a customer-facing response before escalating. The draft and confidence score determine if Sophie can auto-resolve or if founder review is needed.",
+    parameters: {
+      type: "object",
+      properties: {
+        response_text: { type: "string" },
+        confidence_score: { type: "number", description: "0-100 confidence this resolves the issue" },
+        resolution_type: { type: "string", enum: ["answer_question", "apply_fix", "escalate_phone", "apply_credit", "custom"] }
+      },
+      required: ["response_text", "confidence_score", "resolution_type"]
+    }
+  },
+
   escalate_to_human: {
     name: "escalate_to_human",
     description: "Escalate the ticket to a human support agent with automatic diagnostic bundle. Gathers system state, recent activity, and issue context automatically.",
@@ -1643,6 +1658,23 @@ export async function executeSupportTool(
           });
         }
         
+        // Create Decisions Inbox item (may auto-resolve if confidence threshold met)
+        if (ticketId) {
+          const sophieAnalysis = `Escalation: ${reason}. Summary: ${summary}`;
+          // Try to find a draft response from Sophie's last draft_customer_response tool call
+          decisionsInboxService.createFromEscalation(ticketId, {
+            sophieAnalysis,
+            confidenceScore: 0, // conservative — no draft attached at this escalation point
+            category: (org as any).category,
+            actionPayload: {
+              ticketId,
+              reason,
+              summary,
+              diagnosticBundle: diagnosticBundle ? "attached" : "none",
+            },
+          }).catch((err: any) => console.error("[sophie] decisions inbox create error:", err));
+        }
+
         // Save escalation to memory for future context
         await db.insert(sophieMemory).values({
           organizationId: org.id,
@@ -1676,6 +1708,42 @@ export async function executeSupportTool(
         };
       }
       
+      case "draft_customer_response": {
+        const { response_text, confidence_score, resolution_type } = args;
+        // If confidence is high enough, attempt auto-resolution via decisionsInboxService
+        if (ticketId) {
+          const ticket = await db.query.supportTickets.findFirst({ where: eq(supportTickets.id, ticketId) });
+          const autoResult = await decisionsInboxService.createFromEscalation(ticketId, {
+            sophieAnalysis: `Sophie drafted a ${resolution_type} response with ${confidence_score}% confidence.`,
+            draftResponse: response_text,
+            confidenceScore: confidence_score,
+            category: ticket?.category,
+          });
+          if (autoResult.autoResolved) {
+            return {
+              success: true,
+              data: {
+                drafted: true,
+                autoResolved: true,
+                resolution_type,
+                confidence_score,
+                message: "Sophie auto-resolved: response sent to customer directly.",
+              },
+            };
+          }
+        }
+        return {
+          success: true,
+          data: {
+            drafted: true,
+            autoResolved: false,
+            resolution_type,
+            confidence_score,
+            message: "Draft queued for founder review in Decisions Inbox.",
+          },
+        };
+      }
+
       case "create_followup_task": {
         const { title, description, assignee, due_days = 3 } = args;
         const dueDate = new Date();
