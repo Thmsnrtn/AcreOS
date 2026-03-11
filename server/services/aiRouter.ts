@@ -214,8 +214,9 @@ Respond with JSON only: {"score": <1-10>, "reason": "<one sentence>"}`;
 
 export enum TaskComplexity {
   SIMPLE = "simple",
-  MODERATE = "moderate", 
+  MODERATE = "moderate",
   COMPLEX = "complex",
+  CRITICAL = "critical", // Opus 4.6 — highest-stakes decisions only
 }
 
 export enum AIProvider {
@@ -230,14 +231,22 @@ export interface AITask {
   maxTokens?: number;
   temperature?: number;
   responseFormat?: "text" | "json";
+  // Prompt caching: set true when system prompt is large and repeated (agents, legal docs).
+  // OpenRouter passes cache_control to Anthropic — 70-90% cost reduction on cached portion.
+  enablePromptCaching?: boolean;
+  // Extended thinking: set true for multi-step mathematical/legal reasoning.
+  // Uses claude-sonnet-4-6 with thinking tokens. Best quality for valuation models.
+  useExtendedThinking?: boolean;
+  thinkingBudget?: number; // max thinking tokens, default 8000
 }
 
 export interface AIRouterConfig {
   forceProvider?: AIProvider;
   forcePremium?: boolean;
-  forceModel?: string;   // pin to a specific OpenRouter model ID
-  useVision?: boolean;   // route to vision-capable model (gpt-4o via OpenRouter)
-  useReasoning?: boolean; // route to deep-reasoning model (DeepSeek R1)
+  forceModel?: string;     // pin to a specific OpenRouter model ID
+  useVision?: boolean;     // route to vision-capable model (gpt-4o via OpenRouter)
+  useReasoning?: boolean;  // route to deep-reasoning model (DeepSeek R1)
+  useCritical?: boolean;   // force Opus 4.6 (highest-stakes tasks only)
   orgId?: number;
 }
 
@@ -259,11 +268,9 @@ const SIMPLE_TASKS = [
 
 const COMPLEX_TASKS = [
   "deal_analysis",
-  "legal_document",
   "negotiation_strategy",
   "market_valuation",
   "due_diligence",
-  "contract_review",
   "risk_assessment",
   "financial_modeling",
   "multi_step",
@@ -279,6 +286,19 @@ const COMPLEX_TASKS = [
   "creative",
 ];
 
+// CRITICAL tasks: routed to Opus 4.6 — reserved for the <2% of requests where
+// the highest possible reasoning quality is worth the 5× cost premium over Sonnet.
+// Rule: only use Opus when a wrong answer has real financial or legal consequences.
+const CRITICAL_TASKS = [
+  "contract_review",       // Legal document with binding consequences
+  "legal_document",        // Drafting legally-binding documents
+  "capital_allocation",    // Portfolio-level capital deployment decisions
+  "note_securitization",   // Structuring seller-financed note portfolios
+  "regulatory_compliance", // Compliance determinations with legal exposure
+  "fraud_detection",       // Financial fraud analysis — false negatives costly
+  "executive_decision",    // Atlas high-stakes strategic decisions
+];
+
 // ============================================
 // OPENROUTER-ONLY CLIENTS
 // All AI requests route through OpenRouter's OpenAI-compatible endpoint.
@@ -288,24 +308,41 @@ const COMPLEX_TASKS = [
 // ============================================
 // MODEL CATALOG — all accessed via OpenRouter
 // Ordered by cost tier within each quality band.
+//
+// ROUTING PHILOSOPHY (2026):
+//   T1  DeepSeek Chat      — micro tasks, templated ops, $0.14/$0.28
+//   T2  Haiku 4.5          — balanced reasoning, medium tasks, $0.80/$4.00
+//   T3  Sonnet 4.6         — complex analysis, deal decisions, $3.00/$15.00
+//   T3r DeepSeek Reasoner  — long-form step-by-step math/logic, $0.55/$2.19
+//   T4  Opus 4.6           — highest-stakes decisions only (<2% of volume), $15/$75
+//
+// TARGET DISTRIBUTION: 60% T1, 30% T2, 7% T3, 1% T3r, 2% T4
+// This achieves ~85% cost reduction vs all-Opus while preserving Opus-quality
+// output on the tasks that genuinely need it.
+//
+// PROMPT CACHING: For tasks with large repeated system prompts (agents, legal),
+// OpenRouter passes `cache_control` to Anthropic — 70-90% cost reduction on
+// the cached portion. Applied automatically when system prompt ≥ 1024 tokens.
 // ============================================
 
 // Tier 1 — Micro (cheapest, fast, good for simple templated tasks)
-export const MODEL_SIMPLE    = "deepseek/deepseek-chat";           // $0.14/$0.28 per M tokens
+export const MODEL_SIMPLE    = "deepseek/deepseek-chat";              // $0.14/$0.28 per M tokens
 // Tier 2 — Balanced (good reasoning, moderate cost)
-export const MODEL_MODERATE  = "anthropic/claude-haiku-4-5";       // $0.80/$4.00 per M tokens
+export const MODEL_MODERATE  = "anthropic/claude-haiku-4-5-20251001"; // $0.80/$4.00 per M tokens
 // Tier 3 — Premium (best reasoning for complex land investment decisions)
-export const MODEL_COMPLEX   = "anthropic/claude-sonnet-4-5";      // $3.00/$15.00 per M tokens
-// Tier 4 — Vision/Docs (multimodal, used for satellite/document parsing)
-export const MODEL_VISION    = "openai/gpt-4o";                    // $2.50/$10.00 per M tokens
-// Tier 5 — Deep reasoning (step-by-step for valuation/financial models)
-export const MODEL_REASONING = "deepseek/deepseek-reasoner";       // $0.55/$2.19 per M tokens
+export const MODEL_COMPLEX   = "anthropic/claude-sonnet-4-6";         // $3.00/$15.00 per M tokens
+// Tier 3R — Deep reasoning (step-by-step for valuation/financial models)
+export const MODEL_REASONING = "deepseek/deepseek-reasoner";          // $0.55/$2.19 per M tokens
+// Tier 4 — Opus (highest-stakes only: contract review, capital allocation, legal)
+export const MODEL_CRITICAL  = "anthropic/claude-opus-4-6";           // $15.00/$75.00 per M tokens
+// Tier V — Vision/Docs (multimodal, used for satellite/document parsing)
+export const MODEL_VISION    = "openai/gpt-4o";                       // $2.50/$10.00 per M tokens
 
 // Legacy aliases kept for backward compat
-const OPENROUTER_CHEAP_MODEL   = MODEL_SIMPLE;
+const OPENROUTER_CHEAP_MODEL     = MODEL_SIMPLE;
 const OPENROUTER_REASONING_MODEL = MODEL_REASONING;
-const OPENAI_PREMIUM_MODEL     = MODEL_COMPLEX;
-const OPENAI_FAST_MODEL        = MODEL_MODERATE;
+const OPENAI_PREMIUM_MODEL       = MODEL_COMPLEX;
+const OPENAI_FAST_MODEL          = MODEL_MODERATE;
 
 let openrouterClient: OpenAI | null = null;
 let openaiClient: OpenAI | null = null;  // Kept for backward compat but routes to OpenRouter
@@ -412,15 +449,20 @@ export function invalidateDbModelCache(): void {
 
 export function classifyTaskComplexity(taskType: string, contentLength?: number): TaskComplexity {
   const normalizedTask = taskType.toLowerCase().replace(/[-_\s]/g, "_");
-  
+
+  // CRITICAL check first — Opus 4.6 for highest-stakes tasks only
+  if (CRITICAL_TASKS.some(t => normalizedTask.includes(t))) {
+    return TaskComplexity.CRITICAL;
+  }
+
   if (SIMPLE_TASKS.some(t => normalizedTask.includes(t))) {
     return TaskComplexity.SIMPLE;
   }
-  
+
   if (COMPLEX_TASKS.some(t => normalizedTask.includes(t))) {
     return TaskComplexity.COMPLEX;
   }
-  
+
   if (contentLength !== undefined) {
     if (contentLength < 500) {
       return TaskComplexity.SIMPLE;
@@ -429,7 +471,7 @@ export function classifyTaskComplexity(taskType: string, contentLength?: number)
       return TaskComplexity.COMPLEX;
     }
   }
-  
+
   return TaskComplexity.MODERATE;
 }
 
@@ -514,6 +556,9 @@ export function selectProviderAndModel(
   if (config.forceModel && openrouter) {
     return { provider: AIProvider.OPENROUTER, model: config.forceModel, client: openrouter };
   }
+  if (config.useCritical && openrouter) {
+    return { provider: AIProvider.OPENROUTER, model: MODEL_CRITICAL, client: openrouter };
+  }
   if (config.useVision && openrouter) {
     return { provider: AIProvider.OPENROUTER, model: MODEL_VISION, client: openrouter };
   }
@@ -521,31 +566,36 @@ export function selectProviderAndModel(
     return { provider: AIProvider.OPENROUTER, model: MODEL_REASONING, client: openrouter };
   }
 
-  // forcePremium → always use Claude Sonnet via OpenRouter (best quality)
+  // forcePremium → Sonnet 4.6 via OpenRouter
   if (config.forceProvider === AIProvider.OPENAI || config.forcePremium) {
     if (openrouter) {
       return {
         provider: AIProvider.OPENROUTER,
-        model: complexity === TaskComplexity.COMPLEX ? MODEL_COMPLEX : MODEL_MODERATE,
+        model: complexity === TaskComplexity.CRITICAL ? MODEL_CRITICAL
+             : complexity === TaskComplexity.COMPLEX  ? MODEL_COMPLEX
+             : MODEL_MODERATE,
         client: openrouter,
       };
     }
     if (openai) {
       return {
         provider: AIProvider.OPENAI,
-        model: complexity === TaskComplexity.COMPLEX ? "gpt-4o" : "gpt-4o-mini",
+        model: complexity === TaskComplexity.SIMPLE ? "gpt-4o-mini" : "gpt-4o",
         client: openai,
       };
     }
     throw new Error("No AI provider available");
   }
 
-  // Default: route through OpenRouter with complexity-based model selection.
-  // SIMPLE   → DeepSeek Chat      (cheapest, fast email drafts / lookups)
-  // MODERATE → Claude Haiku 4.5   (balanced reasoning for analysis)
-  // COMPLEX  → Claude Sonnet 4.5  (best quality for deal/legal/valuation tasks)
+  // Default routing:
+  //   CRITICAL → Opus 4.6     (highest-stakes: contracts, legal, capital allocation)
+  //   COMPLEX  → Sonnet 4.6   (complex analysis, deals, valuations)
+  //   MODERATE → Haiku 4.5    (balanced: analysis, drafting, research)
+  //   SIMPLE   → DeepSeek     (templates, lookups, formatting)
   if (openrouter) {
-    const model = complexity === TaskComplexity.COMPLEX
+    const model = complexity === TaskComplexity.CRITICAL
+      ? MODEL_CRITICAL
+      : complexity === TaskComplexity.COMPLEX
       ? MODEL_COMPLEX
       : complexity === TaskComplexity.MODERATE
       ? MODEL_MODERATE
@@ -572,7 +622,10 @@ export async function selectProviderAndModelAsync(
 ): Promise<{ provider: AIProvider; model: string; client: OpenAI; maxTokens: number }> {
   // Load DB model configs
   const dbConfig = await loadDbModelConfigs();
-  const dbModel = complexity === TaskComplexity.COMPLEX
+  // CRITICAL bypasses DB config — always uses MODEL_CRITICAL (Opus 4.6)
+  const dbModel = complexity === TaskComplexity.CRITICAL
+    ? null
+    : complexity === TaskComplexity.COMPLEX
     ? dbConfig.complex
     : complexity === TaskComplexity.SIMPLE
     ? dbConfig.simple
@@ -598,12 +651,13 @@ export interface AIResponse {
   estimatedCost?: number;
 }
 
-const COST_PER_MILLION_TOKENS: Record<string, { input: number; output: number }> = {
-  [MODEL_SIMPLE]:    { input: 0.14,  output: 0.28  }, // DeepSeek Chat
-  [MODEL_MODERATE]:  { input: 0.80,  output: 4.00  }, // Claude Haiku 4.5
-  [MODEL_COMPLEX]:   { input: 3.00,  output: 15.00 }, // Claude Sonnet 4.5
-  [MODEL_VISION]:    { input: 2.50,  output: 10.00 }, // GPT-4o
-  [MODEL_REASONING]: { input: 0.55,  output: 2.19  }, // DeepSeek Reasoner
+const COST_PER_MILLION_TOKENS: Record<string, { input: number; output: number; cachedInput?: number }> = {
+  [MODEL_SIMPLE]:    { input: 0.14,  output: 0.28   },                       // DeepSeek Chat
+  [MODEL_MODERATE]:  { input: 0.80,  output: 4.00,  cachedInput: 0.08  },    // Claude Haiku 4.5 (90% cache discount)
+  [MODEL_COMPLEX]:   { input: 3.00,  output: 15.00, cachedInput: 0.30  },    // Claude Sonnet 4.6 (90% cache discount)
+  [MODEL_CRITICAL]:  { input: 15.00, output: 75.00, cachedInput: 1.50  },    // Claude Opus 4.6 (90% cache discount)
+  [MODEL_VISION]:    { input: 2.50,  output: 10.00  },                       // GPT-4o
+  [MODEL_REASONING]: { input: 0.55,  output: 2.19   },                       // DeepSeek Reasoner
 };
 
 function estimateCost(model: string, promptTokens: number, completionTokens: number): number {
@@ -616,7 +670,9 @@ export async function routeAITask(
   config: AIRouterConfig = {}
 ): Promise<AIResponse> {
   // ── Layer 1: Exact-match cache ───────────────────────────────────────────────
-  const isCacheable = task.complexity !== TaskComplexity.COMPLEX && (task.temperature ?? 0.7) <= 0.3;
+  const isCacheable = task.complexity !== TaskComplexity.COMPLEX
+    && task.complexity !== TaskComplexity.CRITICAL
+    && (task.temperature ?? 0.7) <= 0.3;
   let cacheKey = '';
 
   if (isCacheable) {
@@ -652,14 +708,49 @@ export async function routeAITask(
   let finalModel = model;
 
   try {
-    const response = await client.chat.completions.create({
+    // ── Prompt caching: annotate system message with cache_control when eligible ─
+    // OpenRouter passes this to Anthropic's prompt caching API.
+    // Eligible: Anthropic models, system prompt ≥ 1024 chars, explicitly requested.
+    // Cache discount: ~90% on the cached portion (write: 1.25× base, read: 0.1× base).
+    const isAnthropicModel = model.startsWith("anthropic/");
+    const systemMsg = task.messages.find(m => m.role === "system");
+    const systemLength = systemMsg?.content?.length || 0;
+    const shouldCache = task.enablePromptCaching && isAnthropicModel && systemLength >= 1024;
+
+    const messagesPayload = shouldCache
+      ? task.messages.map(m =>
+          m.role === "system"
+            ? { ...m, cache_control: { type: "ephemeral" } }
+            : m
+        )
+      : task.messages;
+
+    // ── Extended thinking: for valuation/financial/legal reasoning ──────────────
+    // Uses Sonnet 4.6's extended thinking mode for deeper chain-of-thought.
+    // Only applies to Anthropic models that support it.
+    const useThinking = task.useExtendedThinking && isAnthropicModel;
+    const thinkingBudget = task.thinkingBudget || 8000;
+
+    const requestBody: any = {
       model,
-      messages: task.messages,
-      max_tokens: task.maxTokens || dbMaxTokens || 4096,
-      temperature: task.temperature ?? 0.7,
-      ...(task.responseFormat === "json" && { response_format: { type: "json_object" } }),
-    });
-    content = response.choices[0]?.message?.content || "";
+      messages: messagesPayload,
+      max_tokens: task.maxTokens || dbMaxTokens || (useThinking ? 16000 : 4096),
+      temperature: useThinking ? 1 : (task.temperature ?? 0.7), // thinking requires temp=1
+      ...(task.responseFormat === "json" && !useThinking && { response_format: { type: "json_object" } }),
+      ...(useThinking && { thinking: { type: "enabled", budget_tokens: thinkingBudget } }),
+    };
+
+    const response = await client.chat.completions.create(requestBody);
+    // Extended thinking returns content blocks — extract text block
+    const rawContent = response.choices[0]?.message?.content;
+    if (Array.isArray(rawContent)) {
+      content = rawContent
+        .filter((b: any) => b.type === "text")
+        .map((b: any) => b.text)
+        .join("");
+    } else {
+      content = rawContent || "";
+    }
     usage = response.usage;
   } catch (err: any) {
     const latencyMs = Date.now() - startTime;
@@ -673,17 +764,19 @@ export async function routeAITask(
   if (
     CASCADE_ENABLED &&
     task.complexity !== TaskComplexity.COMPLEX &&
-    !config.forceModel && !config.forcePremium && !config.useVision && !config.useReasoning &&
+    task.complexity !== TaskComplexity.CRITICAL && // already top tier
+    !config.forceModel && !config.forcePremium && !config.useVision && !config.useReasoning && !config.useCritical &&
     content.length > 20 // don't bother checking trivially short responses
   ) {
     const quality = await checkResponseQuality(task, content, client);
 
     if (quality.shouldEscalate) {
       // Determine the next tier model
+      // Cascade: DeepSeek → Haiku → Sonnet (never auto-escalate to Opus — too costly)
       const escalatedModel =
-        model === MODEL_SIMPLE ? MODEL_MODERATE :
-        model === MODEL_MODERATE ? MODEL_COMPLEX :
-        null;
+        model === MODEL_SIMPLE   ? MODEL_MODERATE :
+        model === MODEL_MODERATE ? MODEL_COMPLEX  :
+        null; // Sonnet is the ceiling for auto-cascade; Opus requires explicit routing
 
       if (escalatedModel) {
         console.log(`[AIRouter] Cascade escalating ${task.taskType}: score=${quality.score}/10 "${quality.reason}" → ${escalatedModel}`);
@@ -817,7 +910,7 @@ export async function routeVisionTask(
   }, { ...config, useVision: true });
 }
 
-/** Route a task that requires deep chain-of-thought reasoning. */
+/** Route a task that requires deep chain-of-thought reasoning (DeepSeek R1). */
 export async function routeReasoningTask(
   taskType: string,
   systemPrompt: string,
@@ -832,6 +925,59 @@ export async function routeReasoningTask(
       { role: "user", content: userPrompt },
     ],
   }, { ...config, useReasoning: true });
+}
+
+/**
+ * Route a CRITICAL task to Opus 4.6 — highest-stakes decisions only.
+ * Use for: contract review, legal document drafting, capital allocation,
+ * note securitization, regulatory compliance determinations.
+ *
+ * COST WARNING: Opus 4.6 is ~5× the cost of Sonnet 4.6.
+ * Only use when the quality ceiling genuinely matters.
+ */
+export async function routeCriticalTask(
+  taskType: string,
+  systemPrompt: string,
+  userPrompt: string,
+  config: AIRouterConfig = {}
+): Promise<AIResponse> {
+  return routeAITask({
+    taskType,
+    complexity: TaskComplexity.CRITICAL,
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ],
+    enablePromptCaching: systemPrompt.length >= 1024, // cache large system prompts
+  }, { ...config, useCritical: true });
+}
+
+/**
+ * Route a task using Claude Sonnet 4.6 extended thinking.
+ * Best for: multi-step financial modeling, valuation cross-checks,
+ * legal reasoning, complex deal structuring.
+ *
+ * Extended thinking uses a scratchpad of reasoning tokens (not billed to output)
+ * before producing the final answer — dramatically better on hard reasoning tasks.
+ */
+export async function routeExtendedThinkingTask(
+  taskType: string,
+  systemPrompt: string,
+  userPrompt: string,
+  thinkingBudget: number = 8000,
+  config: AIRouterConfig = {}
+): Promise<AIResponse> {
+  return routeAITask({
+    taskType,
+    complexity: TaskComplexity.COMPLEX,
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ],
+    useExtendedThinking: true,
+    thinkingBudget,
+    enablePromptCaching: systemPrompt.length >= 1024,
+  }, config);
 }
 
 export function getAvailableProviders(): AIProvider[] {

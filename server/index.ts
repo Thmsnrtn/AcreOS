@@ -476,6 +476,12 @@ app.use("/api/auth", async (req, res, next) => {
       // EPIC 2: Autonomous Deal Machine (nightly at 1 AM UTC)
       startAutonomousDealMachineJob();
 
+      // Autonomous Health Monitor (hourly self-healing + cost guard)
+      startAutonomousHealthMonitorJob();
+
+      // Founder Weekly Digest (Mondays 8 AM CT)
+      startFounderWeeklyDigestJob();
+
       // Start voice learning profile refresh job (every 12 hours)
       startVoiceLearningRefreshJob();
 
@@ -1186,5 +1192,58 @@ function startAutonomousDealMachineJob() {
     withJobLock('autonomous_deal_machine', TTL_SECONDS, processAutonomousDealMachine).catch(err => {
       log(`Autonomous deal machine run failed: ${err}`, 'deal-machine');
     });
+  }, ONE_HOUR);
+}
+
+// ============================================================================
+// Autonomous Health Monitor — hourly self-healing + cost guard + job sentinel
+// ============================================================================
+function startAutonomousHealthMonitorJob() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  const TTL_SECONDS = 10 * 60; // 10 minute lock (health check is fast)
+
+  log('Registering autonomous health monitor job (hourly)', 'health-monitor');
+
+  // Run once at startup (after a short delay to let services initialize)
+  setTimeout(() => {
+    import('./jobs/autonomousHealthMonitor').then(({ runAutonomousHealthMonitor }) => {
+      withJobLock('autonomous_health_monitor', TTL_SECONDS, runAutonomousHealthMonitor).catch(err => {
+        log(`Health monitor startup run failed: ${err}`, 'health-monitor');
+      });
+    }).catch(err => log(`Health monitor import failed: ${err}`, 'health-monitor'));
+  }, 30000); // 30s after startup
+
+  // Then run every hour
+  setInterval(() => {
+    import('./jobs/autonomousHealthMonitor').then(({ runAutonomousHealthMonitor }) => {
+      withJobLock('autonomous_health_monitor', TTL_SECONDS, runAutonomousHealthMonitor).catch(err => {
+        log(`Health monitor run failed: ${err}`, 'health-monitor');
+      });
+    }).catch(err => log(`Health monitor import failed: ${err}`, 'health-monitor'));
+  }, ONE_HOUR);
+}
+
+// ============================================================================
+// Founder Weekly Digest — Mondays at 8 AM CT
+// ============================================================================
+function startFounderWeeklyDigestJob() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  const TTL_SECONDS = 30 * 60;
+
+  log('Registering founder weekly digest job (Mondays 8 AM CT)', 'founder-digest');
+
+  setInterval(() => {
+    const now = new Date();
+    const utcHour = now.getUTCHours();
+    const dayOfWeek = now.getUTCDay(); // 0=Sun, 1=Mon
+
+    // Monday at 14:00 UTC = Monday 8:00 AM CT
+    if (dayOfWeek === 1 && utcHour === 14) {
+      import('./jobs/founderWeeklyDigest').then(({ sendFounderWeeklyDigest }) => {
+        withJobLock('founder_weekly_digest', TTL_SECONDS, sendFounderWeeklyDigest).catch(err => {
+          log(`Founder weekly digest failed: ${err}`, 'founder-digest');
+        });
+      }).catch(err => log(`Founder digest import failed: ${err}`, 'founder-digest'));
+    }
   }, ONE_HOUR);
 }
