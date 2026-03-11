@@ -188,7 +188,12 @@ export function registerDealRoutes(app: Express): void {
         }
       }
 
-      const deal = await storage.updateDeal(dealId, validated);
+      // Task 219: Optimistic concurrency — honour client-supplied expectedUpdatedAt
+      const expectedUpdatedAt = req.body._expectedUpdatedAt
+        ? new Date(req.body._expectedUpdatedAt)
+        : undefined;
+
+      const deal = await storage.updateDeal(dealId, validated, expectedUpdatedAt);
       
       const user = req.user as any;
       const userId = user?.claims?.sub || user?.id;
@@ -249,15 +254,19 @@ export function registerDealRoutes(app: Express): void {
       res.json(deal);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ 
-          message: "Validation failed", 
+        return res.status(400).json({
+          message: "Validation failed",
           errors: err.errors.map(e => ({ field: e.path.join('.'), message: e.message }))
         });
+      }
+      // Task 219: surface optimistic-lock conflicts as 409 Conflict
+      if (err instanceof Error && err.message.includes("modified by another request")) {
+        return res.status(409).json({ message: err.message });
       }
       throw err;
     }
   });
-  
+
   // Manual deal enrichment trigger endpoint
   api.post("/api/deals/:id/enrich", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
@@ -1076,7 +1085,12 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   // ============================================
   
   api.get("/api/deals/:id/checklist", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const checklist = await storage.getDealChecklist(Number(req.params.id));
+    const org = (req as any).organization;
+    const dealId = Number(req.params.id);
+    // Task #2: Verify deal belongs to org before returning checklist (IDOR prevention)
+    const deal = await storage.getDeal(org.id, dealId);
+    if (!deal) return res.status(404).json({ message: "Deal not found" });
+    const checklist = await storage.getDealChecklist(dealId);
     if (!checklist) {
       return res.json(null);
     }
@@ -1093,25 +1107,35 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   
   api.post("/api/deals/:id/checklist", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const org = (req as any).organization;
+      const dealId = Number(req.params.id);
+      // Task #2: Verify deal belongs to org (IDOR prevention)
+      const deal = await storage.getDeal(org.id, dealId);
+      if (!deal) return res.status(404).json({ message: "Deal not found" });
       const { templateId } = req.body;
       if (!templateId) {
         return res.status(400).json({ message: "templateId is required" });
       }
-      const checklist = await storage.applyChecklistTemplateToDeal(Number(req.params.id), templateId);
+      const checklist = await storage.applyChecklistTemplateToDeal(dealId, templateId);
       res.status(201).json(checklist);
     } catch (err: any) {
       res.status(400).json({ message: err.message || "Failed to apply template" });
     }
   });
-  
+
   api.patch("/api/deals/:id/checklist/items/:itemId", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const org = (req as any).organization;
+      const dealId = Number(req.params.id);
+      // Task #2: Verify deal belongs to org (IDOR prevention)
+      const deal = await storage.getDeal(org.id, dealId);
+      if (!deal) return res.status(404).json({ message: "Deal not found" });
       const user = req.user as any;
       const userId = user?.claims?.sub || user?.id;
       const { checked, documentUrl } = req.body;
-      
+
       const checklist = await storage.updateDealChecklistItem(
-        Number(req.params.id),
+        dealId,
         req.params.itemId,
         { checked, documentUrl, checkedBy: userId }
       );
@@ -1122,7 +1146,12 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   });
   
   api.get("/api/deals/:id/stage-gate", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const result = await storage.checkStageGate(Number(req.params.id));
+    const org = (req as any).organization;
+    const dealId = Number(req.params.id);
+    // Task #2: Verify deal belongs to org (IDOR prevention)
+    const deal = await storage.getDeal(org.id, dealId);
+    if (!deal) return res.status(404).json({ message: "Deal not found" });
+    const result = await storage.checkStageGate(dealId);
     res.json(result);
   });
 
@@ -1133,8 +1162,9 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       const includeComps = req.query.comps === "true";
       const includeAI = req.query.ai === "true";
       
-      const deal = await storage.getDeal(dealId);
-      if (!deal || deal.organizationId !== org.id) {
+      // Task #2: Pass org.id to getDeal to scope query (IDOR prevention)
+      const deal = await storage.getDeal(org.id, dealId);
+      if (!deal) {
         return res.status(404).json({ message: "Deal not found" });
       }
       
