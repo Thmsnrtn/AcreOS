@@ -6,9 +6,9 @@ import { useOrganization, useDashboardStats } from "@/hooks/use-organization";
 import { useLeads, useAgingLeads, type AgingLead } from "@/hooks/use-leads";
 import { useProperties } from "@/hooks/use-properties";
 import { usePlaybooks } from "@/hooks/use-playbooks";
-import { Users, Map, Banknote, TrendingUp, Activity, Building2, Crown, AlertTriangle, Clock, Flame, Sun, Snowflake, Sparkles, BookOpen } from "lucide-react";
+import { Users, Map, Banknote, TrendingUp, Activity, Building2, Crown, AlertTriangle, Clock, Flame, Sun, Snowflake, Sparkles, BookOpen, DollarSign, BarChart3, Target, ArrowUpRight, Zap } from "lucide-react";
 import { motion } from "framer-motion";
-import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip } from "recharts";
+import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, FunnelChart, Funnel, LabelList } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -407,7 +407,7 @@ export default function Dashboard() {
 
       case "leadPipelineChart":
         return (
-          <motion.div 
+          <motion.div
             key={widgetId}
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
@@ -421,11 +421,11 @@ export default function Dashboard() {
                     <BarChart data={leadStatusData}>
                       <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
                       <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `${value}`} />
-                      <Tooltip 
+                      <Tooltip
                         cursor={{fill: 'transparent'}}
-                        contentStyle={{ 
-                          borderRadius: '12px', 
-                          border: 'none', 
+                        contentStyle={{
+                          borderRadius: '12px',
+                          border: 'none',
                           boxShadow: '0 8px 32px rgba(0, 0, 0, 0.12)',
                           background: 'hsl(var(--card))'
                         }}
@@ -434,6 +434,72 @@ export default function Dashboard() {
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        );
+
+      case "dealVelocityFunnel":
+        const funnelStages = [
+          { name: "Leads", value: leads.length, color: "hsl(var(--muted-foreground))", pct: 100 },
+          { name: "Contacting", value: leads.filter((l: any) => ["mailed", "responded", "interested"].includes(l.status)).length, color: "hsl(35, 60%, 55%)", pct: 0 },
+          { name: "Negotiating", value: leads.filter((l: any) => ["negotiating", "qualified"].includes(l.status)).length, color: "hsl(16, 70%, 50%)", pct: 0 },
+          { name: "Accepted", value: leads.filter((l: any) => l.status === "accepted").length, color: "hsl(142, 71%, 45%)", pct: 0 },
+          { name: "Closed", value: leads.filter((l: any) => l.status === "closed").length, color: "hsl(142, 71%, 35%)", pct: 0 },
+        ].map((s, i, arr) => ({ ...s, pct: arr[0].value > 0 ? Math.round((s.value / arr[0].value) * 100) : 0 }));
+        return (
+          <motion.div
+            key={widgetId}
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.05 * index }}
+          >
+            <Card className="floating-window">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Target className="w-5 h-5 text-primary" />
+                  Deal Velocity Funnel
+                  <Badge variant="outline" className="text-xs ml-auto">
+                    {funnelStages[funnelStages.length - 1].value > 0
+                      ? `${funnelStages[funnelStages.length - 1].pct}% close rate`
+                      : "No closings yet"}
+                  </Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <div className="space-y-2">
+                  {funnelStages.map((stage, idx) => (
+                    <div key={stage.name}>
+                      <div className="flex items-center justify-between text-sm mb-1">
+                        <span className="font-medium text-xs">{stage.name}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground">{stage.value}</span>
+                          {idx > 0 && funnelStages[idx - 1].value > 0 && (
+                            <span className="text-[10px] text-muted-foreground">
+                              ({Math.round((stage.value / funnelStages[idx - 1].value) * 100)}% conv)
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="w-full bg-muted rounded-full h-5 overflow-hidden">
+                        <div
+                          className="h-full rounded-full flex items-center px-2 transition-all duration-700"
+                          style={{
+                            width: `${stage.pct || (idx === 0 ? 100 : 0)}%`,
+                            backgroundColor: stage.color,
+                          }}
+                        >
+                          {stage.pct >= 15 && (
+                            <span className="text-white text-[10px] font-semibold">{stage.pct}%</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {funnelStages[0].value === 0 && (
+                  <p className="text-xs text-muted-foreground text-center mt-4">Add leads to see your deal funnel</p>
+                )}
               </CardContent>
             </Card>
           </motion.div>
