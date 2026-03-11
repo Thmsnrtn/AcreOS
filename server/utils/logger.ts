@@ -54,6 +54,18 @@ function formatLogEntry(entry: LogEntry): string {
   return logLine;
 }
 
+// Task #155: In production, emit structured JSON for log aggregators (Datadog, Logtail, etc.)
+// In development, use human-readable format for readability.
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+
+function serializeEntry(entry: LogEntry): string {
+  if (IS_PRODUCTION) {
+    // Structured JSON — one log line per entry for aggregator parsing
+    return JSON.stringify(entry);
+  }
+  return formatLogEntry(entry);
+}
+
 function log(level: LogLevel, message: string, options: Partial<LogEntry> = {}): void {
   const entry: LogEntry = {
     timestamp: formatTimestamp(),
@@ -62,25 +74,25 @@ function log(level: LogLevel, message: string, options: Partial<LogEntry> = {}):
     ...options,
   };
 
-  const formattedLine = formatLogEntry(entry);
+  const line = serializeEntry(entry);
 
   switch (level) {
     case "error":
-      console.error(formattedLine);
-      if (options.error?.stack) {
+      console.error(line);
+      if (!IS_PRODUCTION && options.error?.stack) {
         console.error(options.error.stack);
       }
       break;
     case "warn":
-      console.warn(formattedLine);
+      console.warn(line);
       break;
     case "debug":
-      if (process.env.NODE_ENV !== "production") {
-        console.debug(formattedLine);
+      if (!IS_PRODUCTION) {
+        console.debug(line);
       }
       break;
     default:
-      console.log(formattedLine);
+      console.log(line);
   }
 }
 
@@ -163,6 +175,8 @@ export function requestLoggingMiddleware(req: Request, res: Response, next: Next
   const requestId = generateRequestId();
   
   (req as Request & { requestId: string }).requestId = requestId;
+  // Task #155: Propagate request ID to client for correlation with server logs
+  res.setHeader("X-Request-Id", requestId);
 
   if (req.path.startsWith("/api")) {
     logger.debug(`Incoming request: ${req.method} ${req.path}`, {

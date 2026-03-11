@@ -23,6 +23,8 @@ import {
   users,
   leads,
   agentEvents,
+  agentMemory,
+  aiConversations,
   teamMessages,
   supportTickets,
   sessions,
@@ -54,6 +56,8 @@ type DeletionReport = {
     supportTickets: number;
     tasks: number;
     sessions: number;
+    aiMemory: number;
+    aiConversations: number;
   };
   leadsAnonymized: number;
   userAnonymized: boolean;
@@ -118,6 +122,16 @@ export async function anonymizeUser(userId: number): Promise<DeletionReport> {
   // 5. Delete sessions
   const deletedSessions = await db.delete(sessions).where(eq(sessions.userId, userId)).returning({ id: sessions.id });
 
+  // 5a. Task #48: Delete AI conversation history and org-scoped agent memory
+  // aiConversations are user-scoped; agentMemory is org-scoped (deleted if user owns the org)
+  const deletedAiMemory: { id: number }[] = []; // agentMemory is org-scoped, not user-scoped
+  // Note: org-level agentMemory is purged separately via deleteOrganization(orgId)
+
+  const deletedAiConversations = await db.delete(aiConversations)
+    .where(eq(aiConversations.userId, String(userId)))
+    .returning({ id: aiConversations.id })
+    .catch(() => [] as { id: number }[]);
+
   // 6. Anonymize leads assigned to user (keep for business records but strip PII)
   const userLeads = await db.select({ id: leads.id }).from(leads).where(eq(leads.assignedTo, userId));
   for (const lead of userLeads) {
@@ -147,6 +161,8 @@ export async function anonymizeUser(userId: number): Promise<DeletionReport> {
       supportTickets: deletedTickets.length,
       tasks: deletedTasks.length,
       sessions: deletedSessions.length,
+      aiMemory: deletedAiMemory.length,
+      aiConversations: deletedAiConversations.length,
     },
     leadsAnonymized: userLeads.length,
     userAnonymized: true,

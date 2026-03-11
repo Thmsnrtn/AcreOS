@@ -24,6 +24,11 @@ interface CacheEntry {
 const MAX_ENTRIES = 500;
 const cache = new Map<string, CacheEntry>();
 
+// Task #196: Cache stampede prevention — track in-flight requests per cache key.
+// When multiple concurrent requests arrive for the same uncached key,
+// only the first triggers the underlying computation; the rest wait for its result.
+const inFlight = new Map<string, Promise<any>>();
+
 function evictExpiredEntries(): void {
   const now = Date.now();
   for (const [key, entry] of cache.entries()) {
@@ -72,6 +77,28 @@ export function cacheResponse(ttlSeconds: number) {
       return;
     }
 
+    // Task #196: Stampede prevention — if another request is already computing
+    // this cache entry, wait for it instead of duplicating the work.
+    const existing = inFlight.get(cacheKey);
+    if (existing) {
+      res.setHeader("X-Cache", "COALESCED");
+      existing.then((data) => {
+        if (!res.headersSent) res.json(data);
+      }).catch(() => {
+        if (!res.headersSent) next();
+      });
+      return;
+    }
+
+    // Create a deferred promise that resolves when res.json is called
+    let resolveInFlight: (data: any) => void;
+    let rejectInFlight: (err: any) => void;
+    const inFlightPromise = new Promise<any>((resolve, reject) => {
+      resolveInFlight = resolve;
+      rejectInFlight = reject;
+    });
+    inFlight.set(cacheKey, inFlightPromise);
+
     // Intercept res.json to capture the response
     const originalJson = res.json.bind(res);
     res.json = (data: any) => {
@@ -83,10 +110,22 @@ export function cacheResponse(ttlSeconds: number) {
         if (cache.size > MAX_ENTRIES) {
           evictOldestEntries();
         }
+        resolveInFlight!(data);
+      } else {
+        rejectInFlight!(new Error(`Non-cacheable status ${res.statusCode}`));
       }
+      inFlight.delete(cacheKey);
       res.setHeader("X-Cache", "MISS");
       return originalJson(data);
     };
+
+    // Clean up in-flight entry if the request errors without calling res.json
+    res.on("close", () => {
+      if (inFlight.has(cacheKey)) {
+        inFlight.delete(cacheKey);
+        rejectInFlight!(new Error("Connection closed"));
+      }
+    });
 
     next();
   };

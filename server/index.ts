@@ -16,6 +16,7 @@ import { organizations, jobHealthLogs } from "@shared/schema";
 import { logger, requestLoggingMiddleware, errorLoggingMiddleware } from "./utils/logger";
 import { securityHeaders, corsMiddleware, requestTimeout, validateContentType, sanitizeQueryParams } from "./middleware/security";
 import { csrfProtection } from "./middleware/csrf";
+import { compressionMiddleware } from "./middleware/compression";
 import crypto from "crypto";
 import { wsServer } from "./websocket";
 import { realtimeAlertsService } from "./services/realtimeAlerts";
@@ -146,6 +147,7 @@ import("./middleware/piiMasking").then(({ installConsoleInterceptor }) => {
 // F-A05-3: Remove x-powered-by header
 app.disable("x-powered-by");
 
+app.use(compressionMiddleware); // Task #201: gzip/brotli response compression
 app.use(securityHeaders);
 app.use(corsMiddleware);
 app.use(requestTimeout);
@@ -367,6 +369,24 @@ app.use("/api/auth", async (req, res, next) => {
     });
   });
 
+  // Task #F-A05-2: CSP violation reporting endpoint — accepts browser reports, logs + ignores
+  app.post("/api/csp-report", express.json({ type: ["application/json", "application/csp-report"] }), (req, res) => {
+    const report = req.body?.["csp-report"] ?? req.body;
+    logger.warn("CSP violation", { source: "csp", metadata: { report } });
+    res.status(204).end();
+  });
+
+  // Task #305: /.well-known/security.txt — disclose vulnerability reporting channel
+  app.get("/.well-known/security.txt", (_req, res) => {
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.send([
+      "Contact: mailto:security@acreos.com",
+      "Expires: 2027-01-01T00:00:00.000Z",
+      "Preferred-Languages: en",
+      "Policy: https://acreos.com/security-policy",
+    ].join("\n") + "\n");
+  });
+
   // Initialize distributed tracing before routes so Express instrumentation captures all routes
   await initTracing();
 
@@ -498,6 +518,35 @@ app.use("/api/auth", async (req, res, next) => {
       // Run once at startup, then daily
       runJobHealthCleanup();
       setInterval(runJobHealthCleanup, 24 * 60 * 60 * 1000);
+
+      // Task #201: Graceful shutdown — drain open connections and checkpoint jobs
+      // Fly.io sends SIGTERM before replacing an instance. We close the HTTP server
+      // so no new connections are accepted, then wait briefly for in-flight requests
+      // to complete before exiting.
+      const gracefulShutdown = (signal: string) => {
+        log(`Received ${signal} — beginning graceful shutdown`, "shutdown");
+        httpServer.close((err) => {
+          if (err) {
+            log(`HTTP server close error: ${err}`, "shutdown");
+          } else {
+            log("HTTP server closed — all connections drained", "shutdown");
+          }
+          // Give background jobs 5 seconds to checkpoint
+          setTimeout(() => {
+            log("Graceful shutdown complete", "shutdown");
+            process.exit(0);
+          }, 5000);
+        });
+
+        // Force-exit after 30 seconds to prevent hanging
+        setTimeout(() => {
+          log("Force exiting after 30s shutdown timeout", "shutdown");
+          process.exit(1);
+        }, 30000).unref();
+      };
+
+      process.once("SIGTERM", () => gracefulShutdown("SIGTERM"));
+      process.once("SIGINT", () => gracefulShutdown("SIGINT"));
     },
   );
 })();
