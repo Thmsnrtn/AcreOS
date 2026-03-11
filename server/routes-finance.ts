@@ -1,7 +1,8 @@
 import type { Express } from "express";
-import { storage, calculateMonthlyPayment } from "./storage";
+import { storage, db, calculateMonthlyPayment } from "./storage";
 import { z } from "zod";
-import { insertNoteSchema, insertPaymentSchema } from "@shared/schema";
+import { insertNoteSchema, insertPaymentSchema, paymentReminders } from "@shared/schema";
+import { eq, and } from "drizzle-orm";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { checkUsageLimit } from "./services/usageLimits";
@@ -434,14 +435,20 @@ export function registerFinanceRoutes(app: Express): void {
     try {
       const org = (req as any).organization;
       const reminderId = Number(req.params.id);
+      // Task #2: IDOR prevention — verify reminder belongs to requesting org
+      const [existing] = await db.select({ id: paymentReminders.id })
+        .from(paymentReminders)
+        .where(and(eq(paymentReminders.id, reminderId), eq(paymentReminders.organizationId, org.id)))
+        .limit(1);
+      if (!existing) return res.status(404).json({ message: "Payment reminder not found" });
       const { status, content, channel } = req.body;
-      
+
       const updates: any = {};
       if (status) updates.status = status;
       if (content) updates.content = content;
       if (channel) updates.channel = channel;
       if (status === "cancelled") updates.failureReason = req.body.reason || "Manually cancelled";
-      
+
       const updated = await storage.updatePaymentReminder(reminderId, updates);
       res.json(updated);
     } catch (err: any) {
