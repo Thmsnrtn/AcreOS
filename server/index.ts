@@ -17,6 +17,7 @@ import { logger, requestLoggingMiddleware, errorLoggingMiddleware } from "./util
 import { securityHeaders, corsMiddleware, requestTimeout, validateContentType, sanitizeQueryParams } from "./middleware/security";
 import { csrfProtection } from "./middleware/csrf";
 import { compressionMiddleware } from "./middleware/compression";
+import { telemetryMiddleware } from "./middleware/telemetry";
 import crypto from "crypto";
 import { wsServer } from "./websocket";
 import { realtimeAlertsService } from "./services/realtimeAlerts";
@@ -152,6 +153,7 @@ app.disable("x-powered-by");
 app.set("trust proxy", 1);
 
 app.use(compressionMiddleware); // Task #201: gzip/brotli response compression
+app.use(telemetryMiddleware); // Task #74: OpenTelemetry span recording per request
 app.use(securityHeaders);
 app.use(corsMiddleware);
 app.use(requestTimeout);
