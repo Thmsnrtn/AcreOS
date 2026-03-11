@@ -429,6 +429,16 @@ export function registerAuthRoutes(app: Express): void {
         timestamp: new Date().toISOString(),
       }));
 
+      // Task #4: Regenerate session after password change to invalidate any stolen session tokens.
+      // The user stays logged in (passport data is preserved) but the old session ID is invalidated.
+      const passportUser = (req.session as any).passport;
+      await new Promise<void>((resolve) => req.session.regenerate((err) => {
+        if (!err && passportUser) {
+          (req.session as any).passport = passportUser;
+        }
+        resolve();
+      }));
+
       return res.json({ message: "Password changed successfully" });
     } catch (err) {
       console.error("[auth] Change password error:", err);
