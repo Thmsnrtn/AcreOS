@@ -96,6 +96,11 @@ interface WSEvent {
 // negotiation:{sessionId}     — negotiation real-time coaching
 // market:{state}:{county}     — market intelligence for a county
 
+// Maximum simultaneous WebSocket connections per server instance.
+// Prevents connection exhaustion DoS. Fly.io scales horizontally so
+// the effective global limit = MAX_WS_CONNECTIONS × replica count.
+const MAX_WS_CONNECTIONS = parseInt(process.env.MAX_WS_CONNECTIONS ?? "1000", 10);
+
 class AcreOSWebSocketServer {
   private wss: WebSocketServer | null = null;
   private clients: Map<string, WSClient> = new Map();
@@ -124,6 +129,12 @@ class AcreOSWebSocketServer {
 
     if (!organizationId || !userId) {
       ws.close(4001, 'Missing orgId or userId');
+      return;
+    }
+
+    // Connection cap — reject if server is at max capacity
+    if (this.clients.size >= MAX_WS_CONNECTIONS) {
+      ws.close(4008, 'Server at capacity');
       return;
     }
 
