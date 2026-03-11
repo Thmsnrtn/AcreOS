@@ -121,14 +121,36 @@ export function registerDealRoutes(app: Express): void {
     }
   });
   
+  // Valid deal status transitions — no skipping states (Task #210)
+  const DEAL_STATUS_TRANSITIONS: Record<string, string[]> = {
+    negotiating: ["offer_sent", "cancelled"],
+    offer_sent: ["countered", "accepted", "cancelled"],
+    countered: ["offer_sent", "accepted", "cancelled"],
+    accepted: ["in_escrow", "cancelled"],
+    in_escrow: ["closed", "cancelled"],
+    closed: [],
+    cancelled: [],
+  };
+
   api.put("/api/deals/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = (req as any).organization;
       const dealId = Number(req.params.id);
       const existingDeal = await storage.getDeal(org.id, dealId);
       if (!existingDeal) return res.status(404).json({ message: "Deal not found" });
-      
+
       const validated = updateDealSchema.parse(req.body);
+
+      // Enforce valid status transitions (Task #210)
+      if (validated.status && validated.status !== existingDeal.status) {
+        const allowed = DEAL_STATUS_TRANSITIONS[existingDeal.status] || [];
+        if (!allowed.includes(validated.status)) {
+          return res.status(400).json({
+            message: `Invalid status transition from '${existingDeal.status}' to '${validated.status}'. Allowed: ${allowed.join(", ") || "none"}`,
+          });
+        }
+      }
+
       const deal = await storage.updateDeal(dealId, validated);
       
       const user = req.user as any;

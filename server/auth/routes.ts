@@ -320,7 +320,7 @@ export function registerAuthRoutes(app: Express): void {
       if (!user) return;
 
       const token = crypto.randomBytes(32).toString("hex"); // 64 hex chars
-      const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+      const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
 
       await db.update(users)
         .set({ passwordResetToken: token, passwordResetExpiresAt: expiresAt })
@@ -334,7 +334,7 @@ export function registerAuthRoutes(app: Express): void {
         emailService.sendEmail({
           to: email,
           subject: "Reset your AcreOS password",
-          html: `<p>Click the link below to reset your password. This link expires in 1 hour.</p>
+          html: `<p>Click the link below to reset your password. This link expires in 15 minutes.</p>
 <p><a href="${resetUrl}">${resetUrl}</a></p>
 <p>If you didn't request this, you can safely ignore this email.</p>`,
         }).catch(() => {});

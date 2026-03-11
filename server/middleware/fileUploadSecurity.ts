@@ -141,10 +141,112 @@ export function validateFileMiddleware(
       // Attach validated MIME to file object
       (file as any).detectedMime = detected.mime;
       (file as any).detectedCategory = detected.category;
+
+      // T19: Strip EXIF and other metadata from image uploads
+      if (detected.category === "image") {
+        file.buffer = stripImageMetadata(file.buffer, detected.mime);
+      }
     }
 
     next();
   };
+}
+
+// ─── EXIF / metadata stripping ───────────────────────────────────────────────
+
+/**
+ * Strip EXIF and other metadata segments from a JPEG buffer.
+ *
+ * JPEG files are a sequence of markers: 0xFF <marker-byte> [0x00 | length...].
+ * We preserve SOI (0xD8), EOI (0xD9), and all markers except APP1–APP15
+ * (0xE1–0xEF) which carry EXIF, XMP, ICC profiles, and other metadata.
+ * APP0 (0xE0 = JFIF) is intentionally retained — it is required for valid
+ * JFIF and carries no personally-identifying information.
+ *
+ * Returns the original buffer unchanged if it is not a valid JPEG.
+ */
+function stripJpegExif(input: Buffer): Buffer {
+  // Verify JPEG SOI marker
+  if (input.length < 4 || input[0] !== 0xff || input[1] !== 0xd8) {
+    return input;
+  }
+
+  const chunks: Buffer[] = [];
+  let offset = 0;
+
+  // Write the SOI marker
+  chunks.push(input.slice(0, 2));
+  offset = 2;
+
+  while (offset < input.length - 1) {
+    if (input[offset] !== 0xff) {
+      // Not a marker — stop parsing, copy remainder as-is
+      chunks.push(input.slice(offset));
+      break;
+    }
+
+    // Skip padding 0xFF bytes
+    while (offset < input.length && input[offset] === 0xff) {
+      offset++;
+    }
+
+    if (offset >= input.length) break;
+
+    const marker = input[offset];
+    offset++;
+
+    // Standalone markers (no length field): SOI=0xD8, EOI=0xD9, RST0-RST7=0xD0-0xD7, TEM=0x01
+    if (
+      marker === 0xd8 || // SOI (already written)
+      marker === 0xd9 || // EOI
+      (marker >= 0xd0 && marker <= 0xd7) || // RST0-7
+      marker === 0x01    // TEM
+    ) {
+      chunks.push(Buffer.from([0xff, marker]));
+      if (marker === 0xd9) break; // End of image
+      continue;
+    }
+
+    // Markers with a 2-byte length field (length includes the 2 length bytes)
+    if (offset + 1 >= input.length) break;
+    const length = (input[offset] << 8) | input[offset + 1];
+    if (length < 2 || offset + length > input.length) break;
+
+    const segmentEnd = offset + length;
+
+    // APP1–APP15 (0xE1–0xEF): skip — these carry EXIF, XMP, ICC, etc.
+    // APP0 (0xE0) is kept because JFIF headers live there.
+    const isMetadataApp = marker >= 0xe1 && marker <= 0xef;
+
+    if (!isMetadataApp) {
+      // Write marker + segment (including length bytes)
+      chunks.push(Buffer.from([0xff, marker]));
+      chunks.push(input.slice(offset, segmentEnd));
+    }
+
+    offset = segmentEnd;
+
+    // SOS (0xDA) = start of scan — entropy-coded data follows, no more markers to parse
+    if (marker === 0xda) {
+      chunks.push(input.slice(offset));
+      break;
+    }
+  }
+
+  return Buffer.concat(chunks);
+}
+
+/**
+ * Strip metadata from an image buffer based on its detected MIME type.
+ * Currently handles JPEG (strips EXIF/XMP/ICC APP segments).
+ * PNG, GIF, WebP are returned unchanged — they do not embed EXIF by default
+ * and stripping requires format-specific parsing beyond scope here.
+ */
+export function stripImageMetadata(buffer: Buffer, mime: string): Buffer {
+  if (mime === "image/jpeg") {
+    return stripJpegExif(buffer);
+  }
+  return buffer;
 }
 
 // ─── SSRF Protection ──────────────────────────────────────────────────────────
