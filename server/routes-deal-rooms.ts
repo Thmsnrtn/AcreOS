@@ -84,7 +84,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 router.get('/:id/messages', async (req: Request, res: Response) => {
   try {
     const dealRoomId = parseInt(req.params.id);
-    const limit = Math.min(parseInt(String(req.query.limit ?? '50')), 200);
+    const limit = Math.min(100, parseInt(String(req.query.limit ?? '50')));
     const offset = parseInt(String(req.query.offset ?? '0'));
 
     const messages = await db
@@ -389,7 +389,7 @@ router.delete('/:id/participants/:userId', async (req: Request, res: Response) =
 router.get('/:id/activity', async (req: Request, res: Response) => {
   try {
     const dealRoomId = parseInt(req.params.id);
-    const limit = Math.min(parseInt(String(req.query.limit ?? '50')), 200);
+    const limit = Math.min(100, parseInt(String(req.query.limit ?? '50')));
 
     // Combine messages and documents as an activity timeline
     const [messages, documents] = await Promise.all([

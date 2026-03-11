@@ -239,7 +239,7 @@ export function registerCoreAIRoutes(app: Express): void {
     try {
       const org = (req as any).organization;
       const { agentType } = req.params;
-      const limit = parseInt(req.query.limit as string) || 50;
+      const limit = Math.min(100, parseInt(req.query.limit as string) || 50);
 
       const validTypes = ["research", "deals", "communications", "operations"];
       if (!validTypes.includes(agentType)) {

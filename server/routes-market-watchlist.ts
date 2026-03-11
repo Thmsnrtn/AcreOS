@@ -66,7 +66,7 @@ router.delete("/:id", isAuthenticated, getOrCreateOrg, (req, res) => {
 
 router.get("/alerts", isAuthenticated, getOrCreateOrg, (req, res) => {
   const org = (req as any).organization;
-  const limit = parseInt((req.query.limit as string) || "50", 10);
+  const limit = Math.min(100, parseInt((req.query.limit as string) || "50", 10));
   res.json(marketWatchlistService.getAlerts(org.id, limit));
 });
 

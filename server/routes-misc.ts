@@ -490,7 +490,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
   api.get("/api/jobs", isAuthenticated, getOrCreateOrg, requireAdminOrAbove, async (req, res) => {
     try {
       const { jobQueueService } = await import("./services/jobQueue");
-      const limit = Math.min(parseInt(req.query.limit as string) || 50, 500);
+      const limit = Math.min(100, parseInt(req.query.limit as string) || 50);
       const jobs = jobQueueService.getRecentJobs(limit);
       
       res.json({

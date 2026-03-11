@@ -112,7 +112,7 @@ function isFounder(req: any, res: any, next: any) {
 router.get("/admin/waitlist", isAuthenticated, isFounder, async (req, res) => {
   try {
     const page = parseInt((req.query.page as string) || "1", 10);
-    const limit = parseInt((req.query.limit as string) || "50", 10);
+    const limit = Math.min(100, parseInt((req.query.limit as string) || "50", 10));
     const status = req.query.status as string | undefined;
     const result = await betaProgramService.getWaitlist({ page, limit, status });
     res.json(result);

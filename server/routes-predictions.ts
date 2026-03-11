@@ -57,7 +57,7 @@ router.get('/property/:id/trajectory', async (req: Request, res: Response) => {
  */
 router.get('/opportunity-windows', async (req: Request, res: Response) => {
   try {
-    const limit = parseInt(req.query.limit as string) || 10;
+    const limit = Math.min(100, parseInt(req.query.limit as string) || 10);
     const windows = await marketPredictionService.getOpportunityWindows(limit);
 
     res.json({ success: true, windows });
@@ -126,7 +126,7 @@ router.post('/refresh/:state/:county', async (req: Request, res: Response) => {
  */
 router.get('/hot-markets', async (req: Request, res: Response) => {
   try {
-    const limit = parseInt(req.query.limit as string) || 10;
+    const limit = Math.min(100, parseInt(req.query.limit as string) || 10);
     const markets = await marketPredictionService.getOpportunityWindows(limit);
 
     res.json({ success: true, markets });

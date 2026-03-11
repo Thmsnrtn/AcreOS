@@ -97,7 +97,7 @@ Respond with JSON: { "reply": "...", "actionPath": "/path or null", "actionLabel
 router.get('/alerts', async (req: Request, res: Response) => {
   try {
     const org = getOrg(req);
-    const limit = parseInt(req.query.limit as string || '20');
+    const limit = Math.min(100, parseInt(req.query.limit as string || '20'));
     const alerts = realtimeAlertsService.getAlerts(org.id, limit);
     const unreadCount = realtimeAlertsService.getUnreadCount(org.id);
     res.json({ alerts, unreadCount });
