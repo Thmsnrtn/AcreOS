@@ -125,9 +125,14 @@ router.post('/listings/:id/bids', async (req: Request, res: Response) => {
 
 router.get('/listings/:id/bids', async (req: Request, res: Response) => {
   try {
-    const bids = await marketplaceService.getBidsForListing(
-      parseInt(req.params.id)
-    );
+    const org = getOrg(req);
+    const listingId = parseInt(req.params.id);
+    // Task #2: IDOR prevention — only sellers can see all bids (org is seller or buyer)
+    const listing = await marketplaceService.getListing(listingId, org.id);
+    if (!listing) {
+      return res.status(404).json({ error: 'Listing not found' });
+    }
+    const bids = await marketplaceService.getBidsForListing(listingId);
     res.json({ bids });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -312,12 +317,17 @@ router.get('/deal-rooms/:id', async (req: Request, res: Response) => {
   try {
     const org = getOrg(req);
     const { dealRooms: drTable } = await import('@shared/schema');
-    const { eq } = await import('drizzle-orm');
+    const { eq, or } = await import('drizzle-orm');
     const results = await db.select().from(drTable).where(eq(drTable.id, parseInt(req.params.id))).limit(1);
     if (results.length === 0) {
       return res.status(404).json({ error: 'Deal room not found' });
     }
-    res.json({ dealRoom: results[0] });
+    const room = results[0] as any;
+    // Task #2: IDOR prevention — only participants (buyer or seller) can access a deal room
+    if (room.buyerOrganizationId !== org.id && room.sellerOrganizationId !== org.id) {
+      return res.status(404).json({ error: 'Deal room not found' });
+    }
+    res.json({ dealRoom: room });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
