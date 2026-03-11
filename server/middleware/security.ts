@@ -42,6 +42,8 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
 
   if (isProduction) {
     cspDirectives.push("upgrade-insecure-requests");
+    // Task #F-A05-2: CSP violation reporting endpoint
+    cspDirectives.push("report-uri /api/csp-report");
   }
 
   res.setHeader("Content-Security-Policy", cspDirectives.join("; "));

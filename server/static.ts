@@ -10,7 +10,21 @@ export function serveStatic(app: Express) {
     );
   }
 
-  app.use(express.static(distPath));
+  // Task #193: Static assets with content-hash filenames (e.g., main.abc123.js)
+  // get 1-year max-age with immutable flag. The HTML shell is served with no-cache
+  // so browsers always fetch the latest entry point (which references hashed assets).
+  app.use(express.static(distPath, {
+    maxAge: process.env.NODE_ENV === "production" ? "1y" : 0,
+    immutable: process.env.NODE_ENV === "production",
+    setHeaders: (res, filePath) => {
+      // HTML files should never be cached — they reference hashed asset URLs
+      if (filePath.endsWith(".html")) {
+        res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+        res.setHeader("Pragma", "no-cache");
+        res.setHeader("Expires", "0");
+      }
+    },
+  }));
 
   // fall through to index.html — inject CSP nonce into the HTML shell (F-A05-1)
   app.use("*", (req: Request, res: Response) => {

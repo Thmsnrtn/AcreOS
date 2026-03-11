@@ -60,6 +60,38 @@ Results are saved to `tests/load/results/baseline-summary.json`.
 - If p95 > 500ms on dashboard: cache the stats query with 60s TTL
 - If AI endpoints > 2s: check OpenAI latency, consider streaming responses
 
+### Run the valuation load test (Task #170)
+```bash
+k6 run tests/load/k6-valuation.js \
+  --env BASE_URL=https://staging.yourapp.fly.dev \
+  --env AUTH_COOKIE="connect.sid=s%3A..."
+```
+
+### Run the concurrent users test (Task #171)
+```bash
+# 200 simultaneous users, 500 req/sec target
+k6 run tests/load/k6-concurrent-users.js \
+  --env BASE_URL=https://staging.yourapp.fly.dev \
+  --env AUTH_COOKIE="connect.sid=s%3A..."
+```
+
+### Run the WebSocket connection limit test (Task #172)
+```bash
+# 500 concurrent WebSocket connections
+k6 run tests/load/k6-websocket.js \
+  --env WS_URL=wss://staging.yourapp.fly.dev/ws \
+  --env AUTH_COOKIE="connect.sid=s%3A..."
+```
+
+### Run the marketplace bid storm test (Task #174)
+```bash
+# 100 concurrent bids on a single listing
+k6 run tests/load/k6-marketplace-bids.js \
+  --env BASE_URL=https://staging.yourapp.fly.dev \
+  --env AUTH_COOKIE="connect.sid=s%3A..." \
+  --env LISTING_ID=1
+```
+
 ## Adding New Test Scenarios
 
 Add a new scenario to `k6-baseline.js` under `options.scenarios` and a corresponding
