@@ -5,7 +5,7 @@ import { decisionsInboxService } from "../services/decisionsInbox";
 import { db } from "../db";
 import { dataSourceBroker } from "../services/data-source-broker.js";
 import { propertyEnrichmentService } from "../services/propertyEnrichment.js";
-import { eq, and, desc, ilike, sql, or, count } from "drizzle-orm";
+import { eq, and, desc, ilike, sql, or, count, inArray } from "drizzle-orm";
 import { 
   supportTickets, supportTicketMessages, knowledgeBaseArticles, 
   supportResolutionHistory, organizations, leads, properties, 
@@ -3934,14 +3934,16 @@ export async function executeSupportTool(
               return { success: false, error: `Search not supported for entity: ${entity}` };
             }
             
-            // Build search conditions using raw SQL for fields that exist
-            const searchCondition = fields.map(f => `COALESCE(${f}::text, '') ILIKE '${search_term.toLowerCase().replace(/'/g, "''")}'`).join(' OR ');
-            
+            // Build search conditions using parameterized SQL (fields are from whitelist, search_term is parameterized)
+            const searchPattern = `%${search_term}%`;
+            const fieldConditions = fields.map(f => sql`COALESCE(${sql.raw(f)}::text, '') ILIKE ${searchPattern}`);
+            const searchWhere = or(...fieldConditions)!;
+
             results = await db.select()
               .from(table)
               .where(and(
                 eq(table.organizationId, org.id),
-                sql.raw(`(${searchCondition})`)
+                searchWhere
               ))
               .limit(Math.min(limit, 20));
             
@@ -4501,7 +4503,7 @@ export async function executeSupportTool(
             eq(sophieMemory.organizationId, org.id),
             eq(sophieMemory.userId, org.ownerId),
             sql`(${sophieMemory.expiresAt} IS NULL OR ${sophieMemory.expiresAt} > NOW())`,
-            sql`${sophieMemory.memoryType} = ANY(ARRAY[${sql.raw(types.map((t: string) => `'${t}'`).join(','))}])`
+            inArray(sophieMemory.memoryType, types)
           ))
           .orderBy(desc(sophieMemory.importance), desc(sophieMemory.createdAt))
           .limit(limit);
