@@ -1,10 +1,8 @@
 import { storage } from "../storage";
 import { dataSourceBroker, type LookupCategory } from "./data-source-broker";
 import { type InsertAgentMemory, type AgentMemory } from "@shared/schema";
-import OpenAI from "openai";
+import { routeAITask, TaskComplexity, classifyTaskComplexity } from "./aiRouter";
 import { skillRegistry, type Skill, type SkillResult, type AgentContext as SkillAgentContext } from "./agent-skills";
-
-const openai = new OpenAI();
 
 export type CoreAgentType = "research" | "deals" | "communications" | "operations";
 
@@ -132,17 +130,30 @@ When asked to perform actions, analyze the request and determine the best approa
     return skillRegistry.executeSkill(skillId, params, context as SkillAgentContext);
   }
 
-  protected async callOpenAI(prompt: string, systemPrompt?: string, context?: AgentContext): Promise<string> {
+  protected async callOpenAI(
+    prompt: string,
+    systemPrompt?: string,
+    context?: AgentContext,
+    taskType?: string,
+    complexity?: TaskComplexity
+  ): Promise<string> {
     const finalSystemPrompt = systemPrompt || await this.getSystemPrompt(context);
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+    const resolvedTaskType = taskType || `${this.type}_task`;
+    const resolvedComplexity = complexity ?? classifyTaskComplexity(resolvedTaskType, prompt.length);
+
+    const response = await routeAITask({
+      taskType: resolvedTaskType,
+      complexity: resolvedComplexity,
       messages: [
         { role: "system", content: finalSystemPrompt },
         { role: "user", content: prompt },
       ],
-      max_tokens: 2000,
+      maxTokens: 2000,
+    }, {
+      orgId: context?.organizationId,
     });
-    return response.choices[0]?.message?.content || "";
+
+    return response.content;
   }
 
   async recordLearning(
@@ -334,7 +345,7 @@ Provide a brief investment analysis including:
 3. Recommended next steps
 4. Overall recommendation (buy/hold/pass)`;
 
-    const analysis = await this.callOpenAI(prompt);
+    const analysis = await this.callOpenAI(prompt, undefined, context, "deal_analysis", TaskComplexity.COMPLEX);
 
     return {
       success: true,
@@ -353,7 +364,7 @@ ${query}
 
 Provide practical, actionable information relevant to land investing.`;
 
-    const response = await this.callOpenAI(prompt);
+    const response = await this.callOpenAI(prompt, undefined, context, "basic_analysis");
     return { success: true, data: { query, response } };
   }
 }
@@ -413,7 +424,7 @@ Create a professional, legally-minded (but not legal advice) offer letter that:
 3. Includes standard contingencies
 4. Has a response deadline`;
 
-    const offerLetter = await this.callOpenAI(prompt);
+    const offerLetter = await this.callOpenAI(prompt, undefined, context, "legal_document", TaskComplexity.COMPLEX);
 
     return {
       success: true,
@@ -443,7 +454,7 @@ Calculate and provide:
 4. Key considerations
 5. Recommendation`;
 
-    const analysis = await this.callOpenAI(prompt);
+    const analysis = await this.callOpenAI(prompt, undefined, context, "deal_analysis", TaskComplexity.COMPLEX);
 
     const grossProfit = (estimatedValue || 0) - (purchasePrice || 0) - (repairCosts || 0);
     const roi = purchasePrice > 0 ? ((grossProfit / purchasePrice) * 100).toFixed(1) : 0;
@@ -498,7 +509,7 @@ Provide:
 3. Risk mitigation steps
 4. Timeline estimate`;
 
-    const strategy = await this.callOpenAI(prompt);
+    const strategy = await this.callOpenAI(prompt, undefined, context, "negotiation_strategy", TaskComplexity.COMPLEX);
     return { success: true, data: { strategy } };
   }
 }
@@ -560,7 +571,7 @@ Write a compelling email that:
 4. Has a clear call to action
 5. Is concise (under 200 words)`;
 
-    const email = await this.callOpenAI(prompt);
+    const email = await this.callOpenAI(prompt, undefined, context, "draft_email");
     
     const subjectMatch = email.match(/Subject:?\s*(.+)/i);
     const subject = subjectMatch ? subjectMatch[1].trim() : "Regarding Your Property";
@@ -587,7 +598,7 @@ Requirements:
 - Professional but friendly
 - Clear call to action`;
 
-    const message = await this.callOpenAI(prompt);
+    const message = await this.callOpenAI(prompt, undefined, context, "draft_email");
 
     return {
       success: true,
@@ -615,7 +626,7 @@ Suggest:
 3. Message approach
 4. Goal for this touchpoint`;
 
-    const plan = await this.callOpenAI(prompt);
+    const plan = await this.callOpenAI(prompt, undefined, context, "recommendation");
 
     return {
       success: true,
@@ -637,7 +648,7 @@ Create:
 3. Call to action
 4. Subject line (if email)`;
 
-    const content = await this.callOpenAI(prompt);
+    const content = await this.callOpenAI(prompt, undefined, context, "creative");
 
     return {
       success: true,
@@ -661,7 +672,7 @@ Write a helpful, professional response that:
 2. Answers any questions
 3. Moves the conversation forward`;
 
-    const response = await this.callOpenAI(prompt);
+    const response = await this.callOpenAI(prompt, undefined, context, "draft_email");
 
     return {
       success: true,
@@ -753,7 +764,7 @@ Provide:
 3. Budget reallocation suggestions
 4. Expected impact of changes`;
 
-    const recommendations = await this.callOpenAI(prompt);
+    const recommendations = await this.callOpenAI(prompt, undefined, context, "optimization", TaskComplexity.COMPLEX);
 
     return {
       success: true,
@@ -811,7 +822,7 @@ Provide:
 3. Areas for improvement
 4. Recommended actions`;
 
-    const analysis = await this.callOpenAI(prompt);
+    const analysis = await this.callOpenAI(prompt, undefined, context, "evaluation", TaskComplexity.MODERATE);
 
     return {
       success: true,
