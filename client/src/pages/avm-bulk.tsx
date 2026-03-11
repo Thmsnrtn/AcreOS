@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Upload, Download, FileText, TrendingUp, AlertCircle, CheckCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { DisclaimerBanner } from "@/components/disclaimer-banner";
 
 interface BulkResult {
   address: string;
@@ -108,6 +109,7 @@ export default function AvmBulk() {
 
   return (
     <div className="p-6 space-y-6">
+      <DisclaimerBanner type="avm" />
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Bulk AVM Valuation</h1>
