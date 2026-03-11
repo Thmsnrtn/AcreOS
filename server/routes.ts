@@ -60,7 +60,7 @@ import dataApiRouter from "./routes-data-api";
 import apiDocsRouter from "./routes-api-docs";
 import portfolioHealthRouter from "./routes-portfolio-health";
 import gdprRouter from "./routes-gdpr";
-import metricsRouter from "./routes-metrics";
+import metricsRouter, { recordRequestWithMetrics } from "./routes-metrics";
 import bulkRouter from "./routes-bulk";
 import leadEnrichmentRouter from "./routes-lead-enrichment";
 import skipTracingRouter from "./routes-skip-tracing";
@@ -293,6 +293,14 @@ export async function registerRoutes(
         path: req.path,
         statusCode: res.statusCode,
         durationMs: duration,
+      });
+      // Task #145: Record request metrics for Prometheus scrape endpoint
+      recordRequestWithMetrics({
+        path: req.path,
+        method: req.method,
+        statusCode: res.statusCode,
+        durationMs: duration,
+        timestamp: Date.now(),
       });
     });
     next();
