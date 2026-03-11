@@ -292,7 +292,7 @@ export interface IStorage {
   getDeals(orgId: number): Promise<Deal[]>;
   getDeal(orgId: number, id: number): Promise<Deal | undefined>;
   createDeal(deal: InsertDeal): Promise<Deal>;
-  updateDeal(id: number, updates: Partial<InsertDeal>): Promise<Deal>;
+  updateDeal(id: number, updates: Partial<InsertDeal>, expectedUpdatedAt?: Date): Promise<Deal>;
   bulkDeleteDeals(orgId: number, ids: number[]): Promise<number>;
   bulkUpdateDeals(orgId: number, ids: number[], updates: Partial<InsertDeal>): Promise<number>;
   
@@ -1191,8 +1191,9 @@ export class DatabaseStorage implements IStorage {
   
   // Leads
   async getLeads(orgId: number) {
+    // Task 223: exclude soft-deleted leads from list queries
     return await db.select().from(leads)
-      .where(eq(leads.organizationId, orgId))
+      .where(and(eq(leads.organizationId, orgId), sql`${leads.status} != 'deleted'`))
       .orderBy(desc(leads.createdAt));
   }
   
@@ -1223,7 +1224,11 @@ export class DatabaseStorage implements IStorage {
   }
   
   async deleteLead(id: number) {
-    await db.delete(leads).where(eq(leads.id, id));
+    // Task 223: Soft delete — set status='deleted' instead of hard-deleting so the
+    // record is preserved for audit purposes.
+    await db.update(leads)
+      .set({ status: "deleted", updatedAt: new Date() })
+      .where(eq(leads.id, id));
   }
   
   async getLeadCount(orgId: number) {
@@ -1232,8 +1237,10 @@ export class DatabaseStorage implements IStorage {
   }
   
   async bulkDeleteLeads(orgId: number, ids: number[]): Promise<number> {
+    // Task 223: Soft delete — set status='deleted' rather than hard-deleting
     if (ids.length === 0) return 0;
-    const result = await db.delete(leads)
+    await db.update(leads)
+      .set({ status: "deleted", updatedAt: new Date() })
       .where(and(eq(leads.organizationId, orgId), inArray(leads.id, ids)));
     return ids.length;
   }
@@ -1393,8 +1400,9 @@ export class DatabaseStorage implements IStorage {
   
   // Properties
   async getProperties(orgId: number) {
+    // Task 223: exclude soft-deleted properties from list queries
     return await db.select().from(properties)
-      .where(eq(properties.organizationId, orgId))
+      .where(and(eq(properties.organizationId, orgId), sql`${properties.status} != 'deleted'`))
       .orderBy(desc(properties.createdAt));
   }
   
@@ -1425,15 +1433,15 @@ export class DatabaseStorage implements IStorage {
   }
   
   async deleteProperty(id: number) {
-    // Delete all related records first to avoid foreign key constraints
-    await db.delete(dueDiligenceDossiers).where(eq(dueDiligenceDossiers.propertyId, id));
-    await db.delete(dueDiligenceChecklists).where(eq(dueDiligenceChecklists.propertyId, id));
-    await db.delete(dueDiligenceItems).where(eq(dueDiligenceItems.propertyId, id));
-    await db.delete(propertyListings).where(eq(propertyListings.propertyId, id));
-    await db.delete(deals).where(eq(deals.propertyId, id));
-    
-    // Now delete the property itself
-    await db.delete(properties).where(eq(properties.id, id));
+    // Task 223: Soft delete — set status='deleted' on the property (and cascade soft-delete
+    // dependent deals) so records are preserved for audit purposes.
+    await db.update(properties)
+      .set({ status: "deleted", updatedAt: new Date() })
+      .where(eq(properties.id, id));
+    // Soft-delete any deals tied to this property so they also disappear from list views
+    await db.update(deals)
+      .set({ status: "deleted", updatedAt: new Date() })
+      .where(eq(deals.propertyId, id));
   }
   
   async getPropertyCount(orgId: number) {
@@ -1467,8 +1475,9 @@ export class DatabaseStorage implements IStorage {
   
   // Deals
   async getDeals(orgId: number) {
+    // Task 223: exclude soft-deleted deals from list queries
     return await db.select().from(deals)
-      .where(eq(deals.organizationId, orgId))
+      .where(and(eq(deals.organizationId, orgId), sql`${deals.status} != 'deleted'`))
       .orderBy(desc(deals.createdAt));
   }
   
@@ -1483,17 +1492,35 @@ export class DatabaseStorage implements IStorage {
     return newDeal;
   }
   
-  async updateDeal(id: number, updates: Partial<InsertDeal>) {
+  async updateDeal(id: number, updates: Partial<InsertDeal>, expectedUpdatedAt?: Date) {
+    // Task 219: Optimistic locking — if the caller provides an expectedUpdatedAt timestamp,
+    // only apply the update when the row still has that timestamp (prevents lost-update
+    // races between concurrent requests).
+    const whereClause = expectedUpdatedAt
+      ? and(eq(deals.id, id), eq(deals.updatedAt, expectedUpdatedAt))
+      : eq(deals.id, id);
+
     const [updated] = await db.update(deals)
       .set({ ...updates, updatedAt: new Date() })
-      .where(eq(deals.id, id))
+      .where(whereClause!)
       .returning();
+
+    if (!updated && expectedUpdatedAt) {
+      // Row existed but timestamp didn't match — concurrent modification detected
+      throw new Error(
+        "Deal was modified by another request. Please reload and retry your changes."
+      );
+    }
+
     return updated;
   }
 
   async bulkDeleteDeals(orgId: number, ids: number[]): Promise<number> {
+    // Task 223: Soft delete — set status='deleted' rather than hard-deleting
     if (ids.length === 0) return 0;
-    await db.delete(deals).where(and(eq(deals.organizationId, orgId), inArray(deals.id, ids)));
+    await db.update(deals)
+      .set({ status: "deleted", updatedAt: new Date() })
+      .where(and(eq(deals.organizationId, orgId), inArray(deals.id, ids)));
     return ids.length;
   }
 
