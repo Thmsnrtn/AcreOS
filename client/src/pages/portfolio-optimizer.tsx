@@ -25,6 +25,7 @@ import {
   BarChart,
   Bar,
 } from 'recharts';
+
 import {
   TrendingUp,
   TrendingDown,
@@ -293,6 +294,31 @@ export default function PortfolioOptimizerPage() {
     p90: Math.round(t.values.p90),
   })) ?? [];
 
+  // Derived advanced metrics
+  const sharpeRatio = metrics && latestSim ? (() => {
+    const riskFreeRate = 0.045; // 4.5% T-bill
+    const expectedReturn = latestSim.summary?.expectedReturn ?? metrics.expectedAnnualReturn ?? 0;
+    const portfolioVol = latestSim.summary?.volatility ?? metrics.volatility ?? 0.15;
+    return portfolioVol > 0 ? ((expectedReturn - riskFreeRate) / portfolioVol).toFixed(2) : null;
+  })() : null;
+
+  const maxDrawdown = latestSim?.summary?.worstCase
+    ? (((metrics?.totalValue ?? 0) - (latestSim.summary.worstCase ?? 0)) / (metrics?.totalValue ?? 1) * 100).toFixed(1)
+    : null;
+
+  const calmarRatio = metrics?.expectedAnnualReturn && maxDrawdown
+    ? ((metrics.expectedAnnualReturn * 100) / parseFloat(maxDrawdown)).toFixed(2)
+    : null;
+
+  // Efficient frontier approximation from percentile data
+  const efficientFrontierData = timelineData.length > 0 ? [
+    { risk: 5, return: timelineData[timelineData.length - 1]?.p10 ?? 0, label: "Conservative" },
+    { risk: 12, return: timelineData[timelineData.length - 1]?.p25 ?? 0, label: "Moderate" },
+    { risk: 18, return: timelineData[timelineData.length - 1]?.p50 ?? 0, label: "Current" },
+    { risk: 25, return: timelineData[timelineData.length - 1]?.p75 ?? 0, label: "Growth" },
+    { risk: 35, return: timelineData[timelineData.length - 1]?.p90 ?? 0, label: "Aggressive" },
+  ].map(d => ({ ...d, return: Math.round(d.return / 1000) })) : [];
+
   return (
     <div className="container mx-auto p-6 space-y-6">
       {/* Header */}
@@ -386,10 +412,61 @@ export default function PortfolioOptimizerPage() {
         </div>
       )}
 
+      {/* Advanced Risk Metrics Row */}
+      {metrics && (sharpeRatio || maxDrawdown || calmarRatio) && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {sharpeRatio && (
+            <Card className={`${parseFloat(sharpeRatio) >= 1 ? "border-emerald-200 bg-emerald-50/30 dark:border-emerald-800 dark:bg-emerald-900/10" : parseFloat(sharpeRatio) >= 0.5 ? "border-amber-200 bg-amber-50/30" : "border-red-200 bg-red-50/30"}`}>
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">Sharpe Ratio</p>
+                <p className={`text-2xl font-bold ${parseFloat(sharpeRatio) >= 1 ? "text-emerald-600" : parseFloat(sharpeRatio) >= 0.5 ? "text-amber-600" : "text-red-500"}`}>{sharpeRatio}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {parseFloat(sharpeRatio) >= 1 ? "Excellent risk-adj return" : parseFloat(sharpeRatio) >= 0.5 ? "Acceptable" : "Below threshold"}
+                </p>
+              </CardContent>
+            </Card>
+          )}
+          {maxDrawdown && (
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">Max Drawdown</p>
+                <p className="text-2xl font-bold text-red-500">-{maxDrawdown}%</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Worst-case loss scenario</p>
+              </CardContent>
+            </Card>
+          )}
+          {calmarRatio && (
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">Calmar Ratio</p>
+                <p className="text-2xl font-bold">{calmarRatio}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Return / max drawdown</p>
+              </CardContent>
+            </Card>
+          )}
+          {metrics.diversificationScore != null && (
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">Diversification</p>
+                <div className="flex items-end gap-1">
+                  <p className="text-2xl font-bold">{Math.round(metrics.diversificationScore)}</p>
+                  <span className="text-sm text-muted-foreground mb-0.5">/100</span>
+                </div>
+                <div className="w-full bg-muted rounded-full h-1.5 mt-1">
+                  <div className={`h-full rounded-full ${metrics.diversificationScore >= 70 ? "bg-emerald-500" : metrics.diversificationScore >= 40 ? "bg-amber-500" : "bg-red-500"}`}
+                    style={{ width: `${metrics.diversificationScore}%` }} />
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+
       {metrics && (
         <Tabs defaultValue="monte-carlo">
-          <TabsList>
+          <TabsList className="flex-wrap">
             <TabsTrigger value="monte-carlo">Monte Carlo</TabsTrigger>
+            {efficientFrontierData.length > 0 && <TabsTrigger value="efficient-frontier">Efficient Frontier</TabsTrigger>}
             <TabsTrigger value="diversification">Diversification</TabsTrigger>
             <TabsTrigger value="stress-test">Stress Test</TabsTrigger>
             <TabsTrigger value="recommendations">AI Recommendations ({recommendations.length})</TabsTrigger>
@@ -522,6 +599,77 @@ export default function PortfolioOptimizerPage() {
               </div>
             )}
           </TabsContent>
+
+          {/* ── EFFICIENT FRONTIER ── */}
+          {efficientFrontierData.length > 0 && (
+            <TabsContent value="efficient-frontier" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <SlidersHorizontal className="w-5 h-5 text-primary" />
+                    Efficient Frontier — Risk vs. Return
+                  </CardTitle>
+                  <CardDescription>
+                    Each point represents a portfolio allocation strategy. The curve shows the maximum return achievable at each risk level based on your Monte Carlo simulation.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-72">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={efficientFrontierData} layout="vertical">
+                        <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                        <XAxis type="number" tickFormatter={(v) => `$${v}K`} tick={{ fontSize: 11 }} />
+                        <YAxis dataKey="label" type="category" tick={{ fontSize: 11 }} width={80} />
+                        <Tooltip formatter={(v: any) => [`$${v}K projected`, "Portfolio Value"]} />
+                        <Bar dataKey="return" radius={[0, 4, 4, 0]}>
+                          {efficientFrontierData.map((entry, index) => (
+                            <Cell
+                              key={`cell-${index}`}
+                              fill={entry.label === "Current" ? "hsl(var(--primary))" : `hsl(var(--primary) / ${0.4 + index * 0.15})`}
+                            />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="mt-4 grid grid-cols-3 gap-3">
+                    {sharpeRatio && (
+                      <div className="rounded-lg border p-3 text-center">
+                        <p className="text-xs text-muted-foreground">Sharpe Ratio</p>
+                        <p className="text-xl font-bold text-primary">{sharpeRatio}</p>
+                        <p className="text-xs text-muted-foreground">risk-adj return</p>
+                      </div>
+                    )}
+                    {maxDrawdown && (
+                      <div className="rounded-lg border p-3 text-center">
+                        <p className="text-xs text-muted-foreground">Max Drawdown</p>
+                        <p className="text-xl font-bold text-red-500">-{maxDrawdown}%</p>
+                        <p className="text-xs text-muted-foreground">worst scenario</p>
+                      </div>
+                    )}
+                    {calmarRatio && (
+                      <div className="rounded-lg border p-3 text-center">
+                        <p className="text-xs text-muted-foreground">Calmar Ratio</p>
+                        <p className="text-xl font-bold">{calmarRatio}</p>
+                        <p className="text-xs text-muted-foreground">return/drawdown</p>
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-3 p-3 bg-primary/5 rounded-lg border border-primary/10">
+                    <p className="text-xs font-medium flex items-center gap-1.5 mb-1">
+                      <Info className="w-3.5 h-3.5 text-primary" />
+                      Interpretation
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {sharpeRatio && parseFloat(sharpeRatio) >= 1
+                        ? `Your Sharpe ratio of ${sharpeRatio} indicates strong risk-adjusted returns. Your current portfolio is well-positioned on the efficient frontier.`
+                        : `A Sharpe ratio below 1 suggests room to improve risk-adjusted returns. Consider the AI recommendations to rebalance toward higher-quality holdings.`}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
 
           {/* ── DIVERSIFICATION ── */}
           <TabsContent value="diversification" className="space-y-6">

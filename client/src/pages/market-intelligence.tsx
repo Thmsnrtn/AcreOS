@@ -8,9 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
-import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
+import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, RadarChart, PolarGrid, PolarAngleAxis, Radar } from "recharts";
 import { useToast } from "@/hooks/use-toast";
-import { Globe, TrendingUp, TrendingDown, BarChart2, Plus, Search, ArrowUpRight, ArrowDownRight } from "lucide-react";
+import { Globe, TrendingUp, TrendingDown, BarChart2, Plus, Search, ArrowUpRight, ArrowDownRight, Star, Target, Zap } from "lucide-react";
 
 function HealthBadge({ score }: { score: number }) {
   if (score >= 70) return <Badge className="bg-green-100 text-green-800">Strong {score}</Badge>;
@@ -72,6 +72,28 @@ export default function MarketIntelligencePage() {
   const analysis = analysisData?.analysis;
   const trends = trendsData?.trends;
   const growth = growthData?.indicators;
+
+  // Investment Score Radar data derived from all signals
+  const radarData = growth && analysis ? [
+    { dimension: "Price Growth", score: Math.min(100, Math.max(0, 50 + (analysis.yoyChange ?? 0) * 5)) },
+    { dimension: "Market Health", score: analysis.healthScore ?? 50 },
+    { dimension: "Population", score: growth.populationGrowth ?? 50 },
+    { dimension: "Employment", score: growth.employmentRate ?? 50 },
+    { dimension: "Infrastructure", score: growth.infrastructureScore ?? 50 },
+    { dimension: "Recreation", score: growth.recreationalDemand ?? 50 },
+    { dimension: "Development", score: growth.developmentPressure ?? 50 },
+  ] : [];
+
+  const overallScore = radarData.length > 0
+    ? Math.round(radarData.reduce((s, d) => s + d.score, 0) / radarData.length)
+    : null;
+
+  const investmentGrade = overallScore !== null
+    ? overallScore >= 75 ? { label: "A — Prime", color: "text-emerald-600 bg-emerald-50 border-emerald-200" }
+    : overallScore >= 60 ? { label: "B — Strong", color: "text-blue-600 bg-blue-50 border-blue-200" }
+    : overallScore >= 45 ? { label: "C — Moderate", color: "text-amber-600 bg-amber-50 border-amber-200" }
+    : { label: "D — Weak", color: "text-red-600 bg-red-50 border-red-200" }
+    : null;
 
   const priceHistory = trends?.historicalPrices?.map((p: any) => ({
     month: p.month, price: p.pricePerAcre,
@@ -156,11 +178,41 @@ export default function MarketIntelligencePage() {
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="trends">Price Trends</TabsTrigger>
             <TabsTrigger value="growth">Growth Factors</TabsTrigger>
+            {radarData.length > 0 && <TabsTrigger value="radar">Investment Radar</TabsTrigger>}
             {compareMutation.data && <TabsTrigger value="compare">Comparison</TabsTrigger>}
           </TabsList>
 
           {/* Overview */}
           <TabsContent value="overview" className="mt-4 space-y-4">
+            {/* Investment Grade Hero */}
+            {investmentGrade && overallScore !== null && (
+              <Card className="border-primary/20 bg-gradient-to-br from-card to-muted/20">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs text-muted-foreground uppercase tracking-wide">Investment Grade</p>
+                      <p className="text-3xl font-black mt-1">{overallScore}<span className="text-lg text-muted-foreground">/100</span></p>
+                      <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2 py-0.5 rounded-full border mt-1 ${investmentGrade.color}`}>
+                        <Star className="w-3 h-3" />
+                        {investmentGrade.label}
+                      </span>
+                    </div>
+                    {radarData.length > 0 && (
+                      <div className="w-32 h-32">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <RadarChart data={radarData}>
+                            <PolarGrid />
+                            <PolarAngleAxis dataKey="dimension" tick={{ fontSize: 7 }} />
+                            <Radar name="Score" dataKey="score" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.2} strokeWidth={1.5} />
+                          </RadarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <Card><CardContent className="p-4">
                 <p className="text-xs text-muted-foreground">Market Health</p>
@@ -293,6 +345,56 @@ export default function MarketIntelligencePage() {
               </Card>
             )}
           </TabsContent>
+
+          {/* Investment Radar */}
+          {radarData.length > 0 && (
+            <TabsContent value="radar" className="mt-4 space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Target className="w-4 h-4 text-primary" />
+                    Investment Profile Radar — {submitted?.county}, {submitted?.state}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex flex-col md:flex-row items-center gap-6">
+                    <div className="w-full md:w-72 h-72">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <RadarChart data={radarData}>
+                          <PolarGrid />
+                          <PolarAngleAxis dataKey="dimension" tick={{ fontSize: 11 }} />
+                          <Radar name="Score" dataKey="score" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.25} strokeWidth={2} />
+                          <Tooltip formatter={(v: any) => [`${v}/100`, "Score"]} />
+                        </RadarChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="flex-1 space-y-2">
+                      {radarData.map((d) => (
+                        <div key={d.dimension}>
+                          <div className="flex justify-between text-xs mb-0.5">
+                            <span className="text-muted-foreground">{d.dimension}</span>
+                            <span className="font-semibold">{d.score}</span>
+                          </div>
+                          <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
+                            <div
+                              className={`h-full rounded-full ${d.score >= 70 ? "bg-emerald-500" : d.score >= 50 ? "bg-amber-500" : "bg-red-400"}`}
+                              style={{ width: `${d.score}%` }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                      {overallScore !== null && investmentGrade && (
+                        <div className={`mt-4 rounded-lg border p-3 ${investmentGrade.color}`}>
+                          <p className="text-xs font-semibold">Overall Investment Score: {overallScore}/100</p>
+                          <p className="text-xs mt-0.5">{investmentGrade.label}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
 
           {/* Comparison */}
           {compareMutation.data && (
