@@ -199,21 +199,24 @@ class CashFlowForecasterService {
     const baseProbability = 1 - paymentHealth.defaultProbability;
 
     const projections: IncomeProjection[] = [];
-    const monthlyPayment = parseFloat(note.monthlyPayment);
+    // Task #218: Use cent-rounded values throughout amortization to prevent floating-point drift
+    const monthlyPayment = Math.round(parseFloat(note.monthlyPayment) * 100) / 100;
     const interestRate = parseFloat(note.interestRate) / 100 / 12;
-    let currentBalance = parseFloat(note.currentBalance);
+    // Track balance in integer cents to avoid IEEE-754 cumulative error
+    let currentBalanceCents = Math.round(parseFloat(note.currentBalance) * 100);
 
     const today = new Date();
     const nextPaymentDate = note.nextPaymentDate ? new Date(note.nextPaymentDate) : new Date(today);
 
     for (let i = 0; i < months; i++) {
-      if (currentBalance <= 0) break;
+      if (currentBalanceCents <= 0) break;
+      const currentBalance = currentBalanceCents / 100;
 
       const paymentDate = new Date(nextPaymentDate);
       paymentDate.setMonth(paymentDate.getMonth() + i);
       const monthStr = paymentDate.toISOString().slice(0, 7);
 
-      const interestPayment = currentBalance * interestRate;
+      const interestPayment = Math.round(currentBalance * interestRate * 100) / 100;
       const principalPayment = Math.min(monthlyPayment - interestPayment, currentBalance);
       const totalPayment = Math.min(monthlyPayment, currentBalance + interestPayment);
 
@@ -234,7 +237,7 @@ class CashFlowForecasterService {
         notes: `Principal: $${principalPayment.toFixed(2)}, Interest: $${interestPayment.toFixed(2)}`,
       });
 
-      currentBalance -= principalPayment;
+      currentBalanceCents -= Math.round(principalPayment * 100);
     }
 
     return projections;
