@@ -77,16 +77,27 @@ function analyzeSentiment(transcript: TranscriptSegment[]): SentimentResult {
 
   const positiveSignals: string[] = [];
   const negativeSignals: string[] = [];
+  const neutralSignals: string[] = [];
 
-  if (/interested|sounds good|tell me more|let's do it|yes|great/.test(allText)) {
-    positiveSignals.push("expressed_interest");
-  }
-  if (/not interested|don't call|remove me|no thank you|opt out/.test(allText)) {
+  // Check for explicit negative signals first to avoid false positives
+  const hasExplicitNegative = /not interested|don't call|remove me|no thank you|opt out/.test(allText);
+  if (hasExplicitNegative) {
     negativeSignals.push("explicit_opt_out");
   }
-  if (/think about it|let me ask|not sure|maybe later/.test(allText)) {
-    negativeSignals.push("hesitancy");
+
+  // Positive: explicit expressions of interest — but not when "not interested" is also present
+  if (
+    /sounds good|tell me more|let's do it|\byes\b|great/.test(allText) ||
+    (/\binterested\b/.test(allText) && !hasExplicitNegative)
+  ) {
+    positiveSignals.push("expressed_interest");
   }
+
+  // Hesitancy is neutral — does not contribute to negative score
+  if (/think about it|let me ask|not sure|maybe later/.test(allText)) {
+    neutralSignals.push("hesitancy");
+  }
+
   if (/good offer|fair price|makes sense/.test(allText)) {
     positiveSignals.push("positive_valuation");
   }
@@ -101,7 +112,7 @@ function analyzeSentiment(transcript: TranscriptSegment[]): SentimentResult {
   return {
     overall: score > 0.2 ? "positive" : score < -0.2 ? "negative" : "neutral",
     score,
-    signals: [...positiveSignals, ...negativeSignals],
+    signals: [...positiveSignals, ...negativeSignals, ...neutralSignals],
   };
 }
 

@@ -78,9 +78,7 @@ export function requireRole(...allowedRoles: OrgRole[]) {
       }
 
       const userRole = member.role as OrgRole;
-      const allowed = allowedRoles.some(
-        (r) => ROLE_RANK[userRole] >= ROLE_RANK[r] || userRole === r
-      );
+      const allowed = allowedRoles.includes(userRole);
 
       if (!allowed) {
         return res

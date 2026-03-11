@@ -38,7 +38,8 @@ const INJECTION_PATTERNS: RegExp[] = [
   /show\s+(me\s+)?(your\s+)?(system|hidden)\s+(prompt|instructions?)/gi,
 
   // Instruction boundary bypasses
-  /---\s*(new|override|system)\s*(instructions?|prompt)/gi,
+  /---\s*(new|override|system)\s*(instructions?|prompt|:)/gi,
+  /---\s*system\s*:/gi,
   /\[\s*(system|override|new\s+instruction)\s*\]/gi,
   /<\s*system\s*>/gi,
   /\/\*.*system.*instructions.*\*\//gi,

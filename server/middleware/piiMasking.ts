@@ -44,8 +44,11 @@ function maskPhone(match: string): string {
   const digits = match.replace(/\D/g, "");
   if (digits.length < 10) return match; // too short to be a phone number
 
-  // Keep area code (first 3 digits), mask remainder
-  const areaCode = digits.slice(0, 3);
+  // Strip US country code prefix (1) if present (11-digit number)
+  const localDigits = digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
+
+  // Keep area code (first 3 digits of local number), mask remainder
+  const areaCode = localDigits.slice(0, 3);
   return `${areaCode}-***-****`;
 }
 

@@ -8,6 +8,32 @@
 import { describe, it, expect, vi } from "vitest";
 import type { Request, Response, NextFunction } from "express";
 
+// Mock database dependencies so IDOR tests run without a real DB connection
+vi.mock("../../server/storage", () => ({
+  storage: {
+    getOrganizationByOwner: vi.fn().mockResolvedValue(null),
+    createOrganization: vi.fn().mockResolvedValue({
+      id: 1,
+      name: "Test Org",
+      ownerId: "user-1",
+      subscriptionTier: "free",
+      subscriptionStatus: "active",
+      isFounder: false,
+      trialStartedAt: new Date(),
+      trialEndsAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      trialUsed: false,
+    }),
+    createTeamMember: vi.fn().mockResolvedValue({}),
+  },
+  db: {
+    update: vi.fn().mockReturnValue({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue([]),
+      }),
+    }),
+  },
+}));
+
 // ─── Task #249 — IDOR Test ────────────────────────────────────────────────────
 
 describe("IDOR Protection (Task #249)", () => {
