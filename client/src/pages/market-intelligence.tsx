@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { DisclaimerBanner } from "@/components/disclaimer-banner";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -86,6 +87,7 @@ export default function MarketIntelligencePage() {
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
+      <DisclaimerBanner type="avm" />
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <Globe className="w-7 h-7 text-primary" /> Market Intelligence
