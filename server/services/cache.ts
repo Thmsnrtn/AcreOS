@@ -95,7 +95,7 @@ export const cache = {
     try {
       const redis = await getRedis();
       const raw = redis
-        ? await redisCircuitBreaker.call(() => redis.get(key))
+        ? await redisCircuitBreaker.call<string | null>(() => redis.get(key))
         : memGet(key);
       if (!raw) return null;
       return JSON.parse(raw) as T;
