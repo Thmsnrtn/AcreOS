@@ -26,9 +26,7 @@ const ROLE_RANK: Record<OrgRole, number> = {
 };
 
 function canAccess(userRole: OrgRole, allowedRoles: OrgRole[]): boolean {
-  return allowedRoles.some(
-    (r) => ROLE_RANK[userRole] >= ROLE_RANK[r] || userRole === r
-  );
+  return allowedRoles.includes(userRole);
 }
 
 // ── Role Rank Tests ───────────────────────────────────────────────────────────

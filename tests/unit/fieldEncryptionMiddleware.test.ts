@@ -104,8 +104,13 @@ describe("Tamper detection (GCM auth tag)", () => {
   it("throws on modified ciphertext", async () => {
     const { encrypt, decrypt } = await getModule();
     let ct = encrypt("secret");
-    // Flip the last character to simulate tampering
-    ct = ct.slice(0, -1) + (ct.endsWith("a") ? "b" : "a");
+    // Corrupt a character in the middle of the base64 payload to ensure
+    // actual ciphertext bytes are changed (avoids base64 padding issues at end).
+    const prefix = "enc:v1:";
+    const b64 = ct.slice(prefix.length);
+    const midIdx = Math.floor(b64.length / 2);
+    const flipped = b64[midIdx] === "A" ? "B" : "A";
+    ct = prefix + b64.slice(0, midIdx) + flipped + b64.slice(midIdx + 1);
     expect(() => decrypt(ct)).toThrow();
   });
 });
