@@ -34,6 +34,11 @@ jobs:
         run: npm run format:check
         continue-on-error: true
 
+      # Task #F-A06-2: Fail CI on high/critical npm vulnerabilities; report moderate
+      - name: npm security audit
+        run: npm audit --audit-level=high
+        continue-on-error: false
+
   # ── 2. Unit Tests ───────────────────────────────────────────────────────────
   unit-tests:
     name: Unit Tests
