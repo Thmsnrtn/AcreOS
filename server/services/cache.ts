@@ -13,6 +13,7 @@
  */
 
 import { log } from "../index";
+import { redisCircuitBreaker } from "../utils/circuitBreaker";
 
 const REDIS_URL = process.env.REDIS_URL;
 const DEFAULT_TTL = 120; // 2 minutes
@@ -93,7 +94,9 @@ export const cache = {
   async get<T = unknown>(key: string): Promise<T | null> {
     try {
       const redis = await getRedis();
-      const raw = redis ? await redis.get(key) : memGet(key);
+      const raw = redis
+        ? await redisCircuitBreaker.call(() => redis.get(key))
+        : memGet(key);
       if (!raw) return null;
       return JSON.parse(raw) as T;
     } catch {
@@ -114,12 +117,12 @@ export const cache = {
       const serialized = JSON.stringify(value);
       const redis = await getRedis();
       if (redis) {
-        await redis.setex(key, ttl, serialized);
+        await redisCircuitBreaker.call(() => redis.setex(key, ttl, serialized));
       } else {
         memSet(key, serialized, ttl);
       }
     } catch {
-      // Cache write errors are non-fatal
+      // Cache write errors are non-fatal (incl. circuit open)
     }
   },
 
@@ -130,7 +133,7 @@ export const cache = {
     try {
       const redis = await getRedis();
       if (redis) {
-        await redis.del(key);
+        await redisCircuitBreaker.call(() => redis.del(key));
       } else {
         memDel(key);
       }
@@ -145,20 +148,22 @@ export const cache = {
     try {
       const redis = await getRedis();
       if (redis) {
-        let cursor = "0";
-        do {
-          const [nextCursor, keys] = await redis.scan(
-            cursor,
-            "MATCH",
-            pattern,
-            "COUNT",
-            100
-          );
-          cursor = nextCursor;
-          if (keys.length > 0) {
-            await redis.del(...keys);
-          }
-        } while (cursor !== "0");
+        await redisCircuitBreaker.call(async () => {
+          let cursor = "0";
+          do {
+            const [nextCursor, keys] = await redis.scan(
+              cursor,
+              "MATCH",
+              pattern,
+              "COUNT",
+              100
+            );
+            cursor = nextCursor;
+            if (keys.length > 0) {
+              await redis.del(...keys);
+            }
+          } while (cursor !== "0");
+        });
       } else {
         memDelPattern(pattern);
       }
