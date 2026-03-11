@@ -179,15 +179,17 @@ app.post(
   }
 );
 
+// Task #204: enforce request body size limits to prevent payload-based DoS
 app.use(
   express.json({
+    limit: "10mb",
     verify: (req, _res, buf) => {
       req.rawBody = buf;
     },
   }),
 );
 
-app.use(express.urlencoded({ extended: false }));
+app.use(express.urlencoded({ extended: false, limit: "10mb" }));
 app.use(cookieParser());
 
 // Sentry request/tracing handler — must come before routes, after bodyParsers

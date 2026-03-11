@@ -19,6 +19,30 @@ import {
 // Partial update schema for PUT endpoints
 const updateDealSchema = insertDealSchema.partial().omit({ organizationId: true });
 
+// Task 211: Offer amount validation constants
+const MIN_OFFER_AMOUNT = 0;         // exclusive lower bound
+const MAX_OFFER_AMOUNT = 1_000_000_000; // $1 billion — typo guard
+
+/**
+ * Validate offer-amount fields on a raw deal payload.
+ * Returns an error message string if invalid, or null if OK.
+ */
+function validateOfferAmounts(data: Record<string, any>): string | null {
+  const fields = [
+    { key: "offerAmount", label: "Offer amount" },
+    { key: "acceptedAmount", label: "Accepted amount" },
+    { key: "purchasePrice", label: "Purchase price" },
+  ];
+  for (const { key, label } of fields) {
+    if (data[key] === undefined || data[key] === null || data[key] === "") continue;
+    const val = Number(data[key]);
+    if (isNaN(val)) return `${label} must be a valid number`;
+    if (val <= MIN_OFFER_AMOUNT) return `${label} must be greater than $0`;
+    if (val > MAX_OFFER_AMOUNT) return `${label} exceeds the maximum allowed value of $1,000,000,000`;
+  }
+  return null;
+}
+
 const logger = {
   info: (msg: string, meta?: Record<string, any>) => console.log(JSON.stringify({ level: 'INFO', timestamp: new Date().toISOString(), message: msg, ...meta })),
   warn: (msg: string, meta?: Record<string, any>) => console.warn(JSON.stringify({ level: 'WARN', timestamp: new Date().toISOString(), message: msg, ...meta })),
@@ -88,6 +112,13 @@ export function registerDealRoutes(app: Express): void {
   api.post("/api/deals", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = (req as any).organization;
+
+      // Task 211: validate offer amounts before parsing
+      const offerValidationError = validateOfferAmounts(req.body);
+      if (offerValidationError) {
+        return res.status(400).json({ message: offerValidationError });
+      }
+
       const input = insertDealSchema.parse({ ...req.body, organizationId: org.id });
       const deal = await storage.createDeal(input);
       
@@ -138,6 +169,12 @@ export function registerDealRoutes(app: Express): void {
       const dealId = Number(req.params.id);
       const existingDeal = await storage.getDeal(org.id, dealId);
       if (!existingDeal) return res.status(404).json({ message: "Deal not found" });
+
+      // Task 211: validate offer amounts before parsing
+      const offerValidationError = validateOfferAmounts(req.body);
+      if (offerValidationError) {
+        return res.status(400).json({ message: offerValidationError });
+      }
 
       const validated = updateDealSchema.parse(req.body);
 
