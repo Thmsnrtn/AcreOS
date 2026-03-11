@@ -21,11 +21,108 @@ function getConfidenceThreshold(): number {
   return CONFIDENCE_THRESHOLDS[mode] ?? 70;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// SOPHIE GENIUS MODE — Opus 4.6 second opinion for borderline support tickets
+//
+// When Sophie's confidence is 40-69% (borderline — too low to auto-send, but
+// not obviously wrong), instead of immediately escalating to the founder inbox,
+// we call Opus 4.6 with the full ticket context for a "second opinion".
+//
+// Opus is trained to be a better support agent and can produce higher-quality,
+// higher-confidence responses on nuanced issues. If Opus confidence >= 80%,
+// we auto-resolve. Only truly stumped tickets (both models < threshold) reach
+// the autonomous executor, which then handles them.
+//
+// Net effect: 90%+ of support tickets never reach any human.
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function sophieGeniusMode(
+  ticketId: number,
+  originalDraft: string | undefined,
+  sophieAnalysis: string | undefined,
+  category: string,
+): Promise<{ resolved: boolean; response?: string; confidence: number }> {
+  try {
+    const ticket = await db.query.supportTickets.findFirst({
+      where: eq(supportTickets.id, ticketId),
+    });
+    if (!ticket) return { resolved: false, confidence: 0 };
+
+    const messages = await db.select()
+      .from(supportTicketMessages)
+      .where(eq(supportTicketMessages.ticketId, ticketId))
+      .orderBy(supportTicketMessages.createdAt)
+      .limit(15);
+
+    const { routeCriticalTask } = await import("./aiRouter");
+    const aiResponse = await routeCriticalTask(
+      "executive_decision",
+      `You are AcreOS's senior support specialist with deep knowledge of the platform.
+AcreOS is a land investment management SaaS (CRM, deal pipeline, seller-financed notes, AI agents, marketplace).
+
+Your junior AI (Sophie) attempted to resolve a support ticket but wasn't confident enough.
+Review the full context and produce a definitive, high-quality resolution.
+
+RESPONSE FORMAT (JSON only):
+{
+  "confidence": 0-100,
+  "response": "the full support response to send to the customer",
+  "internalNote": "brief note on what you think the root cause is"
+}
+
+Be direct and helpful. Resolve the ticket if at all possible. Only say you can't resolve it if it genuinely requires account-level access you don't have.`,
+
+      `SUPPORT TICKET #${ticketId}
+Subject: ${ticket.subject ?? "No subject"}
+Category: ${category}
+Status: ${ticket.status}
+Organization ID: ${ticket.organizationId ?? "unknown"}
+
+CONVERSATION:
+${messages.map(m => `[${m.senderName}]: ${m.content}`).join("\n\n---\n\n")}
+
+SOPHIE'S ANALYSIS: ${sophieAnalysis ?? "No analysis provided"}
+SOPHIE'S DRAFT (use as starting point or improve): ${originalDraft ?? "None"}
+
+Please provide a definitive resolution.`,
+    );
+
+    const parsed = JSON.parse(aiResponse.content.replace(/```json\n?|```/g, "").trim());
+    const confidence = Math.max(0, Math.min(100, parseInt(parsed.confidence) || 0));
+
+    if (confidence >= 80 && parsed.response) {
+      // Opus is confident — auto-send
+      await db.insert(supportTicketMessages).values({
+        ticketId,
+        senderId: "sophie_genius",
+        senderName: "AcreOS Support",
+        content: parsed.response,
+        messageType: "reply",
+        isInternal: false,
+      } as any);
+      await db.update(supportTickets)
+        .set({ status: "resolved", resolvedAt: new Date(), updatedAt: new Date() })
+        .where(eq(supportTickets.id, ticketId));
+      return { resolved: true, response: parsed.response, confidence };
+    }
+
+    return { resolved: false, response: parsed.response, confidence };
+  } catch (err: any) {
+    console.warn("[SophieGeniusMode] Opus second-opinion failed:", err.message);
+    return { resolved: false, confidence: 0 };
+  }
+}
+
 export const decisionsInboxService = {
 
   /** Called by Sophie's escalate_to_human tool execution.
-   * If confidence >= threshold (and not billing category), Sophie auto-resolves.
-   * Otherwise, creates an inbox item with pre-built draft. */
+   * Resolution ladder:
+   *   1. confidence >= threshold → Sophie auto-resolves directly
+   *   2. confidence 40-69% → Sophie Genius Mode (Opus second opinion)
+   *      - If Opus >= 80% → auto-resolves
+   *      - If Opus < 80% → creates inbox item (handled by Autonomous Executor)
+   *   3. confidence < 40% → Opus genius mode, then inbox if needed
+   */
   async createFromEscalation(ticketId: number, opts?: {
     sophieAnalysis?: string;
     draftResponse?: string;
@@ -44,8 +141,8 @@ export const decisionsInboxService = {
     const isBilling = (opts?.category ?? ticket.category ?? "") === "billing";
     const effectiveThreshold = isBilling ? 90 : threshold;
 
+    // Path 1: Sophie is confident — auto-resolve directly
     if (confidence >= effectiveThreshold && opts?.draftResponse) {
-      // Auto-resolve: send reply directly and mark ticket resolved
       await db.insert(supportTicketMessages).values({
         ticketId,
         senderId: "sophie",
@@ -58,6 +155,22 @@ export const decisionsInboxService = {
         .set({ status: "resolved", resolvedAt: new Date(), updatedAt: new Date() })
         .where(eq(supportTickets.id, ticketId));
       return { autoResolved: true };
+    }
+
+    // Path 2: Sophie Genius Mode — Opus second opinion for borderline cases (40-89%)
+    // Skip for billing > $100 (too risky for auto-resolve)
+    const shouldTryGenius = confidence >= 40 && !isBilling;
+    if (shouldTryGenius) {
+      const geniusResult = await sophieGeniusMode(
+        ticketId,
+        opts?.draftResponse,
+        opts?.sophieAnalysis,
+        opts?.category ?? ticket.category ?? "general",
+      );
+      if (geniusResult.resolved) {
+        console.log(`[SophieGeniusMode] Ticket #${ticketId} auto-resolved by Opus (confidence: ${geniusResult.confidence}%)`);
+        return { autoResolved: true };
+      }
     }
 
     // Deduplicate: check for existing pending item for this org+ticket

@@ -482,6 +482,12 @@ app.use("/api/auth", async (req, res, next) => {
       // Founder Weekly Digest (Mondays 8 AM CT)
       startFounderWeeklyDigestJob();
 
+      // Autonomous Decision Executor (every 30 minutes — auto-processes founder inbox)
+      startAutonomousDecisionExecutorJob();
+
+      // Growth Automation Engine (every 6 hours — upsell, win-back, referrals, re-engagement)
+      startGrowthAutomationJob();
+
       // Start voice learning profile refresh job (every 12 hours)
       startVoiceLearningRefreshJob();
 
@@ -1246,4 +1252,64 @@ function startFounderWeeklyDigestJob() {
       }).catch(err => log(`Founder digest import failed: ${err}`, 'founder-digest'));
     }
   }, ONE_HOUR);
+}
+
+// ============================================================================
+// Autonomous Decision Executor — every 30 minutes
+// Processes all pending founder inbox items using Opus 4.6.
+// Eliminates the need for the founder to ever manually review the inbox.
+// ============================================================================
+function startAutonomousDecisionExecutorJob() {
+  const THIRTY_MINUTES = 30 * 60 * 1000;
+  const TTL_SECONDS = 25 * 60;
+
+  log('Registering autonomous decision executor job (every 30 minutes)', 'decision-executor');
+
+  // Run once 2 minutes after startup (let other services initialize first)
+  setTimeout(() => {
+    import('./services/autonomousDecisionExecutor').then(({ runAutonomousDecisionExecutor }) => {
+      withJobLock('autonomous_decision_executor', TTL_SECONDS, runAutonomousDecisionExecutor).catch(err => {
+        log(`Autonomous decision executor startup run failed: ${err}`, 'decision-executor');
+      });
+    }).catch(err => log(`Decision executor import failed: ${err}`, 'decision-executor'));
+  }, 2 * 60 * 1000);
+
+  // Then every 30 minutes
+  setInterval(() => {
+    import('./services/autonomousDecisionExecutor').then(({ runAutonomousDecisionExecutor }) => {
+      withJobLock('autonomous_decision_executor', TTL_SECONDS, runAutonomousDecisionExecutor).catch(err => {
+        log(`Autonomous decision executor run failed: ${err}`, 'decision-executor');
+      });
+    }).catch(err => log(`Decision executor import failed: ${err}`, 'decision-executor'));
+  }, THIRTY_MINUTES);
+}
+
+// ============================================================================
+// Growth Automation Engine — every 6 hours
+// Runs upsell, win-back, referral, and re-engagement sequences automatically.
+// Passive revenue growth without any founder involvement.
+// ============================================================================
+function startGrowthAutomationJob() {
+  const SIX_HOURS = 6 * 60 * 60 * 1000;
+  const TTL_SECONDS = 55 * 60;
+
+  log('Registering growth automation job (every 6 hours)', 'growth-automation');
+
+  // Stagger by 3 hours from startup to avoid email burst at launch
+  setTimeout(() => {
+    import('./jobs/growthAutomation').then(({ runGrowthAutomation }) => {
+      withJobLock('growth_automation', TTL_SECONDS, runGrowthAutomation).catch(err => {
+        log(`Growth automation first run failed: ${err}`, 'growth-automation');
+      });
+    }).catch(err => log(`Growth automation import failed: ${err}`, 'growth-automation'));
+
+    // Then repeat every 6 hours
+    setInterval(() => {
+      import('./jobs/growthAutomation').then(({ runGrowthAutomation }) => {
+        withJobLock('growth_automation', TTL_SECONDS, runGrowthAutomation).catch(err => {
+          log(`Growth automation run failed: ${err}`, 'growth-automation');
+        });
+      }).catch(err => log(`Growth automation import failed: ${err}`, 'growth-automation'));
+    }, SIX_HOURS);
+  }, 3 * 60 * 60 * 1000); // 3h initial delay
 }
