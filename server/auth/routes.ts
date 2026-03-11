@@ -387,6 +387,54 @@ export function registerAuthRoutes(app: Express): void {
       return res.status(500).json({ message: "Password reset failed" });
     }
   });
+
+  // ─── Change password (authenticated) ──────────────────────────────────────
+  // Task: Allows logged-in users to change their password from Settings → Security tab.
+  // Requires current password verification to prevent CSRF-based account takeover.
+  app.post("/api/auth/change-password", isAuthenticated, async (req, res) => {
+    const schema = z.object({
+      currentPassword: z.string().min(1, "Current password is required"),
+      newPassword: z.string().min(8, "New password must be at least 8 characters"),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: parsed.error.issues[0].message });
+    }
+
+    try {
+      const currentUser = req.user as any;
+      const [user] = await db
+        .select({ id: users.id, passwordHash: users.passwordHash })
+        .from(users)
+        .where(eq(users.id, currentUser.id))
+        .limit(1);
+
+      if (!user?.passwordHash) {
+        return res.status(400).json({ message: "Password change is not available for this account type" });
+      }
+
+      const isCorrect = await bcrypt.compare(parsed.data.currentPassword, user.passwordHash);
+      if (!isCorrect) {
+        return res.status(401).json({ message: "Current password is incorrect" });
+      }
+
+      const newHash = await bcrypt.hash(parsed.data.newPassword, 12);
+      await db.update(users).set({ passwordHash: newHash }).where(eq(users.id, user.id));
+
+      console.log(JSON.stringify({
+        level: "SECURITY",
+        event: "auth.password_changed",
+        userId: user.id,
+        ip: (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket.remoteAddress,
+        timestamp: new Date().toISOString(),
+      }));
+
+      return res.json({ message: "Password changed successfully" });
+    } catch (err) {
+      console.error("[auth] Change password error:", err);
+      return res.status(500).json({ message: "Failed to change password" });
+    }
+  });
 }
 
 // ============================================
