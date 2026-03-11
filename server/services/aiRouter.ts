@@ -84,6 +84,9 @@ export interface AITask {
 export interface AIRouterConfig {
   forceProvider?: AIProvider;
   forcePremium?: boolean;
+  forceModel?: string;   // pin to a specific OpenRouter model ID
+  useVision?: boolean;   // route to vision-capable model (gpt-4o via OpenRouter)
+  useReasoning?: boolean; // route to deep-reasoning model (DeepSeek R1)
   orgId?: number;
 }
 
@@ -131,11 +134,27 @@ const COMPLEX_TASKS = [
 // This includes Claude, GPT-4o, Gemini, DeepSeek — all via one API key.
 // ============================================
 
-// Fallback hardcoded models (used when DB config unavailable)
-const OPENROUTER_CHEAP_MODEL = "deepseek/deepseek-chat";
-const OPENROUTER_REASONING_MODEL = "deepseek/deepseek-reasoner";
-const OPENAI_PREMIUM_MODEL = "openai/gpt-4o";
-const OPENAI_FAST_MODEL = "openai/gpt-4o-mini";
+// ============================================
+// MODEL CATALOG — all accessed via OpenRouter
+// Ordered by cost tier within each quality band.
+// ============================================
+
+// Tier 1 — Micro (cheapest, fast, good for simple templated tasks)
+export const MODEL_SIMPLE    = "deepseek/deepseek-chat";           // $0.14/$0.28 per M tokens
+// Tier 2 — Balanced (good reasoning, moderate cost)
+export const MODEL_MODERATE  = "anthropic/claude-haiku-4-5";       // $0.80/$4.00 per M tokens
+// Tier 3 — Premium (best reasoning for complex land investment decisions)
+export const MODEL_COMPLEX   = "anthropic/claude-sonnet-4-5";      // $3.00/$15.00 per M tokens
+// Tier 4 — Vision/Docs (multimodal, used for satellite/document parsing)
+export const MODEL_VISION    = "openai/gpt-4o";                    // $2.50/$10.00 per M tokens
+// Tier 5 — Deep reasoning (step-by-step for valuation/financial models)
+export const MODEL_REASONING = "deepseek/deepseek-reasoner";       // $0.55/$2.19 per M tokens
+
+// Legacy aliases kept for backward compat
+const OPENROUTER_CHEAP_MODEL   = MODEL_SIMPLE;
+const OPENROUTER_REASONING_MODEL = MODEL_REASONING;
+const OPENAI_PREMIUM_MODEL     = MODEL_COMPLEX;
+const OPENAI_FAST_MODEL        = MODEL_MODERATE;
 
 let openrouterClient: OpenAI | null = null;
 let openaiClient: OpenAI | null = null;  // Kept for backward compat but routes to OpenRouter
@@ -340,13 +359,23 @@ export function selectProviderAndModel(
     return { provider: AIProvider.OPENROUTER, model: dbModel, client: openrouter };
   }
 
-  // Force OpenAI direct (legacy compat / specific use case)
+  // Pin to a specific model (useful for vision / reasoning overrides)
+  if (config.forceModel && openrouter) {
+    return { provider: AIProvider.OPENROUTER, model: config.forceModel, client: openrouter };
+  }
+  if (config.useVision && openrouter) {
+    return { provider: AIProvider.OPENROUTER, model: MODEL_VISION, client: openrouter };
+  }
+  if (config.useReasoning && openrouter) {
+    return { provider: AIProvider.OPENROUTER, model: MODEL_REASONING, client: openrouter };
+  }
+
+  // forcePremium → always use Claude Sonnet via OpenRouter (best quality)
   if (config.forceProvider === AIProvider.OPENAI || config.forcePremium) {
     if (openrouter) {
-      // Route through OpenRouter even for OpenAI models
       return {
         provider: AIProvider.OPENROUTER,
-        model: complexity === TaskComplexity.COMPLEX ? OPENAI_PREMIUM_MODEL : OPENAI_FAST_MODEL,
+        model: complexity === TaskComplexity.COMPLEX ? MODEL_COMPLEX : MODEL_MODERATE,
         client: openrouter,
       };
     }
@@ -360,13 +389,16 @@ export function selectProviderAndModel(
     throw new Error("No AI provider available");
   }
 
-  // Default: route through OpenRouter with complexity-based model selection
+  // Default: route through OpenRouter with complexity-based model selection.
+  // SIMPLE   → DeepSeek Chat      (cheapest, fast email drafts / lookups)
+  // MODERATE → Claude Haiku 4.5   (balanced reasoning for analysis)
+  // COMPLEX  → Claude Sonnet 4.5  (best quality for deal/legal/valuation tasks)
   if (openrouter) {
     const model = complexity === TaskComplexity.COMPLEX
-      ? OPENROUTER_REASONING_MODEL
-      : complexity === TaskComplexity.SIMPLE
-      ? OPENROUTER_CHEAP_MODEL
-      : OPENROUTER_CHEAP_MODEL;
+      ? MODEL_COMPLEX
+      : complexity === TaskComplexity.MODERATE
+      ? MODEL_MODERATE
+      : MODEL_SIMPLE;
     return { provider: AIProvider.OPENROUTER, model, client: openrouter };
   }
 
@@ -416,10 +448,11 @@ export interface AIResponse {
 }
 
 const COST_PER_MILLION_TOKENS: Record<string, { input: number; output: number }> = {
-  [OPENROUTER_CHEAP_MODEL]: { input: 0.14, output: 0.28 },
-  [OPENROUTER_REASONING_MODEL]: { input: 0.55, output: 2.19 },
-  [OPENAI_PREMIUM_MODEL]: { input: 2.50, output: 10.00 },
-  [OPENAI_FAST_MODEL]: { input: 0.15, output: 0.60 },
+  [MODEL_SIMPLE]:    { input: 0.14,  output: 0.28  }, // DeepSeek Chat
+  [MODEL_MODERATE]:  { input: 0.80,  output: 4.00  }, // Claude Haiku 4.5
+  [MODEL_COMPLEX]:   { input: 3.00,  output: 15.00 }, // Claude Sonnet 4.5
+  [MODEL_VISION]:    { input: 2.50,  output: 10.00 }, // GPT-4o
+  [MODEL_REASONING]: { input: 0.55,  output: 2.19  }, // DeepSeek Reasoner
 };
 
 function estimateCost(model: string, promptTokens: number, completionTokens: number): number {
@@ -598,6 +631,39 @@ export async function generateWithAutoRouting(
     complexity,
     messages,
   }, config);
+}
+
+/** Route a task that requires vision (e.g. satellite imagery, document parsing). */
+export async function routeVisionTask(
+  systemPrompt: string,
+  userPrompt: string,
+  config: AIRouterConfig = {}
+): Promise<AIResponse> {
+  return routeAITask({
+    taskType: "vision_analysis",
+    complexity: TaskComplexity.COMPLEX,
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ],
+  }, { ...config, useVision: true });
+}
+
+/** Route a task that requires deep chain-of-thought reasoning. */
+export async function routeReasoningTask(
+  taskType: string,
+  systemPrompt: string,
+  userPrompt: string,
+  config: AIRouterConfig = {}
+): Promise<AIResponse> {
+  return routeAITask({
+    taskType,
+    complexity: TaskComplexity.COMPLEX,
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ],
+  }, { ...config, useReasoning: true });
 }
 
 export function getAvailableProviders(): AIProvider[] {

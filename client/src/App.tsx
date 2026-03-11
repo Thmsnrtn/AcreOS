@@ -88,6 +88,7 @@ const AvmBulkPage = React.lazy(() => import("@/pages/avm-bulk"));
 const AcquisitionRadarPage = React.lazy(() => import("@/pages/acquisition-radar"));
 const NegotiationCopilotPage = React.lazy(() => import("@/pages/negotiation-copilot"));
 const DealHunterPage = React.lazy(() => import("@/pages/deal-hunter"));
+const AgentCommandCenterPage = React.lazy(() => import("@/pages/agent-command-center"));
 const VisionAIPage = React.lazy(() => import("@/pages/vision-ai"));
 const LandCreditPage = React.lazy(() => import("@/pages/land-credit"));
 const MarketIntelligencePage = React.lazy(() => import("@/pages/market-intelligence"));
@@ -319,8 +320,9 @@ function Router() {
         <Route path="/document-intelligence">{() => <ProtectedRoute component={DocumentIntelligencePage} />}</Route>
         <Route path="/tax-researcher">{() => <ProtectedRoute component={TaxResearcherPage} />}</Route>
         <Route path="/command-center">{() => <ProtectedRoute component={CommandCenterPage} />}</Route>
-        <Route path="/agents">{() => <Redirect to="/command-center" />}</Route>
-        <Route path="/ai-team">{() => <Redirect to="/command-center" />}</Route>
+        <Route path="/agent-command-center">{() => <ProtectedRoute component={AgentCommandCenterPage} />}</Route>
+        <Route path="/agents">{() => <Redirect to="/agent-command-center" />}</Route>
+        <Route path="/ai-team">{() => <Redirect to="/agent-command-center" />}</Route>
 
         {/* Operations */}
         <Route path="/maps">{() => <ProtectedRoute component={MapsPage} />}</Route>

@@ -229,6 +229,7 @@ const NAV_MODULES: NavModule[] = [
       { label: "Regulatory", icon: ShieldCheck, href: "/regulatory-intel", description: "State regulatory profiles and alerts" },
       { label: "Doc Intel", icon: FileSearch, href: "/document-intelligence", description: "AI contract parsing" },
       { label: "AI Assistant", icon: Bot, href: "/command-center", description: "AI assistants and automation" },
+      { label: "Agent Hub", icon: Brain, href: "/agent-command-center", description: "Autonomous agent control center" },
       { label: "Academy", icon: GraduationCap, href: "/academy", description: "Land investment education" },
     ],
   },

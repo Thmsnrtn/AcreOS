@@ -119,6 +119,7 @@ import { registerBorrowerRoutes } from "./routes-borrower";
 import { registerAdminRoutes } from "./routes-admin";
 import { registerEliteFeatureRoutes } from "./routes-elite-features";
 import { registerCoreAIRoutes } from "./routes-core-ai";
+import { registerAutonomousAgentRoutes } from "./routes-autonomous-agent";
 import { registerIntegrationRoutes } from "./routes-integrations";
 import { registerCRMExtrasRoutes } from "./routes-crm-extras";
 import { registerImportExportRoutes } from "./routes-import-export";
@@ -466,6 +467,9 @@ export async function registerRoutes(
 
   // Register AI Operations (Router-based)
   registerAIOperationsRoutes(app);
+
+  // Register Autonomous Agent routes
+  registerAutonomousAgentRoutes(app);
 
   // ─── Elite Features (Tax Escrow, E-Signing, DD Engine, Meta Ads, Actum, Syndication, Bookkeeping, VA) ──
   await registerEliteFeatureRoutes(app);

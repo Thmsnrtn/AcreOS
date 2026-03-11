@@ -454,7 +454,12 @@ app.use("/api/auth", async (req, res, next) => {
       
       // Start sequence processor background job (every 60 seconds)
       startSequenceProcessorJob();
-      
+
+      // Start autonomous agent task processor (every 30 seconds)
+      import('./jobs/autonomousTaskProcessor').then(({ startAutonomousTaskProcessor }) => {
+        startAutonomousTaskProcessor();
+      }).catch(err => console.warn('[startup] autonomousTaskProcessor failed to start:', err));
+
       // Start scheduled task runner background job (every minute)
       startScheduledTaskRunnerJob();
       
