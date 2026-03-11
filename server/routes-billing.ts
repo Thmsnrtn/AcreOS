@@ -34,7 +34,7 @@ export function registerBillingRoutes(app: Express): void {
     try {
       const { creditService } = await import("./services/credits");
       const org = (req as any).organization;
-      const limit = parseInt(req.query.limit as string) || 50;
+      const limit = Math.min(100, parseInt(req.query.limit as string) || 50);
       const transactions = await creditService.getTransactionHistory(org.id, limit);
       res.json(transactions);
     } catch (error: any) {
@@ -58,7 +58,7 @@ export function registerBillingRoutes(app: Express): void {
     try {
       const { usageMeteringService } = await import("./services/credits");
       const org = (req as any).organization;
-      const limit = parseInt(req.query.limit as string) || 50;
+      const limit = Math.min(100, parseInt(req.query.limit as string) || 50);
       const records = await usageMeteringService.getRecentUsage(org.id, limit);
       res.json(records);
     } catch (error: any) {

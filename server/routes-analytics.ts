@@ -323,7 +323,7 @@ export function registerAnalyticsRoutes(app: Express): void {
     try {
       const org = (req as any).organization;
       const ruleId = req.query.ruleId ? parseInt(req.query.ruleId as string) : undefined;
-      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+      const limit = Math.min(100, req.query.limit ? parseInt(req.query.limit as string) : 50);
       
       const executions = await storage.getAutomationExecutions(org.id, ruleId, limit);
       res.json(executions);

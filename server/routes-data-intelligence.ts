@@ -466,7 +466,7 @@ router.get("/lead-intelligence/batch", async (req: Request, res: Response) => {
   try {
     const { batchScoreLeadsForOrg } = await import("./services/leadIntelligenceEngine");
     const org = getOrg(req);
-    const limit = Math.min(200, parseInt(String(req.query.limit || "100"), 10));
+    const limit = Math.min(100, parseInt(String(req.query.limit || "100"), 10));
     const result = await batchScoreLeadsForOrg(org?.id ?? "demo", limit);
     res.json(result);
   } catch (err: any) {

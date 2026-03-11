@@ -255,7 +255,7 @@ export function registerImportExportRoutes(app: Express): void {
       if (req.query.userId) filters.userId = req.query.userId as string;
       if (req.query.startDate) filters.startDate = new Date(req.query.startDate as string);
       if (req.query.endDate) filters.endDate = new Date(req.query.endDate as string);
-      if (req.query.limit) filters.limit = parseInt(req.query.limit as string);
+      if (req.query.limit) filters.limit = Math.min(100, parseInt(req.query.limit as string));
       if (req.query.offset) filters.offset = parseInt(req.query.offset as string);
       
       const [logs, count] = await Promise.all([

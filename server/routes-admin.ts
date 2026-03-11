@@ -829,7 +829,7 @@ export function registerAdminRoutes(app: Express): void {
 
   api.get("/api/admin/subscription-events", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+      const limit = Math.min(100, req.query.limit ? parseInt(req.query.limit as string) : 50);
       const events = await storage.getSubscriptionEvents({ limit });
       res.json(events);
     } catch (err: any) {
@@ -2066,7 +2066,7 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const category = req.query.category as string | undefined;
       const state = req.query.state as string | undefined;
-      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+      const limit = Math.min(100, req.query.limit ? parseInt(req.query.limit as string) : 50);
 
       const { dataSourceBroker } = await import('./services/data-source-broker');
       const layers = await dataSourceBroker.getAvailableLayersForMap({ category, state, limit });
@@ -2460,7 +2460,7 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const org = (req as any).organization;
       const { proactiveMonitor } = await import("./services/proactiveMonitor");
-      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+      const limit = Math.min(100, req.query.limit ? parseInt(req.query.limit as string) : 50);
       const alerts = await proactiveMonitor.getAllAlerts(org.id, limit);
       res.json({ alerts, count: alerts.length });
     } catch (err: any) {

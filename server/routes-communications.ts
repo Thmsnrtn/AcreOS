@@ -362,7 +362,7 @@ export function registerCommunicationRoutes(app: Express): void {
       const isRead = req.query.isRead !== undefined ? req.query.isRead === 'true' : undefined;
       const isArchived = req.query.isArchived !== undefined ? req.query.isArchived === 'true' : undefined;
       const isStarred = req.query.isStarred !== undefined ? req.query.isStarred === 'true' : undefined;
-      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+      const limit = Math.min(100, req.query.limit ? parseInt(req.query.limit as string) : 50);
       const offset = req.query.offset ? parseInt(req.query.offset as string) : 0;
       
       let messages = await storage.getInboxMessages(org.id, { isRead, isArchived, limit, offset });
@@ -500,7 +500,7 @@ export function registerCommunicationRoutes(app: Express): void {
     try {
       const org = (req as any).organization;
       const entityType = req.query.entityType as string | undefined;
-      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+      const limit = Math.min(100, req.query.limit ? parseInt(req.query.limit as string) : 50);
       const offset = req.query.offset ? parseInt(req.query.offset as string) : 0;
 
       const activities = await storage.getActivityFeed(org.id, { entityType, limit, offset });
@@ -797,7 +797,7 @@ export function registerCommunicationRoutes(app: Express): void {
       if (!existing) {
         return res.status(404).json({ message: "Workflow not found" });
       }
-      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+      const limit = Math.min(100, req.query.limit ? parseInt(req.query.limit as string) : 50);
       const runs = await storage.getWorkflowRuns(id, limit);
       res.json(runs);
     } catch (error: any) {
