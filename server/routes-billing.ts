@@ -5,6 +5,7 @@ import { SUBSCRIPTION_TIERS } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { getAllUsageLimits, type SubscriptionTier, TIER_LIMITS } from "./services/usageLimits";
+import { idempotencyMiddleware } from "./middleware/idempotency";
 
 const logger = {
   info: (msg: string, meta?: Record<string, any>) => console.log(JSON.stringify({ level: 'INFO', timestamp: new Date().toISOString(), message: msg, ...meta })),
@@ -113,7 +114,8 @@ export function registerBillingRoutes(app: Express): void {
     }
   });
   
-  api.post("/api/credits/purchase", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  // T6: Idempotency on payment mutations to prevent duplicate charges
+  api.post("/api/credits/purchase", isAuthenticated, getOrCreateOrg, idempotencyMiddleware, async (req, res) => {
     try {
       const { stripeService } = await import("./stripeService");
       const { CREDIT_PACKS } = await import("@shared/schema");
@@ -232,7 +234,7 @@ export function registerBillingRoutes(app: Express): void {
     }
   });
   
-  api.post("/api/stripe/checkout", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/stripe/checkout", isAuthenticated, getOrCreateOrg, idempotencyMiddleware, async (req, res) => {
     try {
       const { stripeService } = await import("./stripeService");
       const org = (req as any).organization;
