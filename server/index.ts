@@ -12,7 +12,7 @@ import { WebhookHandlers } from "./webhookHandlers";
 import { leadNurturerService } from "./services/leadNurturer";
 import { db, storage } from "./storage";
 import { eq, sql, lt } from "drizzle-orm";
-import { organizations, jobHealthLogs } from "@shared/schema";
+import { organizations, jobHealthLogs, agentEvents } from "@shared/schema";
 import { logger, requestLoggingMiddleware, errorLoggingMiddleware } from "./utils/logger";
 import { securityHeaders, corsMiddleware, requestTimeout, validateContentType, sanitizeQueryParams } from "./middleware/security";
 import { csrfProtection } from "./middleware/csrf";
@@ -524,6 +524,19 @@ app.use("/api/auth", async (req, res, next) => {
       // Run once at startup, then daily
       runJobHealthCleanup();
       setInterval(runJobHealthCleanup, 24 * 60 * 60 * 1000);
+
+      // Task #data-retention: Agent events log cleanup (delete rows older than 90 days)
+      // agent_events accumulates AI action logs — keep 90 days for audit, discard older rows.
+      const runAgentEventsCleanup = async () => {
+        try {
+          const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+          await db.delete(agentEvents).where(lt(agentEvents.createdAt, cutoff));
+        } catch (err) {
+          log(`Agent events cleanup failed: ${err}`, "agent-events-cleanup");
+        }
+      };
+      runAgentEventsCleanup();
+      setInterval(runAgentEventsCleanup, 24 * 60 * 60 * 1000);
 
       // Task #201: Graceful shutdown — drain open connections and checkpoint jobs
       // Fly.io sends SIGTERM before replacing an instance. We close the HTTP server

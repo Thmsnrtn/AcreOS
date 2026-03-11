@@ -180,7 +180,7 @@ export const fullTextSearch = {
         });
       }
     } catch (err: any) {
-      // tsvector not yet indexed — fall back to ILIKE
+      // GIN indexes exist (migration 0010); fall back to ILIKE on unexpected error
       return fullTextSearch.fallbackSearch(orgId, q, limit);
     }
 
@@ -190,7 +190,7 @@ export const fullTextSearch = {
   },
 
   /**
-   * ILIKE fallback — used when tsvector columns are not yet indexed.
+   * ILIKE fallback — used when a GIN-indexed tsvector query fails unexpectedly.
    */
   async fallbackSearch(
     orgId: number,
