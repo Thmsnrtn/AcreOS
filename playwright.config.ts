@@ -32,6 +32,19 @@ export default defineConfig({
       dependencies: ["setup"],
       testIgnore: /.*\.setup\.ts/,
     },
+
+    // Task #254: Mobile viewport test — ensures responsive layout works on phones
+    {
+      name: "mobile-chrome",
+      use: {
+        ...devices["Pixel 5"],
+        storageState: "tests/e2e/.auth/user.json",
+      },
+      dependencies: ["setup"],
+      testIgnore: /.*\.setup\.ts/,
+      // Only run navigation and accessibility tests on mobile to keep CI fast
+      testMatch: /.*\/(navigation|accessibility)\.spec\.ts/,
+    },
   ],
   // Start the dev server automatically in CI
   webServer: process.env.CI
