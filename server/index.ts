@@ -147,6 +147,10 @@ import("./middleware/piiMasking").then(({ installConsoleInterceptor }) => {
 // F-A05-3: Remove x-powered-by header
 app.disable("x-powered-by");
 
+// Task #30: Trust first proxy hop — required on Fly.io so req.ip reflects the
+// actual client IP (for rate limiting and audit logging), not the Fly proxy.
+app.set("trust proxy", 1);
+
 app.use(compressionMiddleware); // Task #201: gzip/brotli response compression
 app.use(securityHeaders);
 app.use(corsMiddleware);
