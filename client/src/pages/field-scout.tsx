@@ -73,6 +73,7 @@ function useGPS() {
   const [coords, setCoords] = useState<GeolocationCoordinates | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const watchIdRef = useRef<number | null>(null);
 
   const getCurrentPosition = useCallback(() => {
     if (!navigator.geolocation) {
@@ -80,7 +81,12 @@ function useGPS() {
       return;
     }
     setLoading(true);
-    navigator.geolocation.getCurrentPosition(
+    // Clear any existing watch
+    if (watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+    }
+    // Use watchPosition for continuous high-accuracy updates
+    watchIdRef.current = navigator.geolocation.watchPosition(
       (position) => {
         setCoords(position.coords);
         setLoading(false);
@@ -90,11 +96,97 @@ function useGPS() {
         setError(err.message);
         setLoading(false);
       },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 5000,        // Cache for 5s (reduced for field accuracy)
+        // @ts-ignore — desiredAccuracy is non-standard but supported on some devices
+        desiredAccuracy: 5,      // 5 metres target
+      }
     );
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+      }
+    };
+  }, []);
+
   return { coords, error, loading, getCurrentPosition };
+}
+
+// ---------------------------------------------------------------------------
+// Device orientation / compass bearing hook
+// ---------------------------------------------------------------------------
+
+interface CompassData {
+  heading: number | null;   // 0–360°, true north
+  accuracy: number | null;  // degrees
+  supported: boolean;
+}
+
+function useCompass(): CompassData {
+  const [data, setData] = useState<CompassData>({
+    heading: null,
+    accuracy: null,
+    supported: false,
+  });
+
+  useEffect(() => {
+    // iOS 13+ requires permission for DeviceOrientationEvent
+    const handler = (e: DeviceOrientationEvent) => {
+      // @ts-ignore — webkitCompassHeading is iOS-specific
+      const heading = (e as any).webkitCompassHeading ?? (e.alpha !== null ? (360 - e.alpha) : null);
+      // @ts-ignore
+      const accuracy = (e as any).webkitCompassAccuracy ?? null;
+      if (heading !== null) {
+        setData({ heading: Math.round(heading * 10) / 10, accuracy, supported: true });
+      }
+    };
+
+    if (typeof DeviceOrientationEvent !== "undefined") {
+      // Request permission on iOS 13+
+      const req = (DeviceOrientationEvent as any).requestPermission;
+      if (typeof req === "function") {
+        req()
+          .then((state: string) => {
+            if (state === "granted") {
+              window.addEventListener("deviceorientation", handler as any, true);
+              setData((d) => ({ ...d, supported: true }));
+            }
+          })
+          .catch(() => { /* permission denied */ });
+      } else {
+        window.addEventListener("deviceorientation", handler as any, true);
+        setData((d) => ({ ...d, supported: true }));
+      }
+    }
+
+    return () => {
+      window.removeEventListener("deviceorientation", handler as any, true);
+    };
+  }, []);
+
+  return data;
+}
+
+// ---------------------------------------------------------------------------
+// Bearing + distance calculator between two GPS points
+// ---------------------------------------------------------------------------
+
+function getBearingLabel(deg: number): string {
+  const dirs = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
+  return dirs[Math.round(((deg % 360) + 360) % 360 / 22.5) % 16];
+}
+
+function getGPSAccuracyLabel(accuracy: number): { label: string; color: string } {
+  if (accuracy <= 3) return { label: "Excellent (±3m)", color: "text-emerald-600" };
+  if (accuracy <= 10) return { label: "Good (±10m)", color: "text-green-500" };
+  if (accuracy <= 25) return { label: "Fair (±25m)", color: "text-amber-500" };
+  if (accuracy <= 100) return { label: "Poor (±100m)", color: "text-orange-500" };
+  return { label: "Very Poor", color: "text-red-500" };
 }
 
 // ---------------------------------------------------------------------------
@@ -129,6 +221,7 @@ export default function FieldScout() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { coords, error: gpsError, loading: gpsLoading, getCurrentPosition } = useGPS();
+  const compass = useCompass();
 
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [offlineQueue, setOfflineQueue] = useState<OfflineAction[]>(getOfflineQueue());
@@ -375,10 +468,26 @@ export default function FieldScout() {
       l.apn?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // Format GPS display
+  // Format GPS display — degrees-minutes-seconds
+  function toDMS(decimal: number, isLat: boolean): string {
+    const d = Math.floor(Math.abs(decimal));
+    const m = Math.floor((Math.abs(decimal) - d) * 60);
+    const s = ((Math.abs(decimal) - d) * 60 - m) * 60;
+    const dir = isLat ? (decimal >= 0 ? "N" : "S") : (decimal >= 0 ? "E" : "W");
+    return `${d}°${m}'${s.toFixed(1)}"${dir}`;
+  }
+
   const gpsDisplay = coords
-    ? `${coords.latitude.toFixed(5)}, ${coords.longitude.toFixed(5)}`
+    ? `${coords.latitude.toFixed(6)}, ${coords.longitude.toFixed(6)}`
     : "No GPS";
+
+  const gpsDMSDisplay = coords
+    ? `${toDMS(coords.latitude, true)} ${toDMS(coords.longitude, false)}`
+    : null;
+
+  const gpsAccuracyInfo = coords?.accuracy
+    ? getGPSAccuracyLabel(coords.accuracy)
+    : null;
 
   return (
     <div className="min-h-screen bg-gray-950 text-white pb-20">
@@ -386,12 +495,39 @@ export default function FieldScout() {
       <div className="sticky top-0 z-50 bg-gray-900 border-b border-gray-800 px-4 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center">
-              <Navigation className="w-4 h-4 text-white" />
+            {/* Compass rose mini */}
+            <div className="relative w-9 h-9 shrink-0">
+              <div
+                className="w-full h-full rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center"
+                style={{
+                  transform: compass.heading !== null
+                    ? `rotate(${-compass.heading}deg)`
+                    : undefined,
+                  transition: "transform 0.3s ease",
+                }}
+              >
+                <svg viewBox="0 0 36 36" className="w-full h-full">
+                  <polygon points="18,4 15,18 21,18" fill="#ef4444" />
+                  <polygon points="18,32 15,18 21,18" fill="rgba(255,255,255,0.5)" />
+                  <circle cx="18" cy="18" r="2.5" fill="white" />
+                </svg>
+              </div>
+              {compass.heading !== null && (
+                <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[8px] font-bold text-emerald-400 bg-gray-900 px-0.5 rounded">
+                  {getBearingLabel(compass.heading)}
+                </div>
+              )}
             </div>
             <div>
               <div className="font-bold text-sm">Field Scout</div>
-              <div className="text-xs text-gray-400">{gpsDisplay}</div>
+              <div className="text-[10px] text-gray-400 font-mono">
+                {gpsDMSDisplay ?? gpsDisplay}
+              </div>
+              {gpsAccuracyInfo && (
+                <div className={`text-[9px] ${gpsAccuracyInfo.color}`}>
+                  {gpsAccuracyInfo.label}
+                </div>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-2">

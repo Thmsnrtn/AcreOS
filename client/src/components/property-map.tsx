@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState, useCallback } from "react";
 import mapboxgl from "mapbox-gl";
-import { MapPin, Maximize2, Minimize2, Mountain, Satellite, Map as MapIcon, Play, Pause, Layers, ChevronDown, ChevronUp, Loader2, Ruler, Square, Camera, Download, X, Clipboard, MapPinned, BarChart3, CircleDot, Database, Box, TreePine, Tractor, Sun } from "lucide-react";
+import { MapPin, Maximize2, Minimize2, Mountain, Satellite, Map as MapIcon, Play, Pause, Layers, ChevronDown, ChevronUp, Loader2, Ruler, Square, Camera, Download, X, Clipboard, MapPinned, BarChart3, CircleDot, Database, Box, TreePine, Tractor, Sun, Clock, Wind, Compass, TrendingUp, TrendingDown, Minus as MinusIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -137,6 +137,455 @@ function formatArea(sqMeters: number, units: MeasurementUnits): string {
   return `${sqFeet.toFixed(0)} sq ft`;
 }
 
+// ── Solar Geometry Engine ─────────────────────────────────────────────────────
+// Implements the Spencer (1971) solar position algorithm with equation-of-time
+// correction for accurate sun azimuth/altitude at any lat/lng/time.
+
+interface SolarPosition {
+  azimuth: number;   // 0–360° compass bearing (0=N, 90=E, 180=S, 270=W)
+  altitude: number;  // –90 to 90° (0=horizon, 90=zenith, negative=below horizon)
+  sunrise: number;   // fractional hours in approximate local solar time
+  sunset: number;
+  isDaytime: boolean;
+  phase: "night" | "astronomical" | "nautical" | "civil" | "golden" | "day";
+}
+
+function calculateSolarPosition(lat: number, lng: number, hourOfDay: number): SolarPosition {
+  const d2r = Math.PI / 180;
+  const r2d = 180 / Math.PI;
+
+  const now = new Date();
+  const dayOfYear = Math.floor(
+    (now.getTime() - new Date(now.getFullYear(), 0, 0).getTime()) / (1000 * 60 * 60 * 24)
+  );
+
+  // Solar declination via Spencer (1971)
+  const B = (2 * Math.PI * (dayOfYear - 1)) / 365;
+  const declinationRad =
+    (0.006918 - 0.399912 * Math.cos(B) + 0.070257 * Math.sin(B) -
+      0.006758 * Math.cos(2 * B) + 0.000907 * Math.sin(2 * B) -
+      0.002697 * Math.cos(3 * B) + 0.00148 * Math.sin(3 * B));
+
+  // Equation of time (minutes)
+  const eot =
+    229.18 * (0.000075 + 0.001868 * Math.cos(B) - 0.032077 * Math.sin(B) -
+      0.014615 * Math.cos(2 * B) - 0.04089 * Math.sin(2 * B));
+
+  // Timezone offset from longitude (approximate)
+  const tzOffset = Math.round(lng / 15);
+  const solarNoon = 12 - (lng - tzOffset * 15) / 15 - eot / 60;
+
+  const hourAngleRad = (hourOfDay - solarNoon) * 15 * d2r;
+  const latRad = lat * d2r;
+
+  // Solar altitude (elevation)
+  const sinAlt =
+    Math.sin(latRad) * Math.sin(declinationRad) +
+    Math.cos(latRad) * Math.cos(declinationRad) * Math.cos(hourAngleRad);
+  const altitude = Math.asin(Math.max(-1, Math.min(1, sinAlt))) * r2d;
+
+  // Solar azimuth (compass bearing, 0=N, clockwise)
+  const cosAz =
+    (Math.sin(declinationRad) - Math.sin(latRad) * sinAlt) /
+    (Math.cos(latRad) * Math.cos(Math.asin(sinAlt) || 0.0001));
+  let azimuth = Math.acos(Math.max(-1, Math.min(1, cosAz))) * r2d;
+  if (hourAngleRad > 0) azimuth = 360 - azimuth;
+  azimuth = (azimuth + 360) % 360;
+
+  // Sunrise / sunset
+  const cosHasr = -Math.tan(latRad) * Math.tan(declinationRad);
+  let sunrise = 6, sunset = 18;
+  if (Math.abs(cosHasr) <= 1) {
+    const hasr = (Math.acos(cosHasr) * r2d) / 15;
+    sunrise = solarNoon - hasr;
+    sunset = solarNoon + hasr;
+  }
+
+  // Sun phase
+  let phase: SolarPosition["phase"] = "night";
+  if (altitude > 0) phase = altitude < 6 ? "civil" : altitude < 12 ? "golden" : "day";
+  else if (altitude > -6) phase = "civil";
+  else if (altitude > -12) phase = "nautical";
+  else if (altitude > -18) phase = "astronomical";
+
+  return { azimuth, altitude, sunrise, sunset, isDaytime: altitude > 0, phase };
+}
+
+function formatSolarTime(hours: number): string {
+  const totalMins = Math.max(0, hours) * 60;
+  const h = Math.floor(totalMins / 60) % 24;
+  const m = Math.round(totalMins % 60);
+  const period = h < 12 ? "AM" : "PM";
+  const displayH = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${displayH}:${m.toString().padStart(2, "0")} ${period}`;
+}
+
+function getSkyGradientClass(phase: SolarPosition["phase"]): string {
+  switch (phase) {
+    case "night": return "from-slate-950 via-indigo-950 to-slate-900";
+    case "astronomical": return "from-slate-900 via-indigo-900 to-slate-800";
+    case "nautical": return "from-indigo-900 via-blue-900 to-indigo-800";
+    case "civil": return "from-orange-900 via-rose-800 to-amber-700";
+    case "golden": return "from-amber-600 via-orange-500 to-yellow-400";
+    case "day": return "from-sky-400 via-blue-400 to-sky-300";
+  }
+}
+
+// ── Elevation Profile ─────────────────────────────────────────────────────────
+
+interface ElevationPoint {
+  distance: number; // metres from start
+  elevation: number; // metres above sea level (from Mapbox terrain)
+}
+
+function sampleElevationAlongLine(
+  mapRef: mapboxgl.Map,
+  points: MeasurementPoint[],
+  samples = 60
+): ElevationPoint[] {
+  if (points.length < 2) return [];
+  const totalDist = calculateDistance(points);
+  const result: ElevationPoint[] = [];
+
+  for (let i = 0; i <= samples; i++) {
+    const t = i / samples;
+    const targetDist = t * totalDist;
+    let cumDist = 0;
+    let segStart = points[0];
+    let segEnd = points[points.length - 1];
+    let segT = t;
+
+    if (points.length > 2) {
+      for (let j = 0; j < points.length - 1; j++) {
+        const segDist = calculateDistance([points[j], points[j + 1]]);
+        if (cumDist + segDist >= targetDist) {
+          segStart = points[j];
+          segEnd = points[j + 1];
+          segT = segDist > 0 ? (targetDist - cumDist) / segDist : 0;
+          break;
+        }
+        cumDist += segDist;
+      }
+    }
+
+    const lng = segStart.lng + (segEnd.lng - segStart.lng) * segT;
+    const lat = segStart.lat + (segEnd.lat - segStart.lat) * segT;
+    const elevation = mapRef.queryTerrainElevation([lng, lat]) ?? 0;
+    result.push({ distance: t * totalDist, elevation });
+  }
+  return result;
+}
+
+function ElevationProfileOverlay({
+  points,
+  totalDistance,
+  units,
+  onClose,
+}: {
+  points: ElevationPoint[];
+  totalDistance: number;
+  units: MeasurementUnits;
+  onClose: () => void;
+}) {
+  if (points.length < 2) return null;
+  const elevations = points.map((p) => p.elevation);
+  const minElev = Math.min(...elevations);
+  const maxElev = Math.max(...elevations);
+  const elevRange = maxElev - minElev;
+
+  // Calculate cumulative gain/loss
+  let gainM = 0, lossM = 0;
+  for (let i = 1; i < elevations.length; i++) {
+    const diff = elevations[i] - elevations[i - 1];
+    if (diff > 0) gainM += diff;
+    else lossM += Math.abs(diff);
+  }
+
+  const toDisplay = (m: number) =>
+    units === "metric" ? `${m.toFixed(0)}m` : `${(m * 3.28084).toFixed(0)}ft`;
+
+  const W = 260, H = 56;
+  const pathData = points
+    .map((p, i) => {
+      const x = (p.distance / (totalDistance || 1)) * W;
+      const y =
+        H - ((p.elevation - minElev) / (elevRange || 1)) * (H - 8) - 4;
+      return `${i === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
+    })
+    .join(" ");
+  const areaPath = `${pathData} L ${W} ${H} L 0 ${H} Z`;
+
+  return (
+    <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-10 bg-background/97 backdrop-blur-md rounded-xl shadow-2xl border border-border/60 p-3 w-80">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-1.5">
+          <Mountain className="h-3.5 w-3.5 text-amber-500" />
+          <span className="text-xs font-semibold">Elevation Profile</span>
+          <span className="text-[10px] text-muted-foreground">
+            ({formatDistance(totalDistance, units)})
+          </span>
+        </div>
+        <button
+          onClick={onClose}
+          className="text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      <svg width={W} height={H} className="w-full overflow-visible mb-2">
+        <defs>
+          <linearGradient id="elev-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#22c55e" stopOpacity="0.7" />
+            <stop offset="100%" stopColor="#22c55e" stopOpacity="0.05" />
+          </linearGradient>
+        </defs>
+        {/* Zero line */}
+        {minElev <= 0 && (
+          <line
+            x1="0"
+            y1={H - ((0 - minElev) / (elevRange || 1)) * (H - 8) - 4}
+            x2={W}
+            y2={H - ((0 - minElev) / (elevRange || 1)) * (H - 8) - 4}
+            stroke="rgba(59,130,246,0.4)"
+            strokeDasharray="3,2"
+            strokeWidth="1"
+          />
+        )}
+        <path d={areaPath} fill="url(#elev-grad)" />
+        <path
+          d={pathData}
+          fill="none"
+          stroke="#22c55e"
+          strokeWidth="1.8"
+          strokeLinejoin="round"
+        />
+      </svg>
+
+      <div className="grid grid-cols-4 gap-1 text-[10px]">
+        <div className="text-center">
+          <div className="text-muted-foreground">Min</div>
+          <div className="font-semibold">{toDisplay(minElev)}</div>
+        </div>
+        <div className="text-center">
+          <div className="text-muted-foreground">Max</div>
+          <div className="font-semibold">{toDisplay(maxElev)}</div>
+        </div>
+        <div className="text-center">
+          <div className="text-emerald-600">↑ Gain</div>
+          <div className="font-semibold text-emerald-600">{toDisplay(gainM)}</div>
+        </div>
+        <div className="text-center">
+          <div className="text-red-500">↓ Loss</div>
+          <div className="font-semibold text-red-500">{toDisplay(lossM)}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Compass Rose ──────────────────────────────────────────────────────────────
+
+function CompassRose({ bearing }: { bearing: number }) {
+  return (
+    <div
+      className="absolute bottom-12 right-3 z-10 pointer-events-none select-none"
+      data-testid="compass-rose"
+      title={`Bearing: ${Math.round(bearing)}°`}
+    >
+      <div
+        className="w-11 h-11 relative"
+        style={{ transform: `rotate(${-bearing}deg)` }}
+      >
+        <svg viewBox="0 0 44 44" className="w-full h-full drop-shadow-lg">
+          <circle
+            cx="22"
+            cy="22"
+            r="20"
+            fill="rgba(0,0,0,0.55)"
+            stroke="rgba(255,255,255,0.25)"
+            strokeWidth="1"
+          />
+          {/* Tick marks */}
+          {Array.from({ length: 8 }).map((_, i) => {
+            const angle = (i * 45 * Math.PI) / 180;
+            const inner = i % 2 === 0 ? 15 : 17;
+            const outer = 20;
+            return (
+              <line
+                key={i}
+                x1={22 + inner * Math.sin(angle)}
+                y1={22 - inner * Math.cos(angle)}
+                x2={22 + outer * Math.sin(angle)}
+                y2={22 - outer * Math.cos(angle)}
+                stroke="rgba(255,255,255,0.4)"
+                strokeWidth={i % 2 === 0 ? 1.5 : 0.8}
+              />
+            );
+          })}
+          {/* North arrow (red) */}
+          <polygon points="22,3 19,20 25,20" fill="#ef4444" opacity="0.95" />
+          {/* South arrow (white) */}
+          <polygon points="22,41 19,24 25,24" fill="rgba(255,255,255,0.75)" />
+          {/* Center hub */}
+          <circle cx="22" cy="22" r="2.5" fill="white" />
+          {/* N label */}
+          <text
+            x="22"
+            y="2"
+            textAnchor="middle"
+            fontSize="5.5"
+            fill="white"
+            fontWeight="bold"
+            dominantBaseline="hanging"
+          >
+            N
+          </text>
+        </svg>
+      </div>
+    </div>
+  );
+}
+
+// ── Sun Control Panel ─────────────────────────────────────────────────────────
+
+function SunControlPanel({
+  lat,
+  lng,
+  sunHour,
+  onSunHourChange,
+  isAnimating,
+  onToggleAnimation,
+  onClose,
+}: {
+  lat: number;
+  lng: number;
+  sunHour: number;
+  onSunHourChange: (h: number) => void;
+  isAnimating: boolean;
+  onToggleAnimation: () => void;
+  onClose: () => void;
+}) {
+  const solar = calculateSolarPosition(lat, lng, sunHour);
+  const gradient = getSkyGradientClass(solar.phase);
+
+  const phaseLabel: Record<SolarPosition["phase"], string> = {
+    night: "Night",
+    astronomical: "Astro. Twilight",
+    nautical: "Nautical Twilight",
+    civil: "Civil Twilight",
+    golden: "Golden Hour",
+    day: "Daylight",
+  };
+
+  return (
+    <div
+      className="absolute bottom-28 right-3 z-20 bg-background/97 backdrop-blur-md rounded-xl shadow-2xl border border-border/60 p-3 w-60"
+      data-testid="sun-control-panel"
+    >
+      <div className="flex items-center justify-between mb-2.5">
+        <div className="flex items-center gap-1.5">
+          <Sun className="h-3.5 w-3.5 text-amber-400" />
+          <span className="text-xs font-semibold">Solar Simulation</span>
+        </div>
+        <button
+          onClick={onClose}
+          className="text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      {/* Sky gradient preview strip */}
+      <div
+        className={`h-12 rounded-lg mb-2.5 bg-gradient-to-b ${gradient} flex items-center justify-center relative overflow-hidden`}
+      >
+        {solar.isDaytime && (
+          <div
+            className="absolute w-5 h-5 rounded-full bg-yellow-200 shadow-[0_0_12px_4px_rgba(253,224,71,0.8)] pointer-events-none"
+            style={{
+              left: `${(solar.azimuth / 360) * 100}%`,
+              top: `${Math.max(8, 80 - solar.altitude)}%`,
+              transform: "translate(-50%, -50%)",
+            }}
+          />
+        )}
+        <span className="text-white text-xs font-bold drop-shadow-md z-10">
+          {formatSolarTime(sunHour)}
+        </span>
+      </div>
+
+      <Slider
+        value={[sunHour]}
+        onValueChange={([v]) => onSunHourChange(v)}
+        min={0}
+        max={23.75}
+        step={0.25}
+        className="mb-3"
+        data-testid="sun-hour-slider"
+      />
+
+      <div className="grid grid-cols-3 gap-1 text-center mb-2.5">
+        <div className="bg-muted/50 rounded p-1.5">
+          <div className="text-[9px] text-muted-foreground">Azimuth</div>
+          <div className="text-xs font-bold">{solar.azimuth.toFixed(0)}°</div>
+        </div>
+        <div className="bg-muted/50 rounded p-1.5">
+          <div className="text-[9px] text-muted-foreground">Elevation</div>
+          <div
+            className={`text-xs font-bold ${solar.altitude > 0 ? "text-amber-500" : "text-slate-400"}`}
+          >
+            {solar.altitude.toFixed(1)}°
+          </div>
+        </div>
+        <div className="bg-muted/50 rounded p-1.5">
+          <div className="text-[9px] text-muted-foreground">Phase</div>
+          <div className="text-[9px] font-bold leading-tight">
+            {phaseLabel[solar.phase]}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex justify-between text-[10px] text-muted-foreground mb-2.5">
+        <span>
+          ☀ Rise: <strong>{formatSolarTime(solar.sunrise)}</strong>
+        </span>
+        <span>
+          ☽ Set: <strong>{formatSolarTime(solar.sunset)}</strong>
+        </span>
+      </div>
+
+      <div className="flex gap-1.5">
+        <Button
+          size="sm"
+          variant={isAnimating ? "default" : "outline"}
+          className="flex-1 h-7 text-xs gap-1"
+          onClick={onToggleAnimation}
+        >
+          {isAnimating ? (
+            <>
+              <Pause className="h-3 w-3" /> Pause
+            </>
+          ) : (
+            <>
+              <Play className="h-3 w-3" /> Animate
+            </>
+          )}
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7 text-xs px-2"
+          onClick={() => onSunHourChange(new Date().getHours() + new Date().getMinutes() / 60)}
+          title="Reset to current time"
+        >
+          <Clock className="h-3 w-3" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 interface LayerState {
   femaFloodZone: boolean;
   propertyHeatmap: boolean;
@@ -147,6 +596,8 @@ interface LayerState {
   usdaCropland: boolean;
   usdaClu: boolean;
   usgsHillshade: boolean;
+  hypsometricHillshade: boolean;
+  slopeGradient: boolean;
 }
 
 const DEFAULT_LAYER_STATE: LayerState = {
@@ -159,6 +610,8 @@ const DEFAULT_LAYER_STATE: LayerState = {
   usdaCropland: false,
   usdaClu: false,
   usgsHillshade: false,
+  hypsometricHillshade: false,
+  slopeGradient: false,
 };
 
 function loadLayerState(): LayerState {
@@ -334,12 +787,123 @@ export function PropertyMap({
   const [dynamicLayersSectionOpen, setDynamicLayersSectionOpen] = useState(false);
   const [is3DExtrudeMode, setIs3DExtrudeMode] = useState(false);
 
+  // Solar simulation
+  const initHour = new Date().getHours() + new Date().getMinutes() / 60;
+  const [sunHour, setSunHour] = useState<number>(initHour);
+  const [showSunPanel, setShowSunPanel] = useState(false);
+  const [isSunAnimating, setIsSunAnimating] = useState(false);
+  const sunAnimRef = useRef<number | null>(null);
+
+  // Compass bearing (updated from map events)
+  const [mapBearing, setMapBearing] = useState(0);
+
+  // Elevation profile (distance measurement mode)
+  const [elevationPoints, setElevationPoints] = useState<ElevationPoint[]>([]);
+  const [showElevationProfile, setShowElevationProfile] = useState(false);
+
   const updateLayerState = useCallback((updates: Partial<LayerState>) => {
     setLayerState(prev => {
       const newState = { ...prev, ...updates };
       saveLayerState(newState);
       return newState;
     });
+  }, []);
+
+  // ── Sky / Solar update ──────────────────────────────────────────────────────
+  const updateSkyForTime = useCallback((hour: number) => {
+    if (!map.current || !mapLoaded) return;
+    const center = map.current.getCenter();
+    const solar = calculateSolarPosition(center.lat, center.lng, hour);
+
+    // Update sky atmosphere sun position
+    if (map.current.getLayer("sky")) {
+      // Mapbox sky-atmosphere-sun: [azimuth°, altitude°]
+      // azimuth: 0=N, 90=E; altitude: 0=horizon, 90=zenith
+      const clampedAlt = Math.max(-10, solar.altitude);
+      map.current.setPaintProperty("sky", "sky-atmosphere-sun", [
+        solar.azimuth,
+        clampedAlt,
+      ]);
+      // Dim sky at night, brighten during day
+      const sunIntensity = solar.isDaytime
+        ? Math.min(20, 5 + solar.altitude * 0.3)
+        : 0.5;
+      map.current.setPaintProperty("sky", "sky-atmosphere-sun-intensity", sunIntensity);
+
+      // Atmospheric haze based on sun angle
+      const haze = solar.phase === "night" ? 0.1 :
+        solar.phase === "golden" ? 0.6 : 0.35;
+      map.current.setPaintProperty("sky", "sky-atmosphere-halo-color", `rgba(255,220,120,${haze})`);
+    }
+  }, [mapLoaded]);
+
+  // ── Hypsometric hillshade layer ─────────────────────────────────────────────
+  const addHypsometricLayer = useCallback(() => {
+    if (!map.current) return;
+    if (!map.current.getSource("mapbox-dem")) {
+      map.current.addSource("mapbox-dem-hyp", {
+        type: "raster-dem",
+        url: "mapbox://mapbox.mapbox-terrain-dem-v1",
+        tileSize: 512,
+        maxzoom: 14,
+      });
+    }
+    const demSource = map.current.getSource("mapbox-dem") ? "mapbox-dem" : "mapbox-dem-hyp";
+    if (!map.current.getLayer("hypsometric-hillshade")) {
+      map.current.addLayer(
+        {
+          id: "hypsometric-hillshade",
+          type: "hillshade",
+          source: demSource,
+          paint: {
+            "hillshade-exaggeration": 0.75,
+            "hillshade-shadow-color": "#2d3a2e",
+            "hillshade-highlight-color": "#f7f3e9",
+            "hillshade-accent-color": "#8aad8a",
+            "hillshade-illumination-direction": 315,
+            "hillshade-illumination-anchor": "map",
+          },
+        },
+        "waterway-label"
+      );
+    }
+  }, []);
+
+  const removeHypsometricLayer = useCallback(() => {
+    if (!map.current) return;
+    if (map.current.getLayer("hypsometric-hillshade"))
+      map.current.removeLayer("hypsometric-hillshade");
+  }, []);
+
+  // ── Slope gradient layer ────────────────────────────────────────────────────
+  const addSlopeGradientLayer = useCallback(() => {
+    if (!map.current) return;
+    // Use a steep-slope-accentuated hillshade as a slope proxy
+    const demSource = map.current.getSource("mapbox-dem") ? "mapbox-dem" : "mapbox-dem-hyp";
+    if (!map.current.getLayer("slope-gradient")) {
+      map.current.addLayer(
+        {
+          id: "slope-gradient",
+          type: "hillshade",
+          source: demSource,
+          paint: {
+            "hillshade-exaggeration": 1.2,
+            "hillshade-shadow-color": "#7f1d1d",  // steep = dark red
+            "hillshade-highlight-color": "#f0fdf4", // flat = white-green
+            "hillshade-accent-color": "#d97706",    // mid-slope = amber
+            "hillshade-illumination-direction": 270, // east-west gradient
+            "hillshade-illumination-anchor": "viewport",
+          },
+        },
+        "waterway-label"
+      );
+    }
+  }, []);
+
+  const removeSlopeGradientLayer = useCallback(() => {
+    if (!map.current) return;
+    if (map.current.getLayer("slope-gradient"))
+      map.current.removeLayer("slope-gradient");
   }, []);
 
   const addFemaFloodLayer = useCallback(() => {
@@ -1009,14 +1573,21 @@ export function PropertyMap({
 
     map.current.setTerrain({ source: "mapbox-dem", exaggeration: 1.5 });
 
+    // Initialize sky with real-time solar position
     if (!map.current.getLayer("sky")) {
+      const center = map.current.getCenter();
+      const currentHour = new Date().getHours() + new Date().getMinutes() / 60;
+      const solar = calculateSolarPosition(center.lat, center.lng, currentHour);
+      const sunIntensity = solar.isDaytime
+        ? Math.min(20, 5 + solar.altitude * 0.3)
+        : 0.5;
       map.current.addLayer({
         id: "sky",
         type: "sky",
         paint: {
           "sky-type": "atmosphere",
-          "sky-atmosphere-sun": [0.0, 90.0],
-          "sky-atmosphere-sun-intensity": 15,
+          "sky-atmosphere-sun": [solar.azimuth, Math.max(-10, solar.altitude)],
+          "sky-atmosphere-sun-intensity": sunIntensity,
         },
       });
     }
@@ -1037,31 +1608,62 @@ export function PropertyMap({
     if (!map.current || properties.length === 0) return;
 
     setIsFlyoverActive(true);
-    const center = properties[0].centroid;
-    let bearing = 0;
+
+    // Build cinematic waypoints: visit each property in sequence
+    const waypoints = properties.slice(0, 8); // cap at 8 properties per tour
+    let wpIndex = 0;
+    let orbitBearing = 0;
+    let orbitFrames = 0;
+    const ORBIT_FRAMES_PER_PROPERTY = 240; // ~8 seconds at 30fps
+
+    const visitNext = () => {
+      if (!map.current || !flyoverAnimationRef.current && wpIndex > 0) return;
+      const wp = waypoints[wpIndex % waypoints.length];
+
+      // Fly to this property with cinematic pitch + varying bearing
+      const approachBearing = (wpIndex * 137.5) % 360; // golden angle rotation
+      map.current.flyTo({
+        center: [wp.centroid.lng, wp.centroid.lat],
+        zoom: 15.5 + Math.random() * 0.8,
+        pitch: 55 + Math.random() * 15,
+        bearing: approachBearing,
+        duration: 3500,
+        curve: 1.4,
+        essential: true,
+      });
+
+      orbitBearing = approachBearing;
+      orbitFrames = 0;
+    };
+
+    visitNext();
 
     const animate = () => {
       if (!map.current) return;
-      bearing = (bearing + 0.3) % 360;
-      map.current.easeTo({
-        bearing,
-        pitch: 60,
-        duration: 50,
-        easing: (t) => t,
-      });
+      orbitFrames++;
+
+      // Slow orbit around current property
+      orbitBearing = (orbitBearing + 0.18) % 360;
+      map.current.setBearing(orbitBearing);
+
+      // Subtle pitch oscillation for cinematic effect
+      const pitchWave = 60 + Math.sin((orbitFrames / ORBIT_FRAMES_PER_PROPERTY) * Math.PI * 2) * 8;
+      map.current.setPitch(pitchWave);
+
+      // Move to next property after orbit completes
+      if (orbitFrames >= ORBIT_FRAMES_PER_PROPERTY) {
+        wpIndex = (wpIndex + 1) % waypoints.length;
+        visitNext();
+      }
+
       flyoverAnimationRef.current = requestAnimationFrame(animate);
     };
 
-    map.current.easeTo({
-      center: [center.lng, center.lat],
-      zoom: 16,
-      pitch: 60,
-      duration: 1000,
-    });
-
-    setTimeout(() => {
+    // Start orbit after fly-in completes
+    const startOrbit = () => {
       flyoverAnimationRef.current = requestAnimationFrame(animate);
-    }, 1000);
+    };
+    setTimeout(startOrbit, 3600);
   }, [properties]);
 
   const stopFlyover = useCallback(() => {
@@ -1347,6 +1949,78 @@ export function PropertyMap({
     updateHeatmapOpacity(layerState.heatmapOpacity);
   }, [layerState.heatmapOpacity, mapLoaded, updateHeatmapOpacity]);
 
+  // Hypsometric hillshade layer toggle
+  useEffect(() => {
+    if (!mapLoaded || !map.current) return;
+    if (layerState.hypsometricHillshade) addHypsometricLayer();
+    else removeHypsometricLayer();
+  }, [layerState.hypsometricHillshade, mapLoaded, addHypsometricLayer, removeHypsometricLayer]);
+
+  // Slope gradient layer toggle
+  useEffect(() => {
+    if (!mapLoaded || !map.current) return;
+    if (layerState.slopeGradient) addSlopeGradientLayer();
+    else removeSlopeGradientLayer();
+  }, [layerState.slopeGradient, mapLoaded, addSlopeGradientLayer, removeSlopeGradientLayer]);
+
+  // Solar time → sky update
+  useEffect(() => {
+    updateSkyForTime(sunHour);
+  }, [sunHour, mapLoaded, updateSkyForTime]);
+
+  // Sun animation loop
+  useEffect(() => {
+    if (!isSunAnimating) {
+      if (sunAnimRef.current) {
+        cancelAnimationFrame(sunAnimRef.current);
+        sunAnimRef.current = null;
+      }
+      return;
+    }
+    const step = () => {
+      setSunHour((prev) => {
+        const next = (prev + 0.05) % 24; // ~24 seconds per simulated day
+        return next;
+      });
+      sunAnimRef.current = requestAnimationFrame(step);
+    };
+    sunAnimRef.current = requestAnimationFrame(step);
+    return () => {
+      if (sunAnimRef.current) cancelAnimationFrame(sunAnimRef.current);
+    };
+  }, [isSunAnimating]);
+
+  // Track map bearing for compass rose
+  useEffect(() => {
+    if (!map.current || !mapLoaded) return;
+    const onRotate = () => {
+      if (map.current) setMapBearing(map.current.getBearing());
+    };
+    map.current.on("rotate", onRotate);
+    return () => {
+      map.current?.off("rotate", onRotate);
+    };
+  }, [mapLoaded]);
+
+  // Elevation profile: sample terrain when measurement points change
+  useEffect(() => {
+    if (
+      measurementMode === "distance" &&
+      measurementPoints.length >= 2 &&
+      map.current &&
+      mapLoaded
+    ) {
+      const pts = sampleElevationAlongLine(map.current, measurementPoints, 60);
+      if (pts.some((p) => p.elevation !== 0)) {
+        setElevationPoints(pts);
+        setShowElevationProfile(true);
+      }
+    } else {
+      setElevationPoints([]);
+      setShowElevationProfile(false);
+    }
+  }, [measurementPoints, measurementMode, mapLoaded]);
+
   useEffect(() => {
     if (!mapContainer.current || !MAPBOX_TOKEN || properties.length === 0) return;
 
@@ -1478,10 +2152,19 @@ export function PropertyMap({
                 size="icon"
                 variant={isFlyoverActive ? "default" : "ghost"}
                 onClick={isFlyoverActive ? stopFlyover : startFlyover}
-                title={isFlyoverActive ? "Stop Flyover" : "Start Flyover"}
+                title={isFlyoverActive ? "Stop Cinematic Flyover" : "Cinematic Property Tour"}
                 data-testid="button-map-flyover"
               >
                 {isFlyoverActive ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+              </Button>
+              <Button
+                size="icon"
+                variant={showSunPanel ? "default" : "ghost"}
+                onClick={() => setShowSunPanel((v) => !v)}
+                title="Solar Simulation"
+                data-testid="button-sun-panel"
+              >
+                <Sun className="h-4 w-4" />
               </Button>
               <Button
                 size="icon"
@@ -1888,6 +2571,32 @@ export function PropertyMap({
                         </Label>
                       </div>
 
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="hypsometric-hillshade"
+                          checked={layerState.hypsometricHillshade}
+                          onCheckedChange={(checked) => updateLayerState({ hypsometricHillshade: !!checked })}
+                          data-testid="checkbox-hypsometric-hillshade"
+                        />
+                        <Label htmlFor="hypsometric-hillshade" className="text-sm cursor-pointer flex items-center gap-1">
+                          <Mountain className="h-3 w-3 text-emerald-600" />
+                          Hypsometric Relief
+                        </Label>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="slope-gradient"
+                          checked={layerState.slopeGradient}
+                          onCheckedChange={(checked) => updateLayerState({ slopeGradient: !!checked })}
+                          data-testid="checkbox-slope-gradient"
+                        />
+                        <Label htmlFor="slope-gradient" className="text-sm cursor-pointer flex items-center gap-1">
+                          <TrendingUp className="h-3 w-3 text-amber-600" />
+                          Slope Gradient
+                        </Label>
+                      </div>
+
                       <Separator />
                       <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide pt-1">Agriculture (USDA Free)</div>
 
@@ -2116,6 +2825,38 @@ export function PropertyMap({
           </div>
         </div>
       )}
+
+      {/* Compass Rose */}
+      {showControls && <CompassRose bearing={mapBearing} />}
+
+      {/* Solar Simulation Panel */}
+      {showControls && showSunPanel && properties.length > 0 && (
+        <SunControlPanel
+          lat={properties[0].centroid.lat}
+          lng={properties[0].centroid.lng}
+          sunHour={sunHour}
+          onSunHourChange={(h) => {
+            setSunHour(h);
+            updateSkyForTime(h);
+          }}
+          isAnimating={isSunAnimating}
+          onToggleAnimation={() => setIsSunAnimating((v) => !v)}
+          onClose={() => {
+            setShowSunPanel(false);
+            setIsSunAnimating(false);
+          }}
+        />
+      )}
+
+      {/* Elevation Profile Overlay (distance measurement mode) */}
+      {showControls && showElevationProfile && elevationPoints.length >= 2 && (
+        <ElevationProfileOverlay
+          points={elevationPoints}
+          totalDistance={calculateDistance(measurementPoints)}
+          units={measurementUnits}
+          onClose={() => setShowElevationProfile(false)}
+        />
+      )}
     </div>
   );
 }
@@ -2177,48 +2918,57 @@ export function SinglePropertyMap({
     // Compute bounds from boundary coordinates
     const coords = boundary.coordinates as number[][][];
     const bounds = computeBounds(coords);
-    console.log("[SinglePropertyMap] Computed bounds:", JSON.stringify(bounds));
-    console.log("[SinglePropertyMap] Centroid:", centroid.lng, centroid.lat);
-
-    console.log("[SinglePropertyMap] Creating map instance...");
     
-    // Simple 2D map without terrain for reliable boundary rendering
+    // Build satellite 3D map with terrain
     const mapInstance = new mapboxgl.Map({
       container: mapContainer.current,
       style: "mapbox://styles/mapbox/satellite-streets-v12",
       center: [centroid.lng, centroid.lat],
-      zoom: 16,
-      pitch: 0,
-      bearing: 0,
+      zoom: 15.5,
+      pitch: enable3DTerrain ? 50 : 0,
+      bearing: -15,
       interactive: true,
     });
     map.current = mapInstance;
 
-    // Add error handler
-    mapInstance.on("error", (e) => {
-      console.error("[SinglePropertyMap] Map error:", e.error?.message || e);
-    });
+    mapInstance.on("error", () => { /* suppress to avoid console spam */ });
 
-    // Track if layers have been added to prevent duplicates
     let layersAdded = false;
-    
-    // Function to add layers - can be called from multiple events
+
     const addLayers = () => {
-      console.log("[SinglePropertyMap] addLayers called, layersAdded:", layersAdded);
-      if (layersAdded) {
-        console.log("[SinglePropertyMap] Layers already added, skipping");
-        return;
-      }
-      if (mapInstance.getSource("property")) {
-        console.log("[SinglePropertyMap] Source already exists, skipping");
+      if (layersAdded || mapInstance.getSource("property")) {
         layersAdded = true;
         return;
       }
-
       layersAdded = true;
-      console.log("[SinglePropertyMap] Adding layers now...");
-      console.log("[SinglePropertyMap] Boundary type:", boundary.type);
-      console.log("[SinglePropertyMap] Raw boundary coordinates:", JSON.stringify(boundary.coordinates).substring(0, 300));
+
+      // 3D Terrain + Sky
+      if (enable3DTerrain) {
+        if (!mapInstance.getSource("mapbox-dem")) {
+          mapInstance.addSource("mapbox-dem", {
+            type: "raster-dem",
+            url: "mapbox://mapbox.mapbox-terrain-dem-v1",
+            tileSize: 512,
+            maxzoom: 14,
+          });
+        }
+        mapInstance.setTerrain({ source: "mapbox-dem", exaggeration: 1.4 });
+
+        if (!mapInstance.getLayer("sky")) {
+          const currentHour = new Date().getHours() + new Date().getMinutes() / 60;
+          const solar = calculateSolarPosition(centroid.lat, centroid.lng, currentHour);
+          mapInstance.addLayer({
+            id: "sky",
+            type: "sky",
+            paint: {
+              "sky-type": "atmosphere",
+              "sky-atmosphere-sun": [solar.azimuth, Math.max(-10, solar.altitude)],
+              "sky-atmosphere-sun-intensity": solar.isDaytime
+                ? Math.min(18, 4 + solar.altitude * 0.25) : 0.5,
+            },
+          });
+        }
+      }
 
       const geojsonData: GeoJSON.FeatureCollection = {
         type: "FeatureCollection",
@@ -2229,56 +2979,66 @@ export function SinglePropertyMap({
         }],
       };
 
-      console.log("[SinglePropertyMap] Full GeoJSON:", JSON.stringify(geojsonData));
-
       mapInstance.addSource("property", {
         type: "geojson",
         data: geojsonData,
       });
 
-      // Add fill layer on top of everything (no beforeId)
+      // Elegant parcel fill — semi-transparent primary color
       mapInstance.addLayer({
         id: "property-fill",
         type: "fill",
         source: "property",
         paint: {
-          "fill-color": "#00ff00",
-          "fill-opacity": 0.6,
+          "fill-color": "#22c55e",
+          "fill-opacity": 0.18,
         },
       });
 
-      // Bold outline on top
+      // Sharp animated outline
       mapInstance.addLayer({
         id: "property-outline",
         type: "line",
         source: "property",
         paint: {
-          "line-color": "#ff0000",
-          "line-width": 6,
+          "line-color": "#22c55e",
+          "line-width": [
+            "interpolate", ["linear"], ["zoom"],
+            10, 1.5,
+            16, 3,
+            20, 5,
+          ],
+          "line-opacity": 0.9,
         },
       });
 
-      console.log("[SinglePropertyMap] Layers added successfully");
-      
-      // Debug: verify layers exist and check their visibility
-      const addedFill = mapInstance.getLayer("property-fill");
-      const addedOutline = mapInstance.getLayer("property-outline");
-      console.log("[SinglePropertyMap] Verify layers - fill:", !!addedFill, "outline:", !!addedOutline);
-      
-      // Get source data to verify it was set correctly
-      const source = mapInstance.getSource("property") as mapboxgl.GeoJSONSource;
-      console.log("[SinglePropertyMap] Source exists:", !!source);
+      // Inner glow for depth
+      mapInstance.addLayer({
+        id: "property-fill-glow",
+        type: "line",
+        source: "property",
+        paint: {
+          "line-color": "#4ade80",
+          "line-width": [
+            "interpolate", ["linear"], ["zoom"],
+            10, 3,
+            16, 8,
+          ],
+          "line-opacity": 0.15,
+          "line-blur": 4,
+        },
+      });
 
-      // Fit to boundary bounds with padding
+      // Smooth fly-in to fit parcel
       try {
         mapInstance.fitBounds(bounds as mapboxgl.LngLatBoundsLike, {
-          padding: 50,
-          duration: 0,
+          padding: { top: 60, bottom: 60, left: 60, right: 60 },
+          pitch: enable3DTerrain ? 50 : 0,
+          bearing: -15,
+          duration: 1200,
+          maxZoom: 18,
         });
-        console.log("[SinglePropertyMap] fitBounds completed");
-      } catch (e) {
-        console.error("[SinglePropertyMap] fitBounds error:", e);
-      }
+      } catch { /* bounds may be degenerate */ }
 
       mapInstance.addControl(new mapboxgl.NavigationControl(), "top-right");
 
@@ -2322,26 +3082,11 @@ export function SinglePropertyMap({
       }
     };
 
-    // Use 'load' event which guarantees style is ready
-    mapInstance.once("load", () => {
-      console.log("[SinglePropertyMap] 'load' event fired");
-      addLayers();
-    });
+    mapInstance.once("load", () => { addLayers(); });
+    mapInstance.once("idle", () => { if (!layersAdded) addLayers(); });
 
-    // Fallback: also try after idle 
-    mapInstance.once("idle", () => {
-      console.log("[SinglePropertyMap] 'idle' event fired");
-      if (!layersAdded) {
-        addLayers();
-      }
-    });
-
-    // Ultimate fallback with timeout in case events don't fire
     const timeoutId = setTimeout(() => {
-      console.log("[SinglePropertyMap] Timeout fallback triggered");
-      if (!layersAdded && mapInstance) {
-        addLayers();
-      }
+      if (!layersAdded && mapInstance) addLayers();
     }, 2000);
 
     return () => {
