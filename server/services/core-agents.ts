@@ -1,7 +1,7 @@
 import { storage } from "../storage";
 import { dataSourceBroker, type LookupCategory } from "./data-source-broker";
 import { type InsertAgentMemory, type AgentMemory } from "@shared/schema";
-import { routeAITask, TaskComplexity, classifyTaskComplexity } from "./aiRouter";
+import { routeAITask, TaskComplexity, classifyTaskComplexity, MODEL_SIMPLE } from "./aiRouter";
 import { skillRegistry, type Skill, type SkillResult, type AgentContext as SkillAgentContext } from "./agent-skills";
 
 export type CoreAgentType = "research" | "deals" | "communications" | "operations";
@@ -27,6 +27,10 @@ interface AgentTaskResult {
   actions?: AgentAction[];
   requiresApproval?: boolean;
   learnings?: { key: string; value: any; memoryType: string }[];
+  /** 0–1: how confident the agent is in this result (1 = certain, 0 = guessing) */
+  confidence?: number;
+  /** If < 0.6 confidence, this message explains what the agent is uncertain about */
+  uncertaintyNote?: string;
 }
 
 interface AgentAction {
@@ -154,6 +158,157 @@ When asked to perform actions, analyze the request and determine the best approa
     });
 
     return response.content;
+  }
+
+  /**
+   * Self-critique: run a lightweight review of a generated output and return
+   * a refined version if the critique score is below threshold.
+   *
+   * Uses DeepSeek (cheapest model, ~$0.003 per critique) so the overhead is
+   * minimal.  Only triggered for high-stakes output types (offers, analyses,
+   * legal documents, strategies).
+   *
+   * @returns { refined: string; confidence: number; changed: boolean }
+   */
+  protected async selfCritique(
+    original: string,
+    taskType: string,
+    context?: string
+  ): Promise<{ refined: string; confidence: number; changed: boolean }> {
+    const HIGH_STAKES_TASKS = [
+      "legal_document", "offer", "deal_analysis", "contract_review",
+      "negotiation_strategy", "market_valuation", "financial_modeling",
+      "risk_assessment", "strategy",
+    ];
+
+    if (!HIGH_STAKES_TASKS.some(t => taskType.includes(t))) {
+      return { refined: original, confidence: 0.8, changed: false };
+    }
+
+    const critiquePrompt = `You are a professional editor reviewing AI-generated content for a land investment platform.
+
+TASK TYPE: ${taskType}
+${context ? `CONTEXT: ${context}` : ""}
+
+CONTENT TO REVIEW:
+${original.slice(0, 1500)}
+
+Evaluate:
+1. Accuracy and factual soundness (for land investment)
+2. Completeness — does it address the task fully?
+3. Clarity and professionalism
+4. Any missing critical information
+
+Respond with JSON:
+{
+  "score": <1-10>,
+  "issues": ["<issue 1>", ...],
+  "refined": "<improved version, or exact same text if score >= 8>",
+  "confidence": <0.0-1.0>
+}`;
+
+    try {
+      const response = await routeAITask({
+        taskType: "critique",
+        complexity: TaskComplexity.SIMPLE,
+        messages: [
+          { role: "system", content: "You are a content quality reviewer. Respond only with valid JSON." },
+          { role: "user", content: critiquePrompt },
+        ],
+        responseFormat: "json",
+        temperature: 0.1,
+        maxTokens: 1500,
+      });
+
+      const parsed = JSON.parse(response.content);
+      const score = Math.max(1, Math.min(10, parsed.score || 8));
+      const confidence = Math.max(0, Math.min(1, parsed.confidence || 0.8));
+      const refined = (score < 8 && parsed.refined && parsed.refined.length > 50) ? parsed.refined : original;
+
+      return {
+        refined,
+        confidence,
+        changed: refined !== original,
+      };
+    } catch {
+      return { refined: original, confidence: 0.75, changed: false };
+    }
+  }
+
+  /**
+   * Auto-extract learnable memories from a task result.
+   * Called after every successful task.  Uses DeepSeek to identify:
+   *   - facts (objective truths discovered)
+   *   - preferences (what the user / org seems to want)
+   *   - success_patterns (what worked)
+   *   - failure_patterns (what didn't)
+   *
+   * Silently fails — memory extraction is non-critical.
+   */
+  protected async autoExtractMemories(
+    input: { action: string; parameters: Record<string, any> },
+    result: { success: boolean; data?: any; message?: string },
+    context: AgentContext
+  ): Promise<void> {
+    if (!result.success) {
+      // Record failure pattern
+      try {
+        await this.recordLearning(
+          context,
+          `failure:${input.action}`,
+          { action: input.action, reason: result.message || "unknown", params: input.parameters },
+          "failure_pattern",
+          0.6
+        );
+      } catch { /* non-critical */ }
+      return;
+    }
+
+    // Only extract memories for substantive results (not trivial lookups)
+    const SKIP_ACTIONS = ["calculate_financing", "generate_alert", "check_delinquencies"];
+    if (SKIP_ACTIONS.includes(input.action)) return;
+
+    const resultSummary = JSON.stringify(result.data || {}).slice(0, 400);
+
+    const extractPrompt = `A land investment AI agent just completed a task. Extract any learnable insights.
+
+Agent: ${this.type}
+Action: ${input.action}
+Parameters: ${JSON.stringify(input.parameters).slice(0, 200)}
+Result summary: ${resultSummary}
+
+List 0-3 concise learnings. Only include high-value insights worth remembering.
+Respond with JSON array (can be empty):
+[{"key":"<short key>","value":"<what was learned>","type":"fact|preference|success_pattern"}]`;
+
+    try {
+      const response = await routeAITask({
+        taskType: "extract_data",
+        complexity: TaskComplexity.SIMPLE,
+        messages: [
+          { role: "system", content: "You are a memory extraction assistant. Respond only with valid JSON array." },
+          { role: "user", content: extractPrompt },
+        ],
+        responseFormat: "json",
+        temperature: 0.1,
+        maxTokens: 300,
+      });
+
+      const learnings = JSON.parse(response.content);
+      if (!Array.isArray(learnings)) return;
+
+      for (const learning of learnings.slice(0, 3)) {
+        if (learning.key && learning.value) {
+          await this.recordLearning(
+            context,
+            learning.key,
+            { value: learning.value, source: input.action },
+            (learning.type as any) || "fact",
+            0.65
+          ).catch(() => {});
+        }
+      }
+    } catch { /* non-critical */ }
   }
 
   async recordLearning(
@@ -345,9 +500,10 @@ Provide a brief investment analysis including:
 3. Recommended next steps
 4. Overall recommendation (buy/hold/pass)`;
 
-    const analysis = await this.callOpenAI(prompt, undefined, context, "deal_analysis", TaskComplexity.COMPLEX);
+    const rawAnalysis = await this.callOpenAI(prompt, undefined, context, "deal_analysis", TaskComplexity.COMPLEX);
+    const { refined: analysis, confidence } = await this.selfCritique(rawAnalysis, "deal_analysis", `Property ${property.address}`);
 
-    return {
+    const result: AgentTaskResult = {
       success: true,
       data: {
         propertyId,
@@ -355,7 +511,12 @@ Provide a brief investment analysis including:
         dueDiligenceData: dueDiligence.data,
         timestamp: new Date().toISOString(),
       },
+      confidence,
+      uncertaintyNote: confidence < 0.6 ? "Investment analysis confidence is low — manual review recommended" : undefined,
     };
+
+    await this.autoExtractMemories({ action: "analyze_investment", parameters: params }, result, context);
+    return result;
   }
 
   private async handleResearchQuery(query: string, context: AgentContext): Promise<AgentTaskResult> {
@@ -424,9 +585,17 @@ Create a professional, legally-minded (but not legal advice) offer letter that:
 3. Includes standard contingencies
 4. Has a response deadline`;
 
-    const offerLetter = await this.callOpenAI(prompt, undefined, context, "legal_document", TaskComplexity.COMPLEX);
+    const rawOfferLetter = await this.callOpenAI(prompt, undefined, context, "legal_document", TaskComplexity.COMPLEX);
 
-    return {
+    // Self-critique: review and refine the offer letter before presenting it
+    const critiqueCtx = `Offer for property ${property?.address || "unknown"} at $${offerPrice}`;
+    const { refined: offerLetter, confidence, changed } = await this.selfCritique(rawOfferLetter, "legal_document", critiqueCtx);
+
+    if (changed) {
+      console.log(`[DealsAgent] Offer letter refined by self-critique (confidence=${confidence.toFixed(2)})`);
+    }
+
+    const result: AgentTaskResult = {
       success: true,
       data: {
         offerLetter,
@@ -434,9 +603,16 @@ Create a professional, legally-minded (but not legal advice) offer letter that:
         leadId,
         propertyId,
         generatedAt: new Date().toISOString(),
+        selfCritiqueApplied: changed,
       },
       requiresApproval: true,
+      confidence,
+      uncertaintyNote: confidence < 0.6 ? "Offer letter may need manual review — low confidence on completeness" : undefined,
     };
+
+    // Auto-learn from this offer generation
+    await this.autoExtractMemories({ action: "generate_offer", parameters: params }, result, context);
+    return result;
   }
 
   private async analyzeDeal(params: Record<string, any>, context: AgentContext): Promise<AgentTaskResult> {
@@ -454,23 +630,23 @@ Calculate and provide:
 4. Key considerations
 5. Recommendation`;
 
-    const analysis = await this.callOpenAI(prompt, undefined, context, "deal_analysis", TaskComplexity.COMPLEX);
+    const rawAnalysis = await this.callOpenAI(prompt, undefined, context, "deal_analysis", TaskComplexity.COMPLEX);
+    const { refined: analysis, confidence } = await this.selfCritique(rawAnalysis, "deal_analysis");
 
     const grossProfit = (estimatedValue || 0) - (purchasePrice || 0) - (repairCosts || 0);
     const roi = purchasePrice > 0 ? ((grossProfit / purchasePrice) * 100).toFixed(1) : 0;
 
-    return {
+    const result: AgentTaskResult = {
       success: true,
       data: {
         analysis,
-        metrics: {
-          grossProfit,
-          roi: `${roi}%`,
-          purchasePrice,
-          estimatedValue,
-        },
+        metrics: { grossProfit, roi: `${roi}%`, purchasePrice, estimatedValue },
       },
+      confidence,
     };
+
+    await this.autoExtractMemories({ action: "analyze_deal", parameters: params }, result, context);
+    return result;
   }
 
   private async calculateFinancing(params: Record<string, any>, context: AgentContext): Promise<AgentTaskResult> {
@@ -577,11 +753,14 @@ Write a compelling email that:
     const subject = subjectMatch ? subjectMatch[1].trim() : "Regarding Your Property";
     const body = email.replace(/Subject:?\s*.+\n?/i, "").trim();
 
-    return {
+    const result: AgentTaskResult = {
       success: true,
       data: { subject, body, leadId },
       requiresApproval: true,
+      confidence: 0.85,
     };
+    await this.autoExtractMemories({ action: "compose_email", parameters: params }, result, context);
+    return result;
   }
 
   private async composeSms(params: Record<string, any>, context: AgentContext): Promise<AgentTaskResult> {
