@@ -1,6 +1,7 @@
 import { SESClient, SendEmailCommand, GetSendQuotaCommand } from '@aws-sdk/client-ses';
 import { storage } from '../storage';
 import { decryptJsonCredentials } from './encryption';
+import { emailCircuitBreaker } from '../utils/circuitBreaker';
 
 interface AWSCredentials {
   accessKeyId: string;
@@ -313,7 +314,7 @@ export class EmailService {
           ReplyToAddresses: options.replyTo ? [options.replyTo] : undefined,
         });
 
-        const response = await client.send(command);
+        const response = await emailCircuitBreaker.call(() => client.send(command));
         const messageId = response.MessageId || `ses-${Date.now()}`;
         const durationMs = Date.now() - startTime;
         
