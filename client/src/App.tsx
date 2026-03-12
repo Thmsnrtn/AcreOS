@@ -77,6 +77,7 @@ import SafetyGatesPage from "@/pages/safety-gates";
 import DecisionQueuePage from "@/pages/decision-queue";
 import OpsDashboardPage from "@/pages/ops-dashboard";
 import BetaIntakePage from "@/pages/beta-intake";
+import { OnboardingWizard } from "@/components/onboarding-wizard";
 import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
 import { ConversationTray } from "@/components/conversation-tray";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -392,6 +393,7 @@ function AppContent() {
       {user && <CommandPalette />}
       {user && <NewItemMenu />}
       {user && <MobileBottomNav />}
+      {user && <OnboardingWizard />}
       {user && <BetaFeedbackWidget />}
       {user && <BetaActivationDetector />}
       <PWAInstallPrompt />
