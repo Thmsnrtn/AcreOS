@@ -7,7 +7,9 @@ on:
     branches: [main]
 
 jobs:
-  ci:
+  # ── 1. Lint & Type-check ────────────────────────────────────────────────────
+  lint-and-typecheck:
+    name: Lint & Type Check
     runs-on: ubuntu-latest
 
     steps:
@@ -21,8 +23,261 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Type check
-        run: npm run check
+      - name: TypeScript type check
+        run: npx tsc --noEmit
 
-      - name: Run tests
-        run: npm test
+      - name: ESLint
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Prettier format check
+        run: npm run format:check
+        continue-on-error: true
+
+      # Task #F-A06-2: Fail CI on high/critical npm vulnerabilities; report moderate
+      - name: npm security audit
+        run: npm audit --audit-level=high
+        continue-on-error: false
+
+  # ── 2. Unit Tests ───────────────────────────────────────────────────────────
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs: lint-and-typecheck
+
+    env:
+      DATABASE_URL: postgresql://acreos:acreos@localhost:5432/acreos_test
+      SESSION_SECRET: ci-session-secret-placeholder-32-chars-long
+      APP_URL: http://localhost:5000
+      NODE_ENV: test
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: acreos
+          POSTGRES_PASSWORD: acreos
+          POSTGRES_DB: acreos_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests with coverage
+        run: npx vitest run --coverage
+        env:
+          CI: true
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 14
+
+  # ── 3. Integration Tests ────────────────────────────────────────────────────
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: unit-tests
+
+    env:
+      DATABASE_URL: postgresql://acreos:acreos@localhost:5432/acreos_integration
+      SESSION_SECRET: ci-session-secret-placeholder-32-chars-long
+      APP_URL: http://localhost:5000
+      NODE_ENV: test
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: acreos
+          POSTGRES_PASSWORD: acreos
+          POSTGRES_DB: acreos_integration
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run database migrations
+        run: npx drizzle-kit push || true
+        env:
+          DATABASE_URL: postgresql://acreos:acreos@localhost:5432/acreos_integration
+
+      - name: Run integration tests
+        run: npx vitest run --reporter=verbose --testPathPattern="integration|e2e"
+        env:
+          CI: true
+        continue-on-error: false
+
+  # ── 4. E2E Tests (Playwright) ───────────────────────────────────────────────
+  e2e-tests:
+    name: E2E Tests (Playwright)
+    runs-on: ubuntu-latest
+    needs: unit-tests
+
+    env:
+      DATABASE_URL: postgresql://acreos:acreos@localhost:5432/acreos_e2e
+      SESSION_SECRET: ci-session-secret-placeholder-32-chars-long
+      APP_URL: http://localhost:5000
+      NODE_ENV: test
+      E2E_USER_EMAIL: test@acreos.dev
+      E2E_USER_PASSWORD: TestPass123!
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: acreos
+          POSTGRES_PASSWORD: acreos
+          POSTGRES_DB: acreos_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run database migrations
+        run: npx drizzle-kit push || true
+        env:
+          DATABASE_URL: postgresql://acreos:acreos@localhost:5432/acreos_e2e
+
+      - name: Build application
+        run: npm run build
+        env:
+          NODE_ENV: production
+
+      - name: Run Playwright E2E tests
+        run: npm run test:e2e
+        env:
+          CI: true
+          PLAYWRIGHT_BASE_URL: http://localhost:5000
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+  # ── 5. Security Scan (CodeQL) ───────────────────────────────────────────────
+  security-scan:
+    name: Security Scan (CodeQL)
+    runs-on: ubuntu-latest
+    needs: lint-and-typecheck
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          queries: security-extended
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:javascript-typescript"
+
+  # ── 5. Build & Container Image ──────────────────────────────────────────────
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: [unit-tests, integration-tests, e2e-tests]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build application
+        run: npm run build
+        env:
+          NODE_ENV: production
+
+      - name: Verify build output
+        run: |
+          test -d dist || (echo "Build output missing" && exit 1)
+          echo "Build succeeded"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build container image (no push)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          tags: acreos:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            NODE_ENV=production

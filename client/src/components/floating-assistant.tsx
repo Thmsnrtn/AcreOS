@@ -7,10 +7,10 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { 
-  Minus, 
-  X, 
-  Send, 
+import {
+  Minus,
+  X,
+  Send,
   Loader2,
   Sparkles,
   Plus,
@@ -30,7 +30,9 @@ import {
   Search,
   ChevronDown,
   MapPin,
-  Gauge
+  Gauge,
+  Mic,
+  MicOff,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -39,6 +41,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { sanitizeHtml } from "@/lib/sanitize";
 import { LiveDemoMode } from "@/components/live-demo-mode";
 import { BackgroundMode } from "@/components/background-mode";
 import { Action, ActionResult, ActionExecutor, parseActionsFromText } from "@/lib/action-executor";
@@ -166,6 +169,8 @@ export function FloatingAssistant() {
   const [isMinimized, setIsMinimized] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef<any>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [hasActivity, setHasActivity] = useState(false);
@@ -351,6 +356,43 @@ export function FloatingAssistant() {
   const handleAttachClick = () => {
     fileInputRef.current?.click();
   };
+
+  // Web Speech API voice input
+  const startVoiceInput = useCallback(() => {
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert('Voice input is not supported in this browser. Try Chrome or Edge.');
+      return;
+    }
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+      return;
+    }
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'en-US';
+    recognition.interimResults = true;
+    recognition.continuous = false;
+    recognitionRef.current = recognition;
+    setIsListening(true);
+
+    recognition.onresult = (event: any) => {
+      const transcript = Array.from(event.results)
+        .map((r: any) => r[0].transcript)
+        .join('');
+      setInputValue(transcript);
+    };
+    recognition.onend = () => {
+      setIsListening(false);
+      recognitionRef.current = null;
+    };
+    recognition.onerror = () => {
+      setIsListening(false);
+      recognitionRef.current = null;
+    };
+    recognition.start();
+  }, []);
 
   const handleSendMessage = async () => {
     if ((!inputValue.trim() && attachments.length === 0) || isLoading || isStreaming || isGeneratingImage) return;
@@ -915,7 +957,8 @@ export function FloatingAssistant() {
       .replace(/`([^`]+)`/g, '<code class="px-1 py-0.5 bg-muted rounded text-xs font-mono">$1</code>')
       .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-primary underline underline-offset-2 hover:opacity-80 inline-flex items-center gap-0.5">$1<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg></a>');
     
-    return <span dangerouslySetInnerHTML={{ __html: processed }} />;
+    // Task #F-A03-1: Sanitize AI-generated HTML before rendering to prevent XSS
+    return <span dangerouslySetInnerHTML={{ __html: sanitizeHtml(processed) }} />;
   };
 
   const renderMessageAttachments = (messageAttachments: MessageAttachment[]) => {
@@ -1470,6 +1513,28 @@ export function FloatingAssistant() {
                 rows={1}
                 data-testid="input-assistant-message"
               />
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant={isListening ? "destructive" : "ghost"}
+                    onClick={startVoiceInput}
+                    disabled={isLoading || isStreaming || isGeneratingImage}
+                    className="h-[44px] w-[44px] rounded-xl shrink-0"
+                    data-testid="button-voice-input"
+                    title="Voice input"
+                  >
+                    {isListening ? (
+                      <MicOff className="w-4 h-4 animate-pulse" />
+                    ) : (
+                      <Mic className="w-4 h-4" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  {isListening ? "Stop listening" : "Voice input (push to talk)"}
+                </TooltipContent>
+              </Tooltip>
               <Button
                 size="icon"
                 onClick={handleSendMessage}

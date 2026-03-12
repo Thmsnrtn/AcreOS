@@ -5,7 +5,14 @@ import {
   insertCampaignSchema, insertCampaignResponseSchema,
   insertCampaignSequenceSchema, insertSequenceStepSchema, insertSequenceEnrollmentSchema,
   insertAbTestSchema, insertAbTestVariantSchema,
+  insertTargetCountySchema,
 } from "@shared/schema";
+
+// Task #202: Partial update schemas derived from insert schemas
+const updateCampaignSchema = insertCampaignSchema.partial();
+const updateTargetCountySchema = insertTargetCountySchema.partial();
+const updateCampaignSequenceSchema = insertCampaignSequenceSchema.partial();
+const updateSequenceStepSchema = insertSequenceStepSchema.partial();
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { requirePermission } from "./utils/permissions";
@@ -209,9 +216,15 @@ export function registerCampaignRoutes(app: Express): void {
 
   // Update a response
   api.put("/api/responses/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const response = await storage.updateCampaignResponse(Number(req.params.id), req.body);
-    if (!response) return res.status(404).json({ message: "Response not found" });
-    res.json(response);
+    try {
+      const validated = insertCampaignResponseSchema.partial().parse(req.body);
+      const response = await storage.updateCampaignResponse(Number(req.params.id), validated);
+      if (!response) return res.status(404).json({ message: "Response not found" });
+      res.json(response);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      throw err;
+    }
   });
 
   // Delete a response
@@ -260,12 +273,17 @@ export function registerCampaignRoutes(app: Express): void {
 
   // Update a target county
   api.put("/api/target-counties/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
-    const county = await storage.getTargetCounty(org.id, Number(req.params.id));
-    if (!county) return res.status(404).json({ message: "Target county not found" });
-    
-    const updated = await storage.updateTargetCounty(county.id, req.body);
-    res.json(updated);
+    try {
+      const org = (req as any).organization;
+      const county = await storage.getTargetCounty(org.id, Number(req.params.id));
+      if (!county) return res.status(404).json({ message: "Target county not found" });
+      const validated = updateTargetCountySchema.parse(req.body);
+      const updated = await storage.updateTargetCounty(county.id, validated);
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      throw err;
+    }
   });
 
   // Delete a target county
@@ -326,12 +344,17 @@ export function registerCampaignRoutes(app: Express): void {
 
   // Update a sequence
   api.put("/api/sequences/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
-    const sequence = await storage.getSequence(org.id, Number(req.params.id));
-    if (!sequence) return res.status(404).json({ message: "Sequence not found" });
-    
-    const updated = await storage.updateSequence(sequence.id, req.body);
-    res.json(updated);
+    try {
+      const org = (req as any).organization;
+      const sequence = await storage.getSequence(org.id, Number(req.params.id));
+      if (!sequence) return res.status(404).json({ message: "Sequence not found" });
+      const validated = updateCampaignSequenceSchema.parse(req.body);
+      const updated = await storage.updateSequence(sequence.id, validated);
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      throw err;
+    }
   });
 
   // Delete a sequence
@@ -385,12 +408,17 @@ export function registerCampaignRoutes(app: Express): void {
 
   // Update a step
   api.put("/api/sequences/:id/steps/:stepId", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
-    const sequence = await storage.getSequence(org.id, Number(req.params.id));
-    if (!sequence) return res.status(404).json({ message: "Sequence not found" });
-    
-    const step = await storage.updateSequenceStep(Number(req.params.stepId), req.body);
-    res.json(step);
+    try {
+      const org = (req as any).organization;
+      const sequence = await storage.getSequence(org.id, Number(req.params.id));
+      if (!sequence) return res.status(404).json({ message: "Sequence not found" });
+      const validated = updateSequenceStepSchema.parse(req.body);
+      const step = await storage.updateSequenceStep(Number(req.params.stepId), validated);
+      res.json(step);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      throw err;
+    }
   });
 
   // Delete a step
@@ -513,9 +541,15 @@ export function registerCampaignRoutes(app: Express): void {
   });
   
   api.put("/api/campaigns/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const campaign = await storage.updateCampaign(Number(req.params.id), req.body);
-    if (!campaign) return res.status(404).json({ message: "Campaign not found" });
-    res.json(campaign);
+    try {
+      const validated = updateCampaignSchema.parse(req.body);
+      const campaign = await storage.updateCampaign(Number(req.params.id), validated);
+      if (!campaign) return res.status(404).json({ message: "Campaign not found" });
+      res.json(campaign);
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      throw err;
+    }
   });
   
   // Send direct mail campaign with credit pre-checks
@@ -1026,16 +1060,17 @@ export function registerCampaignRoutes(app: Express): void {
       const currentMode = org.settings?.mailMode || 'test';
       const estimate = directMailService.estimateBatchCost(pieceType, count, currentMode);
       
-      // Check if user has enough credits
-      const creditBalance = parseFloat(org.creditBalance || '0');
-      const hasEnoughCredits = creditBalance >= estimate.totalCost;
+      // Task #218: Use integer-cent arithmetic — creditBalance is stored in cents
+      const creditBalance = Math.round(Number(org.creditBalance || '0'));
+      const totalCostCents = Math.round(estimate.totalCost);
+      const hasEnoughCredits = creditBalance >= totalCostCents;
       
       res.json({
         ...estimate,
         currentMode,
         creditBalance,
         hasEnoughCredits,
-        creditsNeeded: hasEnoughCredits ? 0 : estimate.totalCost - creditBalance,
+        creditsNeeded: hasEnoughCredits ? 0 : totalCostCents - creditBalance,
       });
     } catch (error: any) {
       res.status(500).json({ error: error.message || "Failed to generate estimate" });

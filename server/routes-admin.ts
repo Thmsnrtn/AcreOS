@@ -511,7 +511,20 @@ export function registerAdminRoutes(app: Express): void {
       return next();
     }
 
+    logger.warn("Admin access denied", { userId, userEmail, path: req.path });
     res.status(403).json({ message: "Access denied. Admin privileges required." });
+  };
+
+  // F-A01-1: Cross-org admin guard — validates URL :orgId matches authenticated org
+  // Apply this middleware on any route that accepts :orgId in URL path
+  const crossOrgAdminGuard: RequestHandler = (req, res, next) => {
+    const org = (req as any).organization;
+    const paramOrgId = req.params.orgId ? parseInt(req.params.orgId, 10) : null;
+    if (paramOrgId !== null && org && org.id !== paramOrgId) {
+      logger.warn("Cross-org access attempt blocked", { orgId: org.id, requestedOrgId: paramOrgId, path: req.path });
+      return res.status(403).json({ error: "Access denied: organization mismatch" });
+    }
+    next();
   };
 
   api.get("/api/admin/check", isAuthenticated, isFounderAdmin, async (req, res) => {
@@ -816,7 +829,7 @@ export function registerAdminRoutes(app: Express): void {
 
   api.get("/api/admin/subscription-events", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+      const limit = Math.min(100, req.query.limit ? parseInt(req.query.limit as string) : 50);
       const events = await storage.getSubscriptionEvents({ limit });
       res.json(events);
     } catch (err: any) {
@@ -2053,7 +2066,7 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const category = req.query.category as string | undefined;
       const state = req.query.state as string | undefined;
-      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+      const limit = Math.min(100, req.query.limit ? parseInt(req.query.limit as string) : 50);
 
       const { dataSourceBroker } = await import('./services/data-source-broker');
       const layers = await dataSourceBroker.getAvailableLayersForMap({ category, state, limit });
@@ -2315,5 +2328,177 @@ export function registerAdminRoutes(app: Express): void {
   });
 
   // ============================================
+  // T3 — BullMQ Queue Monitoring API
+  // Returns live queue stats from BullMQ (when Redis is configured)
+  // or returns empty/disabled status when running in-memory fallback.
+  // ============================================
+
+  api.get("/api/admin/queues", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const redisUrl = process.env.REDIS_URL;
+      if (!redisUrl) {
+        return res.json({
+          enabled: false,
+          message: "Redis not configured — running in-memory job queue. Set REDIS_URL to enable BullMQ.",
+          queues: [],
+        });
+      }
+
+      const { Queue } = await import("bullmq");
+      const IORedis = (await import("ioredis")).default;
+
+      const connection = new IORedis(redisUrl, { maxRetriesPerRequest: 1, enableReadyCheck: false });
+
+      const queueNames = ["acreos-jobs"];
+      const queueStats = await Promise.all(
+        queueNames.map(async (name) => {
+          const q = new Queue(name, { connection });
+          const counts = await q.getJobCounts(
+            "waiting", "active", "completed", "failed", "delayed", "paused"
+          );
+          const [waiting, active, completed, failed, delayed] = await Promise.all([
+            q.getJobs(["waiting"], 0, 9),
+            q.getJobs(["active"], 0, 9),
+            q.getJobs(["failed"], 0, 9),
+            q.getJobs(["delayed"], 0, 9),
+            Promise.resolve([]),
+          ]);
+          await q.close();
+          return {
+            name,
+            counts,
+            recentWaiting: waiting.map(j => ({ id: j.id, name: j.name, data: j.data, timestamp: j.timestamp })),
+            recentActive: active.map(j => ({ id: j.id, name: j.name, data: j.data, processedOn: j.processedOn })),
+            recentFailed: failed.map(j => ({ id: j.id, name: j.name, failedReason: j.failedReason, finishedOn: j.finishedOn })),
+            recentDelayed: delayed.map(j => ({ id: j.id, name: j.name, delay: j.opts?.delay })),
+          };
+        })
+      );
+
+      await connection.quit();
+
+      res.json({ enabled: true, queues: queueStats, timestamp: new Date().toISOString() });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.delete("/api/admin/queues/:queueName/failed", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { queueName } = req.params;
+      const redisUrl = process.env.REDIS_URL;
+      if (!redisUrl) return res.status(400).json({ message: "Redis not configured" });
+
+      const { Queue } = await import("bullmq");
+      const IORedis = (await import("ioredis")).default;
+      const connection = new IORedis(redisUrl, { maxRetriesPerRequest: 1, enableReadyCheck: false });
+      const q = new Queue(queueName, { connection });
+      await q.clean(0, 0, "failed");
+      await q.close();
+      await connection.quit();
+      res.json({ message: "Failed jobs cleared" });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.post("/api/admin/queues/:queueName/retry-failed", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { queueName } = req.params;
+      const redisUrl = process.env.REDIS_URL;
+      if (!redisUrl) return res.status(400).json({ message: "Redis not configured" });
+
+      const { Queue } = await import("bullmq");
+      const IORedis = (await import("ioredis")).default;
+      const connection = new IORedis(redisUrl, { maxRetriesPerRequest: 1, enableReadyCheck: false });
+      const q = new Queue(queueName, { connection });
+      const failed = await q.getFailed();
+      await Promise.all(failed.map(j => j.retry()));
+      await q.close();
+      await connection.quit();
+      res.json({ retried: failed.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // Database Index Analysis (T75)
+  // -----------------------------------------------------------------------
+
+  // GET /api/admin/index-analysis — get the latest report
+  api.get("/api/admin/index-analysis", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { getLastReport } = await import("./jobs/indexAnalyzer");
+      const report = await getLastReport();
+      if (!report) {
+        return res.json({ report: null, message: "No analysis run yet. POST to /api/admin/index-analysis/run to generate." });
+      }
+      res.json({ report });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/admin/index-analysis/run — trigger an on-demand analysis
+  api.post("/api/admin/index-analysis/run", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { runIndexAnalysis } = await import("./jobs/indexAnalyzer");
+      const report = await runIndexAnalysis();
+      res.json({ report, success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // Proactive Monitor API (T83)
+  // -----------------------------------------------------------------------
+
+  // GET /api/monitor/alerts — get all active alerts for current org
+  api.get("/api/monitor/alerts", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { proactiveMonitor } = await import("./services/proactiveMonitor");
+      const limit = Math.min(100, req.query.limit ? parseInt(req.query.limit as string) : 50);
+      const alerts = await proactiveMonitor.getAllAlerts(org.id, limit);
+      res.json({ alerts, count: alerts.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/monitor/run — run all checks for current org
+  api.post("/api/monitor/run", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { proactiveMonitor } = await import("./services/proactiveMonitor");
+      const activityResult = await proactiveMonitor.checkActivityDrop(org.id);
+      const integrityIssues = await proactiveMonitor.checkDataIntegrity(org.id);
+      const anomalyResult = await proactiveMonitor.runAnomalyDetection(org.id);
+      res.json({
+        success: true,
+        activityAnomaly: activityResult,
+        integrityIssues,
+        anomalies: anomalyResult,
+        checkedAt: new Date().toISOString(),
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/monitor/alerts/:id/resolve — resolve an alert
+  api.post("/api/monitor/alerts/:id/resolve", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const alertId = parseInt(req.params.id);
+      const { details } = req.body;
+      const { proactiveMonitor } = await import("./services/proactiveMonitor");
+      const resolved = await proactiveMonitor.autoResolveAlert(alertId, details || "Manually resolved", "user");
+      res.json({ success: resolved });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
 
 }

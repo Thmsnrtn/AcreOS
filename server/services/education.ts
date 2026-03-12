@@ -6,7 +6,7 @@ import {
   courseEnrollments,
   users 
 } from '../../shared/schema';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, inArray } from 'drizzle-orm';
 
 interface CourseModule {
   title: string;
@@ -237,18 +237,17 @@ class Education {
         orderBy: [desc(courseEnrollments.enrolledAt)],
       });
 
-      // Fetch course details for each enrollment
-      const enriched = await Promise.all(
-        enrollments.map(async (enrollment) => {
-          const course = await db.query.courses.findFirst({
-            where: eq(courses.id, enrollment.courseId),
-          });
-          return {
-            ...enrollment,
-            course,
-          };
-        })
-      );
+      // N+1 fix: Batch-fetch all courses in one query instead of one query per enrollment
+      const courseIds = [...new Set(enrollments.map(e => e.courseId))];
+      const courseList = courseIds.length > 0
+        ? await db.query.courses.findMany({ where: inArray(courses.id, courseIds) })
+        : [];
+      const courseMap = new Map(courseList.map(c => [c.id, c]));
+
+      const enriched = enrollments.map(enrollment => ({
+        ...enrollment,
+        course: courseMap.get(enrollment.courseId),
+      }));
 
       return enriched;
     } catch (error) {

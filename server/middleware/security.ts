@@ -1,4 +1,11 @@
+import crypto from "crypto";
 import type { Request, Response, NextFunction } from "express";
+
+// ─── F-A05-1: Per-request CSP nonce ─────────────────────────────────────────
+// In production, generate a unique nonce per response and embed it in the CSP.
+// The nonce must also be injected into the HTML shell (see static.ts / index.html).
+// In development, fall back to 'unsafe-inline'/'unsafe-eval' for HMR compatibility.
+// The nonce is stored in res.locals.cspNonce for use by the static file server.
 
 export function securityHeaders(req: Request, res: Response, next: NextFunction) {
   res.setHeader("X-Content-Type-Options", "nosniff");
@@ -6,13 +13,23 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
   res.setHeader("X-XSS-Protection", "1; mode=block");
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
   res.setHeader("Permissions-Policy", "geolocation=(), microphone=(), camera=()");
-  
-  // CSP directives - Note: 'unsafe-inline'/'unsafe-eval' required for React/Vite apps
-  // Consider nonce-based CSP in future for stricter policy
-  const cspDirectives = [
+
+  const isProduction = process.env.NODE_ENV === "production";
+
+  // F-A05-1: Generate per-request nonce in production
+  const nonce = isProduction ? crypto.randomBytes(16).toString("base64") : null;
+  if (nonce) {
+    res.locals.cspNonce = nonce;
+  }
+
+  const cspDirectives: string[] = [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://api.mapbox.com",
-    "style-src 'self' 'unsafe-inline' https://api.mapbox.com https://fonts.googleapis.com",
+    isProduction && nonce
+      ? `script-src 'self' 'nonce-${nonce}' https://js.stripe.com https://api.mapbox.com`
+      : "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://api.mapbox.com",
+    isProduction && nonce
+      ? `style-src 'self' 'nonce-${nonce}' https://api.mapbox.com https://fonts.googleapis.com`
+      : "style-src 'self' 'unsafe-inline' https://api.mapbox.com https://fonts.googleapis.com",
     "img-src 'self' data: blob: https: http:",
     "font-src 'self' data: https://fonts.gstatic.com",
     "connect-src 'self' https://api.stripe.com https://api.mapbox.com https://events.mapbox.com wss: ws:",
@@ -20,20 +37,22 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
-    "frame-ancestors 'none'"
-  ];
-  
-  // Only upgrade to HTTPS in production
-  if (process.env.NODE_ENV === "production") {
+    "frame-ancestors 'none'",
+  ].filter(Boolean) as string[];
+
+  if (isProduction) {
     cspDirectives.push("upgrade-insecure-requests");
+    // Task #F-A05-2: CSP violation reporting endpoint
+    cspDirectives.push("report-uri /api/csp-report");
   }
-  
+
   res.setHeader("Content-Security-Policy", cspDirectives.join("; "));
-  
-  if (process.env.NODE_ENV === "production") {
-    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+
+  if (isProduction) {
+    // Task #30: includeSubDomains + preload for HSTS preload list eligibility
+    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
   }
-  
+
   next();
 }
 

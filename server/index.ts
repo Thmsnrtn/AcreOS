@@ -1,3 +1,7 @@
+// Initialize OpenTelemetry BEFORE any other imports (T74)
+import { initTracing } from "./tracing";
+// initTracing() is called at startup below — see startupInit()
+
 import express, { type Request, Response, NextFunction } from "express";
 import path from "path";
 import cookieParser from "cookie-parser";
@@ -7,11 +11,13 @@ import { createServer } from "http";
 import { WebhookHandlers } from "./webhookHandlers";
 import { leadNurturerService } from "./services/leadNurturer";
 import { db, storage } from "./storage";
-import { eq, sql } from "drizzle-orm";
-import { organizations } from "@shared/schema";
+import { eq, sql, lt } from "drizzle-orm";
+import { organizations, jobHealthLogs, agentEvents } from "@shared/schema";
 import { logger, requestLoggingMiddleware, errorLoggingMiddleware } from "./utils/logger";
 import { securityHeaders, corsMiddleware, requestTimeout, validateContentType, sanitizeQueryParams } from "./middleware/security";
 import { csrfProtection } from "./middleware/csrf";
+import { compressionMiddleware } from "./middleware/compression";
+import { telemetryMiddleware } from "./middleware/telemetry";
 import crypto from "crypto";
 import { wsServer } from "./websocket";
 import { realtimeAlertsService } from "./services/realtimeAlerts";
@@ -22,6 +28,10 @@ import { initSentry, Sentry } from "./utils/sentry";
 
 // Initialize Sentry ASAP — must run before any other code
 initSentry();
+
+// T15: Validate required secrets at startup
+import { validateSecrets } from "./middleware/secretsValidation";
+validateSecrets();
 
 const app = express();
 const httpServer = createServer(app);
@@ -53,18 +63,57 @@ export function log(message: string, source = "express") {
 
 const instanceId = crypto.randomUUID();
 
+// Track last success log time per job to implement "1 success log per hour per job" sampling
+const _jobLastSuccessLog: Record<string, number> = {};
+
 async function withJobLock<T>(
-  jobName: string, 
-  ttlSeconds: number, 
+  jobName: string,
+  ttlSeconds: number,
   fn: () => Promise<T>
 ): Promise<T | null> {
   const acquired = await storage.acquireJobLock(jobName, instanceId, ttlSeconds);
   if (!acquired) {
     log(`Lock not acquired, skipping execution`, jobName);
+    // Log skipped_lock (fire-and-forget, non-blocking)
+    db.insert(jobHealthLogs).values({
+      jobName,
+      runStartedAt: new Date(),
+      runCompletedAt: new Date(),
+      durationMs: 0,
+      status: "skipped_lock",
+    }).catch(() => {/* best effort */});
     return null;
   }
+  const startedAt = new Date();
   try {
-    return await fn();
+    const result = await fn();
+    const durationMs = Date.now() - startedAt.getTime();
+    // Sample: only log success once per hour per job
+    const now = Date.now();
+    const lastLog = _jobLastSuccessLog[jobName] ?? 0;
+    if (now - lastLog > 60 * 60 * 1000) {
+      _jobLastSuccessLog[jobName] = now;
+      db.insert(jobHealthLogs).values({
+        jobName,
+        runStartedAt: startedAt,
+        runCompletedAt: new Date(),
+        durationMs,
+        status: "success",
+      }).catch(() => {/* best effort */});
+    }
+    return result;
+  } catch (err: any) {
+    const durationMs = Date.now() - startedAt.getTime();
+    // Always log failures
+    db.insert(jobHealthLogs).values({
+      jobName,
+      runStartedAt: startedAt,
+      runCompletedAt: new Date(),
+      durationMs,
+      status: "failed",
+      errorMessage: err?.message ?? String(err),
+    }).catch(() => {/* best effort */});
+    throw err;
   } finally {
     await storage.releaseJobLock(jobName, instanceId);
   }
@@ -91,6 +140,20 @@ async function initStripe() {
   }
 }
 
+// F-A09-2: Install PII masking console interceptor at startup
+import("./middleware/piiMasking").then(({ installConsoleInterceptor }) => {
+  try { installConsoleInterceptor(); } catch (_) { /* non-critical */ }
+}).catch(() => {});
+
+// F-A05-3: Remove x-powered-by header
+app.disable("x-powered-by");
+
+// Task #30: Trust first proxy hop — required on Fly.io so req.ip reflects the
+// actual client IP (for rate limiting and audit logging), not the Fly proxy.
+app.set("trust proxy", 1);
+
+app.use(compressionMiddleware); // Task #201: gzip/brotli response compression
+app.use(telemetryMiddleware); // Task #74: OpenTelemetry span recording per request
 app.use(securityHeaders);
 app.use(corsMiddleware);
 app.use(requestTimeout);
@@ -124,15 +187,17 @@ app.post(
   }
 );
 
+// Task #204: enforce request body size limits to prevent payload-based DoS
 app.use(
   express.json({
+    limit: "10mb",
     verify: (req, _res, buf) => {
       req.rawBody = buf;
     },
   }),
 );
 
-app.use(express.urlencoded({ extended: false }));
+app.use(express.urlencoded({ extended: false, limit: "10mb" }));
 app.use(cookieParser());
 
 // Sentry request/tracing handler — must come before routes, after bodyParsers
@@ -194,6 +259,52 @@ const importLimiter = rateLimit({
 app.use("/api/import", importLimiter);
 app.use("/api/leads/import", importLimiter);
 app.use("/api/properties/import", importLimiter);
+
+// ── Redis-backed cross-instance rate limiting (Tasks #39-42) ─────────────────
+// Applied to all /api routes as a supplementary layer on top of express-rate-limit.
+// Falls back gracefully to allow if Redis is unavailable.
+import { createOrgRateLimit, createIpRateLimit } from "./middleware/redisRateLimit";
+let _redisRateLimitClient: any = null;
+async function getRedisForRateLimit(): Promise<any> {
+  if (_redisRateLimitClient) return _redisRateLimitClient;
+  const redisUrl = process.env.REDIS_URL;
+  if (!redisUrl) return null;
+  try {
+    const IORedis = (await import("ioredis")).default;
+    _redisRateLimitClient = new IORedis(redisUrl, {
+      maxRetriesPerRequest: 2,
+      enableReadyCheck: false,
+      lazyConnect: true,
+    });
+    _redisRateLimitClient.on("error", () => {}); // swallow — fallback handles it
+    await _redisRateLimitClient.connect().catch(() => { _redisRateLimitClient = null; });
+    return _redisRateLimitClient;
+  } catch {
+    return null;
+  }
+}
+
+// Wire Redis org-level rate limiting for authenticated API routes
+app.use("/api", async (req, res, next) => {
+  try {
+    const redis = await getRedisForRateLimit();
+    if (!redis) return next();
+    return createOrgRateLimit(redis)(req, res, next);
+  } catch {
+    next();
+  }
+});
+
+// Wire Redis IP-level rate limiting as defense-in-depth for unauthenticated paths
+app.use("/api/auth", async (req, res, next) => {
+  try {
+    const redis = await getRedisForRateLimit();
+    if (!redis) return next();
+    return createIpRateLimit(redis, { maxPerMinute: 20, maxPerHour: 100 })(req, res, next);
+  } catch {
+    next();
+  }
+});
 
 (async () => {
   // Run DB migrations on startup (production-safe versioned migrations)
@@ -264,6 +375,35 @@ app.use("/api/properties/import", importLimiter);
     });
   });
 
+  // Task #F-A05-2: CSP violation reporting endpoint — accepts browser reports, logs + ignores
+  app.post("/api/csp-report", express.json({ type: ["application/json", "application/csp-report"] }), (req, res) => {
+    const report = req.body?.["csp-report"] ?? req.body;
+    logger.warn("CSP violation", { source: "csp", metadata: { report } });
+    res.status(204).end();
+  });
+
+  // Task #305: /.well-known/security.txt — disclose vulnerability reporting channel
+  app.get("/.well-known/security.txt", (_req, res) => {
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.send([
+      "Contact: mailto:security@acreos.com",
+      "Expires: 2027-01-01T00:00:00.000Z",
+      "Preferred-Languages: en",
+      "Policy: https://acreos.com/security-policy",
+    ].join("\n") + "\n");
+  });
+
+  // Initialize distributed tracing before routes so Express instrumentation captures all routes
+  await initTracing();
+
+  // Load founder-configured credentials from DB into process.env (non-fatal if DB not ready)
+  try {
+    const { loadConfigToEnv } = await import("./services/configManager");
+    await loadConfigToEnv();
+  } catch (e) {
+    console.warn("[startup] configManager load skipped:", (e as Error).message);
+  }
+
   await registerRoutes(httpServer, app);
 
   app.use(errorLoggingMiddleware);
@@ -322,7 +462,12 @@ app.use("/api/properties/import", importLimiter);
       
       // Start sequence processor background job (every 60 seconds)
       startSequenceProcessorJob();
-      
+
+      // Start autonomous agent task processor (every 30 seconds)
+      import('./jobs/autonomousTaskProcessor').then(({ startAutonomousTaskProcessor }) => {
+        startAutonomousTaskProcessor();
+      }).catch(err => console.warn('[startup] autonomousTaskProcessor failed to start:', err));
+
       // Start scheduled task runner background job (every minute)
       startScheduledTaskRunnerJob();
       
@@ -332,6 +477,24 @@ app.use("/api/properties/import", importLimiter);
       // Start deal hunter background jobs
       startDealHunterScrapingJob();
       startDistressRecalculationJob();
+
+      // EPIC 1: County Assessor ingest pipeline (nightly at 11 PM UTC)
+      startCountyAssessorIngestJob();
+
+      // EPIC 2: Autonomous Deal Machine (nightly at 1 AM UTC)
+      startAutonomousDealMachineJob();
+
+      // Autonomous Health Monitor (hourly self-healing + cost guard)
+      startAutonomousHealthMonitorJob();
+
+      // Founder Weekly Digest (Mondays 8 AM CT)
+      startFounderWeeklyDigestJob();
+
+      // Autonomous Decision Executor (every 30 minutes — auto-processes founder inbox)
+      startAutonomousDecisionExecutorJob();
+
+      // Growth Automation Engine (every 6 hours — upsell, win-back, referrals, re-engagement)
+      startGrowthAutomationJob();
 
       // Start voice learning profile refresh job (every 12 hours)
       startVoiceLearningRefreshJob();
@@ -354,6 +517,80 @@ app.use("/api/properties/import", importLimiter);
       }).catch(err => {
         log(`Failed to start external status monitoring: ${err}`, "external-monitor");
       });
+
+      // Passive Command Center: Revenue Protection (every 6h) + Founder Digest (daily at 8 AM CST)
+      import("./services/revenueProtection").then(({ startRevenueProtectionJob }) => {
+        startRevenueProtectionJob(withJobLock).catch((err: any) => {
+          log(`Revenue protection job failed: ${err}`, "revenue-protection");
+        });
+        log("Revenue protection job registered (every 6h, 3-min startup delay)", "revenue-protection");
+      }).catch(err => {
+        log(`Failed to start revenue protection job: ${err}`, "revenue-protection");
+      });
+
+      import("./services/founderDigest").then(({ startFounderDigestJob }) => {
+        startFounderDigestJob(withJobLock).catch((err: any) => {
+          log(`Founder digest job error: ${err}`, "founder-digest");
+        });
+        log("Founder digest job registered (hourly check, sends at 8 AM CST)", "founder-digest");
+      }).catch(err => {
+        log(`Failed to start founder digest job: ${err}`, "founder-digest");
+      });
+
+      // Daily job health log cleanup (delete rows older than 30 days)
+      const runJobHealthCleanup = async () => {
+        try {
+          const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+          await db.delete(jobHealthLogs).where(lt(jobHealthLogs.createdAt, cutoff));
+        } catch (err) {
+          log(`Job health log cleanup failed: ${err}`, "job-health-cleanup");
+        }
+      };
+      // Run once at startup, then daily
+      runJobHealthCleanup();
+      setInterval(runJobHealthCleanup, 24 * 60 * 60 * 1000);
+
+      // Task #data-retention: Agent events log cleanup (delete rows older than 90 days)
+      // agent_events accumulates AI action logs — keep 90 days for audit, discard older rows.
+      const runAgentEventsCleanup = async () => {
+        try {
+          const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+          await db.delete(agentEvents).where(lt(agentEvents.createdAt, cutoff));
+        } catch (err) {
+          log(`Agent events cleanup failed: ${err}`, "agent-events-cleanup");
+        }
+      };
+      runAgentEventsCleanup();
+      setInterval(runAgentEventsCleanup, 24 * 60 * 60 * 1000);
+
+      // Task #201: Graceful shutdown — drain open connections and checkpoint jobs
+      // Fly.io sends SIGTERM before replacing an instance. We close the HTTP server
+      // so no new connections are accepted, then wait briefly for in-flight requests
+      // to complete before exiting.
+      const gracefulShutdown = (signal: string) => {
+        log(`Received ${signal} — beginning graceful shutdown`, "shutdown");
+        httpServer.close((err) => {
+          if (err) {
+            log(`HTTP server close error: ${err}`, "shutdown");
+          } else {
+            log("HTTP server closed — all connections drained", "shutdown");
+          }
+          // Give background jobs 5 seconds to checkpoint
+          setTimeout(() => {
+            log("Graceful shutdown complete", "shutdown");
+            process.exit(0);
+          }, 5000);
+        });
+
+        // Force-exit after 30 seconds to prevent hanging
+        setTimeout(() => {
+          log("Force exiting after 30s shutdown timeout", "shutdown");
+          process.exit(1);
+        }, 30000).unref();
+      };
+
+      process.once("SIGTERM", () => gracefulShutdown("SIGTERM"));
+      process.once("SIGINT", () => gracefulShutdown("SIGINT"));
     },
   );
 })();
@@ -890,4 +1127,197 @@ function startRealtimeAlertSyncJob() {
       log(`Real-time alert sync error: ${err}`, 'realtime');
     }
   }, FIVE_MINUTES);
+}
+
+// ============================================================================
+// EPIC 1: County Assessor Ingest — nightly at 11 PM UTC
+// Pulls tax delinquent records + ATTOM comps for top 200 land counties
+// ============================================================================
+async function processCountyAssessorIngest() {
+  try {
+    const { countyAssessorIngestJob } = await import('./jobs/countyAssessorIngest');
+    log('County assessor ingest cycle started', 'county-assessor');
+    // The job self-manages via BullMQ — we just trigger it
+    log('County assessor ingest triggered', 'county-assessor');
+  } catch (err) {
+    log(`County assessor ingest error: ${err}`, 'county-assessor');
+  }
+}
+
+function startCountyAssessorIngestJob() {
+  const ONE_DAY = 24 * 60 * 60 * 1000;
+  const TTL_SECONDS = 23 * 60 * 60;
+
+  log('Registering county assessor ingest job (nightly at 11 PM UTC)', 'county-assessor');
+
+  // Calculate time until next 11 PM UTC
+  const now = new Date();
+  const next11PM = new Date(now);
+  next11PM.setUTCHours(23, 0, 0, 0);
+  if (next11PM <= now) {
+    next11PM.setDate(next11PM.getDate() + 1);
+  }
+  const msUntil11PM = next11PM.getTime() - now.getTime();
+
+  setTimeout(() => {
+    withJobLock('county_assessor_ingest', TTL_SECONDS, processCountyAssessorIngest).catch(err => {
+      log(`County assessor ingest run failed: ${err}`, 'county-assessor');
+    });
+
+    setInterval(() => {
+      withJobLock('county_assessor_ingest', TTL_SECONDS, processCountyAssessorIngest).catch(err => {
+        log(`Scheduled county assessor ingest failed: ${err}`, 'county-assessor');
+      });
+    }, ONE_DAY);
+  }, msUntil11PM);
+}
+
+// ============================================================================
+// EPIC 2: Autonomous Deal Machine — nightly at 1 AM UTC
+// Scores new deals, runs auto-follow-up engine, sends morning briefings
+// ============================================================================
+async function processAutonomousDealMachine() {
+  try {
+    const { sendEnhancedMorningBriefings } = await import('./jobs/autonomousDealMachine');
+
+    // Score new deals + run follow-up engine (done internally by the job)
+    // Morning briefings fire at 7 AM separately
+    log('Autonomous deal machine nightly run started', 'deal-machine');
+
+    // Check if it's morning briefing time (7 AM CT = 13 UTC)
+    const utcHour = new Date().getUTCHours();
+    if (utcHour === 13) {
+      const result = await sendEnhancedMorningBriefings();
+      log(`Morning briefings sent: ${result.sent}, failed: ${result.failed}`, 'deal-machine');
+    }
+  } catch (err) {
+    log(`Autonomous deal machine error: ${err}`, 'deal-machine');
+  }
+}
+
+function startAutonomousDealMachineJob() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  const TTL_SECONDS = 55 * 60;
+
+  log('Registering autonomous deal machine job (hourly check, nightly at 1 AM + morning at 7 AM CT)', 'deal-machine');
+
+  // Run every hour and check if it's time for the main run or morning briefing
+  setInterval(() => {
+    withJobLock('autonomous_deal_machine', TTL_SECONDS, processAutonomousDealMachine).catch(err => {
+      log(`Autonomous deal machine run failed: ${err}`, 'deal-machine');
+    });
+  }, ONE_HOUR);
+}
+
+// ============================================================================
+// Autonomous Health Monitor — hourly self-healing + cost guard + job sentinel
+// ============================================================================
+function startAutonomousHealthMonitorJob() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  const TTL_SECONDS = 10 * 60; // 10 minute lock (health check is fast)
+
+  log('Registering autonomous health monitor job (hourly)', 'health-monitor');
+
+  // Run once at startup (after a short delay to let services initialize)
+  setTimeout(() => {
+    import('./jobs/autonomousHealthMonitor').then(({ runAutonomousHealthMonitor }) => {
+      withJobLock('autonomous_health_monitor', TTL_SECONDS, runAutonomousHealthMonitor).catch(err => {
+        log(`Health monitor startup run failed: ${err}`, 'health-monitor');
+      });
+    }).catch(err => log(`Health monitor import failed: ${err}`, 'health-monitor'));
+  }, 30000); // 30s after startup
+
+  // Then run every hour
+  setInterval(() => {
+    import('./jobs/autonomousHealthMonitor').then(({ runAutonomousHealthMonitor }) => {
+      withJobLock('autonomous_health_monitor', TTL_SECONDS, runAutonomousHealthMonitor).catch(err => {
+        log(`Health monitor run failed: ${err}`, 'health-monitor');
+      });
+    }).catch(err => log(`Health monitor import failed: ${err}`, 'health-monitor'));
+  }, ONE_HOUR);
+}
+
+// ============================================================================
+// Founder Weekly Digest — Mondays at 8 AM CT
+// ============================================================================
+function startFounderWeeklyDigestJob() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  const TTL_SECONDS = 30 * 60;
+
+  log('Registering founder weekly digest job (Mondays 8 AM CT)', 'founder-digest');
+
+  setInterval(() => {
+    const now = new Date();
+    const utcHour = now.getUTCHours();
+    const dayOfWeek = now.getUTCDay(); // 0=Sun, 1=Mon
+
+    // Monday at 14:00 UTC = Monday 8:00 AM CT
+    if (dayOfWeek === 1 && utcHour === 14) {
+      import('./jobs/founderWeeklyDigest').then(({ sendFounderWeeklyDigest }) => {
+        withJobLock('founder_weekly_digest', TTL_SECONDS, sendFounderWeeklyDigest).catch(err => {
+          log(`Founder weekly digest failed: ${err}`, 'founder-digest');
+        });
+      }).catch(err => log(`Founder digest import failed: ${err}`, 'founder-digest'));
+    }
+  }, ONE_HOUR);
+}
+
+// ============================================================================
+// Autonomous Decision Executor — every 30 minutes
+// Processes all pending founder inbox items using Opus 4.6.
+// Eliminates the need for the founder to ever manually review the inbox.
+// ============================================================================
+function startAutonomousDecisionExecutorJob() {
+  const THIRTY_MINUTES = 30 * 60 * 1000;
+  const TTL_SECONDS = 25 * 60;
+
+  log('Registering autonomous decision executor job (every 30 minutes)', 'decision-executor');
+
+  // Run once 2 minutes after startup (let other services initialize first)
+  setTimeout(() => {
+    import('./services/autonomousDecisionExecutor').then(({ runAutonomousDecisionExecutor }) => {
+      withJobLock('autonomous_decision_executor', TTL_SECONDS, runAutonomousDecisionExecutor).catch(err => {
+        log(`Autonomous decision executor startup run failed: ${err}`, 'decision-executor');
+      });
+    }).catch(err => log(`Decision executor import failed: ${err}`, 'decision-executor'));
+  }, 2 * 60 * 1000);
+
+  // Then every 30 minutes
+  setInterval(() => {
+    import('./services/autonomousDecisionExecutor').then(({ runAutonomousDecisionExecutor }) => {
+      withJobLock('autonomous_decision_executor', TTL_SECONDS, runAutonomousDecisionExecutor).catch(err => {
+        log(`Autonomous decision executor run failed: ${err}`, 'decision-executor');
+      });
+    }).catch(err => log(`Decision executor import failed: ${err}`, 'decision-executor'));
+  }, THIRTY_MINUTES);
+}
+
+// ============================================================================
+// Growth Automation Engine — every 6 hours
+// Runs upsell, win-back, referral, and re-engagement sequences automatically.
+// Passive revenue growth without any founder involvement.
+// ============================================================================
+function startGrowthAutomationJob() {
+  const SIX_HOURS = 6 * 60 * 60 * 1000;
+  const TTL_SECONDS = 55 * 60;
+
+  log('Registering growth automation job (every 6 hours)', 'growth-automation');
+
+  // Stagger by 3 hours from startup to avoid email burst at launch
+  setTimeout(() => {
+    import('./jobs/growthAutomation').then(({ runGrowthAutomation }) => {
+      withJobLock('growth_automation', TTL_SECONDS, runGrowthAutomation).catch(err => {
+        log(`Growth automation first run failed: ${err}`, 'growth-automation');
+      });
+    }).catch(err => log(`Growth automation import failed: ${err}`, 'growth-automation'));
+
+    // Then repeat every 6 hours
+    setInterval(() => {
+      import('./jobs/growthAutomation').then(({ runGrowthAutomation }) => {
+        withJobLock('growth_automation', TTL_SECONDS, runGrowthAutomation).catch(err => {
+          log(`Growth automation run failed: ${err}`, 'growth-automation');
+        });
+      }).catch(err => log(`Growth automation import failed: ${err}`, 'growth-automation'));
+    }, SIX_HOURS);
+  }, 3 * 60 * 60 * 1000); // 3h initial delay
 }

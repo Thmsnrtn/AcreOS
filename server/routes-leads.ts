@@ -516,8 +516,12 @@ export function registerLeadRoutes(app: Express): void {
   });
   
   api.get("/api/leads/:id/activities", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
     const leadId = Number(req.params.id);
-    const limit = req.query.limit ? Number(req.query.limit) : 50;
+    // Task #2: Verify lead belongs to org (IDOR prevention)
+    const lead = await storage.getLead(org.id, leadId);
+    if (!lead) return res.status(404).json({ message: "Lead not found" });
+    const limit = Math.min(100, req.query.limit ? Number(req.query.limit) : 50);
     const activities = await storage.getLeadActivities(leadId, limit);
     res.json(activities);
   });

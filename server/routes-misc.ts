@@ -313,6 +313,31 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
 
       if (matchingOrg) {
         try {
+          // Check for STOP/START opt keywords BEFORE storing the message
+          const { processOptKeyword } = await import("./services/tcpaCompliance");
+          const optResult = await processOptKeyword(
+            matchingOrg.organizationId,
+            From,
+            Body,
+            MessageSid
+          );
+
+          if (optResult.action === 'opt_out') {
+            console.log(`[Twilio Webhook] STOP keyword received from ${From} — lead ${optResult.leadId} opted out`);
+            // Respond with TCPA-required opt-out confirmation message
+            res.status(200).send(
+              '<?xml version="1.0" encoding="UTF-8"?><Response><Message>You have been unsubscribed and will receive no further messages. Reply START to re-subscribe.</Message></Response>'
+            );
+            return;
+          }
+          if (optResult.action === 'opt_in') {
+            console.log(`[Twilio Webhook] START keyword received from ${From} — lead ${optResult.leadId} opted in`);
+            res.status(200).send(
+              '<?xml version="1.0" encoding="UTF-8"?><Response><Message>You have been re-subscribed. Reply STOP at any time to unsubscribe.</Message></Response>'
+            );
+            return;
+          }
+
           await smsServiceModule.handleIncomingSMS(
             matchingOrg.organizationId,
             From,
@@ -327,11 +352,41 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
       } else {
         console.log("[Twilio Webhook] No matching organization found for phone:", To);
       }
-      
+
       res.status(200).send("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response></Response>");
     } catch (error: any) {
       console.error("Twilio webhook error:", error);
       res.status(500).send("Webhook processing error");
+    }
+  });
+
+  // POST /api/webhooks/twilio/sms-status
+  // Twilio posts delivery status updates for outbound messages here.
+  api.post("/api/webhooks/twilio/sms-status", async (req, res) => {
+    res.status(200).send("OK");
+    const { MessageSid, MessageStatus, ErrorCode, ErrorMessage } = req.body;
+    if (!MessageSid || !MessageStatus) return;
+
+    try {
+      const { messages } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+      const statusMap: Record<string, string> = {
+        sent: 'sent',
+        delivered: 'delivered',
+        failed: 'failed',
+        undelivered: 'failed',
+        read: 'delivered',
+      };
+      const mappedStatus = statusMap[MessageStatus] || MessageStatus;
+      await db.update(messages)
+        .set({ status: mappedStatus, updatedAt: new Date() } as any)
+        .where(eq(messages.externalId, MessageSid));
+
+      if (ErrorCode) {
+        console.warn(`[Twilio] SMS ${MessageSid} error ${ErrorCode}: ${ErrorMessage}`);
+      }
+    } catch (err: any) {
+      console.error("[Twilio SMS Status] Update failed:", err.message);
     }
   });
 
@@ -435,7 +490,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
   api.get("/api/jobs", isAuthenticated, getOrCreateOrg, requireAdminOrAbove, async (req, res) => {
     try {
       const { jobQueueService } = await import("./services/jobQueue");
-      const limit = Math.min(parseInt(req.query.limit as string) || 50, 500);
+      const limit = Math.min(100, parseInt(req.query.limit as string) || 50);
       const jobs = jobQueueService.getRecentJobs(limit);
       
       res.json({
@@ -665,6 +720,171 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
   });
 
   registerAIOperationsRoutes(api);
+
+  // ============================================
+  // TAX OPTIMIZER ROUTES (T79)
+  // ============================================
+
+  // GET /api/tax-optimizer/position — year-end tax position analysis
+  api.get("/api/tax-optimizer/position", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const taxYear = req.query.year ? parseInt(req.query.year as string) : new Date().getFullYear();
+      const { taxOptimizerService } = await import("./services/taxOptimizer");
+      const position = await taxOptimizerService.analyzeYearEndPosition(org.id, taxYear);
+      res.json(position);
+    } catch (err: any) {
+      console.error("Tax optimizer error:", err);
+      res.status(500).json({ message: err.message || "Failed to analyze tax position" });
+    }
+  });
+
+  // GET /api/tax-optimizer/deal/:dealId — quick tax estimate for a deal
+  api.get("/api/tax-optimizer/deal/:dealId", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const dealId = parseInt(req.params.dealId);
+      const { taxOptimizerService } = await import("./services/taxOptimizer");
+      const estimate = await taxOptimizerService.estimateDealTax(org.id, dealId);
+      res.json(estimate);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to estimate deal tax" });
+    }
+  });
+
+  // POST /api/tax-optimizer/report — AI-generated tax planning report
+  api.post("/api/tax-optimizer/report", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const taxYear = req.body.taxYear || new Date().getFullYear();
+      const { taxOptimizerService } = await import("./services/taxOptimizer");
+      const report = await taxOptimizerService.generateTaxPlanningReport(org.id, taxYear);
+      res.json({ report, taxYear });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to generate tax report" });
+    }
+  });
+
+  // ============================================
+  // INVESTOR VERIFICATION ROUTES (T82)
+  // ============================================
+
+  // GET /api/investor-profiles/my — get or create own investor profile
+  api.get("/api/investor-profiles/my", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = (req as any).user;
+      const { db: database } = await import("./db");
+      const { investorProfiles } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+      const [profile] = await database
+        .select()
+        .from(investorProfiles)
+        .where(eq(investorProfiles.organizationId, org.id));
+      res.json({ profile: profile || null });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/investor-profiles — create/update investor profile
+  api.post("/api/investor-profiles", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = (req as any).user;
+      const body = req.body;
+      const { db: database } = await import("./db");
+      const { investorProfiles } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+
+      const [existing] = await database
+        .select()
+        .from(investorProfiles)
+        .where(eq(investorProfiles.organizationId, org.id));
+
+      if (existing) {
+        const [updated] = await database
+          .update(investorProfiles)
+          .set({ ...body, updatedAt: new Date() })
+          .where(eq(investorProfiles.id, existing.id))
+          .returning();
+        res.json({ profile: updated });
+      } else {
+        const [created] = await database
+          .insert(investorProfiles)
+          .values({
+            organizationId: org.id,
+            userId: user?.id || "unknown",
+            ...body,
+            verificationStatus: "pending",
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .returning();
+        res.json({ profile: created });
+      }
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/investor-profiles/verify — submit verification documents
+  api.post("/api/investor-profiles/verify", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { verificationType, documentUrl, selfAttestation } = req.body;
+      const { db: database } = await import("./db");
+      const { investorProfiles } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+
+      // Simple self-attestation verification (production would integrate with Stripe Identity or Persona)
+      const verificationData = {
+        verificationType: verificationType || "self_attestation",
+        submittedAt: new Date().toISOString(),
+        documentUrl: documentUrl || null,
+        selfAttestation: selfAttestation || null,
+        reviewStatus: selfAttestation ? "approved" : "pending_review",
+      };
+
+      const [updated] = await database
+        .update(investorProfiles)
+        .set({
+          verificationStatus: selfAttestation ? "verified" : "pending",
+          verificationData,
+          verifiedAt: selfAttestation ? new Date() : null,
+          updatedAt: new Date(),
+        })
+        .where(eq(investorProfiles.organizationId, org.id))
+        .returning();
+
+      res.json({
+        success: true,
+        profile: updated,
+        message: selfAttestation
+          ? "Identity verified via self-attestation. Investor badge enabled."
+          : "Verification documents submitted for review (1-2 business days).",
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/investor-profiles/directory — browse verified investors in marketplace
+  api.get("/api/investor-profiles/directory", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { db: database } = await import("./db");
+      const { investorProfiles } = await import("@shared/schema");
+      const { eq, and } = await import("drizzle-orm");
+      const profiles = await database
+        .select()
+        .from(investorProfiles)
+        .where(eq(investorProfiles.verificationStatus, "verified"))
+        .limit(50);
+      res.json({ profiles, count: profiles.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
 
   // ============================================
 

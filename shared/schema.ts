@@ -2623,6 +2623,7 @@ export const SUBSCRIPTION_TIERS = {
   free: {
     name: "Free",
     price: 0,
+    tagline: "Explore the platform",
     limits: {
       leads: 50,
       properties: 10,
@@ -2634,9 +2635,41 @@ export const SUBSCRIPTION_TIERS = {
     },
     features: ["basic_crm", "basic_inventory", "basic_notes"],
   },
+  sprout: {
+    name: "Sprout",
+    price: 20,
+    tagline: "Plant your first seeds",
+    badge: "Best to start",
+    limits: {
+      leads: 250,
+      properties: 50,
+      notes: 25,
+      teamMembers: 1,
+      aiRequestsPerMonth: 500,
+      campaigns: 5,
+      monthlyCredits: 500, // $5.00
+    },
+    features: [
+      "basic_crm", "basic_inventory", "basic_notes",
+      "ai_due_diligence", "email_campaigns",
+      "night_cap_dashboard", "deal_calculator",
+      "tax_delinquent_import", "direct_mail_basic"
+    ],
+    // Superpowers unlocked at this tier (shown to free users as preview)
+    unlocks: [
+      "AI-powered due diligence on every parcel",
+      "Tax delinquent list import & processing",
+      "Night Cap passive income dashboard",
+      "Blind offer calculation wizard",
+      "Direct mail campaign builder",
+      "Deal & ROI calculator",
+    ],
+  },
   starter: {
     name: "Starter",
     price: 49,
+    tagline: "Build momentum",
+    badge: "Most popular solo",
     limits: {
       leads: 500,
       properties: 100,
@@ -2646,11 +2679,29 @@ export const SUBSCRIPTION_TIERS = {
       campaigns: 10,
       monthlyCredits: 1000, // $10.00
     },
-    features: ["basic_crm", "basic_inventory", "basic_notes", "ai_due_diligence", "email_campaigns"],
+    features: [
+      "basic_crm", "basic_inventory", "basic_notes",
+      "ai_due_diligence", "email_campaigns",
+      "night_cap_dashboard", "deal_calculator",
+      "tax_delinquent_import", "direct_mail_basic",
+      "atlas_ai_assistant", "seller_intent", "comps_analysis",
+      "skip_tracing_basic", "avm_basic"
+    ],
+    unlocks: [
+      "Atlas AI executive assistant",
+      "Seller intent prediction",
+      "Automated comps analysis",
+      "Basic skip tracing",
+      "Automated Valuation Model (AVM)",
+      "Email drip sequences",
+      "2 team member seats",
+    ],
   },
   pro: {
     name: "Pro",
     price: 149,
+    tagline: "Scale your operation",
+    badge: "Best value for growth",
     limits: {
       leads: 5000,
       properties: 1000,
@@ -2661,15 +2712,33 @@ export const SUBSCRIPTION_TIERS = {
       monthlyCredits: 5000, // $50.00
     },
     features: [
-      "advanced_crm", "advanced_inventory", "advanced_notes", 
+      "advanced_crm", "advanced_inventory", "advanced_notes",
       "ai_due_diligence", "ai_marketing", "ai_buyer_communication",
       "email_campaigns", "sms_campaigns", "direct_mail",
-      "payment_processing", "reporting"
+      "payment_processing", "reporting",
+      "atlas_ai_assistant", "seller_intent", "comps_analysis",
+      "skip_tracing_full", "avm_full", "deal_hunter", "portfolio_health",
+      "owner_financing_manager", "buyer_network", "negotiation_copilot",
+      "market_intelligence", "deal_patterns", "acquisition_radar"
+    ],
+    unlocks: [
+      "Full skip tracing suite",
+      "Deal Hunter AI (finds opportunities automatically)",
+      "Negotiation Copilot",
+      "Owner financing management & note portfolio",
+      "Buyer network access",
+      "Portfolio health monitoring",
+      "Market intelligence reports",
+      "Acquisition Radar (proactive deal alerts)",
+      "SMS campaigns",
+      "Up to 10 team members",
     ],
   },
   scale: {
     name: "Scale",
     price: 399,
+    tagline: "Operate like a fund",
+    badge: "For serious operators",
     limits: {
       leads: -1, // unlimited
       properties: -1,
@@ -2684,12 +2753,33 @@ export const SUBSCRIPTION_TIERS = {
       "ai_due_diligence", "ai_marketing", "ai_buyer_communication", "ai_custom_agents",
       "email_campaigns", "sms_campaigns", "direct_mail", "marketplace_syndication",
       "payment_processing", "advanced_reporting", "api_access", "webhooks",
-      "priority_support", "custom_branding", "team_messaging"
+      "priority_support", "custom_branding", "team_messaging",
+      "atlas_ai_assistant", "seller_intent", "comps_analysis",
+      "skip_tracing_full", "avm_full", "deal_hunter", "portfolio_health",
+      "owner_financing_manager", "buyer_network", "negotiation_copilot",
+      "market_intelligence", "deal_patterns", "acquisition_radar",
+      "portfolio_optimizer", "portfolio_sentinel", "capital_markets",
+      "va_management", "cohort_analysis", "territory_manager",
+      "vision_ai", "voice_ai", "exchange_1031", "tax_optimization"
+    ],
+    unlocks: [
+      "Unlimited leads, properties & notes",
+      "Portfolio Optimizer & Sentinel (AI-managed portfolio)",
+      "Capital markets access",
+      "VA management system",
+      "Voice AI for calls",
+      "Vision AI for parcel analysis",
+      "1031 Exchange tracker",
+      "Tax optimization engine",
+      "Full API access & webhooks",
+      "Up to 25 team members",
     ],
   },
   enterprise: {
     name: "Enterprise",
     price: 799,
+    tagline: "White-label your empire",
+    badge: "For funds & teams",
     limits: {
       leads: -1, // unlimited
       properties: -1,
@@ -2705,7 +2795,25 @@ export const SUBSCRIPTION_TIERS = {
       "email_campaigns", "sms_campaigns", "direct_mail", "marketplace_syndication",
       "payment_processing", "advanced_reporting", "api_access", "webhooks",
       "priority_support", "custom_branding", "team_messaging",
-      "white_label_portal", "dedicated_support", "compliance_exports", "custom_integrations"
+      "white_label_portal", "dedicated_support", "compliance_exports", "custom_integrations",
+      "atlas_ai_assistant", "seller_intent", "comps_analysis",
+      "skip_tracing_full", "avm_full", "deal_hunter", "portfolio_health",
+      "owner_financing_manager", "buyer_network", "negotiation_copilot",
+      "market_intelligence", "deal_patterns", "acquisition_radar",
+      "portfolio_optimizer", "portfolio_sentinel", "capital_markets",
+      "va_management", "cohort_analysis", "territory_manager",
+      "vision_ai", "voice_ai", "exchange_1031", "tax_optimization",
+      "reseller_dashboard", "multi_org_management", "sso", "audit_logs_export"
+    ],
+    unlocks: [
+      "White-label portal for your brand",
+      "Multi-organization management",
+      "SSO & enterprise authentication",
+      "Dedicated account support",
+      "Full compliance export suite",
+      "Custom integrations",
+      "Reseller dashboard",
+      "Unlimited team members",
     ],
   },
 } as const;
@@ -2972,6 +3080,13 @@ export const featureRequests = pgTable("feature_requests", {
   status: text("status").default("submitted"), // submitted, under_review, planned, in_progress, completed, declined
   founderNotes: text("founder_notes"), // Internal notes from founder
   upvotes: integer("upvotes").default(0),
+  aiTriage: jsonb("ai_triage").$type<{
+    estimatedRevImpactCents: number;
+    priorityScore: number;
+    duplicateOfId: number | null;
+    analysisReason: string;
+    autoDisposed: boolean;
+  }>(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -9670,3 +9785,735 @@ export const insertBackgroundJobSchema = createInsertSchema(backgroundJobs).omit
 export type InsertBackgroundJob = z.infer<typeof insertBackgroundJobSchema>;
 export type BackgroundJob = typeof backgroundJobs.$inferSelect;
 export type InsertGoal = typeof goals.$inferInsert;
+
+// ============================================
+// INVESTOR VERIFICATION
+// ============================================
+
+// KYC document uploads for investor verification
+export const investorVerificationDocuments = pgTable("investor_verification_documents", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  investorProfileId: integer("investor_profile_id").references(() => investorProfiles.id).notNull(),
+  documentType: text("document_type").notNull(), // passport | drivers_license | articles_of_org | proof_of_funds | accreditation_docs
+  fileName: text("file_name").notNull(),
+  fileUrl: text("file_url").notNull(),
+  fileSize: integer("file_size"),
+  mimeType: text("mime_type"),
+  status: text("status").notNull().default("pending"), // pending | reviewing | approved | rejected
+  reviewedBy: text("reviewed_by"),
+  reviewedAt: timestamp("reviewed_at"),
+  rejectionReason: text("rejection_reason"),
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("investor_ver_docs_org_idx").on(table.organizationId),
+  index("investor_ver_docs_profile_idx").on(table.investorProfileId),
+  index("investor_ver_docs_status_idx").on(table.status),
+]);
+
+export const insertInvestorVerificationDocumentSchema = createInsertSchema(investorVerificationDocuments).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertInvestorVerificationDocument = z.infer<typeof insertInvestorVerificationDocumentSchema>;
+export type InvestorVerificationDocument = typeof investorVerificationDocuments.$inferSelect;
+
+// Audit trail for verification state changes
+export const investorVerificationHistory = pgTable("investor_verification_history", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  investorProfileId: integer("investor_profile_id").references(() => investorProfiles.id).notNull(),
+  previousStatus: text("previous_status"),
+  newStatus: text("new_status").notNull(),
+  changedBy: text("changed_by").notNull(), // admin user id
+  reason: text("reason"),
+  metadata: jsonb("metadata").$type<Record<string, any>>(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("investor_ver_history_org_idx").on(table.organizationId),
+  index("investor_ver_history_profile_idx").on(table.investorProfileId),
+  index("investor_ver_history_created_idx").on(table.createdAt),
+]);
+
+export const insertInvestorVerificationHistorySchema = createInsertSchema(investorVerificationHistory).omit({ id: true, createdAt: true });
+export type InsertInvestorVerificationHistory = z.infer<typeof insertInvestorVerificationHistorySchema>;
+export type InvestorVerificationHistory = typeof investorVerificationHistory.$inferSelect;
+
+// Third-party background check results
+export const backgroundCheckResults = pgTable("background_check_results", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  investorProfileId: integer("investor_profile_id").references(() => investorProfiles.id).notNull(),
+  provider: text("provider").notNull(), // stripe_identity | persona
+  externalId: text("external_id"),
+  status: text("status").notNull().default("pending"), // pending | completed | failed
+  riskLevel: text("risk_level"), // low | medium | high
+  reportData: jsonb("report_data").$type<Record<string, any>>(),
+  checkedAt: timestamp("checked_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("background_checks_org_idx").on(table.organizationId),
+  index("background_checks_profile_idx").on(table.investorProfileId),
+  index("background_checks_status_idx").on(table.status),
+]);
+
+export const insertBackgroundCheckResultSchema = createInsertSchema(backgroundCheckResults).omit({ id: true, createdAt: true });
+export type InsertBackgroundCheckResult = z.infer<typeof insertBackgroundCheckResultSchema>;
+export type BackgroundCheckResult = typeof backgroundCheckResults.$inferSelect;
+
+// ============================================
+// FEE MANAGEMENT
+// ============================================
+
+// Fee collection / escrow / payout records
+export const transactionFeeSettlements = pgTable("transaction_fee_settlements", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  transactionId: integer("transaction_id").references(() => marketplaceTransactions.id).notNull(),
+  feeType: text("fee_type").notNull(), // platform_fee | buyer_fee | seller_fee
+  feeAmount: numeric("fee_amount").notNull(),
+  feePercent: numeric("fee_percent"),
+  status: text("status").notNull().default("pending"), // pending | held | released | refunded
+  stripePaymentIntentId: text("stripe_payment_intent_id"),
+  stripeTransferIds: text("stripe_transfer_ids").array(),
+  heldUntil: timestamp("held_until"),
+  releasedAt: timestamp("released_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("fee_settlements_org_idx").on(table.organizationId),
+  index("fee_settlements_transaction_idx").on(table.transactionId),
+  index("fee_settlements_status_idx").on(table.status),
+]);
+
+export const insertTransactionFeeSettlementSchema = createInsertSchema(transactionFeeSettlements).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertTransactionFeeSettlement = z.infer<typeof insertTransactionFeeSettlementSchema>;
+export type TransactionFeeSettlement = typeof transactionFeeSettlements.$inferSelect;
+
+// Automated payout scheduling config
+export const feePayoutSchedules = pgTable("fee_payout_schedules", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  cadence: text("cadence").notNull(), // daily | weekly | biweekly | monthly
+  minimumPayoutAmount: numeric("minimum_payout_amount").default("0"),
+  stripeConnectedAccountId: text("stripe_connected_account_id"),
+  nextPayoutAt: timestamp("next_payout_at"),
+  lastPayoutAt: timestamp("last_payout_at"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("fee_payout_schedules_org_idx").on(table.organizationId),
+  index("fee_payout_schedules_next_payout_idx").on(table.nextPayoutAt),
+]);
+
+export const insertFeePayoutScheduleSchema = createInsertSchema(feePayoutSchedules).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertFeePayoutSchedule = z.infer<typeof insertFeePayoutScheduleSchema>;
+export type FeePayoutSchedule = typeof feePayoutSchedules.$inferSelect;
+
+// Immutable ledger of all fee events
+export const feeAuditLog = pgTable("fee_audit_log", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  settlementId: integer("settlement_id").references(() => transactionFeeSettlements.id),
+  eventType: text("event_type").notNull(), // fee_collected | escrow_held | payout_sent | refund_issued
+  amount: numeric("amount").notNull(),
+  balanceBefore: numeric("balance_before").notNull(),
+  balanceAfter: numeric("balance_after").notNull(),
+  metadata: jsonb("metadata").$type<Record<string, any>>(),
+  performedBy: text("performed_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("fee_audit_log_org_idx").on(table.organizationId),
+  index("fee_audit_log_settlement_idx").on(table.settlementId),
+  index("fee_audit_log_created_idx").on(table.createdAt),
+]);
+
+export const insertFeeAuditLogSchema = createInsertSchema(feeAuditLog).omit({ id: true, createdAt: true });
+export type InsertFeeAuditLog = z.infer<typeof insertFeeAuditLogSchema>;
+export type FeeAuditLog = typeof feeAuditLog.$inferSelect;
+
+// ============================================
+// TAX & COST BASIS
+// ============================================
+
+// Cost basis per property for tax purposes
+export const costBasis = pgTable("cost_basis", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  propertyId: integer("property_id").references(() => properties.id).notNull(),
+  acquisitionDate: timestamp("acquisition_date"),
+  acquisitionPrice: numeric("acquisition_price"),
+  acquisitionCosts: numeric("acquisition_costs"),
+  improvementCosts: numeric("improvement_costs"),
+  adjustedBasis: numeric("adjusted_basis"),
+  dispositionDate: timestamp("disposition_date"),
+  dispositionPrice: numeric("disposition_price"),
+  gainLoss: numeric("gain_loss"),
+  holdingPeriod: text("holding_period"), // short | long
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("cost_basis_org_idx").on(table.organizationId),
+  index("cost_basis_property_idx").on(table.propertyId),
+]);
+
+export const insertCostBasisSchema = createInsertSchema(costBasis).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertCostBasis = z.infer<typeof insertCostBasisSchema>;
+export type CostBasis = typeof costBasis.$inferSelect;
+
+// Depreciation tracking per property
+export const depreciationSchedules = pgTable("depreciation_schedules", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  propertyId: integer("property_id").references(() => properties.id).notNull(),
+  method: text("method").notNull(), // straight_line | accelerated | bonus
+  landValue: numeric("land_value"),
+  improvementValue: numeric("improvement_value"),
+  totalCost: numeric("total_cost"),
+  usefulLifeYears: integer("useful_life_years"),
+  annualDepreciation: numeric("annual_depreciation"),
+  accumulatedDepreciation: numeric("accumulated_depreciation"),
+  remainingBasis: numeric("remaining_basis"),
+  startDate: timestamp("start_date"),
+  endDate: timestamp("end_date"),
+  scheduleData: jsonb("schedule_data").$type<Array<{ year: number; depreciation: number; cumulativeDepreciation: number }>>(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("depreciation_schedules_org_idx").on(table.organizationId),
+  index("depreciation_schedules_property_idx").on(table.propertyId),
+]);
+
+export const insertDepreciationScheduleSchema = createInsertSchema(depreciationSchedules).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertDepreciationSchedule = z.infer<typeof insertDepreciationScheduleSchema>;
+export type DepreciationSchedule = typeof depreciationSchedules.$inferSelect;
+
+// OZ investment tracking
+export const opportunityZoneHoldings = pgTable("opportunity_zone_holdings", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  propertyId: integer("property_id").references(() => properties.id),
+  ozFundName: text("oz_fund_name"),
+  ozTractId: text("oz_tract_id"),
+  investmentDate: timestamp("investment_date"),
+  initialInvestment: numeric("initial_investment"),
+  deferredGainRollover: numeric("deferred_gain_rollover"),
+  qualifiedOpportunityFund: text("qualified_opportunity_fund"),
+  holdingYears: integer("holding_years"),
+  stepUpBasis: numeric("step_up_basis"),
+  estimatedTaxSavings: numeric("estimated_tax_savings"),
+  exitDate: timestamp("exit_date"),
+  exitValue: numeric("exit_value"),
+  status: text("status").notNull().default("active"), // active | exited
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("oz_holdings_org_idx").on(table.organizationId),
+  index("oz_holdings_property_idx").on(table.propertyId),
+  index("oz_holdings_status_idx").on(table.status),
+]);
+
+export const insertOpportunityZoneHoldingSchema = createInsertSchema(opportunityZoneHoldings).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertOpportunityZoneHolding = z.infer<typeof insertOpportunityZoneHoldingSchema>;
+export type OpportunityZoneHolding = typeof opportunityZoneHoldings.$inferSelect;
+
+// AI-generated tax strategy recommendations
+export const taxStrategies = pgTable("tax_strategies", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  strategyType: text("strategy_type").notNull(), // 1031_exchange | oz_investment | depreciation | cost_segregation | installment_sale | harvest_losses
+  title: text("title").notNull(),
+  description: text("description"),
+  estimatedTaxSavings: numeric("estimated_tax_savings"),
+  implementationCost: numeric("implementation_cost"),
+  timeframe: text("timeframe"),
+  riskLevel: text("risk_level"), // low | medium | high
+  requirements: jsonb("requirements").$type<Record<string, any>>(),
+  applicableProperties: integer("applicable_properties").array(),
+  status: text("status").notNull().default("recommended"), // recommended | implementing | completed | dismissed
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("tax_strategies_org_idx").on(table.organizationId),
+  index("tax_strategies_type_idx").on(table.strategyType),
+  index("tax_strategies_status_idx").on(table.status),
+]);
+
+export const insertTaxStrategySchema = createInsertSchema(taxStrategies).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertTaxStrategy = z.infer<typeof insertTaxStrategySchema>;
+export type TaxStrategy = typeof taxStrategies.$inferSelect;
+
+// Multi-year tax planning scenarios
+export const taxForecastScenarios = pgTable("tax_forecast_scenarios", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  scenarioName: text("scenario_name").notNull(),
+  holdYears: integer("hold_years"),
+  scenarioType: text("scenario_type").notNull(), // hold | sell | exchange | develop
+  propertyIds: integer("property_ids").array(),
+  projectedSalePrice: numeric("projected_sale_price"),
+  projectedCapGain: numeric("projected_cap_gain"),
+  projectedTaxLiability: numeric("projected_tax_liability"),
+  projectedNetProceeds: numeric("projected_net_proceeds"),
+  assumptions: jsonb("assumptions").$type<Record<string, any>>(),
+  yearlyBreakdown: jsonb("yearly_breakdown").$type<Array<Record<string, any>>>(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("tax_forecast_scenarios_org_idx").on(table.organizationId),
+  index("tax_forecast_scenarios_type_idx").on(table.scenarioType),
+]);
+
+export const insertTaxForecastScenarioSchema = createInsertSchema(taxForecastScenarios).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertTaxForecastScenario = z.infer<typeof insertTaxForecastScenarioSchema>;
+export type TaxForecastScenario = typeof taxForecastScenarios.$inferSelect;
+
+// ============================================
+// VOICE & RECORDING
+// ============================================
+
+// Call recording storage metadata
+export const voiceCallRecordings = pgTable("voice_call_recordings", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  voiceCallId: integer("voice_call_id").references(() => voiceCalls.id).notNull(),
+  audioFileUrl: text("audio_file_url"),
+  audioFileBucket: text("audio_file_bucket"),
+  audioFileKey: text("audio_file_key"),
+  durationSeconds: integer("duration_seconds"),
+  fileSizeBytes: integer("file_size_bytes"),
+  mimeType: text("mime_type"),
+  encryptionKeyId: text("encryption_key_id"),
+  tcpaConsentObtained: boolean("tcpa_consent_obtained").default(false),
+  disclosurePlayedAt: timestamp("disclosure_played_at"),
+  recordingStartedAt: timestamp("recording_started_at"),
+  transcriptionStatus: text("transcription_status").notNull().default("pending"), // pending | processing | completed | failed
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("voice_call_recordings_org_idx").on(table.organizationId),
+  index("voice_call_recordings_call_idx").on(table.voiceCallId),
+  index("voice_call_recordings_status_idx").on(table.transcriptionStatus),
+]);
+
+export const insertVoiceCallRecordingSchema = createInsertSchema(voiceCallRecordings).omit({ id: true, createdAt: true });
+export type InsertVoiceCallRecording = z.infer<typeof insertVoiceCallRecordingSchema>;
+export type VoiceCallRecording = typeof voiceCallRecordings.$inferSelect;
+
+// ============================================
+// SATELLITE ANALYSIS
+// ============================================
+
+// Satellite change detection results
+export const satelliteAnalysis = pgTable("satellite_analysis", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  propertyId: integer("property_id").references(() => properties.id).notNull(),
+  baselineSnapshotId: integer("baseline_snapshot_id"),
+  comparisonSnapshotId: integer("comparison_snapshot_id"),
+  analysisDate: timestamp("analysis_date").notNull(),
+  changeScore: numeric("change_score"), // 0–100
+  vegetationChangePct: numeric("vegetation_change_pct"),
+  structureChangePct: numeric("structure_change_pct"),
+  boundaryChangePct: numeric("boundary_change_pct"),
+  detectedChanges: jsonb("detected_changes").$type<Array<Record<string, any>>>(),
+  diffImageUrl: text("diff_image_url"),
+  ndviBaseline: numeric("ndvi_baseline"),
+  ndviCurrent: numeric("ndvi_current"),
+  analysisMetadata: jsonb("analysis_metadata").$type<Record<string, any>>(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("satellite_analysis_org_idx").on(table.organizationId),
+  index("satellite_analysis_property_idx").on(table.propertyId),
+  index("satellite_analysis_date_idx").on(table.analysisDate),
+]);
+
+export const insertSatelliteAnalysisSchema = createInsertSchema(satelliteAnalysis).omit({ id: true, createdAt: true });
+export type InsertSatelliteAnalysis = z.infer<typeof insertSatelliteAnalysisSchema>;
+export type SatelliteAnalysis = typeof satelliteAnalysis.$inferSelect;
+
+// ============================================
+// ML MODEL REGISTRY
+// ============================================
+
+// ML model version registry
+export const modelVersions = pgTable("model_versions", {
+  id: serial("id").primaryKey(),
+  modelType: text("model_type").notNull(), // valuation | credit_score | demand_prediction
+  version: text("version").notNull(),
+  gitHash: text("git_hash"),
+  trainedAt: timestamp("trained_at"),
+  deployedAt: timestamp("deployed_at"),
+  retiredAt: timestamp("retired_at"),
+  status: text("status").notNull().default("training"), // training | staging | production | retired
+  trainingSamples: integer("training_samples"),
+  validationSamples: integer("validation_samples"),
+  primaryMetric: text("primary_metric"),
+  primaryMetricValue: numeric("primary_metric_value"),
+  isActive: boolean("is_active").default(false),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("model_versions_type_idx").on(table.modelType),
+  index("model_versions_status_idx").on(table.status),
+  index("model_versions_active_idx").on(table.isActive),
+]);
+
+export const insertModelVersionSchema = createInsertSchema(modelVersions).omit({ id: true, createdAt: true });
+export type InsertModelVersion = z.infer<typeof insertModelVersionSchema>;
+export type ModelVersion = typeof modelVersions.$inferSelect;
+
+// ML training run metrics
+export const trainingMetrics = pgTable("training_metrics", {
+  id: serial("id").primaryKey(),
+  modelVersionId: integer("model_version_id").references(() => modelVersions.id).notNull(),
+  metricName: text("metric_name").notNull(), // mae | rmse | mape | r2 | accuracy
+  metricValue: numeric("metric_value").notNull(),
+  splitType: text("split_type").notNull(), // train | validation | test
+  state: text("state"),
+  propertyType: text("property_type"),
+  sampleCount: integer("sample_count"),
+  computedAt: timestamp("computed_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("training_metrics_model_version_idx").on(table.modelVersionId),
+  index("training_metrics_metric_name_idx").on(table.metricName),
+  index("training_metrics_split_type_idx").on(table.splitType),
+]);
+
+export const insertTrainingMetricSchema = createInsertSchema(trainingMetrics).omit({ id: true, createdAt: true });
+export type InsertTrainingMetric = z.infer<typeof insertTrainingMetricSchema>;
+export type TrainingMetric = typeof trainingMetrics.$inferSelect;
+
+// ============================================
+// REGULATORY COMPLIANCE
+// ============================================
+
+// State/county disclosure law database
+export const regulatoryRequirements = pgTable("regulatory_requirements", {
+  id: serial("id").primaryKey(),
+  state: text("state").notNull(),
+  county: text("county"),
+  requirementType: text("requirement_type").notNull(), // disclosure | filing | recording | escrow | licensing
+  title: text("title").notNull(),
+  description: text("description"),
+  legalCitation: text("legal_citation"),
+  effectiveDate: timestamp("effective_date"),
+  expirationDate: timestamp("expiration_date"),
+  jurisdictionLevel: text("jurisdiction_level").notNull(), // state | county | city
+  transactionTypes: text("transaction_types").array(),
+  requiredDocuments: text("required_documents").array(),
+  penalties: text("penalties"),
+  isActive: boolean("is_active").default(true),
+  lastVerified: timestamp("last_verified"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("regulatory_requirements_state_idx").on(table.state),
+  index("regulatory_requirements_type_idx").on(table.requirementType),
+  index("regulatory_requirements_active_idx").on(table.isActive),
+]);
+
+export const insertRegulatoryRequirementSchema = createInsertSchema(regulatoryRequirements).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertRegulatoryRequirement = z.infer<typeof insertRegulatoryRequirementSchema>;
+export type RegulatoryRequirement = typeof regulatoryRequirements.$inferSelect;
+
+// Per-transaction compliance checklist
+export const complianceChecklistItems = pgTable("compliance_checklist_items", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  dealId: integer("deal_id"),
+  requirementId: integer("requirement_id").references(() => regulatoryRequirements.id),
+  itemTitle: text("item_title").notNull(),
+  description: text("description"),
+  status: text("status").notNull().default("pending"), // pending | completed | waived | na
+  dueDate: timestamp("due_date"),
+  completedAt: timestamp("completed_at"),
+  completedBy: text("completed_by"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("compliance_checklist_org_idx").on(table.organizationId),
+  index("compliance_checklist_deal_idx").on(table.dealId),
+  index("compliance_checklist_status_idx").on(table.status),
+]);
+
+export const insertComplianceChecklistItemSchema = createInsertSchema(complianceChecklistItems).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertComplianceChecklistItem = z.infer<typeof insertComplianceChecklistItemSchema>;
+export type ComplianceChecklistItem = typeof complianceChecklistItems.$inferSelect;
+
+// ============================================
+// CERTIFICATE VERIFICATION
+// ============================================
+
+// Public tamper-proof cert verification
+export const certificateVerification = pgTable("certificate_verification", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  certificationId: integer("certification_id"),
+  recipientName: text("recipient_name").notNull(),
+  recipientEmail: text("recipient_email"),
+  certType: text("cert_type").notNull(),
+  issuedAt: timestamp("issued_at").defaultNow(),
+  expiresAt: timestamp("expires_at"),
+  publicUrl: text("public_url"),
+  verificationHash: text("verification_hash").unique(),
+  isRevoked: boolean("is_revoked").default(false),
+  revokedAt: timestamp("revoked_at"),
+  revokedReason: text("revoked_reason"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("cert_verification_org_idx").on(table.organizationId),
+  index("cert_verification_hash_idx").on(table.verificationHash),
+  index("cert_verification_recipient_idx").on(table.recipientEmail),
+]);
+
+export const insertCertificateVerificationSchema = createInsertSchema(certificateVerification).omit({ id: true, createdAt: true });
+export type InsertCertificateVerification = z.infer<typeof insertCertificateVerificationSchema>;
+export type CertificateVerification = typeof certificateVerification.$inferSelect;
+
+// ============================================
+// TENANT USAGE METERING
+// ============================================
+
+// Per-tenant usage metering
+export const tenantMetrics = pgTable("tenant_metrics", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").references(() => whitelabelTenants.id).notNull(),
+  periodStart: timestamp("period_start").notNull(),
+  periodEnd: timestamp("period_end").notNull(),
+  activeUsers: integer("active_users").default(0),
+  totalApiCalls: integer("total_api_calls").default(0),
+  aiCreditsConsumed: numeric("ai_credits_consumed").default("0"),
+  storageUsedMb: integer("storage_used_mb").default(0),
+  voiceMinutesUsed: integer("voice_minutes_used").default(0),
+  revenueGenerated: numeric("revenue_generated").default("0"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("tenant_metrics_tenant_idx").on(table.tenantId),
+  index("tenant_metrics_period_idx").on(table.periodStart, table.periodEnd),
+]);
+
+export const insertTenantMetricSchema = createInsertSchema(tenantMetrics).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertTenantMetric = z.infer<typeof insertTenantMetricSchema>;
+export type TenantMetric = typeof tenantMetrics.$inferSelect;
+
+// ============================================
+// DEAL ROOM MESSAGES & DOCUMENTS (Tasks 45-52)
+// ============================================
+
+// Deal Room Messages — real-time chat within a deal room
+export const dealRoomMessages = pgTable("deal_room_messages", {
+  id: serial("id").primaryKey(),
+  dealRoomId: integer("deal_room_id").references(() => dealRooms.id).notNull(),
+  senderId: text("sender_id").notNull(), // user/org ID string
+  senderName: text("sender_name").notNull(),
+  content: text("content").notNull(),
+  messageType: text("message_type").notNull().default("text"), // text | system | document
+  attachmentUrl: text("attachment_url"),
+  isRead: boolean("is_read").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("deal_room_messages_room_idx").on(table.dealRoomId),
+  index("deal_room_messages_created_idx").on(table.createdAt),
+]);
+
+export const insertDealRoomMessageSchema = createInsertSchema(dealRoomMessages).omit({ id: true, createdAt: true });
+export type InsertDealRoomMessage = z.infer<typeof insertDealRoomMessageSchema>;
+export type DealRoomMessage = typeof dealRoomMessages.$inferSelect;
+
+// Deal Room Documents — versioned file storage per deal room
+export const dealRoomDocuments = pgTable("deal_room_documents", {
+  id: serial("id").primaryKey(),
+  dealRoomId: integer("deal_room_id").references(() => dealRooms.id).notNull(),
+  uploadedBy: text("uploaded_by").notNull(), // user/org ID string
+  fileName: text("file_name").notNull(),
+  fileUrl: text("file_url").notNull(),
+  fileSize: integer("file_size"), // bytes
+  mimeType: text("mime_type"),
+  version: integer("version").notNull().default(1),
+  previousVersionId: integer("previous_version_id"), // self-reference via ID for version chain
+  accessControl: jsonb("access_control").$type<{ allowedUserIds: string[] }>().notNull().default({ allowedUserIds: [] }),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("deal_room_documents_room_idx").on(table.dealRoomId),
+  index("deal_room_documents_file_idx").on(table.dealRoomId, table.fileName),
+]);
+
+export const insertDealRoomDocumentSchema = createInsertSchema(dealRoomDocuments).omit({ id: true, createdAt: true });
+export type InsertDealRoomDocument = z.infer<typeof insertDealRoomDocumentSchema>;
+export type DealRoomDocument = typeof dealRoomDocuments.$inferSelect;
+
+// ============================================
+// PASSIVE COMMAND CENTER — FOUNDER INTELLIGENCE
+// ============================================
+
+// Decisions Inbox — pre-analyzed items requiring human judgment
+export const decisionsInboxItems = pgTable("decisions_inbox_items", {
+  id: serial("id").primaryKey(),
+  itemType: text("item_type").notNull(), // support_escalation | critical_alert | feature_request_flagged | churn_risk_intervention | dunning_recovery
+  riskLevel: text("risk_level").notNull().default("medium"), // low | medium | high | critical
+  urgencyScore: integer("urgency_score").notNull().default(50), // 0-100
+  estimatedImpactCents: integer("estimated_impact_cents"),
+  sophieAnalysis: text("sophie_analysis").notNull(),
+  sophieConfidenceScore: integer("sophie_confidence_score"),
+  recommendedAction: text("recommended_action").notNull(),
+  recommendedActionLabel: text("recommended_action_label").notNull(),
+  actionPayload: jsonb("action_payload").$type<Record<string, any>>(),
+  sourceTicketId: integer("source_ticket_id").references(() => supportTickets.id),
+  sourceAlertId: integer("source_alert_id").references(() => systemAlerts.id),
+  sourceFeatureRequestId: integer("source_feature_request_id").references(() => featureRequests.id),
+  organizationId: integer("organization_id").references(() => organizations.id),
+  status: text("status").notNull().default("pending"), // pending | approved | rejected | deferred | auto_resolved
+  deferredUntil: timestamp("deferred_until"),
+  resolvedAt: timestamp("resolved_at"),
+  resolvedBy: text("resolved_by"),
+  founderOverrideAction: text("founder_override_action"),
+  contextBundle: jsonb("context_bundle").$type<Record<string, any>>(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("decisions_inbox_status_idx").on(table.status),
+  index("decisions_inbox_urgency_idx").on(table.urgencyScore),
+  index("decisions_inbox_org_idx").on(table.organizationId),
+]);
+
+export const insertDecisionsInboxItemSchema = createInsertSchema(decisionsInboxItems).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertDecisionsInboxItem = z.infer<typeof insertDecisionsInboxItemSchema>;
+export type DecisionsInboxItem = typeof decisionsInboxItems.$inferSelect;
+
+// Churn Risk Scores — per-org composite risk scoring
+export const churnRiskScores = pgTable("churn_risk_scores", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  riskScore: integer("risk_score").notNull(), // 0-100
+  riskBand: text("risk_band").notNull(), // green | yellow | red | critical
+  loginFrequencyScore: integer("login_frequency_score"),    // 0-25
+  featureUsageScore: integer("feature_usage_score"),        // 0-25
+  supportTicketScore: integer("support_ticket_score"),      // 0-20
+  dunningStateScore: integer("dunning_state_score"),        // 0-20
+  engagementTrendScore: integer("engagement_trend_score"),  // 0-10
+  daysSinceLastActive: integer("days_since_last_active"),
+  loginsLast14d: integer("logins_last_14d"),
+  ticketsLast30d: integer("tickets_last_30d"),
+  dunningStage: text("dunning_stage"),
+  featureUsageTrend: text("feature_usage_trend"), // increasing | stable | declining
+  lastInterventionAt: timestamp("last_intervention_at"),
+  lastInterventionType: text("last_intervention_type"),
+  interventionCount: integer("intervention_count").default(0),
+  nextInterventionAt: timestamp("next_intervention_at"),
+  nextInterventionType: text("next_intervention_type"),
+  scoredAt: timestamp("scored_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("churn_risk_org_idx").on(table.organizationId),
+  index("churn_risk_band_idx").on(table.riskBand),
+  index("churn_risk_score_idx").on(table.riskScore),
+]);
+
+export const insertChurnRiskScoreSchema = createInsertSchema(churnRiskScores).omit({ id: true, createdAt: true });
+export type InsertChurnRiskScore = z.infer<typeof insertChurnRiskScoreSchema>;
+export type ChurnRiskScore = typeof churnRiskScores.$inferSelect;
+
+// Job Health Logs — execution records for all background jobs
+export const jobHealthLogs = pgTable("job_health_logs", {
+  id: serial("id").primaryKey(),
+  jobName: text("job_name").notNull(),
+  runStartedAt: timestamp("run_started_at").notNull(),
+  runCompletedAt: timestamp("run_completed_at"),
+  durationMs: integer("duration_ms"),
+  status: text("status").notNull(), // success | failed | timeout | skipped_lock
+  errorMessage: text("error_message"),
+  runMetrics: jsonb("run_metrics").$type<Record<string, any>>(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("job_health_job_name_idx").on(table.jobName),
+  index("job_health_status_idx").on(table.status),
+  index("job_health_started_idx").on(table.runStartedAt),
+]);
+
+export const insertJobHealthLogSchema = createInsertSchema(jobHealthLogs).omit({ id: true, createdAt: true });
+export type InsertJobHealthLog = z.infer<typeof insertJobHealthLogSchema>;
+export type JobHealthLog = typeof jobHealthLogs.$inferSelect;
+
+// Revenue Protection Interventions — automated churn/dunning outreach log
+export const revenueProtectionInterventions = pgTable("revenue_protection_interventions", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  interventionType: text("intervention_type").notNull(), // checkin_email | retention_offer | dunning_recovery | founder_decision
+  triggerRiskScore: integer("trigger_risk_score").notNull(),
+  triggerRiskBand: text("trigger_risk_band").notNull(),
+  executedBy: text("executed_by").notNull().default("sophie"),
+  sophieMessageSubject: text("sophie_message_subject"),
+  sophieMessageBody: text("sophie_message_body"),
+  emailSentAt: timestamp("email_sent_at"),
+  emailDeliveryStatus: text("email_delivery_status"),
+  outcome: text("outcome"), // pending | customer_responded | payment_recovered | churned | no_response
+  outcomeRecordedAt: timestamp("outcome_recorded_at"),
+  revenueRecoveredCents: integer("revenue_recovered_cents"),
+  decisionsInboxItemId: integer("decisions_inbox_item_id").references(() => decisionsInboxItems.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("rev_protection_org_idx").on(table.organizationId),
+  index("rev_protection_type_idx").on(table.interventionType),
+  index("rev_protection_created_idx").on(table.createdAt),
+]);
+
+export const insertRevenueProtectionInterventionSchema = createInsertSchema(revenueProtectionInterventions).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertRevenueProtectionIntervention = z.infer<typeof insertRevenueProtectionInterventionSchema>;
+export type RevenueProtectionIntervention = typeof revenueProtectionInterventions.$inferSelect;
+
+// Founder Digest History — daily automated briefing records
+export const founderDigestHistory = pgTable("founder_digest_history", {
+  id: serial("id").primaryKey(),
+  digestDate: timestamp("digest_date").notNull(),
+  deliveredAt: timestamp("delivered_at"),
+  deliveryStatus: text("delivery_status").notNull().default("pending"),
+  revenueBullet: text("revenue_bullet"),
+  systemHealthBullet: text("system_health_bullet"),
+  supportActivityBullet: text("support_activity_bullet"),
+  topAtRiskBullet: text("top_at_risk_bullet"),
+  recommendedActionBullet: text("recommended_action_bullet"),
+  dataSnapshot: jsonb("data_snapshot").$type<Record<string, any>>(),
+  mrrCents: integer("mrr_cents"),
+  openDecisions: integer("open_decisions"),
+  sophieAutoResolved24h: integer("sophie_auto_resolved_24h"),
+  jobFailures24h: integer("job_failures_24h"),
+  atRiskOrgs: integer("at_risk_orgs"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("founder_digest_date_idx").on(table.digestDate),
+  index("founder_digest_status_idx").on(table.deliveryStatus),
+]);
+
+export const insertFounderDigestHistorySchema = createInsertSchema(founderDigestHistory).omit({ id: true, createdAt: true });
+export type InsertFounderDigestHistory = z.infer<typeof insertFounderDigestHistorySchema>;
+export type FounderDigestHistory = typeof founderDigestHistory.$inferSelect;
+
+// Platform Config — encrypted key-value store for founder-managed credentials
+// Values are AES-256 encrypted at rest. The configManager service merges these
+// into process.env at startup so all existing code continues to work unchanged.
+export const platformConfig = pgTable("platform_config", {
+  id: serial("id").primaryKey(),
+  key: text("key").notNull().unique(),           // e.g. "STRIPE_SECRET_KEY"
+  encryptedValue: text("encrypted_value"),        // AES-256-GCM encrypted, null = delete
+  service: text("service").notNull(),             // e.g. "stripe" | "aws" | "openrouter"
+  label: text("label").notNull(),                 // Human-readable label
+  isSecret: boolean("is_secret").notNull().default(true),
+  isRequired: boolean("is_required").notNull().default(false),
+  validatedAt: timestamp("validated_at"),         // last time this credential was verified OK
+  validationStatus: text("validation_status"),    // "ok" | "error" | null
+  validationMessage: text("validation_message"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("platform_config_key_idx").on(table.key),
+  index("platform_config_service_idx").on(table.service),
+]);
+
+export const insertPlatformConfigSchema = createInsertSchema(platformConfig).omit({ id: true, createdAt: true });
+export type InsertPlatformConfig = z.infer<typeof insertPlatformConfigSchema>;
+export type PlatformConfig = typeof platformConfig.$inferSelect;

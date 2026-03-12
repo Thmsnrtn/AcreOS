@@ -8,8 +8,94 @@ import {
 } from '../../shared/schema';
 import { eq, and, desc, gte, sql, between } from 'drizzle-orm';
 import OpenAI from 'openai';
+import { GradientBoostingRegressor, extractLandFeatures, type LandFeatureInput } from './gradientBoosting';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+// ---------------------------------------------------------------------------
+// Singleton GBM model — loaded once, reused per request.
+// Falls back to null when no serialised model is available yet.
+// ---------------------------------------------------------------------------
+let _gbmModel: GradientBoostingRegressor | null = null;
+
+/** Attempt to load a persisted GBM model from the environment or file system. */
+async function loadGBMModel(): Promise<GradientBoostingRegressor | null> {
+  if (_gbmModel) return _gbmModel;
+  try {
+    const modelJson = process.env.GBM_MODEL_JSON;
+    if (modelJson) {
+      _gbmModel = GradientBoostingRegressor.fromJSON(JSON.parse(modelJson));
+      console.log('[AcreOSValuation] GBM model loaded from GBM_MODEL_JSON env var');
+      return _gbmModel;
+    }
+    // Optionally load from disk (e.g. mounted volume in production)
+    const fs = await import('fs/promises');
+    const path = await import('path');
+    const modelPath = path.resolve(process.cwd(), 'server/ml/artifacts/gbm_valuation.json');
+    const raw = await fs.readFile(modelPath, 'utf8');
+    _gbmModel = GradientBoostingRegressor.fromJSON(JSON.parse(raw));
+    console.log('[AcreOSValuation] GBM model loaded from disk:', modelPath);
+    return _gbmModel;
+  } catch {
+    return null; // No trained model available yet — fall through to AI/baseline
+  }
+}
+
+/**
+ * Produce a fast GBM price-per-acre estimate from property characteristics.
+ * Returns null if no trained model is available.
+ */
+async function gbmEstimatePricePerAcre(
+  acres: number,
+  compsMedianPricePerAcre: number,
+  characteristics: {
+    zoning?: string;
+    waterRights?: boolean;
+    roadAccess?: string;
+    floodZone?: string;
+  },
+  marketConditions: {
+    populationGrowth?: number;
+    localUnemploymentRate?: number;
+  }
+): Promise<{ pricePerAcre: number; confidence: number } | null> {
+  const model = await loadGBMModel();
+  if (!model) return null;
+
+  const zoningScore = characteristics.zoning?.toLowerCase().includes('commercial') ? 3
+    : characteristics.zoning?.toLowerCase().includes('ag') ? 1
+    : characteristics.zoning?.toLowerCase().includes('residential') ? 2
+    : 1;
+
+  const floodRisk = characteristics.floodZone?.toLowerCase().includes('high') ? 2
+    : characteristics.floodZone?.toLowerCase().includes('partial') ? 1
+    : 0;
+
+  const input: LandFeatureInput = {
+    acres,
+    pricePerAcreComps: compsMedianPricePerAcre || 1000,
+    daysOnMarket: 0,
+    distanceToHighwayMiles: 5,   // default — enriched post-GIS lookup
+    distanceToCityMiles: 20,
+    hasWaterAccess: characteristics.waterRights ?? false,
+    hasRoadFrontage: characteristics.roadAccess === 'paved' || characteristics.roadAccess === 'gravel',
+    zoningScore,
+    soilQualityScore: 5,         // default; enriched by featureEngineeringJob
+    floodZoneRisk: floodRisk,
+    marketTrendScore: (marketConditions.populationGrowth ?? 0) > 1 ? 1 : 0,
+    countyMedianIncomeK: 55,     // national median fallback
+    populationGrowthPct: marketConditions.populationGrowth ?? 0,
+  };
+
+  const features = extractLandFeatures(input);
+  const predictedValue = model.predict(features);
+  const importances = model.getFeatureImportances();
+  // Confidence: higher when model has many features with clear signal
+  const topImportance = Math.max(...importances);
+  const confidence = Math.min(85, Math.round(50 + topImportance * 200));
+
+  return { pricePerAcre: Math.max(100, Math.round(predictedValue)), confidence };
+}
 
 interface TransactionDataPoint {
   propertyId: string;
@@ -241,8 +327,27 @@ class AcreOSValuationModel {
 
     let pricePerAcreEstimate = 1000; // fallback baseline
     let estimateSource = 'baseline';
+    let gbmConfidence = 0;
 
-    if (process.env.OPENAI_API_KEY) {
+    // --- Path 1: TypeScript GBM (fast, deterministic, no API cost) ---
+    try {
+      const gbmResult = await gbmEstimatePricePerAcre(
+        request.acres,
+        0, // no comps — will be improved when comps are available
+        request.characteristics,
+        request.marketConditions ?? {}
+      );
+      if (gbmResult) {
+        pricePerAcreEstimate = gbmResult.pricePerAcre;
+        gbmConfidence = gbmResult.confidence;
+        estimateSource = 'gbm_model';
+      }
+    } catch {
+      // GBM unavailable — continue to AI fallback
+    }
+
+    // --- Path 2: OpenAI (richer context, used when GBM isn't trained yet) ---
+    if (estimateSource !== 'gbm_model' && process.env.OPENAI_API_KEY) {
       try {
         const prompt = `You are a rural land valuation expert. Provide a realistic price-per-acre estimate for vacant land with these characteristics:
 
@@ -277,7 +382,7 @@ Base your estimate on typical rural land market conditions in ${county} County, 
     }
 
     const estimatedValue = Math.round(pricePerAcreEstimate * request.acres);
-    const confidence = 45; // Low confidence — no local comps
+    const confidence = gbmConfidence || 45; // GBM provides dynamic confidence; AI/baseline = 45
     const confidenceInterval = {
       low: Math.round(estimatedValue * 0.6),
       high: Math.round(estimatedValue * 1.5),

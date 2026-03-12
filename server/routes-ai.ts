@@ -694,7 +694,7 @@ export function registerAIRoutes(app: Express): void {
       
       if (req.query.agentId) options.agentId = parseInt(req.query.agentId as string);
       if (req.query.status) options.status = req.query.status as string;
-      if (req.query.limit) options.limit = parseInt(req.query.limit as string);
+      if (req.query.limit) options.limit = Math.min(100, parseInt(req.query.limit as string));
       
       const actions = await storage.getVaActions(org.id, options);
       res.json(actions);
@@ -837,7 +837,7 @@ export function registerAIRoutes(app: Express): void {
   api.get("/api/va/briefings", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = (req as any).organization;
-      const limit = parseInt(req.query.limit as string) || 10;
+      const limit = Math.min(100, parseInt(req.query.limit as string) || 10);
       const briefings = await storage.getVaBriefings(org.id, limit);
       res.json(briefings);
     } catch (error: any) {

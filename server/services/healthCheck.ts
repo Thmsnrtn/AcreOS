@@ -177,6 +177,39 @@ class HealthCheckService {
   }
 
   /**
+   * Check Redis connectivity (task #93 — health must cover all dependencies)
+   */
+  async checkRedis(): Promise<ServiceHealth> {
+    const name = 'redis';
+    const start = Date.now();
+
+    try {
+      const redisUrl = process.env.REDIS_URL;
+      if (!redisUrl) {
+        return this.createHealth(name, 'unconfigured', undefined, 'REDIS_URL not configured');
+      }
+
+      const IORedis = (await import('ioredis')).default;
+      const client = new IORedis(redisUrl, {
+        maxRetriesPerRequest: 1,
+        enableReadyCheck: false,
+        lazyConnect: true,
+        connectTimeout: 3000,
+      });
+
+      await client.connect();
+      await client.ping();
+      const latency = Date.now() - start;
+      await client.quit();
+
+      return this.createHealth(name, 'healthy', latency);
+    } catch (error: any) {
+      const latency = Date.now() - start;
+      return this.createHealth(name, 'unavailable', latency, error.message);
+    }
+  }
+
+  /**
    * Check database connectivity
    */
   async checkDatabase(): Promise<ServiceHealth> {
@@ -203,6 +236,7 @@ class HealthCheckService {
   async checkAll(): Promise<HealthCheckResult> {
     const checks = await Promise.all([
       this.checkDatabase(),
+      this.checkRedis(),
       this.checkStripe(),
       this.checkOpenAI(),
       this.checkTwilio(),
@@ -241,6 +275,8 @@ class HealthCheckService {
         return this.checkEmail();
       case 'lob':
         return this.checkLob();
+      case 'redis':
+        return this.checkRedis();
       default:
         return null;
     }

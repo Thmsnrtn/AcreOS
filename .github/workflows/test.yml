@@ -1,0 +1,57 @@
+name: Test
+
+on:
+  push:
+    branches: [main, "claude/**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: TypeScript + Tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: acreos
+          POSTGRES_PASSWORD: acreos
+          POSTGRES_DB: acreos_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://acreos:acreos@localhost:5432/acreos_test
+      SESSION_SECRET: test-session-secret-at-least-32-characters-long
+      APP_URL: http://localhost:5000
+      NODE_ENV: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript check
+        run: npx tsc --noEmit
+
+      - name: Run database migrations
+        run: npx drizzle-kit migrate
+        continue-on-error: true # migrations may not exist in test env
+
+      - name: Run tests
+        run: npx vitest run --reporter=verbose
+        env:
+          CI: true

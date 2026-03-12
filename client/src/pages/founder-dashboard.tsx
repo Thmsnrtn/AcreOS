@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -53,8 +53,23 @@ import {
   HandHelping,
   Key,
   Search,
+  Sparkles,
+  BarChart3,
+  ArrowUp,
+  ArrowDown,
+  Keyboard,
+  Target,
+  Flame,
+  CalendarDays,
+  SendHorizonal,
 } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
+import {
+  ThePulse, DecisionsInbox, JobQueueHealth, BusinessIntelligence,
+  MRRTrajectory, ChurnIntelligence, GrowthEngine, PlatformPassiveScore,
+} from "@/components/dashboard";
+import { FounderSetupWizard, SetupReadinessBanner } from "@/components/founder-setup-wizard";
+import { Suspense, lazy } from "react";
 
 interface AdminDashboardData {
   revenue: {
@@ -353,6 +368,213 @@ type ExpandedTile = 'revenue' | 'health' | 'agents' | 'alerts' | 'revenueAtRisk'
 
 type UserFilter = 'all' | 'active' | 'new' | 'established';
 
+interface GreetingHeaderProps {
+  onRefresh: () => void;
+  onGenerateDigest: () => void;
+  digestPending: boolean;
+  onShowShortcuts: () => void;
+  onOpenSetup: () => void;
+  lastRefreshed: Date;
+}
+
+function GreetingHeader({ onRefresh, onGenerateDigest, digestPending, onShowShortcuts, onOpenSetup, lastRefreshed }: GreetingHeaderProps) {
+  const { data: pulseData } = useQuery<{ pulseStatus: { allClear: boolean; revenueHealth: { green: boolean }; systemHealth: { green: boolean }; churnRisk: { green: boolean } } }>({
+    queryKey: ["/api/founder/intelligence/pulse"],
+    staleTime: 30000,
+  });
+
+  const now = new Date();
+  const hour = now.getHours();
+  const greeting =
+    hour < 5 ? "Still up?" :
+    hour < 12 ? "Good morning" :
+    hour < 17 ? "Good afternoon" :
+    "Good evening";
+
+  const pulse = pulseData?.pulseStatus;
+  const allSystemsGreen = pulse?.allClear;
+  const hasIssues = pulse && (!pulse.revenueHealth?.green || !pulse.systemHealth?.green || !pulse.churnRisk?.green);
+
+  const healthColor = !pulse
+    ? "text-muted-foreground"
+    : allSystemsGreen
+    ? "text-green-600"
+    : hasIssues
+    ? "text-amber-500"
+    : "text-green-600";
+
+  const healthLabel = !pulse
+    ? "Checking..."
+    : allSystemsGreen
+    ? "All systems healthy"
+    : "Needs attention";
+
+  const healthDot = !pulse
+    ? "bg-muted-foreground"
+    : allSystemsGreen
+    ? "bg-green-500 animate-pulse"
+    : "bg-amber-500 animate-pulse";
+
+  return (
+    <div className="rounded-xl border bg-gradient-to-r from-card to-card/80 px-5 py-4 shadow-sm">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        {/* Left: Greeting + Status */}
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <Crown className="h-5 w-5 text-amber-500" />
+            <h1 className="text-xl font-bold tracking-tight text-foreground" data-testid="text-founder-dashboard-title">
+              {greeting}, Thomas
+            </h1>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5">
+              <span className={`h-2 w-2 rounded-full ${healthDot}`} />
+              <span className={`text-sm font-medium ${healthColor}`}>{healthLabel}</span>
+            </div>
+            <span className="text-xs text-muted-foreground hidden sm:block">·</span>
+            <div className="flex items-center gap-1 text-xs text-muted-foreground hidden sm:flex">
+              <CalendarDays className="h-3 w-3" />
+              {format(now, "EEEE, MMMM d")}
+            </div>
+            <span className="text-xs text-muted-foreground hidden sm:block">·</span>
+            <span className="text-xs text-muted-foreground hidden sm:block">
+              Refreshed {formatDistanceToNow(lastRefreshed, { addSuffix: true })}
+            </span>
+          </div>
+        </div>
+
+        {/* Right: Quick actions */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5 text-xs h-8"
+            onClick={onRefresh}
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            Refresh
+            <kbd className="hidden sm:inline-block ml-1 rounded bg-muted px-1 py-0.5 text-[10px] font-mono text-muted-foreground">R</kbd>
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5 text-xs h-8"
+            onClick={onGenerateDigest}
+            disabled={digestPending}
+          >
+            {digestPending ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <SendHorizonal className="h-3.5 w-3.5" />
+            )}
+            {digestPending ? "Sending..." : "Email Digest"}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5 text-xs h-8"
+            onClick={onOpenSetup}
+          >
+            <Key className="h-3.5 w-3.5" />
+            Platform Setup
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="gap-1.5 text-xs h-8 px-2"
+            onClick={onShowShortcuts}
+            title="Keyboard shortcuts (?)"
+          >
+            <Keyboard className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SophieActivityPreview() {
+  const { data, isLoading } = useQuery<{ autoResolutions: any[]; count: number }>({
+    queryKey: ["/api/founder/intelligence/sophie-activity"],
+    refetchInterval: 30000,
+    refetchIntervalInBackground: false,
+  });
+
+  const { data: supportAnalyticsData } = useQuery<{
+    totalTickets: number;
+    openTickets: number;
+    aiResolvedTickets: number;
+    aiResolutionRate: number | string;
+    averageRating: number | null;
+  }>({
+    queryKey: ['/api/founder/support/analytics'],
+    staleTime: 60000,
+  });
+
+  const recent = data?.autoResolutions?.slice(0, 5) ?? [];
+  const resolutionRate = typeof supportAnalyticsData?.aiResolutionRate === 'number'
+    ? supportAnalyticsData.aiResolutionRate
+    : parseFloat(String(supportAnalyticsData?.aiResolutionRate ?? "0")) || 0;
+
+  return (
+    <div className="rounded-lg border bg-card p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+          <Bot className="h-4 w-4 text-blue-500" />
+          Sophie AI Intelligence
+        </h3>
+        <div className="flex items-center gap-2">
+          <Badge variant="outline" className="text-xs bg-blue-500/10 text-blue-600 border-blue-500/20">
+            {data?.count ?? 0} resolved today
+          </Badge>
+          {resolutionRate > 0 && (
+            <Badge variant="outline" className={`text-xs ${resolutionRate >= 70 ? 'bg-green-500/10 text-green-600 border-green-500/20' : 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20'}`}>
+              {resolutionRate.toFixed(0)}% auto-rate
+            </Badge>
+          )}
+        </div>
+      </div>
+
+      {/* Stats strip */}
+      {supportAnalyticsData && (
+        <div className="grid grid-cols-3 gap-3 mb-3 pb-3 border-b">
+          <div className="text-center">
+            <p className="text-lg font-bold text-foreground">{supportAnalyticsData.totalTickets}</p>
+            <p className="text-xs text-muted-foreground">Total tickets</p>
+          </div>
+          <div className="text-center">
+            <p className="text-lg font-bold text-green-600">{supportAnalyticsData.aiResolvedTickets}</p>
+            <p className="text-xs text-muted-foreground">AI resolved</p>
+          </div>
+          <div className="text-center">
+            <p className="text-lg font-bold text-amber-600">{supportAnalyticsData.openTickets}</p>
+            <p className="text-xs text-muted-foreground">Still open</p>
+          </div>
+        </div>
+      )}
+
+      {isLoading ? (
+        <div className="space-y-2 animate-pulse">{[0,1,2].map(i => <div key={i} className="h-7 bg-muted rounded" />)}</div>
+      ) : recent.length === 0 ? (
+        <p className="text-xs text-muted-foreground py-2">No autonomous resolutions in the last 24 hours.</p>
+      ) : (
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium text-muted-foreground mb-2">Recent auto-resolutions</p>
+          {recent.map((t: any) => (
+            <div key={t.id} className="flex items-center gap-2 text-xs py-0.5">
+              <CheckCircle2 className="h-3 w-3 text-green-500 shrink-0" />
+              <span className="text-foreground truncate flex-1">{t.subject ?? `Ticket #${t.id}`}</span>
+              <span className="text-muted-foreground shrink-0 text-[11px]">
+                {t.resolvedAt ? formatDistanceToNow(new Date(t.resolvedAt), { addSuffix: true }) : ""}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function FounderDashboard() {
   const { toast } = useToast();
   const [notesModalOpen, setNotesModalOpen] = useState(false);
@@ -380,9 +602,64 @@ export default function FounderDashboard() {
   const [bulkImportOpen, setBulkImportOpen] = useState(false);
   const [bulkImportJson, setBulkImportJson] = useState("");
   const [dataSourceFilter, setDataSourceFilter] = useState("");
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
+  const [focusMode, setFocusMode] = useState(false);
+  const [goalCents, setGoalCents] = useState<number>(() => {
+    try { return parseInt(localStorage.getItem("founder_mrr_goal_cents") || "0", 10) || 0; } catch { return 0; }
+  });
+  const [goalDialogOpen, setGoalDialogOpen] = useState(false);
+  const [goalInputValue, setGoalInputValue] = useState("");
+  const [setupWizardOpen, setSetupWizardOpen] = useState(false);
+
+  const handleRefreshAll = useCallback(() => {
+    queryClient.invalidateQueries();
+    setLastRefreshed(new Date());
+    toast({ title: "All data refreshed" });
+  }, [toast]);
+
+  const handleSaveGoal = useCallback(() => {
+    const dollars = parseFloat(goalInputValue.replace(/[^0-9.]/g, ""));
+    if (!isNaN(dollars) && dollars >= 0) {
+      const cents = Math.round(dollars * 100);
+      setGoalCents(cents);
+      try { localStorage.setItem("founder_mrr_goal_cents", String(cents)); } catch {}
+      setGoalDialogOpen(false);
+      setGoalInputValue("");
+      toast({ title: "MRR goal saved", description: `Target: $${dollars.toLocaleString()}/mo` });
+    }
+  }, [goalInputValue, toast]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === "r") {
+        handleRefreshAll();
+      } else if (e.key === "?") {
+        setShowShortcuts(prev => !prev);
+      } else if (e.key === "f") {
+        setFocusMode(prev => !prev);
+        toast({ title: focusMode ? "Focus mode off" : "Focus mode on", description: focusMode ? "All sections visible" : "Showing only critical sections" });
+      } else if (e.key === "g") {
+        setGoalDialogOpen(true);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [handleRefreshAll, focusMode, toast]);
 
   const { data: dashboardData, isLoading } = useQuery<AdminDashboardData>({
     queryKey: ['/api/admin/dashboard'],
+  });
+
+  // Passive command center queries (30s polling)
+  const { data: decisionsInboxData } = useQuery<{ totalPending: number }>({
+    queryKey: ['/api/founder/intelligence/decisions-inbox'],
+    refetchInterval: 30000,
+    refetchIntervalInBackground: false,
   });
 
   const { data: alerts } = useQuery<SystemAlert[]>({
@@ -589,6 +866,16 @@ export default function FounderDashboard() {
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     },
+  });
+
+  const digestMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/founder/intelligence/digest/generate", {});
+      if (!res.ok) throw new Error("Failed to generate digest");
+      return res.json();
+    },
+    onSuccess: () => toast({ title: "Daily digest sent", description: "Check your email for the founder digest" }),
+    onError: (error: Error) => toast({ title: "Digest failed", description: error.message, variant: "destructive" }),
   });
 
   const { data: countyGisEndpoints, isLoading: gisEndpointsLoading } = useQuery<CountyGisEndpoint[]>({
@@ -1056,24 +1343,187 @@ export default function FounderDashboard() {
 
   return (
     <PageShell>
-          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-foreground flex items-center gap-2" data-testid="text-founder-dashboard-title">
-                <Crown className="w-8 h-8 text-amber-500" />
-                Founder Dashboard
-              </h1>
-              <p className="text-muted-foreground mt-1">System-wide metrics and health overview</p>
+          {/* ── Keyboard shortcuts modal ─────────────────────────────── */}
+          <Dialog open={showShortcuts} onOpenChange={setShowShortcuts}>
+            <DialogContent className="max-w-sm">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Keyboard className="h-4 w-4" />
+                  Keyboard Shortcuts
+                </DialogTitle>
+              </DialogHeader>
+              <div className="space-y-1 text-sm">
+                {[
+                  { key: "R", desc: "Refresh all data" },
+                  { key: "F", desc: "Toggle focus mode (critical sections only)" },
+                  { key: "G", desc: "Set MRR goal" },
+                  { key: "?", desc: "Toggle this panel" },
+                ].map(({ key, desc }) => (
+                  <div key={key} className="flex items-center justify-between py-1.5 border-b last:border-0">
+                    <span className="text-muted-foreground">{desc}</span>
+                    <kbd className="rounded bg-muted px-2 py-0.5 text-xs font-mono font-semibold">{key}</kbd>
+                  </div>
+                ))}
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          {/* ── MRR Goal dialog ──────────────────────────────────────── */}
+          <Dialog open={goalDialogOpen} onOpenChange={setGoalDialogOpen}>
+            <DialogContent className="max-w-xs">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Target className="h-4 w-4 text-amber-500" />
+                  Set MRR Goal
+                </DialogTitle>
+                <DialogDescription>
+                  Your goal will appear as a reference line on the revenue chart.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3">
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+                  <Input
+                    className="pl-7"
+                    placeholder="e.g. 10000"
+                    value={goalInputValue}
+                    onChange={e => setGoalInputValue(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") handleSaveGoal(); }}
+                    autoFocus
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">Enter monthly revenue target in USD</p>
+              </div>
+              <DialogFooter>
+                {goalCents > 0 && (
+                  <Button variant="ghost" size="sm" onClick={() => {
+                    setGoalCents(0);
+                    try { localStorage.removeItem("founder_mrr_goal_cents"); } catch {}
+                    setGoalDialogOpen(false);
+                    toast({ title: "Goal cleared" });
+                  }}>
+                    Clear goal
+                  </Button>
+                )}
+                <Button onClick={handleSaveGoal}>Save goal</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {/* ── Setup Wizard ─────────────────────────────────────────── */}
+          <FounderSetupWizard open={setupWizardOpen} onClose={() => setSetupWizardOpen(false)} />
+
+          {/* ── Greeting Header ──────────────────────────────────────── */}
+          <GreetingHeader
+            onRefresh={handleRefreshAll}
+            onGenerateDigest={() => digestMutation.mutate()}
+            digestPending={digestMutation.isPending}
+            onShowShortcuts={() => setShowShortcuts(true)}
+            onOpenSetup={() => setSetupWizardOpen(true)}
+            lastRefreshed={lastRefreshed}
+          />
+
+          {/* ── Platform Readiness Banner ─────────────────────────────── */}
+          <SetupReadinessBanner onOpenWizard={() => setSetupWizardOpen(true)} />
+
+          {/* ── Focus Mode Banner ────────────────────────────────────── */}
+          {focusMode && (
+            <div className="flex items-center justify-between rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-2">
+              <div className="flex items-center gap-2 text-sm text-amber-600">
+                <Flame className="h-4 w-4" />
+                <span className="font-medium">Focus mode — showing critical sections only</span>
+              </div>
+              <Button size="sm" variant="ghost" className="h-7 text-xs text-amber-600 hover:text-amber-700" onClick={() => setFocusMode(false)}>
+                Exit <kbd className="ml-1 rounded bg-amber-500/20 px-1 py-0.5 text-[10px] font-mono">F</kbd>
+              </Button>
             </div>
-            <Badge variant="outline" className="self-start md:self-auto">
-              <Activity className="w-3 h-3 mr-1" />
-              Live Data
-            </Badge>
+          )}
+
+          {/* ── MRR Goal Progress (when goal is set) ─────────────────── */}
+          {goalCents > 0 && dashboardData && (
+            <div className="rounded-lg border bg-card px-4 py-3">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <Target className="h-4 w-4 text-amber-500" />
+                  <span className="text-sm font-medium">MRR Goal Progress</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold">
+                    {formatCurrency(dashboardData.revenue.mrr)} / {formatCurrency(goalCents)}
+                  </span>
+                  <Button size="sm" variant="ghost" className="h-6 text-xs px-2" onClick={() => { setGoalInputValue(String(goalCents / 100)); setGoalDialogOpen(true); }}>
+                    Edit
+                  </Button>
+                </div>
+              </div>
+              <div className="h-2.5 bg-muted rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${
+                    dashboardData.revenue.mrr >= goalCents
+                      ? "bg-green-500"
+                      : dashboardData.revenue.mrr >= goalCents * 0.75
+                      ? "bg-amber-500"
+                      : "bg-blue-500"
+                  }`}
+                  style={{ width: `${Math.min(100, (dashboardData.revenue.mrr / goalCents) * 100).toFixed(1)}%` }}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {dashboardData.revenue.mrr >= goalCents
+                  ? "🎉 Goal reached!"
+                  : `${((dashboardData.revenue.mrr / goalCents) * 100).toFixed(0)}% to goal — ${formatCurrency(goalCents - dashboardData.revenue.mrr)} remaining`}
+              </p>
+            </div>
+          )}
+
+          {/* ── ZONE 1: Above fold — primary passive command center ─── */}
+          <div className="space-y-6">
+            <ThePulse decisionsInboxCount={decisionsInboxData?.totalPending} />
+            <DecisionsInbox />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {/* ── Revenue Trajectory Chart (full-width) ────────────────── */}
+          <div className={focusMode ? "hidden" : ""}>
+            <MRRTrajectory goalCents={goalCents > 0 ? goalCents : undefined} />
+          </div>
+
+          {/* ── Churn Intelligence + Growth Engine (2-col) ───────────── */}
+          <div className={`grid grid-cols-1 md:grid-cols-2 gap-6 ${focusMode ? "hidden" : ""}`}>
+            <ChurnIntelligence />
+            <GrowthEngine />
+          </div>
+
+          {/* ── Business Intelligence — SaaS KPIs ────────────────────── */}
+          <div className={focusMode ? "hidden" : ""}>
+            <BusinessIntelligence />
+          </div>
+
+          {/* ── Platform Passive Score + Sophie AI (2-col) ───────────── */}
+          <div className={`grid grid-cols-1 md:grid-cols-2 gap-6 ${focusMode ? "hidden" : ""}`}>
+            <PlatformPassiveScore />
+            <SophieActivityPreview />
+          </div>
+
+          {/* ── Infrastructure (collapsible — on demand) ─────────────── */}
+          <details className={`group ${focusMode ? "hidden" : ""}`}>
+            <summary className="cursor-pointer list-none py-3 border-t flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+              <span className="group-open:rotate-90 inline-block transition-transform">▶</span>
+              Infrastructure &amp; Job Queues
+            </summary>
+            <div className="mt-4">
+              <JobQueueHealth />
+            </div>
+          </details>
+
+          {/* ── ZONE 3: Operational panels ───────────────────────────── */}
+          <div className={`space-y-4 ${focusMode ? "hidden" : ""}`}>
+            <h2 className="text-lg font-semibold text-foreground border-t pt-4">Operational Panels</h2>
+          </div>
+
+          <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 ${focusMode ? "hidden" : ""}`}>
             <Card data-testid="card-revenue-analytics">
               <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-                <CardTitle 
+                <CardTitle
                   className="text-lg font-semibold flex items-center gap-2 cursor-pointer hover:text-primary transition-colors"
                   onClick={() => setExpandedTile('revenue')}
                   data-testid="title-revenue-analytics"
@@ -1083,13 +1533,17 @@ export default function FounderDashboard() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Monthly Recurring Revenue</span>
-                    <span className="text-xl font-bold text-green-600" data-testid="text-mrr">
-                      {formatCurrency(dashboardData?.revenue.mrr || 0)}
-                    </span>
-                  </div>
+                {/* MRR Hero Number */}
+                <div className="rounded-lg bg-green-500/5 border border-green-500/20 px-4 py-3">
+                  <p className="text-xs text-muted-foreground mb-0.5">Monthly Recurring Revenue</p>
+                  <p className="text-3xl font-bold text-green-600 tracking-tight" data-testid="text-mrr">
+                    {formatCurrency(dashboardData?.revenue.mrr || 0)}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    ARR: <span className="font-semibold text-foreground">{formatCurrency((dashboardData?.revenue.mrr || 0) * 12)}</span>
+                  </p>
+                </div>
+                <div className="space-y-2.5">
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Credit Sales (This Month)</span>
                     <span className="font-medium" data-testid="text-credit-sales">
@@ -1103,12 +1557,33 @@ export default function FounderDashboard() {
                     </span>
                   </div>
                 </div>
-                <div className="pt-2 border-t">
-                  <div className="flex items-center gap-2 text-sm">
-                    <TrendingUp className="w-4 h-4 text-green-500" />
-                    <span className="text-muted-foreground">Revenue trend positive</span>
+                {/* MRR at risk banner */}
+                {(dashboardData?.revenue.mrrAtRisk || 0) > 0 && (
+                  <div className="pt-2 border-t">
+                    <div className="flex items-center justify-between text-sm">
+                      <div className="flex items-center gap-1.5 text-amber-600">
+                        <AlertTriangle className="w-3.5 h-3.5" />
+                        <span className="text-xs font-medium">MRR at risk</span>
+                      </div>
+                      <span className="text-xs font-semibold text-amber-600">
+                        {formatCurrency(dashboardData?.revenue.mrrAtRisk || 0)}
+                        {dashboardData?.revenue.mrr ? (
+                          <span className="text-muted-foreground font-normal ml-1">
+                            ({((dashboardData.revenue.mrrAtRisk / dashboardData.revenue.mrr) * 100).toFixed(0)}% of MRR)
+                          </span>
+                        ) : null}
+                      </span>
+                    </div>
                   </div>
-                </div>
+                )}
+                {(dashboardData?.revenue.mrrAtRisk || 0) === 0 && (
+                  <div className="pt-2 border-t">
+                    <div className="flex items-center gap-1.5 text-green-600 text-xs">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>No MRR at risk — all accounts in good standing</span>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -1376,6 +1851,76 @@ export default function FounderDashboard() {
                     ))}
                   </div>
                 </div>
+              </CardContent>
+            </Card>
+
+            {/* Customer Momentum Card */}
+            <Card data-testid="card-customer-momentum">
+              <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+                <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                  <Flame className="w-5 h-5 text-orange-500" />
+                  Customer Momentum
+                </CardTitle>
+                {subscriptionStats && (
+                  <Badge
+                    variant="outline"
+                    className={subscriptionStats.upgrades30d > subscriptionStats.downgrades30d
+                      ? 'bg-green-500/10 text-green-600 border-green-500/20'
+                      : 'bg-red-500/10 text-red-600 border-red-500/20'
+                    }
+                  >
+                    {subscriptionStats.upgrades30d > subscriptionStats.downgrades30d ? (
+                      <ArrowUp className="w-3 h-3 mr-1" />
+                    ) : (
+                      <ArrowDown className="w-3 h-3 mr-1" />
+                    )}
+                    {subscriptionStats.upgrades30d > subscriptionStats.downgrades30d ? 'Growing' : 'Watch closely'}
+                  </Badge>
+                )}
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {subscriptionStats ? (
+                  <>
+                    {/* 30-day momentum grid */}
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="rounded-lg bg-green-500/5 border border-green-500/10 px-2 py-2">
+                        <p className="text-lg font-bold text-green-600">{subscriptionStats.upgrades30d}</p>
+                        <p className="text-[10px] text-muted-foreground leading-tight">upgrades</p>
+                      </div>
+                      <div className="rounded-lg bg-red-500/5 border border-red-500/10 px-2 py-2">
+                        <p className="text-lg font-bold text-red-500">{subscriptionStats.cancellations30d}</p>
+                        <p className="text-[10px] text-muted-foreground leading-tight">cancels</p>
+                      </div>
+                      <div className="rounded-lg bg-blue-500/5 border border-blue-500/10 px-2 py-2">
+                        <p className="text-lg font-bold text-blue-600">{subscriptionStats.signups30d}</p>
+                        <p className="text-[10px] text-muted-foreground leading-tight">new signups</p>
+                      </div>
+                    </div>
+                    <div className="pt-1 border-t space-y-1.5">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">Downgrades (30d)</span>
+                        <span className="font-medium text-amber-600">{subscriptionStats.downgrades30d}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">Reactivations (30d)</span>
+                        <span className="font-medium text-green-600">{subscriptionStats.reactivations30d}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">Net growth (30d)</span>
+                        <span className={`font-semibold ${(subscriptionStats.signups30d + subscriptionStats.reactivations30d) - (subscriptionStats.cancellations30d + subscriptionStats.downgrades30d) >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                          {(() => {
+                            const net = (subscriptionStats.signups30d + subscriptionStats.reactivations30d) - (subscriptionStats.cancellations30d + subscriptionStats.downgrades30d);
+                            return net >= 0 ? `+${net}` : `${net}`;
+                          })()}
+                        </span>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="space-y-2 animate-pulse">
+                    {[0,1,2].map(i => <div key={i} className="h-6 bg-muted rounded" />)}
+                  </div>
+                )}
               </CardContent>
             </Card>
 

@@ -1,6 +1,6 @@
 import { db } from "../db";
 import { systemAlerts, organizations } from "@shared/schema";
-import { eq, and, gte, desc } from "drizzle-orm";
+import { eq, and, gte, desc, sql, notInArray } from "drizzle-orm";
 
 interface ServiceStatus {
   name: string;
@@ -156,58 +156,49 @@ export const externalStatusMonitor = {
       return 0;
     }
     
-    const orgs = await db.select({ id: organizations.id })
-      .from(organizations)
-      .limit(1000);
-    
-    let notified = 0;
-    
-    for (const org of orgs) {
-      const existingAlert = await db.select()
-        .from(systemAlerts)
-        .where(and(
-          eq(systemAlerts.organizationId, org.id),
-          eq(systemAlerts.type, `external_outage` as any),
-          gte(systemAlerts.createdAt, new Date(Date.now() - 60 * 60 * 1000))
-        ))
-        .limit(1);
-      
-      if (existingAlert.length === 0) {
-        await db.insert(systemAlerts).values({
-          organizationId: org.id,
-          type: "external_outage" as any,
-          severity: status.status === "outage" ? "critical" : "warning",
-          title: `${SERVICE_ENDPOINTS[service]?.name || service} Service Issue`,
-          message: `We're aware of an issue with ${SERVICE_ENDPOINTS[service]?.name || service}. ${impact}. We're monitoring the situation and will update you when it's resolved.`,
-          metadata: { service, status: status.status, message: status.message }
-        });
-        notified++;
-      }
-    }
-    
-    return notified;
+    // Task #N+1 fix: Batch query to find which orgs already have a recent alert,
+    // then bulk-insert only for orgs that don't, avoiding N+1 SELECT per org.
+    const cutoff = new Date(Date.now() - 60 * 60 * 1000);
+    const alreadyNotified = await db.select({ orgId: systemAlerts.organizationId })
+      .from(systemAlerts)
+      .where(and(
+        eq(systemAlerts.type, `external_outage` as any),
+        gte(systemAlerts.createdAt, cutoff)
+      ));
+    const alreadyNotifiedIds = alreadyNotified.map(r => r.orgId!);
+
+    const orgQuery = alreadyNotifiedIds.length > 0
+      ? db.select({ id: organizations.id }).from(organizations)
+          .where(notInArray(organizations.id, alreadyNotifiedIds))
+          .limit(1000)
+      : db.select({ id: organizations.id }).from(organizations).limit(1000);
+    const orgsToNotify = await orgQuery;
+
+    if (orgsToNotify.length === 0) return 0;
+
+    const alertValues = orgsToNotify.map(org => ({
+      organizationId: org.id,
+      type: "external_outage" as any,
+      severity: status.status === "outage" ? "critical" : "warning",
+      title: `${SERVICE_ENDPOINTS[service]?.name || service} Service Issue`,
+      message: `We're aware of an issue with ${SERVICE_ENDPOINTS[service]?.name || service}. ${impact}. We're monitoring the situation and will update you when it's resolved.`,
+      metadata: { service, status: status.status, message: status.message }
+    }));
+    await db.insert(systemAlerts).values(alertValues);
+    return orgsToNotify.length;
   },
   
   async resolveOutageNotifications(service: string): Promise<number> {
-    const alerts = await db.select()
-      .from(systemAlerts)
-      .where(eq(systemAlerts.type, "external_outage" as any));
-    
-    let resolved = 0;
-    
-    for (const alert of alerts) {
-      if (!alert.resolvedAt && (alert.metadata as any)?.service === service) {
-        await db.update(systemAlerts)
-          .set({
-            resolvedAt: new Date(),
-            status: "resolved"
-          })
-          .where(eq(systemAlerts.id, alert.id));
-        resolved++;
-      }
-    }
-    
-    return resolved;
+    // Task #N+1 fix: Use a single bulk UPDATE with SQL filter instead of looping N individual UPDATEs
+    const updated = await db.update(systemAlerts)
+      .set({ resolvedAt: new Date(), status: "resolved" as any })
+      .where(and(
+        eq(systemAlerts.type, "external_outage" as any),
+        sql`${systemAlerts.resolvedAt} IS NULL`,
+        sql`${systemAlerts.metadata}->>'service' = ${service}`
+      ))
+      .returning({ id: systemAlerts.id });
+    return updated.length;
   },
   
   startPeriodicMonitoring(intervalMs: number = 5 * 60 * 1000): void {

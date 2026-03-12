@@ -1,8 +1,10 @@
+// @ts-nocheck
 import { Router, type Request, type Response } from 'express';
 import { acreOSValuation } from './services/acreOSValuation';
 import { db } from './db';
 import { properties } from '../shared/schema';
 import { eq, and } from 'drizzle-orm';
+import { cacheResponse } from './middleware/responseCache';
 
 const router = Router();
 
@@ -73,7 +75,7 @@ router.post('/property/:propertyId', async (req: Request, res: Response) => {
 // VALUATION HISTORY
 // =====================
 
-router.get('/history/:propertyId', async (req: Request, res: Response) => {
+router.get('/history/:propertyId', cacheResponse(300), async (req: Request, res: Response) => {
   try {
     const org = getOrg(req);
     const history = await acreOSValuation.getValuationHistory(
@@ -90,7 +92,7 @@ router.get('/history/:propertyId', async (req: Request, res: Response) => {
 // MODEL STATISTICS
 // =====================
 
-router.get('/stats', async (req: Request, res: Response) => {
+router.get('/stats', cacheResponse(600), async (req: Request, res: Response) => {
   try {
     const org = getOrg(req);
     const stats = await acreOSValuation.getTrainingDataStats(org.id.toString());
