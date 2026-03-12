@@ -4,6 +4,8 @@ services:
   db:
     image: postgres:16-alpine
     restart: unless-stopped
+    # ⚠️  Development-only credentials below — never use these in staging or production.
+    # In production, set DATABASE_URL directly from a secrets manager.
     environment:
       POSTGRES_USER: acreos
       POSTGRES_PASSWORD: acreos
