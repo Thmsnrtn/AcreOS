@@ -2788,6 +2788,126 @@ export function registerAdminRoutes(app: Express): void {
     }
   });
 
+  // ─── AI Creative Generation & One-Click Campaign Deploy ──────────────────
+
+  // Start AI creative generation (async). Returns bundleId immediately.
+  // Client polls GET /api/founder/growth/creative-bundles/:id for status.
+  api.post("/api/founder/growth/generate-creative", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { templateKey } = req.body;
+      if (!templateKey) return res.status(400).json({ message: "templateKey is required" });
+
+      // Create the bundle record immediately so client can poll
+      const bundle = await storage.createAdCreativeBundle({ templateKey, status: "generating" });
+      res.json({ bundleId: bundle.id, status: "generating" });
+
+      // Generate in background — do not await
+      (async () => {
+        try {
+          const { adCreativeService } = await import("./services/adCreativeService");
+          const { copies, images } = await adCreativeService.generateBundle(templateKey);
+          await storage.updateAdCreativeBundle(bundle.id, {
+            status: "ready",
+            copies,
+            images,
+          });
+        } catch (err: any) {
+          console.error("[growth] Creative generation failed:", err?.message);
+          await storage.updateAdCreativeBundle(bundle.id, {
+            status: "error",
+            error: err?.message || "Generation failed",
+          });
+        }
+      })();
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Poll creative bundle status
+  api.get("/api/founder/growth/creative-bundles/:id", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const bundle = await storage.getAdCreativeBundle(req.params.id);
+      if (!bundle) return res.status(404).json({ message: "Bundle not found" });
+      res.json(bundle);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Regenerate a single copy variant (client edits specific angle)
+  api.post("/api/founder/growth/creative-bundles/:id/regenerate-copy", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { angle } = req.body;
+      const bundle = await storage.getAdCreativeBundle(req.params.id);
+      if (!bundle || bundle.status !== "ready") return res.status(400).json({ message: "Bundle not ready" });
+
+      const { adCreativeService } = await import("./services/adCreativeService");
+      const allVariants = await adCreativeService.generateCopyVariants(bundle.templateKey);
+      const newVariant = allVariants.find((v) => v.angle === angle);
+      if (!newVariant) return res.status(404).json({ message: "Angle not found" });
+
+      const copies = (bundle.copies as any[] || []).map((c: any) =>
+        c.angle === angle ? newVariant : c
+      );
+      const updated = await storage.updateAdCreativeBundle(bundle.id, { copies });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // One-click deploy: launch full campaign from a creative bundle
+  api.post("/api/founder/growth/creative-bundles/:id/deploy", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { name, dailyBudgetCents, targetCountries } = req.body;
+      if (!name) return res.status(400).json({ message: "Campaign name is required" });
+
+      const bundle = await storage.getAdCreativeBundle(req.params.id);
+      if (!bundle) return res.status(404).json({ message: "Bundle not found" });
+      if (bundle.status !== "ready") return res.status(400).json({ message: `Bundle is ${bundle.status}, not ready` });
+
+      const adAccount = await storage.getFounderAdAccount("meta");
+      if (!adAccount) return res.status(400).json({ message: "No Meta ad account configured" });
+
+      const { growthAdService } = await import("./services/growthAdService");
+
+      const externalCampaignId = await growthAdService.launchFullCampaign({
+        adAccount,
+        templateKey: bundle.templateKey,
+        name,
+        dailyBudgetCents: dailyBudgetCents || 2000,
+        targetCountries: targetCountries || ["US"],
+        copies: (bundle.copies as any[]) || [],
+        images: (bundle.images as any[]) || [],
+      });
+
+      const campaign = await storage.createGrowthCampaign({
+        name,
+        templateKey: bundle.templateKey,
+        externalCampaignId,
+        status: externalCampaignId ? "paused" : "draft",
+        dailyBudgetCents: dailyBudgetCents || 2000,
+        targetCountries: targetCountries || ["US"],
+        totalSpendCents: 0,
+        impressions: 0,
+        clicks: 0,
+        signups: 0,
+        conversions: 0,
+      });
+
+      // Link bundle to campaign
+      await storage.updateAdCreativeBundle(bundle.id, {
+        campaignId: campaign.id,
+        status: "deployed",
+      });
+
+      res.json({ campaign, bundleId: bundle.id });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // ============================================
 
 }

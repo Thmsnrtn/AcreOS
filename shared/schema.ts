@@ -9783,3 +9783,17 @@ export type SignupAttribution = {
   utmContent: string | null;
   createdAt: Date;
 };
+
+// AI-generated ad creative bundles — copy variants + images, produced before campaign deployment
+export const adCreativeBundles = pgTable("ad_creative_bundles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  templateKey: text("template_key").notNull(),
+  campaignId: integer("campaign_id").references(() => growthCampaigns.id, { onDelete: "set null" }),
+  status: text("status").notNull().default("generating"), // 'generating' | 'ready' | 'error' | 'deployed'
+  copies: jsonb("copies").$type<any[]>(),   // AdCopyVariant[]
+  images: jsonb("images").$type<any[]>(),   // GeneratedAdImage[]
+  error: text("error"),
+  generatedAt: timestamp("generated_at").defaultNow(),
+  model: text("model").default("gpt-4o"),
+});
+export type AdCreativeBundle = typeof adCreativeBundles.$inferSelect;

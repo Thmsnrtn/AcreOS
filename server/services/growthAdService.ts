@@ -173,6 +173,23 @@ export interface LaunchCampaignInput {
   targetCountries?: string[];
 }
 
+export interface LaunchFullCampaignInput extends LaunchCampaignInput {
+  copies: Array<{
+    angle: string;
+    angleLabel: string;
+    headline: string;
+    primaryText: string;
+    description: string;
+    callToAction: string;
+    hook: string;
+  }>;
+  images: Array<{
+    url: string;
+    styleLabel: string;
+    metaImageHash?: string;
+  }>;
+}
+
 export interface CampaignStats {
   spendCents: number;
   impressions: number;
@@ -249,6 +266,109 @@ class GrowthAdService {
     // Step 4: Ad
     // (creative is not used directly here but ensures it's created)
     void creative;
+
+    return campaign.id as string;
+  }
+
+  /**
+   * Launches a full AI-generated campaign on Meta with multiple ad variants.
+   * Creates: 1 Campaign → 1 Ad Set → N Ads (one per copy × image combination).
+   * All assets start PAUSED — founder reviews then activates.
+   * Returns the Meta campaign ID.
+   */
+  async launchFullCampaign(input: LaunchFullCampaignInput): Promise<string | null> {
+    const { adAccount, templateKey, name, dailyBudgetCents, targetCountries, copies, images } = input;
+    const template = CAMPAIGN_TEMPLATES[templateKey];
+    if (!template) throw new Error(`Unknown campaign template: ${templateKey}`);
+
+    const adAccountId = adAccount.adAccountId.startsWith("act_")
+      ? adAccount.adAccountId
+      : `act_${adAccount.adAccountId}`;
+
+    const appUrl = process.env.PUBLIC_APP_URL || process.env.META_APP_URL || "https://app.acreos.com";
+    const sep = template.landingPagePath.includes("?") ? "&" : "?";
+    const landingUrl = `${appUrl}${template.landingPagePath}${sep}utm_campaign=${encodeURIComponent(name)}`;
+
+    const targeting = { ...template.targeting };
+    if (targetCountries?.length) targeting.geo_locations = { country_codes: targetCountries };
+
+    // Step 1: Campaign
+    const campaign = await metaPost(adAccount.accessToken, `${adAccountId}/campaigns`, {
+      name,
+      objective: template.objective,
+      status: "PAUSED",
+      special_ad_categories: [],
+    });
+
+    // Step 2: Ad Set
+    const adSet = await metaPost(adAccount.accessToken, `${adAccountId}/adsets`, {
+      name: `${name} – Ad Set`,
+      campaign_id: campaign.id,
+      daily_budget: dailyBudgetCents,
+      optimization_goal: template.objective === "OUTCOME_LEADS" ? "LEAD_GENERATION" : "CONVERSIONS",
+      billing_event: "IMPRESSIONS",
+      targeting,
+      status: "PAUSED",
+      promoted_object:
+        template.objective === "OUTCOME_CONVERSIONS" && adAccount.pixelId
+          ? { pixel_id: adAccount.pixelId, custom_event_type: "COMPLETE_REGISTRATION" }
+          : undefined,
+    });
+
+    // Step 3: Upload images to Meta and create one Ad per copy variant
+    const pageId = adAccount.appId || process.env.META_PAGE_ID || "";
+    const { adCreativeService } = await import("./adCreativeService");
+
+    // Pre-upload all unique images once
+    const imageHashes: (string | null)[] = await Promise.all(
+      images.map(async (img) => {
+        if (img.metaImageHash) return img.metaImageHash;
+        if (img.url) {
+          return adCreativeService.uploadImageToMeta(adAccount.adAccountId, adAccount.accessToken, img.url);
+        }
+        return null;
+      })
+    );
+
+    // Create one ad per copy variant (cycling through images)
+    for (let i = 0; i < copies.length; i++) {
+      const copy = copies[i];
+      const imageHash = imageHashes[i % Math.max(imageHashes.length, 1)] ?? undefined;
+
+      const creativeSpec: any = {
+        name: `${name} – ${copy.angleLabel} Creative`,
+        object_story_spec: {
+          page_id: pageId,
+          link_data: {
+            link: landingUrl,
+            message: copy.primaryText,
+            name: copy.headline,
+            description: copy.description,
+            call_to_action: {
+              type: copy.callToAction,
+              value: { link: landingUrl },
+            },
+          },
+        },
+      };
+
+      if (imageHash) {
+        creativeSpec.object_story_spec.link_data.image_hash = imageHash;
+      }
+
+      try {
+        const creative = await metaPost(adAccount.accessToken, `${adAccountId}/adcreatives`, creativeSpec);
+        await metaPost(adAccount.accessToken, `${adAccountId}/ads`, {
+          name: `${name} – ${copy.angleLabel}`,
+          adset_id: adSet.id,
+          creative: { creative_id: creative.id },
+          status: "PAUSED",
+        });
+      } catch (err: any) {
+        console.error(`[growthAds] Failed to create ad variant ${copy.angleLabel}:`, err?.message);
+        // Non-fatal: continue with other variants
+      }
+    }
 
     return campaign.id as string;
   }
