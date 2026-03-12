@@ -276,4 +276,150 @@ router.get("/insights", async (req, res) => {
   }
 });
 
+// GET /api/atlas/sophie-suggestions
+// Returns top 3-5 actionable suggestions from recent high-confidence sophie observations
+router.get("/sophie-suggestions", async (req, res) => {
+  try {
+    const org = (req as any).organization;
+    const now = new Date();
+    const seventyTwoHoursAgo = new Date(now.getTime() - 72 * 60 * 60 * 1000);
+
+    // Fetch recent observations with confidence > 70 (stored as 0-100 integer)
+    const recentObs = await db
+      .select({
+        id: sophieObservations.id,
+        type: sophieObservations.type,
+        severity: sophieObservations.severity,
+        title: sophieObservations.title,
+        description: sophieObservations.description,
+        confidenceScore: sophieObservations.confidenceScore,
+        metadata: sophieObservations.metadata,
+        detectedAt: sophieObservations.detectedAt,
+      })
+      .from(sophieObservations)
+      .where(
+        and(
+          eq(sophieObservations.organizationId, org.id),
+          eq(sophieObservations.status, "detected"),
+          gte(sophieObservations.detectedAt, seventyTwoHoursAgo),
+          gt(sophieObservations.confidenceScore, 70)
+        )
+      )
+      .orderBy(desc(sophieObservations.confidenceScore), desc(sophieObservations.detectedAt))
+      .limit(20);
+
+    // Also pull stale leads (not contacted in > 21 days) as potential action items
+    const twentyOneDaysAgo = new Date(now.getTime() - 21 * 24 * 60 * 60 * 1000);
+    const staleLeads = await db
+      .select({
+        id: leads.id,
+        firstName: leads.firstName,
+        lastName: leads.lastName,
+        lastContactedAt: leads.lastContactedAt,
+        status: leads.status,
+        email: leads.email,
+        phone: leads.phone,
+      })
+      .from(leads)
+      .where(eq(leads.organizationId, org.id))
+      .orderBy(leads.lastContactedAt)
+      .limit(50);
+
+    const staleFiltered = staleLeads
+      .filter((l) => {
+        if (["closed", "dead"].includes(l.status ?? "")) return false;
+        if (!l.lastContactedAt) return true;
+        return new Date(l.lastContactedAt).getTime() < twentyOneDaysAgo.getTime();
+      })
+      .slice(0, 5);
+
+    type ActionSuggestion = {
+      id: string;
+      suggestion: string;
+      rationale: string;
+      action: string;
+      actionLabel: string;
+      actionUrl: string;
+      entityId?: number;
+      entityType?: string;
+      confidence: number;
+    };
+
+    const suggestions: ActionSuggestion[] = [];
+
+    // Map observations to actionable suggestions
+    for (const obs of recentObs) {
+      if (suggestions.length >= 3) break;
+
+      const confidence = (obs.confidenceScore ?? 0) / 100;
+      const entityId = obs.metadata?.relatedEntityId;
+      const entityType = obs.metadata?.relatedEntityType;
+      let action = "view";
+      let actionLabel = "Review";
+      let actionUrl = "/today";
+      let suggestion = obs.title;
+      let rationale = obs.description;
+
+      if (obs.type === "activity_drop" || obs.type === "anomaly") {
+        action = "create_task";
+        actionLabel = "Create Task";
+        actionUrl = "/pipeline";
+      } else if (obs.type === "opportunity" || obs.type === "optimization") {
+        action = "view_lead";
+        actionLabel = "View Lead";
+        actionUrl = entityId ? `/leads?highlight=${entityId}` : "/leads";
+      } else if (obs.type === "quota_warning" || obs.type === "performance") {
+        action = "view_analytics";
+        actionLabel = "View Analytics";
+        actionUrl = "/analytics";
+      } else if (obs.type === "data_issue" || obs.type === "error_pattern") {
+        action = "view_settings";
+        actionLabel = "Review";
+        actionUrl = "/settings";
+      } else if (obs.type === "usage_spike") {
+        action = "view_dashboard";
+        actionLabel = "View Dashboard";
+        actionUrl = "/";
+      }
+
+      suggestions.push({
+        id: `obs-${obs.id}`,
+        suggestion,
+        rationale,
+        action,
+        actionLabel,
+        actionUrl,
+        entityId: entityId ?? undefined,
+        entityType: entityType ?? undefined,
+        confidence,
+      });
+    }
+
+    // Fill remaining slots from stale leads (up to 3 total)
+    for (const lead of staleFiltered) {
+      if (suggestions.length >= 3) break;
+      const daysSince = lead.lastContactedAt
+        ? Math.floor((now.getTime() - new Date(lead.lastContactedAt).getTime()) / (24 * 60 * 60 * 1000))
+        : null;
+      const daysText = daysSince != null ? `${daysSince} days ago` : "never";
+      suggestions.push({
+        id: `stale-${lead.id}`,
+        suggestion: `Follow up with ${lead.firstName} ${lead.lastName}`,
+        rationale: `Last contacted ${daysText}. Re-engaging stale leads improves conversion rates.`,
+        action: lead.email ? "send_email" : "create_task",
+        actionLabel: lead.email ? "Send Email" : "Create Task",
+        actionUrl: `/leads?highlight=${lead.id}`,
+        entityId: lead.id,
+        entityType: "lead",
+        confidence: 0.82,
+      });
+    }
+
+    res.json({ suggestions: suggestions.slice(0, 3), generatedAt: now.toISOString() });
+  } catch (error: any) {
+    logger.error("Sophie suggestions error", { error: error.message });
+    res.status(500).json({ message: "Failed to load Sophie suggestions" });
+  }
+});
+
 export default router;
