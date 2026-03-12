@@ -2756,6 +2756,44 @@ export const SUPPORT_STATUSES = {
 
 export type SupportStatus = keyof typeof SUPPORT_STATUSES;
 
+// SLA targets by priority level (hours to first response)
+// Priority scale: 1=low, 2=normal, 3=medium, 4=high, 5=critical
+export const SLA_HOURS = {
+  5: 1,   // critical → 1 hour
+  4: 4,   // high → 4 hours
+  3: 24,  // medium → 24 hours
+  2: 48,  // normal → 48 hours
+  1: 72,  // low → 72 hours
+} as const;
+
+export type SlaStatus = "on_track" | "at_risk" | "breached";
+
+export interface SlaInfo {
+  slaDeadline: Date;
+  slaStatus: SlaStatus;
+  hoursUntilBreached: number; // negative = already breached
+}
+
+/** Compute SLA metadata for a support case given its priority and createdAt. */
+export function computeSla(priority: number, createdAt: Date | string): SlaInfo {
+  const p = (priority in SLA_HOURS ? priority : 1) as keyof typeof SLA_HOURS;
+  const slaHours = SLA_HOURS[p] ?? 72;
+  const created = new Date(createdAt);
+  const slaDeadline = new Date(created.getTime() + slaHours * 60 * 60 * 1000);
+  const now = new Date();
+  const msUntil = slaDeadline.getTime() - now.getTime();
+  const hoursUntilBreached = msUntil / (60 * 60 * 1000);
+  let slaStatus: SlaStatus;
+  if (hoursUntilBreached < 0) {
+    slaStatus = "breached";
+  } else if (hoursUntilBreached < slaHours * 0.25) {
+    slaStatus = "at_risk";
+  } else {
+    slaStatus = "on_track";
+  }
+  return { slaDeadline, slaStatus, hoursUntilBreached };
+}
+
 // Support cases (tickets)
 export const supportCases = pgTable("support_cases", {
   id: serial("id").primaryKey(),
@@ -4949,6 +4987,24 @@ export const insertBorrowerSessionSchema = createInsertSchema(borrowerSessions).
 });
 export type InsertBorrowerSession = z.infer<typeof insertBorrowerSessionSchema>;
 export type BorrowerSession = typeof borrowerSessions.$inferSelect;
+
+// ============================================
+// BORROWER MESSAGES (Self-service messaging thread)
+// ============================================
+
+export const borrowerMessages = pgTable("borrower_messages", {
+  id: serial("id").primaryKey(),
+  noteId: integer("note_id").references(() => notes.id).notNull(),
+  orgId: integer("org_id").references(() => organizations.id).notNull(),
+  senderType: text("sender_type").notNull(), // 'borrower' | 'lender'
+  content: text("content").notNull(),
+  readAt: timestamp("read_at"), // null = unread
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertBorrowerMessageSchema = createInsertSchema(borrowerMessages).omit({ id: true, createdAt: true });
+export type InsertBorrowerMessage = z.infer<typeof insertBorrowerMessageSchema>;
+export type BorrowerMessage = typeof borrowerMessages.$inferSelect;
 
 // ============================================
 // DATA SOURCES (Free Data Endpoint Registry)
@@ -9836,3 +9892,27 @@ export const systemMeta = pgTable("system_meta", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 export type SystemMeta = typeof systemMeta.$inferSelect;
+
+// ============================================
+// CAMPAIGN VARIANTS (A/B Test Framework)
+// ============================================
+
+// Lightweight per-campaign variant table for A/B split testing
+export const campaignVariants = pgTable("campaign_variants", {
+  id: serial("id").primaryKey(),
+  campaignId: integer("campaign_id").references(() => campaigns.id).notNull(),
+  name: text("name").notNull(), // "Variant A", "Variant B"
+  subject: text("subject"),
+  body: text("body"),
+  trafficSplit: integer("traffic_split").default(50), // percentage of audience (0-100)
+  sentCount: integer("sent_count").default(0),
+  openCount: integer("open_count").default(0),
+  clickCount: integer("click_count").default(0),
+  responseCount: integer("response_count").default(0),
+  isWinner: boolean("is_winner").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertCampaignVariantSchema = createInsertSchema(campaignVariants).omit({ id: true, createdAt: true });
+export type CampaignVariant = typeof campaignVariants.$inferSelect;
+export type InsertCampaignVariant = z.infer<typeof insertCampaignVariantSchema>;

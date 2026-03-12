@@ -1995,6 +1995,95 @@ function LeadForm({ lead, onSuccess }: { lead?: Lead; onSuccess: () => void }) {
   );
 }
 
+function ScoreBreakdownCard({ leadId }: { leadId: number }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const { data: scoreHistory, isLoading } = useQuery<ScoreHistory[]>({
+    queryKey: ["/api/leads", leadId, "score-history"],
+    enabled: isOpen,
+  });
+
+  const latestFactors = scoreHistory?.[0]?.factors || {};
+  const factorEntries = Object.entries(latestFactors).filter(
+    ([key]) => !["totalRawScore", "normalizedScore", "recommendation"].includes(key)
+  );
+
+  const FACTOR_LABELS: Record<string, string> = {
+    ownershipDuration: "Ownership Duration",
+    taxDelinquency: "Tax Delinquency",
+    absenteeOwner: "Absentee Owner",
+    propertySize: "Property Size",
+    corporateOwner: "Corporate Owner",
+    outOfState: "Out-of-State Owner",
+    inheritanceIndicator: "Inheritance Indicator",
+    floodZone: "Flood Zone",
+    responseRecency: "Response Recency",
+    emailEngagement: "Email Engagement",
+    campaignTouches: "Campaign Touches",
+  };
+
+  return (
+    <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+      <Card className="glass-panel">
+        <CollapsibleTrigger asChild>
+          <CardHeader className="pb-2 cursor-pointer hover:bg-muted/30 rounded-t-lg transition-colors">
+            <CardTitle className="text-base flex items-center justify-between gap-2">
+              <span className="flex items-center gap-2">
+                <TrendingUp className="w-4 h-4" /> Score Breakdown
+              </span>
+              <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${isOpen ? "rotate-180" : ""}`} />
+            </CardTitle>
+          </CardHeader>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <CardContent className="pt-0 pb-3">
+            {isLoading && (
+              <div className="flex items-center justify-center py-4">
+                <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+              </div>
+            )}
+            {!isLoading && factorEntries.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-3">
+                No score breakdown available. Click "Rescore Lead" to generate one.
+              </p>
+            )}
+            {!isLoading && factorEntries.length > 0 && (
+              <div className="space-y-1 mt-1">
+                {factorEntries.map(([key, factor]: [string, any]) => {
+                  const score = factor?.score ?? 0;
+                  const explanation = factor?.explanation ?? key;
+                  const isPos = score > 0;
+                  const isNeg = score < 0;
+                  return (
+                    <div
+                      key={key}
+                      className={`flex items-center justify-between py-1.5 px-3 rounded-md text-sm
+                        ${isPos ? "bg-green-50 dark:bg-green-900/20" : isNeg ? "bg-red-50 dark:bg-red-900/20" : "bg-muted/40"}`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        {isPos && <TrendingUp className="w-3 h-3 text-green-600 dark:text-green-400 flex-shrink-0" />}
+                        {isNeg && <TrendingDown className="w-3 h-3 text-red-600 dark:text-red-400 flex-shrink-0" />}
+                        {!isPos && !isNeg && <Minus className="w-3 h-3 text-muted-foreground flex-shrink-0" />}
+                        <span className="truncate text-xs">{explanation || FACTOR_LABELS[key] || key.replace(/([A-Z])/g, ' $1').trim()}</span>
+                      </div>
+                      <span className={`text-xs font-semibold flex-shrink-0 ml-2
+                        ${isPos ? "text-green-600 dark:text-green-400" : isNeg ? "text-red-600 dark:text-red-400" : "text-muted-foreground"}`}>
+                        {isPos ? "+" : ""}{score}
+                      </span>
+                    </div>
+                  );
+                })}
+                <p className="text-xs text-muted-foreground text-center pt-2">
+                  Scored {scoreHistory?.[0]?.scoredAt ? new Date(scoreHistory[0].scoredAt).toLocaleDateString() : "recently"}
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
+  );
+}
+
 function LeadDetailDrawer({ lead, onClose, onEdit }: { lead: Lead; onClose: () => void; onEdit: () => void }) {
   const { data: teamMembers } = useTeamMembers();
   const { data: userPermissions } = useUserPermissions();
@@ -2173,6 +2262,8 @@ function LeadDetailDrawer({ lead, onClose, onEdit }: { lead: Lead; onClose: () =
                   </div>
                 </CardContent>
               </Card>
+
+              <ScoreBreakdownCard leadId={lead.id} />
 
               {/* TCPA Compliance Card */}
               <Card className="glass-panel">
