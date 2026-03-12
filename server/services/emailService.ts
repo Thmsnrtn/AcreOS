@@ -107,7 +107,7 @@ function getPlatformCredentials(): AWSCredentials {
     secretAccessKey,
     region,
     fromEmail,
-    fromName: process.env.AWS_SES_FROM_NAME || 'Acreage Land Co.',
+    fromName: process.env.AWS_SES_FROM_NAME || 'AcreOS',
     source: 'platform',
   };
 }
@@ -435,7 +435,7 @@ export class EmailService {
         html: this.buildNotificationTemplate(options.templateData),
       },
       welcome: {
-        subject: 'Welcome to Acreage Land Co.',
+        subject: 'Welcome to AcreOS',
         html: this.buildWelcomeTemplate(options.templateData),
       },
       alert: {
@@ -610,10 +610,10 @@ export class EmailService {
       <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
       <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
         <div style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); padding: 30px; border-radius: 10px 10px 0 0;">
-          <h1 style="color: white; margin: 0; font-size: 24px;">Welcome to Acreage Land Co.!</h1>
+          <h1 style="color: white; margin: 0; font-size: 24px;">Welcome to AcreOS!</h1>
         </div>
         <div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px;">
-          <p>Hi ${data.name || 'there'},</p>
+          <p>Hi ${data.firstName || data.name || 'there'},</p>
           <p>Thank you for joining us! We're excited to help you manage your land investments.</p>
           <p>Here are some things you can do to get started:</p>
           <ul>
