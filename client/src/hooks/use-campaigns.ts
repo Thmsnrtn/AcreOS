@@ -239,3 +239,26 @@ export function useCampaignResponseTrend(campaignId: number) {
     enabled: !!campaignId,
   });
 }
+
+// Direct mail attribution hook
+export interface MailAttributionData {
+  totalSent: number;
+  totalCostCents: number;
+  attributedResponses: number;
+  responseRate: number;
+  costPerResponse: number | null;
+  estimatedDeliveryDate: string | null;
+  industryBenchmarkMin: number;
+  industryBenchmarkMax: number;
+}
+
+export function useMailAttribution(campaignId: number) {
+  return useQuery<MailAttributionData>({
+    queryKey: ['/api/campaigns', campaignId, 'mail-attribution'],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/campaigns/${campaignId}/mail-attribution`);
+      return res.json();
+    },
+    enabled: !!campaignId,
+  });
+}
