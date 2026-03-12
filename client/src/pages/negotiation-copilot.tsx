@@ -247,7 +247,7 @@ function BATNACalculator() {
                   <p className="text-[10px] text-muted-foreground">your BATNA walkaway</p>
                 </div>
               )}
-              {negotiationZone?.mid > 0 && (
+              {negotiationZone !== null && negotiationZone.mid > 0 && (
                 <div className="rounded-lg border p-3 bg-muted/30">
                   <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Midpoint</p>
                   <p className="text-xl font-bold mt-0.5">{formatDollar(negotiationZone.mid)}</p>

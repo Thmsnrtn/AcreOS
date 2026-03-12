@@ -892,6 +892,19 @@ function PropertyCard({ property, onDelete }: {
             <DollarSign className="w-3.5 h-3.5" />
             <span>${Number(property.marketValue || 0).toLocaleString()}</span>
           </div>
+          {Number(property.marketValue) > 0 && Number(property.sizeAcres) > 0 && (
+            <div className="flex items-center gap-1.5 col-span-2 pt-1 border-t border-border/50">
+              <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
+              <span className="text-emerald-700 dark:text-emerald-400 font-medium">
+                ${Math.round(Number(property.marketValue) / Number(property.sizeAcres)).toLocaleString()}/acre
+              </span>
+              {property.createdAt && (
+                <span className="ml-auto text-muted-foreground/70">
+                  {Math.floor((Date.now() - new Date(property.createdAt).getTime()) / 86400000)}d in portfolio
+                </span>
+              )}
+            </div>
+          )}
         </div>
         <div className="mt-3 pt-3 border-t flex items-center justify-between gap-2">
           <Button 
