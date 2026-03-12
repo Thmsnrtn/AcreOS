@@ -124,6 +124,8 @@ import {
   type AgentRun,
   borrowerSessions,
   type BorrowerSession, type InsertBorrowerSession,
+  borrowerMessages,
+  type BorrowerMessage, type InsertBorrowerMessage,
   dataSources,
   type DataSource, type InsertDataSource,
   dataSourceCache,
@@ -1093,6 +1095,12 @@ export interface IStorage {
   getGoNogoMemoByProperty(organizationId: number, propertyId: number): Promise<GoNogoMemo | undefined>;
   createGoNogoMemo(data: InsertGoNogoMemo): Promise<GoNogoMemo>;
   updateGoNogoMemo(organizationId: number, id: number, data: Partial<InsertGoNogoMemo>): Promise<GoNogoMemo | undefined>;
+
+  // Borrower Messages
+  createBorrowerMessage(data: InsertBorrowerMessage): Promise<BorrowerMessage>;
+  getBorrowerMessages(noteId: number): Promise<BorrowerMessage[]>;
+  markBorrowerMessagesRead(noteId: number, senderType: string): Promise<void>;
+  countUnreadBorrowerMessages(noteId: number, senderType: string): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -7739,6 +7747,40 @@ Notary Public</p>
       .from(organizations)
       .orderBy(desc(organizations.createdAt))
       .limit(limit);
+  }
+
+  // ─── Borrower Messages ────────────────────────────────────────────────────
+  async createBorrowerMessage(data: InsertBorrowerMessage): Promise<BorrowerMessage> {
+    const [msg] = await db.insert(borrowerMessages).values(data).returning();
+    return msg;
+  }
+
+  async getBorrowerMessages(noteId: number): Promise<BorrowerMessage[]> {
+    return await db.select().from(borrowerMessages)
+      .where(eq(borrowerMessages.noteId, noteId))
+      .orderBy(borrowerMessages.createdAt);
+  }
+
+  async markBorrowerMessagesRead(noteId: number, senderType: string): Promise<void> {
+    await db.update(borrowerMessages)
+      .set({ readAt: new Date() })
+      .where(and(
+        eq(borrowerMessages.noteId, noteId),
+        eq(borrowerMessages.senderType, senderType),
+        sql`${borrowerMessages.readAt} IS NULL`
+      ));
+  }
+
+  async countUnreadBorrowerMessages(noteId: number, senderType: string): Promise<number> {
+    const [result] = await db
+      .select({ cnt: count() })
+      .from(borrowerMessages)
+      .where(and(
+        eq(borrowerMessages.noteId, noteId),
+        eq(borrowerMessages.senderType, senderType),
+        sql`${borrowerMessages.readAt} IS NULL`
+      ));
+    return Number(result?.cnt ?? 0);
   }
 }
 

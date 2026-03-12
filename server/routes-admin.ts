@@ -15,7 +15,14 @@ import {
   featureRequests,
   growthCampaigns,
   systemActivity,
+  computeSla,
+  orgApiKeys,
+  auditLog,
+  mailingOrderPieces,
+  mailingOrders,
+  campaigns,
 } from "@shared/schema";
+import crypto from "crypto";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { alertingService } from "./services/alerting";
@@ -72,7 +79,23 @@ export function registerAdminRoutes(app: Express): void {
       const org = (req as any).organization;
       const { status } = req.query as { status?: string };
       const cases = await storage.getSupportCases(org.id, status);
-      res.json(cases);
+      const casesWithSla = cases.map((c) => {
+        const sla = computeSla(c.priority, c.createdAt!);
+        return {
+          ...c,
+          slaDeadline: sla.slaDeadline,
+          slaStatus: sla.slaStatus,
+          hoursUntilBreached: sla.hoursUntilBreached,
+        };
+      });
+      // Sort by SLA urgency: breached first, then at_risk, then on_track; within same status sort by hoursUntilBreached asc
+      casesWithSla.sort((a, b) => {
+        const order = { breached: 0, at_risk: 1, on_track: 2 };
+        const diff = (order[a.slaStatus] ?? 2) - (order[b.slaStatus] ?? 2);
+        if (diff !== 0) return diff;
+        return a.hoursUntilBreached - b.hoursUntilBreached;
+      });
+      res.json(casesWithSla);
     } catch (err: any) {
       console.error("Get support cases error:", err);
       res.status(500).json({ error: err.message || "Failed to fetch support cases" });
@@ -186,7 +209,23 @@ export function registerAdminRoutes(app: Express): void {
       }
 
       const cases = await storage.getEscalatedCases();
-      res.json(cases);
+      const casesWithSla = cases.map((c) => {
+        const sla = computeSla(c.priority, c.createdAt!);
+        return {
+          ...c,
+          slaDeadline: sla.slaDeadline,
+          slaStatus: sla.slaStatus,
+          hoursUntilBreached: sla.hoursUntilBreached,
+        };
+      });
+      // Sort by SLA urgency first
+      casesWithSla.sort((a, b) => {
+        const order = { breached: 0, at_risk: 1, on_track: 2 };
+        const diff = (order[a.slaStatus] ?? 2) - (order[b.slaStatus] ?? 2);
+        if (diff !== 0) return diff;
+        return a.hoursUntilBreached - b.hoursUntilBreached;
+      });
+      res.json(casesWithSla);
     } catch (err: any) {
       console.error("Get escalated cases error:", err);
       res.status(500).json({ error: err.message || "Failed to fetch escalated cases" });
@@ -265,6 +304,64 @@ export function registerAdminRoutes(app: Express): void {
     } catch (err: any) {
       console.error("Get support metrics error:", err);
       res.status(500).json({ error: err.message || "Failed to fetch support metrics" });
+    }
+  });
+
+  // ============================================
+  // BORROWER MESSAGING (Lender-side)
+  // ============================================
+
+  // GET /api/notes/:noteId/borrower-messages — lender views thread
+  api.get("/api/notes/:noteId/borrower-messages", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const noteId = parseInt(req.params.noteId);
+      const note = await storage.getNote(org.id, noteId);
+      if (!note) return res.status(404).json({ error: "Note not found" });
+      const msgs = await storage.getBorrowerMessages(noteId);
+      // Mark borrower messages as read since lender is viewing them
+      await storage.markBorrowerMessagesRead(noteId, "borrower");
+      res.json(msgs);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/notes/:noteId/borrower-messages/reply — lender replies
+  api.post("/api/notes/:noteId/borrower-messages/reply", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const noteId = parseInt(req.params.noteId);
+      const { content } = req.body as { content: string };
+      if (!content || !content.trim()) {
+        return res.status(400).json({ error: "Message content is required" });
+      }
+      const note = await storage.getNote(org.id, noteId);
+      if (!note) return res.status(404).json({ error: "Note not found" });
+      const msg = await storage.createBorrowerMessage({
+        noteId,
+        orgId: org.id,
+        senderType: "lender",
+        content: content.trim(),
+        readAt: null,
+      });
+      res.status(201).json(msg);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/notes/:noteId/borrower-messages/unread-count — unread borrower message count for badge
+  api.get("/api/notes/:noteId/borrower-messages/unread-count", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const noteId = parseInt(req.params.noteId);
+      const note = await storage.getNote(org.id, noteId);
+      if (!note) return res.status(404).json({ error: "Note not found" });
+      const count = await storage.countUnreadBorrowerMessages(noteId, "borrower");
+      res.json({ count });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
     }
   });
 
@@ -3506,6 +3603,191 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       res.json({ message: "Churn engine started in background" });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+
+  // ─── Org API Keys ───────────────────────────────────────────────────────────
+  // Per-organization API keys for external integrations.
+
+  // GET /api/org/api-keys — list keys (masked)
+  api.get("/api/org/api-keys", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const rows = await db
+        .select({
+          id: orgApiKeys.id,
+          name: orgApiKeys.name,
+          keyPrefix: orgApiKeys.keyPrefix,
+          scope: orgApiKeys.scope,
+          expiresAt: orgApiKeys.expiresAt,
+          lastUsedAt: orgApiKeys.lastUsedAt,
+          isRevoked: orgApiKeys.isRevoked,
+          createdAt: orgApiKeys.createdAt,
+        })
+        .from(orgApiKeys)
+        .where(and(eq(orgApiKeys.organizationId, org.id), eq(orgApiKeys.isRevoked, false)))
+        .orderBy(desc(orgApiKeys.createdAt));
+      res.json(rows);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/org/api-keys — create key (returns full key ONCE)
+  api.post("/api/org/api-keys", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = req.user as any;
+      const userId = user?.claims?.sub || user?.id;
+      const { name, scope = "read", expiresInDays } = req.body as {
+        name: string;
+        scope?: "read" | "write" | "admin";
+        expiresInDays?: number | null;
+      };
+      if (!name || !name.trim()) {
+        return res.status(400).json({ error: "Name is required" });
+      }
+
+      // Generate: "acos_" + 32 random hex chars
+      const rawKey = "acos_" + crypto.randomBytes(20).toString("hex");
+      const keyHash = crypto.createHash("sha256").update(rawKey).digest("hex");
+      const keyPrefix = rawKey.slice(0, 12); // "acos_" + 7 chars
+
+      const expiresAt = expiresInDays
+        ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000)
+        : null;
+
+      const [row] = await db
+        .insert(orgApiKeys)
+        .values({
+          organizationId: org.id,
+          name: name.trim(),
+          keyHash,
+          keyPrefix,
+          scope: scope || "read",
+          expiresAt,
+          createdBy: null, // team member id lookup not needed here
+        })
+        .returning();
+
+      res.json({ ...row, key: rawKey });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // DELETE /api/org/api-keys/:id — revoke key
+  api.delete("/api/org/api-keys/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const keyId = parseInt(req.params.id);
+      const [updated] = await db
+        .update(orgApiKeys)
+        .set({ isRevoked: true, updatedAt: new Date() })
+        .where(and(eq(orgApiKeys.id, keyId), eq(orgApiKeys.organizationId, org.id)))
+        .returning({ id: orgApiKeys.id });
+      if (!updated) return res.status(404).json({ error: "Key not found" });
+      res.json({ message: "Key revoked" });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ─── Activity / Audit Log ───────────────────────────────────────────────────
+  // GET /api/org/activity-log — last 50 entries for this org
+  api.get("/api/org/activity-log", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const rows = await db
+        .select()
+        .from(auditLog)
+        .where(eq(auditLog.organizationId, org.id))
+        .orderBy(desc(auditLog.createdAt))
+        .limit(50);
+      res.json(rows);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ─── Direct Mail Attribution ────────────────────────────────────────────────
+  // GET /api/campaigns/:id/mail-attribution — responses attributed to direct mail
+  api.get("/api/campaigns/:id/mail-attribution", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const campaignId = parseInt(req.params.id);
+
+      // Get mailing orders for this campaign
+      const orders = await db
+        .select({ id: mailingOrders.id, totalPieces: mailingOrders.totalPieces,
+                  totalCost: mailingOrders.totalCost, completedAt: mailingOrders.completedAt,
+                  createdAt: mailingOrders.createdAt })
+        .from(mailingOrders)
+        .where(and(eq(mailingOrders.organizationId, org.id), eq(mailingOrders.campaignId, campaignId)));
+
+      const totalSent = orders.reduce((s, o) => s + (o.totalPieces || 0), 0);
+      const totalCostCents = orders.reduce((s, o) => s + (o.totalCost || 0), 0);
+
+      // Get all pieces for these orders
+      const orderIds = orders.map(o => o.id);
+      let attributedLeads = 0;
+
+      if (orderIds.length > 0) {
+        const pieces = await db
+          .select({
+            id: mailingOrderPieces.id,
+            leadId: mailingOrderPieces.leadId,
+            recipientAddressLine1: mailingOrderPieces.recipientAddressLine1,
+            recipientZipCode: mailingOrderPieces.recipientZipCode,
+            createdAt: mailingOrderPieces.createdAt,
+          })
+          .from(mailingOrderPieces)
+          .where(inArray(mailingOrderPieces.mailingOrderId, orderIds));
+
+        // Count leads that were updated/created within 30 days of a mail piece
+        const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+        const leadIds = pieces.map(p => p.leadId).filter(Boolean) as number[];
+        if (leadIds.length > 0) {
+          const matchedLeads = await db
+            .select({ id: leads.id, updatedAt: leads.updatedAt, status: leads.status })
+            .from(leads)
+            .where(and(eq(leads.organizationId, org.id), inArray(leads.id, leadIds)));
+
+          for (const lead of matchedLeads) {
+            const piece = pieces.find(p => p.leadId === lead.id);
+            if (piece && lead.updatedAt) {
+              const diff = new Date(lead.updatedAt).getTime() - new Date(piece.createdAt!).getTime();
+              if (diff >= 0 && diff <= thirtyDaysMs && lead.status !== 'new') {
+                attributedLeads++;
+              }
+            }
+          }
+        }
+      }
+
+      const responseRate = totalSent > 0 ? (attributedLeads / totalSent) * 100 : 0;
+      const costPerResponse = attributedLeads > 0 ? totalCostCents / attributedLeads / 100 : null;
+
+      // Estimated delivery: first order's createdAt + 7 days (midpoint 3-10)
+      const firstOrder = orders.sort((a, b) => new Date(a.createdAt!).getTime() - new Date(b.createdAt!).getTime())[0];
+      const estimatedDeliveryDate = firstOrder
+        ? new Date(new Date(firstOrder.createdAt!).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString()
+        : null;
+
+      res.json({
+        totalSent,
+        totalCostCents,
+        attributedResponses: attributedLeads,
+        responseRate: parseFloat(responseRate.toFixed(2)),
+        costPerResponse,
+        estimatedDeliveryDate,
+        industryBenchmarkMin: 1,
+        industryBenchmarkMax: 3,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
     }
   });
 
