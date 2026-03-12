@@ -7,6 +7,7 @@ import { insertCampaignSchema, type Campaign, type CampaignOptimization } from "
 import { z } from "zod";
 import { CampaignAnalytics } from "@/components/campaign-analytics";
 import { AbTestManager } from "@/components/ab-test-manager";
+import { CampaignVariantsPanel } from "@/components/campaign-variants-panel";
 
 const campaignFormSchema = insertCampaignSchema.omit({ organizationId: true });
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogFooter } from "@/components/ui/dialog";
@@ -1071,6 +1072,10 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
 
           <div className="pt-4 border-t">
             <AbTestManager campaign={campaign} />
+          </div>
+
+          <div className="pt-4 border-t">
+            <CampaignVariantsPanel campaign={campaign} />
           </div>
 
           <div className="pt-4 border-t">

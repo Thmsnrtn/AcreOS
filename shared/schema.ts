@@ -326,6 +326,7 @@ export const leads = pgTable("leads", {
   // Campaign attribution tracking
   sourceTrackingCode: text("source_tracking_code"), // Links to campaign.trackingCode
   sourceCampaignId: integer("source_campaign_id"), // Links to the campaign that generated this lead
+  sourceMailPieceId: integer("source_mail_piece_id"), // FK to mailingOrderPieces — direct mail attribution
   
   // Lead Scoring & Nurturing
   score: integer("score"), // 0-100 lead score
@@ -4915,7 +4916,10 @@ export const mailingOrderPieces = pgTable("mailing_order_pieces", {
   
   lobMailId: text("lob_mail_id"), // Lob's letter/postcard ID
   lobUrl: text("lob_url"), // Preview URL from Lob
-  
+
+  // Attribution tracking — unique 8-char code tied to this mail piece
+  trackingCode: text("tracking_code").unique(),
+
   status: text("status").notNull().default("pending"), // pending, processing, mailed, in_transit, delivered, returned, failed
   
   trackingEvents: jsonb("tracking_events").$type<Array<{
@@ -9916,3 +9920,39 @@ export const campaignVariants = pgTable("campaign_variants", {
 export const insertCampaignVariantSchema = createInsertSchema(campaignVariants).omit({ id: true, createdAt: true });
 export type CampaignVariant = typeof campaignVariants.$inferSelect;
 export type InsertCampaignVariant = z.infer<typeof insertCampaignVariantSchema>;
+
+// ============================================
+// ORGANIZATION API KEYS
+// ============================================
+// Per-org API keys allowing external integrations to authenticate with AcreOS.
+// The raw key is only returned once at creation; we store a SHA-256 hash.
+export const orgApiKeys = pgTable("org_api_keys", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+
+  name: text("name").notNull(),
+  keyHash: text("key_hash").notNull(), // SHA-256 hex of the actual key
+  keyPrefix: text("key_prefix").notNull(), // First 8 chars for display ("acos_XXXX...")
+  scope: text("scope").notNull().default("read"), // read | write | admin
+
+  expiresAt: timestamp("expires_at"), // null = never
+
+  lastUsedAt: timestamp("last_used_at"),
+  isRevoked: boolean("is_revoked").notNull().default(false),
+
+  createdBy: integer("created_by"), // team member ID
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("org_api_keys_org_idx").on(table.organizationId),
+]);
+
+export const insertOrgApiKeySchema = createInsertSchema(orgApiKeys).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  lastUsedAt: true,
+  isRevoked: true,
+});
+export type OrgApiKey = typeof orgApiKeys.$inferSelect;
+export type InsertOrgApiKey = z.infer<typeof insertOrgApiKeySchema>;
