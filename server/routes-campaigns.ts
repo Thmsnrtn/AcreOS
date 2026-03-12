@@ -13,8 +13,8 @@ import { checkUsageLimit } from "./services/usageLimits";
 import { usageMeteringService, creditService } from "./services/credits";
 import { createRateLimiter, RATE_LIMIT_CONFIGS } from "./middleware/rateLimit";
 import { storage, db } from "./storage";
-import { eq, sql } from "drizzle-orm";
-import { leads, deals, properties } from "@shared/schema";
+import { eq, sql, and, gte } from "drizzle-orm";
+import { leads, deals, properties, campaignResponses } from "@shared/schema";
 
 export function registerCampaignRoutes(app: Express): void {
   const api = app;
@@ -858,6 +858,52 @@ export function registerCampaignRoutes(app: Express): void {
     }
   });
   
+  // 7-day response trend: daily response counts for sparkline charts
+  api.get("/api/campaigns/:id/response-trend", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const campaignId = parseInt(req.params.id);
+
+      const campaign = await storage.getCampaign(org.id, campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+      sevenDaysAgo.setHours(0, 0, 0, 0);
+
+      const rows = await db
+        .select({
+          date: sql<string>`to_char(${campaignResponses.responseDate}, 'YYYY-MM-DD')`,
+          count: sql<number>`count(*)::int`,
+        })
+        .from(campaignResponses)
+        .where(
+          and(
+            eq(campaignResponses.campaignId, campaignId),
+            gte(campaignResponses.responseDate, sevenDaysAgo)
+          )
+        )
+        .groupBy(sql`to_char(${campaignResponses.responseDate}, 'YYYY-MM-DD')`)
+        .orderBy(sql`to_char(${campaignResponses.responseDate}, 'YYYY-MM-DD')`);
+
+      // Fill in zero-count days so the client always gets exactly 7 data points
+      const trend: { date: string; count: number }[] = [];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const dateStr = d.toISOString().slice(0, 10);
+        const found = rows.find((r) => r.date === dateStr);
+        trend.push({ date: dateStr, count: found ? Number(found.count) : 0 });
+      }
+
+      res.json(trend);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || "Failed to get response trend" });
+    }
+  });
+
   api.post("/api/campaigns/:id/optimize", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = (req as any).organization;

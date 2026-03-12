@@ -10,6 +10,151 @@ import {
   WORKFLOW_ACTION_TYPES,
 } from "@shared/schema";
 
+// ---------------------------------------------------------------------------
+// Pre-built workflow templates for land investing.
+// These are used by the UI to let users quickly install common automations.
+// Each template omits organizationId (added at install time) and uses
+// placeholder action IDs that are stable for de-duplication checks.
+// ---------------------------------------------------------------------------
+
+export type WorkflowTemplate = {
+  id: string; // stable identifier for the template
+  name: string;
+  description: string;
+  category: "leads" | "notes" | "deals";
+  trigger: {
+    event: WorkflowTriggerEvent;
+    conditions?: { field: string; operator: string; value: any }[];
+  };
+  actions: {
+    id: string;
+    type: string;
+    config: Record<string, any>;
+  }[];
+};
+
+export const LAND_INVESTING_WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
+  {
+    id: "tpl_new_lead_received",
+    name: "New Lead Received",
+    description:
+      "When a new lead is created, assign it to the default campaign, score it, and schedule a follow-up task within 24 hours.",
+    category: "leads",
+    trigger: { event: "lead.created" },
+    actions: [
+      {
+        id: "action_score_lead",
+        type: "run_agent_skill",
+        config: {
+          skillId: "score_lead",
+          skillParams: { autoAssignCampaign: true },
+        },
+      },
+      {
+        id: "action_notify_new_lead",
+        type: "send_notification",
+        config: {
+          notificationType: "info",
+          message:
+            "New lead received: {{firstName}} {{lastName}} from {{county}}, {{state}}. Score: {{leadScore}}.",
+        },
+      },
+      {
+        id: "action_followup_task",
+        type: "create_task",
+        config: {
+          title: "Follow up with new lead: {{firstName}} {{lastName}}",
+          description:
+            "Call or text within 24 hours to qualify interest. County: {{county}}, State: {{state}}.",
+          priority: "high",
+          dueInDays: 1,
+        },
+      },
+    ],
+  },
+  {
+    id: "tpl_payment_missed_dunning",
+    name: "Note Payment Missed — Dunning Sequence",
+    description:
+      "When a payment is missed on a seller-financed note, immediately notify the team, create a collection task, and send the borrower a payment reminder.",
+    category: "notes",
+    trigger: { event: "payment.missed" },
+    actions: [
+      {
+        id: "action_notify_missed",
+        type: "send_notification",
+        config: {
+          notificationType: "warning",
+          message:
+            "Payment missed on Note #{{noteId}} — {{borrowerName}}. Amount: ${{amount}}. Follow up immediately.",
+        },
+      },
+      {
+        id: "action_dunning_task",
+        type: "create_task",
+        config: {
+          title: "Missed payment — Note #{{noteId}} ({{borrowerName}})",
+          description:
+            "Contact borrower to collect overdue payment of ${{amount}}. Grace period may apply. Check note terms.",
+          priority: "high",
+          dueInDays: 1,
+        },
+      },
+      {
+        id: "action_borrower_email",
+        type: "send_email",
+        config: {
+          to: "{{borrowerEmail}}",
+          subject: "Payment Reminder — Your Land Payment is Past Due",
+          body: "Hi {{borrowerName}},\n\nWe noticed your payment of ${{amount}} due on {{dueDate}} has not been received. Please contact us at your earliest convenience to avoid any late fees.\n\nThank you,\n{{orgName}}",
+        },
+      },
+    ],
+  },
+  {
+    id: "tpl_deal_closed",
+    name: "Deal Closed",
+    description:
+      "When a deal reaches 'closed' stage, send a congratulations notification, request a referral from the buyer, and trigger note setup if seller-financed.",
+    category: "deals",
+    trigger: {
+      event: "deal.stage_changed",
+      conditions: [{ field: "stage", operator: "equals", value: "closed" }],
+    },
+    actions: [
+      {
+        id: "action_congrats_notify",
+        type: "send_notification",
+        config: {
+          notificationType: "success",
+          message:
+            "Deal closed! {{propertyAddress}} — ${{salePrice}}. Great work.",
+        },
+      },
+      {
+        id: "action_referral_email",
+        type: "send_email",
+        config: {
+          to: "{{buyerEmail}}",
+          subject: "Congratulations on your land purchase!",
+          body: "Hi {{buyerName}},\n\nCongratulations on your purchase of {{propertyAddress}}! We hope you love it.\n\nIf you know anyone else looking for land, we'd love a referral. Just reply to this email!\n\nThank you,\n{{orgName}}",
+        },
+      },
+      {
+        id: "action_note_setup_task",
+        type: "create_task",
+        config: {
+          title: "Set up seller-financed note for {{propertyAddress}}",
+          description:
+            "If seller financing was agreed, create the note in AcreOS Finance and generate the amortization schedule. Down payment: ${{downPayment}}, Financed: ${{financedAmount}}.",
+          priority: "high",
+          dueInDays: 3,
+        },
+      },
+    ],
+  },
+];
+
 export type WorkflowEventData = {
   event: WorkflowTriggerEvent;
   organizationId: number;

@@ -581,34 +581,47 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
       )}
 
       <main className="max-w-5xl mx-auto px-4 py-6 sm:py-8 space-y-4 sm:space-y-6">
-        <Card className="glass-panel border-2 border-primary/20" data-testid="card-payment-due">
+        <Card className={`glass-panel border-2 ${paymentStatusBadge.status === 'late' ? 'border-red-400/60' : 'border-primary/20'}`} data-testid="card-payment-due">
           <CardContent className="p-4 sm:p-6">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
               <div className="text-center sm:text-left">
-                <p className="text-sm text-muted-foreground">Next Payment Due</p>
-                <p className="text-3xl sm:text-4xl font-bold font-mono text-primary" data-testid="text-payment-amount">
-                  ${Number(note.monthlyPayment || 0).toLocaleString()}
+                <p className="text-sm text-muted-foreground font-medium uppercase tracking-wide">Amount Due</p>
+                <p className="text-4xl sm:text-5xl font-bold font-mono text-primary" data-testid="text-payment-amount">
+                  ${Number(note.monthlyPayment || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                 </p>
                 {note.nextPaymentDate && (
-                  <p className="text-sm text-muted-foreground mt-1">
+                  <p className={`text-sm mt-1 ${paymentStatusBadge.status === 'late' ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-muted-foreground'}`}>
                     Due {format(new Date(note.nextPaymentDate), 'MMMM d, yyyy')}
                   </p>
                 )}
-              </div>
-              <Button 
-                size="lg"
-                className="w-full sm:w-auto text-lg px-8 py-6"
-                onClick={handleMakePayment}
-                disabled={isProcessingPayment}
-                data-testid="button-make-payment"
-              >
-                {isProcessingPayment ? (
-                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                ) : (
-                  <CreditCard className="w-5 h-5 mr-2" />
+                {autopayEnabled && (
+                  <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1 flex items-center gap-1 justify-center sm:justify-start">
+                    <CheckCircle className="w-3 h-3" /> Autopay is on — payment will be collected automatically
+                  </p>
                 )}
-                Pay Now
-              </Button>
+              </div>
+              <div className="flex flex-col gap-2 w-full sm:w-auto">
+                <Button
+                  size="lg"
+                  className="w-full sm:w-auto text-lg px-8 py-6"
+                  onClick={handleMakePayment}
+                  disabled={isProcessingPayment}
+                  data-testid="button-make-payment"
+                  variant={autopayEnabled ? "outline" : "default"}
+                >
+                  {isProcessingPayment ? (
+                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                  ) : (
+                    <CreditCard className="w-5 h-5 mr-2" />
+                  )}
+                  {autopayEnabled ? "Pay Early" : "Pay Now"}
+                </Button>
+                {!autopayEnabled && (
+                  <p className="text-xs text-center text-muted-foreground">
+                    Enable autopay below to pay automatically each month
+                  </p>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>

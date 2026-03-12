@@ -5,11 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { 
-  DollarSign, 
-  TrendingUp, 
-  TrendingDown, 
-  Users, 
+import {
+  DollarSign,
+  TrendingUp,
+  TrendingDown,
+  Users,
   FileText,
   Download,
   BarChart3,
@@ -17,7 +17,8 @@ import {
   Activity,
   Clock,
   Target,
-  ArrowRight
+  ArrowRight,
+  Zap
 } from "lucide-react";
 import {
   LineChart,
@@ -33,6 +34,7 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
+  ReferenceLine,
 } from "recharts";
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
@@ -86,6 +88,103 @@ function KPICard({ title, value, change, icon, loading }: KPICardProps) {
           <div className={`text-xs flex items-center gap-1 ${change >= 0 ? 'text-green-600' : 'text-red-600'}`}>
             {change >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
             {change >= 0 ? '+' : ''}{formatPercent(change)} from last period
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// Compute a simple 90-day MRR projection from the last 30 days of revenue data.
+// Growth rate = (last_14_days / first_14_days) - 1, annualised to monthly, then projected 3 months.
+function computeProjectedMRR(revenueOverTime: { date: string; revenue: number }[] | undefined): {
+  currentMRR: number;
+  projectedMRR: number;
+  growthRate: number;
+  chartData: { label: string; revenue: number; projected?: number }[];
+} | null {
+  if (!revenueOverTime || revenueOverTime.length < 4) return null;
+
+  const data = [...revenueOverTime].sort((a, b) => a.date.localeCompare(b.date));
+  const mid = Math.floor(data.length / 2);
+  const firstHalfSum = data.slice(0, mid).reduce((s, d) => s + d.revenue, 0);
+  const secondHalfSum = data.slice(mid).reduce((s, d) => s + d.revenue, 0);
+
+  const growthRate = firstHalfSum > 0 ? (secondHalfSum - firstHalfSum) / firstHalfSum : 0;
+  const currentMRR = data.slice(-7).reduce((s, d) => s + d.revenue, 0) / 7 * 30;
+  const projectedMRR = currentMRR * (1 + growthRate) ** 3;
+
+  // Build chart: actual history + 3 projected months
+  const chartData = data.slice(-8).map(d => ({ label: d.date, revenue: d.revenue, projected: undefined as number | undefined }));
+  const lastDate = new Date(data[data.length - 1]?.date ?? Date.now());
+  const dailyMRR = currentMRR / 30;
+  for (let m = 1; m <= 3; m++) {
+    const projDate = new Date(lastDate);
+    projDate.setMonth(projDate.getMonth() + m);
+    chartData.push({
+      label: projDate.toISOString().slice(0, 7),
+      revenue: 0,
+      projected: Math.round(currentMRR * (1 + growthRate) ** m / 30),
+    });
+  }
+  // suppress unused warning
+  void dailyMRR;
+
+  return { currentMRR: Math.round(currentMRR), projectedMRR: Math.round(projectedMRR), growthRate, chartData };
+}
+
+interface ProjectedMRRCardProps {
+  revenueOverTime: { date: string; revenue: number }[] | undefined;
+  loading: boolean;
+}
+
+function ProjectedMRRCard({ revenueOverTime, loading }: ProjectedMRRCardProps) {
+  const forecast = computeProjectedMRR(revenueOverTime);
+
+  return (
+    <Card data-testid="card-projected-mrr">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+          <Zap className="h-4 w-4 text-yellow-500" />
+          Projected MRR (90 days)
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <Skeleton className="h-40 w-full" />
+        ) : !forecast ? (
+          <div className="h-40 flex items-center justify-center text-muted-foreground text-sm">
+            Not enough data to project yet
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex items-end justify-between">
+              <div>
+                <div className="text-2xl font-bold">{formatCurrency(forecast.projectedMRR)}</div>
+                <p className="text-xs text-muted-foreground">projected in 3 months</p>
+              </div>
+              <div className="text-right">
+                <div className={`text-sm font-medium flex items-center gap-1 ${forecast.growthRate >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {forecast.growthRate >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                  {forecast.growthRate >= 0 ? '+' : ''}{formatPercent(forecast.growthRate * 100)} growth
+                </div>
+                <p className="text-xs text-muted-foreground">current MRR: {formatCurrency(forecast.currentMRR)}</p>
+              </div>
+            </div>
+            <ResponsiveContainer width="100%" height={120}>
+              <LineChart data={forecast.chartData}>
+                <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                <XAxis dataKey="label" fontSize={10} tick={false} />
+                <YAxis tickFormatter={(v) => formatCurrency(v)} fontSize={10} width={55} />
+                <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                <ReferenceLine x={forecast.chartData[forecast.chartData.length - 4]?.label} stroke="#888" strokeDasharray="4 2" label={{ value: "now", fontSize: 10, fill: "#888" }} />
+                <Line type="monotone" dataKey="revenue" stroke="#0088FE" strokeWidth={2} dot={false} name="Actual" />
+                <Line type="monotone" dataKey="projected" stroke="#00C49F" strokeWidth={2} strokeDasharray="5 3" dot={false} name="Projected" />
+              </LineChart>
+            </ResponsiveContainer>
+            <p className="text-xs text-muted-foreground text-center">
+              Extrapolated from last 30-day growth rate — solid line = actual, dashed = projected
+            </p>
           </div>
         )}
       </CardContent>
@@ -249,6 +348,8 @@ export function AnalyticsContent() {
           loading={loadingExecutive}
         />
       </div>
+
+      <ProjectedMRRCard revenueOverTime={revenue?.revenueOverTime} loading={loadingRevenue} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
         <Card>

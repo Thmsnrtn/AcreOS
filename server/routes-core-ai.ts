@@ -282,6 +282,77 @@ export function registerCoreAIRoutes(app: Express): void {
     }
   });
 
+  // ──────────────────────────────────────────────
+  // SOPHIE OBSERVATIONS — proactive insight feed
+  // ──────────────────────────────────────────────
+
+  /**
+   * GET /api/sophie/observations
+   * Returns recent, unread sophie observations for the org.
+   * Used by the sidebar notification badge and the insight feed.
+   * Query params:
+   *   limit  – max records (default 20)
+   *   unread – if "true", return only status=detected entries (for badge count)
+   */
+  api.get("/api/sophie/observations", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const limit = parseInt(req.query.limit as string) || 20;
+      const unreadOnly = req.query.unread === "true";
+
+      const { sophieObserver } = await import('./services/sophieObserver');
+
+      if (unreadOnly) {
+        const count = await sophieObserver.getUnreadPassiveCount(org.id);
+        return res.json({ count });
+      }
+
+      const observations = await sophieObserver.getActiveObservations(org.id, limit);
+      res.json({ observations });
+    } catch (err: any) {
+      console.error("Sophie observations error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  /**
+   * POST /api/sophie/observations/:id/acknowledge
+   * Marks a specific observation as acknowledged (seen by user).
+   */
+  api.post("/api/sophie/observations/:id/acknowledge", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const observationId = parseInt(req.params.id);
+      if (isNaN(observationId)) {
+        return res.status(400).json({ message: "Invalid observation ID" });
+      }
+      const { sophieObserver } = await import('./services/sophieObserver');
+      const ok = await sophieObserver.acknowledgeObservation(observationId);
+      res.json({ success: ok });
+    } catch (err: any) {
+      console.error("Acknowledge observation error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  /**
+   * POST /api/sophie/observations/:id/dismiss
+   * Dismisses an observation so it no longer appears.
+   */
+  api.post("/api/sophie/observations/:id/dismiss", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const observationId = parseInt(req.params.id);
+      if (isNaN(observationId)) {
+        return res.status(400).json({ message: "Invalid observation ID" });
+      }
+      const { sophieObserver } = await import('./services/sophieObserver');
+      const ok = await sophieObserver.dismissObservation(observationId);
+      res.json({ success: ok });
+    } catch (err: any) {
+      console.error("Dismiss observation error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   api.get("/api/integrations/status", isAuthenticated, async (req, res) => {
     try {
       const { communicationsService } = await import('./services/communications');
@@ -319,6 +390,113 @@ export function registerCoreAIRoutes(app: Express): void {
       res.json(result);
     } catch (err: any) {
       console.error("Communications send error:", err);
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ──────────────────────────────────────────────
+  // NEGOTIATION COACHING (wires negotiationOrchestrator to the UI)
+  // ──────────────────────────────────────────────
+
+  // GET /api/ai/negotiation/counter-offer — recommend a counter-offer amount + tactics
+  api.get("/api/ai/negotiation/counter-offer", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { propertyId, askingPrice, offeredPrice, timeOnMarket, competingOffers } = req.query;
+      if (!propertyId || !askingPrice) {
+        return res.status(400).json({ message: "propertyId and askingPrice are required" });
+      }
+
+      const { negotiationOrchestrator } = await import("./services/negotiationOrchestrator");
+      const recommendation = await negotiationOrchestrator.generateCounterOffer(
+        {
+          propertyId: String(propertyId),
+          askingPrice: Number(askingPrice),
+          marketValue: Number(askingPrice), // fallback
+          comparables: [],
+          sellerHistory: [],
+          timeOnMarket: timeOnMarket ? Number(timeOnMarket) : 60,
+          competingOffers: competingOffers ? Number(competingOffers) : 0,
+        },
+        {
+          motivation: "motivated",
+          urgency: 50,
+          emotionalTriggers: [],
+          communicationStyle: "analytical",
+          priceFlexibility: 20,
+          keyPainPoints: [],
+        }
+      );
+
+      res.json(recommendation);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/ai/negotiation/analyze-seller — analyze seller psychology from messages
+  api.post("/api/ai/negotiation/analyze-seller", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { messages, propertyId } = req.body;
+      if (!messages || !Array.isArray(messages)) {
+        return res.status(400).json({ message: "messages array is required" });
+      }
+
+      const { negotiationOrchestrator } = await import("./services/negotiationOrchestrator");
+      const profile = await negotiationOrchestrator.analyzeSellerPsychology(
+        messages.join("\n"),
+        propertyId ? String(propertyId) : undefined
+      );
+
+      res.json(profile);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/ai/negotiation/script — generate a negotiation script for an active offer
+  api.post("/api/ai/negotiation/script", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { sellerMessages, askingPrice, offerAmount, sellerMotivation } = req.body;
+      if (!askingPrice || !offerAmount) {
+        return res.status(400).json({ message: "askingPrice and offerAmount are required" });
+      }
+
+      const { negotiationOrchestrator } = await import("./services/negotiationOrchestrator");
+
+      // Build a seller profile from the provided context
+      const sellerProfile = sellerMessages?.length
+        ? await negotiationOrchestrator.analyzeSellerPsychology(sellerMessages.join("\n"))
+        : {
+            motivation: sellerMotivation ?? "motivated",
+            urgency: 50,
+            emotionalTriggers: [],
+            communicationStyle: "analytical",
+            priceFlexibility: 20,
+            keyPainPoints: [],
+          };
+
+      const counterOffer = await negotiationOrchestrator.generateCounterOffer(
+        {
+          propertyId: "active",
+          askingPrice: Number(askingPrice),
+          marketValue: Number(askingPrice),
+          comparables: [],
+          sellerHistory: [],
+          timeOnMarket: 60,
+          competingOffers: 0,
+        },
+        sellerProfile
+      );
+
+      const script = await negotiationOrchestrator.generateNegotiationScript(
+        String(req.org?.id ?? ""),
+        "active",
+        sellerProfile,
+        counterOffer
+      );
+
+      res.json({ script, counterOffer, sellerProfile });
+    } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
   });

@@ -119,6 +119,12 @@ function getRecommendationStyle(rec: "mail" | "maybe" | "skip"): string {
   }
 }
 
+function getScoreColorStyle(score: number): string {
+  if (score >= 70) return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300";
+  if (score >= 40) return "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300";
+  return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300";
+}
+
 interface ScoreHistory {
   id: number;
   score: number;
@@ -391,14 +397,14 @@ function LeadScoreBadge({ lead }: { lead: LeadWithScore }) {
     <>
       <Tooltip>
         <TooltipTrigger asChild>
-          <div 
+          <div
             className="flex items-center gap-1 cursor-pointer"
             onClick={() => setShowDetails(true)}
             data-testid={`badge-score-${lead.id}`}
           >
             <Badge
               variant="outline"
-              className={`text-xs border-0 flex items-center gap-1 ${getStageStyle(stage)}`}
+              className={`text-xs border-0 flex items-center gap-1 font-semibold ${getScoreColorStyle(normalizedScore)}`}
             >
               {getStageIcon(stage)}
               {normalizedScore}
@@ -1300,7 +1306,7 @@ export default function LeadsPage() {
                             </TableHead>
                             <TableHead className="min-w-[180px]">Contact</TableHead>
                             <TableHead className="min-w-[100px]">Status</TableHead>
-                            <TableHead className="text-right min-w-[80px]">Actions</TableHead>
+                            <TableHead className="text-right min-w-[160px]">Actions</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -1350,36 +1356,88 @@ export default function LeadsPage() {
                                 <LeadStatusBadge status={lead.status} />
                               </TableCell>
                               <TableCell className="text-right">
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" size="sm" data-testid={`button-actions-lead-${lead.id}`}>
-                                      Actions
-                                    </Button>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end">
-                                    <DropdownMenuItem onClick={() => setViewingLead(lead)} data-testid={`button-view-lead-${lead.id}`}>
-                                      <Eye className="w-4 h-4 mr-2" />
-                                      View Details
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => setEditingLead(lead)} data-testid={`button-edit-lead-${lead.id}`}>
-                                      <Edit className="w-4 h-4 mr-2" />
-                                      Edit
-                                    </DropdownMenuItem>
-                                    <RescoreMenuItem leadId={lead.id} />
-                                    <DropdownMenuItem onClick={() => setOfferLetterLead(lead)} data-testid={`button-offer-letter-${lead.id}`}>
-                                      <FileText className="w-4 h-4 mr-2" />
-                                      Generate Offer Letter
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem 
-                                      onClick={() => setDeletingLead(lead)} 
-                                      className="text-destructive"
-                                      data-testid={`button-delete-lead-${lead.id}`}
-                                    >
-                                      <Trash2 className="w-4 h-4 mr-2" />
-                                      Delete
-                                    </DropdownMenuItem>
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
+                                <div className="flex items-center justify-end gap-1">
+                                  {lead.phone && (
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                                          asChild
+                                          data-testid={`button-call-lead-${lead.id}`}
+                                        >
+                                          <a href={`tel:${lead.phone}`}>
+                                            <Phone className="w-4 h-4" />
+                                          </a>
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>Call {lead.phone}</TooltipContent>
+                                    </Tooltip>
+                                  )}
+                                  {lead.email && (
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                                          asChild
+                                          data-testid={`button-email-lead-${lead.id}`}
+                                        >
+                                          <a href={`mailto:${lead.email}`}>
+                                            <Mail className="w-4 h-4" />
+                                          </a>
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>Email {lead.email}</TooltipContent>
+                                    </Tooltip>
+                                  )}
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                                        onClick={() => setViewingLead(lead)}
+                                        data-testid={`button-note-lead-${lead.id}`}
+                                      >
+                                        <StickyNote className="w-4 h-4" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Add Note / View Timeline</TooltipContent>
+                                  </Tooltip>
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button variant="ghost" size="icon" className="h-8 w-8" data-testid={`button-actions-lead-${lead.id}`}>
+                                        <MoreVertical className="w-4 h-4" />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                      <DropdownMenuItem onClick={() => setViewingLead(lead)} data-testid={`button-view-lead-${lead.id}`}>
+                                        <Eye className="w-4 h-4 mr-2" />
+                                        View Details
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem onClick={() => setEditingLead(lead)} data-testid={`button-edit-lead-${lead.id}`}>
+                                        <Edit className="w-4 h-4 mr-2" />
+                                        Edit
+                                      </DropdownMenuItem>
+                                      <RescoreMenuItem leadId={lead.id} />
+                                      <DropdownMenuItem onClick={() => setOfferLetterLead(lead)} data-testid={`button-offer-letter-${lead.id}`}>
+                                        <FileText className="w-4 h-4 mr-2" />
+                                        Generate Offer Letter
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem
+                                        onClick={() => setDeletingLead(lead)}
+                                        className="text-destructive"
+                                        data-testid={`button-delete-lead-${lead.id}`}
+                                      >
+                                        <Trash2 className="w-4 h-4 mr-2" />
+                                        Delete
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                </div>
                               </TableCell>
                             </TableRow>
                           ))}
@@ -2086,6 +2144,18 @@ function LeadDetailDrawer({ lead, onClose, onEdit }: { lead: Lead; onClose: () =
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Last Contacted</span>
                         <span>{format(new Date(lead.lastContactedAt), 'MMM d, yyyy')}</span>
+                      </div>
+                    )}
+                    {lead.lastAIMessageAt && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Last Nurtured (AI)</span>
+                        <span className="text-right">{format(new Date(lead.lastAIMessageAt), 'MMM d, yyyy')}</span>
+                      </div>
+                    )}
+                    {lead.nextFollowUpAt && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Next Follow-up</span>
+                        <span className="text-right">{format(new Date(lead.nextFollowUpAt), 'MMM d, yyyy')}</span>
                       </div>
                     )}
                     {lead.source && (
