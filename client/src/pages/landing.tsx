@@ -154,7 +154,7 @@ export default function LandingPage() {
               <Link href="/auth">Sign In</Link>
             </Button>
             <Button asChild size="sm">
-              <Link href="/auth">Get Started Free</Link>
+              <Link href="/auth?mode=register">Get Started Free</Link>
             </Button>
           </div>
         </div>
@@ -180,7 +180,7 @@ export default function LandingPage() {
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
             <Button asChild size="lg" className="text-base font-semibold px-8">
-              <Link href="/auth">
+              <Link href="/auth?mode=register">
                 Start for Free <ArrowRight className="w-4 h-4 ml-2" />
               </Link>
             </Button>
@@ -279,16 +279,16 @@ export default function LandingPage() {
                   className="w-full mt-2"
                   size="sm"
                 >
-                  <Link href="/auth">{plan.cta}</Link>
+                  <Link href="/auth?mode=register">{plan.cta}</Link>
                 </Button>
               </div>
             ))}
           </div>
           <p className="text-center text-sm text-muted-foreground mt-8">
             Need custom enterprise pricing?{" "}
-            <Link href="/auth" className="text-primary hover:underline">
+            <a href="mailto:hello@acreos.io" className="text-primary hover:underline">
               Contact us
-            </Link>
+            </a>
           </p>
         </div>
       </section>
@@ -301,7 +301,7 @@ export default function LandingPage() {
             Join land investors who use AcreOS to close more deals with less chaos.
           </p>
           <Button asChild size="lg" className="text-base font-semibold px-10">
-            <Link href="/auth">
+            <Link href="/auth?mode=register">
               Get Started Free <ArrowRight className="w-4 h-4 ml-2" />
             </Link>
           </Button>

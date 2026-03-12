@@ -638,7 +638,7 @@ export default function LeadsPage() {
   const { data: teamMembers } = useTeamMembers();
   const { data: userPermissions } = useUserPermissions();
   const [isExporting, setIsExporting] = useState(false);
-  const [isImportOpen, setIsImportOpen] = useState(false);
+  const [isImportOpen, setIsImportOpen] = useState(actionFromUrl === "import");
   const [isTaxDelinquentImportOpen, setIsTaxDelinquentImportOpen] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importPreview, setImportPreview] = useState<{

@@ -18,6 +18,7 @@ type Mode = "login" | "register" | "forgot" | "reset";
 function getInitialMode(): Mode {
   const params = new URLSearchParams(window.location.search);
   if (params.get("mode") === "reset" && params.get("token")) return "reset";
+  if (params.get("mode") === "register") return "register";
   return "login";
 }
 
@@ -94,7 +95,7 @@ export default function AuthPage() {
     if (mode === "login") {
       login({ email, password });
     } else {
-      register({ email, password, firstName, lastName });
+      register({ email, password, firstName, lastName, agreedToTerms });
     }
   };
 
