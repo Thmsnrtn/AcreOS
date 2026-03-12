@@ -1,10 +1,12 @@
 // @ts-nocheck — ORM type refinement deferred; runtime-correct
 import type { Express } from "express";
 import { z } from "zod";
+import crypto from "crypto";
 import {
   insertCampaignSchema, insertCampaignResponseSchema,
   insertCampaignSequenceSchema, insertSequenceStepSchema, insertSequenceEnrollmentSchema,
   insertAbTestSchema, insertAbTestVariantSchema,
+  insertCampaignVariantSchema, campaignVariants,
 } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
@@ -519,11 +521,14 @@ export function registerCampaignRoutes(app: Express): void {
   });
   
   // Send direct mail campaign with credit pre-checks
+  // AUTO-SPLIT: If this campaign has variants (campaign_variants table), recipients are distributed
+  // proportionally by each variant's trafficSplit percentage before sending. The caller (UI/job) is
+  // responsible for partitioning leadIds accordingly when variant splits are active.
   api.post("/api/campaigns/:id/send-direct-mail", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = (req as any).organization;
       const campaignId = parseInt(req.params.id);
-      const { pieceType, leadIds } = req.body as { 
+      const { pieceType, leadIds } = req.body as {
         pieceType: 'postcard_4x6' | 'postcard_6x9' | 'postcard_6x11' | 'letter_1_page';
         leadIds: number[];
       };
@@ -696,6 +701,9 @@ export function registerCampaignRoutes(app: Express): void {
           sendResults.push({ leadId: lead.id, success: true, lobId: result.id, expectedDeliveryDate, isTest: isTestMode });
           lobJobIds.push(result.id);
 
+          // Generate unique 8-char tracking code for attribution
+          const trackingCode = crypto.randomBytes(4).toString("hex").toUpperCase();
+
           // Create mailing order piece record for successful send
           const piece = await storage.createMailingOrderPiece({
             mailingOrderId: mailingOrder.id,
@@ -706,6 +714,7 @@ export function registerCampaignRoutes(app: Express): void {
             recipientState: lead.state!,
             recipientZipCode: lead.zip!,
             status: 'sent',
+            trackingCode,
           });
           // Update with Lob-specific fields after creation
           await storage.updateMailingOrderPiece(piece.id, {
@@ -1213,6 +1222,207 @@ export function registerCampaignRoutes(app: Express): void {
       res.status(500).json({ error: error.message || "Failed to verify addresses" });
     }
   });
-  
+
+  // ============================================
+  // CAMPAIGN VARIANTS (A/B Test Framework)
+  // ============================================
+
+  // POST /api/campaigns/:id/variants — create a variant for a campaign
+  api.post("/api/campaigns/:id/variants", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const campaignId = Number(req.params.id);
+
+      const campaign = await storage.getCampaign(org.id, campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+
+      const input = insertCampaignVariantSchema.parse({
+        campaignId,
+        name: req.body.name || "Variant B",
+        subject: req.body.subject ?? null,
+        body: req.body.body ?? null,
+        trafficSplit: req.body.trafficSplit ?? 50,
+      });
+
+      const [variant] = await db.insert(campaignVariants).values(input).returning();
+      res.status(201).json(variant);
+    } catch (err: any) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/campaigns/:id/variants — list variants with performance stats
+  api.get("/api/campaigns/:id/variants", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const campaignId = Number(req.params.id);
+
+      const campaign = await storage.getCampaign(org.id, campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+
+      const variants = await db
+        .select()
+        .from(campaignVariants)
+        .where(eq(campaignVariants.campaignId, campaignId));
+
+      // Enrich each variant with computed rate stats
+      const enriched = variants.map((v) => {
+        const sent = v.sentCount ?? 0;
+        return {
+          ...v,
+          openRate: sent > 0 ? Number(((v.openCount ?? 0) / sent * 100).toFixed(2)) : 0,
+          clickRate: sent > 0 ? Number(((v.clickCount ?? 0) / sent * 100).toFixed(2)) : 0,
+          responseRate: sent > 0 ? Number(((v.responseCount ?? 0) / sent * 100).toFixed(2)) : 0,
+        };
+      });
+
+      res.json(enriched);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/campaigns/:id/variants/:variantId/declare-winner
+  // Marks a variant as winner; requires >10% better response rate than others AND >50 sends
+  api.post("/api/campaigns/:id/variants/:variantId/declare-winner", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const campaignId = Number(req.params.id);
+      const variantId = Number(req.params.variantId);
+
+      const campaign = await storage.getCampaign(org.id, campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+
+      const variants = await db
+        .select()
+        .from(campaignVariants)
+        .where(eq(campaignVariants.campaignId, campaignId));
+
+      const winner = variants.find((v) => v.id === variantId);
+      if (!winner) return res.status(404).json({ error: "Variant not found" });
+
+      const winnerSent = winner.sentCount ?? 0;
+      if (winnerSent < 50) {
+        return res.status(400).json({
+          error: "Not enough data",
+          message: "Winner must have at least 50 sends before declaring winner.",
+          significant: false,
+        });
+      }
+
+      const winnerRate = winnerSent > 0 ? (winner.responseCount ?? 0) / winnerSent : 0;
+      const others = variants.filter((v) => v.id !== variantId);
+
+      // Check >10% better response rate than ALL other variants
+      for (const other of others) {
+        const otherSent = other.sentCount ?? 0;
+        const otherRate = otherSent > 0 ? (other.responseCount ?? 0) / otherSent : 0;
+        if (winnerRate <= otherRate * 1.10) {
+          return res.status(400).json({
+            error: "Not statistically significant",
+            message: "Winner must have >10% better response rate than all other variants.",
+            significant: false,
+            winnerRate: Number((winnerRate * 100).toFixed(2)),
+            comparedRate: Number((otherRate * 100).toFixed(2)),
+          });
+        }
+      }
+
+      // Mark winner, clear other winners
+      await db
+        .update(campaignVariants)
+        .set({ isWinner: false })
+        .where(eq(campaignVariants.campaignId, campaignId));
+
+      const [updated] = await db
+        .update(campaignVariants)
+        .set({ isWinner: true })
+        .where(eq(campaignVariants.id, variantId))
+        .returning();
+
+      res.json({
+        success: true,
+        significant: true,
+        winner: updated,
+        winnerResponseRate: Number((winnerRate * 100).toFixed(2)),
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/campaigns/:id/ab-analysis — returns which variant is winning, confidence, recommendation
+  api.get("/api/campaigns/:id/ab-analysis", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const campaignId = Number(req.params.id);
+
+      const campaign = await storage.getCampaign(org.id, campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+
+      const variants = await db
+        .select()
+        .from(campaignVariants)
+        .where(eq(campaignVariants.campaignId, campaignId));
+
+      if (variants.length === 0) {
+        return res.json({
+          hasVariants: false,
+          message: "No variants exist for this campaign. Add a Variant B to start A/B testing.",
+          recommendation: null,
+        });
+      }
+
+      const enriched = variants.map((v) => {
+        const sent = v.sentCount ?? 0;
+        const responseRate = sent > 0 ? (v.responseCount ?? 0) / sent : 0;
+        return { ...v, responseRate, sent };
+      });
+
+      // Sort by response rate descending
+      enriched.sort((a, b) => b.responseRate - a.responseRate);
+      const top = enriched[0];
+      const minSends = Math.min(...enriched.map((v) => v.sent));
+      const hasEnoughData = minSends >= 50;
+
+      // Significant if top variant is >10% better than all others AND each has >50 sends
+      let isSignificant = false;
+      if (hasEnoughData && enriched.length >= 2) {
+        const second = enriched[1];
+        isSignificant = top.responseRate > second.responseRate * 1.10;
+      }
+
+      const confidenceLabel = !hasEnoughData
+        ? "Insufficient data (need 50+ sends per variant)"
+        : isSignificant
+        ? "Statistically significant (>10% lift with 50+ sends)"
+        : "Not yet significant";
+
+      res.json({
+        hasVariants: true,
+        variants: enriched.map((v) => ({
+          ...v,
+          responseRatePct: Number((v.responseRate * 100).toFixed(2)),
+        })),
+        leadingVariant: {
+          id: top.id,
+          name: top.name,
+          responseRatePct: Number((top.responseRate * 100).toFixed(2)),
+        },
+        isSignificant,
+        confidenceLabel,
+        hasEnoughData,
+        recommendation: isSignificant
+          ? `Declare "${top.name}" as winner — it has a ${Number((top.responseRate * 100).toFixed(2))}% response rate.`
+          : hasEnoughData
+          ? `"${top.name}" is leading but the difference is not yet statistically significant. Continue sending.`
+          : `Not enough data yet. Each variant needs at least 50 sends (current minimum: ${minSends}).`,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
 
 }
