@@ -107,6 +107,23 @@ interface AtlasInsights {
   generatedAt: string;
 }
 
+interface SophieSuggestion {
+  id: string;
+  suggestion: string;
+  rationale: string;
+  action: string;
+  actionLabel: string;
+  actionUrl: string;
+  entityId?: number;
+  entityType?: string;
+  confidence: number;
+}
+
+interface SophieSuggestionsResponse {
+  suggestions: SophieSuggestion[];
+  generatedAt: string;
+}
+
 const alertHrefByType: Record<string, string> = {
   note_overdue: "/money",
   stale_leads: "/pipeline#leads",
@@ -156,6 +173,12 @@ export default function TodayPage() {
   const { data: atlasInsights, isLoading: atlasLoading } =
     useQuery<AtlasInsights>({
       queryKey: ["/api/atlas/insights"],
+      staleTime: 5 * 60 * 1000,
+    });
+
+  const { data: sophieSuggestionsData, isLoading: sophieLoading } =
+    useQuery<SophieSuggestionsResponse>({
+      queryKey: ["/api/atlas/sophie-suggestions"],
       staleTime: 5 * 60 * 1000,
     });
 
@@ -215,6 +238,8 @@ export default function TodayPage() {
   const atlasStaleLeads = atlasInsights?.staleLeads ?? [];
   const atlasExpiringOffers = atlasInsights?.expiringOffers ?? [];
   const atlasItemCount = atlasObservations.length + atlasStaleLeads.length + atlasExpiringOffers.length;
+
+  const sophieSuggestions = sophieSuggestionsData?.suggestions ?? [];
 
   return (
     <PageShell>
@@ -450,6 +475,67 @@ export default function TodayPage() {
           </div>
         </div>
       )}
+
+      {/* Section 2c: Sophie Suggests */}
+      <div data-testid="section-sophie-suggests">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-emerald-500" />
+            <h2 className="text-lg font-semibold">Sophie Suggests</h2>
+            <Badge variant="secondary" className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 text-xs">
+              AI
+            </Badge>
+          </div>
+          <Link href="/leads">
+            <Button variant="ghost" size="sm" className="gap-1 text-xs">
+              All Leads <ArrowRight className="w-3 h-3" />
+            </Button>
+          </Link>
+        </div>
+
+        {sophieLoading ? (
+          <div className="space-y-2">
+            {[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full" />)}
+          </div>
+        ) : sophieSuggestions.length === 0 ? (
+          <Card>
+            <CardContent className="flex items-center gap-3 py-5 px-4">
+              <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
+              <p className="text-sm text-muted-foreground">No proactive suggestions right now. Sophie is monitoring your pipeline.</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-2">
+            {sophieSuggestions.map((s) => {
+              const confidencePct = Math.round(s.confidence * 100);
+              const confBadgeClass = confidencePct >= 85
+                ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+                : confidencePct >= 70
+                ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+                : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400";
+              return (
+                <Card key={s.id} className="hover:shadow-sm transition-shadow border-emerald-100 dark:border-emerald-900/30">
+                  <CardContent className="flex items-start gap-4 py-3 px-4">
+                    <Sparkles className="w-4 h-4 shrink-0 mt-1 text-emerald-500" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                        <span className="font-medium text-sm">{s.suggestion}</span>
+                        <Badge variant="secondary" className={`text-xs ${confBadgeClass}`}>
+                          {confidencePct}% confidence
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground">{s.rationale}</p>
+                    </div>
+                    <Button asChild size="sm" variant="outline" className="shrink-0 text-xs h-8 border-emerald-200 hover:bg-emerald-50 dark:border-emerald-800 dark:hover:bg-emerald-900/20">
+                      <Link href={s.actionUrl}>{s.actionLabel}</Link>
+                    </Button>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       {/* Section 3: Goal Progress */}
       {activeGoals.length > 0 && (
