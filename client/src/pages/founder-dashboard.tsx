@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { SystemHealth } from "@/components/system-health";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { 
@@ -624,20 +624,49 @@ function ChurnRiskPanel() {
 }
 
 /** Sophie's Eyes — observations and cross-org learnings */
+const ACTION_LABELS: Record<string, string> = {
+  proactive_outreach: "Re-engage",
+  draft_outreach_message: "Re-engage",
+  upgrade_plan: "Send Upgrade Email",
+  get_deals: "Hunt Deals",
+  monitor: "Acknowledge",
+  wait_and_retry: "Acknowledge",
+  review_data: "Acknowledge",
+};
+
 function SophieEyesPanel() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ["/api/admin/sophie-observations"],
     queryFn: () => apiRequest("GET", "/api/admin/sophie-observations?limit=25").then(r => r.json()),
     refetchInterval: 2 * 60_000,
   });
 
+  const executeMutation = useMutation({
+    mutationFn: (obsId: number) =>
+      apiRequest("POST", `/api/admin/sophie-observations/${obsId}/execute`).then(r => r.json()),
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/sophie-observations"] });
+      toast({ title: "Action executed", description: data.actionTaken?.replace(/_/g, " ") });
+    },
+    onError: () => toast({ title: "Failed to execute action", variant: "destructive" }),
+  });
+
   const observations: any[] = data?.observations ?? [];
   const learnings: any[] = data?.learnings ?? [];
 
   const confidenceBadge = (score: number) => {
-    if (score >= 0.8) return <Badge className="text-xs bg-green-100 text-green-800 border-green-200">High</Badge>;
-    if (score >= 0.5) return <Badge className="text-xs bg-yellow-100 text-yellow-800 border-yellow-200">Medium</Badge>;
+    const pct = score > 1 ? score : score * 100;
+    if (pct >= 80) return <Badge className="text-xs bg-green-100 text-green-800 border-green-200">High</Badge>;
+    if (pct >= 50) return <Badge className="text-xs bg-yellow-100 text-yellow-800 border-yellow-200">Medium</Badge>;
     return <Badge className="text-xs bg-zinc-100 text-zinc-600 border-zinc-200">Low</Badge>;
+  };
+
+  const severityColor = (s: string) => {
+    if (s === "high") return "text-red-600 dark:text-red-400";
+    if (s === "medium") return "text-amber-600 dark:text-amber-400";
+    return "text-violet-400";
   };
 
   return (
@@ -658,20 +687,43 @@ function SophieEyesPanel() {
           ) : observations.length === 0 ? (
             <p className="text-sm text-muted-foreground italic">No observations yet</p>
           ) : (
-            <div className="space-y-1.5 max-h-48 overflow-y-auto">
+            <div className="space-y-2 max-h-64 overflow-y-auto">
               {observations.map((obs: any) => (
-                <div key={obs.id} className="flex items-start gap-2 py-1.5 border-b border-border/40 last:border-0">
-                  <Eye className="w-3.5 h-3.5 mt-1 text-violet-400 shrink-0" />
+                <div key={obs.id} className="flex items-start gap-2 py-2 border-b border-border/40 last:border-0">
+                  <Eye className={`w-3.5 h-3.5 mt-1 shrink-0 ${severityColor(obs.severity)}`} />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm leading-snug line-clamp-2">{obs.content}</p>
-                    {obs.orgName && <p className="text-xs text-muted-foreground">{obs.orgName}</p>}
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                      {obs.orgName && <span className="text-xs text-muted-foreground">{obs.orgName}</span>}
+                      {obs.confidence != null && confidenceBadge(Number(obs.confidence))}
+                      <span className="text-xs text-muted-foreground">
+                        {formatDistanceToNow(new Date(obs.createdAt), { addSuffix: true })}
+                      </span>
+                    </div>
                   </div>
-                  <div className="shrink-0 flex flex-col items-end gap-1">
-                    {obs.confidence != null && confidenceBadge(Number(obs.confidence))}
-                    <p className="text-xs text-muted-foreground">
-                      {formatDistanceToNow(new Date(obs.createdAt), { addSuffix: true })}
-                    </p>
-                  </div>
+                  {obs.suggestedAction && obs.suggestedAction !== "monitor" && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs shrink-0 gap-1"
+                      disabled={executeMutation.isPending}
+                      onClick={() => executeMutation.mutate(obs.id)}
+                    >
+                      <Zap className="w-3 h-3" />
+                      {ACTION_LABELS[obs.suggestedAction] ?? "Execute"}
+                    </Button>
+                  )}
+                  {(!obs.suggestedAction || obs.suggestedAction === "monitor") && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 text-xs shrink-0 text-muted-foreground"
+                      disabled={executeMutation.isPending}
+                      onClick={() => executeMutation.mutate(obs.id)}
+                    >
+                      Dismiss
+                    </Button>
+                  )}
                 </div>
               ))}
             </div>

@@ -8,7 +8,7 @@ import {
   SUBSCRIPTION_TIERS, payments, notes, deals, properties, leads, activityLog, organizations,
   offers, organizationIntegrations, dataSources,
   supportTickets, supportTicketMessages, knowledgeBaseArticles,
-  sophieMemory, sophieCrossOrgLearnings, systemAlerts,
+  sophieMemory, sophieObservations, sophieCrossOrgLearnings, systemAlerts,
   countyGisEndpoints,
   aiModelConfigs,
   systemApiKeys,
@@ -20,7 +20,6 @@ import {
   auditLog,
   mailingOrderPieces,
   mailingOrders,
-  campaigns,
 } from "@shared/schema";
 import crypto from "crypto";
 import { isAuthenticated } from "./auth";
@@ -3553,20 +3552,24 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
     try {
       const limit = Math.min(Number(req.query.limit) || 30, 100);
 
+      // Use sophieObservations (proactive monitor results) — includes suggestedAction
       const observations = await db
         .select({
-          id: sophieMemory.id,
-          orgId: sophieMemory.organizationId,
+          id: sophieObservations.id,
+          orgId: sophieObservations.organizationId,
           orgName: organizations.name,
-          memoryType: sophieMemory.memoryType,
-          content: sophieMemory.content,
-          confidence: sophieMemory.confidence,
-          notificationLevel: sophieMemory.notificationLevel,
-          createdAt: sophieMemory.createdAt,
+          type: sophieObservations.type,
+          content: sophieObservations.description,
+          confidence: sophieObservations.confidenceScore,
+          severity: sophieObservations.severity,
+          status: sophieObservations.status,
+          suggestedAction: sql<string>`${sophieObservations.metadata}->>'suggestedAction'`,
+          createdAt: sophieObservations.createdAt,
         })
-        .from(sophieMemory)
-        .leftJoin(organizations, eq(sophieMemory.organizationId, organizations.id))
-        .orderBy(desc(sophieMemory.createdAt))
+        .from(sophieObservations)
+        .leftJoin(organizations, eq(sophieObservations.organizationId, organizations.id))
+        .where(sql`${sophieObservations.status} NOT IN ('dismissed','auto_resolved')`)
+        .orderBy(desc(sophieObservations.createdAt))
         .limit(limit);
 
       const learnings = await db
@@ -3576,6 +3579,48 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
         .limit(10);
 
       res.json({ observations, learnings });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/admin/sophie-observations/:id/execute — execute the suggested action for an observation
+  api.post("/api/admin/sophie-observations/:id/execute", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const obsId = Number(req.params.id);
+      const [obs] = await db
+        .select({ orgId: sophieObservations.organizationId, metadata: sophieObservations.metadata })
+        .from(sophieObservations)
+        .where(eq(sophieObservations.id, obsId))
+        .limit(1);
+
+      if (!obs) return res.status(404).json({ message: "Observation not found" });
+
+      const suggestedAction = (obs.metadata as any)?.suggestedAction;
+      let actionTaken = "acknowledged";
+
+      // Route action to appropriate handler
+      if (suggestedAction === "proactive_outreach" || suggestedAction === "draft_outreach_message") {
+        // Trigger churn rescue for this org
+        const { churnEngine } = await import("./services/churnEngine");
+        const org = await storage.getOrganization(obs.orgId);
+        if (org) {
+          await db.update(organizations).set({ churnRescueSentAt: null }).where(eq(organizations.id, obs.orgId));
+          await churnEngine.runForAllOrgs();
+          actionTaken = "rescue_triggered";
+        }
+      } else if (suggestedAction === "get_deals") {
+        const { dealHunterService } = await import("./services/dealHunter");
+        dealHunterService.runForOrg(obs.orgId).catch(() => {});
+        actionTaken = "deal_hunt_triggered";
+      }
+
+      // Mark observation as acknowledged
+      await db.update(sophieObservations)
+        .set({ status: "acknowledged", acknowledgedAt: new Date() })
+        .where(eq(sophieObservations.id, obsId));
+
+      res.json({ message: "Action executed", actionTaken });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

@@ -1451,7 +1451,7 @@ export default function Settings() {
                     Manage test data for development and demo purposes.
                   </p>
                 </div>
-                
+
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-base">Demo Data</CardTitle>
@@ -1472,7 +1472,7 @@ export default function Settings() {
                       )}
                       Add Demo Data
                     </Button>
-                    
+
                     <Button
                       variant="destructive"
                       onClick={() => setShowClearConfirm(true)}
@@ -1489,6 +1489,12 @@ export default function Settings() {
                   </CardContent>
                 </Card>
               </div>
+
+              {/* API Key Management */}
+              <ApiKeyManager />
+
+              {/* Activity Audit Log */}
+              <ActivityLogPanel />
             </TabsContent>
 
             {/* ── Goals Tab ─────────────────────────────────────────────── */}
@@ -1796,6 +1802,329 @@ function GoalsSettings() {
                 );
               })}
             </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ── API Key Manager ────────────────────────────────────────────────────────────
+
+interface OrgApiKey {
+  id: number;
+  name: string;
+  keyPrefix: string;
+  scope: string;
+  expiresAt: string | null;
+  lastUsedAt: string | null;
+  isRevoked: boolean;
+  createdAt: string;
+}
+
+function ApiKeyManager() {
+  const { toast } = useToast();
+  const [showCreate, setShowCreate] = useState(false);
+  const [newKeyName, setNewKeyName] = useState("");
+  const [newKeyScope, setNewKeyScope] = useState<"read" | "write" | "admin">("read");
+  const [newKeyExpiry, setNewKeyExpiry] = useState<string>("never");
+  const [createdKey, setCreatedKey] = useState<string | null>(null);
+  const [revokeId, setRevokeId] = useState<number | null>(null);
+
+  const { data: keys = [], isLoading, refetch } = useQuery<OrgApiKey[]>({
+    queryKey: ["/api/org/api-keys"],
+    queryFn: async () => {
+      const res = await fetch("/api/org/api-keys", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load API keys");
+      return res.json();
+    },
+  });
+
+  const createKey = useMutation({
+    mutationFn: async () => {
+      const expiresInDays = newKeyExpiry === "never" ? null : parseInt(newKeyExpiry);
+      const res = await apiRequest("POST", "/api/org/api-keys", {
+        name: newKeyName,
+        scope: newKeyScope,
+        expiresInDays,
+      });
+      return res.json() as Promise<OrgApiKey & { key: string }>;
+    },
+    onSuccess: (data) => {
+      setCreatedKey((data as any).key);
+      setShowCreate(false);
+      setNewKeyName("");
+      refetch();
+    },
+    onError: () => toast({ title: "Failed to create API key", variant: "destructive" }),
+  });
+
+  const revokeKey = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("DELETE", `/api/org/api-keys/${id}`, undefined);
+      return res.json();
+    },
+    onSuccess: () => {
+      setRevokeId(null);
+      refetch();
+      toast({ title: "API key revoked" });
+    },
+    onError: () => toast({ title: "Failed to revoke key", variant: "destructive" }),
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-semibold flex items-center gap-2">
+            <Code className="w-5 h-5" />
+            API Keys
+          </h2>
+          <p className="text-muted-foreground text-sm">
+            Create API keys to let external tools access your AcreOS data.
+          </p>
+        </div>
+        <Button size="sm" onClick={() => setShowCreate(true)} data-testid="button-create-api-key">
+          <Plus className="w-4 h-4 mr-1" /> Create Key
+        </Button>
+      </div>
+
+      {/* Newly created key — show once */}
+      {createdKey && (
+        <Card className="border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-emerald-700 dark:text-emerald-400 flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4" /> API key created — copy it now, it won't be shown again
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 text-xs bg-muted rounded px-2 py-1.5 font-mono break-all">{createdKey}</code>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  navigator.clipboard.writeText(createdKey);
+                  toast({ title: "Copied to clipboard" });
+                }}
+              >
+                Copy
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setCreatedKey(null)}>
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Create form */}
+      {showCreate && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">New API Key</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <Label>Name</Label>
+              <Input
+                placeholder="e.g. Zapier integration"
+                value={newKeyName}
+                onChange={e => setNewKeyName(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Scope</Label>
+                <Select value={newKeyScope} onValueChange={(v: any) => setNewKeyScope(v)}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="read">Read</SelectItem>
+                    <SelectItem value="write">Write</SelectItem>
+                    <SelectItem value="admin">Admin</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Expiry</Label>
+                <Select value={newKeyExpiry} onValueChange={setNewKeyExpiry}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="never">Never</SelectItem>
+                    <SelectItem value="30">30 days</SelectItem>
+                    <SelectItem value="60">60 days</SelectItem>
+                    <SelectItem value="90">90 days</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                onClick={() => createKey.mutate()}
+                disabled={!newKeyName.trim() || createKey.isPending}
+              >
+                {createKey.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                Create
+              </Button>
+              <Button variant="outline" onClick={() => setShowCreate(false)}>Cancel</Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Keys list */}
+      <Card>
+        <CardContent className="p-0">
+          {isLoading ? (
+            <div className="p-4 text-sm text-muted-foreground">Loading keys…</div>
+          ) : keys.length === 0 ? (
+            <div className="p-6 text-center text-sm text-muted-foreground">
+              No API keys yet. Create one above to get started.
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Key</TableHead>
+                  <TableHead>Scope</TableHead>
+                  <TableHead>Created</TableHead>
+                  <TableHead>Last used</TableHead>
+                  <TableHead>Expires</TableHead>
+                  <TableHead />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {keys.map(k => (
+                  <TableRow key={k.id}>
+                    <TableCell className="font-medium">{k.name}</TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">{k.keyPrefix}…</TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className="text-xs capitalize">{k.scope}</Badge>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {k.createdAt ? new Date(k.createdAt).toLocaleDateString() : "—"}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleDateString() : "Never"}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {k.expiresAt ? new Date(k.expiresAt).toLocaleDateString() : "Never"}
+                    </TableCell>
+                    <TableCell>
+                      {revokeId === k.id ? (
+                        <div className="flex gap-1">
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => revokeKey.mutate(k.id)}
+                            disabled={revokeKey.isPending}
+                          >
+                            Confirm
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => setRevokeId(null)}>
+                            Cancel
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => setRevokeId(k.id)}
+                        >
+                          Revoke
+                        </Button>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ── Activity Audit Log Panel ───────────────────────────────────────────────────
+
+interface AuditLogEntry {
+  id: number;
+  userId: string | null;
+  action: string;
+  entityType: string;
+  entityId: number | null;
+  changes: Record<string, any> | null;
+  ipAddress: string | null;
+  metadata: Record<string, any> | null;
+  createdAt: string;
+}
+
+function ActivityLogPanel() {
+  const { data: entries = [], isLoading } = useQuery<AuditLogEntry[]>({
+    queryKey: ["/api/org/activity-log"],
+    queryFn: async () => {
+      const res = await fetch("/api/org/activity-log", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load activity log");
+      return res.json();
+    },
+  });
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-xl font-semibold flex items-center gap-2">
+          <Shield className="w-5 h-5" />
+          Activity Log
+        </h2>
+        <p className="text-muted-foreground text-sm">
+          Last 50 actions performed in your organization.
+        </p>
+      </div>
+
+      <Card>
+        <CardContent className="p-0">
+          {isLoading ? (
+            <div className="p-4 text-sm text-muted-foreground">Loading…</div>
+          ) : entries.length === 0 ? (
+            <div className="p-6 text-center text-sm text-muted-foreground">No activity recorded yet.</div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Time</TableHead>
+                  <TableHead>Action</TableHead>
+                  <TableHead>Entity</TableHead>
+                  <TableHead>User</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {entries.map(e => (
+                  <TableRow key={e.id}>
+                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                      {new Date(e.createdAt).toLocaleString()}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="text-xs capitalize">{e.action}</Badge>
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      <span className="capitalize">{e.entityType}</span>
+                      {e.entityId && <span className="text-muted-foreground ml-1">#{e.entityId}</span>}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {e.userId ? e.userId.slice(0, 8) + "…" : "System"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           )}
         </CardContent>
       </Card>

@@ -1,4 +1,4 @@
-import { useCampaigns, useCreateCampaign, useUpdateCampaign, useDirectMailStatus, useUpdateMailMode, useSendDirectMail, useMailEstimate, useCampaignOptimizations, useOptimizeCampaign, useMarkOptimizationImplemented, useCampaignResponseTrend } from "@/hooks/use-campaigns";
+import { useCampaigns, useCreateCampaign, useUpdateCampaign, useDirectMailStatus, useUpdateMailMode, useSendDirectMail, useMailEstimate, useCampaignOptimizations, useOptimizeCampaign, useMarkOptimizationImplemented, useCampaignResponseTrend, useMailAttribution } from "@/hooks/use-campaigns";
 import { useLeads } from "@/hooks/use-leads";
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
@@ -911,8 +911,9 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
   const { mutate: updateCampaign, isPending } = useUpdateCampaign();
   const { data: leads } = useLeads();
   const { data: mailStatus } = useDirectMailStatus();
+  const { data: mailAttribution } = useMailAttribution(campaign.id);
   const [showSendDialog, setShowSendDialog] = useState(false);
-  
+
   const toggleStatus = () => {
     const newStatus = campaign.status === 'active' ? 'paused' : 'active';
     updateCampaign({ id: campaign.id, status: newStatus });
@@ -1022,6 +1023,67 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
               </div>
             </CardContent>
           </Card>
+
+          {isDirectMail && mailAttribution && (
+            <Card className="glass-panel border-blue-200 dark:border-blue-800">
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Mail className="w-4 h-4 text-blue-500" />
+                  Direct Mail Performance
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-muted/50 rounded-lg p-3 text-center">
+                    <p className="text-2xl font-bold">{mailAttribution.totalSent.toLocaleString()}</p>
+                    <p className="text-xs text-muted-foreground">Pieces Sent</p>
+                  </div>
+                  <div className="bg-muted/50 rounded-lg p-3 text-center">
+                    <p className="text-2xl font-bold text-emerald-600">{mailAttribution.attributedResponses}</p>
+                    <p className="text-xs text-muted-foreground">Responses Attributed</p>
+                  </div>
+                </div>
+
+                {mailAttribution.estimatedDeliveryDate && (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Calendar className="w-4 h-4" />
+                    <span>Est. delivery: {format(new Date(mailAttribution.estimatedDeliveryDate), 'PPP')}</span>
+                  </div>
+                )}
+
+                <div>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span>Response Rate</span>
+                    <span className="font-medium">{mailAttribution.responseRate.toFixed(1)}%</span>
+                  </div>
+                  <Progress value={Math.min(mailAttribution.responseRate, 10)} max={10} className="h-2" />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Industry benchmark: {mailAttribution.industryBenchmarkMin}–{mailAttribution.industryBenchmarkMax}%
+                    {mailAttribution.responseRate >= mailAttribution.industryBenchmarkMin && (
+                      <span className="text-emerald-600 ml-1">— above average</span>
+                    )}
+                  </p>
+                </div>
+
+                {mailAttribution.costPerResponse !== null && (
+                  <div className="flex items-center justify-between text-sm border-t pt-3">
+                    <span className="text-muted-foreground flex items-center gap-1">
+                      <DollarSign className="w-3.5 h-3.5" />
+                      Cost per response
+                    </span>
+                    <span className="font-mono font-medium">${mailAttribution.costPerResponse.toFixed(2)}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground flex items-center gap-1">
+                    <DollarSign className="w-3.5 h-3.5" />
+                    Total spend
+                  </span>
+                  <span className="font-mono">${(mailAttribution.totalCostCents / 100).toFixed(2)}</span>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {campaign.content && (
             <Card className="glass-panel">
