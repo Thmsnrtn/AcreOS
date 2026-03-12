@@ -20,6 +20,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import rateLimit from "express-rate-limit";
 import { initSentry, Sentry } from "./utils/sentry";
 import { validateEnv } from "./utils/validateEnv";
+import { jobSupervisor } from "./services/jobSupervisor";
 
 // Validate required env vars before anything else — exits with clear error if misconfigured
 validateEnv();
@@ -371,6 +372,16 @@ app.use("/api/properties/import", importLimiter);
       }).catch(err => {
         log(`Failed to start external status monitoring: ${err}`, "external-monitor");
       });
+
+      // Job supervisor: check every 2 minutes for stalled jobs
+      setInterval(() => { jobSupervisor.checkHealth(); }, 2 * 60 * 1000);
+      log("Job supervisor health monitoring started (every 2 minutes)", "supervisor");
+
+      // Churn risk engine: score all paying orgs daily at 6am
+      startChurnEngineJob();
+
+      // Founder daily briefing email at 7am
+      startFounderBriefingJob();
     },
   );
 })();
@@ -463,7 +474,10 @@ async function processCampaignOptimizations() {
     }
   } catch (err) {
     log(`Campaign optimization job error: ${err}`, 'optimizer');
+    jobSupervisor.notifyResult('campaign_optimizer', 60 * 60 * 1000, false, undefined, String(err));
+    return;
   }
+  jobSupervisor.notifyResult('campaign_optimizer', 60 * 60 * 1000, true);
 }
 
 function startCampaignOptimizationJob() {
@@ -497,8 +511,10 @@ async function processFinanceAgent() {
     if (result.totalNotes > 0 || result.remindersSent > 0 || result.errors.length > 0) {
       log(`Finance agent: orgs=${result.orgsProcessed}, notes=${result.totalNotes}, sent=${result.remindersSent}, scheduled=${result.remindersScheduled}, errors=${result.errors.length}`, 'finance');
     }
+    jobSupervisor.notifyResult('finance_agent', 30 * 60 * 1000, true);
   } catch (err) {
     log(`Finance agent job error: ${err}`, 'finance');
+    jobSupervisor.notifyResult('finance_agent', 30 * 60 * 1000, false, undefined, String(err));
   }
 }
 
@@ -907,4 +923,50 @@ function startRealtimeAlertSyncJob() {
       log(`Real-time alert sync error: ${err}`, 'realtime');
     }
   }, FIVE_MINUTES);
+}
+
+// Churn risk engine: score all paying orgs daily
+async function processChurnEngine() {
+  try {
+    const { churnEngine } = await import("./services/churnEngine");
+    await churnEngine.runForAllOrgs();
+    jobSupervisor.notifyResult('churn_engine', 24 * 60 * 60 * 1000, true);
+  } catch (err) {
+    log(`Churn engine job error: ${err}`, 'churn');
+    jobSupervisor.notifyResult('churn_engine', 24 * 60 * 60 * 1000, false, undefined, String(err));
+  }
+}
+
+function startChurnEngineJob() {
+  log('Starting churn risk engine (daily at 6am)', 'churn');
+  // Run once 2 minutes after startup, then check every 5 minutes whether it's 6am
+  setTimeout(() => { processChurnEngine(); }, 2 * 60 * 1000);
+  setInterval(() => {
+    const now = new Date();
+    if (now.getHours() === 6 && now.getMinutes() < 5) {
+      processChurnEngine();
+    }
+  }, 5 * 60 * 1000);
+}
+
+// Founder daily briefing email at 7am
+async function processFounderBriefing() {
+  try {
+    const { sendDailyBriefing } = await import("./services/founderBriefing");
+    await sendDailyBriefing();
+    jobSupervisor.notifyResult('founder_briefing', 24 * 60 * 60 * 1000, true);
+  } catch (err) {
+    log(`Founder briefing job error: ${err}`, 'briefing');
+    jobSupervisor.notifyResult('founder_briefing', 24 * 60 * 60 * 1000, false, undefined, String(err));
+  }
+}
+
+function startFounderBriefingJob() {
+  log('Starting founder daily briefing job (daily at 7am)', 'briefing');
+  setInterval(() => {
+    const now = new Date();
+    if (now.getHours() === 7 && now.getMinutes() < 5) {
+      processFounderBriefing();
+    }
+  }, 5 * 60 * 1000);
 }

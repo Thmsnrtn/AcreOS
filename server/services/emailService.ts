@@ -413,7 +413,7 @@ export class EmailService {
   }
 
   async sendTransactionalEmail(
-    type: 'verification' | 'password_reset' | 'notification' | 'welcome' | 'alert',
+    type: 'verification' | 'password_reset' | 'notification' | 'welcome' | 'alert' | 'founder_briefing' | 'churn_rescue',
     options: {
       to: string;
       subject?: string;
@@ -421,7 +421,7 @@ export class EmailService {
       organizationId?: number;
     }
   ): Promise<EmailResult> {
-    const templates = {
+    const templates: Record<string, { subject: string; html: string }> = {
       verification: {
         subject: 'Verify Your Email Address',
         html: this.buildVerificationTemplate(options.templateData),
@@ -441,6 +441,14 @@ export class EmailService {
       alert: {
         subject: options.templateData.alertTitle || 'Important Alert',
         html: this.buildAlertTemplate(options.templateData),
+      },
+      founder_briefing: {
+        subject: options.templateData.subject || `AcreOS Daily Briefing — ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
+        html: this.buildFounderBriefingTemplate(options.templateData),
+      },
+      churn_rescue: {
+        subject: options.templateData.subject || 'A note from AcreOS',
+        html: this.buildChurnRescueTemplate(options.templateData),
       },
     };
 
@@ -657,6 +665,76 @@ export class EmailService {
             </div>
           ` : ''}
         </div>
+      </body>
+      </html>
+    `;
+  }
+
+  private buildFounderBriefingTemplate(data: Record<string, any>): string {
+    const date = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+    const paragraphs = (data.briefingParagraphs as string[] | undefined) ?? [data.briefing ?? ''];
+    const stats = data.stats as Record<string, any> | undefined;
+
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+      <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; color: #1a1a1a; max-width: 620px; margin: 0 auto; padding: 20px; background: #fff;">
+        <div style="padding: 24px 0 16px; border-bottom: 2px solid #18181b;">
+          <div style="display: inline-flex; align-items: center; gap: 8px;">
+            <div style="width: 28px; height: 28px; background: linear-gradient(135deg, #16a34a, #0ea5e9); border-radius: 6px; display: inline-block;"></div>
+            <span style="font-weight: 700; font-size: 18px;">AcreOS</span>
+          </div>
+          <p style="margin: 4px 0 0; color: #6b7280; font-size: 13px;">Daily Briefing · ${date}</p>
+        </div>
+
+        ${stats ? `
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 24px 0; padding: 20px; background: #f9fafb; border-radius: 8px;">
+          ${Object.entries(stats).map(([k, v]) => `
+            <div style="text-align: center;">
+              <div style="font-size: 22px; font-weight: 700; color: #18181b;">${v}</div>
+              <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">${k}</div>
+            </div>
+          `).join('')}
+        </div>
+        ` : ''}
+
+        <div style="margin: 24px 0; line-height: 1.7;">
+          ${paragraphs.map((p: string) => `<p style="margin: 0 0 16px;">${p}</p>`).join('')}
+        </div>
+
+        <div style="text-align: center; margin: 32px 0;">
+          <a href="${process.env.APP_URL ?? 'https://app.acreos.io'}/founder" style="background: #18181b; color: white; padding: 12px 28px; text-decoration: none; border-radius: 6px; font-size: 14px; font-weight: 600; display: inline-block;">Open Founder Dashboard</a>
+        </div>
+
+        <p style="text-align: center; color: #9ca3af; font-size: 12px; margin-top: 32px; padding-top: 16px; border-top: 1px solid #e5e7eb;">
+          AcreOS Autonomous System · No action required
+        </p>
+      </body>
+      </html>
+    `;
+  }
+
+  private buildChurnRescueTemplate(data: Record<string, any>): string {
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+      <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; color: #1a1a1a; max-width: 580px; margin: 0 auto; padding: 20px; background: #fff;">
+        <div style="padding: 20px 0 16px; border-bottom: 1px solid #e5e7eb;">
+          <div style="display: inline-block; width: 24px; height: 24px; background: linear-gradient(135deg, #16a34a, #0ea5e9); border-radius: 5px;"></div>
+          <span style="font-weight: 700; font-size: 16px; vertical-align: middle; margin-left: 6px;">AcreOS</span>
+        </div>
+        <div style="padding: 28px 0;">
+          <h2 style="font-size: 22px; font-weight: 700; margin: 0 0 16px;">${data.headline || 'A note from us'}</h2>
+          ${(data.body as string || '').split('\n\n').map((p: string) => `<p style="margin: 0 0 16px; line-height: 1.7; color: #374151;">${p}</p>`).join('')}
+          ${data.ctaUrl ? `
+            <div style="margin: 28px 0;">
+              <a href="${data.ctaUrl}" style="background: #16a34a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-size: 14px; font-weight: 600; display: inline-block;">${data.ctaText || 'Open AcreOS'}</a>
+            </div>
+          ` : ''}
+        </div>
+        <p style="color: #9ca3af; font-size: 12px; border-top: 1px solid #e5e7eb; padding-top: 16px;">AcreOS · You're receiving this because you have an active account</p>
       </body>
       </html>
     `;

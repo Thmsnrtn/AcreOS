@@ -10,6 +10,7 @@ import {
   InsertSupportMessage,
   InsertSupportAction,
 } from "@shared/schema";
+import { logActivity } from "./systemActivityLogger";
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
@@ -483,6 +484,14 @@ In the meantime, is there anything else I can help you with?`;
       aiModel: "gpt-4o-mini",
     });
 
+    logActivity({
+      orgId: supportCase.organizationId,
+      job: "support_brain",
+      action: "ticket_escalated",
+      summary: `Support ticket #${supportCase.id} escalated to human agent: ${reason}`,
+      entityType: "support_case",
+      entityId: String(supportCase.id),
+    }).catch(() => {});
     return { response, actionsTaken: [], escalated: true };
   }
 
@@ -491,12 +500,23 @@ In the meantime, is there anything else I can help you with?`;
     resolutionSummary: string,
     resolvedBy: string = "ai_support"
   ): Promise<SupportCase | undefined> {
-    return storage.updateSupportCase(caseId, {
+    const updated = await storage.updateSupportCase(caseId, {
       status: "resolved",
       resolvedAt: new Date(),
       resolutionSummary,
       resolutionType: resolvedBy === "ai_support" ? "auto_resolved" : "escalated_resolved",
     });
+    if (resolvedBy === "ai_support" && updated) {
+      logActivity({
+        orgId: updated.organizationId,
+        job: "support_brain",
+        action: "ticket_auto_resolved",
+        summary: `Support ticket #${caseId} auto-resolved by AI: ${resolutionSummary.slice(0, 100)}`,
+        entityType: "support_case",
+        entityId: String(caseId),
+      }).catch(() => {});
+    }
+    return updated;
   }
 
   async rateSatisfaction(caseId: number, rating: number): Promise<void> {

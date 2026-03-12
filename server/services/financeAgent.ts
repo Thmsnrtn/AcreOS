@@ -1,6 +1,7 @@
 import { storage } from "../storage";
 import { usageMeteringService } from "./credits";
 import { type Note, type Lead, type InsertPaymentReminder, type InsertSystemAlert } from "@shared/schema";
+import { logActivity } from "./systemActivityLogger";
 import OpenAI from "openai";
 
 function getOpenAIClient(): OpenAI | null {
@@ -408,6 +409,14 @@ export class FinanceAgentService {
     }
 
     console.log(`[FinanceAgent] Job complete: ${orgsProcessed} orgs, ${totalNotes} notes, ${remindersScheduled} scheduled`);
+    if (remindersScheduled > 0 || orgsProcessed > 0) {
+      logActivity({
+        job: "finance_agent",
+        action: "job_completed",
+        summary: `Finance agent processed ${orgsProcessed} orgs, ${totalNotes} notes, scheduled ${remindersScheduled} payment reminder(s)`,
+        metadata: { orgsProcessed, totalNotes, remindersScheduled, errors: allErrors.length },
+      }).catch(() => {});
+    }
     
     return {
       orgsProcessed,
