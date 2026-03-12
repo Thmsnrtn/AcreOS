@@ -184,6 +184,14 @@ import {
   type SwotReport, type InsertSwotReport,
   goNogoMemos,
   type GoNogoMemo, type InsertGoNogoMemo,
+  platformFeatureFlags,
+  type PlatformFeatureFlag, type InsertPlatformFeatureFlag,
+  pricingConfig,
+  type PricingConfig, type InsertPricingConfig,
+  founderAdAccounts,
+  type FounderAdAccount, type InsertFounderAdAccount,
+  growthCampaigns,
+  type GrowthCampaign, type InsertGrowthCampaign,
 } from "@shared/schema";
 
 // Helper to calculate amortization schedule
@@ -7584,6 +7592,109 @@ Notary Public</p>
     await db.delete(playbookInstances)
       .where(and(eq(playbookInstances.id, id), eq(playbookInstances.organizationId, organizationId)));
     return true;
+  }
+
+  // ─── Platform Feature Flags ───────────────────────────────────────────────
+  async getAllFeatureFlags(): Promise<PlatformFeatureFlag[]> {
+    return await db.select().from(platformFeatureFlags).orderBy(platformFeatureFlags.label);
+  }
+
+  async getEnabledFeatureFlags(): Promise<PlatformFeatureFlag[]> {
+    return await db.select().from(platformFeatureFlags)
+      .where(eq(platformFeatureFlags.enabled, true));
+  }
+
+  async updateFeatureFlag(key: string, enabled: boolean): Promise<PlatformFeatureFlag | undefined> {
+    const [updated] = await db.update(platformFeatureFlags)
+      .set({ enabled, updatedAt: new Date() })
+      .where(eq(platformFeatureFlags.key, key))
+      .returning();
+    return updated;
+  }
+
+  // ─── Pricing Config ───────────────────────────────────────────────────────
+  async getAllPricingConfig(): Promise<PricingConfig[]> {
+    return await db.select().from(pricingConfig).orderBy(pricingConfig.tier);
+  }
+
+  async getPricingConfigForTier(tier: string): Promise<PricingConfig | undefined> {
+    const [row] = await db.select().from(pricingConfig)
+      .where(eq(pricingConfig.tier, tier));
+    return row;
+  }
+
+  async updatePricingConfig(tier: string, data: Partial<InsertPricingConfig>): Promise<PricingConfig | undefined> {
+    const [updated] = await db.update(pricingConfig)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(pricingConfig.tier, tier))
+      .returning();
+    return updated;
+  }
+
+  async clearPricingPromo(tier: string): Promise<void> {
+    await db.update(pricingConfig)
+      .set({ promoLabel: null, promoDiscountPercent: null, promoEndsAt: null, stripeCouponId: null, updatedAt: new Date() })
+      .where(eq(pricingConfig.tier, tier));
+  }
+
+  // ─── Founder Ad Accounts ──────────────────────────────────────────────────
+  async getFounderAdAccount(platform: string = "meta"): Promise<FounderAdAccount | undefined> {
+    const [row] = await db.select().from(founderAdAccounts)
+      .where(and(eq(founderAdAccounts.platform, platform), eq(founderAdAccounts.isActive, true)));
+    return row;
+  }
+
+  async upsertFounderAdAccount(data: InsertFounderAdAccount): Promise<FounderAdAccount> {
+    const existing = await this.getFounderAdAccount(data.platform);
+    if (existing) {
+      const [updated] = await db.update(founderAdAccounts)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(founderAdAccounts.id, existing.id))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(founderAdAccounts).values(data).returning();
+    return created;
+  }
+
+  // ─── Growth Campaigns ─────────────────────────────────────────────────────
+  async getGrowthCampaigns(): Promise<GrowthCampaign[]> {
+    return await db.select().from(growthCampaigns).orderBy(desc(growthCampaigns.createdAt));
+  }
+
+  async getGrowthCampaign(id: number): Promise<GrowthCampaign | undefined> {
+    const [row] = await db.select().from(growthCampaigns).where(eq(growthCampaigns.id, id));
+    return row;
+  }
+
+  async createGrowthCampaign(data: InsertGrowthCampaign): Promise<GrowthCampaign> {
+    const [created] = await db.insert(growthCampaigns).values(data).returning();
+    return created;
+  }
+
+  async updateGrowthCampaign(id: number, data: Partial<InsertGrowthCampaign>): Promise<GrowthCampaign | undefined> {
+    const [updated] = await db.update(growthCampaigns)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(growthCampaigns.id, id))
+      .returning();
+    return updated;
+  }
+
+  // ─── Recent Signups with UTM Attribution ──────────────────────────────────
+  async getRecentSignupsWithAttribution(limit: number = 50) {
+    return await db.select({
+      organizationId: organizations.id,
+      name: organizations.name,
+      subscriptionTier: organizations.subscriptionTier,
+      utmSource: organizations.utmSource,
+      utmMedium: organizations.utmMedium,
+      utmCampaign: organizations.utmCampaign,
+      utmContent: organizations.utmContent,
+      createdAt: organizations.createdAt,
+    })
+      .from(organizations)
+      .orderBy(desc(organizations.createdAt))
+      .limit(limit);
   }
 }
 

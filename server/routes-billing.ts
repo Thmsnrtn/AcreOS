@@ -262,15 +262,34 @@ export function registerBillingRoutes(app: Express): void {
         await storage.updateOrganization(org.id, { trialUsed: true });
       }
       
+      // Look up active promo for this price (match by tier name in Stripe product metadata)
+      let checkoutOptions: { couponId?: string; allowPromoCodes?: boolean } = {};
+      try {
+        const price = await stripeService.getPrice(priceId);
+        const tierFromMeta = (price?.metadata?.tier || price?.metadata?.plan) as string | undefined;
+        if (tierFromMeta) {
+          const pricingCfg = await storage.getPricingConfigForTier(tierFromMeta.toLowerCase());
+          const now = new Date();
+          if (pricingCfg?.stripeCouponId && pricingCfg.promoEndsAt && pricingCfg.promoEndsAt > now) {
+            checkoutOptions.couponId = pricingCfg.stripeCouponId;
+          } else if (pricingCfg?.allowPromoCodes) {
+            checkoutOptions.allowPromoCodes = true;
+          }
+        }
+      } catch {
+        // Non-fatal: proceed without promo
+      }
+
       const session = await stripeService.createCheckoutSession(
         customerId,
         priceId,
         `${req.protocol}://${req.get('host')}/settings?subscription=success`,
         `${req.protocol}://${req.get('host')}/settings?subscription=cancelled`,
         { organizationId: String(org.id) },
-        trialDays
+        trialDays,
+        checkoutOptions
       );
-      
+
       res.json({ url: session.url });
     } catch (err: any) {
       res.status(500).json({ message: err.message });

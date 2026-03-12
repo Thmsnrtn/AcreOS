@@ -88,6 +88,11 @@ export const organizations = pgTable("organizations", {
   trialTokensGrantedAt: timestamp("trial_tokens_granted_at").defaultNow(), // When tokens were last granted
   // Sophie proactive notification settings
   proactiveNotificationLevel: varchar("proactive_notification_level", { length: 50 }).default("balanced"), // minimal, balanced, proactive, off
+  // UTM attribution for customer acquisition tracking
+  utmSource: text("utm_source"),     // e.g. 'meta', 'google', 'organic'
+  utmMedium: text("utm_medium"),     // e.g. 'cpc', 'social', 'email'
+  utmCampaign: text("utm_campaign"), // e.g. 'land-investors-q1'
+  utmContent: text("utm_content"),   // e.g. 'carousel-ad-1'
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -9670,3 +9675,111 @@ export const insertBackgroundJobSchema = createInsertSchema(backgroundJobs).omit
 export type InsertBackgroundJob = z.infer<typeof insertBackgroundJobSchema>;
 export type BackgroundJob = typeof backgroundJobs.$inferSelect;
 export type InsertGoal = typeof goals.$inferInsert;
+
+// ============================================
+// PLATFORM FEATURE FLAGS (Founder-controlled feature visibility)
+// ============================================
+
+export const platformFeatureFlags = pgTable("platform_feature_flags", {
+  id: serial("id").primaryKey(),
+  key: text("key").notNull().unique(),            // e.g. "feature_academy"
+  label: text("label").notNull(),                  // human-readable name
+  description: text("description").notNull(),
+  enabled: boolean("enabled").notNull().default(false),
+  // which nav items this flag controls (JSON array of hrefs like ["/academy"])
+  controlledRoutes: jsonb("controlled_routes").$type<string[]>().notNull().default([]),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertPlatformFeatureFlagSchema = createInsertSchema(platformFeatureFlags).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+export type PlatformFeatureFlag = typeof platformFeatureFlags.$inferSelect;
+export type InsertPlatformFeatureFlag = z.infer<typeof insertPlatformFeatureFlagSchema>;
+
+// ============================================
+// PRICING CONFIG (Founder-controlled pricing + promotions)
+// ============================================
+
+export const pricingConfig = pgTable("pricing_config", {
+  id: serial("id").primaryKey(),
+  tier: text("tier").notNull().unique(),           // 'pro', 'growth', 'enterprise'
+  displayPriceMonthly: integer("display_price_monthly").notNull(), // cents
+  displayPriceYearly: integer("display_price_yearly").notNull(),   // cents (per month, billed annually)
+  // Active promotion (null = no promo)
+  promoLabel: text("promo_label"),                 // e.g. "Spring Sale"
+  promoDiscountPercent: integer("promo_discount_percent"), // 0-100
+  promoEndsAt: timestamp("promo_ends_at"),
+  // Stripe coupon ID (created on-the-fly when promo is set)
+  stripeCouponId: text("stripe_coupon_id"),
+  // Allow user-entered promo codes at checkout
+  allowPromoCodes: boolean("allow_promo_codes").notNull().default(false),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertPricingConfigSchema = createInsertSchema(pricingConfig).omit({
+  id: true, updatedAt: true,
+});
+export type PricingConfig = typeof pricingConfig.$inferSelect;
+export type InsertPricingConfig = z.infer<typeof insertPricingConfigSchema>;
+
+// ============================================
+// GROWTH / AD MARKETING (AcreOS own customer acquisition)
+// ============================================
+
+// Stores founder-level Meta ad account credentials for AcreOS growth campaigns
+export const founderAdAccounts = pgTable("founder_ad_accounts", {
+  id: serial("id").primaryKey(),
+  platform: text("platform").notNull().default("meta"), // 'meta' | 'google'
+  adAccountId: text("ad_account_id").notNull(),
+  accessToken: text("access_token").notNull(),
+  pixelId: text("pixel_id"),           // Meta pixel for conversion reporting
+  appId: text("app_id"),               // Meta app ID
+  appSecret: text("app_secret"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertFounderAdAccountSchema = createInsertSchema(founderAdAccounts).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+export type FounderAdAccount = typeof founderAdAccounts.$inferSelect;
+export type InsertFounderAdAccount = z.infer<typeof insertFounderAdAccountSchema>;
+
+// Growth campaigns launched by founder for AcreOS marketing
+export const growthCampaigns = pgTable("growth_campaigns", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  platform: text("platform").notNull().default("meta"),
+  templateKey: text("template_key").notNull(), // 'land_investors_signup' | 'retargeting' etc.
+  externalCampaignId: text("external_campaign_id"), // Meta campaign ID once created
+  status: text("status").notNull().default("draft"), // 'draft' | 'active' | 'paused' | 'completed'
+  dailyBudgetCents: integer("daily_budget_cents").notNull().default(2000), // $20/day default
+  targetCountries: jsonb("target_countries").$type<string[]>().notNull().default(["US"]),
+  totalSpendCents: integer("total_spend_cents").notNull().default(0),
+  impressions: integer("impressions").notNull().default(0),
+  clicks: integer("clicks").notNull().default(0),
+  signups: integer("signups").notNull().default(0),
+  conversions: integer("conversions").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertGrowthCampaignSchema = createInsertSchema(growthCampaigns).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+export type GrowthCampaign = typeof growthCampaigns.$inferSelect;
+export type InsertGrowthCampaign = z.infer<typeof insertGrowthCampaignSchema>;
+
+// UTM attribution on organization signup
+// (columns added to organizations table via migration; tracked here as a view-friendly type)
+export type SignupAttribution = {
+  organizationId: number;
+  utmSource: string | null;
+  utmMedium: string | null;
+  utmCampaign: string | null;
+  utmContent: string | null;
+  createdAt: Date;
+};

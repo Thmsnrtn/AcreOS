@@ -68,6 +68,7 @@ import {
 import { prefetchRoute } from "@/lib/queryClient";
 import { NotificationCenter } from "@/components/notification-center";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { useFeatureFlags } from "@/hooks/use-feature-flags";
 
 // ─────────────────────────────────────────────────────────────────────
 // Sidebar collapse context — consumed by page-shell to adjust margin
@@ -275,6 +276,22 @@ export function Sidebar() {
   const { logout, isFounder } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const { isCollapsed, setIsCollapsed } = useSidebarCollapsed();
+  const { isRouteEnabled, isLoading: flagsLoading } = useFeatureFlags();
+
+  // Filter NAV_MODULES: hide any nav items whose route is feature-flagged off
+  // While flags are loading we show everything (prevents flicker on initial load)
+  const visibleModules = flagsLoading
+    ? NAV_MODULES
+    : NAV_MODULES.map((module) => ({
+        ...module,
+        children: module.children?.filter((child) => isRouteEnabled(child.href)),
+      })).filter((module) => {
+        // If the module itself has a controlled route, check it
+        if (!isRouteEnabled(module.href)) return false;
+        // If all children were filtered out and the module is purely a container, hide it
+        if (module.children !== undefined && module.children.length === 0) return false;
+        return true;
+      });
 
   // Which modules are expanded (only relevant when not collapsed)
   const [expandedModules, setExpandedModules] = useState<Set<string>>(() => {
@@ -401,8 +418,8 @@ export function Sidebar() {
           />
         )}
 
-        {/* 9 modules */}
-        {NAV_MODULES.map((module) => {
+        {/* Nav modules (filtered by feature flags) */}
+        {visibleModules.map((module) => {
           const active = isModuleActive(module);
           const expanded = expandedModules.has(module.id);
           const hasChildren = (module.children?.length ?? 0) > 0;
@@ -664,7 +681,7 @@ export function Sidebar() {
           </Link>
         )}
 
-        {NAV_MODULES.map((module) => {
+        {visibleModules.map((module) => {
           const active = isModuleActive(module);
           const expanded = expandedModules.has(module.id);
           const hasChildren = (module.children?.length ?? 0) > 0;
