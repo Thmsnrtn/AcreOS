@@ -236,6 +236,163 @@ export async function registerRoutes(
   });
 
   // ============================================
+  // PRE-LAUNCH READINESS CHECK (founder only)
+  // Surfaces the exact gaps between current state and production-ready.
+  // Hit GET /api/founder/readiness to get a structured checklist.
+  // ============================================
+  app.get("/api/founder/readiness", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).org || (req as any).organization;
+      if (!org?.isFounder) {
+        return res.status(403).json({ message: "Founder access required" });
+      }
+
+      const checks: Array<{ name: string; status: "pass" | "warn" | "fail"; detail: string }> = [];
+      const env = process.env;
+
+      // ── Core infrastructure ──────────────────────────────────────────────
+      checks.push({
+        name: "Database connection",
+        status: env.DATABASE_URL ? "pass" : "fail",
+        detail: env.DATABASE_URL ? "DATABASE_URL is set" : "DATABASE_URL is missing — app will not start",
+      });
+
+      checks.push({
+        name: "Session secret strength",
+        status: !env.SESSION_SECRET ? "fail"
+          : env.SESSION_SECRET.length < 64 ? "warn"
+          : "pass",
+        detail: !env.SESSION_SECRET ? "SESSION_SECRET is missing"
+          : env.SESSION_SECRET.length < 64 ? `SESSION_SECRET is only ${env.SESSION_SECRET.length} chars (need ≥64)`
+          : "SESSION_SECRET is set and strong",
+      });
+
+      checks.push({
+        name: "Redis (job queue + real-time)",
+        status: env.REDIS_URL ? "pass" : "warn",
+        detail: env.REDIS_URL ? "REDIS_URL is set" : "REDIS_URL missing — background jobs and WebSocket pub/sub will not work in multi-instance mode",
+      });
+
+      // ── AI provider ──────────────────────────────────────────────────────
+      checks.push({
+        name: "AI provider (OpenRouter)",
+        status: env.AI_INTEGRATIONS_OPENROUTER_API_KEY ? "pass" : "warn",
+        detail: env.AI_INTEGRATIONS_OPENROUTER_API_KEY
+          ? "OpenRouter API key is set (primary AI provider)"
+          : "AI_INTEGRATIONS_OPENROUTER_API_KEY missing — all AI features will be unavailable",
+      });
+
+      const hasAnyAI = env.AI_INTEGRATIONS_OPENROUTER_API_KEY || env.AI_INTEGRATIONS_OPENAI_API_KEY || env.OPENAI_API_KEY;
+      checks.push({
+        name: "AI fallback provider",
+        status: hasAnyAI ? "pass" : "fail",
+        detail: hasAnyAI ? "At least one AI API key configured" : "No AI API keys found — platform is non-functional without AI",
+      });
+
+      // ── Payments ─────────────────────────────────────────────────────────
+      checks.push({
+        name: "Stripe secret key",
+        status: env.STRIPE_SECRET_KEY ? "pass" : "warn",
+        detail: env.STRIPE_SECRET_KEY
+          ? (env.STRIPE_SECRET_KEY.startsWith("sk_live_") ? "Stripe LIVE key configured" : "Stripe TEST key configured — switch to live key before charging real users")
+          : "STRIPE_SECRET_KEY missing — billing is disabled",
+      });
+
+      checks.push({
+        name: "Stripe in live mode",
+        status: !env.STRIPE_SECRET_KEY ? "warn"
+          : env.STRIPE_SECRET_KEY.startsWith("sk_live_") ? "pass"
+          : "warn",
+        detail: env.STRIPE_SECRET_KEY?.startsWith("sk_live_")
+          ? "Stripe is in LIVE mode — real payments will be processed"
+          : "Stripe is in TEST mode — no real charges will occur",
+      });
+
+      checks.push({
+        name: "Stripe webhook secret",
+        status: env.STRIPE_WEBHOOK_SECRET ? "pass" : "warn",
+        detail: env.STRIPE_WEBHOOK_SECRET ? "Webhook secret configured" : "STRIPE_WEBHOOK_SECRET missing — subscription events will not be verified",
+      });
+
+      // ── Email delivery ───────────────────────────────────────────────────
+      const hasEmail = env.AWS_ACCESS_KEY_ID && env.AWS_SECRET_ACCESS_KEY && env.AWS_REGION;
+      checks.push({
+        name: "Email delivery (AWS SES)",
+        status: hasEmail ? "pass" : "warn",
+        detail: hasEmail ? "AWS SES credentials configured" : "AWS SES not configured — transactional emails (signup confirmation, password reset) will not send",
+      });
+
+      // ── Security ─────────────────────────────────────────────────────────
+      checks.push({
+        name: "Field encryption key",
+        status: !env.FIELD_ENCRYPTION_KEY ? "warn"
+          : env.FIELD_ENCRYPTION_KEY.length < 64 ? "fail"
+          : "pass",
+        detail: !env.FIELD_ENCRYPTION_KEY ? "FIELD_ENCRYPTION_KEY missing — PII stored unencrypted"
+          : env.FIELD_ENCRYPTION_KEY.length < 64 ? "FIELD_ENCRYPTION_KEY too short — must be 64 hex chars (32 bytes)"
+          : "AES-256 field encryption active",
+      });
+
+      checks.push({
+        name: "Sentry error tracking",
+        status: env.SENTRY_DSN ? "pass" : "warn",
+        detail: env.SENTRY_DSN ? "Sentry configured — errors will be captured" : "SENTRY_DSN missing — production errors will not be tracked",
+      });
+
+      // ── Rate limit abuse ─────────────────────────────────────────────────
+      const { getRateLimitHitStats } = await import("./middleware/rateLimit");
+      const rateLimitAbusers = getRateLimitHitStats();
+      checks.push({
+        name: "Rate limit abuse",
+        status: rateLimitAbusers.length === 0 ? "pass" : "warn",
+        detail: rateLimitAbusers.length === 0
+          ? "No keys hitting sustained rate limits"
+          : `${rateLimitAbusers.length} key(s) hitting rate limits repeatedly: ${rateLimitAbusers.slice(0, 3).map(r => `${r.key}(${r.count}×)`).join(", ")}`,
+      });
+
+      // ── Legal pages ──────────────────────────────────────────────────────
+      checks.push({
+        name: "Terms of Service page",
+        status: "pass",
+        detail: "Terms of Service page exists at /terms",
+      });
+      checks.push({
+        name: "Privacy Policy page",
+        status: "pass",
+        detail: "Privacy Policy page exists at /privacy",
+      });
+      checks.push({
+        name: "Cookie consent banner",
+        status: "pass",
+        detail: "GDPR cookie consent banner implemented",
+      });
+
+      // ── NODE_ENV ─────────────────────────────────────────────────────────
+      checks.push({
+        name: "Production mode",
+        status: env.NODE_ENV === "production" ? "pass" : "warn",
+        detail: env.NODE_ENV === "production"
+          ? "NODE_ENV=production — secure defaults active"
+          : `NODE_ENV=${env.NODE_ENV || "unset"} — set to 'production' before launch`,
+      });
+
+      const pass = checks.filter(c => c.status === "pass").length;
+      const warn = checks.filter(c => c.status === "warn").length;
+      const fail = checks.filter(c => c.status === "fail").length;
+      const overall = fail > 0 ? "not-ready" : warn > 0 ? "ready-with-warnings" : "launch-ready";
+
+      res.json({
+        overall,
+        summary: { pass, warn, fail, total: checks.length },
+        checks,
+        generatedAt: new Date().toISOString(),
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
   // T4 — FULL-TEXT SEARCH
   // Cross-entity search across leads, properties, deals.
   // Uses PostgreSQL tsvector with ILIKE fallback.

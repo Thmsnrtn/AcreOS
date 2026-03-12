@@ -31,9 +31,10 @@ const SECRETS: SecretSpec[] = [
   // Generate: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
   { key: "FIELD_ENCRYPTION_KEY", required: false, minLength: 64, description: "AES-256 field encryption key (64 hex chars = 32 bytes)", productionOnly: true },
 
-  // AI
-  { key: "AI_INTEGRATIONS_OPENAI_API_KEY", required: false, description: "Primary OpenAI API key for Atlas" },
-  { key: "OPENAI_API_KEY", required: false, description: "Fallback OpenAI API key" },
+  // AI — OpenRouter is the primary AI provider (routes to Claude, GPT-4o, DeepSeek)
+  { key: "AI_INTEGRATIONS_OPENROUTER_API_KEY", required: false, description: "OpenRouter API key — primary AI provider (required for all AI features)", productionOnly: true },
+  { key: "AI_INTEGRATIONS_OPENAI_API_KEY", required: false, description: "OpenAI API key — fallback AI provider" },
+  { key: "OPENAI_API_KEY", required: false, description: "Fallback OpenAI API key (legacy)" },
 
   // Email
   { key: "AWS_ACCESS_KEY_ID", required: false, description: "AWS access key for SES email sending" },

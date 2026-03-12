@@ -114,7 +114,7 @@ interface OperationsMetrics {
   openSupportTickets: number;
   newTicketsThisWeek: number;
   resolvedThisWeek: number;
-  avgResolutionTimeHours: number;
+  avgResolutionTimeHours: number | null; // null when no tickets resolved yet
   criticalAlerts: number;
   resolvedAlerts: number;
   pendingDecisions: number;       // founder decisions inbox
@@ -384,6 +384,7 @@ async function collectWeeklyData(): Promise<WeeklyDigestData> {
       open: sql<number>`count(*) filter (where status = 'open')`,
       newThis: sql<number>`count(*) filter (where created_at >= ${thisWeek.start.toISOString()})`,
       resolvedThis: sql<number>`count(*) filter (where resolved_at >= ${thisWeek.start.toISOString()})`,
+      avgResolutionHours: sql<number>`coalesce(avg(extract(epoch from (resolved_at - created_at)) / 3600) filter (where resolved_at is not null and resolved_at >= ${thisWeek.start.toISOString()}), null)`,
     }).from(supportTickets),
     db.select({
       critical: sql<number>`count(*) filter (where severity = 'critical' and status = 'open')`,
@@ -405,7 +406,7 @@ async function collectWeeklyData(): Promise<WeeklyDigestData> {
     openSupportTickets: Number(ticketData.open || 0),
     newTicketsThisWeek: Number(ticketData.newThis || 0),
     resolvedThisWeek: Number(ticketData.resolvedThis || 0),
-    avgResolutionTimeHours: 4, // TODO: calculate from ticket data
+    avgResolutionTimeHours: ticketData.avgResolutionHours != null ? Math.round(Number(ticketData.avgResolutionHours) * 10) / 10 : null,
     criticalAlerts: Number(alertData.critical || 0),
     resolvedAlerts: Number(alertData.resolvedThis || 0),
     pendingDecisions: Number(inboxData.pending || 0),
