@@ -22,7 +22,6 @@ import TodayPage from "@/pages/today";
 import PipelinePage from "@/pages/pipeline";
 import MoneyPage from "@/pages/money";
 import AtlasPage from "@/pages/atlas";
-import Dashboard from "@/pages/dashboard";
 import LeadsPage from "@/pages/leads";
 import PropertiesPage from "@/pages/properties";
 import FinancePage from "@/pages/finance";

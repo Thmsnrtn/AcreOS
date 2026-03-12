@@ -5,12 +5,15 @@ import { organizations } from "@shared/schema";
 
 /**
  * Founder email — gets enterprise tier and unlimited access.
- * Read from FOUNDER_EMAILS env var (comma-separated) with a fallback.
+ * Reads FOUNDER_EMAIL (single) and/or FOUNDER_EMAILS (comma-separated),
+ * matching the same logic as server/services/founder.ts.
  */
-const FOUNDER_EMAILS = (process.env.FOUNDER_EMAILS || "")
+const _founderPrimary = (process.env.FOUNDER_EMAIL || "").trim().toLowerCase();
+const _founderAdditional = (process.env.FOUNDER_EMAILS || "")
   .split(",")
   .map((e) => e.trim().toLowerCase())
   .filter(Boolean);
+const FOUNDER_EMAILS = [...new Set([_founderPrimary, ..._founderAdditional].filter(Boolean))];
 
 function isFounderEmail(email: string | undefined): boolean {
   if (!email) return false;
