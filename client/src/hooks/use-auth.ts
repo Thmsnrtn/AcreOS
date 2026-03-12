@@ -5,7 +5,7 @@ import type { User } from "@shared/models/auth";
 export type AuthUser = User & { isFounder?: boolean };
 
 type LoginInput = { email: string; password: string };
-type RegisterInput = { email: string; password: string; firstName?: string; lastName?: string; agreedToTerms: boolean };
+type RegisterInput = { email: string; password: string; firstName?: string; lastName?: string; agreedToTerms: boolean; referralCode?: string };
 
 function getCsrfToken(): string | null {
   const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);

@@ -77,6 +77,8 @@ import SafetyGatesPage from "@/pages/safety-gates";
 import DecisionQueuePage from "@/pages/decision-queue";
 import OpsDashboardPage from "@/pages/ops-dashboard";
 import BetaIntakePage from "@/pages/beta-intake";
+import CompareLGPassPage from "@/pages/compare-lgpass";
+import CompareGeekPayPage from "@/pages/compare-geekpay";
 import { OnboardingWizard } from "@/components/onboarding-wizard";
 import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
 import { ConversationTray } from "@/components/conversation-tray";
@@ -170,7 +172,11 @@ function Router() {
       <Route path="/auth" component={AuthPage} />
       <Route path="/terms" component={TermsOfService} />
       <Route path="/privacy" component={PrivacyPolicy} />
-      
+
+      {/* Competitor comparison pages (public, SEO-targeted) */}
+      <Route path="/compare/lg-pass" component={CompareLGPassPage} />
+      <Route path="/compare/geekpay" component={CompareGeekPayPage} />
+
       {/* Public Borrower Portal */}
       <Route path="/portal" component={BorrowerPortal} />
       <Route path="/portal/:accessToken" component={BorrowerPortal} />

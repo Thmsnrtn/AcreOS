@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, index, jsonb, pgTable, timestamp, varchar } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, pgTable, serial, text, timestamp, varchar } from "drizzle-orm/pg-core";
 
 // Session storage table (used by connect-pg-simple).
 export const sessions = pgTable(
@@ -20,6 +20,7 @@ export const users = pgTable("users", {
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
+  referralCode: varchar("referral_code", { length: 16 }).unique(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -46,3 +47,25 @@ export const passwordResetTokens = pgTable(
 );
 
 export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
+
+// Referral tracking table.
+export const referrals = pgTable(
+  "referrals",
+  {
+    id: serial("id").primaryKey(),
+    referrerId: varchar("referrer_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    refereeId: varchar("referee_id").references(() => users.id, { onDelete: "set null" }),
+    code: varchar("code", { length: 16 }).notNull().unique(),
+    status: text("status").notNull().default("pending"), // pending | signed_up | converted
+    creditAmount: integer("credit_amount").notNull().default(0), // cents
+    creditedAt: timestamp("credited_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("IDX_referrals_referrer").on(table.referrerId),
+    index("IDX_referrals_code").on(table.code),
+    index("IDX_referrals_referee").on(table.refereeId),
+  ]
+);
+
+export type Referral = typeof referrals.$inferSelect;
