@@ -92,6 +92,8 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
     console.log(`[Founder] Upgraded existing organization to founder status for ${userEmail}`);
   }
 
+  // Set both `.org` (used by most route files) and `.organization` (legacy alias in routes.ts)
+  (req as any).org = org;
   (req as any).organization = org;
   next();
 }

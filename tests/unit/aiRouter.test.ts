@@ -17,10 +17,16 @@ describe("AI Router - Task Complexity Classification", () => {
 
     it("classifies complex tasks", () => {
       expect(classifyTaskComplexity("deal_analysis")).toBe(TaskComplexity.COMPLEX);
-      expect(classifyTaskComplexity("legal_document")).toBe(TaskComplexity.COMPLEX);
       expect(classifyTaskComplexity("negotiation_strategy")).toBe(TaskComplexity.COMPLEX);
       expect(classifyTaskComplexity("risk_assessment")).toBe(TaskComplexity.COMPLEX);
       expect(classifyTaskComplexity("financial_modeling")).toBe(TaskComplexity.COMPLEX);
+    });
+
+    it("classifies critical tasks", () => {
+      expect(classifyTaskComplexity("legal_document")).toBe(TaskComplexity.CRITICAL);
+      expect(classifyTaskComplexity("contract_review")).toBe(TaskComplexity.CRITICAL);
+      expect(classifyTaskComplexity("regulatory_compliance")).toBe(TaskComplexity.CRITICAL);
+      expect(classifyTaskComplexity("capital_allocation")).toBe(TaskComplexity.CRITICAL);
     });
 
     it("uses content length for unknown task types", () => {

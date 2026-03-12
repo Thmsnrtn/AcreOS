@@ -1,5 +1,53 @@
 import type { Request, Response, NextFunction } from "express";
 
+// ── Rate Limit Hit Monitoring ────────────────────────────────────────────────
+// Tracks how many times each key has been rate-limited in the current hour.
+// If a key exceeds ALERT_THRESHOLD hits, a structured warning is logged for
+// Sentry/Winston to capture (no DB writes in the hot path — avoids DoS amplification).
+
+const ALERT_THRESHOLD = 20; // Hits in one hour before logging a high-severity warning
+const rateLimitHits = new Map<string, { count: number; windowStart: number; endpoint: string }>();
+const HIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+
+function recordRateLimitHit(key: string, endpoint: string): void {
+  const now = Date.now();
+  const entry = rateLimitHits.get(key);
+
+  if (!entry || now - entry.windowStart > HIT_WINDOW_MS) {
+    rateLimitHits.set(key, { count: 1, windowStart: now, endpoint });
+    return;
+  }
+
+  entry.count++;
+
+  // Escalating log levels: warn at threshold, error at 2×, critical at 5×
+  if (entry.count === ALERT_THRESHOLD) {
+    console.warn(`[rate-limit] ALERT: key=${key} has been rate-limited ${entry.count} times in 1h on ${endpoint}`);
+  } else if (entry.count === ALERT_THRESHOLD * 2) {
+    console.error(`[rate-limit] HIGH: key=${key} has been rate-limited ${entry.count} times in 1h on ${endpoint} — possible abuse`);
+  } else if (entry.count >= ALERT_THRESHOLD * 5 && entry.count % (ALERT_THRESHOLD * 5) === 0) {
+    console.error(`[rate-limit] CRITICAL: key=${key} rate-limited ${entry.count} times in 1h — likely attack on ${endpoint}`);
+  }
+}
+
+// Cleanup rate limit hit counters hourly
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of rateLimitHits.entries()) {
+    if (now - entry.windowStart > HIT_WINDOW_MS) {
+      rateLimitHits.delete(key);
+    }
+  }
+}, HIT_WINDOW_MS);
+
+/** Expose rate limit hit stats for the founder health endpoint */
+export function getRateLimitHitStats(): Array<{ key: string; count: number; endpoint: string }> {
+  return Array.from(rateLimitHits.entries())
+    .filter(([, e]) => e.count >= ALERT_THRESHOLD)
+    .map(([key, e]) => ({ key, count: e.count, endpoint: e.endpoint }))
+    .sort((a, b) => b.count - a.count);
+}
+
 /**
  * Rate limit entry in the in-memory store
  * Uses sliding window algorithm with array of timestamps
@@ -130,6 +178,8 @@ export function createRateLimiter(
         Math.ceil(resetTime / 1000).toString()
       );
       res.setHeader("Retry-After", retryAfterSeconds.toString());
+
+      recordRateLimitHit(key, req.path);
 
       return res.status(429).json({
         message: `Rate limit exceeded. Maximum ${config.maxRequests} requests per ${Math.round(config.windowMs / 1000)} seconds allowed.`,
