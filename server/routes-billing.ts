@@ -201,32 +201,24 @@ export function registerBillingRoutes(app: Express): void {
     try {
       const { stripeService } = await import("./stripeService");
       const rows = await stripeService.listProductsWithPrices();
-      
-      const productsMap = new Map();
-      for (const row of rows as any[]) {
-        if (!productsMap.has(row.product_id)) {
-          productsMap.set(row.product_id, {
-            id: row.product_id,
-            name: row.product_name,
-            description: row.product_description,
-            active: row.product_active,
-            metadata: row.product_metadata,
-            prices: []
-          });
-        }
-        if (row.price_id) {
-          productsMap.get(row.product_id).prices.push({
-            id: row.price_id,
-            unit_amount: row.unit_amount,
-            currency: row.currency,
-            recurring: row.recurring,
-            active: row.price_active,
-            metadata: row.price_metadata,
-          });
-        }
-      }
-      
-      res.json(Array.from(productsMap.values()));
+      // listProductsWithPrices already returns correctly nested data —
+      // just reshape field names to match what the client expects.
+      const result = rows.map((row: any) => ({
+        id: row.product_id,
+        name: row.product_name,
+        description: row.product_description,
+        active: row.product_active,
+        metadata: row.product_metadata,
+        prices: (row.prices || []).map((p: any) => ({
+          id: p.price_id,
+          unit_amount: p.unit_amount,
+          currency: p.currency,
+          recurring: p.recurring,
+          active: p.price_active,
+          metadata: p.price_metadata,
+        })),
+      }));
+      res.json(result);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -518,8 +510,9 @@ export function registerBillingRoutes(app: Express): void {
       let event: any;
       
       try {
-        const rawBody = typeof req.body === "string" ? req.body : JSON.stringify(req.body);
-        event = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret);
+        // req.body is a Buffer (express.raw middleware) — pass it directly.
+        // Never JSON.stringify a Buffer before constructEvent or signature verification will fail.
+        event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
       } catch (err: any) {
         logger.error("Webhook signature verification failed", { error: err.message });
         return res.status(400).json({ message: `Webhook Error: ${err.message}` });
