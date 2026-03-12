@@ -12,6 +12,8 @@ import {
   countyGisEndpoints,
   aiModelConfigs,
   systemApiKeys,
+  featureRequests,
+  growthCampaigns,
 } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
@@ -2903,6 +2905,456 @@ export function registerAdminRoutes(app: Express): void {
       });
 
       res.json({ campaign, bundleId: bundle.id });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── Founder Intelligence: Command Center Endpoints ──────────────────────
+
+  /**
+   * AI Daily Briefing — aggregates last 24h data and writes a 2-3 sentence summary.
+   * Cached for 15 minutes server-side to avoid hammering the DB on every dashboard load.
+   */
+  let briefingCache: { data: any; generatedAt: number } | null = null;
+  const BRIEFING_TTL_MS = 15 * 60 * 1000;
+
+  api.get("/api/founder/briefing", isAuthenticated, isFounderAdmin, async (_req, res) => {
+    try {
+      if (briefingCache && Date.now() - briefingCache.generatedAt < BRIEFING_TTL_MS) {
+        return res.json(briefingCache.data);
+      }
+
+      const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+      const [orgRows, alertRows, escalatedRows, recentCampaigns] = await Promise.all([
+        db.select({
+          id: organizations.id,
+          name: organizations.name,
+          subscriptionTier: organizations.subscriptionTier,
+          subscriptionStatus: organizations.subscriptionStatus,
+          dunningStage: organizations.dunningStage,
+          createdAt: organizations.createdAt,
+        }).from(organizations),
+        db.select({ id: systemAlerts.id, severity: systemAlerts.severity, resolvedAt: systemAlerts.resolvedAt })
+          .from(systemAlerts).where(sql`${systemAlerts.resolvedAt} IS NULL`),
+        db.select({ id: supportTickets.id })
+          .from(supportTickets)
+          .where(and(
+            eq(supportTickets.status, 'open' as any),
+            eq(supportTickets.resolutionType as any, 'escalated' as any)
+          )).limit(10),
+        db.select({ id: growthCampaigns.id, status: growthCampaigns.status })
+          .from(growthCampaigns),
+      ]);
+
+      const tierPrices: Record<string, number> = { free: 0, starter: 49, pro: 149, scale: 399, enterprise: 799 };
+      const paidOrgs = orgRows.filter(o => o.subscriptionStatus === 'active' && o.subscriptionTier !== 'free');
+      const totalMrr = paidOrgs.reduce((sum, o) => sum + (tierPrices[o.subscriptionTier as string] || 0), 0);
+      const newSignups24h = orgRows.filter(o => new Date(o.createdAt as any) > since24h).length;
+      const atRiskOrgs = orgRows.filter(o => ['restricted', 'suspended'].includes(o.dunningStage as string)).length;
+      const unresolvedAlerts = alertRows.length;
+      const activeCampaigns = recentCampaigns.filter(c => c.status === 'active').length;
+
+      const highlights = {
+        totalMrr,
+        newSignups24h,
+        atRiskOrgs,
+        unresolvedAlerts,
+        escalatedTickets: escalatedRows.length,
+        activeCampaigns,
+        totalOrgs: paidOrgs.length,
+      };
+
+      let summary = `AcreOS is running ${paidOrgs.length} paying organizations at $${totalMrr.toLocaleString()} MRR. ${newSignups24h > 0 ? `${newSignups24h} new signup${newSignups24h > 1 ? 's' : ''} in the last 24 hours.` : 'No new signups in the last 24 hours.'} ${atRiskOrgs > 0 ? `${atRiskOrgs} organization${atRiskOrgs > 1 ? 's' : ''} require attention — dunning stage elevated.` : 'No organizations in dunning risk.'} ${unresolvedAlerts > 0 ? `${unresolvedAlerts} unresolved system alert${unresolvedAlerts > 1 ? 's' : ''} pending review.` : 'All system alerts clear.'} Background jobs running autonomously — lead nurturing, campaign optimization, and finance agent are all active.`;
+
+      // Optionally enrich with GPT-4o if configured
+      try {
+        const { getOpenAIClient } = await import("./utils/openaiClient");
+        const openai = getOpenAIClient();
+        if (openai) {
+          const completion = await openai.chat.completions.create({
+            model: "gpt-4o",
+            messages: [{
+              role: "user",
+              content: `You are the AI co-pilot for AcreOS, a SaaS platform for land investors. Write a crisp 2-3 sentence executive briefing for the founder based on these metrics:
+
+- Total MRR: $${totalMrr}
+- Paying organizations: ${paidOrgs.length}
+- New signups (24h): ${newSignups24h}
+- Organizations in dunning risk: ${atRiskOrgs}
+- Unresolved system alerts: ${unresolvedAlerts}
+- Escalated support tickets: ${escalatedRows.length}
+- Active ad campaigns: ${activeCampaigns}
+
+Tone: confident, data-driven, executive. Lead with what's working. Flag concerns briefly. Do not use bullet points — prose only. Max 3 sentences.`,
+            }],
+            max_tokens: 150,
+            temperature: 0.4,
+          });
+          summary = completion.choices[0].message.content?.trim() || summary;
+        }
+      } catch { /* non-fatal — use plain summary */ }
+
+      const result = { summary, highlights, generatedAt: new Date().toISOString() };
+      briefingCache = { data: result, generatedAt: Date.now() };
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  /** Org Health Scores — computes 0-100 health score for every organization */
+  api.get("/api/founder/org-health", isAuthenticated, isFounderAdmin, async (_req, res) => {
+    try {
+      const orgs = await db.select({
+        id: organizations.id,
+        name: organizations.name,
+        subscriptionTier: organizations.subscriptionTier,
+        subscriptionStatus: organizations.subscriptionStatus,
+        dunningStage: organizations.dunningStage,
+        trialEndsAt: organizations.trialEndsAt,
+        isFounder: organizations.isFounder,
+        createdAt: organizations.createdAt,
+      }).from(organizations).orderBy(desc(organizations.createdAt));
+
+      const alertCounts = await db.select({
+        orgId: systemAlerts.organizationId,
+        count: sql<number>`count(*)`,
+      }).from(systemAlerts)
+        .where(sql`${systemAlerts.resolvedAt} IS NULL`)
+        .groupBy(systemAlerts.organizationId);
+
+      const alertMap = new Map(alertCounts.map(r => [r.orgId, Number(r.count)]));
+
+      const tierPrices: Record<string, number> = { free: 0, starter: 49, pro: 149, scale: 399, enterprise: 799 };
+
+      const result = orgs.map(org => {
+        let score = 100;
+        const issues: string[] = [];
+
+        // Dunning stage penalties
+        const dunning = org.dunningStage as string;
+        if (dunning === 'suspended') { score -= 60; issues.push('Suspended — payment overdue'); }
+        else if (dunning === 'restricted') { score -= 40; issues.push('Restricted — payment past due'); }
+        else if (dunning === 'warning') { score -= 20; issues.push('Dunning warning active'); }
+        else if (dunning === 'grace_period') { score -= 10; issues.push('In grace period'); }
+
+        // Subscription status
+        if (org.subscriptionStatus === 'past_due') { score -= 20; issues.push('Invoice past due'); }
+        else if (org.subscriptionStatus === 'unpaid') { score -= 30; issues.push('Invoice unpaid'); }
+        else if (org.subscriptionStatus === 'canceled') { score -= 50; issues.push('Subscription canceled'); }
+
+        // Trial expiring
+        if (org.trialEndsAt) {
+          const daysLeft = Math.ceil((new Date(org.trialEndsAt as any).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+          if (daysLeft <= 0) { score -= 15; issues.push('Trial expired — not converted'); }
+          else if (daysLeft <= 2) { score -= 10; issues.push(`Trial expires in ${daysLeft}d`); }
+        }
+
+        // Alert penalties
+        const alertCount = alertMap.get(org.id) || 0;
+        if (alertCount > 5) { score -= 15; issues.push(`${alertCount} active alerts`); }
+        else if (alertCount > 0) { score -= 5; issues.push(`${alertCount} active alert${alertCount > 1 ? 's' : ''}`); }
+
+        // Free tier is an opportunity, not inherently unhealthy
+        if (org.subscriptionTier === 'free') score -= 5;
+
+        // Bonuses
+        if (org.isFounder) score = 100;
+        if (['scale', 'enterprise'].includes(org.subscriptionTier as string)) score = Math.min(score + 5, 100);
+
+        score = Math.max(0, Math.min(100, score));
+
+        const status =
+          org.isFounder ? 'founder'
+          : score >= 85 ? 'healthy'
+          : score >= 65 ? 'watch'
+          : score >= 40 ? 'at_risk'
+          : 'critical';
+
+        return {
+          id: org.id,
+          name: org.name,
+          subscriptionTier: org.subscriptionTier,
+          subscriptionStatus: org.subscriptionStatus,
+          dunningStage: org.dunningStage,
+          healthScore: score,
+          healthStatus: status,
+          issues,
+          mrr: tierPrices[org.subscriptionTier as string] || 0,
+          createdAt: org.createdAt,
+        };
+      });
+
+      // Sort: critical first, then at_risk, watch, healthy, founder
+      const order = ['critical', 'at_risk', 'watch', 'healthy', 'founder'];
+      result.sort((a, b) => order.indexOf(a.healthStatus) - order.indexOf(b.healthStatus));
+
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  /** Action Queue — prioritized list of items that need founder attention */
+  api.get("/api/founder/action-queue", isAuthenticated, isFounderAdmin, async (_req, res) => {
+    try {
+      const now = new Date();
+      const in3Days = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+      const items: any[] = [];
+
+      // 1. Escalated support tickets (highest priority)
+      const escalatedTickets = await db.select({
+        id: supportTickets.id,
+        subject: supportTickets.subject,
+        priority: supportTickets.priority,
+        createdAt: supportTickets.createdAt,
+        organizationId: supportTickets.organizationId,
+        description: supportTickets.description,
+      }).from(supportTickets)
+        .where(and(
+          eq(supportTickets.resolutionType as any, 'escalated' as any),
+          or(eq(supportTickets.status, 'open' as any), eq(supportTickets.status, 'in_progress' as any))
+        ))
+        .limit(5);
+
+      for (const ticket of escalatedTickets) {
+        items.push({
+          id: `support-${ticket.id}`,
+          type: 'support_escalation',
+          priority: ticket.priority === 'urgent' ? 'critical' : 'high',
+          title: `Support: ${ticket.subject}`,
+          description: `Escalated ticket requiring human response`,
+          estimatedMinutes: 5,
+          suggestedAction: 'Review and reply with AI-drafted response',
+          data: { ticketId: ticket.id, organizationId: ticket.organizationId },
+        });
+      }
+
+      // 2. Orgs in critical dunning stages
+      const criticalOrgs = await db.select({
+        id: organizations.id,
+        name: organizations.name,
+        dunningStage: organizations.dunningStage,
+        subscriptionTier: organizations.subscriptionTier,
+      }).from(organizations)
+        .where(or(
+          eq(organizations.dunningStage, 'suspended'),
+          eq(organizations.dunningStage, 'restricted')
+        ));
+
+      for (const org of criticalOrgs) {
+        items.push({
+          id: `dunning-${org.id}`,
+          type: 'dunning_critical',
+          priority: org.dunningStage === 'suspended' ? 'critical' : 'high',
+          title: `${org.name} — ${org.dunningStage}`,
+          description: `${org.subscriptionTier} customer in ${org.dunningStage} dunning stage. Revenue at risk.`,
+          estimatedMinutes: 2,
+          suggestedAction: 'Review payment history and consider direct outreach',
+          data: { organizationId: org.id, dunningStage: org.dunningStage },
+        });
+      }
+
+      // 3. Trials expiring in 3 days with no conversion
+      const expiringTrials = await db.select({
+        id: organizations.id,
+        name: organizations.name,
+        trialEndsAt: organizations.trialEndsAt,
+        subscriptionTier: organizations.subscriptionTier,
+      }).from(organizations)
+        .where(and(
+          sql`${organizations.trialEndsAt} IS NOT NULL`,
+          sql`${organizations.trialEndsAt} <= ${in3Days}`,
+          sql`${organizations.trialEndsAt} > ${now}`,
+          eq(organizations.subscriptionTier, 'free')
+        ));
+
+      for (const org of expiringTrials) {
+        const daysLeft = Math.ceil((new Date(org.trialEndsAt as any).getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        items.push({
+          id: `trial-${org.id}`,
+          type: 'expiring_trial',
+          priority: daysLeft <= 1 ? 'high' : 'medium',
+          title: `${org.name} — trial expires in ${daysLeft}d`,
+          description: `Still on free tier. Trial ends soon — conversion opportunity.`,
+          estimatedMinutes: 2,
+          suggestedAction: 'Send personalized outreach or offer a discount to convert',
+          data: { organizationId: org.id, trialEndsAt: org.trialEndsAt },
+        });
+      }
+
+      // 4. High-vote unreviewed feature requests
+      const hotFeatureRequests = await db.select({
+        id: featureRequests.id,
+        title: featureRequests.title,
+        upvotes: featureRequests.upvotes,
+        category: featureRequests.category,
+      }).from(featureRequests)
+        .where(and(
+          eq(featureRequests.status, 'submitted'),
+          sql`${featureRequests.upvotes} >= 5`
+        ))
+        .orderBy(desc(featureRequests.upvotes))
+        .limit(3);
+
+      for (const req of hotFeatureRequests) {
+        items.push({
+          id: `feature-${req.id}`,
+          type: 'feature_request',
+          priority: (req.upvotes || 0) >= 10 ? 'high' : 'medium',
+          title: `${req.upvotes} votes: ${req.title}`,
+          description: `Popular feature request awaiting triage`,
+          estimatedMinutes: 1,
+          suggestedAction: 'Mark as planned / in_progress / declined with founder notes',
+          data: { featureRequestId: req.id, upvotes: req.upvotes },
+        });
+      }
+
+      // 5. Draft campaigns never activated
+      const draftCampaigns = await db.select({
+        id: growthCampaigns.id,
+        name: growthCampaigns.name,
+        createdAt: growthCampaigns.createdAt,
+      }).from(growthCampaigns)
+        .where(eq(growthCampaigns.status, 'draft'));
+
+      for (const campaign of draftCampaigns) {
+        const daysOld = Math.floor((now.getTime() - new Date(campaign.createdAt as any).getTime()) / (1000 * 60 * 60 * 24));
+        if (daysOld >= 1) {
+          items.push({
+            id: `campaign-${campaign.id}`,
+            type: 'inactive_campaign',
+            priority: 'medium',
+            title: `Campaign "${campaign.name}" never activated`,
+            description: `Created ${daysOld}d ago, still in draft. Activate in Meta Ads Manager to start spending.`,
+            estimatedMinutes: 1,
+            suggestedAction: 'Activate in Meta Ads Manager or delete if no longer needed',
+            data: { campaignId: campaign.id },
+          });
+        }
+      }
+
+      // Sort by priority weight
+      const priorityWeight: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+      items.sort((a, b) => priorityWeight[a.priority] - priorityWeight[b.priority]);
+
+      res.json({
+        items,
+        totalEstimatedMinutes: items.reduce((s, i) => s + (i.estimatedMinutes || 0), 0),
+        counts: {
+          critical: items.filter(i => i.priority === 'critical').length,
+          high: items.filter(i => i.priority === 'high').length,
+          medium: items.filter(i => i.priority === 'medium').length,
+        },
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  /** AI-draft a support reply for an escalated ticket */
+  api.post("/api/founder/support/:ticketId/ai-draft", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const ticketId = parseInt(req.params.ticketId);
+      const [ticket] = await db.select().from(supportTickets).where(eq(supportTickets.id, ticketId)).limit(1);
+      if (!ticket) return res.status(404).json({ message: "Ticket not found" });
+
+      const messages = await db.select().from(supportTicketMessages)
+        .where(eq(supportTicketMessages.ticketId, ticketId))
+        .orderBy(supportTicketMessages.createdAt as any);
+
+      const [org] = await db.select({ name: organizations.name, subscriptionTier: organizations.subscriptionTier })
+        .from(organizations).where(eq(organizations.id, ticket.organizationId)).limit(1);
+
+      const { getOpenAIClient } = await import("./utils/openaiClient");
+      const openai = getOpenAIClient();
+      if (!openai) return res.status(503).json({ message: "OpenAI not configured" });
+
+      const conversation = messages.map((m: any) =>
+        `${m.role === 'user' ? 'Customer' : 'Support'}: ${m.content}`
+      ).join('\n\n');
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [{
+          role: "system",
+          content: `You are the founder of AcreOS writing a personal support reply. AcreOS is a CRM and operating system for land investors. Be helpful, warm, direct, and knowledgeable. The customer is a ${org?.subscriptionTier || 'free'} tier subscriber named from org "${org?.name || 'Unknown'}". Sign off as "– The AcreOS Team". Do not be overly formal. Aim for 2-4 sentences unless the issue requires more.`,
+        }, {
+          role: "user",
+          content: `Support ticket: "${ticket.subject}"\n\nConversation:\n${conversation}\n\nWrite a helpful, resolution-focused reply:`,
+        }],
+        temperature: 0.5,
+        max_tokens: 400,
+      });
+
+      const draft = completion.choices[0].message.content?.trim() || "";
+      res.json({ draft, ticketId });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  /** Send a reply to a support ticket and optionally resolve it */
+  api.post("/api/founder/support/:ticketId/reply", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const ticketId = parseInt(req.params.ticketId);
+      const { message, resolve } = req.body;
+      if (!message) return res.status(400).json({ message: "message is required" });
+
+      await db.insert(supportTicketMessages).values({
+        ticketId,
+        role: "agent",
+        content: message,
+        agentName: "Founder",
+      } as any);
+
+      if (resolve) {
+        await db.update(supportTickets)
+          .set({ status: "resolved", resolvedAt: new Date(), resolvedBy: "founder", resolution: message } as any)
+          .where(eq(supportTickets.id, ticketId));
+      }
+
+      res.json({ ok: true, resolved: !!resolve });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  /** MRR waterfall — breakdown by tier with at-risk flagging */
+  api.get("/api/founder/revenue/waterfall", isAuthenticated, isFounderAdmin, async (_req, res) => {
+    try {
+      const tierPrices: Record<string, number> = { free: 0, starter: 49, pro: 149, scale: 399, enterprise: 799 };
+
+      const orgRows = await db.select({
+        subscriptionTier: organizations.subscriptionTier,
+        subscriptionStatus: organizations.subscriptionStatus,
+        dunningStage: organizations.dunningStage,
+      }).from(organizations);
+
+      const tiers = ['free', 'starter', 'pro', 'scale', 'enterprise'] as const;
+      const tierData = tiers.map(tier => {
+        const tierOrgs = orgRows.filter(o => o.subscriptionTier === tier);
+        const active = tierOrgs.filter(o => o.subscriptionStatus === 'active' && !['restricted', 'suspended'].includes(o.dunningStage as string));
+        const atRisk = tierOrgs.filter(o => ['restricted', 'suspended', 'past_due'].includes(o.dunningStage as string) || o.subscriptionStatus === 'past_due');
+        const price = tierPrices[tier];
+        return {
+          tier,
+          label: tier.charAt(0).toUpperCase() + tier.slice(1),
+          count: tierOrgs.length,
+          activeCount: active.length,
+          atRiskCount: atRisk.length,
+          mrr: active.length * price,
+          atRiskMrr: atRisk.length * price,
+        };
+      });
+
+      const totalMrr = tierData.reduce((s, t) => s + t.mrr, 0);
+      const atRiskMrr = tierData.reduce((s, t) => s + t.atRiskMrr, 0);
+      const totalOrgs = orgRows.filter(o => o.subscriptionTier !== 'free').length;
+
+      res.json({ tiers: tierData, totalMrr, atRiskMrr, totalOrgs });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
