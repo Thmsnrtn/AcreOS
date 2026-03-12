@@ -117,9 +117,9 @@ export default function DocumentsPage() {
   });
 
   const { data: versions, isLoading: versionsLoading, refetch: refetchVersions } = useQuery<DocumentVersion[]>({
-    queryKey: versionHistoryTarget 
+    queryKey: versionHistoryTarget
       ? [versionHistoryTarget.type === "template" ? "/api/document-templates" : "/api/generated-documents", versionHistoryTarget.id, "versions"]
-      : ["/api/versions-placeholder"],
+      : ["__disabled__"],
     queryFn: async () => {
       if (!versionHistoryTarget) return [];
       const endpoint = versionHistoryTarget.type === "template" 
@@ -222,7 +222,7 @@ export default function DocumentsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/generated-documents"] });
-      toast({ title: "Document sent for signature", description: "E-signature request has been sent (placeholder)" });
+      toast({ title: "Document sent for signature", description: "E-signature request has been sent." });
     },
     onError: (error: any) => {
       toast({ title: "Failed to send for signature", description: error.message, variant: "destructive" });

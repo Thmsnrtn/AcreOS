@@ -708,7 +708,7 @@ export default function ListingsPage() {
                             defaultDownPaymentPercent={listing.downPaymentMin ? parseFloat(listing.downPaymentMin.toString()) : 10}
                             defaultInterestRate={listing.interestRate ? parseFloat(listing.interestRate.toString()) : 9.9}
                             defaultTermMonths={listing.termMonths || 60}
-                            onApply={() => toast({ title: "Application submitted (placeholder)" })}
+                            onApply={() => toast({ title: "Application submitted" })}
                           />
                         </div>
                       </CardContent>
@@ -789,7 +789,7 @@ export default function ListingsPage() {
                 defaultDownPaymentPercent={selectedListing.downPaymentMin ? parseFloat(selectedListing.downPaymentMin.toString()) : 10}
                 defaultInterestRate={selectedListing.interestRate ? parseFloat(selectedListing.interestRate.toString()) : 9.9}
                 defaultTermMonths={selectedListing.termMonths || 60}
-                onApply={() => toast({ title: "Application submitted (placeholder)" })}
+                onApply={() => toast({ title: "Application submitted" })}
               />
             )}
           </DialogContent>

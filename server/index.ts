@@ -19,6 +19,10 @@ import { createMcpServer } from "./mcp/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import rateLimit from "express-rate-limit";
 import { initSentry, Sentry } from "./utils/sentry";
+import { validateEnv } from "./utils/validateEnv";
+
+// Validate required env vars before anything else — exits with clear error if misconfigured
+validateEnv();
 
 // Initialize Sentry ASAP — must run before any other code
 initSentry();

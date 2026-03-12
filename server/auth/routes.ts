@@ -23,6 +23,9 @@ const registerSchema = z.object({
   password: z.string().min(8, "Password must be at least 8 characters"),
   firstName: z.string().optional(),
   lastName: z.string().optional(),
+  agreedToTerms: z.literal(true, {
+    errorMap: () => ({ message: "You must accept the Terms of Service to create an account." }),
+  }),
 });
 
 const loginSchema = z.object({
@@ -200,7 +203,11 @@ export function registerAuthRoutes(app: Express): void {
           expiresAt,
         });
 
-        const appUrl = (process.env.APP_URL || "http://localhost:5000").replace(/\/$/, "");
+        const rawAppUrl = process.env.APP_URL;
+        if (!rawAppUrl && process.env.NODE_ENV === "production") {
+          console.error("[auth] APP_URL is not set — password reset link will point to localhost");
+        }
+        const appUrl = (rawAppUrl || "http://localhost:5000").replace(/\/$/, "");
         const resetUrl = `${appUrl}/auth?mode=reset&token=${token}`;
 
         emailService
