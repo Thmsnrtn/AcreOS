@@ -811,7 +811,10 @@ export function Sidebar() {
               </Badge>
             )}
           </div>
-          <NotificationCenter />
+          <div className="flex items-center gap-1">
+            <SophieNotificationBadge />
+            <NotificationCenter />
+          </div>
         </div>
         <p className="text-xs text-muted-foreground mt-1">
           Land Investment Platform
