@@ -396,6 +396,14 @@ app.use("/api/auth", async (req, res, next) => {
   // Initialize distributed tracing before routes so Express instrumentation captures all routes
   await initTracing();
 
+  // Load founder-configured credentials from DB into process.env (non-fatal if DB not ready)
+  try {
+    const { loadConfigToEnv } = await import("./services/configManager");
+    await loadConfigToEnv();
+  } catch (e) {
+    console.warn("[startup] configManager load skipped:", (e as Error).message);
+  }
+
   await registerRoutes(httpServer, app);
 
   app.use(errorLoggingMiddleware);

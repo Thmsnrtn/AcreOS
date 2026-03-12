@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Bot, Zap, CheckCircle2 } from "lucide-react";
+import { Bot, Zap, CheckCircle2, XCircle, AlertCircle, Key } from "lucide-react";
 
 interface AutomationItem {
   name: string;
@@ -18,6 +18,19 @@ interface AutomationData {
   humanActionsRequiredLast7d: number;
   automations: AutomationItem[];
   passiveIncomeStatement: string;
+  credentialHealth?: {
+    score: number;
+    hasAI: boolean;
+    hasEmail: boolean;
+    hasStripe: boolean;
+    hasMaps: boolean;
+    missingCreds: string[];
+  };
+  operationalHealth?: {
+    score: number;
+    pendingDecisions: number;
+    jobFailures24h: number;
+  };
 }
 
 function ScoreRing({ score }: { score: number }) {
@@ -125,31 +138,100 @@ export function PlatformPassiveScore() {
           </div>
         </div>
 
+        {/* Credential health pills */}
+        {data.credentialHealth && data.credentialHealth.missingCreds.length > 0 && (
+          <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2">
+            <p className="text-xs font-medium text-amber-600 flex items-center gap-1 mb-1.5">
+              <Key className="h-3 w-3" />
+              Unconfigured services reducing score:
+            </p>
+            <div className="flex flex-wrap gap-1">
+              {data.credentialHealth.missingCreds.map((c: string) => (
+                <span key={c} className="text-xs px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-700 border border-amber-500/20">
+                  {c}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Score breakdown bars */}
+        {data.credentialHealth && (
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium text-muted-foreground">Score breakdown</p>
+            {[
+              { label: "Credentials", score: data.credentialHealth.score, weight: "40%" },
+              { label: "Automations", score: Math.round(data.automations.reduce((s, a) => s + a.passiveScore, 0) / (data.automations.length || 1)), weight: "40%" },
+              { label: "Operations", score: data.operationalHealth?.score ?? 100, weight: "20%" },
+            ].map(row => (
+              <div key={row.label} className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground w-24 shrink-0">{row.label}</span>
+                <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${row.score >= 80 ? "bg-green-500" : row.score >= 60 ? "bg-amber-500" : "bg-red-500"}`}
+                    style={{ width: `${row.score}%` }}
+                  />
+                </div>
+                <span className="text-xs text-muted-foreground w-8 text-right shrink-0">{row.score}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Automation activity bars */}
         <div className="space-y-2">
           <p className="text-xs font-medium text-muted-foreground">Automation activity (last 7 days)</p>
           {sorted.map(auto => (
             <div key={auto.name} className="space-y-0.5">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-foreground truncate max-w-[180px]">{auto.name}</span>
+                <div className="flex items-center gap-1 min-w-0">
+                  <span className="text-xs text-foreground truncate max-w-[160px]">{auto.name}</span>
+                  {auto.note && auto.status === "degraded" && (
+                    <AlertCircle className="h-3 w-3 text-amber-500 shrink-0" />
+                  )}
+                </div>
                 <div className="flex items-center gap-1.5 shrink-0">
                   {auto.actionsLast7d > 0 ? (
                     <span className="text-xs text-muted-foreground">{auto.actionsLast7d.toLocaleString()}</span>
                   ) : (
                     <span className="text-xs text-muted-foreground/50">idle</span>
                   )}
-                  <CheckCircle2 className={`h-3 w-3 ${auto.status === "active" ? "text-green-500" : "text-muted-foreground"}`} />
+                  {auto.status === "active" ? (
+                    <CheckCircle2 className="h-3 w-3 text-green-500" />
+                  ) : auto.status === "degraded" ? (
+                    <XCircle className="h-3 w-3 text-red-400" />
+                  ) : (
+                    <AlertCircle className="h-3 w-3 text-amber-500" />
+                  )}
                 </div>
               </div>
               <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                 <div
-                  className="h-full rounded-full bg-purple-500 transition-all"
-                  style={{ width: `${auto.actionsLast7d > 0 ? Math.max(3, (auto.actionsLast7d / maxActions) * 100) : 0}%` }}
+                  className={`h-full rounded-full transition-all ${auto.status === "active" ? "bg-purple-500" : auto.status === "degraded" ? "bg-red-400" : "bg-amber-500"}`}
+                  style={{ width: `${auto.actionsLast7d > 0 ? Math.max(3, (auto.actionsLast7d / maxActions) * 100) : (auto.status === "active" ? 8 : 0)}%` }}
                 />
               </div>
             </div>
           ))}
         </div>
+
+        {/* Operational health note */}
+        {data.operationalHealth && (data.operationalHealth.pendingDecisions > 0 || data.operationalHealth.jobFailures24h > 0) && (
+          <div className="rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 space-y-0.5">
+            {data.operationalHealth.pendingDecisions > 0 && (
+              <p className="text-xs text-red-500 flex items-center gap-1">
+                <AlertCircle className="h-3 w-3" />
+                {data.operationalHealth.pendingDecisions} decision{data.operationalHealth.pendingDecisions !== 1 ? "s" : ""} awaiting founder review
+              </p>
+            )}
+            {data.operationalHealth.jobFailures24h > 0 && (
+              <p className="text-xs text-red-500 flex items-center gap-1">
+                <XCircle className="h-3 w-3" />
+                {data.operationalHealth.jobFailures24h} job failure{data.operationalHealth.jobFailures24h !== 1 ? "s" : ""} in last 24h
+              </p>
+            )}
+          </div>
+        )}
       </CardContent>
     </Card>
   );

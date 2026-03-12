@@ -556,6 +556,12 @@ export async function registerRoutes(
     app.use('/api/founder/intelligence', isAuthenticated, founderIntelRouter);
   }
 
+  // Founder Setup API — interactive credential wizard
+  {
+    const setupRouter = (await import("./routes-setup")).default;
+    app.use('/api/founder/setup', isAuthenticated, setupRouter);
+  }
+
   // Epic H: Auto-Delinquent Scraper route
   app.post('/api/import/auto-delinquent', isAuthenticated, getOrCreateOrg, async (req, res) => {
     const { county, state } = req.body as { county: string; state: string };

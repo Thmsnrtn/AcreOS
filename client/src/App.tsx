@@ -97,7 +97,7 @@ const PriceOptimizerPage = React.lazy(() => import("@/pages/price-optimizer"));
 const SellerIntentPage = React.lazy(() => import("@/pages/seller-intent"));
 const DealPatternsPage = React.lazy(() => import("@/pages/deal-patterns"));
 const DocumentIntelligencePage = React.lazy(() => import("@/pages/document-intelligence"));
-const VoiceAnalyticsPage = React.lazy(() => import("@/pages/voice-analytics"));
+// VoiceAnalyticsPage removed — AI Voice feature deprecated
 const MarketplaceAnalyticsPage = React.lazy(() => import("@/pages/marketplace-analytics"));
 
 // Operations
@@ -145,7 +145,7 @@ const GoalsPage = React.lazy(() => import("@/pages/goals"));
 const TaxResearcherPage = React.lazy(() => import("@/pages/tax-researcher"));
 
 // Platform / Marketplace
-const AcademyPage = React.lazy(() => import("@/pages/academy"));
+// AcademyPage removed — Academy feature deprecated
 const InvestorDirectoryPage = React.lazy(() => import("@/pages/investor-directory"));
 const BuyerQualificationPage = React.lazy(() => import("@/pages/buyer-qualification"));
 const MatchingEnginePage = React.lazy(() => import("@/pages/matching-engine"));
@@ -283,7 +283,7 @@ function Router() {
         {/* Communications */}
         <Route path="/inbox">{() => <ProtectedRoute component={InboxPage} />}</Route>
         <Route path="/campaigns">{() => <ProtectedRoute component={CampaignsPage} />}</Route>
-        <Route path="/voice-analytics">{() => <ProtectedRoute component={VoiceAnalyticsPage} />}</Route>
+        {/* voice-analytics route removed — feature deprecated */}
 
         {/* Finance */}
         <Route path="/finance">{() => <ProtectedRoute component={FinancePage} />}</Route>
@@ -366,8 +366,7 @@ function Router() {
         <Route path="/blind-offer-wizard">{() => <ProtectedRoute component={BlindOfferWizardPage} />}</Route>
         <Route path="/night-cap">{() => <ProtectedRoute component={NightCapPage} />}</Route>
 
-        {/* Education */}
-        <Route path="/academy">{() => <ProtectedRoute component={AcademyPage} />}</Route>
+        {/* Education — Academy removed */}
 
         {/* Support */}
         <Route path="/help">{() => <ProtectedRoute component={HelpPage} />}</Route>

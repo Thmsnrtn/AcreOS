@@ -68,6 +68,7 @@ import {
   ThePulse, DecisionsInbox, JobQueueHealth, BusinessIntelligence,
   MRRTrajectory, ChurnIntelligence, GrowthEngine, PlatformPassiveScore,
 } from "@/components/dashboard";
+import { FounderSetupWizard, SetupReadinessBanner } from "@/components/founder-setup-wizard";
 import { Suspense, lazy } from "react";
 
 interface AdminDashboardData {
@@ -372,10 +373,11 @@ interface GreetingHeaderProps {
   onGenerateDigest: () => void;
   digestPending: boolean;
   onShowShortcuts: () => void;
+  onOpenSetup: () => void;
   lastRefreshed: Date;
 }
 
-function GreetingHeader({ onRefresh, onGenerateDigest, digestPending, onShowShortcuts, lastRefreshed }: GreetingHeaderProps) {
+function GreetingHeader({ onRefresh, onGenerateDigest, digestPending, onShowShortcuts, onOpenSetup, lastRefreshed }: GreetingHeaderProps) {
   const { data: pulseData } = useQuery<{ pulseStatus: { allClear: boolean; revenueHealth: { green: boolean }; systemHealth: { green: boolean }; churnRisk: { green: boolean } } }>({
     queryKey: ["/api/founder/intelligence/pulse"],
     staleTime: 30000,
@@ -466,6 +468,15 @@ function GreetingHeader({ onRefresh, onGenerateDigest, digestPending, onShowShor
               <SendHorizonal className="h-3.5 w-3.5" />
             )}
             {digestPending ? "Sending..." : "Email Digest"}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5 text-xs h-8"
+            onClick={onOpenSetup}
+          >
+            <Key className="h-3.5 w-3.5" />
+            Platform Setup
           </Button>
           <Button
             size="sm"
@@ -599,6 +610,7 @@ export default function FounderDashboard() {
   });
   const [goalDialogOpen, setGoalDialogOpen] = useState(false);
   const [goalInputValue, setGoalInputValue] = useState("");
+  const [setupWizardOpen, setSetupWizardOpen] = useState(false);
 
   const handleRefreshAll = useCallback(() => {
     queryClient.invalidateQueries();
@@ -1398,14 +1410,21 @@ export default function FounderDashboard() {
             </DialogContent>
           </Dialog>
 
+          {/* ── Setup Wizard ─────────────────────────────────────────── */}
+          <FounderSetupWizard open={setupWizardOpen} onClose={() => setSetupWizardOpen(false)} />
+
           {/* ── Greeting Header ──────────────────────────────────────── */}
           <GreetingHeader
             onRefresh={handleRefreshAll}
             onGenerateDigest={() => digestMutation.mutate()}
             digestPending={digestMutation.isPending}
             onShowShortcuts={() => setShowShortcuts(true)}
+            onOpenSetup={() => setSetupWizardOpen(true)}
             lastRefreshed={lastRefreshed}
           />
+
+          {/* ── Platform Readiness Banner ─────────────────────────────── */}
+          <SetupReadinessBanner onOpenWizard={() => setSetupWizardOpen(true)} />
 
           {/* ── Focus Mode Banner ────────────────────────────────────── */}
           {focusMode && (

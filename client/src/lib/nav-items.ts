@@ -31,7 +31,6 @@ import {
   Brain,
   UserCheck,
   Shield,
-  Phone,
   BarChart2,
   Database,
   Percent,
@@ -86,7 +85,7 @@ export const ALL_NAV_ITEMS: MasterNavItem[] = [
   { id: "data-moat",            label: "Data Moat",           icon: Database,    href: "/data-moat",            description: "Proprietary data assets and API keys" },
   { id: "fee-dashboard",        label: "Fee Dashboard",       icon: Percent,     href: "/fee-dashboard",        description: "Transaction fee tracking and revenue" },
   { id: "marketplace-analytics",label: "Marketplace Analytics", icon: BarChart2, href: "/marketplace-analytics",description: "Marketplace performance and metrics" },
-  { id: "voice-analytics",      label: "Voice Analytics",     icon: Phone,       href: "/voice-analytics",      description: "Call recording analysis and insights" },
+  // voice-analytics removed — AI Voice feature deprecated
   { id: "va-dashboard",         label: "VA Dashboard",        icon: Users,       href: "/va-dashboard",         description: "Virtual assistant task management" },
 ];
 
