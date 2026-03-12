@@ -508,7 +508,7 @@ export function registerAIOperationsRoutes(app: Express): void {
       const org = (req as any).organization;
       const options = {
         severities: req.query.severities ? String(req.query.severities).split(",") as any[] : undefined,
-        limit: req.query.limit ? parseInt(req.query.limit as string) : 50,
+        limit: Math.min(100, req.query.limit ? parseInt(req.query.limit as string) : 50),
         offset: req.query.offset ? parseInt(req.query.offset as string) : 0,
         status: req.query.status as string | undefined,
       };

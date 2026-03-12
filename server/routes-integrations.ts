@@ -1429,4 +1429,71 @@ export function registerIntegrationRoutes(app: Express): void {
 
   // ============================================
 
+  // WEBHOOK MANAGEMENT
+  // ============================================
+
+  // GET /api/webhooks — list org webhook endpoints
+  api.get("/api/webhooks", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { getWebhookEndpoints } = await import("./services/webhookDispatcher");
+      const endpoints = await getWebhookEndpoints(org.id);
+      res.json(endpoints);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // PUT /api/webhooks — save/replace all webhook endpoints for org
+  api.put("/api/webhooks", isAuthenticated, getOrCreateOrg, requireAdminOrAbove, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { endpoints } = req.body;
+
+      if (!Array.isArray(endpoints)) {
+        return res.status(400).json({ message: "endpoints must be an array" });
+      }
+      if (endpoints.length > 10) {
+        return res.status(400).json({ message: "Maximum 10 webhook endpoints per organization" });
+      }
+
+      const { saveWebhookEndpoints } = await import("./services/webhookDispatcher");
+      await saveWebhookEndpoints(org.id, endpoints);
+      res.json({ success: true, count: endpoints.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/webhooks/test — fire a test event to a given URL
+  api.post("/api/webhooks/test", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { url, secret } = req.body;
+
+      if (!url || typeof url !== "string") {
+        return res.status(400).json({ message: "url is required" });
+      }
+
+      const { signPayload } = await import("./services/webhookDispatcher");
+      const payload = JSON.stringify({
+        event: "webhook.test",
+        timestamp: new Date().toISOString(),
+        organizationId: org.id,
+        data: { message: "This is a test event from AcreOS" },
+      });
+
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        "X-AcreOS-Event": "webhook.test",
+      };
+      if (secret) headers["X-AcreOS-Signature"] = signPayload(payload, secret);
+
+      const response = await fetch(url, { method: "POST", headers, body: payload });
+      res.json({ status: response.status, ok: response.ok });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
 }

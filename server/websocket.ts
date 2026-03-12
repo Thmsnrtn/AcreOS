@@ -13,6 +13,64 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { IncomingMessage, Server } from 'http';
 import crypto from 'crypto';
+import { db } from './db';
+import { sessions } from '../shared/models/auth';
+import { eq } from 'drizzle-orm';
+
+/** Inline cookie parser — avoids requiring @types/cookie. */
+function parseCookies(header: string): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const pair of header.split(';')) {
+    const idx = pair.indexOf('=');
+    if (idx < 0) continue;
+    result[pair.slice(0, idx).trim()] = decodeURIComponent(
+      pair.slice(idx + 1).trim().replace(/\+/g, ' ')
+    );
+  }
+  return result;
+}
+
+/**
+ * Validate a WebSocket upgrade request by verifying the session cookie.
+ * Returns the authenticated userId/orgId from the session, or null if invalid.
+ * T-WS-AUTH: WebSocket connections must prove a valid server-side session.
+ */
+async function validateWsSession(
+  req: IncomingMessage,
+  claimedUserId: number,
+): Promise<boolean> {
+  try {
+    const cookieHeader = req.headers.cookie || '';
+    const cookies = parseCookies(cookieHeader);
+    const rawSid = cookies['connect.sid'];
+    if (!rawSid) return false;
+
+    // express-session stores signed cookies as "s:sid.signature"
+    // Strip the "s:" prefix and take only the sid portion (before the first dot after s:)
+    const unsigned = rawSid.startsWith('s:') ? rawSid.slice(2) : rawSid;
+    const sid = unsigned.split('.')[0];
+
+    // Look up the session in the DB (connect-pg-simple stores by raw sid)
+    const [row] = await db
+      .select({ sess: sessions.sess, expire: sessions.expire })
+      .from(sessions)
+      .where(eq(sessions.sid, sid))
+      .limit(1);
+
+    if (!row) return false;
+    if (new Date(row.expire) < new Date()) return false;
+
+    // The session JSON contains passport: { user: userId }
+    const sess = row.sess as Record<string, any>;
+    const passportUserId = sess?.passport?.user;
+    if (!passportUserId) return false;
+
+    // userId may be numeric or string depending on auth strategy
+    return String(passportUserId) === String(claimedUserId);
+  } catch {
+    return false;
+  }
+}
 
 interface WSClient {
   id: string;
@@ -38,6 +96,11 @@ interface WSEvent {
 // negotiation:{sessionId}     — negotiation real-time coaching
 // market:{state}:{county}     — market intelligence for a county
 
+// Maximum simultaneous WebSocket connections per server instance.
+// Prevents connection exhaustion DoS. Fly.io scales horizontally so
+// the effective global limit = MAX_WS_CONNECTIONS × replica count.
+const MAX_WS_CONNECTIONS = parseInt(process.env.MAX_WS_CONNECTIONS ?? "1000", 10);
+
 class AcreOSWebSocketServer {
   private wss: WebSocketServer | null = null;
   private clients: Map<string, WSClient> = new Map();
@@ -56,16 +119,29 @@ class AcreOSWebSocketServer {
     console.log('[WebSocket] Server initialized on /ws');
   }
 
-  private handleConnection(ws: WebSocket, req: IncomingMessage): void {
+  private async handleConnection(ws: WebSocket, req: IncomingMessage): Promise<void> {
     const clientId = crypto.randomUUID();
 
-    // Extract auth from query params (?orgId=X&userId=Y)
+    // Extract claimed identity from query params (?orgId=X&userId=Y)
     const url = new URL(req.url || '/', 'http://localhost');
     const organizationId = parseInt(url.searchParams.get('orgId') || '0');
     const userId = parseInt(url.searchParams.get('userId') || '0');
 
     if (!organizationId || !userId) {
       ws.close(4001, 'Missing orgId or userId');
+      return;
+    }
+
+    // Connection cap — reject if server is at max capacity
+    if (this.clients.size >= MAX_WS_CONNECTIONS) {
+      ws.close(4008, 'Server at capacity');
+      return;
+    }
+
+    // T-WS-AUTH: Verify the session cookie before accepting the connection
+    const sessionValid = await validateWsSession(req, userId);
+    if (!sessionValid) {
+      ws.close(4003, 'Invalid or expired session');
       return;
     }
 

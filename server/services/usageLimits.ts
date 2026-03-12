@@ -2,7 +2,7 @@ import { db } from "../storage";
 import { organizations, leads, properties, notes, usageEvents } from "@shared/schema";
 import { eq, and, gte, count, sum } from "drizzle-orm";
 
-export type SubscriptionTier = "free" | "starter" | "pro" | "scale" | "enterprise";
+export type SubscriptionTier = "free" | "sprout" | "starter" | "pro" | "scale" | "enterprise";
 
 export type ResourceType = "leads" | "properties" | "notes" | "ai_requests";
 
@@ -32,6 +32,15 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     ai_requests: 100,
     includedSeats: 1,
     maxSeats: 1, // Cannot add seats on free tier
+    seatPriceCents: null,
+  },
+  sprout: {
+    leads: 250,
+    properties: 50,
+    notes: 25,
+    ai_requests: 500,
+    includedSeats: 1,
+    maxSeats: 1, // Solo tier
     seatPriceCents: null,
   },
   starter: {
@@ -86,6 +95,7 @@ export const FOUNDER_TIER_LIMITS: TierLimits = {
 function normalizeTier(tier: string): SubscriptionTier {
   const normalized = tier.toLowerCase();
   if (normalized === "professional") return "pro";
+  if (normalized === "growth") return "sprout";
   if (normalized in TIER_LIMITS) return normalized as SubscriptionTier;
   return "free";
 }

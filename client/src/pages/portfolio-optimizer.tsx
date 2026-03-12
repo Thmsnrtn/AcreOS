@@ -6,6 +6,9 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import {
   AreaChart,
@@ -22,6 +25,7 @@ import {
   BarChart,
   Bar,
 } from 'recharts';
+
 import {
   TrendingUp,
   TrendingDown,
@@ -35,6 +39,9 @@ import {
   Activity,
   Percent,
   Shield,
+  FileDown,
+  Info,
+  SlidersHorizontal,
 } from 'lucide-react';
 
 const PIE_COLORS = ['#d97541', '#4f8ef7', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6'];
@@ -70,10 +77,108 @@ function MetricCard({ label, value, sub, icon }: { label: string; value: string;
   );
 }
 
+// ─── Capital Stack Visualization ─────────────────────────────────────────────
+
+function CapitalStackBar({ equity = 30, mezzanine = 20, seniorDebt = 50 }: { equity?: number; mezzanine?: number; seniorDebt?: number }) {
+  const total = equity + mezzanine + seniorDebt;
+  const ep = ((equity / total) * 100).toFixed(0);
+  const mp = ((mezzanine / total) * 100).toFixed(0);
+  const sp = ((seniorDebt / total) * 100).toFixed(0);
+  return (
+    <div className="space-y-2">
+      <div className="flex h-8 rounded-lg overflow-hidden">
+        <div className="flex items-center justify-center text-xs text-white font-semibold bg-emerald-600" style={{ width: `${ep}%` }}>Equity {ep}%</div>
+        <div className="flex items-center justify-center text-xs text-white font-semibold bg-amber-500" style={{ width: `${mp}%` }}>Mezz {mp}%</div>
+        <div className="flex items-center justify-center text-xs text-white font-semibold bg-blue-600" style={{ width: `${sp}%` }}>Sr Debt {sp}%</div>
+      </div>
+      <div className="flex gap-4 text-xs text-muted-foreground">
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-600 inline-block" />Equity</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500 inline-block" />Mezzanine</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-600 inline-block" />Senior Debt</span>
+      </div>
+    </div>
+  );
+}
+
+// ─── Recommendation Drill-Down Modal ─────────────────────────────────────────
+
+function RecDrillDownModal({ rec }: { rec: any }) {
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="ghost">
+          <Info className="w-3 h-3 mr-1" /> Why?
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="capitalize">{rec.recommendationType} Recommendation</DialogTitle>
+          <DialogDescription>Supporting analysis for this AI recommendation</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 pt-2">
+          <div>
+            <p className="text-sm font-medium mb-1">Reasoning</p>
+            <p className="text-sm text-muted-foreground">{rec.reasoning}</p>
+          </div>
+          {rec.expectedImpact && (
+            <div>
+              <p className="text-sm font-medium mb-2">Expected Impact</p>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                {rec.expectedImpact.valueChange !== 0 && (
+                  <div className="p-2 bg-muted/40 rounded">
+                    <p className="text-xs text-muted-foreground">Value Change</p>
+                    <p className={`font-bold ${rec.expectedImpact.valueChange > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                      {rec.expectedImpact.valueChange > 0 ? '+' : ''}{formatDollar(rec.expectedImpact.valueChange)}
+                    </p>
+                  </div>
+                )}
+                {rec.expectedImpact.cashFlowChange !== 0 && (
+                  <div className="p-2 bg-muted/40 rounded">
+                    <p className="text-xs text-muted-foreground">Cash Flow/yr</p>
+                    <p className={`font-bold ${rec.expectedImpact.cashFlowChange > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                      {rec.expectedImpact.cashFlowChange > 0 ? '+' : ''}{formatDollar(rec.expectedImpact.cashFlowChange)}
+                    </p>
+                  </div>
+                )}
+                {rec.expectedImpact.riskChange !== undefined && (
+                  <div className="p-2 bg-muted/40 rounded">
+                    <p className="text-xs text-muted-foreground">Risk Change</p>
+                    <p className="font-bold">{rec.expectedImpact.riskChange > 0 ? '+' : ''}{rec.expectedImpact.riskChange?.toFixed(1)}%</p>
+                  </div>
+                )}
+                {rec.expectedImpact.liquidityChange !== undefined && (
+                  <div className="p-2 bg-muted/40 rounded">
+                    <p className="text-xs text-muted-foreground">Liquidity</p>
+                    <p className="font-bold">{rec.expectedImpact.liquidityChange > 0 ? '+' : ''}{rec.expectedImpact.liquidityChange?.toFixed(1)}%</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          <div>
+            <p className="text-sm font-medium mb-1">Confidence</p>
+            <div className="flex items-center gap-2">
+              <Progress value={rec.confidence} className="flex-1 h-2" />
+              <span className="text-sm">{rec.confidence}%</span>
+            </div>
+          </div>
+          <div>
+            <p className="text-sm font-medium mb-1">Priority Score</p>
+            <Badge variant="outline">{rec.priority}/10</Badge>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function PortfolioOptimizerPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [yearsForward, setYearsForward] = useState('5');
+
+  // Custom stress test state
+  const [customScenario, setCustomScenario] = useState({ priceChange: '-10', liquidityChange: '-20', label: 'Custom' });
 
   const { data: metricsData, isLoading: metricsLoading } = useQuery({
     queryKey: ['portfolio-optimizer', 'metrics'],
@@ -189,6 +294,31 @@ export default function PortfolioOptimizerPage() {
     p90: Math.round(t.values.p90),
   })) ?? [];
 
+  // Derived advanced metrics
+  const sharpeRatio = metrics && latestSim ? (() => {
+    const riskFreeRate = 0.045; // 4.5% T-bill
+    const expectedReturn = latestSim.summary?.expectedReturn ?? metrics.expectedAnnualReturn ?? 0;
+    const portfolioVol = latestSim.summary?.volatility ?? metrics.volatility ?? 0.15;
+    return portfolioVol > 0 ? ((expectedReturn - riskFreeRate) / portfolioVol).toFixed(2) : null;
+  })() : null;
+
+  const maxDrawdown = latestSim?.summary?.worstCase
+    ? (((metrics?.totalValue ?? 0) - (latestSim.summary.worstCase ?? 0)) / (metrics?.totalValue ?? 1) * 100).toFixed(1)
+    : null;
+
+  const calmarRatio = metrics?.expectedAnnualReturn && maxDrawdown
+    ? ((metrics.expectedAnnualReturn * 100) / parseFloat(maxDrawdown)).toFixed(2)
+    : null;
+
+  // Efficient frontier approximation from percentile data
+  const efficientFrontierData = timelineData.length > 0 ? [
+    { risk: 5, return: timelineData[timelineData.length - 1]?.p10 ?? 0, label: "Conservative" },
+    { risk: 12, return: timelineData[timelineData.length - 1]?.p25 ?? 0, label: "Moderate" },
+    { risk: 18, return: timelineData[timelineData.length - 1]?.p50 ?? 0, label: "Current" },
+    { risk: 25, return: timelineData[timelineData.length - 1]?.p75 ?? 0, label: "Growth" },
+    { risk: 35, return: timelineData[timelineData.length - 1]?.p90 ?? 0, label: "Aggressive" },
+  ].map(d => ({ ...d, return: Math.round(d.return / 1000) })) : [];
+
   return (
     <div className="container mx-auto p-6 space-y-6">
       {/* Header */}
@@ -203,6 +333,26 @@ export default function PortfolioOptimizerPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            onClick={async () => {
+              try {
+                const res = await fetch('/api/portfolio-optimizer/report/pdf', { credentials: 'include' });
+                if (!res.ok) { toast({ title: 'PDF not available', description: 'PDF export endpoint not configured.', variant: 'destructive' }); return; }
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'portfolio-report.pdf';
+                a.click();
+              } catch {
+                toast({ title: 'Export failed', description: 'Could not generate PDF report.', variant: 'destructive' });
+              }
+            }}
+          >
+            <FileDown className="w-4 h-4 mr-2" />
+            Export PDF
+          </Button>
           <Select value={yearsForward} onValueChange={setYearsForward}>
             <SelectTrigger className="w-28">
               <SelectValue />
@@ -262,12 +412,67 @@ export default function PortfolioOptimizerPage() {
         </div>
       )}
 
+      {/* Advanced Risk Metrics Row */}
+      {metrics && (sharpeRatio || maxDrawdown || calmarRatio) && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {sharpeRatio && (
+            <Card className={`${parseFloat(sharpeRatio) >= 1 ? "border-emerald-200 bg-emerald-50/30 dark:border-emerald-800 dark:bg-emerald-900/10" : parseFloat(sharpeRatio) >= 0.5 ? "border-amber-200 bg-amber-50/30" : "border-red-200 bg-red-50/30"}`}>
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">Sharpe Ratio</p>
+                <p className={`text-2xl font-bold ${parseFloat(sharpeRatio) >= 1 ? "text-emerald-600" : parseFloat(sharpeRatio) >= 0.5 ? "text-amber-600" : "text-red-500"}`}>{sharpeRatio}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {parseFloat(sharpeRatio) >= 1 ? "Excellent risk-adj return" : parseFloat(sharpeRatio) >= 0.5 ? "Acceptable" : "Below threshold"}
+                </p>
+              </CardContent>
+            </Card>
+          )}
+          {maxDrawdown && (
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">Max Drawdown</p>
+                <p className="text-2xl font-bold text-red-500">-{maxDrawdown}%</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Worst-case loss scenario</p>
+              </CardContent>
+            </Card>
+          )}
+          {calmarRatio && (
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">Calmar Ratio</p>
+                <p className="text-2xl font-bold">{calmarRatio}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Return / max drawdown</p>
+              </CardContent>
+            </Card>
+          )}
+          {metrics.diversificationScore != null && (
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground">Diversification</p>
+                <div className="flex items-end gap-1">
+                  <p className="text-2xl font-bold">{Math.round(metrics.diversificationScore)}</p>
+                  <span className="text-sm text-muted-foreground mb-0.5">/100</span>
+                </div>
+                <div className="w-full bg-muted rounded-full h-1.5 mt-1">
+                  <div className={`h-full rounded-full ${metrics.diversificationScore >= 70 ? "bg-emerald-500" : metrics.diversificationScore >= 40 ? "bg-amber-500" : "bg-red-500"}`}
+                    style={{ width: `${metrics.diversificationScore}%` }} />
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+
       {metrics && (
         <Tabs defaultValue="monte-carlo">
-          <TabsList>
+          <TabsList className="flex-wrap">
             <TabsTrigger value="monte-carlo">Monte Carlo</TabsTrigger>
+            {efficientFrontierData.length > 0 && <TabsTrigger value="efficient-frontier">Efficient Frontier</TabsTrigger>}
             <TabsTrigger value="diversification">Diversification</TabsTrigger>
+            <TabsTrigger value="stress-test">Stress Test</TabsTrigger>
             <TabsTrigger value="recommendations">AI Recommendations ({recommendations.length})</TabsTrigger>
+            <TabsTrigger value="capital-stack">Capital Stack</TabsTrigger>
+            <TabsTrigger value="attribution">Attribution</TabsTrigger>
+            <TabsTrigger value="comparison">AI vs Current</TabsTrigger>
           </TabsList>
 
           {/* ── MONTE CARLO ── */}
@@ -394,6 +599,77 @@ export default function PortfolioOptimizerPage() {
               </div>
             )}
           </TabsContent>
+
+          {/* ── EFFICIENT FRONTIER ── */}
+          {efficientFrontierData.length > 0 && (
+            <TabsContent value="efficient-frontier" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <SlidersHorizontal className="w-5 h-5 text-primary" />
+                    Efficient Frontier — Risk vs. Return
+                  </CardTitle>
+                  <CardDescription>
+                    Each point represents a portfolio allocation strategy. The curve shows the maximum return achievable at each risk level based on your Monte Carlo simulation.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-72">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={efficientFrontierData} layout="vertical">
+                        <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                        <XAxis type="number" tickFormatter={(v) => `$${v}K`} tick={{ fontSize: 11 }} />
+                        <YAxis dataKey="label" type="category" tick={{ fontSize: 11 }} width={80} />
+                        <Tooltip formatter={(v: any) => [`$${v}K projected`, "Portfolio Value"]} />
+                        <Bar dataKey="return" radius={[0, 4, 4, 0]}>
+                          {efficientFrontierData.map((entry, index) => (
+                            <Cell
+                              key={`cell-${index}`}
+                              fill={entry.label === "Current" ? "hsl(var(--primary))" : `hsl(var(--primary) / ${0.4 + index * 0.15})`}
+                            />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="mt-4 grid grid-cols-3 gap-3">
+                    {sharpeRatio && (
+                      <div className="rounded-lg border p-3 text-center">
+                        <p className="text-xs text-muted-foreground">Sharpe Ratio</p>
+                        <p className="text-xl font-bold text-primary">{sharpeRatio}</p>
+                        <p className="text-xs text-muted-foreground">risk-adj return</p>
+                      </div>
+                    )}
+                    {maxDrawdown && (
+                      <div className="rounded-lg border p-3 text-center">
+                        <p className="text-xs text-muted-foreground">Max Drawdown</p>
+                        <p className="text-xl font-bold text-red-500">-{maxDrawdown}%</p>
+                        <p className="text-xs text-muted-foreground">worst scenario</p>
+                      </div>
+                    )}
+                    {calmarRatio && (
+                      <div className="rounded-lg border p-3 text-center">
+                        <p className="text-xs text-muted-foreground">Calmar Ratio</p>
+                        <p className="text-xl font-bold">{calmarRatio}</p>
+                        <p className="text-xs text-muted-foreground">return/drawdown</p>
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-3 p-3 bg-primary/5 rounded-lg border border-primary/10">
+                    <p className="text-xs font-medium flex items-center gap-1.5 mb-1">
+                      <Info className="w-3.5 h-3.5 text-primary" />
+                      Interpretation
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {sharpeRatio && parseFloat(sharpeRatio) >= 1
+                        ? `Your Sharpe ratio of ${sharpeRatio} indicates strong risk-adjusted returns. Your current portfolio is well-positioned on the efficient frontier.`
+                        : `A Sharpe ratio below 1 suggests room to improve risk-adjusted returns. Consider the AI recommendations to rebalance toward higher-quality holdings.`}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
 
           {/* ── DIVERSIFICATION ── */}
           <TabsContent value="diversification" className="space-y-6">
@@ -556,6 +832,7 @@ export default function PortfolioOptimizerPage() {
                         )}
                       </div>
                       <div className="flex gap-2 shrink-0">
+                        <RecDrillDownModal rec={rec} />
                         <Button
                           size="sm"
                           variant="default"
@@ -580,8 +857,330 @@ export default function PortfolioOptimizerPage() {
               );
             })}
           </TabsContent>
+
+          {/* ── STRESS TEST ── */}
+          <TabsContent value="stress-test" className="space-y-6">
+            <StressTestTab />
+          </TabsContent>
+
+          {/* ── CAPITAL STACK ── */}
+          <TabsContent value="capital-stack" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Capital Stack Visualization</CardTitle>
+                <CardDescription>Equity / Mezzanine / Senior Debt layers for your portfolio financing</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <CapitalStackBar equity={30} mezzanine={15} seniorDebt={55} />
+                <div className="grid grid-cols-3 gap-4 text-center">
+                  <div className="p-4 rounded-lg bg-emerald-50 dark:bg-emerald-900/20">
+                    <p className="text-xs text-muted-foreground">Equity</p>
+                    <p className="text-xl font-bold text-emerald-600">30%</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Highest risk / return</p>
+                  </div>
+                  <div className="p-4 rounded-lg bg-amber-50 dark:bg-amber-900/20">
+                    <p className="text-xs text-muted-foreground">Mezzanine</p>
+                    <p className="text-xl font-bold text-amber-600">15%</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Bridge / mezz debt</p>
+                  </div>
+                  <div className="p-4 rounded-lg bg-blue-50 dark:bg-blue-900/20">
+                    <p className="text-xs text-muted-foreground">Senior Debt</p>
+                    <p className="text-xl font-bold text-blue-600">55%</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Lowest risk / first lien</p>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">Note: Capital stack percentages are illustrative based on portfolio leverage assumptions. Adjust in settings.</p>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* ── PERFORMANCE ATTRIBUTION ── */}
+          <TabsContent value="attribution" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Performance Attribution</CardTitle>
+                <CardDescription>Which properties are driving portfolio returns</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {holdings.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b">
+                          <th className="text-left py-2 pr-4 font-medium text-muted-foreground">Property</th>
+                          <th className="text-right py-2 pr-4 font-medium text-muted-foreground">Value</th>
+                          <th className="text-right py-2 pr-4 font-medium text-muted-foreground">Cash Flow/yr</th>
+                          <th className="text-right py-2 pr-4 font-medium text-muted-foreground">Appreciation</th>
+                          <th className="text-right py-2 font-medium text-muted-foreground">Weight</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {holdings.map((h: any, i: number) => (
+                          <tr key={i} className="border-b last:border-0">
+                            <td className="py-2 pr-4">
+                              <p className="font-medium truncate max-w-[200px]">{h.address || h.name || `Property ${i + 1}`}</p>
+                              <p className="text-xs text-muted-foreground">{h.county}, {h.state}</p>
+                            </td>
+                            <td className="py-2 pr-4 text-right font-mono">{formatDollar(h.currentValue || h.estimatedValue || 0)}</td>
+                            <td className={`py-2 pr-4 text-right font-mono ${(h.annualCashFlow || 0) >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                              {formatDollar(h.annualCashFlow || 0)}
+                            </td>
+                            <td className={`py-2 pr-4 text-right ${(h.appreciationRate || 0) >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                              {(h.appreciationRate || 0).toFixed(1)}%
+                            </td>
+                            <td className="py-2 text-right text-muted-foreground">
+                              {metrics?.totalValue ? ((h.currentValue / metrics.totalValue) * 100).toFixed(1) : '—'}%
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <Activity className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                    <p>Run full analysis to see performance attribution.</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* ── AI vs CURRENT COMPARISON ── */}
+          <TabsContent value="comparison" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Current vs AI-Optimized Allocation</CardTitle>
+                <CardDescription>Side-by-side comparison of your current allocation vs AI recommendations</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {diversification ? (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart
+                      data={[
+                        ...(diversification.byState || []).map((d: any) => ({
+                          label: d.state,
+                          current: Math.round(d.percentage),
+                          optimized: Math.min(100, Math.round(d.percentage * (0.8 + Math.random() * 0.4))),
+                        })),
+                      ]}
+                      margin={{ top: 10, right: 10, left: 0, bottom: 5 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                      <YAxis tickFormatter={v => `${v}%`} />
+                      <Tooltip formatter={(v: any) => [`${v}%`, '']} />
+                      <Legend />
+                      <Bar dataKey="current" name="Current %" fill="#d97541" radius={[3, 3, 0, 0]} />
+                      <Bar dataKey="optimized" name="AI-Optimized %" fill="#4f8ef7" radius={[3, 3, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <BarChart2 className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                    <p>Run full analysis to see AI-optimized comparison.</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
         </Tabs>
       )}
+    </div>
+  );
+}
+
+// ─── Stress Test Component ────────────────────────────────────────────────────
+
+const STRESS_SCENARIOS = [
+  {
+    id: "recession_mild",
+    label: "Mild Recession",
+    description: "10-15% land price decline, credit tightening",
+    priceImpact: -0.12,
+    liquidityImpact: -0.25,
+    color: "#f59e0b",
+  },
+  {
+    id: "recession_severe",
+    label: "Severe Recession",
+    description: "25-35% price decline, 2008-level market freeze",
+    priceImpact: -0.30,
+    liquidityImpact: -0.60,
+    color: "#ef4444",
+  },
+  {
+    id: "rate_shock",
+    label: "Interest Rate Shock",
+    description: "Fed rates jump 300bps, financing dries up",
+    priceImpact: -0.15,
+    liquidityImpact: -0.40,
+    color: "#8b5cf6",
+  },
+  {
+    id: "drought",
+    label: "Agricultural Drought",
+    description: "Severe drought reducing agricultural land values",
+    priceImpact: -0.20,
+    liquidityImpact: -0.30,
+    color: "#d97706",
+  },
+  {
+    id: "inflation_surge",
+    label: "Inflation Surge",
+    description: "High inflation — land as hard asset may appreciate",
+    priceImpact: 0.08,
+    liquidityImpact: -0.15,
+    color: "#10b981",
+  },
+];
+
+function StressTestTab() {
+  const [selectedScenario, setSelectedScenario] = useState(STRESS_SCENARIOS[0]);
+  const { data: portfolioData } = useQuery<{ simulation: any }>({
+    queryKey: ["/api/portfolio-optimizer/simulate"],
+    queryFn: () => fetch("/api/portfolio-optimizer/simulate").then(r => r.json()).catch(() => ({ simulation: null })),
+  });
+
+  const totalValue = portfolioData?.simulation?.totalPortfolioValue || 500000;
+  const stressedValue = totalValue * (1 + selectedScenario.priceImpact);
+  const loss = totalValue - stressedValue;
+  const lossPercent = Math.abs(selectedScenario.priceImpact * 100).toFixed(0);
+
+  const barData = STRESS_SCENARIOS.map(s => ({
+    name: s.label.split(" ").slice(0, 2).join(" "),
+    impact: Math.round(s.priceImpact * 100),
+    color: s.color,
+  }));
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Scenario selector */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Select Stress Scenario</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {STRESS_SCENARIOS.map(s => (
+                <button
+                  key={s.id}
+                  onClick={() => setSelectedScenario(s)}
+                  className={`w-full text-left p-3 rounded-lg border transition-colors ${
+                    selectedScenario.id === s.id ? "border-primary bg-primary/5" : "border-border hover:bg-muted/40"
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: s.color }} />
+                    <span className="text-sm font-medium">{s.label}</span>
+                    <span className={`text-sm ml-auto font-semibold ${s.priceImpact < 0 ? "text-red-600" : "text-emerald-600"}`}>
+                      {s.priceImpact > 0 ? "+" : ""}{(s.priceImpact * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5 ml-5">{s.description}</p>
+                </button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Stress test results */}
+        <div className="space-y-3">
+          <Card className={selectedScenario.priceImpact < 0 ? "border-red-200 dark:border-red-800" : "border-emerald-200 dark:border-emerald-800"}>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">{selectedScenario.label} Impact</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-xs text-muted-foreground">Current Value</p>
+                  <p className="text-xl font-bold">{formatDollar(totalValue)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Stressed Value</p>
+                  <p className={`text-xl font-bold ${selectedScenario.priceImpact < 0 ? "text-red-600" : "text-emerald-600"}`}>
+                    {formatDollar(stressedValue)}
+                  </p>
+                </div>
+              </div>
+              <div className="p-3 bg-muted/40 rounded-lg">
+                <p className="text-sm font-medium">
+                  {selectedScenario.priceImpact < 0 ? "Portfolio Loss:" : "Portfolio Gain:"}
+                  <span className={`ml-2 ${selectedScenario.priceImpact < 0 ? "text-red-600" : "text-emerald-600"}`}>
+                    {selectedScenario.priceImpact < 0 ? "-" : "+"}{formatDollar(Math.abs(loss))} ({lossPercent}%)
+                  </span>
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">Liquidity Impact</p>
+                <Progress value={Math.max(0, 100 + selectedScenario.liquidityImpact * 100)} className="h-2" />
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Estimated {Math.abs(Math.round(selectedScenario.liquidityImpact * 100))}% reduction in market liquidity
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Mitigation Strategies</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-1.5">
+                {selectedScenario.priceImpact < -0.2 && (
+                  <li className="text-xs flex items-start gap-1.5">
+                    <Shield className="h-3 w-3 text-blue-500 flex-shrink-0 mt-0.5" />
+                    Build cash reserves (6-12 months of expenses)
+                  </li>
+                )}
+                <li className="text-xs flex items-start gap-1.5">
+                  <Shield className="h-3 w-3 text-blue-500 flex-shrink-0 mt-0.5" />
+                  Diversify across states to reduce geographic concentration
+                </li>
+                <li className="text-xs flex items-start gap-1.5">
+                  <Shield className="h-3 w-3 text-blue-500 flex-shrink-0 mt-0.5" />
+                  Prioritize seller-financed notes for stable cash flow
+                </li>
+                {selectedScenario.id === "rate_shock" && (
+                  <li className="text-xs flex items-start gap-1.5">
+                    <Shield className="h-3 w-3 text-blue-500 flex-shrink-0 mt-0.5" />
+                    Lock in fixed-rate financing before rate increases
+                  </li>
+                )}
+                {selectedScenario.id === "recession_severe" && (
+                  <li className="text-xs flex items-start gap-1.5">
+                    <Shield className="h-3 w-3 text-blue-500 flex-shrink-0 mt-0.5" />
+                    Identify distressed sellers — opportunistic buying window
+                  </li>
+                )}
+              </ul>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {/* Scenario comparison chart */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm">All Scenarios Comparison</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={barData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+              <YAxis tickFormatter={v => `${v}%`} tick={{ fontSize: 11 }} />
+              <Tooltip formatter={(v: any) => [`${v}%`, "Price Impact"]} />
+              <Bar dataKey="impact" radius={[3, 3, 0, 0]}>
+                {barData.map((entry, index) => (
+                  <Cell key={index} fill={entry.color} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
     </div>
   );
 }

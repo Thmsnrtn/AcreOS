@@ -4,7 +4,7 @@ import { useProperties } from "@/hooks/use-properties";
 import { ListSkeleton } from "@/components/list-skeleton";
 import { telemetry } from "@/lib/telemetry";
 import { useDealChecklist, useChecklistTemplates, useApplyChecklistTemplate, useUpdateChecklistItem, useStageGate } from "@/hooks/use-checklists";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   DndContext,
   type DragEndEvent,
@@ -39,7 +39,7 @@ import { DealsEmptyState } from "@/components/empty-states";
 import { SavedViewsSelector } from "@/components/saved-views-selector";
 import type { SavedView } from "@shared/schema";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { format } from "date-fns";
+import { format, differenceInDays } from "date-fns";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -60,6 +60,32 @@ const dealStages = [
   { value: 'in_escrow', label: 'In Escrow', color: 'bg-purple-100 dark:bg-purple-900/30' },
   { value: 'closed', label: 'Closed', color: 'bg-green-100 dark:bg-green-900/30' },
 ];
+
+// Benchmark days per stage before a deal is considered stalled
+const STAGE_BENCHMARK_DAYS: Record<string, number> = {
+  negotiating: 14,
+  offer_sent: 5,
+  countered: 5,
+  accepted: 7,
+  in_escrow: 30,
+  closed: 999,
+  cancelled: 999,
+};
+
+function getDealHealth(deal: DealWithProperty): { status: 'healthy' | 'warning' | 'stalled'; days: number } {
+  const updatedAt = deal.updatedAt ? new Date(deal.updatedAt) : new Date();
+  const days = differenceInDays(new Date(), updatedAt);
+  const benchmark = STAGE_BENCHMARK_DAYS[deal.status] ?? 14;
+  if (days >= benchmark * 2) return { status: 'stalled', days };
+  if (days >= benchmark * 1.25) return { status: 'warning', days };
+  return { status: 'healthy', days };
+}
+
+const HEALTH_DOT: Record<string, string> = {
+  healthy: 'bg-emerald-500',
+  warning: 'bg-amber-400',
+  stalled: 'bg-red-500',
+};
 
 const statusColors: Record<string, string> = {
   negotiating: 'bg-muted text-muted-foreground',
@@ -199,6 +225,16 @@ export default function DealsPage() {
     .filter(d => d.status === 'closed')
     .reduce((sum, d) => sum + Number(d.acceptedAmount || 0), 0);
 
+  const activePipelineDeals = enrichedDeals.filter(d => d.status !== 'closed' && d.status !== 'cancelled');
+  const stalledCount = activePipelineDeals.filter(d => getDealHealth(d).status === 'stalled').length;
+  const warningCount = activePipelineDeals.filter(d => getDealHealth(d).status === 'warning').length;
+
+  // Stage distribution for pipeline visualization
+  const stageDistribution = useMemo(() => dealStages.map(s => ({
+    ...s,
+    count: enrichedDeals.filter(d => d.status === s.value).length,
+  })), [enrichedDeals]);
+
   const handleDelete = () => {
     if (deletingDeal) {
       deleteDeal(deletingDeal.id, {
@@ -309,6 +345,59 @@ export default function DealsPage() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Pipeline Health Bar */}
+          {enrichedDeals.length > 0 && (
+            <div className="rounded-xl border bg-card p-4 space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-medium text-muted-foreground uppercase tracking-wide">Pipeline Stage Distribution</span>
+                <div className="flex items-center gap-3">
+                  {stalledCount > 0 && (
+                    <span className="flex items-center gap-1 text-red-500 font-medium">
+                      <AlertTriangle className="w-3 h-3" /> {stalledCount} stalled
+                    </span>
+                  )}
+                  {warningCount > 0 && (
+                    <span className="flex items-center gap-1 text-amber-500 font-medium">
+                      <Clock className="w-3 h-3" /> {warningCount} slow
+                    </span>
+                  )}
+                  {stalledCount === 0 && warningCount === 0 && enrichedDeals.length > 0 && (
+                    <span className="text-emerald-600 font-medium">All deals on track</span>
+                  )}
+                </div>
+              </div>
+              <div className="flex h-2 rounded-full overflow-hidden gap-0.5">
+                {stageDistribution.map((stage) => {
+                  const pct = enrichedDeals.length > 0 ? (stage.count / enrichedDeals.length) * 100 : 0;
+                  if (pct === 0) return null;
+                  const stageBarColors: Record<string, string> = {
+                    negotiating: 'bg-muted-foreground/40',
+                    offer_sent: 'bg-blue-400',
+                    countered: 'bg-amber-400',
+                    accepted: 'bg-emerald-400',
+                    in_escrow: 'bg-purple-400',
+                    closed: 'bg-green-500',
+                  };
+                  return (
+                    <div
+                      key={stage.value}
+                      className={`${stageBarColors[stage.value] ?? 'bg-muted'} transition-all`}
+                      style={{ width: `${pct}%` }}
+                      title={`${stage.label}: ${stage.count}`}
+                    />
+                  );
+                })}
+              </div>
+              <div className="flex flex-wrap gap-x-3 gap-y-1">
+                {stageDistribution.filter(s => s.count > 0).map((stage) => (
+                  <span key={stage.value} className="text-[10px] text-muted-foreground">
+                    {stage.label} <strong>{stage.count}</strong>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="flex items-center gap-2">
             <SavedViewsSelector
@@ -645,6 +734,8 @@ function KanbanColumn({
 function DealCard({ deal, onSelect, isDragging = false }: { deal: DealWithProperty; onSelect: () => void; isDragging?: boolean }) {
   const { attributes, listeners, setNodeRef, transform } = useDraggable({ id: deal.id });
   const style = transform ? { transform: CSS.Translate.toString(transform) } : undefined;
+  const health = getDealHealth(deal);
+  const isClosed = deal.status === 'closed' || deal.status === 'cancelled';
 
   return (
     <Card
@@ -663,10 +754,18 @@ function DealCard({ deal, onSelect, isDragging = false }: { deal: DealWithProper
             onClick={(e) => e.stopPropagation()}
           />
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <Badge variant={deal.type === 'acquisition' ? 'default' : 'secondary'} className="text-xs">
-                {deal.type === 'acquisition' ? 'Buy' : 'Sell'}
-              </Badge>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge variant={deal.type === 'acquisition' ? 'default' : 'secondary'} className="text-xs">
+                  {deal.type === 'acquisition' ? 'Buy' : 'Sell'}
+                </Badge>
+              </div>
+              {!isClosed && (
+                <div className="flex items-center gap-1 shrink-0" title={`${health.status === 'healthy' ? 'Active' : health.status === 'warning' ? 'Getting stale' : 'Stalled'} — ${health.days}d since update`}>
+                  <span className={`w-2 h-2 rounded-full ${HEALTH_DOT[health.status]} ${health.status !== 'healthy' ? 'animate-pulse' : ''}`} />
+                  <span className="text-[10px] text-muted-foreground">{health.days}d</span>
+                </div>
+              )}
             </div>
             <div className="mt-2">
               {deal.property ? (

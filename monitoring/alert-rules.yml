@@ -1,0 +1,113 @@
+# AcreOS — Prometheus Alert Rules
+# Tasks #146-147: SLO-based alerting
+#
+# These rules fire Alertmanager notifications when SLO thresholds are breached.
+# See docs/slo-monitoring.md for full SLO definitions.
+
+groups:
+
+  # ── API Availability SLO ───────────────────────────────────────────────────
+  - name: acreos_availability
+    rules:
+
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum(rate(acreos_http_errors_total[5m]))
+            /
+            sum(rate(acreos_requests_total[5m]))
+          ) > 0.01
+        for: 2m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "AcreOS API error rate > 1% (SLO breach)"
+          description: "Error rate is {{ $value | humanizePercentage }} over the last 5 minutes. SLO target is < 0.1%."
+          runbook_url: "https://github.com/Thmsnrtn/AcreOS/blob/main/docs/runbooks/"
+
+      - alert: HighErrorRateWarning
+        expr: |
+          (
+            sum(rate(acreos_http_errors_total[5m]))
+            /
+            sum(rate(acreos_requests_total[5m]))
+          ) > 0.005
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "AcreOS API error rate > 0.5% (approaching SLO)"
+          description: "Error rate is {{ $value | humanizePercentage }}. SLO threshold is 1%."
+
+  # ── API Latency SLO ─────────────────────────────────────────────────────────
+  - name: acreos_latency
+    rules:
+
+      - alert: HighP95Latency
+        expr: |
+          histogram_quantile(0.95, rate(acreos_request_duration_ms_bucket[5m])) > 500
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "AcreOS API P95 latency > 500ms (approaching SLO)"
+          description: "P95 latency is {{ $value }}ms. SLO target is < 200ms."
+
+      - alert: CriticalP99Latency
+        expr: |
+          histogram_quantile(0.99, rate(acreos_request_duration_ms_bucket[5m])) > 2000
+        for: 5m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "AcreOS API P99 latency > 2,000ms (SLO breach)"
+          description: "P99 latency is {{ $value }}ms. SLO target is < 1,000ms."
+
+  # ── Process Health ──────────────────────────────────────────────────────────
+  - name: acreos_process
+    rules:
+
+      - alert: HighMemoryUsage
+        expr: acreos_process_heap_used_bytes / acreos_process_heap_total_bytes > 0.90
+        for: 5m
+        labels:
+          severity: warning
+          team: infra
+        annotations:
+          summary: "AcreOS heap usage > 90%"
+          description: "Heap is {{ $value | humanizePercentage }} utilized. Consider increasing instance memory or investigating memory leaks."
+          runbook_url: "https://github.com/Thmsnrtn/AcreOS/blob/main/docs/runbooks/runaway-background-job.md"
+
+      - alert: ServiceDown
+        expr: up{job="acreos"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: infra
+        annotations:
+          summary: "AcreOS production is unreachable"
+          description: "Prometheus cannot scrape the AcreOS /metrics endpoint. The service may be down."
+          runbook_url: "https://github.com/Thmsnrtn/AcreOS/blob/main/docs/disaster-recovery.md"
+
+  # ── Cache Performance ───────────────────────────────────────────────────────
+  - name: acreos_cache
+    rules:
+
+      - alert: LowCacheHitRate
+        expr: |
+          (
+            acreos_cache_hits_total
+            /
+            (acreos_cache_hits_total + acreos_cache_misses_total)
+          ) < 0.50
+        for: 15m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "AcreOS cache hit rate < 50%"
+          description: "Cache hit rate is {{ $value | humanizePercentage }}. This may indicate cache eviction or cold-start conditions."

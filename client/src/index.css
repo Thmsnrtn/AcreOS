@@ -335,6 +335,16 @@
   }
 }
 
+/* Skip-to-content link for keyboard accessibility */
+.skip-to-content {
+  @apply fixed top-0 left-0 z-[9999] px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-br-lg;
+  transform: translateY(-100%);
+  transition: transform 0.2s ease;
+}
+.skip-to-content:focus {
+  transform: translateY(0);
+}
+
 /* macOS-style focus rings */
 *:focus-visible {
   @apply outline-none ring-2 ring-primary/40 ring-offset-2 ring-offset-background;

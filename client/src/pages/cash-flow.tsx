@@ -160,6 +160,15 @@ export default function CashFlowPage() {
       }))
     : [];
 
+  // Portfolio health gauge
+  const monthlyNetCashFlow = summary?.totalMonthlyNet ?? 0;
+  const monthlyObligations = summary?.totalMonthlyExpenses ?? 0;
+  const coverageRatio = monthlyObligations > 0 ? (monthlyNetCashFlow + monthlyObligations) / monthlyObligations : null;
+  const cashFlowHealthPct = coverageRatio ? Math.min(100, Math.max(0, (coverageRatio - 0.8) * 100)) : null;
+  const runwayMonths = summary?.cashReserves && monthlyNetCashFlow < 0
+    ? Math.floor(summary.cashReserves / Math.abs(monthlyNetCashFlow))
+    : null;
+
   return (
     <div className="container mx-auto p-6 space-y-6">
       {/* Header */}
@@ -181,6 +190,39 @@ export default function CashFlowPage() {
           {generateMutation.isPending ? 'Forecasting…' : 'Generate Forecast'}
         </Button>
       </div>
+
+      {/* Portfolio Cash Flow Health Banner */}
+      {summary && cashFlowHealthPct !== null && (
+        <div className={`rounded-xl border p-4 ${monthlyNetCashFlow >= 0 ? "bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800" : "bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800"}`}>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <Shield className={`w-4 h-4 ${monthlyNetCashFlow >= 0 ? "text-emerald-600" : "text-red-500"}`} />
+              <span className="font-semibold text-sm">Portfolio Cash Flow Health</span>
+            </div>
+            <div className="flex items-center gap-3">
+              {coverageRatio !== null && (
+                <span className="text-xs text-muted-foreground">Coverage Ratio: <span className="font-bold text-foreground">{coverageRatio.toFixed(2)}x</span></span>
+              )}
+              {runwayMonths !== null && (
+                <Badge variant="destructive" className="text-xs">
+                  {runwayMonths} mo runway
+                </Badge>
+              )}
+            </div>
+          </div>
+          <div className="w-full bg-background/60 rounded-full h-3 overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all duration-700 ${monthlyNetCashFlow >= 0 ? "bg-emerald-500" : "bg-red-500"}`}
+              style={{ width: `${cashFlowHealthPct}%` }}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground mt-1.5">
+            {monthlyNetCashFlow >= 0
+              ? `Positive cash flow of ${formatDollar(monthlyNetCashFlow)}/mo · Your portfolio is generating surplus income.`
+              : `Negative cash flow of ${formatDollar(Math.abs(monthlyNetCashFlow))}/mo · Expenses exceed income — review high-risk notes.`}
+          </p>
+        </div>
+      )}
 
       {/* Portfolio KPIs */}
       {summary ? (

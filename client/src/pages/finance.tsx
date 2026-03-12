@@ -53,6 +53,7 @@ export default function FinancePage() {
   const [isExporting, setIsExporting] = useState(false);
   const [isQboSyncing, setIsQboSyncing] = useState(false);
   const { mutate: deleteNote, isPending: isDeleting } = useDeleteNote();
+  const { toast } = useToast();
 
   const handleExport = async () => {
     setIsExporting(true);

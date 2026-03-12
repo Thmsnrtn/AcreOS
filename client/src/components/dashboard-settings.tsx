@@ -17,6 +17,7 @@ export interface WidgetConfig {
 export const DEFAULT_WIDGETS: WidgetConfig[] = [
   { id: "stats", label: "Stats Cards", defaultVisible: true },
   { id: "intelligence", label: "Smart Intelligence", defaultVisible: true },
+  { id: "dealVelocityFunnel", label: "Deal Velocity Funnel", defaultVisible: true },
   { id: "playbooks", label: "Playbooks", defaultVisible: true },
   { id: "checklist", label: "Getting Started Checklist", defaultVisible: true },
   { id: "agingLeads", label: "Aging Leads", defaultVisible: true },

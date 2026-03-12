@@ -1663,5 +1663,278 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   });
 
   // ============================================
+  // VA ENGINE — PERFORMANCE METRICS, AUDIT TRAIL, TASKS & WORKFLOWS
+  // ============================================
+
+  // GET /api/va/metrics — VA performance metrics
+  api.get("/api/va/metrics", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { period = "week" } = req.query;
+
+      // Build metrics from tasks stored in org settings
+      const orgRecord = await storage.getOrganization(org.id);
+      const tasks: any[] = (orgRecord as any)?.settings?.va_tasks || [];
+
+      const now = new Date();
+      const periodStart =
+        period === "today"
+          ? new Date(now.setHours(0, 0, 0, 0))
+          : period === "month"
+          ? new Date(now.getFullYear(), now.getMonth(), 1)
+          : new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+      const periodTasks = tasks.filter(
+        (t: any) => new Date(t.createdAt) >= periodStart
+      );
+      const completed = periodTasks.filter((t: any) => t.status === "completed");
+      const totalMinutes = completed.reduce(
+        (sum: number, t: any) => sum + (t.actualMinutes || t.estimatedMinutes || 0),
+        0
+      );
+
+      const byType: Record<string, number> = {};
+      for (const t of completed) {
+        byType[t.category] = (byType[t.category] || 0) + 1;
+      }
+
+      res.json({
+        period,
+        tasksCompleted: completed.length,
+        tasksAssigned: periodTasks.length,
+        successRate:
+          periodTasks.length > 0
+            ? Math.round((completed.length / periodTasks.length) * 100)
+            : 0,
+        timeSavedHours: Math.round((totalMinutes / 60) * 10) / 10,
+        tasksByType: Object.entries(byType).map(([type, count]) => ({ type, count })),
+      });
+    } catch (error: any) {
+      console.error("VA metrics error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch VA metrics" });
+    }
+  });
+
+  // GET /api/va/audit-trail — full audit log of VA actions
+  api.get("/api/va/audit-trail", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { limit = "50", offset = "0" } = req.query;
+
+      const orgRecord = await storage.getOrganization(org.id);
+      const tasks: any[] = (orgRecord as any)?.settings?.va_tasks || [];
+
+      const completed = tasks
+        .filter((t: any) => t.completedAt || t.status !== "pending")
+        .sort(
+          (a: any, b: any) =>
+            new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+        )
+        .slice(parseInt(offset as string), parseInt(offset as string) + parseInt(limit as string));
+
+      const auditEntries = completed.map((t: any) => ({
+        taskId: t.id,
+        title: t.title,
+        category: t.category,
+        status: t.status,
+        assignedToUserId: t.assignedToUserId,
+        assignedByUserId: t.assignedByUserId,
+        completedAt: t.completedAt,
+        updatedAt: t.updatedAt,
+        completionNotes: t.completionNotes,
+        actualMinutes: t.actualMinutes,
+        reasoning: t.completionNotes || "Task completed as assigned",
+        result: t.status,
+      }));
+
+      res.json({ auditTrail: auditEntries, total: tasks.length });
+    } catch (error: any) {
+      console.error("VA audit trail error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch audit trail" });
+    }
+  });
+
+  // POST /api/va/tasks/:id/verify — verify task completion
+  api.post("/api/va/tasks/:id/verify", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const taskId = req.params.id;
+      const { verified, notes } = req.body;
+
+      const orgRecord = await storage.getOrganization(org.id);
+      const tasks: any[] = (orgRecord as any)?.settings?.va_tasks || [];
+      const taskIndex = tasks.findIndex((t: any) => t.id === taskId);
+
+      if (taskIndex === -1) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+
+      tasks[taskIndex] = {
+        ...tasks[taskIndex],
+        verified: verified !== false,
+        verifiedAt: new Date().toISOString(),
+        verificationNotes: notes,
+        updatedAt: new Date().toISOString(),
+      };
+
+      await storage.updateOrganization(org.id, {
+        settings: {
+          ...(orgRecord as any)?.settings,
+          va_tasks: tasks,
+        },
+      } as any);
+
+      res.json({ success: true, task: tasks[taskIndex] });
+    } catch (error: any) {
+      console.error("Verify task error:", error);
+      res.status(500).json({ message: error.message || "Failed to verify task" });
+    }
+  });
+
+  // POST /api/va/escalate — escalate task to human supervisor
+  api.post("/api/va/escalate", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = (req as any).user;
+      const { taskId, reason, urgency = "medium", supervisorUserId } = req.body;
+
+      if (!taskId || !reason) {
+        return res.status(400).json({ message: "taskId and reason are required" });
+      }
+
+      const escalation = {
+        id: `esc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        taskId,
+        reason,
+        urgency,
+        escalatedByUserId: user.id,
+        supervisorUserId: supervisorUserId || null,
+        escalatedAt: new Date().toISOString(),
+        status: "open",
+      };
+
+      const orgRecord = await storage.getOrganization(org.id);
+      const escalations: any[] = (orgRecord as any)?.settings?.va_escalations || [];
+      escalations.push(escalation);
+
+      await storage.updateOrganization(org.id, {
+        settings: {
+          ...(orgRecord as any)?.settings,
+          va_escalations: escalations,
+        },
+      } as any);
+
+      res.status(201).json({ success: true, escalation });
+    } catch (error: any) {
+      console.error("Escalate task error:", error);
+      res.status(500).json({ message: error.message || "Failed to escalate task" });
+    }
+  });
+
+  // GET /api/va/scheduled — list scheduled tasks with next run times
+  api.get("/api/va/scheduled", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+
+      const orgRecord = await storage.getOrganization(org.id);
+      const scheduled: any[] = (orgRecord as any)?.settings?.va_scheduled_tasks || [];
+
+      // Compute next run time for each scheduled task
+      const enriched = scheduled.map((task: any) => {
+        const now = new Date();
+        let nextRunAt: string | null = null;
+
+        if (task.cronExpression === "daily") {
+          const next = new Date(now);
+          next.setDate(next.getDate() + 1);
+          next.setHours(task.runAtHour || 9, 0, 0, 0);
+          nextRunAt = next.toISOString();
+        } else if (task.cronExpression === "weekly") {
+          const next = new Date(now);
+          next.setDate(next.getDate() + 7);
+          nextRunAt = next.toISOString();
+        } else if (task.cronExpression === "monthly") {
+          const next = new Date(now);
+          next.setMonth(next.getMonth() + 1, 1);
+          nextRunAt = next.toISOString();
+        } else if (task.nextRunAt) {
+          nextRunAt = task.nextRunAt;
+        }
+
+        return { ...task, nextRunAt };
+      });
+
+      res.json({ scheduledTasks: enriched });
+    } catch (error: any) {
+      console.error("Get scheduled tasks error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch scheduled tasks" });
+    }
+  });
+
+  // POST /api/va/workflows — create multi-step workflow
+  api.post("/api/va/workflows", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = (req as any).user;
+      const { name, description, steps, triggerType = "manual", triggerConfig } = req.body;
+
+      if (!name || !steps || !Array.isArray(steps) || steps.length === 0) {
+        return res.status(400).json({ message: "name and steps[] are required" });
+      }
+
+      const workflow = {
+        id: `wf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        organizationId: org.id,
+        createdByUserId: user.id,
+        name,
+        description: description || "",
+        triggerType,
+        triggerConfig: triggerConfig || {},
+        steps: steps.map((step: any, idx: number) => ({
+          stepNumber: idx + 1,
+          title: step.title,
+          category: step.category || "other",
+          description: step.description || "",
+          assignToRole: step.assignToRole || "va",
+          estimatedMinutes: step.estimatedMinutes || 30,
+          dependsOnStep: step.dependsOnStep || null,
+        })),
+        status: "active",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      const orgRecord = await storage.getOrganization(org.id);
+      const workflows: any[] = (orgRecord as any)?.settings?.va_workflows || [];
+      workflows.push(workflow);
+
+      await storage.updateOrganization(org.id, {
+        settings: {
+          ...(orgRecord as any)?.settings,
+          va_workflows: workflows,
+        },
+      } as any);
+
+      res.status(201).json({ success: true, workflow });
+    } catch (error: any) {
+      console.error("Create workflow error:", error);
+      res.status(500).json({ message: error.message || "Failed to create workflow" });
+    }
+  });
+
+  // GET /api/va/workflows — list workflows
+  api.get("/api/va/workflows", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const orgRecord = await storage.getOrganization(org.id);
+      const workflows: any[] = (orgRecord as any)?.settings?.va_workflows || [];
+      res.json({ workflows });
+    } catch (error: any) {
+      console.error("Get workflows error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch workflows" });
+    }
+  });
+
+  // ============================================
 
 }

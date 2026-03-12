@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { openAICircuitBreaker, CircuitOpenError } from "./circuitBreaker";
 
 let openaiClient: OpenAI | null = null;
 
@@ -23,3 +24,16 @@ export function requireOpenAIClient(): OpenAI {
   }
   return client;
 }
+
+/**
+ * Call an OpenAI API function protected by the circuit breaker.
+ * Falls back gracefully when the circuit is OPEN (too many recent failures).
+ *
+ * Usage:
+ *   const result = await callWithCircuitBreaker(() => openai.chat.completions.create(...));
+ */
+export async function callWithCircuitBreaker<T>(fn: () => Promise<T>): Promise<T> {
+  return openAICircuitBreaker.call(fn);
+}
+
+export { CircuitOpenError };

@@ -1,0 +1,67 @@
+# AcreOS — Prometheus Configuration
+# Tasks #146-147: Prometheus/Grafana monitoring stack
+#
+# Deploy with:
+#   docker run -p 9090:9090 -v $(pwd)/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml \
+#              -v $(pwd)/monitoring/alert-rules.yml:/etc/prometheus/alert-rules.yml \
+#              prom/prometheus
+#
+# For Fly.io production: run Prometheus as a separate Fly app or use
+# a managed Prometheus service (Grafana Cloud, Datadog, etc.)
+
+global:
+  scrape_interval: 15s       # How often to scrape targets
+  evaluation_interval: 15s   # How often to evaluate rules
+  scrape_timeout: 10s
+
+  # Attach these labels to every metric scraped from this Prometheus instance
+  external_labels:
+    env: "production"
+    app: "acreos"
+    region: "iad"
+
+# ── Rule files ───────────────────────────────────────────────────────────────
+rule_files:
+  - "alert-rules.yml"
+
+# ── Alertmanager ─────────────────────────────────────────────────────────────
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+
+# ── Scrape targets ───────────────────────────────────────────────────────────
+scrape_configs:
+
+  # AcreOS app — /metrics endpoint (Bearer token required)
+  - job_name: "acreos"
+    scheme: https
+    metrics_path: /metrics
+    authorization:
+      type: Bearer
+      credentials_file: /run/secrets/prometheus_metrics_token
+    static_configs:
+      - targets:
+          - "acreos.fly.dev"
+        labels:
+          instance: "production"
+
+  # AcreOS staging
+  - job_name: "acreos-staging"
+    scheme: https
+    metrics_path: /metrics
+    authorization:
+      type: Bearer
+      credentials_file: /run/secrets/prometheus_metrics_token
+    static_configs:
+      - targets:
+          - "acreos-staging.fly.dev"
+        labels:
+          instance: "staging"
+
+  # Prometheus self-monitoring
+  - job_name: "prometheus"
+    static_configs:
+      - targets:
+          - "localhost:9090"

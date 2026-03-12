@@ -628,6 +628,277 @@ Tone should match the ${sellerProfile.communicationStyle} communication style.`;
       return { success: false, message: 'Auto-negotiation failed' };
     }
   }
+
+  /**
+   * AI-powered negotiation assistant using OpenAI function calling (tools API).
+   * The model can call structured tools to look up property data, comparables,
+   * and recommended tactics, then synthesize a final negotiation plan.
+   */
+  async runNegotiationAssistant(
+    organizationId: string,
+    threadId: string,
+    userMessage: string
+  ): Promise<{
+    recommendation: string;
+    toolsInvoked: string[];
+    structuredPlan?: {
+      recommendedOffer: number;
+      confidence: number;
+      primaryTactic: string;
+      walkAwayPrice: number;
+      nextSteps: string[];
+    };
+  }> {
+    const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
+      {
+        type: 'function',
+        function: {
+          name: 'get_property_valuation',
+          description: 'Retrieve the current market valuation and price history for a property',
+          parameters: {
+            type: 'object',
+            properties: {
+              property_id: { type: 'string', description: 'The property ID to look up' },
+            },
+            required: ['property_id'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'get_comparable_sales',
+          description: 'Fetch recent comparable land sales within 10 miles and similar acreage',
+          parameters: {
+            type: 'object',
+            properties: {
+              property_id: { type: 'string', description: 'Reference property ID' },
+              radius_miles: { type: 'number', description: 'Search radius in miles (default 10)' },
+              max_results: { type: 'number', description: 'Maximum comps to return (default 5)' },
+            },
+            required: ['property_id'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'get_negotiation_thread',
+          description: 'Retrieve the full negotiation thread history including all offers and counter-offers',
+          parameters: {
+            type: 'object',
+            properties: {
+              thread_id: { type: 'string', description: 'The negotiation thread ID' },
+            },
+            required: ['thread_id'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'select_negotiation_tactic',
+          description: 'Choose the optimal negotiation tactic given seller psychology and market conditions',
+          parameters: {
+            type: 'object',
+            properties: {
+              seller_motivation: {
+                type: 'string',
+                enum: ['distressed', 'motivated', 'neutral', 'passive'],
+                description: 'Seller motivation level',
+              },
+              days_on_market: { type: 'number', description: 'How long the property has been listed' },
+              price_gap_pct: { type: 'number', description: 'Gap between asking and market value as a percentage' },
+            },
+            required: ['seller_motivation', 'days_on_market', 'price_gap_pct'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'build_negotiation_plan',
+          description: 'Generate a structured negotiation plan with offer amounts and walk-away price',
+          parameters: {
+            type: 'object',
+            properties: {
+              market_value: { type: 'number', description: 'Estimated market value' },
+              asking_price: { type: 'number', description: 'Seller asking price' },
+              tactic: { type: 'string', description: 'Chosen negotiation tactic' },
+              seller_motivation: { type: 'string', description: 'Seller motivation level' },
+            },
+            required: ['market_value', 'asking_price', 'tactic', 'seller_motivation'],
+          },
+        },
+      },
+    ];
+
+    // Tool execution handlers
+    const executeTool = async (name: string, args: Record<string, any>): Promise<string> => {
+      switch (name) {
+        case 'get_property_valuation': {
+          try {
+            const property = await db.query.properties.findFirst({
+              where: eq(properties.id, parseInt(args.property_id)),
+            });
+            if (!property) return JSON.stringify({ error: 'Property not found' });
+            return JSON.stringify({
+              marketValue: property.marketValue ?? property.askingPrice,
+              askingPrice: property.askingPrice,
+              acres: property.acres,
+              county: property.county,
+              state: property.state,
+            });
+          } catch {
+            return JSON.stringify({ error: 'Valuation lookup failed' });
+          }
+        }
+
+        case 'get_comparable_sales': {
+          try {
+            const comps = await db.query.properties.findMany({
+              where: eq(properties.status, 'sold'),
+              limit: args.max_results ?? 5,
+              orderBy: [desc(properties.updatedAt)],
+            });
+            return JSON.stringify(
+              comps.map((c) => ({
+                acres: c.acres,
+                salePrice: c.sellingPrice ?? c.askingPrice,
+                county: c.county,
+                state: c.state,
+                pricePerAcre: c.acres ? ((c.sellingPrice ?? c.askingPrice ?? 0) / c.acres).toFixed(0) : null,
+              }))
+            );
+          } catch {
+            return JSON.stringify({ comparables: [] });
+          }
+        }
+
+        case 'get_negotiation_thread': {
+          try {
+            const thread = await db.query.negotiationThreads.findFirst({
+              where: eq(negotiationThreads.id, parseInt(args.thread_id)),
+            });
+            if (!thread) return JSON.stringify({ error: 'Thread not found' });
+            const moves = await db.query.negotiationMoves.findMany({
+              where: eq(negotiationMoves.threadId, parseInt(args.thread_id)),
+              orderBy: [desc(negotiationMoves.createdAt)],
+              limit: 10,
+            });
+            return JSON.stringify({ thread, moves });
+          } catch {
+            return JSON.stringify({ error: 'Thread lookup failed' });
+          }
+        }
+
+        case 'select_negotiation_tactic': {
+          const { seller_motivation, days_on_market, price_gap_pct } = args;
+          let tactic = 'anchoring';
+          if (seller_motivation === 'distressed' && days_on_market > 90) {
+            tactic = 'low_ball_with_speed';
+          } else if (seller_motivation === 'motivated' && price_gap_pct > 20) {
+            tactic = 'bracketing';
+          } else if (seller_motivation === 'neutral') {
+            tactic = 'market_value_anchor';
+          } else if (seller_motivation === 'passive') {
+            tactic = 'relationship_first';
+          }
+          return JSON.stringify({
+            tactic,
+            rationale: `${tactic} chosen for ${seller_motivation} seller at ${days_on_market} DOM`,
+          });
+        }
+
+        case 'build_negotiation_plan': {
+          const { market_value, asking_price, tactic, seller_motivation } = args;
+          const discount = seller_motivation === 'distressed' ? 0.65
+            : seller_motivation === 'motivated' ? 0.75
+            : seller_motivation === 'neutral' ? 0.85
+            : 0.92;
+          const recommendedOffer = Math.round(market_value * discount);
+          const walkAwayPrice = Math.round(market_value * 1.05);
+          const confidence = seller_motivation === 'distressed' ? 80
+            : seller_motivation === 'motivated' ? 70
+            : 55;
+          return JSON.stringify({
+            recommendedOffer,
+            walkAwayPrice,
+            confidence,
+            primaryTactic: tactic,
+            nextSteps: [
+              `Open at $${recommendedOffer.toLocaleString()} using ${tactic}`,
+              'Emphasize quick close and cash offer benefits',
+              `Walk away if price exceeds $${walkAwayPrice.toLocaleString()}`,
+            ],
+          });
+        }
+
+        default:
+          return JSON.stringify({ error: `Unknown tool: ${name}` });
+      }
+    };
+
+    const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+      {
+        role: 'system',
+        content: `You are an expert land acquisition negotiation assistant. Use the available tools to
+gather property data and comparables, then build a structured negotiation plan. Always call
+build_negotiation_plan as your final tool to produce the structured output.`,
+      },
+      { role: 'user', content: userMessage },
+    ];
+
+    const toolsInvoked: string[] = [];
+
+    try {
+      // Agentic loop: let the model call tools until it's done
+      for (let round = 0; round < 6; round++) {
+        const response = await openai.chat.completions.create({
+          model: 'gpt-4-turbo-preview',
+          messages,
+          tools,
+          tool_choice: 'auto',
+        });
+
+        const choice = response.choices[0];
+        messages.push(choice.message);
+
+        if (choice.finish_reason === 'stop' || !choice.message.tool_calls?.length) {
+          const recommendation = choice.message.content ?? 'No recommendation generated.';
+          // Extract structured plan if build_negotiation_plan was called
+          const planCall = toolsInvoked.find((t) => t.startsWith('build_negotiation_plan:'));
+          let structuredPlan: any;
+          if (planCall) {
+            try { structuredPlan = JSON.parse(planCall.split(':').slice(1).join(':')); } catch { /* noop */ }
+          }
+          return { recommendation, toolsInvoked: toolsInvoked.map((t) => t.split(':')[0]), structuredPlan };
+        }
+
+        // Execute each requested tool
+        for (const toolCall of choice.message.tool_calls!) {
+          const result = await executeTool(toolCall.function.name, JSON.parse(toolCall.function.arguments));
+          toolsInvoked.push(`${toolCall.function.name}:${result}`);
+          messages.push({
+            role: 'tool',
+            tool_call_id: toolCall.id,
+            content: result,
+          });
+        }
+      }
+
+      return {
+        recommendation: 'Negotiation plan generated via tool-assisted analysis.',
+        toolsInvoked: toolsInvoked.map((t) => t.split(':')[0]),
+      };
+    } catch (error) {
+      console.error('Negotiation assistant failed:', error);
+      return {
+        recommendation: 'Unable to generate recommendation at this time.',
+        toolsInvoked,
+      };
+    }
+  }
 }
 
 export const negotiationOrchestrator = new NegotiationOrchestrator();

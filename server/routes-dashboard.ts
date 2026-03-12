@@ -451,4 +451,168 @@ export function registerDashboardRoutes(app: Express): void {
     }
   });
 
+  // ============================================
+  // EPIC J: "3 Things Today" AI-prioritized actions
+  // GET /api/dashboard/today-priorities
+  // ============================================
+
+  api.get("/api/dashboard/today-priorities", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const orgId = org.id;
+      const now = new Date();
+      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      const fortyFiveDaysAgo = new Date(now.getTime() - 45 * 24 * 60 * 60 * 1000);
+
+      // Gather pipeline state in parallel
+      const [unscoredLeads, staleFollowUps, campaignFreshness, pipelineState] = await Promise.allSettled([
+        // Unscored leads (leads with no score or score null)
+        db.select({ count: sql<number>`COUNT(*)` })
+          .from(leads)
+          .where(and(
+            eq(leads.organizationId, orgId),
+            sql`status NOT IN ('closed', 'dead', 'converted')`,
+            sql`(score IS NULL OR last_score_at IS NULL)`,
+          )),
+
+        // Stale follow-ups: leads not contacted in 28+ days
+        db.select({ count: sql<number>`COUNT(*)` })
+          .from(leads)
+          .where(and(
+            eq(leads.organizationId, orgId),
+            sql`status NOT IN ('closed', 'dead', 'converted')`,
+            sql`(last_contacted_at IS NULL OR last_contacted_at < ${new Date(now.getTime() - 28 * 24 * 60 * 60 * 1000).toISOString()})`,
+          )),
+
+        // Campaign freshness: when was the last campaign sent?
+        db.select({
+          lastSent: sql<string>`MAX(created_at)`,
+          count: sql<number>`COUNT(*)`,
+        })
+          .from(sql`campaigns`)
+          .where(sql`organization_id = ${orgId}`),
+
+        // Pipeline deals by status
+        db.select({
+          status: deals.status,
+          count: sql<number>`COUNT(*)`,
+        })
+          .from(deals)
+          .where(eq(deals.organizationId, orgId))
+          .groupBy(deals.status),
+      ]);
+
+      const unscoredCount = unscoredLeads.status === "fulfilled"
+        ? Number(unscoredLeads.value[0]?.count) || 0 : 0;
+      const staleCount = staleFollowUps.status === "fulfilled"
+        ? Number(staleFollowUps.value[0]?.count) || 0 : 0;
+      const campaignData = campaignFreshness.status === "fulfilled" ? campaignFreshness.value[0] : null;
+      const lastCampaignDaysAgo = campaignData?.lastSent
+        ? Math.floor((now.getTime() - new Date(campaignData.lastSent).getTime()) / 86400000)
+        : 999;
+
+      // Build prioritized 3-action list
+      interface TodayPriority {
+        id: string;
+        type: string;
+        priority: "high" | "medium" | "low";
+        title: string;
+        description: string;
+        actionLabel: string;
+        actionUrl: string;
+        count?: number;
+      }
+
+      const priorities: TodayPriority[] = [];
+
+      if (unscoredCount > 0) {
+        priorities.push({
+          id: "score-leads",
+          type: "acrescore",
+          priority: "high",
+          title: `Score ${unscoredCount} unscored lead${unscoredCount !== 1 ? "s" : ""}`,
+          description: `You have ${unscoredCount} lead${unscoredCount !== 1 ? "s" : ""} awaiting AcreScore™ analysis. Scored leads convert 3× faster — don't leave them cold.`,
+          actionLabel: "Score Now",
+          actionUrl: "/leads?filter=unscored",
+          count: unscoredCount,
+        });
+      }
+
+      if (staleCount > 0) {
+        priorities.push({
+          id: "follow-up",
+          type: "follow-up",
+          priority: staleCount > 10 ? "high" : "medium",
+          title: `Follow up with ${Math.min(staleCount, 5)} seller${staleCount > 1 ? "s" : ""} who haven't responded`,
+          description: `${staleCount} lead${staleCount !== 1 ? "s" : ""} haven't been contacted in 28+ days. Consistent follow-up is the Land Geek secret weapon.`,
+          actionLabel: "View Stale Leads",
+          actionUrl: "/leads?filter=stale",
+          count: staleCount,
+        });
+      }
+
+      if (lastCampaignDaysAgo > 45) {
+        priorities.push({
+          id: "send-campaign",
+          type: "campaign",
+          priority: lastCampaignDaysAgo > 60 ? "high" : "medium",
+          title: `Send a direct mail campaign — you haven't mailed in ${Math.min(lastCampaignDaysAgo, 90)}+ days`,
+          description: "The mailer that goes out today is the passive income that arrives next quarter. Keep your pipeline full.",
+          actionLabel: "Plan Campaign",
+          actionUrl: "/campaigns",
+        });
+      }
+
+      // Ensure we always have 3 actions — fill with default guidance if needed
+      if (priorities.length === 0) {
+        priorities.push({
+          id: "county-snapshot",
+          type: "intelligence",
+          priority: "medium",
+          title: "Check your primary county intelligence snapshot",
+          description: "Review USDA land values, migration signals, and opportunity score for your target county.",
+          actionLabel: "View County Data",
+          actionUrl: "/data-intelligence",
+        });
+      }
+
+      if (priorities.length < 2) {
+        priorities.push({
+          id: "review-pipeline",
+          type: "pipeline",
+          priority: "low",
+          title: "Review your deal pipeline for stuck deals",
+          description: "Deals that haven't moved in 14+ days often need a nudge. Check your pipeline board.",
+          actionLabel: "View Pipeline",
+          actionUrl: "/pipeline",
+        });
+      }
+
+      if (priorities.length < 3) {
+        priorities.push({
+          id: "night-cap",
+          type: "review",
+          priority: "low",
+          title: "Review your passive income progress tonight",
+          description: "Open the Night Cap dashboard to see today's note payments, freedom meter progress, and tomorrow's one thing.",
+          actionLabel: "Open Night Cap",
+          actionUrl: "/night-cap",
+        });
+      }
+
+      res.json({
+        priorities: priorities.slice(0, 3),
+        generatedAt: new Date().toISOString(),
+        meta: {
+          unscoredLeads: unscoredCount,
+          staleFollowUps: staleCount,
+          lastCampaignDaysAgo: Math.min(lastCampaignDaysAgo, 999),
+        },
+      });
+    } catch (err: any) {
+      logger.error("Today priorities error", { error: err.message });
+      res.status(500).json({ error: err.message });
+    }
+  });
+
 }

@@ -13,6 +13,12 @@
  * - negotiation_move — new AI-suggested negotiation move
  * - payment_due     — note payment coming up
  * - system          — system-level notifications
+ *
+ * Multi-instance coordination:
+ * When REDIS_URL is set the service uses Redis pub/sub so that any server
+ * instance can publish an alert and ALL instances (and their WebSocket
+ * clients) receive it. When Redis is unavailable the service falls back to
+ * in-process in-memory queues (single-instance only).
  */
 
 // @ts-nocheck — ORM type refinement deferred; runtime-correct
@@ -38,20 +44,85 @@ export interface RealtimeAlert {
   read: boolean;
 }
 
-// In-memory notification store (would be Redis pub/sub in production)
+// ---------------------------------------------------------------------------
+// Redis pub/sub setup (optional — graceful fallback to in-memory)
+// ---------------------------------------------------------------------------
+
+const REDIS_URL = process.env.REDIS_URL;
+const ALERT_CHANNEL = 'acreos:alerts';
+
+/** Lazily-resolved ioredis instances. Null when Redis is unavailable. */
+let redisPub: any = null;
+let redisSub: any = null;
+
+async function initRedis(): Promise<boolean> {
+  if (!REDIS_URL) return false;
+  if (redisPub) return true;
+  try {
+    const IORedis = (await import('ioredis')).default;
+    redisPub = new IORedis(REDIS_URL, { maxRetriesPerRequest: 1, enableReadyCheck: false, lazyConnect: true });
+    redisSub = new IORedis(REDIS_URL, { maxRetriesPerRequest: 1, enableReadyCheck: false, lazyConnect: true });
+
+    await redisPub.connect();
+    await redisSub.connect();
+
+    // Subscribe once; the message handler dispatches to WS clients
+    await redisSub.subscribe(ALERT_CHANNEL);
+    redisSub.on('message', (_channel: string, message: string) => {
+      try {
+        const alert: RealtimeAlert = JSON.parse(message);
+        deliverToWebSocket(alert);
+      } catch {
+        // malformed message — ignore
+      }
+    });
+
+    console.log('[RealtimeAlerts] Redis pub/sub active — multi-instance coordination enabled');
+    return true;
+  } catch (err: any) {
+    console.warn('[RealtimeAlerts] Redis unavailable, using in-memory fallback:', err.message);
+    redisPub = null;
+    redisSub = null;
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// In-memory fallback store
+// ---------------------------------------------------------------------------
+
 const notificationQueues = new Map<number, RealtimeAlert[]>(); // orgId → alerts
 let wsServerRef: any = null;
+
+/** Deliver an alert to the local WebSocket server (all instances do this on receipt). */
+function deliverToWebSocket(alert: RealtimeAlert): void {
+  if (!wsServerRef) return;
+  wsServerRef.broadcastToOrg(alert.organizationId, 'notification', { alert });
+}
+
+// ---------------------------------------------------------------------------
+// Service class
+// ---------------------------------------------------------------------------
 
 class RealtimeAlertsService {
   /**
    * Register the WebSocket server instance for broadcasting.
+   * Called once at server startup. Also triggers async Redis init.
    */
   setWebSocketServer(wsServer: any): void {
     wsServerRef = wsServer;
+    // Attempt Redis connection in the background; no await — don't block startup
+    initRedis().catch(() => { /* already warned inside initRedis */ });
   }
 
   /**
    * Push an alert to an organization and broadcast via WebSocket.
+   *
+   * With Redis: publishes to the shared channel so every running instance
+   * delivers the alert to its locally-connected WebSocket clients.
+   *
+   * Without Redis: broadcasts directly on this instance only and stores
+   * in the local in-memory queue.
    */
   async pushAlert(alert: Omit<RealtimeAlert, 'id' | 'createdAt' | 'read'>): Promise<RealtimeAlert> {
     const fullAlert: RealtimeAlert = {
@@ -61,17 +132,22 @@ class RealtimeAlertsService {
       read: false,
     };
 
-    // Queue in memory
+    // Always store locally (serves getAlerts() and in-memory reads)
     const queue = notificationQueues.get(alert.organizationId) || [];
     queue.unshift(fullAlert);
-    // Keep last 100 alerts per org
     notificationQueues.set(alert.organizationId, queue.slice(0, 100));
 
-    // Broadcast via WebSocket if server is available
-    if (wsServerRef) {
-      wsServerRef.broadcastToOrg(alert.organizationId, 'notification', {
-        alert: fullAlert,
-      });
+    if (redisPub) {
+      // Multi-instance path: publish → Redis → all subscribers → WS clients
+      try {
+        await redisPub.publish(ALERT_CHANNEL, JSON.stringify(fullAlert));
+      } catch (err: any) {
+        console.warn('[RealtimeAlerts] Redis publish failed, falling back to local WS:', err.message);
+        deliverToWebSocket(fullAlert);
+      }
+    } else {
+      // Single-instance path: push directly to local WS
+      deliverToWebSocket(fullAlert);
     }
 
     return fullAlert;
@@ -113,7 +189,6 @@ class RealtimeAlertsService {
     if (!wsServerRef) return 0;
 
     try {
-      // Get recent high-priority deal alerts from the last 2 hours
       const cutoff = new Date(Date.now() - 2 * 60 * 60 * 1000);
       const alerts = await db
         .select()
@@ -193,7 +268,6 @@ class RealtimeAlertsService {
 
     wsServerRef.broadcastNegotiationUpdate(sessionId, update);
 
-    // Also push as an in-app notification
     await this.pushAlert({
       type: 'negotiation_move',
       title: 'Negotiation Copilot',
@@ -203,6 +277,13 @@ class RealtimeAlertsService {
       actionUrl: `/negotiation?session=${sessionId}`,
       metadata: { sessionId, ...update },
     });
+  }
+
+  /**
+   * Whether Redis pub/sub is active (true = multi-instance mode).
+   */
+  isRedisPubSubActive(): boolean {
+    return redisPub !== null;
   }
 
   /**
@@ -221,6 +302,7 @@ class RealtimeAlertsService {
       totalQueuedAlerts: totalQueued,
       totalUnreadAlerts: totalUnread,
       wsConnections: wsServerRef?.getConnectionCount() || 0,
+      redisPubSubActive: this.isRedisPubSubActive(),
     };
   }
 }

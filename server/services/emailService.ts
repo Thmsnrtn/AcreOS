@@ -1,6 +1,7 @@
 import { SESClient, SendEmailCommand, GetSendQuotaCommand } from '@aws-sdk/client-ses';
 import { storage } from '../storage';
 import { decryptJsonCredentials } from './encryption';
+import { emailCircuitBreaker } from '../utils/circuitBreaker';
 
 interface AWSCredentials {
   accessKeyId: string;
@@ -206,6 +207,10 @@ export interface EmailOptions {
   organizationId?: number;
   tags?: Record<string, string>;
   retryConfig?: Partial<RetryConfig>;
+  /** CAN-SPAM / GDPR compliance: URL for one-click unsubscribe link in campaign emails */
+  unsubscribeUrl?: string;
+  /** Whether this is a marketing/campaign email (appends unsubscribe footer if true) */
+  isCampaignEmail?: boolean;
 }
 
 export interface EmailResult {
@@ -274,6 +279,17 @@ export class EmailService {
         const fromNameFinal = options.fromName || defaultFromName || 'Acreage Land Co.';
         const fromFormatted = `${fromNameFinal} <${fromAddress}>`;
 
+        // CAN-SPAM / GDPR compliance: append unsubscribe footer for campaign/marketing emails
+        let htmlBody = options.html;
+        if (options.isCampaignEmail || options.unsubscribeUrl) {
+          const unsubUrl = options.unsubscribeUrl || '#';
+          htmlBody = `${htmlBody}
+<div style="margin-top:32px;padding-top:16px;border-top:1px solid #e5e7eb;font-size:12px;color:#6b7280;text-align:center;">
+  <p>You are receiving this email because you are a contact in our CRM system.</p>
+  <p><a href="${unsubUrl}" style="color:#6b7280;text-decoration:underline;">Unsubscribe</a> from marketing emails</p>
+</div>`;
+        }
+
         const command = new SendEmailCommand({
           Source: fromFormatted,
           Destination: {
@@ -286,11 +302,11 @@ export class EmailService {
             },
             Body: {
               Html: {
-                Data: options.html,
+                Data: htmlBody,
                 Charset: 'UTF-8',
               },
               Text: {
-                Data: options.text || this.htmlToText(options.html),
+                Data: options.text || this.htmlToText(htmlBody),
                 Charset: 'UTF-8',
               },
             },
@@ -298,7 +314,7 @@ export class EmailService {
           ReplyToAddresses: options.replyTo ? [options.replyTo] : undefined,
         });
 
-        const response = await client.send(command);
+        const response = await emailCircuitBreaker.call(() => client.send(command));
         const messageId = response.MessageId || `ses-${Date.now()}`;
         const durationMs = Date.now() - startTime;
         

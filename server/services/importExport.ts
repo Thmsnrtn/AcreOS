@@ -6,6 +6,7 @@ export interface ImportResult {
   totalRows: number;
   successCount: number;
   errorCount: number;
+  duplicatesSkipped: number;
   errors: Array<{
     row: number;
     data: Record<string, string>;
@@ -291,6 +292,7 @@ export async function importLeads(
     totalRows: csvData.length,
     successCount: 0,
     errorCount: 0,
+    duplicatesSkipped: 0,
     errors: [],
   };
 
@@ -321,6 +323,23 @@ export async function importLeads(
         throw new Error(errorMessages);
       }
 
+      // Task 221: Duplicate detection — check by email, phone, or full name before inserting
+      const dupCriteria: Parameters<typeof storage.findDuplicateLeads>[1] = {};
+      if (parseResult.data.email) dupCriteria.email = parseResult.data.email;
+      if (parseResult.data.phone) dupCriteria.phone = parseResult.data.phone;
+      if (parseResult.data.firstName && parseResult.data.lastName) {
+        dupCriteria.firstName = parseResult.data.firstName;
+        dupCriteria.lastName = parseResult.data.lastName;
+      }
+
+      if (Object.keys(dupCriteria).length > 0) {
+        const duplicates = await storage.findDuplicateLeads(organizationId, dupCriteria);
+        if (duplicates.length > 0) {
+          result.duplicatesSkipped++;
+          continue; // skip creating a duplicate
+        }
+      }
+
       await storage.createLead({
         ...parseResult.data,
         organizationId,
@@ -348,6 +367,7 @@ export async function importProperties(
     totalRows: csvData.length,
     successCount: 0,
     errorCount: 0,
+    duplicatesSkipped: 0,
     errors: [],
   };
 
@@ -415,6 +435,7 @@ export async function importDeals(
     totalRows: csvData.length,
     successCount: 0,
     errorCount: 0,
+    duplicatesSkipped: 0,
     errors: [],
   };
 

@@ -22,6 +22,16 @@ import {
   RefreshCw,
   Check,
   X,
+  History,
+  FlaskConical,
+  Info,
+  Activity,
+  Shield,
+  DollarSign,
+  Gauge,
+  ArrowLeftRight,
+  Lightbulb,
+  Clock,
 } from 'lucide-react';
 
 const STRATEGY_INFO: Record<string, { label: string; color: string; description: string }> = {
@@ -50,6 +60,335 @@ function SentimentIndicator({ score }: { score: number }) {
   if (score > 0.3) return <span className="flex items-center gap-1 text-emerald-600 text-sm"><TrendingUp className="w-3 h-3" /> Positive ({(score * 100).toFixed(0)}%)</span>;
   if (score < -0.3) return <span className="flex items-center gap-1 text-red-500 text-sm"><TrendingDown className="w-3 h-3" /> Negative ({(Math.abs(score) * 100).toFixed(0)}%)</span>;
   return <span className="flex items-center gap-1 text-muted-foreground text-sm">Neutral</span>;
+}
+
+// ─── Session Replay Component ─────────────────────────────────────────────────
+
+function SessionReplayPanel({ session }: { session: any }) {
+  const moves = session?.moves ?? session?.moveHistory ?? [];
+  if (!moves || moves.length === 0) {
+    return (
+      <div className="text-center py-6 text-muted-foreground text-sm">
+        <History className="w-6 h-6 mx-auto mb-2 opacity-40" />
+        No move history recorded for this session.
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-3">
+      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Move History</p>
+      <div className="relative pl-4 border-l-2 border-muted space-y-4">
+        {moves.map((move: any, i: number) => (
+          <div key={i} className="relative">
+            <div className="absolute -left-[1.125rem] top-1 w-3 h-3 rounded-full bg-primary/30 border-2 border-primary" />
+            <div className="text-xs text-muted-foreground mb-0.5">
+              {move.timestamp ? new Date(move.timestamp).toLocaleString() : `Move ${i + 1}`}
+            </div>
+            <div className="flex items-center gap-2 mb-1">
+              {move.strategy && (
+                <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${STRATEGY_INFO[move.strategy]?.color ?? 'bg-gray-100 text-gray-800'}`}>
+                  {STRATEGY_INFO[move.strategy]?.label ?? move.strategy}
+                </span>
+              )}
+              {move.type && <span className="text-xs text-muted-foreground capitalize">{move.type.replace(/_/g, ' ')}</span>}
+            </div>
+            {move.content && <p className="text-sm bg-muted/50 rounded p-2">{move.content}</p>}
+            {move.aiReasoning && (
+              <div className="mt-1.5 flex items-start gap-1.5 text-xs text-muted-foreground">
+                <Brain className="w-3 h-3 mt-0.5 shrink-0 text-primary" />
+                <span className="italic">{move.aiReasoning}</span>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Strategy Explainability Panel ───────────────────────────────────────────
+
+function StrategyExplainabilityPanel({ strategyResult }: { strategyResult: any }) {
+  if (!strategyResult) return null;
+  return (
+    <Card className="border-primary/20 bg-primary/5">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Info className="w-4 h-4 text-primary" /> Why Atlas Recommends This Approach
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm">
+        <div className="flex items-center gap-2">
+          <Badge className={STRATEGY_INFO[strategyResult.strategy]?.color || ''}>
+            {STRATEGY_INFO[strategyResult.strategy]?.label || strategyResult.strategy}
+          </Badge>
+          <span className="text-muted-foreground text-xs">strategy · {strategyResult.confidence}% confidence</span>
+        </div>
+        <p className="text-muted-foreground">{strategyResult.reasoning}</p>
+        {strategyResult.dataCitations?.length > 0 && (
+          <div className="space-y-1">
+            <p className="text-xs font-medium text-muted-foreground">Data citations:</p>
+            {strategyResult.dataCitations.map((cite: string, i: number) => (
+              <div key={i} className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                <span className="text-primary font-mono">[{i + 1}]</span> {cite}
+              </div>
+            ))}
+          </div>
+        )}
+        {strategyResult.successRate != null && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <TrendingUp className="w-3 h-3 text-emerald-500" />
+            Historical success rate for this strategy: <strong className="text-foreground">{(strategyResult.successRate * 100).toFixed(0)}%</strong>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Learning Loop Indicator ──────────────────────────────────────────────────
+
+function LearningLoopIndicator() {
+  return (
+    <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-md text-xs text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+      <Activity className="w-3.5 h-3.5 animate-pulse" />
+      <span><strong>Learning loop active</strong> — strategy effectiveness is being tracked and will improve recommendations over time.</span>
+    </div>
+  );
+}
+
+// ─── BATNA Calculator ─────────────────────────────────────────────────────────
+
+function BATNACalculator() {
+  const [askingPrice, setAskingPrice] = useState('');
+  const [yourOffer, setYourOffer] = useState('');
+  const [marketComps, setMarketComps] = useState('');
+  const [renovationCost, setRenovationCost] = useState('');
+  const [holdingCost, setHoldingCost] = useState('');
+  const [desiredProfit, setDesiredProfit] = useState('20');
+
+  const asking = parseFloat(askingPrice.replace(/[^0-9.]/g, '')) || 0;
+  const offer = parseFloat(yourOffer.replace(/[^0-9.]/g, '')) || 0;
+  const comps = parseFloat(marketComps.replace(/[^0-9.]/g, '')) || 0;
+  const reno = parseFloat(renovationCost.replace(/[^0-9.]/g, '')) || 0;
+  const holding = parseFloat(holdingCost.replace(/[^0-9.]/g, '')) || 0;
+  const profitPct = parseFloat(desiredProfit) / 100;
+
+  const maxAllowable = comps > 0 ? Math.round(comps * (1 - profitPct) - reno - holding) : 0;
+  const walkawayPrice = maxAllowable;
+  const negotiationZone = asking > 0 && offer > 0 ? {
+    mid: Math.round((asking + offer) / 2),
+    zopa: asking > walkawayPrice ? null : { low: offer, high: asking },
+  } : null;
+
+  const sellerFlexibility = asking > 0 && offer > 0
+    ? Math.max(0, Math.min(100, Math.round(((asking - offer) / asking) * 100)))
+    : 0;
+
+  const dealViability = maxAllowable > 0 && offer > 0
+    ? offer <= maxAllowable ? "viable" : offer <= maxAllowable * 1.1 ? "tight" : "unfavorable"
+    : "unknown";
+
+  const viabilityColor = dealViability === "viable" ? "text-emerald-600 bg-emerald-50 border-emerald-200" :
+                         dealViability === "tight" ? "text-amber-600 bg-amber-50 border-amber-200" :
+                         dealViability === "unfavorable" ? "text-red-600 bg-red-50 border-red-200" :
+                         "text-muted-foreground bg-muted/50 border-border";
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Shield className="w-4 h-4 text-primary" />
+          BATNA Calculator
+          <span className="text-xs font-normal text-muted-foreground ml-1">— Best Alternative to Negotiated Agreement</span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-2 gap-3">
+          {[
+            { label: "Seller Asking Price", value: askingPrice, set: setAskingPrice, prefix: "$" },
+            { label: "Your Offer", value: yourOffer, set: setYourOffer, prefix: "$" },
+            { label: "Market Comps (ARV)", value: marketComps, set: setMarketComps, prefix: "$" },
+            { label: "Renovation Cost", value: renovationCost, set: setRenovationCost, prefix: "$" },
+            { label: "Holding/Closing Cost", value: holdingCost, set: setHoldingCost, prefix: "$" },
+            { label: "Desired Profit %", value: desiredProfit, set: setDesiredProfit, prefix: "%" },
+          ].map(({ label, value, set, prefix }) => (
+            <div key={label}>
+              <label className="text-xs text-muted-foreground">{label}</label>
+              <div className="relative mt-1">
+                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">{prefix}</span>
+                <input
+                  className="w-full border rounded-md pl-6 pr-2 py-1.5 text-sm bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+                  value={value}
+                  onChange={(e) => set(e.target.value)}
+                  placeholder={prefix === "$" ? "0" : "20"}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {(asking > 0 || offer > 0 || comps > 0) && (
+          <div className="space-y-3 pt-2 border-t">
+            {/* Deal Viability */}
+            <div className={`rounded-lg border p-3 ${viabilityColor}`}>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold uppercase tracking-wide">Deal Viability</span>
+                <Badge className={`text-xs ${viabilityColor} border`}>{dealViability}</Badge>
+              </div>
+            </div>
+
+            {/* Key outputs */}
+            <div className="grid grid-cols-2 gap-2">
+              {maxAllowable > 0 && (
+                <div className="rounded-lg border p-3 bg-muted/30">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Max Allowable Offer</p>
+                  <p className="text-xl font-bold text-primary mt-0.5">{formatDollar(maxAllowable)}</p>
+                  <p className="text-[10px] text-muted-foreground">your BATNA walkaway</p>
+                </div>
+              )}
+              {negotiationZone !== null && negotiationZone.mid > 0 && (
+                <div className="rounded-lg border p-3 bg-muted/30">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Midpoint</p>
+                  <p className="text-xl font-bold mt-0.5">{formatDollar(negotiationZone.mid)}</p>
+                  <p className="text-[10px] text-muted-foreground">split-the-difference</p>
+                </div>
+              )}
+            </div>
+
+            {/* Seller flexibility gauge */}
+            {sellerFlexibility > 0 && (
+              <div>
+                <div className="flex items-center justify-between text-xs mb-1">
+                  <span className="text-muted-foreground flex items-center gap-1">
+                    <ArrowLeftRight className="w-3 h-3" /> Negotiation Range
+                  </span>
+                  <span className="font-semibold">{sellerFlexibility}% gap</span>
+                </div>
+                <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full ${sellerFlexibility > 30 ? "bg-emerald-500" : sellerFlexibility > 15 ? "bg-amber-500" : "bg-red-500"}`}
+                    style={{ width: `${Math.min(sellerFlexibility, 100)}%` }}
+                  />
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  {sellerFlexibility > 30 ? "Wide gap — room to negotiate aggressively" :
+                   sellerFlexibility > 15 ? "Moderate gap — fair negotiation zone" :
+                   "Narrow gap — close to agreement"}
+                </p>
+              </div>
+            )}
+
+            {/* Strategy hint */}
+            {dealViability !== "unknown" && (
+              <div className="flex items-start gap-2 text-xs bg-primary/5 rounded-md p-2.5 border border-primary/10">
+                <Lightbulb className="w-3.5 h-3.5 text-primary mt-0.5 shrink-0" />
+                <span>
+                  {dealViability === "viable"
+                    ? "Your offer is within your BATNA range. Hold firm or offer a small concession to close faster."
+                    : dealViability === "tight"
+                    ? "You're slightly above your max allowable. Look for seller concessions (repairs, closing costs) to compensate."
+                    : "This deal doesn't pencil at current pricing. Consider walking away or counter significantly lower."}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Psychological Pressure Gauge ─────────────────────────────────────────────
+
+function PsychologicalPressureGauge({
+  sellerMessage,
+  sentiment,
+  objection,
+}: {
+  sellerMessage: string;
+  sentiment: any;
+  objection: any;
+}) {
+  // Calculate pressure score from signals
+  const urgencySignals = ["must", "need", "deadline", "quick", "fast", "asap", "soon", "urgent"].filter(
+    (w) => sellerMessage.toLowerCase().includes(w)
+  ).length;
+  const motivationSignals = ["sell", "move", "estate", "divorce", "taxes", "behind", "foreclos"].filter(
+    (w) => sellerMessage.toLowerCase().includes(w)
+  ).length;
+  const hesitationSignals = ["think", "maybe", "not sure", "consider", "wait", "discuss", "talk"].filter(
+    (w) => sellerMessage.toLowerCase().includes(w)
+  ).length;
+
+  const sentimentBoost = sentiment ? (sentiment.score > 0.3 ? 15 : sentiment.score < -0.3 ? -10 : 0) : 0;
+  const rawPressure = Math.min(100, Math.max(0,
+    20 + urgencySignals * 15 + motivationSignals * 20 - hesitationSignals * 10 + sentimentBoost
+  ));
+
+  const pressureLabel = rawPressure >= 70 ? "High Motivation" : rawPressure >= 40 ? "Moderate" : "Low Urgency";
+  const pressureColor = rawPressure >= 70 ? "#22c55e" : rawPressure >= 40 ? "#f59e0b" : "#94a3b8";
+
+  if (!sellerMessage.trim()) return null;
+
+  const r = 45;
+  const circ = Math.PI * r; // semicircle
+  const dash = (rawPressure / 100) * circ;
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Gauge className="w-4 h-4 text-primary" />
+          Seller Motivation Gauge
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-col items-center">
+          {/* SVG semicircle gauge */}
+          <div className="relative w-32 h-16 overflow-hidden">
+            <svg viewBox="0 0 100 50" className="w-full h-full">
+              {/* Background arc */}
+              <path
+                d="M 5 50 A 45 45 0 0 1 95 50"
+                fill="none"
+                stroke="hsl(var(--muted))"
+                strokeWidth="8"
+                strokeLinecap="round"
+              />
+              {/* Value arc */}
+              <path
+                d="M 5 50 A 45 45 0 0 1 95 50"
+                fill="none"
+                stroke={pressureColor}
+                strokeWidth="8"
+                strokeLinecap="round"
+                strokeDasharray={`${dash} ${circ}`}
+              />
+            </svg>
+            <div className="absolute inset-x-0 bottom-0 flex flex-col items-center">
+              <span className="text-2xl font-bold" style={{ color: pressureColor }}>{Math.round(rawPressure)}</span>
+            </div>
+          </div>
+          <p className="text-sm font-semibold mt-1" style={{ color: pressureColor }}>{pressureLabel}</p>
+          <div className="grid grid-cols-3 gap-2 mt-3 w-full text-center">
+            <div>
+              <p className="text-lg font-bold text-amber-500">{urgencySignals}</p>
+              <p className="text-[10px] text-muted-foreground">Urgency signals</p>
+            </div>
+            <div>
+              <p className="text-lg font-bold text-emerald-500">{motivationSignals}</p>
+              <p className="text-[10px] text-muted-foreground">Motivation cues</p>
+            </div>
+            <div>
+              <p className="text-lg font-bold text-slate-400">{hesitationSignals}</p>
+              <p className="text-[10px] text-muted-foreground">Hesitation signs</p>
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 export default function NegotiationCopilotPage() {
@@ -179,11 +518,15 @@ export default function NegotiationCopilotPage() {
         </p>
       </div>
 
+      <LearningLoopIndicator />
+
       <Tabs defaultValue="session">
-        <TabsList>
+        <TabsList className="flex-wrap">
           <TabsTrigger value="session">Active Session</TabsTrigger>
+          <TabsTrigger value="batna">BATNA Calculator</TabsTrigger>
           <TabsTrigger value="sessions">Deal History</TabsTrigger>
           <TabsTrigger value="analytics">Strategy Analytics</TabsTrigger>
+          <TabsTrigger value="replay">Session Replay</TabsTrigger>
         </TabsList>
 
         {/* ── ACTIVE SESSION ── */}
@@ -288,6 +631,15 @@ export default function NegotiationCopilotPage() {
                 </CardContent>
               </Card>
 
+              {/* Psychological Pressure Gauge — always show when message present */}
+              {messageText.trim() && (
+                <PsychologicalPressureGauge
+                  sellerMessage={messageText}
+                  sentiment={sentimentResult}
+                  objection={objectionResult}
+                />
+              )}
+
               {/* Sentiment */}
               {sentimentResult && (
                 <Card>
@@ -370,6 +722,11 @@ export default function NegotiationCopilotPage() {
                 </Card>
               )}
 
+              {/* Strategy Explainability */}
+              {strategyResult && (
+                <StrategyExplainabilityPanel strategyResult={strategyResult} />
+              )}
+
               {/* Counter Offer */}
               {counterResult && (
                 <Card>
@@ -416,6 +773,11 @@ export default function NegotiationCopilotPage() {
               )}
             </div>
           )}
+        </TabsContent>
+
+        {/* ── BATNA CALCULATOR ── */}
+        <TabsContent value="batna" className="space-y-4">
+          <BATNACalculator />
         </TabsContent>
 
         {/* ── DEAL HISTORY ── */}
@@ -473,10 +835,79 @@ export default function NegotiationCopilotPage() {
           )}
         </TabsContent>
 
+        {/* ── SESSION REPLAY ── */}
+        <TabsContent value="replay" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm flex items-center gap-2">
+                <History className="w-4 h-4 text-primary" /> Session Replay
+              </CardTitle>
+              <CardDescription>Full move history with AI reasoning for the current session</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {activeSessionId ? (
+                <SessionReplayPanel session={sessions.find((s: any) => s.id === activeSessionId)} />
+              ) : sessions.length > 0 ? (
+                <SessionReplayPanel session={sessions[0]} />
+              ) : (
+                <p className="text-sm text-muted-foreground">Start a session and make moves to see replay here.</p>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         {/* ── ANALYTICS ── */}
         <TabsContent value="analytics" className="space-y-6">
           {effectiveness.length > 0 ? (
             <div className="space-y-4">
+              {/* A/B Test Analytics Panel */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <FlaskConical className="w-4 h-4 text-primary" /> A/B Strategy Win Rate Comparison
+                  </CardTitle>
+                  <CardDescription>Strategy effectiveness comparison across all sessions</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b">
+                          <th className="text-left py-2 text-xs text-muted-foreground">Strategy</th>
+                          <th className="text-left py-2 text-xs text-muted-foreground">vs. Objection</th>
+                          <th className="text-right py-2 text-xs text-muted-foreground">Used</th>
+                          <th className="text-right py-2 text-xs text-muted-foreground">Win Rate</th>
+                          <th className="py-2 pl-4 text-xs text-muted-foreground">Bar</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {effectiveness.map((e: any, i: number) => (
+                          <tr key={i} className="border-b last:border-0">
+                            <td className="py-2">
+                              <Badge className={`${STRATEGY_INFO[e.strategy]?.color || ''} text-xs`}>
+                                {STRATEGY_INFO[e.strategy]?.label || e.strategy}
+                              </Badge>
+                            </td>
+                            <td className="py-2">
+                              <Badge className={`${OBJECTION_COLORS[e.category] || ''} text-xs`}>
+                                {e.category}
+                              </Badge>
+                            </td>
+                            <td className="py-2 text-right text-muted-foreground">{e.timesUsed}×</td>
+                            <td className="py-2 text-right font-semibold">{(e.successRate * 100).toFixed(0)}%</td>
+                            <td className="py-2 pl-4 w-32">
+                              <div className="w-full bg-muted rounded-full h-1.5">
+                                <div className="bg-primary h-1.5 rounded-full" style={{ width: `${e.successRate * 100}%` }} />
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+
               <Card>
                 <CardHeader>
                   <CardTitle>Strategy Effectiveness by Objection Type</CardTitle>

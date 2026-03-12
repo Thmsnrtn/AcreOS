@@ -20,6 +20,11 @@ logs/
 logs/snapshots/
 *.log
 
+# Playwright E2E
+tests/e2e/.auth/
+playwright-report/
+test-results/
+
 # Editor / IDE
 .vscode/
 .idea/

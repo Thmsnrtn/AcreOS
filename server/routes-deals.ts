@@ -8,9 +8,40 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { leadScoringService } from "./services/leadScoring";
 import { propertyEnrichmentService } from "./services/propertyEnrichment";
 import { checkUsageLimit } from "./services/usageLimits";
+import {
+  initiateHandoff,
+  updateHandoffChecklist,
+  completeHandoff,
+  getHandoffsForDeal,
+  getAllHandoffs,
+} from "./services/dealHandoffService";
 
 // Partial update schema for PUT endpoints
 const updateDealSchema = insertDealSchema.partial().omit({ organizationId: true });
+
+// Task 211: Offer amount validation constants
+const MIN_OFFER_AMOUNT = 0;         // exclusive lower bound
+const MAX_OFFER_AMOUNT = 1_000_000_000; // $1 billion — typo guard
+
+/**
+ * Validate offer-amount fields on a raw deal payload.
+ * Returns an error message string if invalid, or null if OK.
+ */
+function validateOfferAmounts(data: Record<string, any>): string | null {
+  const fields = [
+    { key: "offerAmount", label: "Offer amount" },
+    { key: "acceptedAmount", label: "Accepted amount" },
+    { key: "purchasePrice", label: "Purchase price" },
+  ];
+  for (const { key, label } of fields) {
+    if (data[key] === undefined || data[key] === null || data[key] === "") continue;
+    const val = Number(data[key]);
+    if (isNaN(val)) return `${label} must be a valid number`;
+    if (val <= MIN_OFFER_AMOUNT) return `${label} must be greater than $0`;
+    if (val > MAX_OFFER_AMOUNT) return `${label} exceeds the maximum allowed value of $1,000,000,000`;
+  }
+  return null;
+}
 
 const logger = {
   info: (msg: string, meta?: Record<string, any>) => console.log(JSON.stringify({ level: 'INFO', timestamp: new Date().toISOString(), message: msg, ...meta })),
@@ -81,6 +112,13 @@ export function registerDealRoutes(app: Express): void {
   api.post("/api/deals", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = (req as any).organization;
+
+      // Task 211: validate offer amounts before parsing
+      const offerValidationError = validateOfferAmounts(req.body);
+      if (offerValidationError) {
+        return res.status(400).json({ message: offerValidationError });
+      }
+
       const input = insertDealSchema.parse({ ...req.body, organizationId: org.id });
       const deal = await storage.createDeal(input);
       
@@ -114,15 +152,48 @@ export function registerDealRoutes(app: Express): void {
     }
   });
   
+  // Valid deal status transitions — no skipping states (Task #210)
+  const DEAL_STATUS_TRANSITIONS: Record<string, string[]> = {
+    negotiating: ["offer_sent", "cancelled"],
+    offer_sent: ["countered", "accepted", "cancelled"],
+    countered: ["offer_sent", "accepted", "cancelled"],
+    accepted: ["in_escrow", "cancelled"],
+    in_escrow: ["closed", "cancelled"],
+    closed: [],
+    cancelled: [],
+  };
+
   api.put("/api/deals/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = (req as any).organization;
       const dealId = Number(req.params.id);
       const existingDeal = await storage.getDeal(org.id, dealId);
       if (!existingDeal) return res.status(404).json({ message: "Deal not found" });
-      
+
+      // Task 211: validate offer amounts before parsing
+      const offerValidationError = validateOfferAmounts(req.body);
+      if (offerValidationError) {
+        return res.status(400).json({ message: offerValidationError });
+      }
+
       const validated = updateDealSchema.parse(req.body);
-      const deal = await storage.updateDeal(dealId, validated);
+
+      // Enforce valid status transitions (Task #210)
+      if (validated.status && validated.status !== existingDeal.status) {
+        const allowed = DEAL_STATUS_TRANSITIONS[existingDeal.status] || [];
+        if (!allowed.includes(validated.status)) {
+          return res.status(400).json({
+            message: `Invalid status transition from '${existingDeal.status}' to '${validated.status}'. Allowed: ${allowed.join(", ") || "none"}`,
+          });
+        }
+      }
+
+      // Task 219: Optimistic concurrency — honour client-supplied expectedUpdatedAt
+      const expectedUpdatedAt = req.body._expectedUpdatedAt
+        ? new Date(req.body._expectedUpdatedAt)
+        : undefined;
+
+      const deal = await storage.updateDeal(dealId, validated, expectedUpdatedAt);
       
       const user = req.user as any;
       const userId = user?.claims?.sub || user?.id;
@@ -159,19 +230,43 @@ export function registerDealRoutes(app: Express): void {
           console.error("Failed to record conversion:", conversionErr);
         }
       }
+
+      // Push notification when deal is accepted (T61)
+      if (validated.status === "accepted" && existingDeal.status !== "accepted") {
+        setImmediate(async () => {
+          try {
+            const { notifyDealAccepted } = await import("./services/pushNotificationService");
+            const user = req.user as any;
+            const userId = user?.claims?.sub ?? user?.id;
+            if (userId) {
+              const property = await storage.getProperty(org.id, deal.propertyId);
+              await notifyDealAccepted(
+                org.id,
+                userId,
+                deal.id,
+                (property as any)?.address || `Property #${deal.propertyId}`
+              );
+            }
+          } catch (_) {}
+        });
+      }
       
       res.json(deal);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ 
-          message: "Validation failed", 
+        return res.status(400).json({
+          message: "Validation failed",
           errors: err.errors.map(e => ({ field: e.path.join('.'), message: e.message }))
         });
+      }
+      // Task 219: surface optimistic-lock conflicts as 409 Conflict
+      if (err instanceof Error && err.message.includes("modified by another request")) {
+        return res.status(409).json({ message: err.message });
       }
       throw err;
     }
   });
-  
+
   // Manual deal enrichment trigger endpoint
   api.post("/api/deals/:id/enrich", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
@@ -990,7 +1085,12 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   // ============================================
   
   api.get("/api/deals/:id/checklist", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const checklist = await storage.getDealChecklist(Number(req.params.id));
+    const org = (req as any).organization;
+    const dealId = Number(req.params.id);
+    // Task #2: Verify deal belongs to org before returning checklist (IDOR prevention)
+    const deal = await storage.getDeal(org.id, dealId);
+    if (!deal) return res.status(404).json({ message: "Deal not found" });
+    const checklist = await storage.getDealChecklist(dealId);
     if (!checklist) {
       return res.json(null);
     }
@@ -1007,25 +1107,35 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   
   api.post("/api/deals/:id/checklist", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const org = (req as any).organization;
+      const dealId = Number(req.params.id);
+      // Task #2: Verify deal belongs to org (IDOR prevention)
+      const deal = await storage.getDeal(org.id, dealId);
+      if (!deal) return res.status(404).json({ message: "Deal not found" });
       const { templateId } = req.body;
       if (!templateId) {
         return res.status(400).json({ message: "templateId is required" });
       }
-      const checklist = await storage.applyChecklistTemplateToDeal(Number(req.params.id), templateId);
+      const checklist = await storage.applyChecklistTemplateToDeal(dealId, templateId);
       res.status(201).json(checklist);
     } catch (err: any) {
       res.status(400).json({ message: err.message || "Failed to apply template" });
     }
   });
-  
+
   api.patch("/api/deals/:id/checklist/items/:itemId", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const org = (req as any).organization;
+      const dealId = Number(req.params.id);
+      // Task #2: Verify deal belongs to org (IDOR prevention)
+      const deal = await storage.getDeal(org.id, dealId);
+      if (!deal) return res.status(404).json({ message: "Deal not found" });
       const user = req.user as any;
       const userId = user?.claims?.sub || user?.id;
       const { checked, documentUrl } = req.body;
-      
+
       const checklist = await storage.updateDealChecklistItem(
-        Number(req.params.id),
+        dealId,
         req.params.itemId,
         { checked, documentUrl, checkedBy: userId }
       );
@@ -1036,7 +1146,12 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   });
   
   api.get("/api/deals/:id/stage-gate", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const result = await storage.checkStageGate(Number(req.params.id));
+    const org = (req as any).organization;
+    const dealId = Number(req.params.id);
+    // Task #2: Verify deal belongs to org (IDOR prevention)
+    const deal = await storage.getDeal(org.id, dealId);
+    if (!deal) return res.status(404).json({ message: "Deal not found" });
+    const result = await storage.checkStageGate(dealId);
     res.json(result);
   });
 
@@ -1047,8 +1162,9 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       const includeComps = req.query.comps === "true";
       const includeAI = req.query.ai === "true";
       
-      const deal = await storage.getDeal(dealId);
-      if (!deal || deal.organizationId !== org.id) {
+      // Task #2: Pass org.id to getDeal to scope query (IDOR prevention)
+      const deal = await storage.getDeal(org.id, dealId);
+      if (!deal) {
         return res.status(404).json({ message: "Deal not found" });
       }
       
@@ -1127,6 +1243,124 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       res.json({ updatedCount });
     } catch (err: any) {
       res.status(500).json({ message: err.message || "Failed to bulk update deals" });
+    }
+  });
+
+  // ─── T23 + T49: Generate Offer Letter PDF + (optionally) send for e-signature ─
+  api.post("/api/deals/:id/offer-letter-pdf", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const deal = await storage.getDeal(org.id, Number(req.params.id));
+      if (!deal) return res.status(404).json({ message: "Deal not found" });
+
+      const { generateOfferLetterPdf } = await import("./services/offerLetterPdf");
+      const { sendForEsign, sellerEmail, sellerName, ...offerData } = req.body;
+
+      const buffer = await generateOfferLetterPdf({
+        orgName: org.name || "Buyer",
+        orgEmail: org.email,
+        orgPhone: org.phone,
+        sellerName: sellerName || "Property Owner",
+        apn: deal.apn || "Unknown",
+        propertyAddress: deal.propertyAddress,
+        purchasePrice: Number(deal.offerAmount || deal.purchasePrice || 0),
+        earnestMoneyDeposit: offerData.earnestMoneyDeposit,
+        closingDays: offerData.closingDays ?? 30,
+        offerExpirationDays: offerData.offerExpirationDays ?? 10,
+        ...offerData,
+      });
+
+      if (sendForEsign && sellerEmail) {
+        // Save as a generated document first, then send for e-sign
+        const { eSigningService } = await import("./services/eSigningService");
+        const result = await eSigningService.sendOfferLetterForSignature({
+          organizationId: org.id,
+          dealId: deal.id,
+          pdfBuffer: buffer,
+          title: `Purchase Offer — ${deal.propertyAddress || deal.apn}`,
+          sellerName: sellerName || "Seller",
+          sellerEmail,
+        });
+        return res.json({ ...result, pdfGenerated: true });
+      }
+
+      res.set("Content-Type", "application/pdf");
+      res.set("Content-Disposition", `attachment; filename="offer-${deal.id}.pdf"`);
+      res.send(buffer);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // Deal Handoff Workflow (T55)
+  // -----------------------------------------------------------------------
+
+  // GET /api/deals/handoffs — list all handoffs for the org
+  app.get("/api/deals/handoffs", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const handoffs = await getAllHandoffs(req.org.id);
+      res.json(handoffs);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/deals/:dealId/handoffs — handoffs for a specific deal
+  app.get("/api/deals/:dealId/handoffs", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const handoffs = await getHandoffsForDeal(req.org.id, parseInt(req.params.dealId));
+      res.json(handoffs);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/deals/:dealId/handoffs — initiate a handoff
+  app.post("/api/deals/:dealId/handoffs", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { fromTeamMemberId, toTeamMemberId, fromRole, toRole, notes, customChecklist } = req.body;
+      if (!fromTeamMemberId || !toTeamMemberId || !fromRole || !toRole) {
+        return res.status(400).json({ message: "fromTeamMemberId, toTeamMemberId, fromRole, and toRole are required" });
+      }
+      const handoff = await initiateHandoff(req.org.id, {
+        dealId: parseInt(req.params.dealId),
+        fromTeamMemberId,
+        toTeamMemberId,
+        fromRole,
+        toRole,
+        notes: notes || "",
+        customChecklist,
+      });
+      res.status(201).json(handoff);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // PATCH /api/deals/handoffs/:handoffId/checklist/:itemId — toggle checklist item
+  app.patch("/api/deals/handoffs/:handoffId/checklist/:itemId", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { completed } = req.body;
+      const handoff = await updateHandoffChecklist(
+        req.org.id,
+        req.params.handoffId,
+        req.params.itemId,
+        !!completed
+      );
+      res.json(handoff);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/deals/handoffs/:handoffId/complete — complete the handoff
+  app.post("/api/deals/handoffs/:handoffId/complete", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const handoff = await completeHandoff(req.org.id, req.params.handoffId);
+      res.json(handoff);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
     }
   });
 

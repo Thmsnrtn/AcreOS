@@ -1,4 +1,4 @@
-import express, { type Express } from "express";
+import express, { type Express, type Request, type Response } from "express";
 import fs from "fs";
 import path from "path";
 
@@ -10,10 +10,40 @@ export function serveStatic(app: Express) {
     );
   }
 
-  app.use(express.static(distPath));
+  // Task #193: Static assets with content-hash filenames (e.g., main.abc123.js)
+  // get 1-year max-age with immutable flag. The HTML shell is served with no-cache
+  // so browsers always fetch the latest entry point (which references hashed assets).
+  app.use(express.static(distPath, {
+    maxAge: process.env.NODE_ENV === "production" ? "1y" : 0,
+    immutable: process.env.NODE_ENV === "production",
+    setHeaders: (res, filePath) => {
+      // HTML files should never be cached — they reference hashed asset URLs
+      if (filePath.endsWith(".html")) {
+        res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+        res.setHeader("Pragma", "no-cache");
+        res.setHeader("Expires", "0");
+      }
+    },
+  }));
 
-  // fall through to index.html if the file doesn't exist
-  app.use("*", (_req, res) => {
-    res.sendFile(path.resolve(distPath, "index.html"));
+  // fall through to index.html — inject CSP nonce into the HTML shell (F-A05-1)
+  app.use("*", (req: Request, res: Response) => {
+    const indexPath = path.resolve(distPath, "index.html");
+    const nonce: string | undefined = res.locals.cspNonce;
+
+    if (nonce && process.env.NODE_ENV === "production") {
+      try {
+        let html = fs.readFileSync(indexPath, "utf-8");
+        // Inject nonce into all inline <script> and <style> tags emitted by the Vite build
+        html = html.replace(/<script(?![^>]*\bnonce=)/g, `<script nonce="${nonce}"`);
+        html = html.replace(/<style(?![^>]*\bnonce=)/g, `<style nonce="${nonce}"`);
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+        return res.send(html);
+      } catch {
+        // If file read fails, fall back to sendFile
+      }
+    }
+
+    res.sendFile(indexPath);
   });
 }

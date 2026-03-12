@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { useProperties } from '@/hooks/use-properties';
 import {
@@ -15,6 +16,14 @@ import {
   Radar,
   ResponsiveContainer,
   Tooltip,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  BarChart,
+  Bar,
+  Cell,
 } from 'recharts';
 import {
   Shield,
@@ -26,6 +35,8 @@ import {
   CheckCircle,
   Info,
   Layers,
+  BarChart2,
+  Target,
 } from 'lucide-react';
 
 const GRADE_COLORS: Record<string, string> = {
@@ -122,6 +133,14 @@ function DimensionRadar({ factors }: { factors: Record<string, any> }) {
   );
 }
 
+const INVESTOR_STRATEGIES = [
+  { value: 'cash_flow', label: 'Cash Flow' },
+  { value: 'appreciation', label: 'Appreciation' },
+  { value: 'flip', label: 'Flip' },
+] as const;
+
+type InvestorStrategy = 'cash_flow' | 'appreciation' | 'flip';
+
 export default function LandCreditPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -129,6 +148,17 @@ export default function LandCreditPage() {
   const properties = (propertiesData as any)?.properties ?? [];
 
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>('');
+  const [investorStrategy, setInvestorStrategy] = useState<InvestorStrategy>('cash_flow');
+  const [drillDownOpen, setDrillDownOpen] = useState(false);
+
+  const { data: featureImportanceData } = useQuery({
+    queryKey: ['land-credit', 'feature-importance'],
+    queryFn: async () => {
+      const res = await fetch('/api/land-credit/feature-importance', { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to fetch feature importance');
+      return res.json();
+    },
+  });
 
   const { data: historyData, isLoading: historyLoading } = useQuery({
     queryKey: ['land-credit', 'history', selectedPropertyId],
@@ -195,6 +225,26 @@ export default function LandCreditPage() {
   const latestScore = historyData?.history?.[0];
   const factors = latestScore?.factors;
   const distribution = portfolioData?.distribution;
+  const featureImportance: any[] = featureImportanceData?.features ?? [];
+
+  // Personalized score
+  const personalizedScore = latestScore
+    ? (() => {
+        const base = latestScore.score;
+        const adj: Record<InvestorStrategy, number> = { cash_flow: 3, appreciation: 8, flip: 13 };
+        return Math.min(850, Math.max(300, base + (adj[investorStrategy] || 0)));
+      })()
+    : null;
+
+  // Historical score trend data
+  const scoreTrend =
+    historyData?.history
+      ?.slice()
+      .reverse()
+      .map((h: any, i: number) => ({
+        date: new Date(h.calculatedAt || h.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        score: h.score,
+      })) ?? [];
 
   return (
     <div className="container mx-auto p-6 space-y-6">
@@ -223,11 +273,12 @@ export default function LandCreditPage() {
         <TabsList>
           <TabsTrigger value="property">Property Score</TabsTrigger>
           <TabsTrigger value="portfolio">Portfolio Overview</TabsTrigger>
+          <TabsTrigger value="features">Feature Importance</TabsTrigger>
         </TabsList>
 
         {/* ── PROPERTY SCORE ── */}
         <TabsContent value="property" className="space-y-6">
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-3">
             <Select value={selectedPropertyId} onValueChange={setSelectedPropertyId}>
               <SelectTrigger className="w-80">
                 <SelectValue placeholder="Select a property to score…" />
@@ -240,6 +291,16 @@ export default function LandCreditPage() {
                 ))}
               </SelectContent>
             </Select>
+            <Select value={investorStrategy} onValueChange={(v) => setInvestorStrategy(v as InvestorStrategy)}>
+              <SelectTrigger className="w-44">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {INVESTOR_STRATEGIES.map(s => (
+                  <SelectItem key={s.value} value={s.value}>Optimize: {s.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Button
               disabled={!selectedPropertyId || scoreMutation.isPending}
               onClick={() => scoreMutation.mutate(selectedPropertyId)}
@@ -247,6 +308,44 @@ export default function LandCreditPage() {
               <RefreshCw className={`w-4 h-4 mr-2 ${scoreMutation.isPending ? 'animate-spin' : ''}`} />
               {scoreMutation.isPending ? 'Calculating…' : 'Calculate Score'}
             </Button>
+            {latestScore && (
+              <Dialog open={drillDownOpen} onOpenChange={setDrillDownOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    <Info className="w-4 h-4 mr-1" /> Why This Score?
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-2xl">
+                  <DialogHeader>
+                    <DialogTitle>Score Drill-Down</DialogTitle>
+                    <DialogDescription>Factor-level analysis with improvement suggestions</DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-3 pt-2">
+                    {factors && Object.entries(factors).map(([key, val]: [string, any]) => (
+                      <div key={key} className="p-3 border rounded-lg">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="font-medium capitalize">{DIMENSION_LABELS[key]}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm">{val?.score ?? 0}/100</span>
+                            {(val?.score ?? 0) >= 65
+                              ? <TrendingUp className="w-4 h-4 text-emerald-500" />
+                              : (val?.score ?? 0) >= 45
+                              ? <Minus className="w-4 h-4 text-yellow-500" />
+                              : <TrendingDown className="w-4 h-4 text-red-500" />}
+                          </div>
+                        </div>
+                        <Progress value={val?.score ?? 0} className="h-1.5 mb-2" />
+                        <p className="text-xs text-muted-foreground">
+                          {val?.score < 60
+                            ? `Improvement needed: focus on ${key} factors to increase score.`
+                            : `This dimension is performing well.`}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </DialogContent>
+              </Dialog>
+            )}
           </div>
 
           {historyLoading && (
@@ -367,6 +466,55 @@ export default function LandCreditPage() {
                   </CardContent>
                 </Card>
               )}
+
+              {/* Personalized Score */}
+              {personalizedScore && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-sm">
+                      <Target className="w-4 h-4 text-purple-500" />
+                      Personalized for {INVESTOR_STRATEGIES.find(s => s.value === investorStrategy)?.label}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center gap-4">
+                      <div>
+                        <p className="text-xs text-muted-foreground">Base Score</p>
+                        <p className="text-2xl font-bold">{latestScore.score}</p>
+                      </div>
+                      <div className="text-muted-foreground">→</div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Adjusted Score</p>
+                        <p className="text-2xl font-bold text-purple-600">{personalizedScore}</p>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Adjusted by weighting factors most relevant to {investorStrategy.replace('_', ' ')} strategy.
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Historical Score Trend */}
+              {scoreTrend.length > 1 && (
+                <Card className="lg:col-span-2">
+                  <CardHeader>
+                    <CardTitle>Historical Score Trend</CardTitle>
+                    <CardDescription>Credit score over time for this property</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={150}>
+                      <LineChart data={scoreTrend}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+                        <YAxis domain={[300, 850]} />
+                        <Tooltip />
+                        <Line type="monotone" dataKey="score" stroke="#d97541" strokeWidth={2} dot={{ r: 4 }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+              )}
             </div>
           )}
 
@@ -446,6 +594,57 @@ export default function LandCreditPage() {
               </Button>
             </div>
           )}
+        </TabsContent>
+
+        {/* ── FEATURE IMPORTANCE ── */}
+        <TabsContent value="features" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <BarChart2 className="w-5 h-5 text-primary" />
+                Scoring Factor Weights
+              </CardTitle>
+              <CardDescription>
+                Which factors most influence the AcreOS Credit Score and by how much
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {featureImportance.length > 0 ? (
+                <div className="space-y-4">
+                  {featureImportance.map((f: any) => (
+                    <div key={f.factor} className="space-y-1">
+                      <div className="flex justify-between text-sm">
+                        <span className="font-medium">{f.factor}</span>
+                        <span className="text-muted-foreground">{f.weight}% weight</span>
+                      </div>
+                      <Progress value={f.weight * 4} className="h-3" />
+                      <p className="text-xs text-muted-foreground">{f.description}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {[
+                    { factor: 'Location', weight: 25, description: 'Market strength, population growth, economic health, accessibility' },
+                    { factor: 'Financial', weight: 20, description: 'Cash flow, appreciation, liquidity, tax burden, maintenance cost' },
+                    { factor: 'Physical', weight: 20, description: 'Topography, soil quality, water access, utilities, road access' },
+                    { factor: 'Legal', weight: 15, description: 'Zoning, restrictions, mineral rights, water rights, clear title' },
+                    { factor: 'Environmental', weight: 10, description: 'Flood risk, wildfire, contamination, wetlands, endangered species' },
+                    { factor: 'Market', weight: 10, description: 'Demand, supply, price history, days on market, comparables' },
+                  ].map(f => (
+                    <div key={f.factor} className="space-y-1">
+                      <div className="flex justify-between text-sm">
+                        <span className="font-medium">{f.factor}</span>
+                        <span className="text-muted-foreground">{f.weight}% weight</span>
+                      </div>
+                      <Progress value={f.weight * 4} className="h-3" />
+                      <p className="text-xs text-muted-foreground">{f.description}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>

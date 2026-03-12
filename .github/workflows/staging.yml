@@ -1,0 +1,227 @@
+name: Deploy to Staging
+
+on:
+  push:
+    branches: [main]
+  # Also allow manual trigger for re-deploys
+  workflow_dispatch:
+
+concurrency:
+  group: staging-deploy
+  cancel-in-progress: true # Cancel in-progress staging deploys on new push
+
+jobs:
+  # ── Pre-deploy gate ─────────────────────────────────────────────────────────
+  test:
+    name: Pre-deploy Tests
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://acreos:acreos@localhost:5432/acreos_test
+      SESSION_SECRET: ci-session-secret-placeholder-32-chars-long
+      APP_URL: http://localhost:5000
+      NODE_ENV: test
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: acreos
+          POSTGRES_PASSWORD: acreos
+          POSTGRES_DB: acreos_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript check
+        run: npx tsc --noEmit
+
+      - name: Run tests
+        run: npx vitest run
+        env:
+          CI: true
+
+  # ── Deploy to Fly.io staging ────────────────────────────────────────────────
+  deploy-staging:
+    name: Deploy to Staging (Fly.io)
+    needs: test
+    runs-on: ubuntu-latest
+    environment: staging
+    outputs:
+      staging_url: ${{ steps.get_url.outputs.staging_url }}
+      deployment_id: ${{ steps.deploy.outputs.deployment_id }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Fly CLI
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy to Fly.io staging app
+        id: deploy
+        run: |
+          flyctl deploy \
+            --app "${{ vars.FLY_STAGING_APP || 'acreos-staging' }}" \
+            --remote-only \
+            --wait-timeout 300 \
+            --strategy rolling
+          echo "deployment_id=$(date +%s)" >> "$GITHUB_OUTPUT"
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Get staging URL
+        id: get_url
+        run: |
+          HOSTNAME=$(flyctl info \
+            --app "${{ vars.FLY_STAGING_APP || 'acreos-staging' }}" \
+            --json | jq -r '.Hostname')
+          STAGING_URL="https://${HOSTNAME}"
+          echo "staging_url=${STAGING_URL}" >> "$GITHUB_OUTPUT"
+          echo "Staging URL: ${STAGING_URL}"
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+  # ── Health check ─────────────────────────────────────────────────────────────
+  health-check:
+    name: Health Check & Smoke Test
+    needs: deploy-staging
+    runs-on: ubuntu-latest
+    env:
+      STAGING_URL: ${{ needs.deploy-staging.outputs.staging_url }}
+
+    steps:
+      - name: Wait for staging to stabilize
+        run: sleep 15
+
+      - name: Health check (with retry)
+        id: health
+        run: |
+          MAX_ATTEMPTS=10
+          ATTEMPT=0
+          until curl --fail --silent --max-time 10 "${STAGING_URL}/api/health"; do
+            ATTEMPT=$((ATTEMPT + 1))
+            if [ "$ATTEMPT" -ge "$MAX_ATTEMPTS" ]; then
+              echo "Health check failed after ${MAX_ATTEMPTS} attempts"
+              exit 1
+            fi
+            echo "Attempt ${ATTEMPT}/${MAX_ATTEMPTS} failed, retrying in 10s..."
+            sleep 10
+          done
+          echo "Health check passed"
+
+      - name: Smoke test — verify key endpoints respond
+        run: |
+          # Check that the API responds (not necessarily 200 — auth may redirect)
+          STATUS=$(curl --silent --output /dev/null --write-out "%{http_code}" \
+            --max-time 10 "${STAGING_URL}/api/health/cached")
+          if [ "$STATUS" -ge 500 ]; then
+            echo "Smoke test failed: /api/health/cached returned HTTP ${STATUS}"
+            exit 1
+          fi
+          echo "Smoke test passed (status: ${STATUS})"
+
+  # ── Rollback on health check failure ──────────────────────────────────────────
+  rollback:
+    name: Auto-rollback on Failure
+    needs: [deploy-staging, health-check]
+    runs-on: ubuntu-latest
+    if: failure() && needs.deploy-staging.result == 'success'
+    environment: staging
+
+    steps:
+      - name: Setup Fly CLI
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Rollback staging deployment
+        run: |
+          echo "Health check failed — rolling back staging deployment..."
+          flyctl releases list \
+            --app "${{ vars.FLY_STAGING_APP || 'acreos-staging' }}" \
+            --json | jq -r '.[1].Version' | xargs -I{} \
+            flyctl deploy \
+              --app "${{ vars.FLY_STAGING_APP || 'acreos-staging' }}" \
+              --image "registry.fly.io/${{ vars.FLY_STAGING_APP || 'acreos-staging' }}:{}"
+          echo "Rollback complete"
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        continue-on-error: true
+
+      - name: Annotate failed deployment
+        run: |
+          echo "::error::Staging health check failed and rollback was triggered. Check Fly.io dashboard for details."
+
+  # ── Comment deployment URL on PR ──────────────────────────────────────────────
+  comment-pr:
+    name: Comment Deployment URL
+    needs: [deploy-staging, health-check]
+    runs-on: ubuntu-latest
+    if: success() && github.event_name == 'push'
+    permissions:
+      pull-requests: write
+
+    steps:
+      - name: Find associated PR
+        id: find_pr
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: prs } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'closed',
+              sort: 'updated',
+              direction: 'desc',
+              per_page: 10,
+            });
+            const pr = prs.find(p => p.merge_commit_sha === context.sha);
+            if (pr) {
+              core.setOutput('pr_number', pr.number.toString());
+              console.log(`Found PR #${pr.number}`);
+            } else {
+              console.log('No PR found for this commit');
+              core.setOutput('pr_number', '');
+            }
+
+      - name: Comment on PR with staging URL
+        if: steps.find_pr.outputs.pr_number != ''
+        uses: actions/github-script@v7
+        env:
+          STAGING_URL: ${{ needs.deploy-staging.outputs.staging_url }}
+        with:
+          script: |
+            const prNumber = parseInt('${{ steps.find_pr.outputs.pr_number }}');
+            const stagingUrl = process.env.STAGING_URL;
+            const sha = context.sha.substring(0, 7);
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: [
+                '## Staging Deployment',
+                '',
+                `Commit \`${sha}\` has been deployed to staging.`,
+                '',
+                `**Staging URL:** ${stagingUrl}`,
+                '',
+                '| Endpoint | Status |',
+                '|----------|--------|',
+                `| Health   | [/api/health](${stagingUrl}/api/health) |`,
+                '',
+                '*Auto-rollback is enabled if health checks fail.*',
+              ].join('\n'),
+            });

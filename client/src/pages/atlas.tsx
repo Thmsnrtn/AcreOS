@@ -15,6 +15,11 @@ import {
   AlertCircle,
   Clock,
   Phone,
+  DollarSign,
+  TrendingUp,
+  ArrowRight,
+  CheckCircle2,
+  Flame,
 } from "lucide-react";
 import CommandCenterPage from "@/pages/command-center";
 
@@ -144,6 +149,14 @@ function GreetingBanner() {
   );
 }
 
+// ─── Revenue impact estimator ─────────────────────────────────────────────────
+
+function revenueImpact(severity: string, type?: string): string | null {
+  if (severity === "high") return type?.includes("offer") ? "+$25K–$80K" : "+$5K–$20K potential";
+  if (severity === "medium") return "+$2K–$8K potential";
+  return null;
+}
+
 // ─── Insights Tab Content ─────────────────────────────────────────────────────
 
 function InsightsTabContent() {
@@ -175,49 +188,84 @@ function InsightsTabContent() {
   const expiringOffers = data?.expiringOffers ?? [];
   const motivatedCallers = data?.motivatedCallers ?? [];
 
-  const allEmpty =
-    observations.length === 0 &&
-    staleLeads.length === 0 &&
-    expiringOffers.length === 0 &&
-    motivatedCallers.length === 0;
+  const totalItems = observations.length + staleLeads.length + expiringOffers.length + motivatedCallers.length;
+  const highPriorityCount = observations.filter((o) => o.severity === "high").length + expiringOffers.length;
 
-  if (allEmpty) {
+  if (totalItems === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center space-y-2">
-        <Sparkles className="h-8 w-8 text-muted-foreground mb-2" />
-        <p className="text-base font-medium text-muted-foreground">
-          All clear — Atlas is keeping watch.
-        </p>
+        <div className="w-14 h-14 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center mb-2">
+          <CheckCircle2 className="h-7 w-7 text-emerald-600" />
+        </div>
+        <p className="text-base font-medium">All clear — Atlas is keeping watch.</p>
         <p className="text-sm text-muted-foreground max-w-sm">
-          Check back after your next campaign sends.
+          No urgent actions. Your pipeline is in good shape. Check back after your next campaign sends.
         </p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-8">
-      {/* Atlas Noticed */}
+    <div className="space-y-6">
+      {/* Summary banner */}
+      {totalItems > 0 && (
+        <div className="flex items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
+          <Sparkles className="h-5 w-5 text-primary shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-semibold">
+              {totalItems} item{totalItems !== 1 ? "s" : ""} need{totalItems === 1 ? "s" : ""} your attention
+              {highPriorityCount > 0 && ` · ${highPriorityCount} high-priority`}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Atlas has detected these opportunities and risks in your pipeline.
+            </p>
+          </div>
+          {highPriorityCount > 0 && (
+            <Badge variant="destructive" className="text-xs shrink-0">{highPriorityCount} urgent</Badge>
+          )}
+        </div>
+      )}
+
+      {/* Observations with revenue impact */}
       {observations.length > 0 && (
         <section>
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+          <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
+            <Flame className="w-3.5 h-3.5 text-primary" />
             Atlas Noticed
           </h2>
-          <div className="space-y-3">
-            {observations.map((obs) => (
-              <div
-                key={obs.id}
-                className={`rounded-lg border-l-4 border border-border ${SEVERITY_BORDER[obs.severity] ?? SEVERITY_BORDER.info} bg-card p-4 space-y-1`}
-              >
-                <div className="flex items-center gap-2">
-                  <Badge variant={SEVERITY_BADGE[obs.severity] ?? "outline"} className="capitalize text-xs">
-                    {obs.severity}
-                  </Badge>
-                  <span className="text-sm font-medium">{obs.title}</span>
+          <div className="space-y-2">
+            {observations.map((obs) => {
+              const impact = revenueImpact(obs.severity, obs.title);
+              return (
+                <div
+                  key={obs.id}
+                  className={`rounded-lg border-l-4 border border-border ${SEVERITY_BORDER[obs.severity] ?? SEVERITY_BORDER.info} bg-card p-4`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap mb-1">
+                        <Badge variant={SEVERITY_BADGE[obs.severity] ?? "outline"} className="capitalize text-xs">
+                          {obs.severity}
+                        </Badge>
+                        {impact && (
+                          <Badge variant="outline" className="text-xs text-emerald-700 border-emerald-300 bg-emerald-50 dark:bg-emerald-900/20">
+                            <DollarSign className="w-2.5 h-2.5 mr-0.5" />
+                            {impact}
+                          </Badge>
+                        )}
+                        <span className="text-sm font-medium">{obs.title}</span>
+                      </div>
+                      <p className="text-sm text-muted-foreground">{obs.description}</p>
+                    </div>
+                    <Button size="sm" variant="outline" className="shrink-0 h-7 text-xs gap-1" asChild>
+                      <a href="/pipeline">
+                        Act <ArrowRight className="w-3 h-3" />
+                      </a>
+                    </Button>
+                  </div>
                 </div>
-                <p className="text-sm text-muted-foreground">{obs.description}</p>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
       )}
@@ -225,37 +273,43 @@ function InsightsTabContent() {
       {/* Stale Leads */}
       {staleLeads.length > 0 && (
         <section>
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+          <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
+            <Clock className="w-3.5 h-3.5 text-amber-500" />
             Stale Leads
+            <Badge variant="outline" className="text-[10px]">{staleLeads.length}</Badge>
           </h2>
           <div className="space-y-2">
             {staleLeads.map((lead) => (
               <div
                 key={lead.id}
-                className="flex items-center justify-between rounded-lg border border-border bg-card px-4 py-3"
+                className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/10 px-4 py-3"
               >
-                <div className="flex items-center gap-3">
-                  <Clock className="h-4 w-4 text-amber-500 shrink-0" />
-                  <div>
-                    <p className="text-sm font-medium">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className={`w-2 h-2 rounded-full shrink-0 ${lead.daysSinceContact >= 30 ? "bg-red-500" : "bg-amber-500"}`} />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">
                       {lead.firstName} {lead.lastName}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {lead.daysSinceContact >= 999
                         ? "Never contacted"
-                        : `${lead.daysSinceContact} days since last contact`}
+                        : `${lead.daysSinceContact}d since contact`}
+                      {lead.daysSinceContact >= 30 && (
+                        <span className="ml-1 text-red-500 font-medium">· at risk of going cold</span>
+                      )}
                     </p>
                   </div>
                 </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() =>
-                    (window.location.href = `/leads/${lead.id}`)
-                  }
-                >
-                  Follow Up
-                </Button>
+                <div className="flex gap-1.5 shrink-0">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs"
+                    onClick={() => (window.location.href = `/leads/${lead.id}`)}
+                  >
+                    Follow Up
+                  </Button>
+                </div>
               </div>
             ))}
           </div>
@@ -265,37 +319,48 @@ function InsightsTabContent() {
       {/* Expiring Offers */}
       {expiringOffers.length > 0 && (
         <section>
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+          <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
+            <AlertCircle className="w-3.5 h-3.5 text-red-500" />
             Expiring Offers
+            <Badge variant="destructive" className="text-[10px]">{expiringOffers.length}</Badge>
           </h2>
           <div className="space-y-2">
-            {expiringOffers.map((offer) => (
-              <div
-                key={offer.id}
-                className="flex items-center justify-between rounded-lg border border-border bg-card px-4 py-3"
-              >
-                <div className="flex items-center gap-3">
-                  <AlertCircle className="h-4 w-4 text-red-500 shrink-0" />
-                  <div>
-                    <p className="text-sm font-medium">{offer.title}</p>
-                    {offer.offerExpiresAt && (
-                      <p className="text-xs text-muted-foreground">
-                        Expires {new Date(offer.offerExpiresAt).toLocaleDateString()}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() =>
-                    (window.location.href = `/deals/${offer.id}`)
-                  }
+            {expiringOffers.map((offer) => {
+              const daysLeft = offer.offerExpiresAt
+                ? Math.ceil((new Date(offer.offerExpiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+                : null;
+              return (
+                <div
+                  key={offer.id}
+                  className="flex items-center justify-between rounded-lg border border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/10 px-4 py-3"
                 >
-                  Review
-                </Button>
-              </div>
-            ))}
+                  <div className="flex items-center gap-3 min-w-0">
+                    <AlertCircle className="h-4 w-4 text-red-500 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{offer.title}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {offer.leadName && <span className="mr-1">for {offer.leadName} ·</span>}
+                        {offer.offerExpiresAt
+                          ? daysLeft !== null && daysLeft <= 0
+                            ? "Expired"
+                            : daysLeft === 1
+                            ? "Expires tomorrow"
+                            : `${daysLeft} days left`
+                          : "Expiring soon"}
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    className="h-7 text-xs shrink-0"
+                    onClick={() => (window.location.href = `/deals/${offer.id}`)}
+                  >
+                    Review Now
+                  </Button>
+                </div>
+              );
+            })}
           </div>
         </section>
       )}
@@ -303,38 +368,48 @@ function InsightsTabContent() {
       {/* Motivated Callers */}
       {motivatedCallers.length > 0 && (
         <section>
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+          <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
+            <Phone className="w-3.5 h-3.5 text-emerald-500" />
             Motivated Callers
+            <Badge variant="outline" className="text-[10px] text-emerald-700 border-emerald-300">{motivatedCallers.length}</Badge>
           </h2>
           <div className="space-y-2">
             {motivatedCallers.map((caller) => (
               <div
                 key={caller.id}
-                className="flex items-center justify-between rounded-lg border border-border bg-card px-4 py-3"
+                className="flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-900/10 px-4 py-3"
               >
-                <div className="flex items-center gap-3">
-                  <Phone className="h-4 w-4 text-green-500 shrink-0" />
-                  <div>
-                    <p className="text-sm font-medium">{caller.name}</p>
-                    {caller.phone && (
-                      <p className="text-xs text-muted-foreground">{caller.phone}</p>
-                    )}
-                    {caller.notes && (
-                      <p className="text-xs text-muted-foreground line-clamp-1">
-                        {caller.notes}
-                      </p>
-                    )}
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-8 h-8 rounded-full bg-emerald-200 dark:bg-emerald-800 flex items-center justify-center shrink-0">
+                    <span className="text-xs font-bold text-emerald-800 dark:text-emerald-200">
+                      {caller.name?.charAt(0)?.toUpperCase() ?? "?"}
+                    </span>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{caller.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {caller.phone ?? "No phone"}{caller.notes && ` · ${caller.notes}`}
+                    </p>
                   </div>
                 </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() =>
-                    (window.location.href = `/leads/${caller.id}`)
-                  }
-                >
-                  Contact
-                </Button>
+                <div className="flex gap-1.5 shrink-0">
+                  {caller.phone && (
+                    <Button size="sm" variant="outline" className="h-7 text-xs gap-1" asChild>
+                      <a href={`tel:${caller.phone}`}>
+                        <Phone className="w-3 h-3" />
+                        Call
+                      </a>
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="default"
+                    className="h-7 text-xs"
+                    onClick={() => (window.location.href = `/leads/${caller.id}`)}
+                  >
+                    View
+                  </Button>
+                </div>
               </div>
             ))}
           </div>

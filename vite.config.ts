@@ -17,6 +17,10 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    // Task #196: Performance budget — warn if any chunk exceeds 500 KB
+    chunkSizeWarningLimit: 500,
+    // Task #196: Emit source maps in production for Sentry error symbolication
+    sourcemap: process.env.NODE_ENV === "production" ? "hidden" : false,
     rollupOptions: {
       output: {
         manualChunks: {

@@ -1,7 +1,8 @@
 import type { Express } from "express";
-import { storage } from "./storage";
+import { storage, db } from "./storage";
 import { z } from "zod";
-import { insertTaskSchema } from "@shared/schema";
+import { insertTaskSchema, notificationPreferences } from "@shared/schema";
+import { eq, and } from "drizzle-orm";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { usageMeteringService, creditService } from "./services/credits";
@@ -179,15 +180,22 @@ export function registerCRMExtrasRoutes(app: Express): void {
 
   api.put("/api/notification-preferences/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const org = (req as any).organization;
       const id = parseInt(req.params.id);
+      // Task #2: IDOR prevention — verify notification preference belongs to requesting org
+      const [existing] = await db.select({ id: notificationPreferences.id })
+        .from(notificationPreferences)
+        .where(and(eq(notificationPreferences.id, id), eq(notificationPreferences.organizationId, org.id)))
+        .limit(1);
+      if (!existing) return res.status(404).json({ message: "Notification preference not found" });
       const { emailEnabled, pushEnabled, inAppEnabled } = req.body;
-      
+
       const pref = await storage.updateNotificationPreference(id, {
         emailEnabled,
         pushEnabled,
         inAppEnabled,
       });
-      
+
       res.json(pref);
     } catch (error: any) {
       console.error("Update notification preference error:", error);

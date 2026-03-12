@@ -59,7 +59,8 @@ router.post('/securities/:id/invest', async (req: Request, res: Response) => {
 // GET /lenders — list lender network
 router.get('/lenders', async (req: Request, res: Response) => {
   try {
-    const lenders = await capitalMarkets.getLenderNetwork();
+    const org = getOrg(req);
+    const lenders = await capitalMarkets.getLenderNetwork(org.id);
     res.json({ lenders });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -70,7 +71,8 @@ router.get('/lenders', async (req: Request, res: Response) => {
 router.post('/lenders', async (req: Request, res: Response) => {
   try {
     const org = getOrg(req);
-    const lender = await capitalMarkets.addLender({ ...req.body, organizationId: org.id });
+    const { organizationId: _omit, ...lenderData } = req.body;
+    const lender = await capitalMarkets.addLender(org.id, lenderData);
     res.json({ lender });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -80,8 +82,9 @@ router.post('/lenders', async (req: Request, res: Response) => {
 // POST /match-lenders — find lenders matching a specific deal
 router.post('/match-lenders', async (req: Request, res: Response) => {
   try {
-    const { dealAmount, propertyType, state, ltv } = req.body;
-    const matches = await capitalMarkets.matchLenders({ dealAmount, propertyType, state, ltv });
+    const org = getOrg(req);
+    const { propertyId, loanAmount, ltv } = req.body;
+    const matches = await capitalMarkets.matchLenders(org.id, propertyId, loanAmount, ltv);
     res.json({ matches });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -103,7 +106,8 @@ router.get('/raises', async (req: Request, res: Response) => {
 router.post('/raises', async (req: Request, res: Response) => {
   try {
     const org = getOrg(req);
-    const raise = await capitalMarkets.createCapitalRaise({ ...req.body, organizationId: org.id });
+    const { organizationId: _omit, ...raiseData } = req.body;
+    const raise = await capitalMarkets.createCapitalRaise(org.id, raiseData);
     res.json({ raise });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

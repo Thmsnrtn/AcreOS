@@ -1,10 +1,11 @@
 import OpenAI from "openai";
 import { storage } from "../storage";
 import type { Organization, SupportTicket, KnowledgeBaseArticle } from "@shared/schema";
+import { decisionsInboxService } from "../services/decisionsInbox";
 import { db } from "../db";
 import { dataSourceBroker } from "../services/data-source-broker.js";
 import { propertyEnrichmentService } from "../services/propertyEnrichment.js";
-import { eq, and, desc, ilike, sql, or, count } from "drizzle-orm";
+import { eq, and, desc, ilike, sql, or, count, inArray } from "drizzle-orm";
 import { 
   supportTickets, supportTicketMessages, knowledgeBaseArticles, 
   supportResolutionHistory, organizations, leads, properties, 
@@ -112,6 +113,20 @@ export const supportToolDefinitions = {
     }
   },
   
+  draft_customer_response: {
+    name: "draft_customer_response",
+    description: "Draft a customer-facing response before escalating. The draft and confidence score determine if Sophie can auto-resolve or if founder review is needed.",
+    parameters: {
+      type: "object",
+      properties: {
+        response_text: { type: "string" },
+        confidence_score: { type: "number", description: "0-100 confidence this resolves the issue" },
+        resolution_type: { type: "string", enum: ["answer_question", "apply_fix", "escalate_phone", "apply_credit", "custom"] }
+      },
+      required: ["response_text", "confidence_score", "resolution_type"]
+    }
+  },
+
   escalate_to_human: {
     name: "escalate_to_human",
     description: "Escalate the ticket to a human support agent with automatic diagnostic bundle. Gathers system state, recent activity, and issue context automatically.",
@@ -1643,6 +1658,23 @@ export async function executeSupportTool(
           });
         }
         
+        // Create Decisions Inbox item (may auto-resolve if confidence threshold met)
+        if (ticketId) {
+          const sophieAnalysis = `Escalation: ${reason}. Summary: ${summary}`;
+          // Try to find a draft response from Sophie's last draft_customer_response tool call
+          decisionsInboxService.createFromEscalation(ticketId, {
+            sophieAnalysis,
+            confidenceScore: 0, // conservative — no draft attached at this escalation point
+            category: (org as any).category,
+            actionPayload: {
+              ticketId,
+              reason,
+              summary,
+              diagnosticBundle: diagnosticBundle ? "attached" : "none",
+            },
+          }).catch((err: any) => console.error("[sophie] decisions inbox create error:", err));
+        }
+
         // Save escalation to memory for future context
         await db.insert(sophieMemory).values({
           organizationId: org.id,
@@ -1676,6 +1708,42 @@ export async function executeSupportTool(
         };
       }
       
+      case "draft_customer_response": {
+        const { response_text, confidence_score, resolution_type } = args;
+        // If confidence is high enough, attempt auto-resolution via decisionsInboxService
+        if (ticketId) {
+          const ticket = await db.query.supportTickets.findFirst({ where: eq(supportTickets.id, ticketId) });
+          const autoResult = await decisionsInboxService.createFromEscalation(ticketId, {
+            sophieAnalysis: `Sophie drafted a ${resolution_type} response with ${confidence_score}% confidence.`,
+            draftResponse: response_text,
+            confidenceScore: confidence_score,
+            category: ticket?.category,
+          });
+          if (autoResult.autoResolved) {
+            return {
+              success: true,
+              data: {
+                drafted: true,
+                autoResolved: true,
+                resolution_type,
+                confidence_score,
+                message: "Sophie auto-resolved: response sent to customer directly.",
+              },
+            };
+          }
+        }
+        return {
+          success: true,
+          data: {
+            drafted: true,
+            autoResolved: false,
+            resolution_type,
+            confidence_score,
+            message: "Draft queued for founder review in Decisions Inbox.",
+          },
+        };
+      }
+
       case "create_followup_task": {
         const { title, description, assignee, due_days = 3 } = args;
         const dueDate = new Date();
@@ -3866,14 +3934,16 @@ export async function executeSupportTool(
               return { success: false, error: `Search not supported for entity: ${entity}` };
             }
             
-            // Build search conditions using raw SQL for fields that exist
-            const searchCondition = fields.map(f => `COALESCE(${f}::text, '') ILIKE '${search_term.toLowerCase().replace(/'/g, "''")}'`).join(' OR ');
-            
+            // Build search conditions using parameterized SQL (fields are from whitelist, search_term is parameterized)
+            const searchPattern = `%${search_term}%`;
+            const fieldConditions = fields.map(f => sql`COALESCE(${sql.raw(f)}::text, '') ILIKE ${searchPattern}`);
+            const searchWhere = or(...fieldConditions)!;
+
             results = await db.select()
               .from(table)
               .where(and(
                 eq(table.organizationId, org.id),
-                sql.raw(`(${searchCondition})`)
+                searchWhere
               ))
               .limit(Math.min(limit, 20));
             
@@ -4433,7 +4503,7 @@ export async function executeSupportTool(
             eq(sophieMemory.organizationId, org.id),
             eq(sophieMemory.userId, org.ownerId),
             sql`(${sophieMemory.expiresAt} IS NULL OR ${sophieMemory.expiresAt} > NOW())`,
-            sql`${sophieMemory.memoryType} = ANY(ARRAY[${sql.raw(types.map((t: string) => `'${t}'`).join(','))}])`
+            inArray(sophieMemory.memoryType, types)
           ))
           .orderBy(desc(sophieMemory.importance), desc(sophieMemory.createdAt))
           .limit(limit);
@@ -4998,7 +5068,18 @@ export async function executeSupportTool(
   }
 }
 
-const SOPHIE_SYSTEM_PROMPT = `You are Sophie, the AcreOS Support Agent. You help customers resolve issues with their AcreOS land investment platform.
+// Sophie vs Atlas distinction: Sophie = support/onboarding/billing/troubleshooting, Atlas = land investing strategy
+// When users ask Sophie strategy questions, she warmly redirects to Atlas.
+
+const SOPHIE_SYSTEM_PROMPT = `You are Sophie, the AcreOS Customer Success Agent — warm, knowledgeable, and always ready to help.
+
+IDENTITY:
+You are NOT a land investing strategy advisor — that is Atlas. You are the platform expert who ensures every user can access and master AcreOS. When something is not working, you fix it. When someone is confused, you guide them.
+
+BOUNDARY WITH ATLAS (critical): For land investing questions (deals, counties, offers, note portfolios, comps), redirect warmly:
+"For land investing strategy, Atlas is your expert! Find him in the AI Assistant — he specializes in deal analysis and portfolio building. I am here to ensure the platform runs perfectly for you."
+
+WHAT YOU HANDLE: onboarding, billing, subscriptions, data issues, feature education, technical troubleshooting, account management.
 
 YOUR PERSONALITY:
 - Friendly, patient, and empathetic

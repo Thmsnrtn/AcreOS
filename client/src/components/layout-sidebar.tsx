@@ -42,6 +42,13 @@ import {
   MapPin,
   Package,
   CreditCard,
+  Phone,
+  Star,
+  Wand2,
+  Compass,
+  Landmark,
+  Bell,
+  Moon,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import {
@@ -134,9 +141,12 @@ const NAV_MODULES: NavModule[] = [
     description: "Manage your land seller leads",
     children: [
       { label: "All Leads", icon: Users, href: "/leads", description: "All your leads" },
+      { label: "Blind Offer Wizard", icon: Wand2, href: "/blind-offer-wizard", description: "Calculate Podolsky-formula offers step-by-step" },
       { label: "Campaigns", icon: Mail, href: "/campaigns", description: "Email, SMS, and direct mail campaigns" },
       { label: "Sequences", icon: Zap, href: "/sequences", description: "Automated follow-up sequences" },
       { label: "A/B Tests", icon: BarChart2, href: "/ab-tests", description: "Campaign split tests" },
+      { label: "Voice Analytics", icon: Phone, href: "/voice-analytics", description: "Call recording analysis and insights" },
+      { label: "Field Scout", icon: Compass, href: "/field-scout", description: "Offline-first mobile companion for field visits" },
     ],
   },
   {
@@ -161,6 +171,7 @@ const NAV_MODULES: NavModule[] = [
       { label: "Deal Pipeline", icon: GitBranch, href: "/deals", description: "Visualize your deal flow" },
       { label: "Marketplace", icon: Store, href: "/marketplace", description: "Buy and sell deals" },
       { label: "Listings", icon: FileText, href: "/listings", description: "Properties for sale" },
+      { label: "Mkt Analytics", icon: BarChart2, href: "/marketplace-analytics", description: "Marketplace performance metrics" },
     ],
   },
   {
@@ -183,10 +194,13 @@ const NAV_MODULES: NavModule[] = [
     description: "Seller financing and portfolio",
     children: [
       { label: "Finance", icon: Banknote, href: "/finance", description: "Seller-financed notes" },
+      { label: "Freedom Meter", icon: Star, href: "/freedom-meter", description: "Note income vs. expenses — track your path to financial freedom" },
+      { label: "Night Cap", icon: Moon, href: "/night-cap", description: "End-of-day passive income review — Nite Cap command center" },
       { label: "Cash Flow", icon: Activity, href: "/cash-flow", description: "12-month cash flow forecasting" },
       { label: "Capital Mkts", icon: DollarSign, href: "/capital-markets", description: "Note securitization and lenders" },
       { label: "Portfolio", icon: PieChart, href: "/portfolio", description: "Investment portfolio view" },
       { label: "Optimizer", icon: BarChart2, href: "/portfolio-optimizer", description: "Monte Carlo simulation" },
+      { label: "Fee Dashboard", icon: CreditCard, href: "/fee-dashboard", description: "Transaction fee tracking" },
     ],
   },
   {
@@ -198,16 +212,24 @@ const NAV_MODULES: NavModule[] = [
     children: [
       { label: "Insights", icon: TrendingUp, href: "/analytics", description: "Analytics and market insights" },
       { label: "AVM™", icon: TrendingUp, href: "/avm", description: "AcreOS Valuation Model" },
+      { label: "Bulk AVM", icon: TrendingUp, href: "/avm-bulk", description: "Bulk valuations via CSV upload" },
       { label: "Markets", icon: Globe, href: "/market-intelligence", description: "Market analysis and price trends" },
+      { label: "Watchlist", icon: Eye, href: "/market-watchlist", description: "Monitor counties for market alerts" },
+      { label: "Counties", icon: Landmark, href: "/counties", description: "USDA + Census county intelligence" },
       { label: "Acq. Radar", icon: Target, href: "/radar", description: "AI-scored deal opportunities" },
       { label: "Land Credit", icon: Shield, href: "/land-credit", description: "Proprietary 300–850 land scoring" },
       { label: "Deal Hunter", icon: Search, href: "/deal-hunter", description: "Automated deal sourcing" },
+      { label: "Seller Intent", icon: Brain, href: "/seller-intent", description: "AI-predicted seller motivation" },
+      { label: "Price Optimizer", icon: DollarSign, href: "/price-optimizer", description: "AI pricing for offers and listings" },
+      { label: "Deal Patterns", icon: GitBranch, href: "/deal-patterns", description: "Replicate successful deal structures" },
       { label: "Vision AI", icon: Eye, href: "/vision-ai", description: "AI photo and satellite analysis" },
       { label: "Negotiation", icon: Brain, href: "/negotiation", description: "AI negotiation copilot" },
       { label: "Tax Research", icon: Gavel, href: "/tax-researcher", description: "Tax lien auctions and delinquent properties" },
       { label: "Compliance", icon: ShieldCheck, href: "/compliance", description: "Regulatory monitoring" },
+      { label: "Regulatory", icon: ShieldCheck, href: "/regulatory-intel", description: "State regulatory profiles and alerts" },
       { label: "Doc Intel", icon: FileSearch, href: "/document-intelligence", description: "AI contract parsing" },
       { label: "AI Assistant", icon: Bot, href: "/command-center", description: "AI assistants and automation" },
+      { label: "Agent Hub", icon: Brain, href: "/agent-command-center", description: "Autonomous agent control center" },
       { label: "Academy", icon: GraduationCap, href: "/academy", description: "Land investment education" },
     ],
   },
@@ -220,6 +242,8 @@ const NAV_MODULES: NavModule[] = [
     children: [
       { label: "Settings", icon: Settings, href: "/settings", description: "Account and preferences" },
       { label: "Tools", icon: Calculator, href: "/tools", description: "Calculators and utilities" },
+      { label: "VA Dashboard", icon: Users, href: "/va-dashboard", description: "Virtual assistant management" },
+      { label: "Data Export", icon: Package, href: "/data-export", description: "Export your data as CSV or JSON" },
       { label: "Help & Support", icon: HelpCircle, href: "/help", description: "Help topics and support" },
     ],
   },
@@ -379,7 +403,7 @@ export function Sidebar() {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto overflow-x-hidden">
+      <nav aria-label="Main navigation" className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto overflow-x-hidden">
         {/* Founder link */}
         {isFounder && (
           <DesktopNavItem
@@ -446,6 +470,7 @@ export function Sidebar() {
                   <Link
                     href={module.href}
                     className="flex items-center gap-2 flex-1 min-w-0"
+                    aria-current={active ? "page" : undefined}
                     data-testid={`link-nav-${module.href.replace("/", "") || "dashboard"}`}
                   >
                     <module.icon
@@ -523,6 +548,7 @@ export function Sidebar() {
                             ? "bg-primary text-primary-foreground shadow-sm"
                             : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
                         )}
+                        aria-current={childActive ? "page" : undefined}
                         onMouseEnter={() => handlePrefetch(child.href)}
                         data-testid={`link-nav-${child.href.replace("/", "")}`}
                       >
