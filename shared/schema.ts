@@ -10492,3 +10492,28 @@ export const founderDigestHistory = pgTable("founder_digest_history", {
 export const insertFounderDigestHistorySchema = createInsertSchema(founderDigestHistory).omit({ id: true, createdAt: true });
 export type InsertFounderDigestHistory = z.infer<typeof insertFounderDigestHistorySchema>;
 export type FounderDigestHistory = typeof founderDigestHistory.$inferSelect;
+
+// Platform Config — encrypted key-value store for founder-managed credentials
+// Values are AES-256 encrypted at rest. The configManager service merges these
+// into process.env at startup so all existing code continues to work unchanged.
+export const platformConfig = pgTable("platform_config", {
+  id: serial("id").primaryKey(),
+  key: text("key").notNull().unique(),           // e.g. "STRIPE_SECRET_KEY"
+  encryptedValue: text("encrypted_value"),        // AES-256-GCM encrypted, null = delete
+  service: text("service").notNull(),             // e.g. "stripe" | "aws" | "openrouter"
+  label: text("label").notNull(),                 // Human-readable label
+  isSecret: boolean("is_secret").notNull().default(true),
+  isRequired: boolean("is_required").notNull().default(false),
+  validatedAt: timestamp("validated_at"),         // last time this credential was verified OK
+  validationStatus: text("validation_status"),    // "ok" | "error" | null
+  validationMessage: text("validation_message"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("platform_config_key_idx").on(table.key),
+  index("platform_config_service_idx").on(table.service),
+]);
+
+export const insertPlatformConfigSchema = createInsertSchema(platformConfig).omit({ id: true, createdAt: true });
+export type InsertPlatformConfig = z.infer<typeof insertPlatformConfigSchema>;
+export type PlatformConfig = typeof platformConfig.$inferSelect;

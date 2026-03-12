@@ -425,6 +425,8 @@ router.get("/automation", requireFounder, async (req: Request, res: Response) =>
       sophieActivity,
       enrichmentActivity,
       sentinelActivity,
+      workflowActivity,
+      dealProgressionActivity,
     ] = await Promise.allSettled([
       db.select({ count: count() }).from(activityLog)
         .where(and(
@@ -456,70 +458,193 @@ router.get("/automation", requireFounder, async (req: Request, res: Response) =>
           gte(activityLog.createdAt, sevenDaysAgo),
           sql`action like 'sentinel%' or action like 'portfolio_monitor%'`
         )),
+      db.select({ count: count() }).from(activityLog)
+        .where(and(
+          gte(activityLog.createdAt, sevenDaysAgo),
+          sql`action like 'workflow_%' or action like 'automation_%'`
+        )),
+      db.select({ count: count() }).from(activityLog)
+        .where(and(
+          gte(activityLog.createdAt, sevenDaysAgo),
+          sql`action like 'deal_%' or action like 'offer_%'`
+        )),
     ]);
+
+    // Check credential health to factor into score (missing creds = lower automation capability)
+    const env = process.env;
+    const hasAI = !!(env.AI_INTEGRATIONS_OPENROUTER_API_KEY || env.OPENAI_API_KEY);
+    const hasEmail = !!(env.AWS_ACCESS_KEY_ID && env.AWS_SECRET_ACCESS_KEY);
+    const hasStripe = !!(env.STRIPE_SECRET_KEY);
+    const hasMaps = !!(env.VITE_MAPBOX_ACCESS_TOKEN || env.MAPBOX_PUBLIC_TOKEN);
+    const hasDirectMail = !!(env.LOB_API_KEY);
+    const hasSMS = !!(env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN);
+    const hasRedis = !!(env.REDIS_URL);
+
+    // Credential penalties — services can't be "active" without creds
+    const credScore = (
+      (hasAI ? 25 : 0) +
+      (hasEmail ? 20 : 0) +
+      (hasStripe ? 15 : 0) +
+      (hasMaps ? 10 : 0) +
+      (hasDirectMail ? 10 : 0) +
+      (hasSMS ? 10 : 0) +
+      (hasRedis ? 10 : 0)
+    ); // max 100
+
+    // Open decisions: founder manual action needed reduces passive score
+    const openDecisions = await db.select({ count: count() }).from(decisionsInboxItems)
+      .where(eq(decisionsInboxItems.status, "pending"))
+      .catch(() => [{ count: 0 }]);
+    const pendingDecisions = Number(openDecisions[0]?.count || 0);
+
+    // Job failures reduce score
+    const recentJobFailures = await db.select({ count: count() }).from(jobHealthLogs)
+      .where(and(
+        gte(jobHealthLogs.runStartedAt, oneDayAgo),
+        eq(jobHealthLogs.status, "failed")
+      )).catch(() => [{ count: 0 }]);
+    const jobFailures = Number(recentJobFailures[0]?.count || 0);
+
+    function derivePassiveScore(actionsLast7d: number, credActive: boolean, weight: number): number {
+      if (!credActive) return 30; // Creds missing — cannot be truly passive
+      const activityBonus = Math.min(30, actionsLast7d > 0 ? Math.log10(actionsLast7d + 1) * 15 : 0);
+      return Math.round(Math.min(100, 70 + activityBonus)); // floor 70 if creds present, up to 100
+    }
 
     const automationStatus = [
       {
         name: "Lead Nurturer",
-        description: "Automatically follows up with leads based on behavior and timeline",
+        description: "Follows up with seller leads automatically based on behavior and timeline",
         actionsLast7d: leadNurturerActivity.status === "fulfilled" ? Number(leadNurturerActivity.value[0]?.count || 0) : 0,
-        status: "active",
+        status: hasAI && hasEmail ? "active" : "degraded",
         icon: "users",
-        passiveScore: 95,
+        passiveScore: derivePassiveScore(
+          leadNurturerActivity.status === "fulfilled" ? Number(leadNurturerActivity.value[0]?.count || 0) : 0,
+          hasAI && hasEmail, 1),
+        note: (!hasAI || !hasEmail) ? "Requires AI + email credentials" : undefined,
       },
       {
-        name: "Campaign Optimizer",
-        description: "A/B tests and optimizes direct mail and email campaigns automatically",
+        name: "Campaign Engine",
+        description: "Deploys email, SMS, and direct mail campaigns on schedule",
         actionsLast7d: campaignActivity.status === "fulfilled" ? Number(campaignActivity.value[0]?.count || 0) : 0,
-        status: "active",
+        status: hasEmail || hasSMS || hasDirectMail ? "active" : "degraded",
         icon: "target",
-        passiveScore: 90,
+        passiveScore: derivePassiveScore(
+          campaignActivity.status === "fulfilled" ? Number(campaignActivity.value[0]?.count || 0) : 0,
+          hasEmail || hasSMS || hasDirectMail, 1),
+        note: (!hasEmail && !hasSMS && !hasDirectMail) ? "Configure email, SMS, or direct mail" : undefined,
       },
       {
         name: "AcreScore Engine",
-        description: "Automatically scores and ranks leads by investment opportunity",
+        description: "Scores and ranks seller leads by investment opportunity automatically",
         actionsLast7d: scoreActivity.status === "fulfilled" ? Number(scoreActivity.value[0]?.count || 0) : 0,
-        status: "active",
+        status: hasAI ? "active" : "degraded",
         icon: "zap",
-        passiveScore: 98,
+        passiveScore: derivePassiveScore(
+          scoreActivity.status === "fulfilled" ? Number(scoreActivity.value[0]?.count || 0) : 0,
+          hasAI, 1),
+        note: !hasAI ? "Requires AI credentials (OpenRouter)" : undefined,
       },
       {
-        name: "Sophie (Customer Support)",
-        description: "Handles support tickets, onboarding, and user education autonomously",
+        name: "Sophie AI Support",
+        description: "Handles support tickets and user onboarding without human intervention",
         actionsLast7d: sophieActivity.status === "fulfilled" ? Number(sophieActivity.value[0]?.count || 0) : 0,
-        status: "active",
+        status: hasAI ? "active" : "degraded",
         icon: "message-circle",
-        passiveScore: 85,
-        note: "Escalates to you only when genuinely stuck",
+        passiveScore: derivePassiveScore(
+          sophieActivity.status === "fulfilled" ? Number(sophieActivity.value[0]?.count || 0) : 0,
+          hasAI, 1),
+        note: hasAI ? "Escalates only when genuinely stuck" : "Requires AI credentials",
       },
       {
         name: "Property Enrichment",
-        description: "Automatically enriches properties with flood, soil, wetland, and market data",
+        description: "Enriches parcels with flood zones, soil types, and comparable sales data",
         actionsLast7d: enrichmentActivity.status === "fulfilled" ? Number(enrichmentActivity.value[0]?.count || 0) : 0,
-        status: "active",
+        status: hasAI ? "active" : "degraded",
         icon: "database",
-        passiveScore: 92,
+        passiveScore: derivePassiveScore(
+          enrichmentActivity.status === "fulfilled" ? Number(enrichmentActivity.value[0]?.count || 0) : 0,
+          hasAI, 1),
       },
       {
         name: "Portfolio Sentinel",
-        description: "Monitors portfolio health, note performance, and default risk 24/7",
+        description: "Monitors note performance and default risk around the clock",
         actionsLast7d: sentinelActivity.status === "fulfilled" ? Number(sentinelActivity.value[0]?.count || 0) : 0,
         status: "active",
         icon: "shield",
-        passiveScore: 88,
-        note: "Scale tier and above",
+        passiveScore: derivePassiveScore(
+          sentinelActivity.status === "fulfilled" ? Number(sentinelActivity.value[0]?.count || 0) : 0,
+          true, 1),
+      },
+      {
+        name: "Workflow Automations",
+        description: "Triggers deal stage updates, tasks, and notifications automatically",
+        actionsLast7d: workflowActivity.status === "fulfilled" ? Number(workflowActivity.value[0]?.count || 0) : 0,
+        status: hasRedis ? "active" : "limited",
+        icon: "workflow",
+        passiveScore: derivePassiveScore(
+          workflowActivity.status === "fulfilled" ? Number(workflowActivity.value[0]?.count || 0) : 0,
+          true, 1),
+        note: !hasRedis ? "Redis recommended for reliable job scheduling" : undefined,
+      },
+      {
+        name: "Deal Progression AI",
+        description: "Generates offer letters, comps, and next-action guidance automatically",
+        actionsLast7d: dealProgressionActivity.status === "fulfilled" ? Number(dealProgressionActivity.value[0]?.count || 0) : 0,
+        status: hasAI ? "active" : "degraded",
+        icon: "briefcase",
+        passiveScore: derivePassiveScore(
+          dealProgressionActivity.status === "fulfilled" ? Number(dealProgressionActivity.value[0]?.count || 0) : 0,
+          hasAI, 1),
       },
     ];
 
     const totalAutomatedActions = automationStatus.reduce((sum, a) => sum + a.actionsLast7d, 0);
-    const avgPassiveScore = automationStatus.reduce((sum, a) => sum + a.passiveScore, 0) / automationStatus.length;
+    const avgAutomationScore = automationStatus.reduce((sum, a) => sum + a.passiveScore, 0) / automationStatus.length;
+
+    // Composite passive score:
+    // 40% from credential readiness (can the automations even run?)
+    // 40% from automation scores (are they producing output?)
+    // 20% from operational health (open decisions, job failures)
+    const operationalHealth = Math.max(0, 100 - (pendingDecisions * 5) - (jobFailures * 10));
+    const overallPassiveScore = Math.round(
+      (credScore * 0.4) +
+      (avgAutomationScore * 0.4) +
+      (Math.min(100, operationalHealth) * 0.2)
+    );
+
+    const scoreLabel =
+      overallPassiveScore >= 90 ? "Fully passive — platform running itself"
+      : overallPassiveScore >= 75 ? "Highly automated — minimal daily intervention"
+      : overallPassiveScore >= 60 ? "Partially automated — some services need configuration"
+      : overallPassiveScore >= 40 ? "Degraded — key credentials missing"
+      : "Manual mode — configure services to enable automation";
+
+    const missingCreds = [
+      !hasAI && "AI (OpenRouter)",
+      !hasEmail && "Email (AWS SES)",
+      !hasStripe && "Stripe Billing",
+      !hasMaps && "Mapbox",
+    ].filter(Boolean);
 
     res.json({
-      overallPassiveScore: Math.round(avgPassiveScore),
+      overallPassiveScore,
       totalAutomatedActionsLast7d: totalAutomatedActions,
-      humanActionsRequiredLast7d: 0, // Aspirational — track manually escalated items
+      humanActionsRequiredLast7d: pendingDecisions,
       automations: automationStatus,
-      passiveIncomeStatement: `The platform completed ${totalAutomatedActions.toLocaleString()} automated actions in the last 7 days without any manual intervention. Platform passive score: ${Math.round(avgPassiveScore)}/100.`,
+      credentialHealth: {
+        score: credScore,
+        hasAI, hasEmail, hasStripe, hasMaps, hasDirectMail, hasSMS, hasRedis,
+        missingCreds,
+      },
+      operationalHealth: {
+        score: Math.min(100, operationalHealth),
+        pendingDecisions,
+        jobFailures24h: jobFailures,
+      },
+      passiveIncomeStatement: overallPassiveScore >= 70
+        ? `Platform completed ${totalAutomatedActions.toLocaleString()} automated actions last 7 days. ${scoreLabel}.`
+        : `${scoreLabel}. Configure missing services to reach full automation: ${missingCreds.join(", ") || "all credentials set"}.`,
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
