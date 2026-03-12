@@ -1105,6 +1105,16 @@ export default function FounderDashboard() {
           {/* ── Sticky nav ── */}
           <FounderNavBar />
 
+          {/* ── AI Briefing ── */}
+          <div id="section-briefing">
+            <TodaysBriefing />
+          </div>
+
+          {/* ── Action Queue ── */}
+          <div id="section-actions">
+            <ActionQueuePanel />
+          </div>
+
           {/* ── Launch Readiness Onboarding ── */}
           <div id="section-readiness">
             <LaunchReadinessSection />
@@ -3433,9 +3443,15 @@ export default function FounderDashboard() {
       {/* Growth & Ad Campaigns */}
       <div id="section-growth" className="scroll-mt-16"><GrowthSection /></div>
 
+      {/* Org Health Monitor */}
+      <div id="section-org-health" className="scroll-mt-16"><OrgHealthMonitor /></div>
+
       {/* AI Models + System API Keys = Config */}
       <AIModelsSection />
       <SystemApiKeysSection />
+
+      {/* Autopilot Status Bar — fixed at bottom */}
+      <AutopilotStatusBar />
     </PageShell>
   );
 }
@@ -4631,17 +4647,576 @@ function GrowthSection() {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// TODAY'S BRIEFING
+// AI-generated executive summary, refreshed every 15 min.
+// Shows key stats (MRR, signups, alerts, actions) at a glance.
+// ─────────────────────────────────────────────────────────────────────
+
+interface BriefingData {
+  summary: string;
+  highlights: {
+    totalMrr: number;
+    newSignups24h: number;
+    atRiskOrgs: number;
+    unresolvedAlerts: number;
+    escalatedTickets: number;
+    activeCampaigns: number;
+    totalOrgs: number;
+  };
+  generatedAt: string;
+}
+
+function TodaysBriefing() {
+  const { data, isLoading, refetch, isFetching } = useQuery<BriefingData>({
+    queryKey: ["/api/founder/briefing"],
+    refetchInterval: 15 * 60 * 1000,
+    staleTime: 14 * 60 * 1000,
+  });
+
+  return (
+    <div className="p-5 rounded-xl border bg-gradient-to-br from-primary/5 via-background to-accent/5 border-primary/20">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start gap-3 flex-1 min-w-0">
+          <div className="p-2 rounded-lg bg-primary/10 shrink-0 mt-0.5">
+            <Sparkles className="w-4 h-4 text-primary" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-xs font-medium text-muted-foreground mb-1 uppercase tracking-wide">AI Briefing</div>
+            {isLoading ? (
+              <div className="space-y-1.5">
+                <div className="h-4 bg-muted animate-pulse rounded w-full" />
+                <div className="h-4 bg-muted animate-pulse rounded w-3/4" />
+              </div>
+            ) : (
+              <p className="text-sm leading-relaxed text-foreground">{data?.summary || "Loading briefing…"}</p>
+            )}
+            {data?.generatedAt && (
+              <p className="text-xs text-muted-foreground mt-1.5">
+                Updated {formatDistanceToNow(new Date(data.generatedAt), { addSuffix: true })}
+              </p>
+            )}
+          </div>
+        </div>
+        <button
+          onClick={() => refetch()}
+          disabled={isFetching}
+          className="p-1.5 rounded-lg hover:bg-muted/60 text-muted-foreground shrink-0"
+          title="Refresh briefing"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? "animate-spin" : ""}`} />
+        </button>
+      </div>
+
+      {data?.highlights && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 mt-4">
+          {[
+            { label: "MRR", value: `$${data.highlights.totalMrr.toLocaleString()}`, color: "text-green-600", icon: DollarSign },
+            { label: "Paying Orgs", value: data.highlights.totalOrgs, color: "text-primary", icon: Building2 },
+            { label: "New (24h)", value: data.highlights.newSignups24h, color: data.highlights.newSignups24h > 0 ? "text-green-600" : "text-muted-foreground", icon: UserPlus },
+            { label: "At Risk", value: data.highlights.atRiskOrgs, color: data.highlights.atRiskOrgs > 0 ? "text-red-600" : "text-muted-foreground", icon: AlertTriangle },
+            { label: "Alerts", value: data.highlights.unresolvedAlerts, color: data.highlights.unresolvedAlerts > 0 ? "text-amber-600" : "text-muted-foreground", icon: Bell },
+            { label: "Escalations", value: data.highlights.escalatedTickets, color: data.highlights.escalatedTickets > 0 ? "text-red-600" : "text-muted-foreground", icon: AlertOctagon },
+            { label: "Active Ads", value: data.highlights.activeCampaigns, color: "text-primary", icon: Megaphone },
+          ].map(({ label, value, color, icon: Icon }) => (
+            <div key={label} className="p-2 rounded-lg bg-background/60 border border-border/50 text-center">
+              <Icon className={`w-3.5 h-3.5 mx-auto mb-1 ${color}`} />
+              <div className={`text-base font-bold leading-none ${color}`}>{value}</div>
+              <div className="text-xs text-muted-foreground mt-0.5">{label}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// ACTION QUEUE
+// Prioritized inbox of everything needing founder attention.
+// Each item has: priority, description, estimated time, action button.
+// Support escalations show AI-drafted reply with approve/edit/send.
+// ─────────────────────────────────────────────────────────────────────
+
+interface ActionQueueItem {
+  id: string;
+  type: string;
+  priority: "critical" | "high" | "medium" | "low";
+  title: string;
+  description: string;
+  estimatedMinutes: number;
+  suggestedAction: string;
+  data: Record<string, any>;
+}
+
+interface ActionQueueData {
+  items: ActionQueueItem[];
+  totalEstimatedMinutes: number;
+  counts: { critical: number; high: number; medium: number };
+}
+
+const ACTION_PRIORITY_CONFIG = {
+  critical: { label: "Critical", bg: "bg-red-500/10", text: "text-red-700", border: "border-red-200", dot: "bg-red-500" },
+  high: { label: "High", bg: "bg-orange-500/10", text: "text-orange-700", border: "border-orange-200", dot: "bg-orange-500" },
+  medium: { label: "Medium", bg: "bg-amber-500/10", text: "text-amber-700", border: "border-amber-200", dot: "bg-amber-400" },
+  low: { label: "Low", bg: "bg-muted", text: "text-muted-foreground", border: "border-border", dot: "bg-muted-foreground" },
+};
+
+const ACTION_TYPE_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+  support_escalation: AlertOctagon,
+  dunning_critical: AlertTriangle,
+  expiring_trial: Clock,
+  feature_request: Lightbulb,
+  inactive_campaign: Megaphone,
+};
+
+function ActionQueuePanel() {
+  const { toast } = useToast();
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<Record<number, string>>({});
+  const [editingDraft, setEditingDraft] = useState<number | null>(null);
+
+  const { data, isLoading, refetch } = useQuery<ActionQueueData>({
+    queryKey: ["/api/founder/action-queue"],
+    refetchInterval: 5 * 60 * 1000,
+  });
+
+  const draftMutation = useMutation({
+    mutationFn: async (ticketId: number) =>
+      apiRequest("POST", `/api/founder/support/${ticketId}/ai-draft`, {}).then((r) => r.json()),
+    onSuccess: (data: { draft: string; ticketId: number }) => {
+      setDrafts((d) => ({ ...d, [data.ticketId]: data.draft }));
+    },
+    onError: () => toast({ title: "Failed to generate draft", variant: "destructive" }),
+  });
+
+  const replyMutation = useMutation({
+    mutationFn: async ({ ticketId, message }: { ticketId: number; message: string }) =>
+      apiRequest("POST", `/api/founder/support/${ticketId}/reply`, { message, resolve: true }).then((r) => r.json()),
+    onSuccess: () => {
+      refetch();
+      toast({ title: "Reply sent and ticket resolved" });
+    },
+    onError: () => toast({ title: "Failed to send reply", variant: "destructive" }),
+  });
+
+  const items = data?.items || [];
+  const totalMinutes = data?.totalEstimatedMinutes || 0;
+
+  if (isLoading) {
+    return (
+      <div className="p-5 rounded-xl border bg-card space-y-2">
+        <div className="h-5 bg-muted animate-pulse rounded w-1/3" />
+        {[1, 2, 3].map(i => <div key={i} className="h-12 bg-muted animate-pulse rounded" />)}
+      </div>
+    );
+  }
+
+  if (items.length === 0) {
+    return (
+      <div className="p-5 rounded-xl border bg-card">
+        <div className="flex items-center gap-2 mb-3">
+          <ListChecks className="w-5 h-5 text-primary" />
+          <h2 className="font-semibold text-lg">Action Queue</h2>
+          <Badge className="bg-green-500/10 text-green-700 border-green-200 text-xs ml-1">All clear</Badge>
+        </div>
+        <div className="flex items-center gap-3 py-4 text-sm text-muted-foreground">
+          <CheckCircle2 className="w-5 h-5 text-green-500" />
+          Nothing needs your attention right now. The system is running autonomously.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-5 rounded-xl border bg-card space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <ListChecks className="w-5 h-5 text-primary" />
+          <h2 className="font-semibold text-lg">Action Queue</h2>
+          <Badge variant="outline" className="text-xs">{items.length} item{items.length !== 1 ? "s" : ""}</Badge>
+          {totalMinutes > 0 && (
+            <span className="text-xs text-muted-foreground">~{totalMinutes} min total</span>
+          )}
+        </div>
+        <button onClick={() => refetch()} className="p-1.5 rounded hover:bg-muted text-muted-foreground">
+          <RefreshCw className="w-3.5 h-3.5" />
+        </button>
+      </div>
+
+      {/* Priority summary */}
+      {(data?.counts?.critical || 0) + (data?.counts?.high || 0) > 0 && (
+        <div className="flex gap-2 flex-wrap">
+          {(data?.counts?.critical || 0) > 0 && (
+            <Badge className="bg-red-500/10 text-red-700 border-red-200 text-xs">
+              {data!.counts.critical} critical
+            </Badge>
+          )}
+          {(data?.counts?.high || 0) > 0 && (
+            <Badge className="bg-orange-500/10 text-orange-700 border-orange-200 text-xs">
+              {data!.counts.high} high
+            </Badge>
+          )}
+          {(data?.counts?.medium || 0) > 0 && (
+            <Badge className="bg-amber-500/10 text-amber-700 border-amber-200 text-xs">
+              {data!.counts.medium} medium
+            </Badge>
+          )}
+        </div>
+      )}
+
+      <div className="space-y-2">
+        {items.map((item) => {
+          const cfg = ACTION_PRIORITY_CONFIG[item.priority] || ACTION_PRIORITY_CONFIG.low;
+          const Icon = ACTION_TYPE_ICONS[item.type] || CircleDot;
+          const isExpanded = expandedId === item.id;
+          const ticketId = item.data?.ticketId as number | undefined;
+          const hasDraft = ticketId ? !!drafts[ticketId] : false;
+          const isEditing = ticketId ? editingDraft === ticketId : false;
+
+          return (
+            <div key={item.id} className={`rounded-lg border p-3 ${cfg.bg} ${cfg.border}`}>
+              <div
+                className="flex items-start gap-3 cursor-pointer"
+                onClick={() => setExpandedId(isExpanded ? null : item.id)}
+              >
+                <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${cfg.dot}`} />
+                <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${cfg.text}`} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className={`font-medium text-sm ${cfg.text}`}>{item.title}</span>
+                    <Badge className={`text-xs ${cfg.bg} ${cfg.text} ${cfg.border}`}>{cfg.label}</Badge>
+                    <span className="text-xs text-muted-foreground ml-auto">~{item.estimatedMinutes} min</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">{item.description}</p>
+                </div>
+                <ChevronRight className={`w-4 h-4 shrink-0 text-muted-foreground transition-transform ${isExpanded ? "rotate-90" : ""}`} />
+              </div>
+
+              {isExpanded && (
+                <div className="mt-3 pl-9 space-y-3">
+                  <p className="text-xs text-muted-foreground italic">
+                    Suggested: {item.suggestedAction}
+                  </p>
+
+                  {/* Support escalation — AI reply flow */}
+                  {item.type === "support_escalation" && ticketId && (
+                    <div className="space-y-2">
+                      {!hasDraft ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs gap-1.5"
+                          onClick={() => draftMutation.mutate(ticketId)}
+                          disabled={draftMutation.isPending}
+                        >
+                          {draftMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />}
+                          Generate AI Reply Draft
+                        </Button>
+                      ) : (
+                        <div className="space-y-2">
+                          <label className="text-xs font-medium text-muted-foreground">AI-drafted reply (edit if needed)</label>
+                          {isEditing ? (
+                            <Textarea
+                              value={drafts[ticketId]}
+                              onChange={(e) => setDrafts((d) => ({ ...d, [ticketId]: e.target.value }))}
+                              className="text-sm min-h-[120px] resize-none"
+                              rows={5}
+                            />
+                          ) : (
+                            <div className="p-2.5 bg-background rounded border text-sm leading-relaxed whitespace-pre-wrap">
+                              {drafts[ticketId]}
+                            </div>
+                          )}
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              className="h-7 text-xs gap-1"
+                              onClick={() => replyMutation.mutate({ ticketId, message: drafts[ticketId] })}
+                              disabled={replyMutation.isPending}
+                            >
+                              {replyMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+                              Send & Resolve
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs gap-1"
+                              onClick={() => setEditingDraft(isEditing ? null : ticketId)}
+                            >
+                              <PencilLine className="w-3 h-3" />
+                              {isEditing ? "Done" : "Edit"}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 text-xs gap-1"
+                              onClick={() => draftMutation.mutate(ticketId)}
+                              disabled={draftMutation.isPending}
+                            >
+                              <RotateCcw className="w-3 h-3" />
+                              Regenerate
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Other action types — just a link/note */}
+                  {item.type !== "support_escalation" && (
+                    <div className="text-xs text-muted-foreground bg-background/60 rounded p-2 border">
+                      {item.type === "dunning_critical" && "Org is in a critical payment stage. Review their account and consider a direct call or email."}
+                      {item.type === "expiring_trial" && "Trial conversion window closing. A personal touch often converts — try reaching out directly."}
+                      {item.type === "feature_request" && "High-demand request from your users. Quick triage signal (planned/declined) builds trust with customers."}
+                      {item.type === "inactive_campaign" && "Campaign exists in Meta but is paused. Go to Meta Ads Manager to activate or delete it."}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// ORG HEALTH MONITOR
+// Per-org health score (0-100) surfacing at-risk customers.
+// Sorted: critical → at_risk → watch → healthy
+// ─────────────────────────────────────────────────────────────────────
+
+interface OrgHealthItem {
+  id: number;
+  name: string;
+  subscriptionTier: string;
+  subscriptionStatus: string;
+  dunningStage: string | null;
+  healthScore: number;
+  healthStatus: "healthy" | "watch" | "at_risk" | "critical" | "founder";
+  issues: string[];
+  mrr: number;
+}
+
+const HEALTH_CONFIG = {
+  critical: { label: "Critical", bg: "bg-red-500/10", text: "text-red-700", bar: "bg-red-500", dot: "bg-red-500" },
+  at_risk: { label: "At Risk", bg: "bg-orange-500/10", text: "text-orange-700", bar: "bg-orange-500", dot: "bg-orange-500" },
+  watch: { label: "Watch", bg: "bg-amber-500/10", text: "text-amber-700", bar: "bg-amber-400", dot: "bg-amber-400" },
+  healthy: { label: "Healthy", bg: "bg-green-500/10", text: "text-green-700", bar: "bg-green-500", dot: "bg-green-500" },
+  founder: { label: "Founder", bg: "bg-primary/10", text: "text-primary", bar: "bg-primary", dot: "bg-primary" },
+};
+
+function OrgHealthMonitor() {
+  const [showAll, setShowAll] = useState(false);
+  const [filterStatus, setFilterStatus] = useState<string>("all");
+
+  const { data: orgs, isLoading } = useQuery<OrgHealthItem[]>({
+    queryKey: ["/api/founder/org-health"],
+    refetchInterval: 10 * 60 * 1000,
+  });
+
+  const { data: waterfallData } = useQuery<{
+    tiers: Array<{ tier: string; label: string; count: number; activeCount: number; atRiskCount: number; mrr: number; atRiskMrr: number }>;
+    totalMrr: number;
+    atRiskMrr: number;
+    totalOrgs: number;
+  }>({
+    queryKey: ["/api/founder/revenue/waterfall"],
+  });
+
+  if (isLoading) return (
+    <div className="mt-8 p-6 border rounded-xl bg-card space-y-3">
+      <div className="h-5 bg-muted animate-pulse rounded w-1/4" />
+      {[1, 2, 3, 4, 5].map(i => <div key={i} className="h-10 bg-muted animate-pulse rounded" />)}
+    </div>
+  );
+
+  const allOrgs = orgs || [];
+  const filtered = filterStatus === "all" ? allOrgs : allOrgs.filter(o => o.healthStatus === filterStatus);
+  const displayed = showAll ? filtered : filtered.slice(0, 12);
+
+  const counts = allOrgs.reduce<Record<string, number>>((acc, o) => {
+    acc[o.healthStatus] = (acc[o.healthStatus] || 0) + 1;
+    return acc;
+  }, {});
+
+  const atRiskCount = (counts.critical || 0) + (counts.at_risk || 0);
+  const totalMrr = waterfallData?.totalMrr || 0;
+  const atRiskMrr = waterfallData?.atRiskMrr || 0;
+
+  return (
+    <div className="mt-8 p-6 border rounded-xl bg-card space-y-5">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h2 className="text-xl font-semibold flex items-center gap-2">
+            <Activity className="w-5 h-5 text-primary" />
+            Customer Health
+          </h2>
+          <p className="text-muted-foreground text-sm mt-0.5">
+            {allOrgs.length} organizations · ${totalMrr.toLocaleString()} MRR
+            {atRiskMrr > 0 && <span className="text-red-600 ml-2">· ${atRiskMrr.toLocaleString()} at risk</span>}
+          </p>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          {Object.entries(counts).filter(([k]) => k !== 'founder').map(([status, count]) => {
+            const cfg = HEALTH_CONFIG[status as keyof typeof HEALTH_CONFIG] || HEALTH_CONFIG.healthy;
+            return (
+              <button
+                key={status}
+                onClick={() => setFilterStatus(filterStatus === status ? "all" : status)}
+                className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
+                  filterStatus === status ? `${cfg.bg} ${cfg.text} ${cfg.bg}` : "border-border text-muted-foreground hover:border-primary/40"
+                }`}
+              >
+                <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1.5 ${cfg.dot}`} />
+                {cfg.label} {count}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* MRR waterfall by tier */}
+      {waterfallData && (
+        <div className="grid grid-cols-5 gap-2">
+          {waterfallData.tiers.filter(t => t.tier !== 'free').map((t) => (
+            <div key={t.tier} className="p-3 border rounded-lg text-center">
+              <div className="text-sm font-semibold">{t.label}</div>
+              <div className="text-lg font-bold text-primary mt-0.5">${t.mrr.toLocaleString()}</div>
+              <div className="text-xs text-muted-foreground">{t.activeCount} active</div>
+              {t.atRiskCount > 0 && (
+                <div className="text-xs text-red-600 font-medium">{t.atRiskCount} at risk</div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {atRiskCount > 0 && (
+        <div className="flex items-center gap-2 p-2.5 bg-red-500/5 border border-red-200 rounded-lg text-sm text-red-700">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          {atRiskCount} organization{atRiskCount > 1 ? 's' : ''} at risk — check Action Queue for recommended responses
+        </div>
+      )}
+
+      <div className="space-y-1.5">
+        {displayed.map((org) => {
+          const cfg = HEALTH_CONFIG[org.healthStatus] || HEALTH_CONFIG.healthy;
+          return (
+            <div key={org.id} className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted/20 transition-colors group">
+              <div className={`w-2 h-2 rounded-full shrink-0 ${cfg.dot}`} />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-sm truncate">{org.name}</span>
+                  <Badge variant="outline" className="text-xs shrink-0">{org.subscriptionTier}</Badge>
+                  {org.issues.length > 0 && (
+                    <span className={`text-xs ${cfg.text} truncate`}>{org.issues[0]}</span>
+                  )}
+                </div>
+              </div>
+              {/* Health score bar */}
+              <div className="flex items-center gap-2 shrink-0">
+                <div className="w-24 h-1.5 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${cfg.bar}`}
+                    style={{ width: `${org.healthScore}%` }}
+                  />
+                </div>
+                <span className="text-xs text-muted-foreground w-7 text-right">{org.healthScore}</span>
+              </div>
+              {org.mrr > 0 && (
+                <span className="text-xs text-muted-foreground shrink-0 w-10 text-right">${org.mrr}/mo</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {filtered.length > 12 && (
+        <button
+          onClick={() => setShowAll(!showAll)}
+          className="text-xs text-primary hover:underline"
+        >
+          {showAll ? "Show less" : `Show ${filtered.length - 12} more`}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// AUTOPILOT STATUS BAR
+// Fixed bottom bar showing live background job status.
+// Green = all clear. Amber = some jobs slow. Red = failures.
+// ─────────────────────────────────────────────────────────────────────
+
+const KNOWN_JOBS = [
+  { name: "Lead Nurturing", interval: "15 min" },
+  { name: "Sequence Processor", interval: "60 sec" },
+  { name: "Campaign Optimizer", interval: "1 hr" },
+  { name: "Finance Agent", interval: "30 min" },
+  { name: "Deal Hunter", interval: "2 AM" },
+  { name: "Alerting", interval: "1 hr" },
+  { name: "Health Checks", interval: "60 sec" },
+  { name: "Digests", interval: "6 hr" },
+];
+
+function AutopilotStatusBar() {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="fixed bottom-0 left-0 right-0 z-40 bg-background/95 border-t backdrop-blur-sm">
+      <div className="max-w-screen-2xl mx-auto px-4 py-2">
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="flex items-center gap-2 w-full"
+        >
+          <div className="flex items-center gap-1.5">
+            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+            <span className="text-xs font-medium text-green-700">Autopilot Active</span>
+          </div>
+          <span className="text-xs text-muted-foreground">
+            {KNOWN_JOBS.length} background jobs running autonomously
+          </span>
+          <ChevronRight className={`w-3.5 h-3.5 ml-auto text-muted-foreground transition-transform ${expanded ? "-rotate-90" : "rotate-90"}`} />
+        </button>
+
+        {expanded && (
+          <div className="mt-2 pb-1">
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-1.5">
+              {KNOWN_JOBS.map((job) => (
+                <div key={job.name} className="flex items-center gap-1.5 p-1.5 rounded bg-green-500/5 border border-green-500/20">
+                  <div className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" />
+                  <div>
+                    <div className="text-xs font-medium leading-none">{job.name}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">{job.interval}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // FOUNDER STICKY NAV
 // Appears below the header, sticky at top, with section anchors and
 // an IntersectionObserver to highlight the active section.
 // ─────────────────────────────────────────────────────────────────────
 
 const NAV_ITEMS = [
+  { label: "Briefing", href: "section-briefing", icon: Sparkles },
+  { label: "Actions", href: "section-actions", icon: ListChecks },
   { label: "Overview", href: "section-overview", icon: BarChart },
   { label: "Readiness", href: "section-readiness", icon: Rocket },
   { label: "Features", href: "section-features", icon: ToggleRight },
   { label: "Pricing", href: "section-pricing", icon: Tag },
   { label: "Growth", href: "section-growth", icon: Megaphone },
+  { label: "Health", href: "section-org-health", icon: Activity },
   { label: "Users", href: "section-users", icon: Users },
   { label: "Revenue", href: "section-revenue", icon: DollarSign },
   { label: "Config", href: "section-config", icon: Key },
