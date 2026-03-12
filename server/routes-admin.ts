@@ -8,12 +8,13 @@ import {
   SUBSCRIPTION_TIERS, payments, notes, deals, properties, leads, activityLog, organizations,
   offers, organizationIntegrations, dataSources,
   supportTickets, supportTicketMessages, knowledgeBaseArticles,
-  sophieMemory, systemAlerts,
+  sophieMemory, sophieCrossOrgLearnings, systemAlerts,
   countyGisEndpoints,
   aiModelConfigs,
   systemApiKeys,
   featureRequests,
   growthCampaigns,
+  systemActivity,
 } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
@@ -3355,6 +3356,154 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       const totalOrgs = orgRows.filter(o => o.subscriptionTier !== 'free').length;
 
       res.json({ tiers: tierData, totalMrr, atRiskMrr, totalOrgs });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // AUTONOMOUS OBSERVATORY ENDPOINTS
+  // ============================================
+
+  // GET /api/admin/system-activity — live feed of autonomous actions
+  api.get("/api/admin/system-activity", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const hours = Math.min(Number(req.query.hours) || 48, 168); // max 7 days
+      const limit = Math.min(Number(req.query.limit) || 100, 500);
+      const since = new Date(Date.now() - hours * 60 * 60 * 1000);
+
+      const rows = await db
+        .select({
+          id: systemActivity.id,
+          orgId: systemActivity.orgId,
+          orgName: organizations.name,
+          jobName: systemActivity.jobName,
+          action: systemActivity.action,
+          summary: systemActivity.summary,
+          entityType: systemActivity.entityType,
+          entityId: systemActivity.entityId,
+          metadata: systemActivity.metadata,
+          createdAt: systemActivity.createdAt,
+        })
+        .from(systemActivity)
+        .leftJoin(organizations, eq(systemActivity.orgId, organizations.id))
+        .where(sql`${systemActivity.createdAt} >= ${since}`)
+        .orderBy(desc(systemActivity.createdAt))
+        .limit(limit);
+
+      res.json({ rows, since: since.toISOString(), total: rows.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/admin/job-health — live job supervisor status
+  api.get("/api/admin/job-health", isAuthenticated, isFounderAdmin, async (_req, res) => {
+    try {
+      const { jobSupervisor } = await import("./services/jobSupervisor");
+      res.json({ jobs: jobSupervisor.getAll(), summary: jobSupervisor.getSummary() });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/admin/churn-risk — at-risk orgs sorted by churn score
+  api.get("/api/admin/churn-risk", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const minScore = Number(req.query.minScore) || 0;
+      const limit = Math.min(Number(req.query.limit) || 50, 200);
+
+      const rows = await db
+        .select({
+          id: organizations.id,
+          name: organizations.name,
+          subscriptionTier: organizations.subscriptionTier,
+          dunningStage: organizations.dunningStage,
+          churnRiskScore: organizations.churnRiskScore,
+          churnRiskUpdatedAt: organizations.churnRiskUpdatedAt,
+          churnRescueSentAt: organizations.churnRescueSentAt,
+          milestonesReached: organizations.milestonesReached,
+          createdAt: organizations.createdAt,
+        })
+        .from(organizations)
+        .where(sql`${organizations.churnRiskScore} >= ${minScore} AND ${organizations.subscriptionStatus} = 'active'`)
+        .orderBy(desc(organizations.churnRiskScore))
+        .limit(limit);
+
+      res.json({ orgs: rows, total: rows.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/admin/churn-risk/:orgId/rescue — manually trigger rescue for an org
+  api.post("/api/admin/churn-risk/:orgId/rescue", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const orgId = Number(req.params.orgId);
+      const { churnEngine } = await import("./services/churnEngine");
+      const org = await storage.getOrganization(orgId);
+      if (!org) return res.status(404).json({ message: "Org not found" });
+      await db.update(organizations).set({ churnRescueSentAt: null }).where(eq(organizations.id, orgId));
+      const score = await churnEngine.scoreOrg(orgId, { dunningStage: org.dunningStage });
+      res.json({ message: "Rescue triggered", riskScore: score });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/admin/sophie-observations — Sophie's recent observations
+  api.get("/api/admin/sophie-observations", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const limit = Math.min(Number(req.query.limit) || 30, 100);
+
+      const observations = await db
+        .select({
+          id: sophieMemory.id,
+          orgId: sophieMemory.organizationId,
+          orgName: organizations.name,
+          memoryType: sophieMemory.memoryType,
+          content: sophieMemory.content,
+          confidence: sophieMemory.confidence,
+          notificationLevel: sophieMemory.notificationLevel,
+          createdAt: sophieMemory.createdAt,
+        })
+        .from(sophieMemory)
+        .leftJoin(organizations, eq(sophieMemory.organizationId, organizations.id))
+        .orderBy(desc(sophieMemory.createdAt))
+        .limit(limit);
+
+      const learnings = await db
+        .select()
+        .from(sophieCrossOrgLearnings)
+        .orderBy(desc(sophieCrossOrgLearnings.createdAt))
+        .limit(10);
+
+      res.json({ observations, learnings });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/admin/founder-briefing/send — manually trigger briefing
+  api.post("/api/admin/founder-briefing/send", isAuthenticated, isFounderAdmin, async (_req, res) => {
+    try {
+      const { sendDailyBriefing } = await import("./services/founderBriefing");
+      // Clear last-sent so it will re-send
+      const { systemMeta } = await import("@shared/schema");
+      await db.delete(systemMeta).where(eq(systemMeta.key, "founder_briefing_last_sent"));
+      await sendDailyBriefing();
+      res.json({ message: "Briefing sent" });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/admin/churn-engine/run — manually trigger churn scoring run
+  api.post("/api/admin/churn-engine/run", isAuthenticated, isFounderAdmin, async (_req, res) => {
+    try {
+      const { churnEngine } = await import("./services/churnEngine");
+      churnEngine.runForAllOrgs().catch(console.error); // run in background
+      res.json({ message: "Churn engine started in background" });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

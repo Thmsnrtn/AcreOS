@@ -95,6 +95,13 @@ export const organizations = pgTable("organizations", {
   utmContent: text("utm_content"),   // e.g. 'carousel-ad-1'
   // Referral program credit balance (in cents)
   referralCredits: integer("referral_credits").notNull().default(0),
+  // Churn risk scoring (0-100, 100 = highest risk)
+  churnRiskScore: integer("churn_risk_score").notNull().default(0),
+  churnRiskUpdatedAt: timestamp("churn_risk_updated_at"),
+  churnRescueSentAt: timestamp("churn_rescue_sent_at"),
+  // Milestone tracking for self-promotion nudges
+  milestonesReached: jsonb("milestones_reached").$type<string[]>().default([]),
+  referralNudgeSentAt: timestamp("referral_nudge_sent_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -9799,3 +9806,33 @@ export const adCreativeBundles = pgTable("ad_creative_bundles", {
   model: text("model").default("gpt-4o"),
 });
 export type AdCreativeBundle = typeof adCreativeBundles.$inferSelect;
+
+// ============================================
+// AUTONOMOUS OBSERVATORY
+// ============================================
+
+// System activity log: every meaningful autonomous action the system takes
+export const systemActivity = pgTable("system_activity", {
+  id: serial("id").primaryKey(),
+  orgId: integer("org_id").references(() => organizations.id, { onDelete: "set null" }),
+  jobName: text("job_name").notNull(),   // 'finance_agent', 'sophie', 'dunning', etc.
+  action: text("action").notNull(),      // 'payment_reminder_sent', 'ticket_resolved', etc.
+  summary: text("summary").notNull(),    // human-readable narrative
+  entityType: text("entity_type"),       // 'note', 'lead', 'campaign', 'support_case'
+  entityId: text("entity_id"),
+  metadata: jsonb("metadata").$type<Record<string, any>>(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("IDX_sysact_created").on(table.createdAt),
+  index("IDX_sysact_org").on(table.orgId, table.createdAt),
+  index("IDX_sysact_job").on(table.jobName, table.createdAt),
+]);
+export type SystemActivity = typeof systemActivity.$inferSelect;
+
+// System meta: key-value store for operational state
+export const systemMeta = pgTable("system_meta", {
+  key: text("key").primaryKey(),
+  value: text("value"),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+export type SystemMeta = typeof systemMeta.$inferSelect;

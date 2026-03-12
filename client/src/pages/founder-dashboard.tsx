@@ -84,6 +84,14 @@ import {
   Heart,
   Users2,
   HelpCircle,
+  ShieldAlert,
+  Cpu,
+  ScrollText,
+  BrainCircuit,
+  CircleCheck,
+  CircleX,
+  CircleDot as CircleDotIcon,
+  Minus,
 } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 
@@ -383,6 +391,336 @@ function formatCurrency(cents: number): string {
 type ExpandedTile = 'revenue' | 'health' | 'agents' | 'alerts' | 'revenueAtRisk' | 'userActivity' | null;
 
 type UserFilter = 'all' | 'active' | 'new' | 'established';
+
+// ─────────────────────────────────────────────
+// AUTONOMOUS OBSERVATORY COMPONENTS
+// ─────────────────────────────────────────────
+
+const JOB_COLORS: Record<string, string> = {
+  finance_agent:       "bg-blue-500",
+  campaign_optimizer:  "bg-purple-500",
+  lead_nurturing:      "bg-green-500",
+  support_brain:       "bg-cyan-500",
+  dunning:             "bg-red-500",
+  external_monitor:    "bg-orange-500",
+  sophie:              "bg-violet-500",
+  churn_engine:        "bg-rose-500",
+  founder_briefing:    "bg-emerald-500",
+  default:             "bg-zinc-400",
+};
+
+function jobColor(jobName: string) {
+  return JOB_COLORS[jobName] ?? JOB_COLORS.default;
+}
+
+function JobStatusDot({ status }: { status: string }) {
+  if (status === "healthy")  return <CircleCheck className="w-4 h-4 text-green-500 shrink-0" />;
+  if (status === "degraded") return <CircleDotIcon className="w-4 h-4 text-yellow-500 shrink-0" />;
+  if (status === "failed")   return <CircleX className="w-4 h-4 text-red-500 shrink-0" />;
+  return <Minus className="w-4 h-4 text-zinc-400 shrink-0" />;
+}
+
+/** Live System Activity Stream */
+function SystemActivityPanel() {
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ["/api/admin/system-activity"],
+    queryFn: () => apiRequest("GET", "/api/admin/system-activity?hours=48&limit=80").then(r => r.json()),
+    refetchInterval: 30_000,
+  });
+
+  const rows: any[] = data?.rows ?? [];
+
+  return (
+    <Card className="col-span-full">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base font-semibold flex items-center gap-2">
+            <ScrollText className="w-4 h-4 text-emerald-500" />
+            System Activity Stream
+          </CardTitle>
+          <div className="flex items-center gap-2">
+            {isLoading && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
+            <span className="text-xs text-muted-foreground">Last 48h · auto-refreshes every 30s</span>
+            <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => refetch()}>
+              <RefreshCw className="w-3 h-3" />
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {isLoading && rows.length === 0 ? (
+          <div className="space-y-2">
+            {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}
+          </div>
+        ) : rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-6">No autonomous actions recorded yet. Actions will appear here as the system works.</p>
+        ) : (
+          <div className="space-y-1 max-h-80 overflow-y-auto pr-1">
+            {rows.map((row: any) => (
+              <div key={row.id} className="flex items-start gap-3 py-1.5 border-b border-border/40 last:border-0">
+                <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${jobColor(row.jobName)}`} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm leading-snug truncate">{row.summary}</p>
+                  {row.orgName && <p className="text-xs text-muted-foreground">{row.orgName}</p>}
+                </div>
+                <div className="text-right shrink-0">
+                  <Badge variant="outline" className="text-xs font-mono py-0">{row.jobName.replace(/_/g, " ")}</Badge>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {formatDistanceToNow(new Date(row.createdAt), { addSuffix: true })}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        <p className="text-xs text-muted-foreground mt-3 text-right">{rows.length} action{rows.length !== 1 ? "s" : ""} logged</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Job Health Supervisor Panel */
+function JobHealthPanel() {
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ["/api/admin/job-health"],
+    queryFn: () => apiRequest("GET", "/api/admin/job-health").then(r => r.json()),
+    refetchInterval: 60_000,
+  });
+
+  const jobs: any[] = data?.jobs ?? [];
+  const summary = data?.summary ?? { healthy: 0, degraded: 0, failed: 0, unknown: 0 };
+  const hasIssues = summary.failed > 0 || summary.degraded > 0;
+
+  return (
+    <Card className={hasIssues ? "border-red-300 dark:border-red-800" : ""}>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base font-semibold flex items-center gap-2">
+            <Cpu className="w-4 h-4 text-blue-500" />
+            Background Job Health
+          </CardTitle>
+          <div className="flex items-center gap-2">
+            {hasIssues && <Badge variant="destructive" className="text-xs">Issues Detected</Badge>}
+            <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => refetch()}>
+              <RefreshCw className="w-3 h-3" />
+            </Button>
+          </div>
+        </div>
+        <div className="flex gap-3 text-xs text-muted-foreground">
+          <span className="text-green-600 font-medium">{summary.healthy} healthy</span>
+          {summary.degraded > 0 && <span className="text-yellow-600 font-medium">{summary.degraded} degraded</span>}
+          {summary.failed > 0 && <span className="text-red-600 font-medium">{summary.failed} failed</span>}
+          {summary.unknown > 0 && <span>{summary.unknown} not yet run</span>}
+        </div>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="space-y-2">{[...Array(6)].map((_, i) => <Skeleton key={i} className="h-7 w-full" />)}</div>
+        ) : (
+          <div className="space-y-1.5 max-h-64 overflow-y-auto">
+            {jobs.map((job: any) => (
+              <div key={job.name} className="flex items-center gap-2 py-1 border-b border-border/40 last:border-0">
+                <JobStatusDot status={job.status} />
+                <span className="text-sm font-mono flex-1 truncate">{job.name.replace(/_/g, " ")}</span>
+                <div className="text-right text-xs text-muted-foreground shrink-0">
+                  {job.lastRunAt ? (
+                    <span>{formatDistanceToNow(new Date(job.lastRunAt), { addSuffix: true })}</span>
+                  ) : (
+                    <span className="italic">not yet run</span>
+                  )}
+                  {job.consecutiveFailures > 0 && (
+                    <span className="ml-2 text-red-500 font-medium">{job.consecutiveFailures} fails</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/** At-Risk Orgs (Churn Engine) Panel */
+function ChurnRiskPanel() {
+  const { toast } = useToast();
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ["/api/admin/churn-risk"],
+    queryFn: () => apiRequest("GET", "/api/admin/churn-risk?minScore=40").then(r => r.json()),
+    refetchInterval: 5 * 60_000,
+  });
+
+  const orgs: any[] = data?.orgs ?? [];
+
+  const triggerRescue = async (orgId: number, orgName: string) => {
+    try {
+      await apiRequest("POST", `/api/admin/churn-risk/${orgId}/rescue`);
+      toast({ title: "Rescue triggered", description: `Sophie will reach out to ${orgName}` });
+      refetch();
+    } catch {
+      toast({ title: "Error", description: "Failed to trigger rescue", variant: "destructive" });
+    }
+  };
+
+  const riskColor = (score: number) =>
+    score >= 80 ? "text-red-600 font-bold" :
+    score >= 60 ? "text-yellow-600 font-semibold" :
+    "text-muted-foreground";
+
+  return (
+    <Card className="col-span-full md:col-span-1">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base font-semibold flex items-center gap-2">
+          <ShieldAlert className="w-4 h-4 text-rose-500" />
+          Churn Risk Radar
+        </CardTitle>
+        <CardDescription className="text-xs">Paying orgs with elevated churn risk — Sophie auto-rescues at 85+</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="space-y-2">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}</div>
+        ) : orgs.length === 0 ? (
+          <div className="flex flex-col items-center py-6 gap-1">
+            <CircleCheck className="w-8 h-8 text-green-500" />
+            <p className="text-sm text-muted-foreground">No orgs at elevated churn risk</p>
+          </div>
+        ) : (
+          <div className="space-y-2 max-h-72 overflow-y-auto">
+            {orgs.map((org: any) => (
+              <div key={org.id} className="flex items-center justify-between py-1.5 border-b border-border/40 last:border-0 gap-2">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{org.name}</p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <Badge variant="outline" className="text-xs py-0">{org.subscriptionTier}</Badge>
+                    {org.churnRescueSentAt && (
+                      <span className="text-xs text-violet-600 flex items-center gap-1">
+                        <BrainCircuit className="w-3 h-3" /> Sophie intervened
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className={`text-lg font-mono ${riskColor(org.churnRiskScore)}`}>
+                    {org.churnRiskScore}
+                  </span>
+                  {!org.churnRescueSentAt && org.churnRiskScore >= 60 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-6 px-2 text-xs"
+                      onClick={() => triggerRescue(org.id, org.name)}
+                    >
+                      Rescue
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Sophie's Eyes — observations and cross-org learnings */
+function SophieEyesPanel() {
+  const { data, isLoading } = useQuery({
+    queryKey: ["/api/admin/sophie-observations"],
+    queryFn: () => apiRequest("GET", "/api/admin/sophie-observations?limit=25").then(r => r.json()),
+    refetchInterval: 2 * 60_000,
+  });
+
+  const observations: any[] = data?.observations ?? [];
+  const learnings: any[] = data?.learnings ?? [];
+
+  const confidenceBadge = (score: number) => {
+    if (score >= 0.8) return <Badge className="text-xs bg-green-100 text-green-800 border-green-200">High</Badge>;
+    if (score >= 0.5) return <Badge className="text-xs bg-yellow-100 text-yellow-800 border-yellow-200">Medium</Badge>;
+    return <Badge className="text-xs bg-zinc-100 text-zinc-600 border-zinc-200">Low</Badge>;
+  };
+
+  return (
+    <Card className="col-span-full md:col-span-2">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base font-semibold flex items-center gap-2">
+          <BrainCircuit className="w-4 h-4 text-violet-500" />
+          Sophie's Eyes
+        </CardTitle>
+        <CardDescription className="text-xs">What Sophie has observed and learned across all organizations</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Observations */}
+        <div>
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Recent Observations</p>
+          {isLoading ? (
+            <div className="space-y-2">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}</div>
+          ) : observations.length === 0 ? (
+            <p className="text-sm text-muted-foreground italic">No observations yet</p>
+          ) : (
+            <div className="space-y-1.5 max-h-48 overflow-y-auto">
+              {observations.map((obs: any) => (
+                <div key={obs.id} className="flex items-start gap-2 py-1.5 border-b border-border/40 last:border-0">
+                  <Eye className="w-3.5 h-3.5 mt-1 text-violet-400 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm leading-snug line-clamp-2">{obs.content}</p>
+                    {obs.orgName && <p className="text-xs text-muted-foreground">{obs.orgName}</p>}
+                  </div>
+                  <div className="shrink-0 flex flex-col items-end gap-1">
+                    {obs.confidence != null && confidenceBadge(Number(obs.confidence))}
+                    <p className="text-xs text-muted-foreground">
+                      {formatDistanceToNow(new Date(obs.createdAt), { addSuffix: true })}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Cross-org learnings */}
+        {learnings.length > 0 && (
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Cross-Org Learnings</p>
+            <div className="space-y-1.5">
+              {learnings.slice(0, 4).map((l: any) => (
+                <div key={l.id} className="flex items-start gap-2 py-1.5 border-b border-border/40 last:border-0">
+                  <Sparkles className="w-3.5 h-3.5 mt-1 text-amber-400 shrink-0" />
+                  <p className="text-sm leading-snug">{l.insight ?? l.pattern ?? l.title ?? JSON.stringify(l).slice(0, 100)}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Manual trigger button for founder briefing */
+function FounderBriefingTrigger() {
+  const { toast } = useToast();
+  const [loading, setLoading] = React.useState(false);
+
+  const sendNow = async () => {
+    setLoading(true);
+    try {
+      await apiRequest("POST", "/api/admin/founder-briefing/send");
+      toast({ title: "Briefing sent", description: "Check your inbox for the founder briefing email." });
+    } catch {
+      toast({ title: "Error", description: "Failed to send briefing", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Button variant="outline" size="sm" onClick={sendNow} disabled={loading} className="gap-2">
+      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
+      Send Daily Briefing Now
+    </Button>
+  );
+}
 
 export default function FounderDashboard() {
   const { toast } = useToast();
@@ -1113,6 +1451,28 @@ export default function FounderDashboard() {
           {/* ── Action Queue ── */}
           <div id="section-actions">
             <ActionQueuePanel />
+          </div>
+
+          {/* ── Autonomous Observatory ── */}
+          <div id="section-observatory" className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold flex items-center gap-2">
+                  <Cpu className="w-5 h-5 text-blue-500" />
+                  Autonomous Observatory
+                </h2>
+                <p className="text-sm text-muted-foreground">Watch the system work in real time</p>
+              </div>
+              <FounderBriefingTrigger />
+            </div>
+            {/* Activity stream spans full width */}
+            <SystemActivityPanel />
+            {/* Job health + churn risk + Sophie in a responsive grid */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <JobHealthPanel />
+              <ChurnRiskPanel />
+              <SophieEyesPanel />
+            </div>
           </div>
 
           {/* ── Launch Readiness Onboarding ── */}
@@ -5211,6 +5571,7 @@ function AutopilotStatusBar() {
 const NAV_ITEMS = [
   { label: "Briefing", href: "section-briefing", icon: Sparkles },
   { label: "Actions", href: "section-actions", icon: ListChecks },
+  { label: "Observatory", href: "section-observatory", icon: Cpu },
   { label: "Overview", href: "section-overview", icon: BarChart },
   { label: "Readiness", href: "section-readiness", icon: Rocket },
   { label: "Features", href: "section-features", icon: ToggleRight },
