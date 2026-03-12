@@ -8,12 +8,13 @@ import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { DollarSign, Calendar, CreditCard, CheckCircle, Clock, AlertTriangle, Building, Phone, Mail, Shield, Loader2, FileText, Download, MapPin, CalendarDays, RefreshCw, Calculator, ChevronDown } from "lucide-react";
+import { DollarSign, Calendar, CreditCard, CheckCircle, Clock, AlertTriangle, Building, Phone, Mail, Shield, Loader2, FileText, Download, MapPin, CalendarDays, RefreshCw, Calculator, ChevronDown, MessageSquare, Send } from "lucide-react";
 import { format, differenceInDays } from "date-fns";
 import { jsPDF } from "jspdf";
-import type { Note, Payment, Property } from "@shared/schema";
+import type { Note, Payment, Property, BorrowerMessage } from "@shared/schema";
 
 type BorrowerLoanData = {
   note: Note & { property?: Property };
@@ -206,6 +207,52 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
   const [visiblePayments, setVisiblePayments] = useState(10);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const paymentListRef = useRef<HTMLDivElement>(null);
+
+  // Messaging state
+  const [messages, setMessages] = useState<BorrowerMessage[]>([]);
+  const [messagesLoaded, setMessagesLoaded] = useState(false);
+  const [newMessage, setNewMessage] = useState("");
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const loadMessages = useCallback(async () => {
+    try {
+      const res = await fetch("/api/borrower/messages", { credentials: "include" });
+      if (res.ok) {
+        const data = await res.json();
+        setMessages(data);
+        setUnreadCount(0); // Messages are marked read on fetch
+      }
+    } catch {
+      // silently ignore
+    } finally {
+      setMessagesLoaded(true);
+    }
+  }, []);
+
+  const handleSendMessage = async () => {
+    if (!newMessage.trim() || isSendingMessage) return;
+    setIsSendingMessage(true);
+    try {
+      const res = await fetch("/api/borrower/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ content: newMessage.trim() }),
+      });
+      if (res.ok) {
+        const msg = await res.json();
+        setMessages(prev => [...prev, msg]);
+        setNewMessage("");
+        setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+      }
+    } catch {
+      // silently ignore
+    } finally {
+      setIsSendingMessage(false);
+    }
+  };
   
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -657,15 +704,24 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
             <Calculator className="w-5 h-5" />
             <span className="text-xs sm:text-sm">Payoff Quote</span>
           </Button>
-          <Button 
-            variant="outline" 
-            className="flex flex-col items-center gap-1 h-auto py-4"
-            asChild
+          <Button
+            variant="outline"
+            className="flex flex-col items-center gap-1 h-auto py-4 relative"
+            onClick={() => {
+              const tab = document.querySelector('[data-testid="tab-messages"]') as HTMLElement | null;
+              if (tab) tab.click();
+              if (!messagesLoaded) loadMessages();
+              window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+            }}
+            data-testid="button-contact"
           >
-            <a href="mailto:support@example.com" data-testid="button-contact">
-              <Mail className="w-5 h-5" />
-              <span className="text-xs sm:text-sm">Contact</span>
-            </a>
+            <MessageSquare className="w-5 h-5" />
+            <span className="text-xs sm:text-sm">Message</span>
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 w-4 h-4 bg-primary text-primary-foreground text-xs rounded-full flex items-center justify-center">
+                {unreadCount}
+              </span>
+            )}
           </Button>
         </div>
 
@@ -809,9 +865,17 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
         )}
 
         <Tabs defaultValue="history">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="history" data-testid="tab-history">Payment History</TabsTrigger>
             <TabsTrigger value="schedule" id="schedule-tab" data-testid="tab-schedule">Payment Schedule</TabsTrigger>
+            <TabsTrigger value="messages" data-testid="tab-messages" onClick={() => { if (!messagesLoaded) loadMessages(); }} className="relative">
+              Messages
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 bg-primary text-primary-foreground text-xs rounded-full flex items-center justify-center">
+                  {unreadCount}
+                </span>
+              )}
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="history">
@@ -887,6 +951,88 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
                     </TableBody>
                   </Table>
                 </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="messages">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                  <MessageSquare className="w-4 h-4 sm:w-5 sm:h-5" /> Messages
+                </CardTitle>
+                <CardDescription>
+                  Have a question or need to discuss your payment? Send us a message.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-4 space-y-4">
+                {!messagesLoaded ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Button variant="outline" onClick={loadMessages} data-testid="button-load-messages">
+                      <MessageSquare className="w-4 h-4 mr-2" />
+                      Load Messages
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-3 max-h-80 overflow-y-auto" data-testid="message-thread">
+                      {messages.length === 0 ? (
+                        <div className="text-center py-8 text-muted-foreground">
+                          <MessageSquare className="w-10 h-10 mx-auto mb-3 opacity-40" />
+                          <p className="text-sm">No messages yet. Send us a message below.</p>
+                        </div>
+                      ) : (
+                        messages.map((msg) => (
+                          <div
+                            key={msg.id}
+                            className={`flex ${msg.senderType === "borrower" ? "justify-end" : "justify-start"}`}
+                            data-testid={`message-${msg.id}`}
+                          >
+                            <div className={`max-w-[80%] rounded-lg px-4 py-2 text-sm ${
+                              msg.senderType === "borrower"
+                                ? "bg-primary text-primary-foreground"
+                                : "bg-muted text-foreground"
+                            }`}>
+                              <p className="whitespace-pre-wrap">{msg.content}</p>
+                              <p className={`text-xs mt-1 opacity-70 ${msg.senderType === "borrower" ? "text-right" : ""}`}>
+                                {msg.senderType === "borrower" ? "You" : "Your Lender"} · {format(new Date(msg.createdAt!), "MMM d, h:mm a")}
+                              </p>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                      <div ref={messagesEndRef} />
+                    </div>
+                    <div className="flex gap-2 pt-2 border-t">
+                      <Textarea
+                        placeholder="Type your message here..."
+                        value={newMessage}
+                        onChange={(e) => setNewMessage(e.target.value)}
+                        rows={2}
+                        className="resize-none"
+                        data-testid="input-message"
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault();
+                            handleSendMessage();
+                          }
+                        }}
+                      />
+                      <Button
+                        onClick={handleSendMessage}
+                        disabled={!newMessage.trim() || isSendingMessage}
+                        className="self-end"
+                        data-testid="button-send-message"
+                      >
+                        {isSendingMessage ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Send className="w-4 h-4" />
+                        )}
+                      </Button>
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -1077,15 +1223,24 @@ function BorrowerDashboard({ data, accessToken, verifiedEmail }: { data: Borrowe
             <Calendar className="w-5 h-5" />
             <span className="text-xs">Schedule</span>
           </Button>
-          <Button 
-            variant="ghost" 
-            className="flex flex-col items-center gap-1 h-auto py-2"
-            asChild
+          <Button
+            variant="ghost"
+            className="flex flex-col items-center gap-1 h-auto py-2 relative"
+            onClick={() => {
+              const tab = document.querySelector('[data-testid="tab-messages"]') as HTMLElement | null;
+              if (tab) tab.click();
+              if (!messagesLoaded) loadMessages();
+              window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+            }}
+            data-testid="mobile-button-contact"
           >
-            <a href="mailto:support@example.com" data-testid="mobile-button-contact">
-              <Mail className="w-5 h-5" />
-              <span className="text-xs">Contact</span>
-            </a>
+            <MessageSquare className="w-5 h-5" />
+            <span className="text-xs">Message</span>
+            {unreadCount > 0 && (
+              <span className="absolute top-0 right-1 w-4 h-4 bg-primary text-primary-foreground text-xs rounded-full flex items-center justify-center">
+                {unreadCount}
+              </span>
+            )}
           </Button>
         </div>
       </div>

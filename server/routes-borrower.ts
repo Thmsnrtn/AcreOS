@@ -694,6 +694,50 @@ export function registerBorrowerRoutes(app: Express): void {
     }
   });
   
+  // ============================================
+  // BORROWER MESSAGING (Session-authenticated)
+  // ============================================
+
+  // GET /api/borrower/messages — list message thread for the authenticated borrower
+  api.get("/api/borrower/messages", validateBorrowerSession, async (req, res) => {
+    try {
+      const session = (req as any).borrowerSession;
+      const msgs = await storage.getBorrowerMessages(session.noteId);
+      // Mark lender messages as read since borrower is viewing them
+      await storage.markBorrowerMessagesRead(session.noteId, "lender");
+      res.json(msgs);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/borrower/messages — borrower sends a message
+  api.post("/api/borrower/messages", validateBorrowerSession, async (req, res) => {
+    try {
+      const session = (req as any).borrowerSession;
+      const { content } = req.body as { content: string };
+      if (!content || !content.trim()) {
+        return res.status(400).json({ message: "Message content is required" });
+      }
+      // Look up org for the note
+      const noteResults = await db.select().from(notes).where(eq(notes.id, session.noteId));
+      if (noteResults.length === 0) {
+        return res.status(404).json({ message: "Loan not found" });
+      }
+      const note = noteResults[0];
+      const msg = await storage.createBorrowerMessage({
+        noteId: session.noteId,
+        orgId: note.organizationId,
+        senderType: "borrower",
+        content: content.trim(),
+        readAt: null,
+      });
+      res.status(201).json(msg);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // Generate borrower portal link
   api.post("/api/notes/:id/portal-link", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
