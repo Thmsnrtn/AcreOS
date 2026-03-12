@@ -246,13 +246,11 @@ export function registerBillingRoutes(app: Express): void {
         customerId = customer.id;
       }
       
-      // Check if organization is eligible for 7-day free trial (first subscription only)
+      // Check if organization is eligible for 7-day free trial (first subscription only).
+      // NOTE: We intentionally do NOT mark trialUsed here — only mark it in the webhook
+      // when checkout.session.completed fires. This way a user who opens checkout and
+      // abandons it (closes the tab, hits back) retains trial eligibility.
       const trialDays = org.trialUsed ? undefined : 7;
-      
-      // Mark trial as used when they start their first subscription
-      if (!org.trialUsed) {
-        await storage.updateOrganization(org.id, { trialUsed: true });
-      }
       
       // Look up active promo for this price (match by tier name in Stripe product metadata)
       let checkoutOptions: { couponId?: string; allowPromoCodes?: boolean } = {};

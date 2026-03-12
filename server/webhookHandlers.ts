@@ -122,6 +122,15 @@ export class WebhookHandlers {
       return;
     }
 
+    // customer.subscription.created fires when any new subscription is created.
+    // Reuse processSubscriptionUpdated since the payload shape is identical.
+    if (event.type === 'customer.subscription.created') {
+      const subscription = event.data.object as Stripe.Subscription;
+      await WebhookHandlers.processSubscriptionUpdated(subscription);
+      await WebhookHandlers.markProcessed(event.id, event.type);
+      return;
+    }
+
     if (event.type === 'customer.subscription.updated') {
       const subscription = event.data.object as Stripe.Subscription;
       await WebhookHandlers.processSubscriptionUpdated(subscription);
@@ -166,6 +175,7 @@ export class WebhookHandlers {
       await storage.updateOrganization(organizationId, {
         stripeSubscriptionId: subscriptionId,
         subscriptionStatus: 'active',
+        trialUsed: true, // Mark here, not at checkout creation — abandoned checkouts must not consume the trial
       });
 
       console.log(`[webhook] Subscription checkout completed: Org ${organizationId}, sub ${subscriptionId}`);
