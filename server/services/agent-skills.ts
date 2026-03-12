@@ -212,7 +212,7 @@ PURCHASE OFFER
 Date: ${new Date().toLocaleDateString()}
 
 To: ${sellerName}
-From: ${org?.name || "Acreage Land Co."}
+From: ${org?.name || "AcreOS"}
 
 Dear ${lead?.firstName || "Property Owner"},
 
@@ -236,7 +236,7 @@ This offer is valid for 30 days from the date above.
 We look forward to your response and would be happy to discuss any questions you may have.
 
 Sincerely,
-${org?.name || "Acreage Land Co."}
+${org?.name || "AcreOS"}
       `.trim();
 
       return {
