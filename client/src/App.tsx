@@ -7,6 +7,7 @@ import { CookieConsentBanner } from "@/components/cookie-consent-banner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/use-auth";
 import { useWhiteLabel } from "@/hooks/use-white-label";
+import { useFeatureFlags } from "@/hooks/use-feature-flags";
 import { Loader2 } from "lucide-react";
 import { telemetry } from "@/lib/telemetry";
 import { ThemeProvider } from "@/contexts/theme-context";
@@ -220,6 +221,25 @@ function FounderProtectedRoute({ component: Component }: { component: React.Comp
   return <Component />;
 }
 
+// Feature-flagged protected route: if the feature is disabled globally, render NotFound
+function FlaggedRoute({ route, component: Component }: { route: string; component: React.ComponentType }) {
+  const { user, isLoading: authLoading } = useAuth();
+  const { isRouteEnabled, isLoading: flagsLoading } = useFeatureFlags();
+
+  if (authLoading || flagsLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!user) return <Redirect to="/auth" />;
+  if (!isRouteEnabled(route)) return <NotFound />;
+  return <Component />;
+}
+
+
 function HomeRoute() {
   const { user, isLoading } = useAuth();
   if (isLoading) {
@@ -243,6 +263,10 @@ function Router() {
         <Route path="/portal/:accessToken" component={BorrowerPortal} />
         <Route path="/onboarding">{() => <OnboardingWizardPage />}</Route>
         <Route path="/onboarding-v2">{() => <OnboardingV2Page />}</Route>
+
+        {/* Competitor comparison pages (public, SEO-targeted) */}
+        <Route path="/compare/lg-pass">{() => <ProtectedRoute component={React.lazy(() => import("@/pages/compare-lgpass"))} />}</Route>
+        <Route path="/compare/geekpay">{() => <ProtectedRoute component={React.lazy(() => import("@/pages/compare-geekpay"))} />}</Route>
 
         {/* Field Scout — mobile land investing companion */}
         <Route path="/field-scout">{() => <ProtectedRoute component={FieldScoutPage} />}</Route>
@@ -437,6 +461,7 @@ function AppContent() {
       {user && <CommandPalette />}
       {user && <NewItemMenu />}
       {user && <MobileBottomNav />}
+      {user && <OnboardingWizard />}
       {user && <BetaFeedbackWidget />}
       {user && <BetaActivationDetector />}
       <PWAInstallPrompt />

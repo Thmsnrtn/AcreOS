@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { useRealtime } from "@/hooks/use-realtime";
 import { Search, Plus, RefreshCw, Flame, TrendingUp, CheckCircle, Database, Play, ToggleLeft, ToggleRight, MapPin, DollarSign, FileText, Home, Bot, Activity, Trash2 } from "lucide-react";
+
+const LAST_VISITED_KEY = "deal-hunter-last-visited";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -852,16 +855,55 @@ export default function DealHunterPage() {
 
   const stats: DealStats = statsData?.stats ?? { totalDeals: 0, newDeals: 0, highQualityDeals: 0, convertedDeals: 0 };
 
+  const { toast } = useToast();
+  const { on } = useRealtime();
+  const [newDealCount, setNewDealCount] = useState(0);
+  const lastVisitedRef = useRef<number>(0);
+
+  // Load last-visited timestamp from localStorage and record current visit
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(LAST_VISITED_KEY);
+      lastVisitedRef.current = stored ? parseInt(stored, 10) : 0;
+      localStorage.setItem(LAST_VISITED_KEY, Date.now().toString());
+    } catch {}
+  }, []);
+
+  // Listen for real-time deal_match WebSocket events
+  useEffect(() => {
+    const cleanup = on("deal_match", (payload) => {
+      const deal = payload as { id: number; title: string; price?: number; matchScore: number; url?: string };
+      toast({
+        title: "New Deal Match!",
+        description: `${deal.title} — ${deal.matchScore}% match${deal.price ? ` · $${Number(deal.price).toLocaleString()}` : ""}`,
+      });
+      setNewDealCount((c) => c + 1);
+    });
+    return cleanup;
+  }, [on, toast]);
+
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Search className="w-7 h-7 text-primary" /> Deal Hunter
-        </h1>
-        <p className="text-muted-foreground mt-1">
-          Automated sourcing from tax auctions, foreclosures, and distressed property feeds
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <Search className="w-7 h-7 text-primary" /> Deal Hunter
+            {newDealCount > 0 && (
+              <Badge className="bg-red-500 text-white ml-1" data-testid="badge-new-deals">
+                {newDealCount} new
+              </Badge>
+            )}
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            Automated sourcing from tax auctions, foreclosures, and distressed property feeds
+          </p>
+        </div>
+        {newDealCount > 0 && (
+          <Button variant="ghost" size="sm" onClick={() => setNewDealCount(0)} className="text-xs text-muted-foreground">
+            Clear
+          </Button>
+        )}
       </div>
 
       {/* KPI Cards */}

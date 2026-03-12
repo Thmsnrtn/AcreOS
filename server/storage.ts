@@ -124,6 +124,8 @@ import {
   type AgentRun,
   borrowerSessions,
   type BorrowerSession, type InsertBorrowerSession,
+  borrowerMessages,
+  type BorrowerMessage, type InsertBorrowerMessage,
   dataSources,
   type DataSource, type InsertDataSource,
   dataSourceCache,
@@ -184,6 +186,16 @@ import {
   type SwotReport, type InsertSwotReport,
   goNogoMemos,
   type GoNogoMemo, type InsertGoNogoMemo,
+  platformFeatureFlags,
+  type PlatformFeatureFlag, type InsertPlatformFeatureFlag,
+  pricingConfig,
+  type PricingConfig, type InsertPricingConfig,
+  founderAdAccounts,
+  type FounderAdAccount, type InsertFounderAdAccount,
+  growthCampaigns,
+  type GrowthCampaign, type InsertGrowthCampaign,
+  adCreativeBundles,
+  type AdCreativeBundle,
 } from "@shared/schema";
 
 // Helper to calculate amortization schedule
@@ -1083,6 +1095,12 @@ export interface IStorage {
   getGoNogoMemoByProperty(organizationId: number, propertyId: number): Promise<GoNogoMemo | undefined>;
   createGoNogoMemo(data: InsertGoNogoMemo): Promise<GoNogoMemo>;
   updateGoNogoMemo(organizationId: number, id: number, data: Partial<InsertGoNogoMemo>): Promise<GoNogoMemo | undefined>;
+
+  // Borrower Messages
+  createBorrowerMessage(data: InsertBorrowerMessage): Promise<BorrowerMessage>;
+  getBorrowerMessages(noteId: number): Promise<BorrowerMessage[]>;
+  markBorrowerMessagesRead(noteId: number, senderType: string): Promise<void>;
+  countUnreadBorrowerMessages(noteId: number, senderType: string): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -7611,6 +7629,185 @@ Notary Public</p>
     await db.delete(playbookInstances)
       .where(and(eq(playbookInstances.id, id), eq(playbookInstances.organizationId, organizationId)));
     return true;
+  }
+
+  // ─── Platform Feature Flags ───────────────────────────────────────────────
+  async getAllFeatureFlags(): Promise<PlatformFeatureFlag[]> {
+    return await db.select().from(platformFeatureFlags).orderBy(platformFeatureFlags.label);
+  }
+
+  async getEnabledFeatureFlags(): Promise<PlatformFeatureFlag[]> {
+    return await db.select().from(platformFeatureFlags)
+      .where(eq(platformFeatureFlags.enabled, true));
+  }
+
+  async updateFeatureFlag(key: string, enabled: boolean): Promise<PlatformFeatureFlag | undefined> {
+    const [updated] = await db.update(platformFeatureFlags)
+      .set({ enabled, updatedAt: new Date() })
+      .where(eq(platformFeatureFlags.key, key))
+      .returning();
+    return updated;
+  }
+
+  // ─── Pricing Config ───────────────────────────────────────────────────────
+  async getAllPricingConfig(): Promise<PricingConfig[]> {
+    return await db.select().from(pricingConfig).orderBy(pricingConfig.tier);
+  }
+
+  async getPricingConfigForTier(tier: string): Promise<PricingConfig | undefined> {
+    const [row] = await db.select().from(pricingConfig)
+      .where(eq(pricingConfig.tier, tier));
+    return row;
+  }
+
+  async updatePricingConfig(tier: string, data: Partial<InsertPricingConfig>): Promise<PricingConfig | undefined> {
+    const [updated] = await db.update(pricingConfig)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(pricingConfig.tier, tier))
+      .returning();
+    return updated;
+  }
+
+  async clearPricingPromo(tier: string): Promise<void> {
+    await db.update(pricingConfig)
+      .set({ promoLabel: null, promoDiscountPercent: null, promoEndsAt: null, stripeCouponId: null, updatedAt: new Date() })
+      .where(eq(pricingConfig.tier, tier));
+  }
+
+  // ─── Founder Ad Accounts ──────────────────────────────────────────────────
+  async getFounderAdAccount(platform: string = "meta"): Promise<FounderAdAccount | undefined> {
+    const [row] = await db.select().from(founderAdAccounts)
+      .where(and(eq(founderAdAccounts.platform, platform), eq(founderAdAccounts.isActive, true)));
+    return row;
+  }
+
+  async upsertFounderAdAccount(data: InsertFounderAdAccount): Promise<FounderAdAccount> {
+    const existing = await this.getFounderAdAccount(data.platform);
+    if (existing) {
+      const [updated] = await db.update(founderAdAccounts)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(founderAdAccounts.id, existing.id))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(founderAdAccounts).values(data).returning();
+    return created;
+  }
+
+  // ─── Growth Campaigns ─────────────────────────────────────────────────────
+  async getGrowthCampaigns(): Promise<GrowthCampaign[]> {
+    return await db.select().from(growthCampaigns).orderBy(desc(growthCampaigns.createdAt));
+  }
+
+  async getGrowthCampaign(id: number): Promise<GrowthCampaign | undefined> {
+    const [row] = await db.select().from(growthCampaigns).where(eq(growthCampaigns.id, id));
+    return row;
+  }
+
+  async createGrowthCampaign(data: InsertGrowthCampaign): Promise<GrowthCampaign> {
+    const [created] = await db.insert(growthCampaigns).values(data).returning();
+    return created;
+  }
+
+  async updateGrowthCampaign(id: number, data: Partial<InsertGrowthCampaign>): Promise<GrowthCampaign | undefined> {
+    const [updated] = await db.update(growthCampaigns)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(growthCampaigns.id, id))
+      .returning();
+    return updated;
+  }
+
+  // ─── Ad Creative Bundles ───────────────────────────────────────────────────
+
+  async createAdCreativeBundle(data: {
+    templateKey: string;
+    campaignId?: number;
+    status?: string;
+    copies?: any[];
+    images?: any[];
+    error?: string;
+    model?: string;
+  }): Promise<AdCreativeBundle> {
+    const [created] = await db.insert(adCreativeBundles).values({
+      templateKey: data.templateKey,
+      campaignId: data.campaignId ?? null,
+      status: data.status ?? "generating",
+      copies: data.copies ?? null,
+      images: data.images ?? null,
+      error: data.error ?? null,
+      model: data.model ?? "gpt-4o",
+    }).returning();
+    return created;
+  }
+
+  async getAdCreativeBundle(id: string): Promise<AdCreativeBundle | undefined> {
+    const [row] = await db.select().from(adCreativeBundles).where(eq(adCreativeBundles.id, id));
+    return row;
+  }
+
+  async updateAdCreativeBundle(id: string, data: Partial<{
+    status: string;
+    copies: any[];
+    images: any[];
+    campaignId: number;
+    error: string;
+  }>): Promise<AdCreativeBundle | undefined> {
+    const [updated] = await db.update(adCreativeBundles)
+      .set(data)
+      .where(eq(adCreativeBundles.id, id))
+      .returning();
+    return updated;
+  }
+
+  // ─── Recent Signups with UTM Attribution ──────────────────────────────────
+  async getRecentSignupsWithAttribution(limit: number = 50) {
+    return await db.select({
+      organizationId: organizations.id,
+      name: organizations.name,
+      subscriptionTier: organizations.subscriptionTier,
+      utmSource: organizations.utmSource,
+      utmMedium: organizations.utmMedium,
+      utmCampaign: organizations.utmCampaign,
+      utmContent: organizations.utmContent,
+      createdAt: organizations.createdAt,
+    })
+      .from(organizations)
+      .orderBy(desc(organizations.createdAt))
+      .limit(limit);
+  }
+
+  // ─── Borrower Messages ────────────────────────────────────────────────────
+  async createBorrowerMessage(data: InsertBorrowerMessage): Promise<BorrowerMessage> {
+    const [msg] = await db.insert(borrowerMessages).values(data).returning();
+    return msg;
+  }
+
+  async getBorrowerMessages(noteId: number): Promise<BorrowerMessage[]> {
+    return await db.select().from(borrowerMessages)
+      .where(eq(borrowerMessages.noteId, noteId))
+      .orderBy(borrowerMessages.createdAt);
+  }
+
+  async markBorrowerMessagesRead(noteId: number, senderType: string): Promise<void> {
+    await db.update(borrowerMessages)
+      .set({ readAt: new Date() })
+      .where(and(
+        eq(borrowerMessages.noteId, noteId),
+        eq(borrowerMessages.senderType, senderType),
+        sql`${borrowerMessages.readAt} IS NULL`
+      ));
+  }
+
+  async countUnreadBorrowerMessages(noteId: number, senderType: string): Promise<number> {
+    const [result] = await db
+      .select({ cnt: count() })
+      .from(borrowerMessages)
+      .where(and(
+        eq(borrowerMessages.noteId, noteId),
+        eq(borrowerMessages.senderType, senderType),
+        sql`${borrowerMessages.readAt} IS NULL`
+      ));
+    return Number(result?.cnt ?? 0);
   }
 }
 

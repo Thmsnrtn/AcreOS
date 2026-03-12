@@ -88,6 +88,20 @@ export const organizations = pgTable("organizations", {
   trialTokensGrantedAt: timestamp("trial_tokens_granted_at").defaultNow(), // When tokens were last granted
   // Sophie proactive notification settings
   proactiveNotificationLevel: varchar("proactive_notification_level", { length: 50 }).default("balanced"), // minimal, balanced, proactive, off
+  // UTM attribution for customer acquisition tracking
+  utmSource: text("utm_source"),     // e.g. 'meta', 'google', 'organic'
+  utmMedium: text("utm_medium"),     // e.g. 'cpc', 'social', 'email'
+  utmCampaign: text("utm_campaign"), // e.g. 'land-investors-q1'
+  utmContent: text("utm_content"),   // e.g. 'carousel-ad-1'
+  // Referral program credit balance (in cents)
+  referralCredits: integer("referral_credits").notNull().default(0),
+  // Churn risk scoring (0-100, 100 = highest risk)
+  churnRiskScore: integer("churn_risk_score").notNull().default(0),
+  churnRiskUpdatedAt: timestamp("churn_risk_updated_at"),
+  churnRescueSentAt: timestamp("churn_rescue_sent_at"),
+  // Milestone tracking for self-promotion nudges
+  milestonesReached: jsonb("milestones_reached").$type<string[]>().default([]),
+  referralNudgeSentAt: timestamp("referral_nudge_sent_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -312,6 +326,7 @@ export const leads = pgTable("leads", {
   // Campaign attribution tracking
   sourceTrackingCode: text("source_tracking_code"), // Links to campaign.trackingCode
   sourceCampaignId: integer("source_campaign_id"), // Links to the campaign that generated this lead
+  sourceMailPieceId: integer("source_mail_piece_id"), // FK to mailingOrderPieces — direct mail attribution
   
   // Lead Scoring & Nurturing
   score: integer("score"), // 0-100 lead score
@@ -2850,6 +2865,44 @@ export const SUPPORT_STATUSES = {
 
 export type SupportStatus = keyof typeof SUPPORT_STATUSES;
 
+// SLA targets by priority level (hours to first response)
+// Priority scale: 1=low, 2=normal, 3=medium, 4=high, 5=critical
+export const SLA_HOURS = {
+  5: 1,   // critical → 1 hour
+  4: 4,   // high → 4 hours
+  3: 24,  // medium → 24 hours
+  2: 48,  // normal → 48 hours
+  1: 72,  // low → 72 hours
+} as const;
+
+export type SlaStatus = "on_track" | "at_risk" | "breached";
+
+export interface SlaInfo {
+  slaDeadline: Date;
+  slaStatus: SlaStatus;
+  hoursUntilBreached: number; // negative = already breached
+}
+
+/** Compute SLA metadata for a support case given its priority and createdAt. */
+export function computeSla(priority: number, createdAt: Date | string): SlaInfo {
+  const p = (priority in SLA_HOURS ? priority : 1) as keyof typeof SLA_HOURS;
+  const slaHours = SLA_HOURS[p] ?? 72;
+  const created = new Date(createdAt);
+  const slaDeadline = new Date(created.getTime() + slaHours * 60 * 60 * 1000);
+  const now = new Date();
+  const msUntil = slaDeadline.getTime() - now.getTime();
+  const hoursUntilBreached = msUntil / (60 * 60 * 1000);
+  let slaStatus: SlaStatus;
+  if (hoursUntilBreached < 0) {
+    slaStatus = "breached";
+  } else if (hoursUntilBreached < slaHours * 0.25) {
+    slaStatus = "at_risk";
+  } else {
+    slaStatus = "on_track";
+  }
+  return { slaDeadline, slaStatus, hoursUntilBreached };
+}
+
 // Support cases (tickets)
 export const supportCases = pgTable("support_cases", {
   id: serial("id").primaryKey(),
@@ -4978,7 +5031,10 @@ export const mailingOrderPieces = pgTable("mailing_order_pieces", {
   
   lobMailId: text("lob_mail_id"), // Lob's letter/postcard ID
   lobUrl: text("lob_url"), // Preview URL from Lob
-  
+
+  // Attribution tracking — unique 8-char code tied to this mail piece
+  trackingCode: text("tracking_code").unique(),
+
   status: text("status").notNull().default("pending"), // pending, processing, mailed, in_transit, delivered, returned, failed
   
   trackingEvents: jsonb("tracking_events").$type<Array<{
@@ -5050,6 +5106,24 @@ export const insertBorrowerSessionSchema = createInsertSchema(borrowerSessions).
 });
 export type InsertBorrowerSession = z.infer<typeof insertBorrowerSessionSchema>;
 export type BorrowerSession = typeof borrowerSessions.$inferSelect;
+
+// ============================================
+// BORROWER MESSAGES (Self-service messaging thread)
+// ============================================
+
+export const borrowerMessages = pgTable("borrower_messages", {
+  id: serial("id").primaryKey(),
+  noteId: integer("note_id").references(() => notes.id).notNull(),
+  orgId: integer("org_id").references(() => organizations.id).notNull(),
+  senderType: text("sender_type").notNull(), // 'borrower' | 'lender'
+  content: text("content").notNull(),
+  readAt: timestamp("read_at"), // null = unread
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertBorrowerMessageSchema = createInsertSchema(borrowerMessages).omit({ id: true, createdAt: true });
+export type InsertBorrowerMessage = z.infer<typeof insertBorrowerMessageSchema>;
+export type BorrowerMessage = typeof borrowerMessages.$inferSelect;
 
 // ============================================
 // DATA SOURCES (Free Data Endpoint Registry)
@@ -10517,3 +10591,215 @@ export const platformConfig = pgTable("platform_config", {
 export const insertPlatformConfigSchema = createInsertSchema(platformConfig).omit({ id: true, createdAt: true });
 export type InsertPlatformConfig = z.infer<typeof insertPlatformConfigSchema>;
 export type PlatformConfig = typeof platformConfig.$inferSelect;
+
+// ============================================
+// PLATFORM FEATURE FLAGS (Founder-controlled feature visibility)
+// ============================================
+
+export const platformFeatureFlags = pgTable("platform_feature_flags", {
+  id: serial("id").primaryKey(),
+  key: text("key").notNull().unique(),            // e.g. "feature_academy"
+  label: text("label").notNull(),                  // human-readable name
+  description: text("description").notNull(),
+  enabled: boolean("enabled").notNull().default(false),
+  // which nav items this flag controls (JSON array of hrefs like ["/academy"])
+  controlledRoutes: jsonb("controlled_routes").$type<string[]>().notNull().default([]),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertPlatformFeatureFlagSchema = createInsertSchema(platformFeatureFlags).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+export type PlatformFeatureFlag = typeof platformFeatureFlags.$inferSelect;
+export type InsertPlatformFeatureFlag = z.infer<typeof insertPlatformFeatureFlagSchema>;
+
+// ============================================
+// PRICING CONFIG (Founder-controlled pricing + promotions)
+// ============================================
+
+export const pricingConfig = pgTable("pricing_config", {
+  id: serial("id").primaryKey(),
+  tier: text("tier").notNull().unique(),           // 'pro', 'growth', 'enterprise'
+  displayPriceMonthly: integer("display_price_monthly").notNull(), // cents
+  displayPriceYearly: integer("display_price_yearly").notNull(),   // cents (per month, billed annually)
+  // Active promotion (null = no promo)
+  promoLabel: text("promo_label"),                 // e.g. "Spring Sale"
+  promoDiscountPercent: integer("promo_discount_percent"), // 0-100
+  promoEndsAt: timestamp("promo_ends_at"),
+  // Stripe coupon ID (created on-the-fly when promo is set)
+  stripeCouponId: text("stripe_coupon_id"),
+  // Allow user-entered promo codes at checkout
+  allowPromoCodes: boolean("allow_promo_codes").notNull().default(false),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertPricingConfigSchema = createInsertSchema(pricingConfig).omit({
+  id: true, updatedAt: true,
+});
+export type PricingConfig = typeof pricingConfig.$inferSelect;
+export type InsertPricingConfig = z.infer<typeof insertPricingConfigSchema>;
+
+// ============================================
+// GROWTH / AD MARKETING (AcreOS own customer acquisition)
+// ============================================
+
+// Stores founder-level Meta ad account credentials for AcreOS growth campaigns
+export const founderAdAccounts = pgTable("founder_ad_accounts", {
+  id: serial("id").primaryKey(),
+  platform: text("platform").notNull().default("meta"), // 'meta' | 'google'
+  adAccountId: text("ad_account_id").notNull(),
+  accessToken: text("access_token").notNull(),
+  pixelId: text("pixel_id"),           // Meta pixel for conversion reporting
+  appId: text("app_id"),               // Meta app ID
+  appSecret: text("app_secret"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertFounderAdAccountSchema = createInsertSchema(founderAdAccounts).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+export type FounderAdAccount = typeof founderAdAccounts.$inferSelect;
+export type InsertFounderAdAccount = z.infer<typeof insertFounderAdAccountSchema>;
+
+// Growth campaigns launched by founder for AcreOS marketing
+export const growthCampaigns = pgTable("growth_campaigns", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  platform: text("platform").notNull().default("meta"),
+  templateKey: text("template_key").notNull(), // 'land_investors_signup' | 'retargeting' etc.
+  externalCampaignId: text("external_campaign_id"), // Meta campaign ID once created
+  status: text("status").notNull().default("draft"), // 'draft' | 'active' | 'paused' | 'completed'
+  dailyBudgetCents: integer("daily_budget_cents").notNull().default(2000), // $20/day default
+  targetCountries: jsonb("target_countries").$type<string[]>().notNull().default(["US"]),
+  totalSpendCents: integer("total_spend_cents").notNull().default(0),
+  impressions: integer("impressions").notNull().default(0),
+  clicks: integer("clicks").notNull().default(0),
+  signups: integer("signups").notNull().default(0),
+  conversions: integer("conversions").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertGrowthCampaignSchema = createInsertSchema(growthCampaigns).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+export type GrowthCampaign = typeof growthCampaigns.$inferSelect;
+export type InsertGrowthCampaign = z.infer<typeof insertGrowthCampaignSchema>;
+
+// UTM attribution on organization signup
+// (columns added to organizations table via migration; tracked here as a view-friendly type)
+export type SignupAttribution = {
+  organizationId: number;
+  utmSource: string | null;
+  utmMedium: string | null;
+  utmCampaign: string | null;
+  utmContent: string | null;
+  createdAt: Date;
+};
+
+// AI-generated ad creative bundles — copy variants + images, produced before campaign deployment
+export const adCreativeBundles = pgTable("ad_creative_bundles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  templateKey: text("template_key").notNull(),
+  campaignId: integer("campaign_id").references(() => growthCampaigns.id, { onDelete: "set null" }),
+  status: text("status").notNull().default("generating"), // 'generating' | 'ready' | 'error' | 'deployed'
+  copies: jsonb("copies").$type<any[]>(),   // AdCopyVariant[]
+  images: jsonb("images").$type<any[]>(),   // GeneratedAdImage[]
+  error: text("error"),
+  generatedAt: timestamp("generated_at").defaultNow(),
+  model: text("model").default("gpt-4o"),
+});
+export type AdCreativeBundle = typeof adCreativeBundles.$inferSelect;
+
+// ============================================
+// AUTONOMOUS OBSERVATORY
+// ============================================
+
+// System activity log: every meaningful autonomous action the system takes
+export const systemActivity = pgTable("system_activity", {
+  id: serial("id").primaryKey(),
+  orgId: integer("org_id").references(() => organizations.id, { onDelete: "set null" }),
+  jobName: text("job_name").notNull(),   // 'finance_agent', 'sophie', 'dunning', etc.
+  action: text("action").notNull(),      // 'payment_reminder_sent', 'ticket_resolved', etc.
+  summary: text("summary").notNull(),    // human-readable narrative
+  entityType: text("entity_type"),       // 'note', 'lead', 'campaign', 'support_case'
+  entityId: text("entity_id"),
+  metadata: jsonb("metadata").$type<Record<string, any>>(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("IDX_sysact_created").on(table.createdAt),
+  index("IDX_sysact_org").on(table.orgId, table.createdAt),
+  index("IDX_sysact_job").on(table.jobName, table.createdAt),
+]);
+export type SystemActivity = typeof systemActivity.$inferSelect;
+
+// System meta: key-value store for operational state
+export const systemMeta = pgTable("system_meta", {
+  key: text("key").primaryKey(),
+  value: text("value"),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+export type SystemMeta = typeof systemMeta.$inferSelect;
+
+// ============================================
+// CAMPAIGN VARIANTS (A/B Test Framework)
+// ============================================
+
+// Lightweight per-campaign variant table for A/B split testing
+export const campaignVariants = pgTable("campaign_variants", {
+  id: serial("id").primaryKey(),
+  campaignId: integer("campaign_id").references(() => campaigns.id).notNull(),
+  name: text("name").notNull(), // "Variant A", "Variant B"
+  subject: text("subject"),
+  body: text("body"),
+  trafficSplit: integer("traffic_split").default(50), // percentage of audience (0-100)
+  sentCount: integer("sent_count").default(0),
+  openCount: integer("open_count").default(0),
+  clickCount: integer("click_count").default(0),
+  responseCount: integer("response_count").default(0),
+  isWinner: boolean("is_winner").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertCampaignVariantSchema = createInsertSchema(campaignVariants).omit({ id: true, createdAt: true });
+export type CampaignVariant = typeof campaignVariants.$inferSelect;
+export type InsertCampaignVariant = z.infer<typeof insertCampaignVariantSchema>;
+
+// ============================================
+// ORGANIZATION API KEYS
+// ============================================
+// Per-org API keys allowing external integrations to authenticate with AcreOS.
+// The raw key is only returned once at creation; we store a SHA-256 hash.
+export const orgApiKeys = pgTable("org_api_keys", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+
+  name: text("name").notNull(),
+  keyHash: text("key_hash").notNull(), // SHA-256 hex of the actual key
+  keyPrefix: text("key_prefix").notNull(), // First 8 chars for display ("acos_XXXX...")
+  scope: text("scope").notNull().default("read"), // read | write | admin
+
+  expiresAt: timestamp("expires_at"), // null = never
+
+  lastUsedAt: timestamp("last_used_at"),
+  isRevoked: boolean("is_revoked").notNull().default(false),
+
+  createdBy: integer("created_by"), // team member ID
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("org_api_keys_org_idx").on(table.organizationId),
+]);
+
+export const insertOrgApiKeySchema = createInsertSchema(orgApiKeys).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  lastUsedAt: true,
+  isRevoked: true,
+});
+export type OrgApiKey = typeof orgApiKeys.$inferSelect;
+export type InsertOrgApiKey = z.infer<typeof insertOrgApiKeySchema>;

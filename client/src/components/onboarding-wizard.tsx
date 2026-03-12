@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ElementType } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
@@ -70,6 +70,25 @@ type OnboardingStatus = {
 
 const STORAGE_KEY = "acreos_onboarding";
 
+// Role-specific next steps shown after the welcome/role-selection step
+const ROLE_NEXT_STEPS: Record<BusinessType, { icon: ElementType; label: string; description: string; href: string }[]> = {
+  note_investor: [
+    { icon: Link2, label: "Set Up ACH Payments", description: "Connect your bank to collect note payments automatically.", href: "/settings?tab=integrations" },
+    { icon: Upload, label: "Import Existing Notes", description: "Bring in your current seller-financed portfolio.", href: "/leads?action=import" },
+    { icon: Users, label: "Add First Borrower", description: "Create a borrower profile for your first active note.", href: "/leads?action=add" },
+  ],
+  land_flipper: [
+    { icon: Upload, label: "Import Leads", description: "Upload your CSV list of motivated seller leads.", href: "/leads?action=import" },
+    { icon: Megaphone, label: "Set Up Campaign", description: "Launch your first direct mail or email campaign.", href: "/campaigns" },
+    { icon: Settings, label: "Configure Deal Criteria", description: "Define your buy box: target counties, lot size, and price range.", href: "/settings?tab=deal-criteria" },
+  ],
+  hybrid: [
+    { icon: Upload, label: "Import Leads", description: "Start by loading your existing lead list.", href: "/leads?action=import" },
+    { icon: Link2, label: "Set Up ACH Payments", description: "Enable automatic payment collection for seller-financed deals.", href: "/settings?tab=integrations" },
+    { icon: Megaphone, label: "Set Up Campaign", description: "Launch your first outreach campaign.", href: "/campaigns" },
+  ],
+};
+
 const WIZARD_STEPS = [
   {
     id: 0,
@@ -80,10 +99,10 @@ const WIZARD_STEPS = [
   },
   {
     id: 1,
-    name: "import_leads",
-    title: "Import Leads",
-    description: "Bring in your existing leads or start fresh.",
-    icon: Upload,
+    name: "role_first_steps",
+    title: "Your First Steps",
+    description: "Personalized actions based on your business type.",
+    icon: Lightbulb,
   },
   {
     id: 2,
@@ -444,47 +463,56 @@ export function OnboardingWizard() {
           </div>
         );
 
-      case 1:
+      case 1: {
+        const roleSteps = ROLE_NEXT_STEPS[businessType] ?? ROLE_NEXT_STEPS.land_flipper;
+        const roleLabel = businessType === "note_investor"
+          ? "note investor"
+          : businessType === "hybrid"
+            ? "hybrid investor"
+            : "land flipper";
         return (
           <div className="space-y-4">
             <p className="text-muted-foreground text-center">
-              Import your existing leads from a CSV file to get started quickly.
+              Here are the 3 best first steps for a <strong>{roleLabel}</strong>. Complete them now or come back later.
             </p>
-            
-            <Card 
-              className="cursor-pointer"
-              onClick={() => window.open("/leads?action=import", "_blank")}
-              data-testid="card-import-csv"
-            >
-              <CardContent className="p-4 flex items-center gap-4">
-                <div className="w-12 h-12 rounded-md bg-primary/10 flex items-center justify-center">
-                  <Upload className="w-6 h-6 text-primary" />
-                </div>
-                <div className="flex-1">
-                  <p className="font-medium">Import CSV File</p>
-                  <p className="text-sm text-muted-foreground">
-                    Upload leads from a spreadsheet
-                  </p>
-                </div>
-                <ExternalLink className="w-4 h-4 text-muted-foreground" />
-              </CardContent>
-            </Card>
 
-            <div className="text-center text-sm text-muted-foreground">
-              or
+            <div className="space-y-3">
+              {roleSteps.map((step, idx) => {
+                const StepActionIcon = step.icon;
+                return (
+                  <Card
+                    key={idx}
+                    className="cursor-pointer hover:border-primary/50 transition-colors"
+                    onClick={() => window.open(step.href, "_blank")}
+                    data-testid={`role-step-${idx}`}
+                  >
+                    <CardContent className="p-4 flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-md bg-primary/10 flex items-center justify-center flex-shrink-0">
+                        <StepActionIcon className="w-5 h-5 text-primary" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-medium text-sm">{step.label}</p>
+                        <p className="text-xs text-muted-foreground">{step.description}</p>
+                      </div>
+                      <ExternalLink className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
 
-            <Button 
-              variant="outline" 
-              className="w-full"
+            <Button
+              variant="ghost"
+              className="w-full text-muted-foreground"
               onClick={handleSkip}
               data-testid="button-add-manually-later"
             >
-              <Plus className="w-4 h-4 mr-2" />
-              Add Leads Manually Later
+              <SkipForward className="w-4 h-4 mr-2" />
+              Do this later
             </Button>
           </div>
         );
+      }
 
       case 2:
         return (

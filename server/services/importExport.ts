@@ -937,6 +937,248 @@ export async function createBackupZip(organizationId: number): Promise<{
   };
 }
 
+// ============================================================
+// NOTES (seller-financed) IMPORT — GeekPay CSV compatible
+// ============================================================
+
+// Maps GeekPay column headers AND generic variants to AcreOS note fields.
+// A user-provided fieldMap (from the UI's field-mapping step) takes precedence.
+export const NOTE_COLUMN_MAP: Record<string, string> = {
+  // GeekPay-style headers
+  "Borrower First Name": "borrowerFirstName",
+  "borrower first name": "borrowerFirstName",
+  borrowerFirstName: "borrowerFirstName",
+  borrower_first_name: "borrowerFirstName",
+  firstName: "borrowerFirstName",
+  first_name: "borrowerFirstName",
+  "first name": "borrowerFirstName",
+
+  "Borrower Last Name": "borrowerLastName",
+  "borrower last name": "borrowerLastName",
+  borrowerLastName: "borrowerLastName",
+  borrower_last_name: "borrowerLastName",
+  lastName: "borrowerLastName",
+  last_name: "borrowerLastName",
+  "last name": "borrowerLastName",
+
+  "Borrower Email": "borrowerEmail",
+  "borrower email": "borrowerEmail",
+  borrowerEmail: "borrowerEmail",
+  borrower_email: "borrowerEmail",
+  email: "borrowerEmail",
+
+  "Borrower Phone": "borrowerPhone",
+  "borrower phone": "borrowerPhone",
+  borrowerPhone: "borrowerPhone",
+  phone: "borrowerPhone",
+
+  "Note Amount": "originalPrincipal",
+  "note amount": "originalPrincipal",
+  "Original Principal": "originalPrincipal",
+  "original principal": "originalPrincipal",
+  originalPrincipal: "originalPrincipal",
+  original_principal: "originalPrincipal",
+  principal: "originalPrincipal",
+  amount: "originalPrincipal",
+
+  "Current Balance": "currentBalance",
+  "current balance": "currentBalance",
+  currentBalance: "currentBalance",
+  current_balance: "currentBalance",
+  balance: "currentBalance",
+
+  "Interest Rate": "interestRate",
+  "interest rate": "interestRate",
+  interestRate: "interestRate",
+  interest_rate: "interestRate",
+  rate: "interestRate",
+
+  "Term (Months)": "termMonths",
+  "term (months)": "termMonths",
+  "Term Months": "termMonths",
+  "term months": "termMonths",
+  termMonths: "termMonths",
+  term_months: "termMonths",
+  term: "termMonths",
+
+  "Monthly Payment": "monthlyPayment",
+  "monthly payment": "monthlyPayment",
+  monthlyPayment: "monthlyPayment",
+  monthly_payment: "monthlyPayment",
+  payment: "monthlyPayment",
+
+  "Payment Day": "paymentDayOfMonth",
+  "payment day": "paymentDayOfMonth",
+  paymentDayOfMonth: "paymentDayOfMonth",
+  payment_day_of_month: "paymentDayOfMonth",
+
+  "Service Fee": "serviceFee",
+  "service fee": "serviceFee",
+  serviceFee: "serviceFee",
+  service_fee: "serviceFee",
+
+  "Late Fee": "lateFeeAmount",
+  "late fee": "lateFeeAmount",
+  lateFeeAmount: "lateFeeAmount",
+  late_fee: "lateFeeAmount",
+
+  "Grace Period": "gracePeriodDays",
+  "grace period": "gracePeriodDays",
+  gracePeriodDays: "gracePeriodDays",
+  grace_period_days: "gracePeriodDays",
+
+  Status: "status",
+  status: "status",
+
+  "Property Address": "propertyAddress",
+  "property address": "propertyAddress",
+  propertyAddress: "propertyAddress",
+  property_address: "propertyAddress",
+  address: "propertyAddress",
+
+  Notes: "internalNotes",
+  notes: "internalNotes",
+  comment: "internalNotes",
+  comments: "internalNotes",
+};
+
+// Note status mapping: normalize GeekPay status strings to AcreOS enum values
+function normalizeNoteStatus(raw: string): string {
+  const lower = (raw || "").toLowerCase().trim();
+  if (lower === "active" || lower === "current") return "active";
+  if (lower === "paid off" || lower === "paid_off" || lower === "closed") return "paid_off";
+  if (lower === "default" || lower === "defaulted") return "defaulted";
+  if (lower === "late") return "late";
+  if (lower === "suspended" || lower === "paused") return "suspended";
+  return "active"; // default
+}
+
+export interface NoteImportFieldMap {
+  [csvColumn: string]: string; // csvColumn -> acreos field name
+}
+
+export async function importNotesFromCSV(
+  csvData: Array<Record<string, string>>,
+  organizationId: number,
+  userFieldMap?: NoteImportFieldMap
+): Promise<ImportResult> {
+  const result: ImportResult = {
+    totalRows: csvData.length,
+    successCount: 0,
+    errorCount: 0,
+    errors: [],
+  };
+
+  for (let i = 0; i < csvData.length; i++) {
+    const rawRow = csvData[i];
+
+    // Apply user's custom field map first, then fall back to the built-in NOTE_COLUMN_MAP
+    const effectiveMap: Record<string, string> = { ...NOTE_COLUMN_MAP };
+    if (userFieldMap) {
+      for (const [csvCol, acreosField] of Object.entries(userFieldMap)) {
+        if (acreosField) effectiveMap[csvCol] = acreosField;
+      }
+    }
+
+    const row = normalizeRow<Record<string, string>>(rawRow, effectiveMap);
+
+    try {
+      // Require at minimum a borrower name and a principal amount
+      const firstName = row.borrowerFirstName?.trim();
+      const lastName = row.borrowerLastName?.trim();
+      const principalRaw = row.originalPrincipal?.replace(/[$,\s]/g, "");
+
+      if (!firstName && !lastName) {
+        throw new Error("Borrower name is required (first name or last name)");
+      }
+      if (!principalRaw || isNaN(parseFloat(principalRaw))) {
+        throw new Error("Original principal amount is required and must be a number");
+      }
+
+      const originalPrincipal = parseFloat(principalRaw);
+      const currentBalance = row.currentBalance
+        ? parseFloat(row.currentBalance.replace(/[$,\s]/g, ""))
+        : originalPrincipal;
+      const interestRate = row.interestRate
+        ? parseFloat(row.interestRate.replace(/[%\s]/g, ""))
+        : 0;
+      const termMonths = row.termMonths ? parseInt(row.termMonths, 10) : 120;
+      const monthlyPayment = row.monthlyPayment
+        ? parseFloat(row.monthlyPayment.replace(/[$,\s]/g, ""))
+        : null;
+      const paymentDayOfMonth = row.paymentDayOfMonth
+        ? parseInt(row.paymentDayOfMonth, 10)
+        : 1;
+      const serviceFee = row.serviceFee
+        ? parseFloat(row.serviceFee.replace(/[$,\s]/g, ""))
+        : "0";
+      const lateFeeAmount = row.lateFeeAmount
+        ? parseFloat(row.lateFeeAmount.replace(/[$,\s]/g, ""))
+        : "0";
+      const gracePeriodDays = row.gracePeriodDays
+        ? parseInt(row.gracePeriodDays, 10)
+        : 10;
+
+      // Create a borrower lead if none exists with this email/name combo
+      let borrowerId: number | null = null;
+      const borrowerEmail = row.borrowerEmail?.trim() || null;
+
+      if (borrowerEmail) {
+        const existingLeads = await storage.getLeads(organizationId);
+        const match = existingLeads.find(
+          (l) => l.email?.toLowerCase() === borrowerEmail.toLowerCase()
+        );
+        if (match) {
+          borrowerId = match.id;
+        }
+      }
+
+      if (!borrowerId) {
+        const newLead = await storage.createLead({
+          organizationId,
+          type: "buyer",
+          firstName: firstName || "",
+          lastName: lastName || "",
+          email: borrowerEmail,
+          phone: row.borrowerPhone?.trim() || null,
+          status: "active",
+          source: "import",
+        });
+        borrowerId = newLead.id;
+      }
+
+      await storage.createNote({
+        organizationId,
+        borrowerId,
+        originalPrincipal: String(originalPrincipal),
+        currentBalance: String(currentBalance),
+        interestRate: String(interestRate),
+        termMonths,
+        monthlyPayment: monthlyPayment ? String(monthlyPayment) : null,
+        paymentDayOfMonth,
+        serviceFee: String(serviceFee),
+        lateFeeAmount: String(lateFeeAmount),
+        gracePeriodDays,
+        status: normalizeNoteStatus(row.status || ""),
+        paymentMethod: "manual",
+        autoPayEnabled: false,
+        internalNotes: row.internalNotes || null,
+      } as any);
+
+      result.successCount++;
+    } catch (error) {
+      result.errorCount++;
+      result.errors.push({
+        row: i + 2,
+        data: rawRow,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  return result;
+}
+
 export function getExpectedColumns(entityType: "leads" | "properties" | "deals"): string[] {
   if (entityType === "leads") {
     return [

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { SystemHealth } from "@/components/system-health";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { 
@@ -62,6 +62,42 @@ import {
   Flame,
   CalendarDays,
   SendHorizonal,
+  ToggleLeft,
+  ToggleRight,
+  Tag,
+  Percent,
+  Radio,
+  Megaphone,
+  MousePointerClick,
+  BarChart,
+  Pause,
+  TrendingUp as TrendingUpIcon,
+  ChevronRight,
+  Rocket,
+  AlertOctagon,
+  ArrowRight,
+  CircleDot,
+  Navigation,
+  ListChecks,
+  Bell,
+  Wand2,
+  ImageIcon,
+  PencilLine,
+  Send,
+  ChevronLeft,
+  RotateCcw,
+  Layers,
+  Heart,
+  Users2,
+  HelpCircle,
+  ShieldAlert,
+  Cpu,
+  ScrollText,
+  BrainCircuit,
+  CircleCheck,
+  CircleX,
+  CircleDot as CircleDotIcon,
+  Minus,
 } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 import {
@@ -572,6 +608,388 @@ function SophieActivityPreview() {
         </div>
       )}
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// AUTONOMOUS OBSERVATORY COMPONENTS
+// ─────────────────────────────────────────────
+
+const JOB_COLORS: Record<string, string> = {
+  finance_agent:       "bg-blue-500",
+  campaign_optimizer:  "bg-purple-500",
+  lead_nurturing:      "bg-green-500",
+  support_brain:       "bg-cyan-500",
+  dunning:             "bg-red-500",
+  external_monitor:    "bg-orange-500",
+  sophie:              "bg-violet-500",
+  churn_engine:        "bg-rose-500",
+  founder_briefing:    "bg-emerald-500",
+  default:             "bg-zinc-400",
+};
+
+function jobColor(jobName: string) {
+  return JOB_COLORS[jobName] ?? JOB_COLORS.default;
+}
+
+function JobStatusDot({ status }: { status: string }) {
+  if (status === "healthy")  return <CircleCheck className="w-4 h-4 text-green-500 shrink-0" />;
+  if (status === "degraded") return <CircleDotIcon className="w-4 h-4 text-yellow-500 shrink-0" />;
+  if (status === "failed")   return <CircleX className="w-4 h-4 text-red-500 shrink-0" />;
+  return <Minus className="w-4 h-4 text-zinc-400 shrink-0" />;
+}
+
+/** Live System Activity Stream */
+function SystemActivityPanel() {
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ["/api/admin/system-activity"],
+    queryFn: () => apiRequest("GET", "/api/admin/system-activity?hours=48&limit=80").then(r => r.json()),
+    refetchInterval: 30_000,
+  });
+
+  const rows: any[] = data?.rows ?? [];
+
+  return (
+    <Card className="col-span-full">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base font-semibold flex items-center gap-2">
+            <ScrollText className="w-4 h-4 text-emerald-500" />
+            System Activity Stream
+          </CardTitle>
+          <div className="flex items-center gap-2">
+            {isLoading && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
+            <span className="text-xs text-muted-foreground">Last 48h · auto-refreshes every 30s</span>
+            <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => refetch()}>
+              <RefreshCw className="w-3 h-3" />
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {isLoading && rows.length === 0 ? (
+          <div className="space-y-2">
+            {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}
+          </div>
+        ) : rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-6">No autonomous actions recorded yet. Actions will appear here as the system works.</p>
+        ) : (
+          <div className="space-y-1 max-h-80 overflow-y-auto pr-1">
+            {rows.map((row: any) => (
+              <div key={row.id} className="flex items-start gap-3 py-1.5 border-b border-border/40 last:border-0">
+                <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${jobColor(row.jobName)}`} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm leading-snug truncate">{row.summary}</p>
+                  {row.orgName && <p className="text-xs text-muted-foreground">{row.orgName}</p>}
+                </div>
+                <div className="text-right shrink-0">
+                  <Badge variant="outline" className="text-xs font-mono py-0">{row.jobName.replace(/_/g, " ")}</Badge>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {formatDistanceToNow(new Date(row.createdAt), { addSuffix: true })}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        <p className="text-xs text-muted-foreground mt-3 text-right">{rows.length} action{rows.length !== 1 ? "s" : ""} logged</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Job Health Supervisor Panel */
+function JobHealthPanel() {
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ["/api/admin/job-health"],
+    queryFn: () => apiRequest("GET", "/api/admin/job-health").then(r => r.json()),
+    refetchInterval: 60_000,
+  });
+
+  const jobs: any[] = data?.jobs ?? [];
+  const summary = data?.summary ?? { healthy: 0, degraded: 0, failed: 0, unknown: 0 };
+  const hasIssues = summary.failed > 0 || summary.degraded > 0;
+
+  return (
+    <Card className={hasIssues ? "border-red-300 dark:border-red-800" : ""}>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base font-semibold flex items-center gap-2">
+            <Cpu className="w-4 h-4 text-blue-500" />
+            Background Job Health
+          </CardTitle>
+          <div className="flex items-center gap-2">
+            {hasIssues && <Badge variant="destructive" className="text-xs">Issues Detected</Badge>}
+            <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => refetch()}>
+              <RefreshCw className="w-3 h-3" />
+            </Button>
+          </div>
+        </div>
+        <div className="flex gap-3 text-xs text-muted-foreground">
+          <span className="text-green-600 font-medium">{summary.healthy} healthy</span>
+          {summary.degraded > 0 && <span className="text-yellow-600 font-medium">{summary.degraded} degraded</span>}
+          {summary.failed > 0 && <span className="text-red-600 font-medium">{summary.failed} failed</span>}
+          {summary.unknown > 0 && <span>{summary.unknown} not yet run</span>}
+        </div>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="space-y-2">{[...Array(6)].map((_, i) => <Skeleton key={i} className="h-7 w-full" />)}</div>
+        ) : (
+          <div className="space-y-1.5 max-h-64 overflow-y-auto">
+            {jobs.map((job: any) => (
+              <div key={job.name} className="flex items-center gap-2 py-1 border-b border-border/40 last:border-0">
+                <JobStatusDot status={job.status} />
+                <span className="text-sm font-mono flex-1 truncate">{job.name.replace(/_/g, " ")}</span>
+                <div className="text-right text-xs text-muted-foreground shrink-0">
+                  {job.lastRunAt ? (
+                    <span>{formatDistanceToNow(new Date(job.lastRunAt), { addSuffix: true })}</span>
+                  ) : (
+                    <span className="italic">not yet run</span>
+                  )}
+                  {job.consecutiveFailures > 0 && (
+                    <span className="ml-2 text-red-500 font-medium">{job.consecutiveFailures} fails</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/** At-Risk Orgs (Churn Engine) Panel */
+function ChurnRiskPanel() {
+  const { toast } = useToast();
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ["/api/admin/churn-risk"],
+    queryFn: () => apiRequest("GET", "/api/admin/churn-risk?minScore=40").then(r => r.json()),
+    refetchInterval: 5 * 60_000,
+  });
+
+  const orgs: any[] = data?.orgs ?? [];
+
+  const triggerRescue = async (orgId: number, orgName: string) => {
+    try {
+      await apiRequest("POST", `/api/admin/churn-risk/${orgId}/rescue`);
+      toast({ title: "Rescue triggered", description: `Sophie will reach out to ${orgName}` });
+      refetch();
+    } catch {
+      toast({ title: "Error", description: "Failed to trigger rescue", variant: "destructive" });
+    }
+  };
+
+  const riskColor = (score: number) =>
+    score >= 80 ? "text-red-600 font-bold" :
+    score >= 60 ? "text-yellow-600 font-semibold" :
+    "text-muted-foreground";
+
+  return (
+    <Card className="col-span-full md:col-span-1">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base font-semibold flex items-center gap-2">
+          <ShieldAlert className="w-4 h-4 text-rose-500" />
+          Churn Risk Radar
+        </CardTitle>
+        <CardDescription className="text-xs">Paying orgs with elevated churn risk — Sophie auto-rescues at 85+</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="space-y-2">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}</div>
+        ) : orgs.length === 0 ? (
+          <div className="flex flex-col items-center py-6 gap-1">
+            <CircleCheck className="w-8 h-8 text-green-500" />
+            <p className="text-sm text-muted-foreground">No orgs at elevated churn risk</p>
+          </div>
+        ) : (
+          <div className="space-y-2 max-h-72 overflow-y-auto">
+            {orgs.map((org: any) => (
+              <div key={org.id} className="flex items-center justify-between py-1.5 border-b border-border/40 last:border-0 gap-2">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{org.name}</p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <Badge variant="outline" className="text-xs py-0">{org.subscriptionTier}</Badge>
+                    {org.churnRescueSentAt && (
+                      <span className="text-xs text-violet-600 flex items-center gap-1">
+                        <BrainCircuit className="w-3 h-3" /> Sophie intervened
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className={`text-lg font-mono ${riskColor(org.churnRiskScore)}`}>
+                    {org.churnRiskScore}
+                  </span>
+                  {!org.churnRescueSentAt && org.churnRiskScore >= 60 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-6 px-2 text-xs"
+                      onClick={() => triggerRescue(org.id, org.name)}
+                    >
+                      Rescue
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Sophie's Eyes — observations and cross-org learnings */
+const ACTION_LABELS: Record<string, string> = {
+  proactive_outreach: "Re-engage",
+  draft_outreach_message: "Re-engage",
+  upgrade_plan: "Send Upgrade Email",
+  get_deals: "Hunt Deals",
+  monitor: "Acknowledge",
+  wait_and_retry: "Acknowledge",
+  review_data: "Acknowledge",
+};
+
+function SophieEyesPanel() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const { data, isLoading } = useQuery({
+    queryKey: ["/api/admin/sophie-observations"],
+    queryFn: () => apiRequest("GET", "/api/admin/sophie-observations?limit=25").then(r => r.json()),
+    refetchInterval: 2 * 60_000,
+  });
+
+  const executeMutation = useMutation({
+    mutationFn: (obsId: number) =>
+      apiRequest("POST", `/api/admin/sophie-observations/${obsId}/execute`).then(r => r.json()),
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/sophie-observations"] });
+      toast({ title: "Action executed", description: data.actionTaken?.replace(/_/g, " ") });
+    },
+    onError: () => toast({ title: "Failed to execute action", variant: "destructive" }),
+  });
+
+  const observations: any[] = data?.observations ?? [];
+  const learnings: any[] = data?.learnings ?? [];
+
+  const confidenceBadge = (score: number) => {
+    const pct = score > 1 ? score : score * 100;
+    if (pct >= 80) return <Badge className="text-xs bg-green-100 text-green-800 border-green-200">High</Badge>;
+    if (pct >= 50) return <Badge className="text-xs bg-yellow-100 text-yellow-800 border-yellow-200">Medium</Badge>;
+    return <Badge className="text-xs bg-zinc-100 text-zinc-600 border-zinc-200">Low</Badge>;
+  };
+
+  const severityColor = (s: string) => {
+    if (s === "high") return "text-red-600 dark:text-red-400";
+    if (s === "medium") return "text-amber-600 dark:text-amber-400";
+    return "text-violet-400";
+  };
+
+  return (
+    <Card className="col-span-full md:col-span-2">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base font-semibold flex items-center gap-2">
+          <BrainCircuit className="w-4 h-4 text-violet-500" />
+          Sophie's Eyes
+        </CardTitle>
+        <CardDescription className="text-xs">What Sophie has observed and learned across all organizations</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Observations */}
+        <div>
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Recent Observations</p>
+          {isLoading ? (
+            <div className="space-y-2">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}</div>
+          ) : observations.length === 0 ? (
+            <p className="text-sm text-muted-foreground italic">No observations yet</p>
+          ) : (
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {observations.map((obs: any) => (
+                <div key={obs.id} className="flex items-start gap-2 py-2 border-b border-border/40 last:border-0">
+                  <Eye className={`w-3.5 h-3.5 mt-1 shrink-0 ${severityColor(obs.severity)}`} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm leading-snug line-clamp-2">{obs.content}</p>
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                      {obs.orgName && <span className="text-xs text-muted-foreground">{obs.orgName}</span>}
+                      {obs.confidence != null && confidenceBadge(Number(obs.confidence))}
+                      <span className="text-xs text-muted-foreground">
+                        {formatDistanceToNow(new Date(obs.createdAt), { addSuffix: true })}
+                      </span>
+                    </div>
+                  </div>
+                  {obs.suggestedAction && obs.suggestedAction !== "monitor" && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs shrink-0 gap-1"
+                      disabled={executeMutation.isPending}
+                      onClick={() => executeMutation.mutate(obs.id)}
+                    >
+                      <Zap className="w-3 h-3" />
+                      {ACTION_LABELS[obs.suggestedAction] ?? "Execute"}
+                    </Button>
+                  )}
+                  {(!obs.suggestedAction || obs.suggestedAction === "monitor") && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 text-xs shrink-0 text-muted-foreground"
+                      disabled={executeMutation.isPending}
+                      onClick={() => executeMutation.mutate(obs.id)}
+                    >
+                      Dismiss
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Cross-org learnings */}
+        {learnings.length > 0 && (
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Cross-Org Learnings</p>
+            <div className="space-y-1.5">
+              {learnings.slice(0, 4).map((l: any) => (
+                <div key={l.id} className="flex items-start gap-2 py-1.5 border-b border-border/40 last:border-0">
+                  <Sparkles className="w-3.5 h-3.5 mt-1 text-amber-400 shrink-0" />
+                  <p className="text-sm leading-snug">{l.insight ?? l.pattern ?? l.title ?? JSON.stringify(l).slice(0, 100)}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Manual trigger button for founder briefing */
+function FounderBriefingTrigger() {
+  const { toast } = useToast();
+  const [loading, setLoading] = React.useState(false);
+
+  const sendNow = async () => {
+    setLoading(true);
+    try {
+      await apiRequest("POST", "/api/admin/founder-briefing/send");
+      toast({ title: "Briefing sent", description: "Check your inbox for the founder briefing email." });
+    } catch {
+      toast({ title: "Error", description: "Failed to send briefing", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Button variant="outline" size="sm" onClick={sendNow} disabled={loading} className="gap-2">
+      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
+      Send Daily Briefing Now
+    </Button>
   );
 }
 
@@ -1520,7 +1938,51 @@ export default function FounderDashboard() {
             <h2 className="text-lg font-semibold text-foreground border-t pt-4">Operational Panels</h2>
           </div>
 
-          <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 ${focusMode ? "hidden" : ""}`}>
+          {/* ── Sticky nav ── */}
+          <FounderNavBar />
+
+          {/* ── AI Briefing ── */}
+          <div id="section-briefing">
+            <TodaysBriefing />
+          </div>
+
+          {/* ── Action Queue ── */}
+          <div id="section-actions">
+            <ActionQueuePanel />
+          </div>
+
+          {/* ── Autonomous Observatory ── */}
+          <div id="section-observatory" className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold flex items-center gap-2">
+                  <Cpu className="w-5 h-5 text-blue-500" />
+                  Autonomous Observatory
+                </h2>
+                <p className="text-sm text-muted-foreground">Watch the system work in real time</p>
+              </div>
+              <FounderBriefingTrigger />
+            </div>
+            {/* Activity stream spans full width */}
+            <SystemActivityPanel />
+            {/* Job health + churn risk + Sophie in a responsive grid */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <JobHealthPanel />
+              <ChurnRiskPanel />
+              <SophieEyesPanel />
+            </div>
+          </div>
+
+          {/* ── Launch Readiness Onboarding ── */}
+          <div id="section-readiness">
+            <LaunchReadinessSection />
+          </div>
+
+          {/* ── New subscriber live feed ── */}
+          <NewSubscriberFeed alerts={alerts} />
+
+          {/* ── Overview / Operational Panels ── */}
+          <div id="section-overview" className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 ${focusMode ? "hidden" : ""}`}>
             <Card data-testid="card-revenue-analytics">
               <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
                 <CardTitle
@@ -2005,6 +2467,7 @@ export default function FounderDashboard() {
           <SystemHealth />
 
           {/* Feature Requests Section */}
+          <div id="section-users" className="scroll-mt-16" />
           <Card data-testid="card-feature-requests">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -2930,6 +3393,7 @@ export default function FounderDashboard() {
           </Card>
 
           {/* Subscription Lifecycle */}
+          <div id="section-revenue" className="scroll-mt-16 col-span-full" />
           <Card data-testid="card-subscription-lifecycle" className="col-span-full">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -3923,11 +4387,24 @@ export default function FounderDashboard() {
         </DialogContent>
       </Dialog>
 
-      {/* AI Models Management */}
-      <AIModelsSection />
+      {/* Feature Flags Control */}
+      <div id="section-features" className="scroll-mt-16"><FeatureFlagsSection /></div>
 
-      {/* System API Keys Management */}
+      {/* Pricing & Promotions */}
+      <div id="section-pricing" className="scroll-mt-16"><PricingSection /></div>
+
+      {/* Growth & Ad Campaigns */}
+      <div id="section-growth" className="scroll-mt-16"><GrowthSection /></div>
+
+      {/* Org Health Monitor */}
+      <div id="section-org-health" className="scroll-mt-16"><OrgHealthMonitor /></div>
+
+      {/* AI Models + System API Keys = Config */}
+      <AIModelsSection />
       <SystemApiKeysSection />
+
+      {/* Autopilot Status Bar — fixed at bottom */}
+      <AutopilotStatusBar />
     </PageShell>
   );
 }
@@ -3956,7 +4433,7 @@ function AIModelsSection() {
   });
 
   return (
-    <div className="mt-8 p-6 border rounded-xl bg-card space-y-4" data-testid="section-ai-models">
+    <div id="section-config" className="mt-8 p-6 border rounded-xl bg-card space-y-4 scroll-mt-16" data-testid="section-ai-models">
       <div>
         <h2 className="text-xl font-semibold flex items-center gap-2">
           <Bot className="w-5 h-5 text-primary" />
@@ -4055,7 +4532,7 @@ function SystemApiKeysSection() {
   });
 
   return (
-    <div className="mt-6 mb-8 p-6 border rounded-xl bg-card space-y-4" data-testid="section-system-api-keys">
+    <div className="mt-6 mb-8 p-6 border rounded-xl bg-card space-y-4 scroll-mt-16" data-testid="section-system-api-keys">
       <div>
         <h2 className="text-xl font-semibold flex items-center gap-2">
           <Key className="w-5 h-5 text-primary" />
@@ -4116,6 +4593,1915 @@ function SystemApiKeysSection() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// FEATURE FLAGS SECTION
+// ─────────────────────────────────────────────────────────────────────
+interface FeatureFlag {
+  id: number;
+  key: string;
+  label: string;
+  description: string;
+  enabled: boolean;
+  controlledRoutes: string[];
+}
+
+function FeatureFlagsSection() {
+  const { toast } = useToast();
+
+  const { data: flags, isLoading, refetch } = useQuery<FeatureFlag[]>({
+    queryKey: ["/api/founder/feature-flags"],
+  });
+
+  const toggleMutation = useMutation({
+    mutationFn: async ({ key, enabled }: { key: string; enabled: boolean }) =>
+      apiRequest("PUT", `/api/founder/feature-flags/${key}`, { enabled }),
+    onSuccess: () => {
+      refetch();
+      queryClient.invalidateQueries({ queryKey: ["/api/config/features"] });
+    },
+    onError: () => toast({ title: "Failed to update flag", variant: "destructive" }),
+  });
+
+  return (
+    <div className="mt-8 p-6 border rounded-xl bg-card space-y-4">
+      <div>
+        <h2 className="text-xl font-semibold flex items-center gap-2">
+          <ToggleRight className="w-5 h-5 text-primary" />
+          Feature Flags
+        </h2>
+        <p className="text-muted-foreground text-sm mt-0.5">
+          Control which features are live for all users. Disabled features are hidden from the sidebar and return 404.
+        </p>
+      </div>
+
+      {isLoading ? (
+        <div className="animate-pulse h-40 rounded-lg bg-muted/50" />
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {(flags || []).map((flag) => (
+            <div key={flag.key} className="flex items-start gap-3 p-3 border rounded-lg">
+              <Switch
+                checked={flag.enabled}
+                onCheckedChange={(enabled) => toggleMutation.mutate({ key: flag.key, enabled })}
+                disabled={toggleMutation.isPending}
+                className="mt-0.5 shrink-0"
+              />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-sm">{flag.label}</span>
+                  <Badge variant={flag.enabled ? "default" : "outline"} className="text-xs">
+                    {flag.enabled ? "Live" : "Hidden"}
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{flag.description}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// PRICING SECTION
+// ─────────────────────────────────────────────────────────────────────
+interface PricingConfigRow {
+  id: number;
+  tier: string;
+  displayPriceMonthly: number;
+  displayPriceYearly: number;
+  promoLabel: string | null;
+  promoDiscountPercent: number | null;
+  promoEndsAt: string | null;
+  stripeCouponId: string | null;
+  allowPromoCodes: boolean;
+}
+
+function PricingSection() {
+  const { toast } = useToast();
+  const [editingTier, setEditingTier] = useState<string | null>(null);
+  const [draftPrices, setDraftPrices] = useState<{ monthly: string; yearly: string }>({ monthly: "", yearly: "" });
+  const [promoForm, setPromoForm] = useState<{ tier: string; label: string; discount: string; endsAt: string } | null>(null);
+
+  const { data: configs, isLoading, refetch } = useQuery<PricingConfigRow[]>({
+    queryKey: ["/api/founder/pricing"],
+  });
+
+  const updatePriceMutation = useMutation({
+    mutationFn: async ({ tier, monthly, yearly }: { tier: string; monthly: number; yearly: number }) =>
+      apiRequest("PUT", `/api/founder/pricing/${tier}`, {
+        displayPriceMonthly: monthly,
+        displayPriceYearly: yearly,
+      }),
+    onSuccess: () => { refetch(); setEditingTier(null); toast({ title: "Prices updated" }); },
+    onError: () => toast({ title: "Failed to update prices", variant: "destructive" }),
+  });
+
+  const createPromoMutation = useMutation({
+    mutationFn: async ({ tier, label, discount, endsAt }: { tier: string; label: string; discount: number; endsAt: string }) =>
+      apiRequest("POST", `/api/founder/pricing/${tier}/promo`, {
+        promoLabel: label,
+        promoDiscountPercent: discount,
+        promoEndsAt: endsAt,
+      }),
+    onSuccess: () => { refetch(); setPromoForm(null); toast({ title: "Promotion activated" }); },
+    onError: () => toast({ title: "Failed to create promotion", variant: "destructive" }),
+  });
+
+  const clearPromoMutation = useMutation({
+    mutationFn: async (tier: string) => apiRequest("DELETE", `/api/founder/pricing/${tier}/promo`),
+    onSuccess: () => { refetch(); toast({ title: "Promotion cleared" }); },
+    onError: () => toast({ title: "Failed to clear promotion", variant: "destructive" }),
+  });
+
+  const togglePromoCodesMutation = useMutation({
+    mutationFn: async ({ tier, allow }: { tier: string; allow: boolean }) =>
+      apiRequest("PUT", `/api/founder/pricing/${tier}`, { allowPromoCodes: allow }),
+    onSuccess: () => refetch(),
+    onError: () => toast({ title: "Failed to update", variant: "destructive" }),
+  });
+
+  const tierLabels: Record<string, string> = {
+    starter: "Starter",
+    pro: "Pro",
+    growth: "Growth",
+    enterprise: "Enterprise",
+  };
+
+  return (
+    <div className="mt-8 p-6 border rounded-xl bg-card space-y-4">
+      <div>
+        <h2 className="text-xl font-semibold flex items-center gap-2">
+          <Tag className="w-5 h-5 text-primary" />
+          Pricing & Promotions
+        </h2>
+        <p className="text-muted-foreground text-sm mt-0.5">
+          Adjust display pricing, run flash sales, and manage Stripe promo codes.
+        </p>
+      </div>
+
+      {isLoading ? (
+        <div className="animate-pulse h-40 rounded-lg bg-muted/50" />
+      ) : (
+        <div className="space-y-3">
+          {(configs || []).map((cfg) => {
+            const isExpired = cfg.promoEndsAt && new Date(cfg.promoEndsAt) < new Date();
+            const hasActivePromo = cfg.promoLabel && !isExpired;
+            return (
+              <div key={cfg.tier} className="p-4 border rounded-lg space-y-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <span className="font-medium">{tierLabels[cfg.tier] || cfg.tier}</span>
+                    {hasActivePromo && (
+                      <Badge className="ml-2 bg-green-500/10 text-green-700 border-green-500/20">
+                        <Percent className="w-3 h-3 mr-1" />
+                        {cfg.promoDiscountPercent}% off — {cfg.promoLabel}
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {editingTier === cfg.tier ? (
+                      <>
+                        <Input
+                          type="number"
+                          className="h-8 w-24 text-sm"
+                          placeholder="Monthly ¢"
+                          value={draftPrices.monthly}
+                          onChange={(e) => setDraftPrices((p) => ({ ...p, monthly: e.target.value }))}
+                        />
+                        <Input
+                          type="number"
+                          className="h-8 w-24 text-sm"
+                          placeholder="Yearly ¢"
+                          value={draftPrices.yearly}
+                          onChange={(e) => setDraftPrices((p) => ({ ...p, yearly: e.target.value }))}
+                        />
+                        <Button
+                          size="sm"
+                          className="h-8"
+                          onClick={() => updatePriceMutation.mutate({ tier: cfg.tier, monthly: parseInt(draftPrices.monthly), yearly: parseInt(draftPrices.yearly) })}
+                          disabled={updatePriceMutation.isPending}
+                        >
+                          Save
+                        </Button>
+                        <Button size="sm" variant="ghost" className="h-8" onClick={() => setEditingTier(null)}>Cancel</Button>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-sm text-muted-foreground font-mono">
+                          ${(cfg.displayPriceMonthly / 100).toFixed(0)}/mo · ${(cfg.displayPriceYearly / 100).toFixed(0)}/mo yearly
+                        </span>
+                        <Button size="sm" variant="outline" className="h-8 text-xs"
+                          onClick={() => { setEditingTier(cfg.tier); setDraftPrices({ monthly: String(cfg.displayPriceMonthly), yearly: String(cfg.displayPriceYearly) }); }}>
+                          Edit Prices
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 flex-wrap">
+                  {hasActivePromo ? (
+                    <Button size="sm" variant="destructive" className="h-7 text-xs"
+                      onClick={() => clearPromoMutation.mutate(cfg.tier)}
+                      disabled={clearPromoMutation.isPending}>
+                      End Promotion
+                    </Button>
+                  ) : (
+                    <Button size="sm" variant="outline" className="h-7 text-xs"
+                      onClick={() => setPromoForm({ tier: cfg.tier, label: "", discount: "", endsAt: "" })}>
+                      <Percent className="w-3 h-3 mr-1" />
+                      Flash Sale
+                    </Button>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={cfg.allowPromoCodes}
+                      onCheckedChange={(allow) => togglePromoCodesMutation.mutate({ tier: cfg.tier, allow })}
+                      className="scale-75"
+                    />
+                    <span className="text-xs text-muted-foreground">User promo codes at checkout</span>
+                  </div>
+                  {cfg.promoEndsAt && !isExpired && (
+                    <span className="text-xs text-muted-foreground">
+                      Ends {new Date(cfg.promoEndsAt).toLocaleDateString()}
+                    </span>
+                  )}
+                </div>
+
+                {promoForm?.tier === cfg.tier && (
+                  <div className="p-3 bg-muted/50 rounded-lg space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input placeholder="Label (e.g. Spring Sale)" className="h-8 text-sm"
+                        value={promoForm.label} onChange={(e) => setPromoForm((p) => p ? { ...p, label: e.target.value } : null)} />
+                      <Input type="number" min="1" max="99" placeholder="Discount %" className="h-8 text-sm"
+                        value={promoForm.discount} onChange={(e) => setPromoForm((p) => p ? { ...p, discount: e.target.value } : null)} />
+                      <Input type="datetime-local" className="h-8 text-sm col-span-2"
+                        value={promoForm.endsAt} onChange={(e) => setPromoForm((p) => p ? { ...p, endsAt: e.target.value } : null)} />
+                    </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" className="h-8"
+                        onClick={() => createPromoMutation.mutate({ tier: cfg.tier, label: promoForm.label, discount: parseInt(promoForm.discount), endsAt: promoForm.endsAt })}
+                        disabled={createPromoMutation.isPending || !promoForm.label || !promoForm.discount || !promoForm.endsAt}>
+                        Activate Promo
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-8" onClick={() => setPromoForm(null)}>Cancel</Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// GROWTH / AD CAMPAIGNS SECTION
+// ─────────────────────────────────────────────────────────────────────
+interface GrowthCampaignItem {
+  id: number;
+  name: string;
+  templateKey: string;
+  status: string;
+  externalCampaignId: string | null;
+  dailyBudgetCents: number;
+  totalSpendCents: number;
+  impressions: number;
+  clicks: number;
+  signups: number;
+  createdAt: string;
+}
+
+interface AdAccount {
+  adAccountId: string;
+  pixelId: string | null;
+  isActive: boolean;
+  accessToken: string;
+}
+
+interface CampaignTemplate {
+  key: string;
+  name: string;
+  objective: string;
+  headline: string;
+  description: string;
+}
+
+interface SignupAttribution {
+  organizationId: number;
+  name: string;
+  subscriptionTier: string;
+  utmSource: string | null;
+  utmMedium: string | null;
+  utmCampaign: string | null;
+  createdAt: string;
+}
+
+interface AdCopyVariant {
+  angle: string;
+  angleLabel: string;
+  headline: string;
+  primaryText: string;
+  description: string;
+  callToAction: string;
+  hook: string;
+}
+
+interface GeneratedAdImage {
+  style: string;
+  styleLabel: string;
+  url: string;
+  aspectRatio: string;
+  metaImageHash?: string;
+}
+
+interface CreativeBundle {
+  id: string;
+  templateKey: string;
+  status: "generating" | "ready" | "error" | "deployed";
+  copies: AdCopyVariant[] | null;
+  images: GeneratedAdImage[] | null;
+  error: string | null;
+}
+
+const ANGLE_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+  pain_point: Flame,
+  aspiration: Heart,
+  social_proof: Users2,
+  curiosity: HelpCircle,
+};
+
+const ANGLE_COLORS: Record<string, string> = {
+  pain_point: "border-red-200 bg-red-50/50 dark:border-red-900/40 dark:bg-red-950/20",
+  aspiration: "border-purple-200 bg-purple-50/50 dark:border-purple-900/40 dark:bg-purple-950/20",
+  social_proof: "border-blue-200 bg-blue-50/50 dark:border-blue-900/40 dark:bg-blue-950/20",
+  curiosity: "border-amber-200 bg-amber-50/50 dark:border-amber-900/40 dark:bg-amber-950/20",
+};
+
+function GrowthSection() {
+  const { toast } = useToast();
+
+  // Ad account form
+  const [showAdAccountForm, setShowAdAccountForm] = useState(false);
+  const [adForm, setAdForm] = useState({ adAccountId: "", accessToken: "", pixelId: "", appId: "" });
+
+  // Campaign wizard state
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardStep, setWizardStep] = useState<"setup" | "generating" | "preview" | "deploy">("setup");
+  const [wizardTemplate, setWizardTemplate] = useState("");
+  const [wizardName, setWizardName] = useState("");
+  const [wizardBudget, setWizardBudget] = useState("2000");
+  const [bundleId, setBundleId] = useState<string | null>(null);
+  const [bundle, setBundle] = useState<CreativeBundle | null>(null);
+  const [editingCopy, setEditingCopy] = useState<string | null>(null); // angle being edited
+  const [editDraft, setEditDraft] = useState<Partial<AdCopyVariant>>({});
+  const [selectedImageIdx, setSelectedImageIdx] = useState(0);
+  const [regeneratingAngle, setRegeneratingAngle] = useState<string | null>(null);
+
+  const { data: adAccount, refetch: refetchAccount } = useQuery<AdAccount | null>({
+    queryKey: ["/api/founder/growth/ad-account"],
+  });
+
+  const { data: campaigns, refetch: refetchCampaigns } = useQuery<GrowthCampaignItem[]>({
+    queryKey: ["/api/founder/growth/campaigns"],
+  });
+
+  const { data: templates } = useQuery<CampaignTemplate[]>({
+    queryKey: ["/api/founder/growth/templates"],
+  });
+
+  const { data: attribution } = useQuery<SignupAttribution[]>({
+    queryKey: ["/api/founder/growth/attribution"],
+  });
+
+  // Poll for creative bundle status while generating
+  const { data: bundleData } = useQuery<CreativeBundle>({
+    queryKey: [`/api/founder/growth/creative-bundles/${bundleId}`],
+    enabled: !!bundleId && wizardStep === "generating",
+    refetchInterval: (query) => {
+      const data = query.state.data as CreativeBundle | undefined;
+      if (data?.status === "generating") return 2000;
+      return false;
+    },
+  });
+
+  // Auto-advance wizard when bundle is ready
+  useEffect(() => {
+    if (bundleData?.status === "ready" && wizardStep === "generating") {
+      setBundle(bundleData);
+      setWizardStep("preview");
+      setSelectedImageIdx(0);
+    }
+    if (bundleData?.status === "error" && wizardStep === "generating") {
+      toast({ title: "Creative generation failed", description: bundleData.error || "Try again", variant: "destructive" });
+      setWizardStep("setup");
+      setBundleId(null);
+    }
+  }, [bundleData, wizardStep]);
+
+  const saveAdAccountMutation = useMutation({
+    mutationFn: async (data: typeof adForm) => apiRequest("PUT", "/api/founder/growth/ad-account", data),
+    onSuccess: () => { refetchAccount(); setShowAdAccountForm(false); toast({ title: "Ad account saved" }); },
+    onError: () => toast({ title: "Failed to save ad account", variant: "destructive" }),
+  });
+
+  const generateCreativeMutation = useMutation({
+    mutationFn: async ({ templateKey }: { templateKey: string }) =>
+      apiRequest("POST", "/api/founder/growth/generate-creative", { templateKey }).then((r) => r.json()),
+    onSuccess: (data: { bundleId: string }) => {
+      setBundleId(data.bundleId);
+      setWizardStep("generating");
+    },
+    onError: (err: any) => toast({ title: err?.message || "Failed to start generation", variant: "destructive" }),
+  });
+
+  const regenerateCopyMutation = useMutation({
+    mutationFn: async ({ id, angle }: { id: string; angle: string }) =>
+      apiRequest("POST", `/api/founder/growth/creative-bundles/${id}/regenerate-copy`, { angle }).then((r) => r.json()),
+    onSuccess: (data: CreativeBundle) => {
+      setBundle(data);
+      setRegeneratingAngle(null);
+      toast({ title: "Copy variant refreshed" });
+    },
+    onError: () => { setRegeneratingAngle(null); toast({ title: "Regeneration failed", variant: "destructive" }); },
+  });
+
+  const deployMutation = useMutation({
+    mutationFn: async () => {
+      if (!bundleId) throw new Error("No bundle");
+      const budgetCents = parseInt(wizardBudget) || 2000;
+      return apiRequest("POST", `/api/founder/growth/creative-bundles/${bundleId}/deploy`, {
+        name: wizardName,
+        dailyBudgetCents: budgetCents,
+        targetCountries: ["US"],
+      }).then((r) => r.json());
+    },
+    onSuccess: () => {
+      refetchCampaigns();
+      setWizardOpen(false);
+      resetWizard();
+      toast({ title: "Campaign deployed!", description: "Check Meta Ads Manager to activate it." });
+    },
+    onError: (err: any) => toast({ title: err?.message || "Deploy failed", variant: "destructive" }),
+  });
+
+  const toggleCampaignMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: number; status: string }) =>
+      apiRequest("PUT", `/api/founder/growth/campaigns/${id}/status`, { status }),
+    onSuccess: () => { refetchCampaigns(); toast({ title: "Campaign updated" }); },
+    onError: () => toast({ title: "Failed to update campaign", variant: "destructive" }),
+  });
+
+  const syncStatsMutation = useMutation({
+    mutationFn: async (id: number) => apiRequest("POST", `/api/founder/growth/campaigns/${id}/sync`),
+    onSuccess: () => { refetchCampaigns(); toast({ title: "Stats synced" }); },
+    onError: () => toast({ title: "Failed to sync stats", variant: "destructive" }),
+  });
+
+  function resetWizard() {
+    setWizardStep("setup");
+    setWizardTemplate("");
+    setWizardName("");
+    setWizardBudget("2000");
+    setBundleId(null);
+    setBundle(null);
+    setEditingCopy(null);
+    setEditDraft({});
+    setSelectedImageIdx(0);
+  }
+
+  function saveCopyEdit(angle: string) {
+    if (!bundle?.copies) return;
+    const updated: CreativeBundle = {
+      ...bundle,
+      copies: bundle.copies.map((c) => c.angle === angle ? { ...c, ...editDraft } : c),
+    };
+    setBundle(updated);
+    setEditingCopy(null);
+    setEditDraft({});
+  }
+
+  const statusColors: Record<string, string> = {
+    active: "bg-green-500/10 text-green-700 border-green-500/20",
+    paused: "bg-yellow-500/10 text-yellow-700 border-yellow-500/20",
+    draft: "bg-muted text-muted-foreground",
+    completed: "bg-blue-500/10 text-blue-700 border-blue-500/20",
+  };
+
+  const TEMPLATE_META: Record<string, { icon: React.ComponentType<{ className?: string }>; color: string; tagline: string }> = {
+    land_investors_signup: { icon: Target, color: "text-green-600", tagline: "Cold audience — land investors & RE buyers" },
+    retargeting_visitors: { icon: RotateCcw, color: "text-orange-600", tagline: "Warm audience — website visitors who didn't convert" },
+    lookalike_subscribers: { icon: Users2, color: "text-purple-600", tagline: "Lookalike — similar to your current subscribers" },
+  };
+
+  const sourceCounts = (attribution || []).reduce<Record<string, number>>((acc, s) => {
+    const src = s.utmSource || "organic";
+    acc[src] = (acc[src] || 0) + 1;
+    return acc;
+  }, {});
+
+  const dailyBudgetDollars = Math.round(parseInt(wizardBudget || "2000") / 100);
+  const selectedCopy = bundle?.copies?.find((c) => c.angle === editingCopy);
+
+  return (
+    <div className="mt-8 p-6 border rounded-xl bg-card space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h2 className="text-xl font-semibold flex items-center gap-2">
+            <Megaphone className="w-5 h-5 text-primary" />
+            Growth & Ads
+          </h2>
+          <p className="text-muted-foreground text-sm mt-0.5">
+            AI-generated campaigns with 4 copy variants and 3 images. Deploy in one click.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={() => setShowAdAccountForm(true)}>
+            <Key className="w-3 h-3 mr-1" />
+            {adAccount ? "Update Ad Account" : "Connect Meta"}
+          </Button>
+          <Button
+            size="sm"
+            className="gap-1.5 bg-gradient-to-r from-primary to-accent text-white font-semibold"
+            onClick={() => { resetWizard(); setWizardOpen(true); }}
+            disabled={!adAccount}
+          >
+            <Wand2 className="w-3.5 h-3.5" />
+            Generate Campaign
+          </Button>
+        </div>
+      </div>
+
+      {/* Ad account connection form */}
+      {showAdAccountForm && (
+        <div className="p-4 border rounded-lg bg-muted/30 space-y-3">
+          <h3 className="font-medium text-sm">Meta Ad Account Credentials</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Ad Account ID</label>
+              <Input placeholder="act_123456789" className="h-8 text-sm" value={adForm.adAccountId}
+                onChange={(e) => setAdForm((f) => ({ ...f, adAccountId: e.target.value }))} />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Access Token</label>
+              <Input type="password" placeholder="EAAxxxxxxx" className="h-8 text-sm" value={adForm.accessToken}
+                onChange={(e) => setAdForm((f) => ({ ...f, accessToken: e.target.value }))} />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Pixel ID (for conversion tracking)</label>
+              <Input placeholder="123456789" className="h-8 text-sm" value={adForm.pixelId}
+                onChange={(e) => setAdForm((f) => ({ ...f, pixelId: e.target.value }))} />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Facebook Page / App ID</label>
+              <Input placeholder="Meta Page or App ID" className="h-8 text-sm" value={adForm.appId}
+                onChange={(e) => setAdForm((f) => ({ ...f, appId: e.target.value }))} />
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" onClick={() => saveAdAccountMutation.mutate(adForm)}
+              disabled={saveAdAccountMutation.isPending || !adForm.adAccountId || !adForm.accessToken}>
+              Save Credentials
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setShowAdAccountForm(false)}>Cancel</Button>
+          </div>
+        </div>
+      )}
+
+      {adAccount && (
+        <div className="flex items-center gap-2 p-2.5 bg-green-500/5 border border-green-500/20 rounded-lg">
+          <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />
+          <span className="text-sm text-green-700 font-medium">Meta ad account connected</span>
+          <span className="text-sm text-muted-foreground ml-1">{adAccount.adAccountId}</span>
+          {adAccount.pixelId && <Badge className="text-xs ml-auto">Pixel active</Badge>}
+        </div>
+      )}
+
+      {!adAccount && (
+        <div className="p-4 border border-dashed rounded-lg text-center text-sm text-muted-foreground">
+          Connect your Meta ad account above to enable campaign generation and deployment.
+        </div>
+      )}
+
+      {/* Campaign Wizard Dialog */}
+      <Dialog open={wizardOpen} onOpenChange={(o) => { if (!o) { setWizardOpen(false); } }}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Wand2 className="w-5 h-5 text-primary" />
+              {wizardStep === "setup" && "New Campaign — Setup"}
+              {wizardStep === "generating" && "Generating AI Creatives…"}
+              {wizardStep === "preview" && "Preview & Edit Creatives"}
+              {wizardStep === "deploy" && "Ready to Deploy"}
+            </DialogTitle>
+            <DialogDescription>
+              {wizardStep === "setup" && "Choose a campaign template and budget, then let AI generate your creatives."}
+              {wizardStep === "generating" && "GPT-4o is writing 4 copy variants while DALL-E 3 generates 3 HD images. Takes ~30–60 seconds."}
+              {wizardStep === "preview" && "Review and edit each ad variant. All 4 copy angles + 3 images will run as A/B tests."}
+              {wizardStep === "deploy" && "Campaign will be created in Meta Ads Manager in PAUSED state. Activate it there when ready."}
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* ── Step 1: Setup ──────────────────────────────────────────── */}
+          {wizardStep === "setup" && (
+            <div className="space-y-5 pt-2">
+              <div>
+                <label className="text-sm font-medium mb-2 block">Campaign Template</label>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {(templates || []).map((t) => {
+                    const meta = TEMPLATE_META[t.key] || { icon: Radio, color: "text-primary", tagline: t.description };
+                    const Icon = meta.icon;
+                    return (
+                      <button
+                        key={t.key}
+                        type="button"
+                        onClick={() => setWizardTemplate(t.key)}
+                        className={`p-4 border-2 rounded-xl text-left transition-all ${
+                          wizardTemplate === t.key
+                            ? "border-primary bg-primary/5 shadow-sm"
+                            : "border-border hover:border-primary/40"
+                        }`}
+                      >
+                        <Icon className={`w-5 h-5 mb-2 ${meta.color}`} />
+                        <div className="font-medium text-sm">{t.name}</div>
+                        <div className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{meta.tagline}</div>
+                        <div className="text-xs text-muted-foreground mt-1 italic">"{t.headline}"</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-medium mb-1.5 block">Campaign Name</label>
+                  <Input
+                    placeholder="e.g. AcreOS – Land Investors – March 2026"
+                    value={wizardName}
+                    onChange={(e) => setWizardName(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-1.5 block flex justify-between">
+                    Daily Budget
+                    <span className="font-semibold text-primary">${dailyBudgetDollars}/day</span>
+                  </label>
+                  <input
+                    type="range"
+                    min="1000"
+                    max="50000"
+                    step="500"
+                    value={wizardBudget}
+                    onChange={(e) => setWizardBudget(e.target.value)}
+                    className="w-full accent-primary"
+                  />
+                  <div className="flex justify-between text-xs text-muted-foreground mt-0.5">
+                    <span>$10/day</span>
+                    <span>$500/day</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 p-3 bg-muted/40 rounded-lg text-xs text-muted-foreground">
+                <Sparkles className="w-4 h-4 text-primary shrink-0" />
+                <span>
+                  AI will generate <strong>4 copy variants</strong> (pain point, aspiration, social proof, curiosity hook)
+                  and <strong>3 DALL-E 3 HD images</strong> (lifestyle, product UI, aerial land). All will run as A/B tests
+                  within a single ad set.
+                </span>
+              </div>
+
+              <DialogFooter>
+                <Button variant="ghost" onClick={() => setWizardOpen(false)}>Cancel</Button>
+                <Button
+                  onClick={() => generateCreativeMutation.mutate({ templateKey: wizardTemplate })}
+                  disabled={!wizardTemplate || !wizardName || generateCreativeMutation.isPending}
+                  className="gap-2"
+                >
+                  {generateCreativeMutation.isPending
+                    ? <Loader2 className="w-4 h-4 animate-spin" />
+                    : <Wand2 className="w-4 h-4" />}
+                  Generate AI Creatives
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+
+          {/* ── Step 2: Generating ──────────────────────────────────────── */}
+          {wizardStep === "generating" && (
+            <div className="py-12 text-center space-y-6">
+              <div className="relative mx-auto w-20 h-20">
+                <div className="absolute inset-0 rounded-full bg-primary/10 animate-ping" />
+                <div className="relative flex items-center justify-center w-20 h-20 rounded-full bg-primary/15">
+                  <Sparkles className="w-9 h-9 text-primary animate-pulse" />
+                </div>
+              </div>
+              <div>
+                <h3 className="font-semibold text-lg">AI is crafting your campaign</h3>
+                <p className="text-muted-foreground text-sm mt-1 max-w-sm mx-auto">
+                  Writing 4 persuasion-angle copy variants and generating 3 HD images designed specifically for land investor audiences.
+                </p>
+              </div>
+              <div className="flex flex-col gap-2 max-w-xs mx-auto text-left">
+                {[
+                  { label: "GPT-4o writing copy variants", done: false },
+                  { label: "DALL-E 3 generating lifestyle image", done: false },
+                  { label: "DALL-E 3 generating product UI image", done: false },
+                  { label: "DALL-E 3 generating aerial land image", done: false },
+                ].map((item, i) => (
+                  <div key={i} className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="w-3 h-3 animate-spin text-primary shrink-0" />
+                    {item.label}
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">Usually takes 30–60 seconds…</p>
+            </div>
+          )}
+
+          {/* ── Step 3: Preview ─────────────────────────────────────────── */}
+          {wizardStep === "preview" && bundle && (
+            <div className="space-y-5 pt-1">
+              {/* Images row */}
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <ImageIcon className="w-4 h-4 text-primary" />
+                  <span className="font-medium text-sm">Generated Images <span className="text-muted-foreground font-normal">(click to select for preview)</span></span>
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  {(bundle.images || []).map((img, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setSelectedImageIdx(idx)}
+                      className={`relative rounded-lg overflow-hidden border-2 transition-all aspect-square ${
+                        selectedImageIdx === idx ? "border-primary ring-2 ring-primary/30" : "border-border hover:border-primary/50"
+                      }`}
+                    >
+                      <img src={img.url} alt={img.styleLabel} className="w-full h-full object-cover" />
+                      <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs py-1 px-2 text-center">
+                        {img.styleLabel}
+                      </div>
+                      {selectedImageIdx === idx && (
+                        <div className="absolute top-1.5 right-1.5 bg-primary rounded-full p-0.5">
+                          <Check className="w-3 h-3 text-white" />
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                  {(bundle.images?.length || 0) === 0 && (
+                    <div className="col-span-3 p-4 border border-dashed rounded-lg text-center text-sm text-muted-foreground">
+                      Image generation failed. Campaign will deploy without images.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Copy variants */}
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <PencilLine className="w-4 h-4 text-primary" />
+                  <span className="font-medium text-sm">Copy Variants <span className="text-muted-foreground font-normal">(4 angles running as A/B test)</span></span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {(bundle.copies || []).map((copy) => {
+                    const Icon = ANGLE_ICONS[copy.angle] || Radio;
+                    const colorClass = ANGLE_COLORS[copy.angle] || "border-border";
+                    const isEditing = editingCopy === copy.angle;
+                    const isRegenerating = regeneratingAngle === copy.angle;
+
+                    return (
+                      <div key={copy.angle} className={`p-3.5 border rounded-xl ${colorClass}`}>
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-1.5">
+                            <Icon className="w-3.5 h-3.5" />
+                            <span className="text-xs font-semibold uppercase tracking-wide">{copy.angleLabel}</span>
+                          </div>
+                          <div className="flex gap-1">
+                            <button
+                              type="button"
+                              title="Regenerate this variant"
+                              onClick={() => {
+                                if (!bundleId) return;
+                                setRegeneratingAngle(copy.angle);
+                                regenerateCopyMutation.mutate({ id: bundleId, angle: copy.angle });
+                              }}
+                              disabled={isRegenerating || !!regeneratingAngle}
+                              className="p-1 rounded hover:bg-black/5 disabled:opacity-40"
+                            >
+                              {isRegenerating ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />}
+                            </button>
+                            <button
+                              type="button"
+                              title="Edit copy"
+                              onClick={() => {
+                                if (isEditing) { saveCopyEdit(copy.angle); }
+                                else { setEditingCopy(copy.angle); setEditDraft({ ...copy }); }
+                              }}
+                              className="p-1 rounded hover:bg-black/5"
+                            >
+                              {isEditing ? <Check className="w-3 h-3 text-green-600" /> : <PencilLine className="w-3 h-3" />}
+                            </button>
+                          </div>
+                        </div>
+
+                        {isEditing ? (
+                          <div className="space-y-1.5 text-sm">
+                            <div>
+                              <label className="text-xs text-muted-foreground">Headline (≤40 chars)</label>
+                              <Input
+                                value={editDraft.headline || ""}
+                                onChange={(e) => setEditDraft((d) => ({ ...d, headline: e.target.value.slice(0, 40) }))}
+                                className="h-7 text-xs mt-0.5"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-muted-foreground">Primary Text (≤125 chars)</label>
+                              <Textarea
+                                value={editDraft.primaryText || ""}
+                                onChange={(e) => setEditDraft((d) => ({ ...d, primaryText: e.target.value.slice(0, 125) }))}
+                                className="text-xs min-h-[60px] mt-0.5 resize-none"
+                                rows={3}
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-muted-foreground">Description (≤30 chars)</label>
+                              <Input
+                                value={editDraft.description || ""}
+                                onChange={(e) => setEditDraft((d) => ({ ...d, description: e.target.value.slice(0, 30) }))}
+                                className="h-7 text-xs mt-0.5"
+                              />
+                            </div>
+                            <Button size="sm" className="w-full h-7 text-xs mt-1" onClick={() => saveCopyEdit(copy.angle)}>
+                              <Check className="w-3 h-3 mr-1" /> Save
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="space-y-1 text-sm">
+                            <div className="font-semibold leading-tight">{copy.headline}</div>
+                            <p className="text-muted-foreground text-xs leading-relaxed">{copy.primaryText}</p>
+                            <div className="flex items-center justify-between pt-1">
+                              <span className="text-xs text-muted-foreground italic">{copy.description}</span>
+                              <Badge variant="outline" className="text-xs h-5">{copy.callToAction}</Badge>
+                            </div>
+                            {copy.hook && (
+                              <div className="text-xs text-muted-foreground/70 border-t pt-1 mt-1 italic">
+                                Hook: {copy.hook}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 p-3 bg-muted/40 rounded-lg text-xs text-muted-foreground">
+                <Layers className="w-4 h-4 text-primary shrink-0" />
+                <span>
+                  Deploying creates <strong>1 campaign</strong> → <strong>1 ad set</strong> → <strong>{bundle.copies?.length || 4} ads</strong>, one per copy variant.
+                  Meta will automatically optimize toward the best performer.
+                </span>
+              </div>
+
+              <DialogFooter className="flex-col sm:flex-row gap-2">
+                <Button variant="ghost" onClick={() => setWizardStep("setup")} className="gap-1">
+                  <ChevronLeft className="w-4 h-4" /> Back
+                </Button>
+                <Button
+                  onClick={() => deployMutation.mutate()}
+                  disabled={deployMutation.isPending || !wizardName}
+                  className="gap-2 bg-gradient-to-r from-primary to-accent text-white"
+                >
+                  {deployMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                  Deploy {bundle.copies?.length || 4} Ad Variants to Meta
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Live Campaigns */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-medium text-sm flex items-center gap-2">
+            <Radio className="w-4 h-4 text-primary" />
+            Live Campaigns
+            {(campaigns?.length || 0) > 0 && (
+              <Badge variant="outline" className="text-xs">{campaigns!.length}</Badge>
+            )}
+          </h3>
+          {(campaigns || []).some((c) => c.externalCampaignId) && (
+            <Button size="sm" variant="ghost" className="h-7 text-xs gap-1"
+              onClick={() => (campaigns || []).forEach((c) => c.externalCampaignId && syncStatsMutation.mutate(c.id))}
+              disabled={syncStatsMutation.isPending}>
+              <RefreshCw className="w-3 h-3" />
+              Sync All
+            </Button>
+          )}
+        </div>
+
+        {(campaigns || []).length === 0 ? (
+          <div className="text-center py-8 border border-dashed rounded-lg">
+            <Megaphone className="w-8 h-8 text-muted-foreground/40 mx-auto mb-2" />
+            <p className="text-sm text-muted-foreground">No campaigns yet.</p>
+            <p className="text-xs text-muted-foreground mt-1">Click "Generate Campaign" to create your first AI-powered campaign.</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {(campaigns || []).map((c) => {
+              const ctr = c.impressions > 0 ? ((c.clicks / c.impressions) * 100).toFixed(2) : null;
+              const cpl = c.signups > 0 ? (c.totalSpendCents / 100 / c.signups).toFixed(2) : null;
+              return (
+                <div key={c.id} className="p-3 border rounded-xl hover:bg-muted/20 transition-colors">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium text-sm">{c.name}</span>
+                        <Badge className={`text-xs ${statusColors[c.status] || ""}`}>{c.status}</Badge>
+                      </div>
+                      <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1.5 text-xs text-muted-foreground">
+                        <span className="font-medium">${(c.totalSpendCents / 100).toFixed(2)} spent</span>
+                        <span>{c.impressions.toLocaleString()} impr.</span>
+                        <span>{c.clicks.toLocaleString()} clicks</span>
+                        {ctr && <span>{ctr}% CTR</span>}
+                        {cpl && <span>${cpl} / signup</span>}
+                        <span className="ml-auto">${(c.dailyBudgetCents / 100)}/day budget</span>
+                      </div>
+                    </div>
+                    <div className="flex gap-1 shrink-0">
+                      {c.externalCampaignId && (
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0"
+                          onClick={() => syncStatsMutation.mutate(c.id)} disabled={syncStatsMutation.isPending}>
+                          <RefreshCw className="w-3 h-3" />
+                        </Button>
+                      )}
+                      <Button size="sm" variant="outline" className="h-7 px-2"
+                        onClick={() => toggleCampaignMutation.mutate({ id: c.id, status: c.status === "active" ? "paused" : "active" })}
+                        disabled={toggleCampaignMutation.isPending || !c.externalCampaignId}>
+                        {c.status === "active" ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Attribution */}
+      <div>
+        <h3 className="font-medium text-sm flex items-center gap-2 mb-3">
+          <MousePointerClick className="w-4 h-4 text-primary" />
+          Signup Attribution
+        </h3>
+        {Object.keys(sourceCounts).length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-3">
+            {Object.entries(sourceCounts).sort((a, b) => b[1] - a[1]).map(([src, count]) => (
+              <Badge key={src} variant="outline" className="text-xs">
+                {src}: {count}
+              </Badge>
+            ))}
+          </div>
+        )}
+        {(attribution || []).length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            UTM attribution will appear here once users sign up from your campaigns.
+          </p>
+        ) : (
+          <div className="space-y-0 max-h-52 overflow-y-auto border rounded-lg divide-y">
+            {(attribution || []).slice(0, 20).map((s) => (
+              <div key={s.organizationId} className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted/20">
+                <span className="flex-1 font-medium truncate">{s.name}</span>
+                <Badge variant="outline" className="text-xs shrink-0">{s.subscriptionTier}</Badge>
+                <span className="text-muted-foreground shrink-0">
+                  {s.utmSource ? `${s.utmSource}${s.utmCampaign ? ` › ${s.utmCampaign}` : ""}` : "organic"}
+                </span>
+                <span className="text-muted-foreground shrink-0">{new Date(s.createdAt).toLocaleDateString()}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// TODAY'S BRIEFING
+// AI-generated executive summary, refreshed every 15 min.
+// Shows key stats (MRR, signups, alerts, actions) at a glance.
+// ─────────────────────────────────────────────────────────────────────
+
+interface BriefingData {
+  summary: string;
+  highlights: {
+    totalMrr: number;
+    newSignups24h: number;
+    atRiskOrgs: number;
+    unresolvedAlerts: number;
+    escalatedTickets: number;
+    activeCampaigns: number;
+    totalOrgs: number;
+  };
+  generatedAt: string;
+}
+
+function TodaysBriefing() {
+  const { data, isLoading, refetch, isFetching } = useQuery<BriefingData>({
+    queryKey: ["/api/founder/briefing"],
+    refetchInterval: 15 * 60 * 1000,
+    staleTime: 14 * 60 * 1000,
+  });
+
+  return (
+    <div className="p-5 rounded-xl border bg-gradient-to-br from-primary/5 via-background to-accent/5 border-primary/20">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start gap-3 flex-1 min-w-0">
+          <div className="p-2 rounded-lg bg-primary/10 shrink-0 mt-0.5">
+            <Sparkles className="w-4 h-4 text-primary" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-xs font-medium text-muted-foreground mb-1 uppercase tracking-wide">AI Briefing</div>
+            {isLoading ? (
+              <div className="space-y-1.5">
+                <div className="h-4 bg-muted animate-pulse rounded w-full" />
+                <div className="h-4 bg-muted animate-pulse rounded w-3/4" />
+              </div>
+            ) : (
+              <p className="text-sm leading-relaxed text-foreground">{data?.summary || "Loading briefing…"}</p>
+            )}
+            {data?.generatedAt && (
+              <p className="text-xs text-muted-foreground mt-1.5">
+                Updated {formatDistanceToNow(new Date(data.generatedAt), { addSuffix: true })}
+              </p>
+            )}
+          </div>
+        </div>
+        <button
+          onClick={() => refetch()}
+          disabled={isFetching}
+          className="p-1.5 rounded-lg hover:bg-muted/60 text-muted-foreground shrink-0"
+          title="Refresh briefing"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? "animate-spin" : ""}`} />
+        </button>
+      </div>
+
+      {data?.highlights && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 mt-4">
+          {[
+            { label: "MRR", value: `$${data.highlights.totalMrr.toLocaleString()}`, color: "text-green-600", icon: DollarSign },
+            { label: "Paying Orgs", value: data.highlights.totalOrgs, color: "text-primary", icon: Building2 },
+            { label: "New (24h)", value: data.highlights.newSignups24h, color: data.highlights.newSignups24h > 0 ? "text-green-600" : "text-muted-foreground", icon: UserPlus },
+            { label: "At Risk", value: data.highlights.atRiskOrgs, color: data.highlights.atRiskOrgs > 0 ? "text-red-600" : "text-muted-foreground", icon: AlertTriangle },
+            { label: "Alerts", value: data.highlights.unresolvedAlerts, color: data.highlights.unresolvedAlerts > 0 ? "text-amber-600" : "text-muted-foreground", icon: Bell },
+            { label: "Escalations", value: data.highlights.escalatedTickets, color: data.highlights.escalatedTickets > 0 ? "text-red-600" : "text-muted-foreground", icon: AlertOctagon },
+            { label: "Active Ads", value: data.highlights.activeCampaigns, color: "text-primary", icon: Megaphone },
+          ].map(({ label, value, color, icon: Icon }) => (
+            <div key={label} className="p-2 rounded-lg bg-background/60 border border-border/50 text-center">
+              <Icon className={`w-3.5 h-3.5 mx-auto mb-1 ${color}`} />
+              <div className={`text-base font-bold leading-none ${color}`}>{value}</div>
+              <div className="text-xs text-muted-foreground mt-0.5">{label}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// ACTION QUEUE
+// Prioritized inbox of everything needing founder attention.
+// Each item has: priority, description, estimated time, action button.
+// Support escalations show AI-drafted reply with approve/edit/send.
+// ─────────────────────────────────────────────────────────────────────
+
+interface ActionQueueItem {
+  id: string;
+  type: string;
+  priority: "critical" | "high" | "medium" | "low";
+  title: string;
+  description: string;
+  estimatedMinutes: number;
+  suggestedAction: string;
+  data: Record<string, any>;
+}
+
+interface ActionQueueData {
+  items: ActionQueueItem[];
+  totalEstimatedMinutes: number;
+  counts: { critical: number; high: number; medium: number };
+}
+
+const ACTION_PRIORITY_CONFIG = {
+  critical: { label: "Critical", bg: "bg-red-500/10", text: "text-red-700", border: "border-red-200", dot: "bg-red-500" },
+  high: { label: "High", bg: "bg-orange-500/10", text: "text-orange-700", border: "border-orange-200", dot: "bg-orange-500" },
+  medium: { label: "Medium", bg: "bg-amber-500/10", text: "text-amber-700", border: "border-amber-200", dot: "bg-amber-400" },
+  low: { label: "Low", bg: "bg-muted", text: "text-muted-foreground", border: "border-border", dot: "bg-muted-foreground" },
+};
+
+const ACTION_TYPE_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+  support_escalation: AlertOctagon,
+  dunning_critical: AlertTriangle,
+  expiring_trial: Clock,
+  feature_request: Lightbulb,
+  inactive_campaign: Megaphone,
+};
+
+function ActionQueuePanel() {
+  const { toast } = useToast();
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<Record<number, string>>({});
+  const [editingDraft, setEditingDraft] = useState<number | null>(null);
+
+  const { data, isLoading, refetch } = useQuery<ActionQueueData>({
+    queryKey: ["/api/founder/action-queue"],
+    refetchInterval: 5 * 60 * 1000,
+  });
+
+  const draftMutation = useMutation({
+    mutationFn: async (ticketId: number) =>
+      apiRequest("POST", `/api/founder/support/${ticketId}/ai-draft`, {}).then((r) => r.json()),
+    onSuccess: (data: { draft: string; ticketId: number }) => {
+      setDrafts((d) => ({ ...d, [data.ticketId]: data.draft }));
+    },
+    onError: () => toast({ title: "Failed to generate draft", variant: "destructive" }),
+  });
+
+  const replyMutation = useMutation({
+    mutationFn: async ({ ticketId, message }: { ticketId: number; message: string }) =>
+      apiRequest("POST", `/api/founder/support/${ticketId}/reply`, { message, resolve: true }).then((r) => r.json()),
+    onSuccess: () => {
+      refetch();
+      toast({ title: "Reply sent and ticket resolved" });
+    },
+    onError: () => toast({ title: "Failed to send reply", variant: "destructive" }),
+  });
+
+  const items = data?.items || [];
+  const totalMinutes = data?.totalEstimatedMinutes || 0;
+
+  if (isLoading) {
+    return (
+      <div className="p-5 rounded-xl border bg-card space-y-2">
+        <div className="h-5 bg-muted animate-pulse rounded w-1/3" />
+        {[1, 2, 3].map(i => <div key={i} className="h-12 bg-muted animate-pulse rounded" />)}
+      </div>
+    );
+  }
+
+  if (items.length === 0) {
+    return (
+      <div className="p-5 rounded-xl border bg-card">
+        <div className="flex items-center gap-2 mb-3">
+          <ListChecks className="w-5 h-5 text-primary" />
+          <h2 className="font-semibold text-lg">Action Queue</h2>
+          <Badge className="bg-green-500/10 text-green-700 border-green-200 text-xs ml-1">All clear</Badge>
+        </div>
+        <div className="flex items-center gap-3 py-4 text-sm text-muted-foreground">
+          <CheckCircle2 className="w-5 h-5 text-green-500" />
+          Nothing needs your attention right now. The system is running autonomously.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-5 rounded-xl border bg-card space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <ListChecks className="w-5 h-5 text-primary" />
+          <h2 className="font-semibold text-lg">Action Queue</h2>
+          <Badge variant="outline" className="text-xs">{items.length} item{items.length !== 1 ? "s" : ""}</Badge>
+          {totalMinutes > 0 && (
+            <span className="text-xs text-muted-foreground">~{totalMinutes} min total</span>
+          )}
+        </div>
+        <button onClick={() => refetch()} className="p-1.5 rounded hover:bg-muted text-muted-foreground">
+          <RefreshCw className="w-3.5 h-3.5" />
+        </button>
+      </div>
+
+      {/* Priority summary */}
+      {(data?.counts?.critical || 0) + (data?.counts?.high || 0) > 0 && (
+        <div className="flex gap-2 flex-wrap">
+          {(data?.counts?.critical || 0) > 0 && (
+            <Badge className="bg-red-500/10 text-red-700 border-red-200 text-xs">
+              {data!.counts.critical} critical
+            </Badge>
+          )}
+          {(data?.counts?.high || 0) > 0 && (
+            <Badge className="bg-orange-500/10 text-orange-700 border-orange-200 text-xs">
+              {data!.counts.high} high
+            </Badge>
+          )}
+          {(data?.counts?.medium || 0) > 0 && (
+            <Badge className="bg-amber-500/10 text-amber-700 border-amber-200 text-xs">
+              {data!.counts.medium} medium
+            </Badge>
+          )}
+        </div>
+      )}
+
+      <div className="space-y-2">
+        {items.map((item) => {
+          const cfg = ACTION_PRIORITY_CONFIG[item.priority] || ACTION_PRIORITY_CONFIG.low;
+          const Icon = ACTION_TYPE_ICONS[item.type] || CircleDot;
+          const isExpanded = expandedId === item.id;
+          const ticketId = item.data?.ticketId as number | undefined;
+          const hasDraft = ticketId ? !!drafts[ticketId] : false;
+          const isEditing = ticketId ? editingDraft === ticketId : false;
+
+          return (
+            <div key={item.id} className={`rounded-lg border p-3 ${cfg.bg} ${cfg.border}`}>
+              <div
+                className="flex items-start gap-3 cursor-pointer"
+                onClick={() => setExpandedId(isExpanded ? null : item.id)}
+              >
+                <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${cfg.dot}`} />
+                <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${cfg.text}`} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className={`font-medium text-sm ${cfg.text}`}>{item.title}</span>
+                    <Badge className={`text-xs ${cfg.bg} ${cfg.text} ${cfg.border}`}>{cfg.label}</Badge>
+                    <span className="text-xs text-muted-foreground ml-auto">~{item.estimatedMinutes} min</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">{item.description}</p>
+                </div>
+                <ChevronRight className={`w-4 h-4 shrink-0 text-muted-foreground transition-transform ${isExpanded ? "rotate-90" : ""}`} />
+              </div>
+
+              {isExpanded && (
+                <div className="mt-3 pl-9 space-y-3">
+                  <p className="text-xs text-muted-foreground italic">
+                    Suggested: {item.suggestedAction}
+                  </p>
+
+                  {/* Support escalation — AI reply flow */}
+                  {item.type === "support_escalation" && ticketId && (
+                    <div className="space-y-2">
+                      {!hasDraft ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs gap-1.5"
+                          onClick={() => draftMutation.mutate(ticketId)}
+                          disabled={draftMutation.isPending}
+                        >
+                          {draftMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />}
+                          Generate AI Reply Draft
+                        </Button>
+                      ) : (
+                        <div className="space-y-2">
+                          <label className="text-xs font-medium text-muted-foreground">AI-drafted reply (edit if needed)</label>
+                          {isEditing ? (
+                            <Textarea
+                              value={drafts[ticketId]}
+                              onChange={(e) => setDrafts((d) => ({ ...d, [ticketId]: e.target.value }))}
+                              className="text-sm min-h-[120px] resize-none"
+                              rows={5}
+                            />
+                          ) : (
+                            <div className="p-2.5 bg-background rounded border text-sm leading-relaxed whitespace-pre-wrap">
+                              {drafts[ticketId]}
+                            </div>
+                          )}
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              className="h-7 text-xs gap-1"
+                              onClick={() => replyMutation.mutate({ ticketId, message: drafts[ticketId] })}
+                              disabled={replyMutation.isPending}
+                            >
+                              {replyMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+                              Send & Resolve
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs gap-1"
+                              onClick={() => setEditingDraft(isEditing ? null : ticketId)}
+                            >
+                              <PencilLine className="w-3 h-3" />
+                              {isEditing ? "Done" : "Edit"}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 text-xs gap-1"
+                              onClick={() => draftMutation.mutate(ticketId)}
+                              disabled={draftMutation.isPending}
+                            >
+                              <RotateCcw className="w-3 h-3" />
+                              Regenerate
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Other action types — just a link/note */}
+                  {item.type !== "support_escalation" && (
+                    <div className="text-xs text-muted-foreground bg-background/60 rounded p-2 border">
+                      {item.type === "dunning_critical" && "Org is in a critical payment stage. Review their account and consider a direct call or email."}
+                      {item.type === "expiring_trial" && "Trial conversion window closing. A personal touch often converts — try reaching out directly."}
+                      {item.type === "feature_request" && "High-demand request from your users. Quick triage signal (planned/declined) builds trust with customers."}
+                      {item.type === "inactive_campaign" && "Campaign exists in Meta but is paused. Go to Meta Ads Manager to activate or delete it."}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// ORG HEALTH MONITOR
+// Per-org health score (0-100) surfacing at-risk customers.
+// Sorted: critical → at_risk → watch → healthy
+// ─────────────────────────────────────────────────────────────────────
+
+interface OrgHealthItem {
+  id: number;
+  name: string;
+  subscriptionTier: string;
+  subscriptionStatus: string;
+  dunningStage: string | null;
+  healthScore: number;
+  healthStatus: "healthy" | "watch" | "at_risk" | "critical" | "founder";
+  issues: string[];
+  mrr: number;
+}
+
+const HEALTH_CONFIG = {
+  critical: { label: "Critical", bg: "bg-red-500/10", text: "text-red-700", bar: "bg-red-500", dot: "bg-red-500" },
+  at_risk: { label: "At Risk", bg: "bg-orange-500/10", text: "text-orange-700", bar: "bg-orange-500", dot: "bg-orange-500" },
+  watch: { label: "Watch", bg: "bg-amber-500/10", text: "text-amber-700", bar: "bg-amber-400", dot: "bg-amber-400" },
+  healthy: { label: "Healthy", bg: "bg-green-500/10", text: "text-green-700", bar: "bg-green-500", dot: "bg-green-500" },
+  founder: { label: "Founder", bg: "bg-primary/10", text: "text-primary", bar: "bg-primary", dot: "bg-primary" },
+};
+
+function OrgHealthMonitor() {
+  const [showAll, setShowAll] = useState(false);
+  const [filterStatus, setFilterStatus] = useState<string>("all");
+
+  const { data: orgs, isLoading } = useQuery<OrgHealthItem[]>({
+    queryKey: ["/api/founder/org-health"],
+    refetchInterval: 10 * 60 * 1000,
+  });
+
+  const { data: waterfallData } = useQuery<{
+    tiers: Array<{ tier: string; label: string; count: number; activeCount: number; atRiskCount: number; mrr: number; atRiskMrr: number }>;
+    totalMrr: number;
+    atRiskMrr: number;
+    totalOrgs: number;
+  }>({
+    queryKey: ["/api/founder/revenue/waterfall"],
+  });
+
+  if (isLoading) return (
+    <div className="mt-8 p-6 border rounded-xl bg-card space-y-3">
+      <div className="h-5 bg-muted animate-pulse rounded w-1/4" />
+      {[1, 2, 3, 4, 5].map(i => <div key={i} className="h-10 bg-muted animate-pulse rounded" />)}
+    </div>
+  );
+
+  const allOrgs = orgs || [];
+  const filtered = filterStatus === "all" ? allOrgs : allOrgs.filter(o => o.healthStatus === filterStatus);
+  const displayed = showAll ? filtered : filtered.slice(0, 12);
+
+  const counts = allOrgs.reduce<Record<string, number>>((acc, o) => {
+    acc[o.healthStatus] = (acc[o.healthStatus] || 0) + 1;
+    return acc;
+  }, {});
+
+  const atRiskCount = (counts.critical || 0) + (counts.at_risk || 0);
+  const totalMrr = waterfallData?.totalMrr || 0;
+  const atRiskMrr = waterfallData?.atRiskMrr || 0;
+
+  return (
+    <div className="mt-8 p-6 border rounded-xl bg-card space-y-5">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h2 className="text-xl font-semibold flex items-center gap-2">
+            <Activity className="w-5 h-5 text-primary" />
+            Customer Health
+          </h2>
+          <p className="text-muted-foreground text-sm mt-0.5">
+            {allOrgs.length} organizations · ${totalMrr.toLocaleString()} MRR
+            {atRiskMrr > 0 && <span className="text-red-600 ml-2">· ${atRiskMrr.toLocaleString()} at risk</span>}
+          </p>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          {Object.entries(counts).filter(([k]) => k !== 'founder').map(([status, count]) => {
+            const cfg = HEALTH_CONFIG[status as keyof typeof HEALTH_CONFIG] || HEALTH_CONFIG.healthy;
+            return (
+              <button
+                key={status}
+                onClick={() => setFilterStatus(filterStatus === status ? "all" : status)}
+                className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
+                  filterStatus === status ? `${cfg.bg} ${cfg.text} ${cfg.bg}` : "border-border text-muted-foreground hover:border-primary/40"
+                }`}
+              >
+                <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1.5 ${cfg.dot}`} />
+                {cfg.label} {count}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* MRR waterfall by tier */}
+      {waterfallData && (
+        <div className="grid grid-cols-5 gap-2">
+          {waterfallData.tiers.filter(t => t.tier !== 'free').map((t) => (
+            <div key={t.tier} className="p-3 border rounded-lg text-center">
+              <div className="text-sm font-semibold">{t.label}</div>
+              <div className="text-lg font-bold text-primary mt-0.5">${t.mrr.toLocaleString()}</div>
+              <div className="text-xs text-muted-foreground">{t.activeCount} active</div>
+              {t.atRiskCount > 0 && (
+                <div className="text-xs text-red-600 font-medium">{t.atRiskCount} at risk</div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {atRiskCount > 0 && (
+        <div className="flex items-center gap-2 p-2.5 bg-red-500/5 border border-red-200 rounded-lg text-sm text-red-700">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          {atRiskCount} organization{atRiskCount > 1 ? 's' : ''} at risk — check Action Queue for recommended responses
+        </div>
+      )}
+
+      <div className="space-y-1.5">
+        {displayed.map((org) => {
+          const cfg = HEALTH_CONFIG[org.healthStatus] || HEALTH_CONFIG.healthy;
+          return (
+            <div key={org.id} className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted/20 transition-colors group">
+              <div className={`w-2 h-2 rounded-full shrink-0 ${cfg.dot}`} />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-sm truncate">{org.name}</span>
+                  <Badge variant="outline" className="text-xs shrink-0">{org.subscriptionTier}</Badge>
+                  {org.issues.length > 0 && (
+                    <span className={`text-xs ${cfg.text} truncate`}>{org.issues[0]}</span>
+                  )}
+                </div>
+              </div>
+              {/* Health score bar */}
+              <div className="flex items-center gap-2 shrink-0">
+                <div className="w-24 h-1.5 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${cfg.bar}`}
+                    style={{ width: `${org.healthScore}%` }}
+                  />
+                </div>
+                <span className="text-xs text-muted-foreground w-7 text-right">{org.healthScore}</span>
+              </div>
+              {org.mrr > 0 && (
+                <span className="text-xs text-muted-foreground shrink-0 w-10 text-right">${org.mrr}/mo</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {filtered.length > 12 && (
+        <button
+          onClick={() => setShowAll(!showAll)}
+          className="text-xs text-primary hover:underline"
+        >
+          {showAll ? "Show less" : `Show ${filtered.length - 12} more`}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// AUTOPILOT STATUS BAR
+// Fixed bottom bar showing live background job status.
+// Green = all clear. Amber = some jobs slow. Red = failures.
+// ─────────────────────────────────────────────────────────────────────
+
+const KNOWN_JOBS = [
+  { name: "Lead Nurturing", interval: "15 min" },
+  { name: "Sequence Processor", interval: "60 sec" },
+  { name: "Campaign Optimizer", interval: "1 hr" },
+  { name: "Finance Agent", interval: "30 min" },
+  { name: "Deal Hunter", interval: "2 AM" },
+  { name: "Alerting", interval: "1 hr" },
+  { name: "Health Checks", interval: "60 sec" },
+  { name: "Digests", interval: "6 hr" },
+];
+
+function AutopilotStatusBar() {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="fixed bottom-0 left-0 right-0 z-40 bg-background/95 border-t backdrop-blur-sm">
+      <div className="max-w-screen-2xl mx-auto px-4 py-2">
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="flex items-center gap-2 w-full"
+        >
+          <div className="flex items-center gap-1.5">
+            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+            <span className="text-xs font-medium text-green-700">Autopilot Active</span>
+          </div>
+          <span className="text-xs text-muted-foreground">
+            {KNOWN_JOBS.length} background jobs running autonomously
+          </span>
+          <ChevronRight className={`w-3.5 h-3.5 ml-auto text-muted-foreground transition-transform ${expanded ? "-rotate-90" : "rotate-90"}`} />
+        </button>
+
+        {expanded && (
+          <div className="mt-2 pb-1">
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-1.5">
+              {KNOWN_JOBS.map((job) => (
+                <div key={job.name} className="flex items-center gap-1.5 p-1.5 rounded bg-green-500/5 border border-green-500/20">
+                  <div className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" />
+                  <div>
+                    <div className="text-xs font-medium leading-none">{job.name}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">{job.interval}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// FOUNDER STICKY NAV
+// Appears below the header, sticky at top, with section anchors and
+// an IntersectionObserver to highlight the active section.
+// ─────────────────────────────────────────────────────────────────────
+
+const NAV_ITEMS = [
+  { label: "Briefing", href: "section-briefing", icon: Sparkles },
+  { label: "Actions", href: "section-actions", icon: ListChecks },
+  { label: "Observatory", href: "section-observatory", icon: Cpu },
+  { label: "Overview", href: "section-overview", icon: BarChart },
+  { label: "Readiness", href: "section-readiness", icon: Rocket },
+  { label: "Features", href: "section-features", icon: ToggleRight },
+  { label: "Pricing", href: "section-pricing", icon: Tag },
+  { label: "Growth", href: "section-growth", icon: Megaphone },
+  { label: "Health", href: "section-org-health", icon: Activity },
+  { label: "Users", href: "section-users", icon: Users },
+  { label: "Revenue", href: "section-revenue", icon: DollarSign },
+  { label: "Config", href: "section-config", icon: Key },
+] as const;
+
+function FounderNavBar() {
+  const [active, setActive] = useState<string>("section-overview");
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const ids = NAV_ITEMS.map(n => n.href);
+    const observers: IntersectionObserver[] = [];
+
+    ids.forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const obs = new IntersectionObserver(
+        ([entry]) => { if (entry.isIntersecting) setActive(id); },
+        { rootMargin: "-40% 0px -55% 0px", threshold: 0 }
+      );
+      obs.observe(el);
+      observers.push(obs);
+    });
+
+    return () => observers.forEach(o => o.disconnect());
+  }, []);
+
+  const scrollTo = (id: string) => {
+    const el = document.getElementById(id);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    setActive(id);
+  };
+
+  return (
+    <div className="sticky top-0 z-30 -mx-4 px-4 bg-background/95 backdrop-blur-sm border-b border-border/60 py-0">
+      <div
+        ref={scrollRef}
+        className="flex items-center gap-1 overflow-x-auto py-2"
+        style={{ scrollbarWidth: "none", msOverflowStyle: "none" } as React.CSSProperties}
+      >
+        {NAV_ITEMS.map(({ label, href, icon: Icon }) => {
+          const isActive = active === href;
+          return (
+            <button
+              key={href}
+              onClick={() => scrollTo(href)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-all ${
+                isActive
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              }`}
+            >
+              <Icon className="w-3 h-3" />
+              {label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// LAUNCH READINESS SECTION
+// Interactive onboarding checklist for the founder to get AcreOS
+// configured and ready to accept paying customers.
+// ─────────────────────────────────────────────────────────────────────
+
+interface ReadinessItem {
+  key: string;
+  label: string;
+  description: string;
+  priority: "critical" | "core" | "launch" | "growth";
+  status: "complete" | "incomplete" | "blocked";
+  section: string;
+  helpText?: string;
+}
+
+interface LaunchReadiness {
+  score: number;
+  items: ReadinessItem[];
+}
+
+const PRIORITY_CONFIG = {
+  critical: {
+    label: "Critical",
+    color: "text-red-600",
+    bg: "bg-red-500/10 border-red-500/20",
+    badgeClass: "bg-red-500/10 text-red-600 border-red-500/20",
+    icon: AlertOctagon,
+  },
+  core: {
+    label: "Core Features",
+    color: "text-orange-600",
+    bg: "bg-orange-500/10 border-orange-500/20",
+    badgeClass: "bg-orange-500/10 text-orange-600 border-orange-500/20",
+    icon: Zap,
+  },
+  launch: {
+    label: "Launch Ready",
+    color: "text-blue-600",
+    bg: "bg-blue-500/10 border-blue-500/20",
+    badgeClass: "bg-blue-500/10 text-blue-600 border-blue-500/20",
+    icon: Rocket,
+  },
+  growth: {
+    label: "Growth",
+    color: "text-purple-600",
+    bg: "bg-purple-500/10 border-purple-500/20",
+    badgeClass: "bg-purple-500/10 text-purple-600 border-purple-500/20",
+    icon: Sparkles,
+  },
+} as const;
+
+function LaunchReadinessSection() {
+  const [dismissed, setDismissed] = useState(() => {
+    try { return localStorage.getItem("founder-readiness-dismissed") === "true"; } catch { return false; }
+  });
+  const [expanded, setExpanded] = useState(true);
+
+  const { data, isLoading, refetch } = useQuery<LaunchReadiness>({
+    queryKey: ["/api/founder/launch-readiness"],
+    refetchInterval: 60_000, // re-check every minute
+  });
+
+  const scrollToSection = (sectionId: string) => {
+    const el = document.getElementById(sectionId);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const dismiss = () => {
+    try { localStorage.setItem("founder-readiness-dismissed", "true"); } catch {}
+    setDismissed(true);
+  };
+
+  if (dismissed && (data?.score ?? 0) >= 100) return null;
+
+  const score = data?.score ?? 0;
+  const isLive = score >= 80;
+
+  // Group by priority
+  const grouped = (data?.items ?? []).reduce<Record<string, ReadinessItem[]>>((acc, item) => {
+    (acc[item.priority] ??= []).push(item);
+    return acc;
+  }, {});
+
+  const incompleteCount = (data?.items ?? []).filter(i => i.status === "incomplete").length;
+  const criticalIncomplete = (data?.items ?? []).filter(i => i.priority === "critical" && i.status === "incomplete").length;
+
+  return (
+    <div className="mt-4">
+      {/* Header bar */}
+      <div
+        className={`flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-all ${
+          isLive
+            ? "bg-green-500/5 border-green-500/30"
+            : criticalIncomplete > 0
+            ? "bg-red-500/5 border-red-500/30"
+            : "bg-amber-500/5 border-amber-500/30"
+        }`}
+        onClick={() => setExpanded(e => !e)}
+      >
+        <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
+          isLive ? "bg-green-500/20" : criticalIncomplete > 0 ? "bg-red-500/20" : "bg-amber-500/20"
+        }`}>
+          {isLoading ? (
+            <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+          ) : isLive ? (
+            <Rocket className={`w-5 h-5 text-green-600`} />
+          ) : (
+            <ListChecks className={`w-5 h-5 ${criticalIncomplete > 0 ? "text-red-600" : "text-amber-600"}`} />
+          )}
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-semibold text-sm">
+              {isLive ? "AcreOS is live-ready" : "App Launch Checklist"}
+            </span>
+            {!isLoading && (
+              <Badge
+                className={`text-xs ${
+                  isLive
+                    ? "bg-green-500/10 text-green-700 border-green-500/20"
+                    : criticalIncomplete > 0
+                    ? "bg-red-500/10 text-red-700 border-red-500/20"
+                    : "bg-amber-500/10 text-amber-700 border-amber-500/20"
+                }`}
+              >
+                {score}% ready
+              </Badge>
+            )}
+            {incompleteCount > 0 && (
+              <span className="text-xs text-muted-foreground">{incompleteCount} item{incompleteCount !== 1 ? "s" : ""} remaining</span>
+            )}
+          </div>
+
+          {/* Progress bar */}
+          {!isLoading && (
+            <div className="mt-1.5 h-1.5 bg-muted rounded-full overflow-hidden w-full max-w-sm">
+              <div
+                className={`h-full rounded-full transition-all duration-700 ${
+                  isLive ? "bg-green-500" : criticalIncomplete > 0 ? "bg-red-500" : "bg-amber-500"
+                }`}
+                style={{ width: `${score}%` }}
+              />
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 text-xs"
+            onClick={(e) => { e.stopPropagation(); refetch(); }}
+          >
+            <RefreshCw className="w-3 h-3" />
+          </Button>
+          {isLive && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-xs text-muted-foreground"
+              onClick={(e) => { e.stopPropagation(); dismiss(); }}
+            >
+              Dismiss
+            </Button>
+          )}
+          <ChevronRight
+            className={`w-4 h-4 text-muted-foreground transition-transform ${expanded ? "rotate-90" : ""}`}
+          />
+        </div>
+      </div>
+
+      {/* Expanded checklist */}
+      {expanded && (
+        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+          {(["critical", "core", "launch", "growth"] as const).map((priority) => {
+            const items = grouped[priority] ?? [];
+            if (items.length === 0) return null;
+            const cfg = PRIORITY_CONFIG[priority];
+            const PriorityIcon = cfg.icon;
+            const allDone = items.every(i => i.status === "complete");
+
+            return (
+              <div key={priority} className={`p-4 rounded-xl border ${allDone ? "bg-muted/30 border-border/50" : cfg.bg}`}>
+                <div className="flex items-center gap-2 mb-3">
+                  <PriorityIcon className={`w-4 h-4 ${allDone ? "text-green-600" : cfg.color}`} />
+                  <span className={`text-xs font-semibold uppercase tracking-wide ${allDone ? "text-green-600" : cfg.color}`}>
+                    {cfg.label}
+                  </span>
+                  {allDone && (
+                    <Badge className="ml-auto text-xs bg-green-500/10 text-green-700 border-green-500/20">All done</Badge>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  {items.map((item) => {
+                    const done = item.status === "complete";
+                    return (
+                      <div key={item.key} className={`flex items-start gap-2.5 p-2.5 rounded-lg transition-colors ${done ? "" : "hover:bg-background/60 cursor-pointer"}`}
+                        onClick={() => !done && scrollToSection(item.section)}>
+                        <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
+                          done ? "bg-green-500" : item.status === "blocked" ? "bg-muted" : "bg-background border-2 border-muted-foreground/30"
+                        }`}>
+                          {done ? (
+                            <Check className="w-3 h-3 text-white" />
+                          ) : item.status === "blocked" ? (
+                            <X className="w-3 h-3 text-muted-foreground" />
+                          ) : (
+                            <CircleDot className="w-2.5 h-2.5 text-muted-foreground/50" />
+                          )}
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className={`text-sm font-medium ${done ? "text-muted-foreground line-through" : ""}`}>
+                              {item.label}
+                            </span>
+                            {!done && (
+                              <ArrowRight className="w-3 h-3 text-muted-foreground shrink-0" />
+                            )}
+                          </div>
+                          {!done && (
+                            <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                              {item.helpText || item.description}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// NEW SUBSCRIBER LIVE FEED
+// Shows recent new_subscriber system alerts prominently in the overview.
+// Usage: <NewSubscriberFeed alerts={alerts} />
+// ─────────────────────────────────────────────────────────────────────
+
+export function NewSubscriberFeed({ alerts }: { alerts: SystemAlert[] | undefined }) {
+  const newSubs = (alerts ?? []).filter(a => a.alertType === "new_subscriber").slice(0, 5);
+  if (newSubs.length === 0) return null;
+
+  return (
+    <div className="p-4 border rounded-xl bg-gradient-to-br from-green-500/5 to-background border-green-500/20">
+      <div className="flex items-center gap-2 mb-3">
+        <Bell className="w-4 h-4 text-green-600" />
+        <span className="font-medium text-sm text-green-700">Recent subscribers</span>
+        <Badge className="ml-auto text-xs bg-green-500/10 text-green-700 border-green-500/20">{newSubs.length} new</Badge>
+      </div>
+      <div className="space-y-2">
+        {newSubs.map(alert => (
+          <div key={alert.id} className="flex items-center gap-2 text-sm">
+            <CheckCircle2 className="w-3.5 h-3.5 text-green-600 shrink-0" />
+            <span className="flex-1 truncate">{alert.message}</span>
+            <span className="text-xs text-muted-foreground shrink-0">
+              {formatDistanceToNow(new Date(alert.createdAt!), { addSuffix: true })}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

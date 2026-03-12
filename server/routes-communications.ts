@@ -10,7 +10,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { usageMeteringService, creditService } from "./services/credits";
 import { exportLeadsToCSV, exportPropertiesToCSV, exportDealsToCSV, exportNotesToCSV, type ExportFilters } from "./services/importExport";
-import { workflowEngine } from "./services/workflow-engine";
+import { workflowEngine, LAND_INVESTING_WORKFLOW_TEMPLATES } from "./services/workflow-engine";
 import { processMentions } from "./services/mentionService";
 
 export function registerCommunicationRoutes(app: Express): void {
@@ -54,7 +54,7 @@ export function registerCommunicationRoutes(app: Express): void {
         teamMemberId: teamMember?.id,
         type,
         fromEmail: finalFromEmail,
-        fromName: fromName || memberName || 'Acreage Land Co.',
+        fromName: fromName || memberName || 'AcreOS',
         replyToEmail,
         replyRoutingMode: replyRoutingMode || 'in_app',
         status: type === 'platform_alias' ? 'verified' : 'pending',
@@ -883,6 +883,35 @@ export function registerCommunicationRoutes(app: Express): void {
     } catch (error: any) {
       console.error("Test workflow error:", error);
       res.status(500).json({ message: error.message || "Failed to test workflow" });
+    }
+  });
+
+  // GET /api/workflow-templates - List pre-built land-investing workflow templates
+  api.get("/api/workflow-templates", isAuthenticated, async (req, res) => {
+    res.json(LAND_INVESTING_WORKFLOW_TEMPLATES);
+  });
+
+  // POST /api/workflow-templates/:templateId/install - Install a template as a live workflow
+  api.post("/api/workflow-templates/:templateId/install", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { templateId } = req.params;
+      const template = LAND_INVESTING_WORKFLOW_TEMPLATES.find(t => t.id === templateId);
+      if (!template) {
+        return res.status(404).json({ message: "Template not found" });
+      }
+      const workflow = await storage.createWorkflow({
+        organizationId: org.id,
+        name: template.name,
+        description: template.description,
+        trigger: template.trigger as any,
+        actions: template.actions as any,
+        isActive: true,
+      });
+      res.status(201).json(workflow);
+    } catch (error: any) {
+      console.error("Install workflow template error:", error);
+      res.status(400).json({ message: error.message || "Failed to install template" });
     }
   });
 

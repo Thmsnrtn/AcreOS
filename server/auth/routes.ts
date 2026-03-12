@@ -1,14 +1,18 @@
 import type { Express, RequestHandler } from "express";
+import crypto from "crypto";
 import passport from "passport";
 import { z } from "zod";
+import bcrypt from "bcrypt";
 import { isAuthenticated, createUser } from "./localAuth";
 import { isFounderEmail } from "../services/founder";
 import { setCsrfCookie } from "../middleware/csrf";
+import { emailService } from "../services/emailService";
 import { db } from "../db";
-import { users } from "@shared/models/auth";
-import { eq, and, gt, sql } from "drizzle-orm";
-import crypto from "crypto";
-import bcrypt from "bcrypt";
+import { users, passwordResetTokens } from "@shared/models/auth";
+import { eq, and, gt, isNull, sql } from "drizzle-orm";
+
+const SALT_ROUNDS = 12;
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 // ============================================
 // F-A09-1: Auth failure alerting
@@ -77,6 +81,10 @@ const registerSchema = z.object({
   password: z.string().min(8, "Password must be at least 8 characters"),
   firstName: z.string().optional(),
   lastName: z.string().optional(),
+  agreedToTerms: z.literal(true, {
+    errorMap: () => ({ message: "You must accept the Terms of Service to create an account." }),
+  }),
+  referralCode: z.string().max(16).optional(),
 });
 
 const loginSchema = z.object({
@@ -84,11 +92,32 @@ const loginSchema = z.object({
   password: z.string().min(1, "Password is required"),
 });
 
+const forgotPasswordSchema = z.object({
+  email: z.string().email("Invalid email address"),
+});
+
+const resetPasswordSchema = z.object({
+  token: z.string().min(1, "Reset token is required"),
+  password: z.string().min(8, "Password must be at least 8 characters"),
+});
+
 // ============================================
 // AUTH ROUTES
 // ============================================
 
 export function registerAuthRoutes(app: Express): void {
+  // UTM attribution: called from landing page before register to persist UTM params in session
+  app.post("/api/auth/attribution", (req, res) => {
+    const { utmSource, utmMedium, utmCampaign, utmContent } = req.body;
+    (req.session as any).utmAttribution = {
+      utmSource: utmSource || null,
+      utmMedium: utmMedium || null,
+      utmCampaign: utmCampaign || null,
+      utmContent: utmContent || null,
+    };
+    res.json({ ok: true });
+  });
+
   // Register new account
   app.post("/api/auth/register", async (req, res, next) => {
     try {
@@ -98,8 +127,30 @@ export function registerAuthRoutes(app: Express): void {
         return res.status(400).json({ message: errors[0] });
       }
 
-      const { email, password, firstName, lastName } = parsed.data;
+      const { email, password, firstName, lastName, referralCode } = parsed.data;
       const user = await createUser({ email, password, firstName, lastName });
+
+      // Apply referral code post-registration (non-blocking)
+      if (referralCode) {
+        fetch(`${req.protocol}://${req.get("host")}/api/referral/apply`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: referralCode, refereeId: user.id }),
+        }).catch((err: any) => {
+          console.error("[auth] Failed to apply referral code:", err?.message);
+        });
+        // Clear the stored code so it can't be reused by the same browser
+      }
+
+      // Send welcome email (non-blocking — don't fail registration if email fails)
+      emailService
+        .sendTransactionalEmail("welcome", {
+          to: email,
+          templateData: { firstName: firstName || "there" },
+        })
+        .catch((err: any) => {
+          console.error("[auth] Failed to send welcome email:", err?.message);
+        });
 
       // Session rotation: regenerate session ID before login to prevent session fixation
       req.session.regenerate((regenErr) => {
@@ -291,105 +342,114 @@ export function registerAuthRoutes(app: Express): void {
     }
   });
 
-  // ── Task #12: Password Reset (forgot / reset) ─────────────────────────────
+  // ============================================
+  // PASSWORD RESET (using passwordResetTokens table)
+  // ============================================
 
-  const forgotSchema = z.object({
-    email: z.string().email(),
-  });
-
-  const resetSchema = z.object({
-    token: z.string().min(64).max(64),
-    password: z.string().min(8, "Password must be at least 8 characters"),
-  });
-
-  // Step 1: Request reset — send email with time-limited token
-  // Always returns 200 to prevent account enumeration (Task #11)
+  // Request a password reset link
+  // Always returns 200 to prevent email enumeration
   app.post("/api/auth/forgot-password", async (req, res) => {
-    const parsed = forgotSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ message: "Valid email required" });
-    }
-
-    const { email } = parsed.data;
-    // Always respond 200 regardless of whether account exists
-    res.json({ message: "If an account exists for that email, a password reset link has been sent." });
-
-    // Fire-and-forget: find user, set token, send email
     try {
-      const [user] = await db.select().from(users).where(eq(users.email, email.toLowerCase()));
-      if (!user) return;
-
-      const token = crypto.randomBytes(32).toString("hex"); // 64 hex chars
-      const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
-
-      await db.update(users)
-        .set({ passwordResetToken: token, passwordResetExpiresAt: expiresAt })
-        .where(eq(users.id, user.id));
-
-      const appUrl = process.env.APP_URL || "http://localhost:5000";
-      const resetUrl = `${appUrl}/reset-password?token=${token}`;
-
-      // Send email (best effort — non-blocking)
-      import("../services/emailService").then(({ emailService }) => {
-        emailService.sendEmail({
-          to: email,
-          subject: "Reset your AcreOS password",
-          html: `<p>Click the link below to reset your password. This link expires in 15 minutes.</p>
-<p><a href="${resetUrl}">${resetUrl}</a></p>
-<p>If you didn't request this, you can safely ignore this email.</p>`,
-        }).catch(() => {});
-      }).catch(() => {});
-    } catch (err) {
-      console.error("[auth] Forgot password error:", err);
-    }
-  });
-
-  // Step 2: Complete reset — validate token, set new password
-  app.post("/api/auth/reset-password", async (req, res) => {
-    const parsed = resetSchema.safeParse(req.body);
-    if (!parsed.success) {
-      const errors = parsed.error.issues.map((i) => i.message);
-      return res.status(400).json({ message: errors[0] });
-    }
-
-    const { token, password } = parsed.data;
-    const now = new Date();
-
-    try {
-      const [user] = await db.select().from(users)
-        .where(and(
-          eq(users.passwordResetToken, token),
-          gt(users.passwordResetExpiresAt, now)
-        ));
-
-      if (!user) {
-        return res.status(400).json({ message: "Invalid or expired reset token" });
+      const parsed = forgotPasswordSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.issues[0].message });
       }
 
-      const passwordHash = await bcrypt.hash(password, 12);
+      const { email } = parsed.data;
+      const [user] = await db
+        .select()
+        .from(users)
+        .where(eq(users.email, email.toLowerCase()))
+        .limit(1);
 
-      // Invalidate token after use (one-time use)
-      await db.update(users)
-        .set({
-          passwordHash,
-          passwordResetToken: null,
-          passwordResetExpiresAt: null,
-        })
-        .where(eq(users.id, user.id));
+      // If no user found, still return 200 to prevent enumeration
+      if (user) {
+        const token = crypto.randomBytes(48).toString("hex");
+        const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MS);
 
-      // Destroy all existing sessions for this user to force re-login
-      // (session store doesn't support user-scoped deletion; log for awareness)
-      console.log(`[auth] Password reset completed for user ${user.id}`);
+        await db.insert(passwordResetTokens).values({
+          userId: user.id,
+          token,
+          expiresAt,
+        });
 
-      return res.json({ message: "Password reset successful. Please sign in with your new password." });
+        const rawAppUrl = process.env.APP_URL;
+        if (!rawAppUrl && process.env.NODE_ENV === "production") {
+          console.error("[auth] APP_URL is not set — password reset link will point to localhost");
+        }
+        const appUrl = (rawAppUrl || "http://localhost:5000").replace(/\/$/, "");
+        const resetUrl = `${appUrl}/auth?mode=reset&token=${token}`;
+
+        emailService
+          .sendTransactionalEmail("password_reset", {
+            to: email,
+            templateData: {
+              name: user.firstName || "there",
+              resetUrl,
+              expiresIn: "1 hour",
+            },
+          })
+          .catch((err: any) => {
+            console.error("[auth] Failed to send password reset email:", err?.message);
+          });
+      }
+
+      return res.json({ message: "If an account with that email exists, a reset link has been sent." });
+    } catch (error) {
+      console.error("[auth] Forgot password error:", error);
+      return res.status(500).json({ message: "Failed to process request" });
+    }
+  });
+
+  // Reset password using a token
+  app.post("/api/auth/reset-password", async (req, res) => {
+    try {
+      const parsed = resetPasswordSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.issues[0].message });
+      }
+
+      const { token, password } = parsed.data;
+      const now = new Date();
+
+      const [resetRecord] = await db
+        .select()
+        .from(passwordResetTokens)
+        .where(
+          and(
+            eq(passwordResetTokens.token, token),
+            gt(passwordResetTokens.expiresAt, now),
+            isNull(passwordResetTokens.usedAt)
+          )
+        )
+        .limit(1);
+
+      if (!resetRecord) {
+        return res.status(400).json({ message: "This reset link is invalid or has expired." });
+      }
+
+      const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+
+      await db
+        .update(users)
+        .set({ passwordHash, updatedAt: now })
+        .where(eq(users.id, resetRecord.userId));
+
+      await db
+        .update(passwordResetTokens)
+        .set({ usedAt: now })
+        .where(eq(passwordResetTokens.id, resetRecord.id));
+
+      console.log(`[auth] Password reset completed for user ${resetRecord.userId}`);
+      return res.json({ message: "Password updated successfully. You can now log in." });
     } catch (error) {
       console.error("[auth] Reset password error:", error);
-      return res.status(500).json({ message: "Password reset failed" });
+      return res.status(500).json({ message: "Failed to reset password" });
     }
   });
 
   // ─── Change password (authenticated) ──────────────────────────────────────
-  // Task: Allows logged-in users to change their password from Settings → Security tab.
+  // Allows logged-in users to change their password from Settings → Security tab.
   // Requires current password verification to prevent CSRF-based account takeover.
   app.post("/api/auth/change-password", isAuthenticated, async (req, res) => {
     const schema = z.object({
@@ -418,7 +478,7 @@ export function registerAuthRoutes(app: Express): void {
         return res.status(401).json({ message: "Current password is incorrect" });
       }
 
-      const newHash = await bcrypt.hash(parsed.data.newPassword, 12);
+      const newHash = await bcrypt.hash(parsed.data.newPassword, SALT_ROUNDS);
       await db.update(users).set({ passwordHash: newHash }).where(eq(users.id, user.id));
 
       console.log(JSON.stringify({
@@ -429,8 +489,7 @@ export function registerAuthRoutes(app: Express): void {
         timestamp: new Date().toISOString(),
       }));
 
-      // Task #4: Regenerate session after password change to invalidate any stolen session tokens.
-      // The user stays logged in (passport data is preserved) but the old session ID is invalidated.
+      // Regenerate session after password change to invalidate any stolen session tokens.
       const passportUser = (req.session as any).passport;
       await new Promise<void>((resolve) => req.session.regenerate((err) => {
         if (!err && passportUser) {

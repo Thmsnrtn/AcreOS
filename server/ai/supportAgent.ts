@@ -3676,7 +3676,7 @@ export async function executeSupportTool(
             case "send_update_payment_link": {
               const session = await stripe.billingPortal.sessions.create({
                 customer: org.stripeCustomerId,
-                return_url: `${process.env.APP_URL || "https://acreos.repl.co"}/settings`
+                return_url: `${(process.env.APP_URL || "http://localhost:5000").replace(/\/$/, "")}/settings`
               });
               
               return {

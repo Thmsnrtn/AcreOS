@@ -22,6 +22,10 @@ updates:
         update-types:
           - "minor"
           - "patch"
+      dev-dependencies:
+        dependency-type: development
+      production-dependencies:
+        dependency-type: production
     ignore:
       # Pin major versions — update manually after testing
       - dependency-name: "react"

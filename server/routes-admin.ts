@@ -8,11 +8,20 @@ import {
   SUBSCRIPTION_TIERS, payments, notes, deals, properties, leads, activityLog, organizations,
   offers, organizationIntegrations, dataSources,
   supportTickets, supportTicketMessages, knowledgeBaseArticles,
-  sophieMemory, systemAlerts,
+  sophieMemory, sophieObservations, sophieCrossOrgLearnings, systemAlerts,
   countyGisEndpoints,
   aiModelConfigs,
   systemApiKeys,
+  featureRequests,
+  growthCampaigns,
+  systemActivity,
+  computeSla,
+  orgApiKeys,
+  auditLog,
+  mailingOrderPieces,
+  mailingOrders,
 } from "@shared/schema";
+import crypto from "crypto";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { alertingService } from "./services/alerting";
@@ -69,7 +78,23 @@ export function registerAdminRoutes(app: Express): void {
       const org = (req as any).organization;
       const { status } = req.query as { status?: string };
       const cases = await storage.getSupportCases(org.id, status);
-      res.json(cases);
+      const casesWithSla = cases.map((c) => {
+        const sla = computeSla(c.priority, c.createdAt!);
+        return {
+          ...c,
+          slaDeadline: sla.slaDeadline,
+          slaStatus: sla.slaStatus,
+          hoursUntilBreached: sla.hoursUntilBreached,
+        };
+      });
+      // Sort by SLA urgency: breached first, then at_risk, then on_track; within same status sort by hoursUntilBreached asc
+      casesWithSla.sort((a, b) => {
+        const order = { breached: 0, at_risk: 1, on_track: 2 };
+        const diff = (order[a.slaStatus] ?? 2) - (order[b.slaStatus] ?? 2);
+        if (diff !== 0) return diff;
+        return a.hoursUntilBreached - b.hoursUntilBreached;
+      });
+      res.json(casesWithSla);
     } catch (err: any) {
       console.error("Get support cases error:", err);
       res.status(500).json({ error: err.message || "Failed to fetch support cases" });
@@ -183,7 +208,23 @@ export function registerAdminRoutes(app: Express): void {
       }
 
       const cases = await storage.getEscalatedCases();
-      res.json(cases);
+      const casesWithSla = cases.map((c) => {
+        const sla = computeSla(c.priority, c.createdAt!);
+        return {
+          ...c,
+          slaDeadline: sla.slaDeadline,
+          slaStatus: sla.slaStatus,
+          hoursUntilBreached: sla.hoursUntilBreached,
+        };
+      });
+      // Sort by SLA urgency first
+      casesWithSla.sort((a, b) => {
+        const order = { breached: 0, at_risk: 1, on_track: 2 };
+        const diff = (order[a.slaStatus] ?? 2) - (order[b.slaStatus] ?? 2);
+        if (diff !== 0) return diff;
+        return a.hoursUntilBreached - b.hoursUntilBreached;
+      });
+      res.json(casesWithSla);
     } catch (err: any) {
       console.error("Get escalated cases error:", err);
       res.status(500).json({ error: err.message || "Failed to fetch escalated cases" });
@@ -262,6 +303,64 @@ export function registerAdminRoutes(app: Express): void {
     } catch (err: any) {
       console.error("Get support metrics error:", err);
       res.status(500).json({ error: err.message || "Failed to fetch support metrics" });
+    }
+  });
+
+  // ============================================
+  // BORROWER MESSAGING (Lender-side)
+  // ============================================
+
+  // GET /api/notes/:noteId/borrower-messages — lender views thread
+  api.get("/api/notes/:noteId/borrower-messages", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const noteId = parseInt(req.params.noteId);
+      const note = await storage.getNote(org.id, noteId);
+      if (!note) return res.status(404).json({ error: "Note not found" });
+      const msgs = await storage.getBorrowerMessages(noteId);
+      // Mark borrower messages as read since lender is viewing them
+      await storage.markBorrowerMessagesRead(noteId, "borrower");
+      res.json(msgs);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/notes/:noteId/borrower-messages/reply — lender replies
+  api.post("/api/notes/:noteId/borrower-messages/reply", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const noteId = parseInt(req.params.noteId);
+      const { content } = req.body as { content: string };
+      if (!content || !content.trim()) {
+        return res.status(400).json({ error: "Message content is required" });
+      }
+      const note = await storage.getNote(org.id, noteId);
+      if (!note) return res.status(404).json({ error: "Note not found" });
+      const msg = await storage.createBorrowerMessage({
+        noteId,
+        orgId: org.id,
+        senderType: "lender",
+        content: content.trim(),
+        readAt: null,
+      });
+      res.status(201).json(msg);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/notes/:noteId/borrower-messages/unread-count — unread borrower message count for badge
+  api.get("/api/notes/:noteId/borrower-messages/unread-count", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const noteId = parseInt(req.params.noteId);
+      const note = await storage.getNote(org.id, noteId);
+      if (!note) return res.status(404).json({ error: "Note not found" });
+      const count = await storage.countUnreadBorrowerMessages(noteId, "borrower");
+      res.json({ count });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
     }
   });
 
@@ -2488,6 +2587,944 @@ export function registerAdminRoutes(app: Express): void {
     }
   });
 
+  // ============================================
+  // LAUNCH READINESS — Founder onboarding checklist
+  // ============================================
+
+  api.get("/api/founder/launch-readiness", isAuthenticated, isFounderAdmin, async (_req, res) => {
+    try {
+      // Fetch all system API keys in one query
+      const keys = await db.select({
+        provider: systemApiKeys.provider,
+        hasKey: sql<boolean>`(api_key IS NOT NULL AND api_key != '')`,
+        updatedAt: systemApiKeys.updatedAt,
+        createdAt: systemApiKeys.createdAt,
+      }).from(systemApiKeys);
+
+      const keyMap = new Map(keys.map(k => [k.provider, k]));
+      const hasSystemKey = (provider: string) => keyMap.get(provider)?.hasKey === true;
+      const hasEnv = (v: string) => !!process.env[v];
+
+      // Check stripe via env (system key OR env var)
+      const stripeConfigured = hasSystemKey("stripe") || hasEnv("STRIPE_SECRET_KEY");
+
+      // Check if Stripe has products (fast - just try to list)
+      let stripeProductsExist = false;
+      if (stripeConfigured) {
+        try {
+          const { stripeService } = await import("./stripeService");
+          const products = await stripeService.listProductsWithPrices();
+          stripeProductsExist = products.length > 0;
+        } catch { /* no products or key invalid */ }
+      }
+
+      // Check email — sendgrid system key OR AWS SES env vars
+      const emailConfigured =
+        hasSystemKey("sendgrid") ||
+        (hasEnv("AWS_ACCESS_KEY_ID") && hasEnv("AWS_SES_FROM_EMAIL"));
+
+      // Check if any feature flags have been intentionally toggled
+      const { pricingConfig: pricingConfigTable, platformFeatureFlags, founderAdAccounts, growthCampaigns } = await import("@shared/schema");
+      const [{ toggledFlags }] = await db.select({
+        toggledFlags: sql<number>`count(*)`,
+      }).from(platformFeatureFlags)
+        .where(sql`updated_at > created_at + interval '1 second'`);
+
+      // Check if any pricing has been modified from seed
+      const [{ modifiedPricing }] = await db.select({
+        modifiedPricing: sql<number>`count(*)`,
+      }).from(pricingConfigTable)
+        .where(sql`updated_at > created_at + interval '1 second'`);
+
+      // Check growth ads
+      const [{ adAccounts }] = await db.select({ adAccounts: sql<number>`count(*)` }).from(founderAdAccounts);
+      const [{ campaigns }] = await db.select({ campaigns: sql<number>`count(*)` }).from(growthCampaigns);
+
+      const items = [
+        // ── CRITICAL ─────────────────────────────────────────
+        {
+          key: "stripe_configured",
+          label: "Stripe payment processing",
+          description: "Required for subscriptions and billing",
+          priority: "critical",
+          status: stripeConfigured ? "complete" : "incomplete",
+          section: "section-config",
+          helpText: "Add your Stripe Secret Key in System API Keys below",
+        },
+        {
+          key: "stripe_products",
+          label: "Stripe subscription products",
+          description: "At least one active product with pricing must exist in Stripe",
+          priority: "critical",
+          status: stripeProductsExist ? "complete" : (stripeConfigured ? "incomplete" : "blocked"),
+          section: "section-config",
+          helpText: "Create subscription products in your Stripe Dashboard, then add their price IDs here",
+        },
+        {
+          key: "openai_configured",
+          label: "OpenAI API key",
+          description: "Powers all AI features — lead scoring, Sophie, deal analysis",
+          priority: "critical",
+          status: hasSystemKey("openai") || hasEnv("AI_INTEGRATIONS_OPENAI_API_KEY") || hasEnv("OPENAI_API_KEY") ? "complete" : "incomplete",
+          section: "section-config",
+          helpText: "Add your OpenAI API key in System API Keys",
+        },
+        {
+          key: "app_url",
+          label: "Production app URL",
+          description: "Used for email links, Stripe webhooks, and ad landing pages",
+          priority: "critical",
+          status: hasEnv("APP_URL") && !process.env.APP_URL?.includes("localhost") ? "complete" : "incomplete",
+          section: "section-config",
+          helpText: "Set APP_URL environment variable to your production domain (e.g. https://app.acreos.com)",
+        },
+        {
+          key: "founder_email",
+          label: "Founder email configured",
+          description: "Grants admin access to this dashboard",
+          priority: "critical",
+          status: hasEnv("FOUNDER_EMAIL") ? "complete" : "incomplete",
+          section: "section-config",
+          helpText: "Set FOUNDER_EMAIL environment variable to your email address",
+        },
+        // ── CORE ─────────────────────────────────────────────
+        {
+          key: "email_configured",
+          label: "Transactional email (SendGrid or AWS SES)",
+          description: "Required for welcome emails, password resets, and notifications",
+          priority: "core",
+          status: emailConfigured ? "complete" : "incomplete",
+          section: "section-config",
+          helpText: "Configure SendGrid in System API Keys, or set AWS SES environment variables",
+        },
+        {
+          key: "twilio_configured",
+          label: "Twilio SMS & voice calling",
+          description: "Powers SMS outreach, voicedrops, and AI phone calls",
+          priority: "core",
+          status: hasSystemKey("twilio") ? "complete" : "incomplete",
+          section: "section-config",
+          helpText: "Add your Twilio API credentials in System API Keys",
+        },
+        {
+          key: "mapbox_configured",
+          label: "Mapbox maps & parcel layers",
+          description: "Required for the map view and GIS features",
+          priority: "core",
+          status: hasEnv("VITE_MAPBOX_ACCESS_TOKEN") ? "complete" : "incomplete",
+          section: "section-config",
+          helpText: "Set VITE_MAPBOX_ACCESS_TOKEN environment variable",
+        },
+        // ── LAUNCH ───────────────────────────────────────────
+        {
+          key: "feature_flags_reviewed",
+          label: "Feature flags reviewed",
+          description: "Decide which features are live for your users",
+          priority: "launch",
+          status: Number(toggledFlags) > 0 ? "complete" : "incomplete",
+          section: "section-features",
+          helpText: "Go to Feature Flags and enable the features you want live",
+        },
+        {
+          key: "pricing_reviewed",
+          label: "Pricing confirmed",
+          description: "Review and confirm your subscription tier prices",
+          priority: "launch",
+          status: Number(modifiedPricing) > 0 ? "complete" : "incomplete",
+          section: "section-pricing",
+          helpText: "Go to Pricing & Promotions and adjust prices for your market",
+        },
+        {
+          key: "regrid_configured",
+          label: "RegGrid parcel data",
+          description: "Unlocks county-level parcel ownership data",
+          priority: "launch",
+          status: hasSystemKey("regrid") ? "complete" : "incomplete",
+          section: "section-config",
+          helpText: "Add your RegGrid API key in System API Keys",
+        },
+        // ── GROWTH ───────────────────────────────────────────
+        {
+          key: "growth_ads_connected",
+          label: "Meta growth ad account connected",
+          description: "Required to launch paid acquisition campaigns for AcreOS",
+          priority: "growth",
+          status: Number(adAccounts) > 0 ? "complete" : "incomplete",
+          section: "section-growth",
+          helpText: "Connect your Meta Ads account in the Growth & Ads section",
+        },
+        {
+          key: "first_campaign",
+          label: "First growth campaign launched",
+          description: "Start driving land investor signups with a pre-built Meta campaign",
+          priority: "growth",
+          status: Number(campaigns) > 0 ? "complete" : "incomplete",
+          section: "section-growth",
+          helpText: "Launch your first campaign from the Growth & Ads section",
+        },
+      ];
+
+      // Score: weight critical 3x, core 2x, launch 1.5x, growth 1x
+      const weights: Record<string, number> = { critical: 3, core: 2, launch: 1.5, growth: 1 };
+      const totalWeight = items.reduce((s, i) => s + (weights[i.priority] || 1), 0);
+      const earnedWeight = items.reduce((s, i) => s + (i.status === "complete" ? (weights[i.priority] || 1) : 0), 0);
+      const score = Math.round((earnedWeight / totalWeight) * 100);
+
+      res.json({ score, items });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // FEATURE FLAGS (Founder-controlled feature visibility)
+  // ============================================
+
+  // Public endpoint – clients call this to know which features are enabled
+  api.get("/api/config/features", async (_req, res) => {
+    try {
+      const flags = await storage.getEnabledFeatureFlags();
+      const enabledKeys = flags.map(f => f.key);
+      const enabledRoutes = flags.flatMap(f => f.controlledRoutes as string[]);
+      res.json({ enabledKeys, enabledRoutes });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.get("/api/founder/feature-flags", isAuthenticated, isFounderAdmin, async (_req, res) => {
+    try {
+      const flags = await storage.getAllFeatureFlags();
+      res.json(flags);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.put("/api/founder/feature-flags/:key", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { key } = req.params;
+      const { enabled } = req.body as { enabled: boolean };
+      if (typeof enabled !== "boolean") {
+        return res.status(400).json({ message: "enabled must be a boolean" });
+      }
+      const flag = await storage.updateFeatureFlag(key, enabled);
+      if (!flag) return res.status(404).json({ message: "Feature flag not found" });
+      res.json(flag);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // PRICING CONFIG (Founder-controlled pricing + promotions)
+  // ============================================
+
+  // Public endpoint – landing page + checkout calls this
+  api.get("/api/config/pricing", async (_req, res) => {
+    try {
+      const configs = await storage.getAllPricingConfig();
+      // Filter out expired promos
+      const now = new Date();
+      const cleaned = configs.map(c => ({
+        ...c,
+        promoLabel: c.promoEndsAt && c.promoEndsAt < now ? null : c.promoLabel,
+        promoDiscountPercent: c.promoEndsAt && c.promoEndsAt < now ? null : c.promoDiscountPercent,
+        promoEndsAt: c.promoEndsAt && c.promoEndsAt < now ? null : c.promoEndsAt,
+        stripeCouponId: c.promoEndsAt && c.promoEndsAt < now ? null : c.stripeCouponId,
+      }));
+      res.json(cleaned);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.get("/api/founder/pricing", isAuthenticated, isFounderAdmin, async (_req, res) => {
+    try {
+      const configs = await storage.getAllPricingConfig();
+      res.json(configs);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.put("/api/founder/pricing/:tier", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { tier } = req.params;
+      const { displayPriceMonthly, displayPriceYearly, allowPromoCodes } = req.body;
+      const updated = await storage.updatePricingConfig(tier, {
+        ...(displayPriceMonthly !== undefined && { displayPriceMonthly }),
+        ...(displayPriceYearly !== undefined && { displayPriceYearly }),
+        ...(allowPromoCodes !== undefined && { allowPromoCodes }),
+      });
+      if (!updated) return res.status(404).json({ message: "Tier not found" });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Create / activate a flash sale promo for a tier
+  api.post("/api/founder/pricing/:tier/promo", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { tier } = req.params;
+      const { promoLabel, promoDiscountPercent, promoEndsAt } = req.body as {
+        promoLabel: string;
+        promoDiscountPercent: number;
+        promoEndsAt: string; // ISO date string
+      };
+      if (!promoLabel || !promoDiscountPercent || !promoEndsAt) {
+        return res.status(400).json({ message: "promoLabel, promoDiscountPercent, promoEndsAt required" });
+      }
+      // Create a Stripe coupon
+      const { getUncachableStripeClient } = await import("./stripeClient");
+      const stripe = await getUncachableStripeClient();
+      const coupon = await stripe.coupons.create({
+        percent_off: promoDiscountPercent,
+        duration: "once",
+        name: promoLabel,
+        metadata: { tier, created_by: "founder_dashboard" },
+      });
+      const updated = await storage.updatePricingConfig(tier, {
+        promoLabel,
+        promoDiscountPercent,
+        promoEndsAt: new Date(promoEndsAt),
+        stripeCouponId: coupon.id,
+      });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // End / clear a promo for a tier
+  api.delete("/api/founder/pricing/:tier/promo", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { tier } = req.params;
+      await storage.clearPricingPromo(tier);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // GROWTH / AD MARKETING (AcreOS customer acquisition)
+  // ============================================
+
+  api.get("/api/founder/growth/attribution", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string || "50");
+      const signups = await storage.getRecentSignupsWithAttribution(limit);
+      res.json(signups);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Get or update founder Meta ad account credentials
+  api.get("/api/founder/growth/ad-account", isAuthenticated, isFounderAdmin, async (_req, res) => {
+    try {
+      const account = await storage.getFounderAdAccount("meta");
+      if (!account) return res.json(null);
+      // Mask the access token for display
+      res.json({ ...account, accessToken: account.accessToken ? "••••••••" + account.accessToken.slice(-4) : null });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.put("/api/founder/growth/ad-account", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { adAccountId, accessToken, pixelId, appId, appSecret } = req.body;
+      if (!adAccountId || !accessToken) {
+        return res.status(400).json({ message: "adAccountId and accessToken are required" });
+      }
+      const account = await storage.upsertFounderAdAccount({
+        platform: "meta",
+        adAccountId,
+        accessToken,
+        pixelId: pixelId || null,
+        appId: appId || null,
+        appSecret: appSecret || null,
+        isActive: true,
+      });
+      res.json({ ...account, accessToken: "••••••••" + account.accessToken.slice(-4) });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Available campaign templates
+  api.get("/api/founder/growth/templates", isAuthenticated, isFounderAdmin, async (_req, res) => {
+    try {
+      const { growthAdService } = await import("./services/growthAdService");
+      res.json(growthAdService.getTemplates());
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // List growth campaigns
+  api.get("/api/founder/growth/campaigns", isAuthenticated, isFounderAdmin, async (_req, res) => {
+    try {
+      const campaigns = await storage.getGrowthCampaigns();
+      res.json(campaigns);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Launch a new growth campaign
+  api.post("/api/founder/growth/campaigns", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { name, templateKey, dailyBudgetCents, targetCountries } = req.body;
+      if (!name || !templateKey) {
+        return res.status(400).json({ message: "name and templateKey are required" });
+      }
+      const adAccount = await storage.getFounderAdAccount("meta");
+      if (!adAccount) {
+        return res.status(400).json({ message: "No Meta ad account configured. Add your Meta ad account credentials first." });
+      }
+
+      // Create the campaign in Meta via the growth ad service
+      const { growthAdService } = await import("./services/growthAdService");
+      const externalCampaignId = await growthAdService.launchCampaign({
+        adAccount,
+        templateKey,
+        name,
+        dailyBudgetCents: dailyBudgetCents || 2000,
+        targetCountries: targetCountries || ["US"],
+      });
+
+      const campaign = await storage.createGrowthCampaign({
+        name,
+        templateKey,
+        externalCampaignId,
+        status: externalCampaignId ? "active" : "draft",
+        dailyBudgetCents: dailyBudgetCents || 2000,
+        targetCountries: targetCountries || ["US"],
+        totalSpendCents: 0,
+        impressions: 0,
+        clicks: 0,
+        signups: 0,
+        conversions: 0,
+      });
+      res.json(campaign);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Pause / resume a campaign
+  api.put("/api/founder/growth/campaigns/:id/status", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { status } = req.body as { status: "active" | "paused" };
+      const campaign = await storage.getGrowthCampaign(id);
+      if (!campaign) return res.status(404).json({ message: "Campaign not found" });
+
+      if (campaign.externalCampaignId) {
+        const adAccount = await storage.getFounderAdAccount("meta");
+        if (adAccount) {
+          const { growthAdService } = await import("./services/growthAdService");
+          await growthAdService.setCampaignStatus(adAccount, campaign.externalCampaignId, status);
+        }
+      }
+      const updated = await storage.updateGrowthCampaign(id, { status });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Sync campaign stats from Meta
+  api.post("/api/founder/growth/campaigns/:id/sync", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const campaign = await storage.getGrowthCampaign(id);
+      if (!campaign || !campaign.externalCampaignId) {
+        return res.status(404).json({ message: "Campaign not found or not yet live" });
+      }
+      const adAccount = await storage.getFounderAdAccount("meta");
+      if (!adAccount) return res.status(400).json({ message: "No ad account configured" });
+      const { growthAdService } = await import("./services/growthAdService");
+      const stats = await growthAdService.getCampaignStats(adAccount, campaign.externalCampaignId);
+      const updated = await storage.updateGrowthCampaign(id, {
+        totalSpendCents: stats.spendCents,
+        impressions: stats.impressions,
+        clicks: stats.clicks,
+      });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── AI Creative Generation & One-Click Campaign Deploy ──────────────────
+
+  // Start AI creative generation (async). Returns bundleId immediately.
+  // Client polls GET /api/founder/growth/creative-bundles/:id for status.
+  api.post("/api/founder/growth/generate-creative", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { templateKey } = req.body;
+      if (!templateKey) return res.status(400).json({ message: "templateKey is required" });
+
+      // Create the bundle record immediately so client can poll
+      const bundle = await storage.createAdCreativeBundle({ templateKey, status: "generating" });
+      res.json({ bundleId: bundle.id, status: "generating" });
+
+      // Generate in background — do not await
+      (async () => {
+        try {
+          const { adCreativeService } = await import("./services/adCreativeService");
+          const { copies, images } = await adCreativeService.generateBundle(templateKey);
+          await storage.updateAdCreativeBundle(bundle.id, {
+            status: "ready",
+            copies,
+            images,
+          });
+        } catch (err: any) {
+          console.error("[growth] Creative generation failed:", err?.message);
+          await storage.updateAdCreativeBundle(bundle.id, {
+            status: "error",
+            error: err?.message || "Generation failed",
+          });
+        }
+      })();
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Poll creative bundle status
+  api.get("/api/founder/growth/creative-bundles/:id", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const bundle = await storage.getAdCreativeBundle(req.params.id);
+      if (!bundle) return res.status(404).json({ message: "Bundle not found" });
+      res.json(bundle);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Regenerate a single copy variant (client edits specific angle)
+  api.post("/api/founder/growth/creative-bundles/:id/regenerate-copy", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { angle } = req.body;
+      const bundle = await storage.getAdCreativeBundle(req.params.id);
+      if (!bundle || bundle.status !== "ready") return res.status(400).json({ message: "Bundle not ready" });
+
+      const { adCreativeService } = await import("./services/adCreativeService");
+      const allVariants = await adCreativeService.generateCopyVariants(bundle.templateKey);
+      const newVariant = allVariants.find((v) => v.angle === angle);
+      if (!newVariant) return res.status(404).json({ message: "Angle not found" });
+
+      const copies = (bundle.copies as any[] || []).map((c: any) =>
+        c.angle === angle ? newVariant : c
+      );
+      const updated = await storage.updateAdCreativeBundle(bundle.id, { copies });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // One-click deploy: launch full campaign from a creative bundle
+  api.post("/api/founder/growth/creative-bundles/:id/deploy", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { name, dailyBudgetCents, targetCountries } = req.body;
+      if (!name) return res.status(400).json({ message: "Campaign name is required" });
+
+      const bundle = await storage.getAdCreativeBundle(req.params.id);
+      if (!bundle) return res.status(404).json({ message: "Bundle not found" });
+      if (bundle.status !== "ready") return res.status(400).json({ message: `Bundle is ${bundle.status}, not ready` });
+
+      const adAccount = await storage.getFounderAdAccount("meta");
+      if (!adAccount) return res.status(400).json({ message: "No Meta ad account configured" });
+
+      const { growthAdService } = await import("./services/growthAdService");
+
+      const externalCampaignId = await growthAdService.launchFullCampaign({
+        adAccount,
+        templateKey: bundle.templateKey,
+        name,
+        dailyBudgetCents: dailyBudgetCents || 2000,
+        targetCountries: targetCountries || ["US"],
+        copies: (bundle.copies as any[]) || [],
+        images: (bundle.images as any[]) || [],
+      });
+
+      const campaign = await storage.createGrowthCampaign({
+        name,
+        templateKey: bundle.templateKey,
+        externalCampaignId,
+        status: externalCampaignId ? "paused" : "draft",
+        dailyBudgetCents: dailyBudgetCents || 2000,
+        targetCountries: targetCountries || ["US"],
+        totalSpendCents: 0,
+        impressions: 0,
+        clicks: 0,
+        signups: 0,
+        conversions: 0,
+      });
+
+      // Link bundle to campaign
+      await storage.updateAdCreativeBundle(bundle.id, {
+        campaignId: campaign.id,
+        status: "deployed",
+      });
+
+      res.json({ campaign, bundleId: bundle.id });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── Founder Intelligence: Command Center Endpoints ──────────────────────
+
+  /**
+   * AI Daily Briefing — aggregates last 24h data and writes a 2-3 sentence summary.
+   * Cached for 15 minutes server-side to avoid hammering the DB on every dashboard load.
+   */
+  let briefingCache: { data: any; generatedAt: number } | null = null;
+  const BRIEFING_TTL_MS = 15 * 60 * 1000;
+
+  api.get("/api/founder/briefing", isAuthenticated, isFounderAdmin, async (_req, res) => {
+    try {
+      if (briefingCache && Date.now() - briefingCache.generatedAt < BRIEFING_TTL_MS) {
+        return res.json(briefingCache.data);
+      }
+
+      const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+      const [orgRows, alertRows, escalatedRows, recentCampaigns] = await Promise.all([
+        db.select({
+          id: organizations.id,
+          name: organizations.name,
+          subscriptionTier: organizations.subscriptionTier,
+          subscriptionStatus: organizations.subscriptionStatus,
+          dunningStage: organizations.dunningStage,
+          createdAt: organizations.createdAt,
+        }).from(organizations),
+        db.select({ id: systemAlerts.id, severity: systemAlerts.severity, resolvedAt: systemAlerts.resolvedAt })
+          .from(systemAlerts).where(sql`${systemAlerts.resolvedAt} IS NULL`),
+        db.select({ id: supportTickets.id })
+          .from(supportTickets)
+          .where(and(
+            eq(supportTickets.status, 'open' as any),
+            eq(supportTickets.resolutionType as any, 'escalated' as any)
+          )).limit(10),
+        db.select({ id: growthCampaigns.id, status: growthCampaigns.status })
+          .from(growthCampaigns),
+      ]);
+
+      const tierPrices: Record<string, number> = { free: 0, starter: 49, pro: 149, scale: 399, enterprise: 799 };
+      const paidOrgs = orgRows.filter(o => o.subscriptionStatus === 'active' && o.subscriptionTier !== 'free');
+      const totalMrr = paidOrgs.reduce((sum, o) => sum + (tierPrices[o.subscriptionTier as string] || 0), 0);
+      const newSignups24h = orgRows.filter(o => new Date(o.createdAt as any) > since24h).length;
+      const atRiskOrgs = orgRows.filter(o => ['restricted', 'suspended'].includes(o.dunningStage as string)).length;
+      const unresolvedAlerts = alertRows.length;
+      const activeCampaigns = recentCampaigns.filter(c => c.status === 'active').length;
+
+      const highlights = {
+        totalMrr,
+        newSignups24h,
+        atRiskOrgs,
+        unresolvedAlerts,
+        escalatedTickets: escalatedRows.length,
+        activeCampaigns,
+        totalOrgs: paidOrgs.length,
+      };
+
+      let summary = `AcreOS is running ${paidOrgs.length} paying organizations at $${totalMrr.toLocaleString()} MRR. ${newSignups24h > 0 ? `${newSignups24h} new signup${newSignups24h > 1 ? 's' : ''} in the last 24 hours.` : 'No new signups in the last 24 hours.'} ${atRiskOrgs > 0 ? `${atRiskOrgs} organization${atRiskOrgs > 1 ? 's' : ''} require attention — dunning stage elevated.` : 'No organizations in dunning risk.'} ${unresolvedAlerts > 0 ? `${unresolvedAlerts} unresolved system alert${unresolvedAlerts > 1 ? 's' : ''} pending review.` : 'All system alerts clear.'} Background jobs running autonomously — lead nurturing, campaign optimization, and finance agent are all active.`;
+
+      // Optionally enrich with GPT-4o if configured
+      try {
+        const { getOpenAIClient } = await import("./utils/openaiClient");
+        const openai = getOpenAIClient();
+        if (openai) {
+          const completion = await openai.chat.completions.create({
+            model: "gpt-4o",
+            messages: [{
+              role: "user",
+              content: `You are the AI co-pilot for AcreOS, a SaaS platform for land investors. Write a crisp 2-3 sentence executive briefing for the founder based on these metrics:
+
+- Total MRR: $${totalMrr}
+- Paying organizations: ${paidOrgs.length}
+- New signups (24h): ${newSignups24h}
+- Organizations in dunning risk: ${atRiskOrgs}
+- Unresolved system alerts: ${unresolvedAlerts}
+- Escalated support tickets: ${escalatedRows.length}
+- Active ad campaigns: ${activeCampaigns}
+
+Tone: confident, data-driven, executive. Lead with what's working. Flag concerns briefly. Do not use bullet points — prose only. Max 3 sentences.`,
+            }],
+            max_tokens: 150,
+            temperature: 0.4,
+          });
+          summary = completion.choices[0].message.content?.trim() || summary;
+        }
+      } catch { /* non-fatal — use plain summary */ }
+
+      const result = { summary, highlights, generatedAt: new Date().toISOString() };
+      briefingCache = { data: result, generatedAt: Date.now() };
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  /** Org Health Scores — computes 0-100 health score for every organization */
+  api.get("/api/founder/org-health", isAuthenticated, isFounderAdmin, async (_req, res) => {
+    try {
+      const orgs = await db.select({
+        id: organizations.id,
+        name: organizations.name,
+        subscriptionTier: organizations.subscriptionTier,
+        subscriptionStatus: organizations.subscriptionStatus,
+        dunningStage: organizations.dunningStage,
+        trialEndsAt: organizations.trialEndsAt,
+        isFounder: organizations.isFounder,
+        createdAt: organizations.createdAt,
+      }).from(organizations).orderBy(desc(organizations.createdAt));
+
+      const alertCounts = await db.select({
+        orgId: systemAlerts.organizationId,
+        count: sql<number>`count(*)`,
+      }).from(systemAlerts)
+        .where(sql`${systemAlerts.resolvedAt} IS NULL`)
+        .groupBy(systemAlerts.organizationId);
+
+      const alertMap = new Map(alertCounts.map(r => [r.orgId, Number(r.count)]));
+
+      const tierPrices: Record<string, number> = { free: 0, starter: 49, pro: 149, scale: 399, enterprise: 799 };
+
+      const result = orgs.map(org => {
+        let score = 100;
+        const issues: string[] = [];
+
+        // Dunning stage penalties
+        const dunning = org.dunningStage as string;
+        if (dunning === 'suspended') { score -= 60; issues.push('Suspended — payment overdue'); }
+        else if (dunning === 'restricted') { score -= 40; issues.push('Restricted — payment past due'); }
+        else if (dunning === 'warning') { score -= 20; issues.push('Dunning warning active'); }
+        else if (dunning === 'grace_period') { score -= 10; issues.push('In grace period'); }
+
+        // Subscription status
+        if (org.subscriptionStatus === 'past_due') { score -= 20; issues.push('Invoice past due'); }
+        else if (org.subscriptionStatus === 'unpaid') { score -= 30; issues.push('Invoice unpaid'); }
+        else if (org.subscriptionStatus === 'canceled') { score -= 50; issues.push('Subscription canceled'); }
+
+        // Trial expiring
+        if (org.trialEndsAt) {
+          const daysLeft = Math.ceil((new Date(org.trialEndsAt as any).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+          if (daysLeft <= 0) { score -= 15; issues.push('Trial expired — not converted'); }
+          else if (daysLeft <= 2) { score -= 10; issues.push(`Trial expires in ${daysLeft}d`); }
+        }
+
+        // Alert penalties
+        const alertCount = alertMap.get(org.id) || 0;
+        if (alertCount > 5) { score -= 15; issues.push(`${alertCount} active alerts`); }
+        else if (alertCount > 0) { score -= 5; issues.push(`${alertCount} active alert${alertCount > 1 ? 's' : ''}`); }
+
+        // Free tier is an opportunity, not inherently unhealthy
+        if (org.subscriptionTier === 'free') score -= 5;
+
+        // Bonuses
+        if (org.isFounder) score = 100;
+        if (['scale', 'enterprise'].includes(org.subscriptionTier as string)) score = Math.min(score + 5, 100);
+
+        score = Math.max(0, Math.min(100, score));
+
+        const status =
+          org.isFounder ? 'founder'
+          : score >= 85 ? 'healthy'
+          : score >= 65 ? 'watch'
+          : score >= 40 ? 'at_risk'
+          : 'critical';
+
+        return {
+          id: org.id,
+          name: org.name,
+          subscriptionTier: org.subscriptionTier,
+          subscriptionStatus: org.subscriptionStatus,
+          dunningStage: org.dunningStage,
+          healthScore: score,
+          healthStatus: status,
+          issues,
+          mrr: tierPrices[org.subscriptionTier as string] || 0,
+          createdAt: org.createdAt,
+        };
+      });
+
+      // Sort: critical first, then at_risk, watch, healthy, founder
+      const order = ['critical', 'at_risk', 'watch', 'healthy', 'founder'];
+      result.sort((a, b) => order.indexOf(a.healthStatus) - order.indexOf(b.healthStatus));
+
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  /** Action Queue — prioritized list of items that need founder attention */
+  api.get("/api/founder/action-queue", isAuthenticated, isFounderAdmin, async (_req, res) => {
+    try {
+      const now = new Date();
+      const in3Days = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+      const items: any[] = [];
+
+      // 1. Escalated support tickets (highest priority)
+      const escalatedTickets = await db.select({
+        id: supportTickets.id,
+        subject: supportTickets.subject,
+        priority: supportTickets.priority,
+        createdAt: supportTickets.createdAt,
+        organizationId: supportTickets.organizationId,
+        description: supportTickets.description,
+      }).from(supportTickets)
+        .where(and(
+          eq(supportTickets.resolutionType as any, 'escalated' as any),
+          or(eq(supportTickets.status, 'open' as any), eq(supportTickets.status, 'in_progress' as any))
+        ))
+        .limit(5);
+
+      for (const ticket of escalatedTickets) {
+        items.push({
+          id: `support-${ticket.id}`,
+          type: 'support_escalation',
+          priority: ticket.priority === 'urgent' ? 'critical' : 'high',
+          title: `Support: ${ticket.subject}`,
+          description: `Escalated ticket requiring human response`,
+          estimatedMinutes: 5,
+          suggestedAction: 'Review and reply with AI-drafted response',
+          data: { ticketId: ticket.id, organizationId: ticket.organizationId },
+        });
+      }
+
+      // 2. Orgs in critical dunning stages
+      const criticalOrgs = await db.select({
+        id: organizations.id,
+        name: organizations.name,
+        dunningStage: organizations.dunningStage,
+        subscriptionTier: organizations.subscriptionTier,
+      }).from(organizations)
+        .where(or(
+          eq(organizations.dunningStage, 'suspended'),
+          eq(organizations.dunningStage, 'restricted')
+        ));
+
+      for (const org of criticalOrgs) {
+        items.push({
+          id: `dunning-${org.id}`,
+          type: 'dunning_critical',
+          priority: org.dunningStage === 'suspended' ? 'critical' : 'high',
+          title: `${org.name} — ${org.dunningStage}`,
+          description: `${org.subscriptionTier} customer in ${org.dunningStage} dunning stage. Revenue at risk.`,
+          estimatedMinutes: 2,
+          suggestedAction: 'Review payment history and consider direct outreach',
+          data: { organizationId: org.id, dunningStage: org.dunningStage },
+        });
+      }
+
+      // 3. Trials expiring in 3 days with no conversion
+      const expiringTrials = await db.select({
+        id: organizations.id,
+        name: organizations.name,
+        trialEndsAt: organizations.trialEndsAt,
+        subscriptionTier: organizations.subscriptionTier,
+      }).from(organizations)
+        .where(and(
+          sql`${organizations.trialEndsAt} IS NOT NULL`,
+          sql`${organizations.trialEndsAt} <= ${in3Days}`,
+          sql`${organizations.trialEndsAt} > ${now}`,
+          eq(organizations.subscriptionTier, 'free')
+        ));
+
+      for (const org of expiringTrials) {
+        const daysLeft = Math.ceil((new Date(org.trialEndsAt as any).getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        items.push({
+          id: `trial-${org.id}`,
+          type: 'expiring_trial',
+          priority: daysLeft <= 1 ? 'high' : 'medium',
+          title: `${org.name} — trial expires in ${daysLeft}d`,
+          description: `Still on free tier. Trial ends soon — conversion opportunity.`,
+          estimatedMinutes: 2,
+          suggestedAction: 'Send personalized outreach or offer a discount to convert',
+          data: { organizationId: org.id, trialEndsAt: org.trialEndsAt },
+        });
+      }
+
+      // 4. High-vote unreviewed feature requests
+      const hotFeatureRequests = await db.select({
+        id: featureRequests.id,
+        title: featureRequests.title,
+        upvotes: featureRequests.upvotes,
+        category: featureRequests.category,
+      }).from(featureRequests)
+        .where(and(
+          eq(featureRequests.status, 'submitted'),
+          sql`${featureRequests.upvotes} >= 5`
+        ))
+        .orderBy(desc(featureRequests.upvotes))
+        .limit(3);
+
+      for (const req of hotFeatureRequests) {
+        items.push({
+          id: `feature-${req.id}`,
+          type: 'feature_request',
+          priority: (req.upvotes || 0) >= 10 ? 'high' : 'medium',
+          title: `${req.upvotes} votes: ${req.title}`,
+          description: `Popular feature request awaiting triage`,
+          estimatedMinutes: 1,
+          suggestedAction: 'Mark as planned / in_progress / declined with founder notes',
+          data: { featureRequestId: req.id, upvotes: req.upvotes },
+        });
+      }
+
+      // 5. Draft campaigns never activated
+      const draftCampaigns = await db.select({
+        id: growthCampaigns.id,
+        name: growthCampaigns.name,
+        createdAt: growthCampaigns.createdAt,
+      }).from(growthCampaigns)
+        .where(eq(growthCampaigns.status, 'draft'));
+
+      for (const campaign of draftCampaigns) {
+        const daysOld = Math.floor((now.getTime() - new Date(campaign.createdAt as any).getTime()) / (1000 * 60 * 60 * 24));
+        if (daysOld >= 1) {
+          items.push({
+            id: `campaign-${campaign.id}`,
+            type: 'inactive_campaign',
+            priority: 'medium',
+            title: `Campaign "${campaign.name}" never activated`,
+            description: `Created ${daysOld}d ago, still in draft. Activate in Meta Ads Manager to start spending.`,
+            estimatedMinutes: 1,
+            suggestedAction: 'Activate in Meta Ads Manager or delete if no longer needed',
+            data: { campaignId: campaign.id },
+          });
+        }
+      }
+
+      // Sort by priority weight
+      const priorityWeight: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+      items.sort((a, b) => priorityWeight[a.priority] - priorityWeight[b.priority]);
+
+      res.json({
+        items,
+        totalEstimatedMinutes: items.reduce((s, i) => s + (i.estimatedMinutes || 0), 0),
+        counts: {
+          critical: items.filter(i => i.priority === 'critical').length,
+          high: items.filter(i => i.priority === 'high').length,
+          medium: items.filter(i => i.priority === 'medium').length,
+        },
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // POST /api/monitor/alerts/:id/resolve — resolve an alert
   api.post("/api/monitor/alerts/:id/resolve", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
@@ -2500,5 +3537,492 @@ export function registerAdminRoutes(app: Express): void {
       res.status(500).json({ message: err.message });
     }
   });
+
+  /** AI-draft a support reply for an escalated ticket */
+  api.post("/api/founder/support/:ticketId/ai-draft", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const ticketId = parseInt(req.params.ticketId);
+      const [ticket] = await db.select().from(supportTickets).where(eq(supportTickets.id, ticketId)).limit(1);
+      if (!ticket) return res.status(404).json({ message: "Ticket not found" });
+
+      const messages = await db.select().from(supportTicketMessages)
+        .where(eq(supportTicketMessages.ticketId, ticketId))
+        .orderBy(supportTicketMessages.createdAt as any);
+
+      const [org] = await db.select({ name: organizations.name, subscriptionTier: organizations.subscriptionTier })
+        .from(organizations).where(eq(organizations.id, ticket.organizationId)).limit(1);
+
+      const { getOpenAIClient } = await import("./utils/openaiClient");
+      const openai = getOpenAIClient();
+      if (!openai) return res.status(503).json({ message: "OpenAI not configured" });
+
+      const conversation = messages.map((m: any) =>
+        `${m.role === 'user' ? 'Customer' : 'Support'}: ${m.content}`
+      ).join('\n\n');
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [{
+          role: "system",
+          content: `You are the founder of AcreOS writing a personal support reply. AcreOS is a CRM and operating system for land investors. Be helpful, warm, direct, and knowledgeable. The customer is a ${org?.subscriptionTier || 'free'} tier subscriber named from org "${org?.name || 'Unknown'}". Sign off as "– The AcreOS Team". Do not be overly formal. Aim for 2-4 sentences unless the issue requires more.`,
+        }, {
+          role: "user",
+          content: `Support ticket: "${ticket.subject}"\n\nConversation:\n${conversation}\n\nWrite a helpful, resolution-focused reply:`,
+        }],
+        temperature: 0.5,
+        max_tokens: 400,
+      });
+
+      const draft = completion.choices[0].message.content?.trim() || "";
+      res.json({ draft, ticketId });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  /** Send a reply to a support ticket and optionally resolve it */
+  api.post("/api/founder/support/:ticketId/reply", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const ticketId = parseInt(req.params.ticketId);
+      const { message, resolve } = req.body;
+      if (!message) return res.status(400).json({ message: "message is required" });
+
+      await db.insert(supportTicketMessages).values({
+        ticketId,
+        role: "agent",
+        content: message,
+        agentName: "Founder",
+      } as any);
+
+      if (resolve) {
+        await db.update(supportTickets)
+          .set({ status: "resolved", resolvedAt: new Date(), resolvedBy: "founder", resolution: message } as any)
+          .where(eq(supportTickets.id, ticketId));
+      }
+
+      res.json({ ok: true, resolved: !!resolve });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  /** MRR waterfall — breakdown by tier with at-risk flagging */
+  api.get("/api/founder/revenue/waterfall", isAuthenticated, isFounderAdmin, async (_req, res) => {
+    try {
+      const tierPrices: Record<string, number> = { free: 0, starter: 49, pro: 149, scale: 399, enterprise: 799 };
+
+      const orgRows = await db.select({
+        subscriptionTier: organizations.subscriptionTier,
+        subscriptionStatus: organizations.subscriptionStatus,
+        dunningStage: organizations.dunningStage,
+      }).from(organizations);
+
+      const tiers = ['free', 'starter', 'pro', 'scale', 'enterprise'] as const;
+      const tierData = tiers.map(tier => {
+        const tierOrgs = orgRows.filter(o => o.subscriptionTier === tier);
+        const active = tierOrgs.filter(o => o.subscriptionStatus === 'active' && !['restricted', 'suspended'].includes(o.dunningStage as string));
+        const atRisk = tierOrgs.filter(o => ['restricted', 'suspended', 'past_due'].includes(o.dunningStage as string) || o.subscriptionStatus === 'past_due');
+        const price = tierPrices[tier];
+        return {
+          tier,
+          label: tier.charAt(0).toUpperCase() + tier.slice(1),
+          count: tierOrgs.length,
+          activeCount: active.length,
+          atRiskCount: atRisk.length,
+          mrr: active.length * price,
+          atRiskMrr: atRisk.length * price,
+        };
+      });
+
+      const totalMrr = tierData.reduce((s, t) => s + t.mrr, 0);
+      const atRiskMrr = tierData.reduce((s, t) => s + t.atRiskMrr, 0);
+      const totalOrgs = orgRows.filter(o => o.subscriptionTier !== 'free').length;
+
+      res.json({ tiers: tierData, totalMrr, atRiskMrr, totalOrgs });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // AUTONOMOUS OBSERVATORY ENDPOINTS
+  // ============================================
+
+  // GET /api/admin/system-activity — live feed of autonomous actions
+  api.get("/api/admin/system-activity", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const hours = Math.min(Number(req.query.hours) || 48, 168); // max 7 days
+      const limit = Math.min(Number(req.query.limit) || 100, 500);
+      const since = new Date(Date.now() - hours * 60 * 60 * 1000);
+
+      const rows = await db
+        .select({
+          id: systemActivity.id,
+          orgId: systemActivity.orgId,
+          orgName: organizations.name,
+          jobName: systemActivity.jobName,
+          action: systemActivity.action,
+          summary: systemActivity.summary,
+          entityType: systemActivity.entityType,
+          entityId: systemActivity.entityId,
+          metadata: systemActivity.metadata,
+          createdAt: systemActivity.createdAt,
+        })
+        .from(systemActivity)
+        .leftJoin(organizations, eq(systemActivity.orgId, organizations.id))
+        .where(sql`${systemActivity.createdAt} >= ${since}`)
+        .orderBy(desc(systemActivity.createdAt))
+        .limit(limit);
+
+      res.json({ rows, since: since.toISOString(), total: rows.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/admin/job-health — live job supervisor status
+  api.get("/api/admin/job-health", isAuthenticated, isFounderAdmin, async (_req, res) => {
+    try {
+      const { jobSupervisor } = await import("./services/jobSupervisor");
+      res.json({ jobs: jobSupervisor.getAll(), summary: jobSupervisor.getSummary() });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/admin/churn-risk — at-risk orgs sorted by churn score
+  api.get("/api/admin/churn-risk", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const minScore = Number(req.query.minScore) || 0;
+      const limit = Math.min(Number(req.query.limit) || 50, 200);
+
+      const rows = await db
+        .select({
+          id: organizations.id,
+          name: organizations.name,
+          subscriptionTier: organizations.subscriptionTier,
+          dunningStage: organizations.dunningStage,
+          churnRiskScore: organizations.churnRiskScore,
+          churnRiskUpdatedAt: organizations.churnRiskUpdatedAt,
+          churnRescueSentAt: organizations.churnRescueSentAt,
+          milestonesReached: organizations.milestonesReached,
+          createdAt: organizations.createdAt,
+        })
+        .from(organizations)
+        .where(sql`${organizations.churnRiskScore} >= ${minScore} AND ${organizations.subscriptionStatus} = 'active'`)
+        .orderBy(desc(organizations.churnRiskScore))
+        .limit(limit);
+
+      res.json({ orgs: rows, total: rows.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/admin/churn-risk/:orgId/rescue — manually trigger rescue for an org
+  api.post("/api/admin/churn-risk/:orgId/rescue", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const orgId = Number(req.params.orgId);
+      const { churnEngine } = await import("./services/churnEngine");
+      const org = await storage.getOrganization(orgId);
+      if (!org) return res.status(404).json({ message: "Org not found" });
+      await db.update(organizations).set({ churnRescueSentAt: null }).where(eq(organizations.id, orgId));
+      const score = await churnEngine.scoreOrg(orgId, { dunningStage: org.dunningStage });
+      res.json({ message: "Rescue triggered", riskScore: score });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/admin/sophie-observations — Sophie's recent observations
+  api.get("/api/admin/sophie-observations", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const limit = Math.min(Number(req.query.limit) || 30, 100);
+
+      // Use sophieObservations (proactive monitor results) — includes suggestedAction
+      const observations = await db
+        .select({
+          id: sophieObservations.id,
+          orgId: sophieObservations.organizationId,
+          orgName: organizations.name,
+          type: sophieObservations.type,
+          content: sophieObservations.description,
+          confidence: sophieObservations.confidenceScore,
+          severity: sophieObservations.severity,
+          status: sophieObservations.status,
+          suggestedAction: sql<string>`${sophieObservations.metadata}->>'suggestedAction'`,
+          createdAt: sophieObservations.createdAt,
+        })
+        .from(sophieObservations)
+        .leftJoin(organizations, eq(sophieObservations.organizationId, organizations.id))
+        .where(sql`${sophieObservations.status} NOT IN ('dismissed','auto_resolved')`)
+        .orderBy(desc(sophieObservations.createdAt))
+        .limit(limit);
+
+      const learnings = await db
+        .select()
+        .from(sophieCrossOrgLearnings)
+        .orderBy(desc(sophieCrossOrgLearnings.createdAt))
+        .limit(10);
+
+      res.json({ observations, learnings });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/admin/sophie-observations/:id/execute — execute the suggested action for an observation
+  api.post("/api/admin/sophie-observations/:id/execute", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const obsId = Number(req.params.id);
+      const [obs] = await db
+        .select({ orgId: sophieObservations.organizationId, metadata: sophieObservations.metadata })
+        .from(sophieObservations)
+        .where(eq(sophieObservations.id, obsId))
+        .limit(1);
+
+      if (!obs) return res.status(404).json({ message: "Observation not found" });
+
+      const suggestedAction = (obs.metadata as any)?.suggestedAction;
+      let actionTaken = "acknowledged";
+
+      // Route action to appropriate handler
+      if (suggestedAction === "proactive_outreach" || suggestedAction === "draft_outreach_message") {
+        // Trigger churn rescue for this org
+        const { churnEngine } = await import("./services/churnEngine");
+        const org = await storage.getOrganization(obs.orgId);
+        if (org) {
+          await db.update(organizations).set({ churnRescueSentAt: null }).where(eq(organizations.id, obs.orgId));
+          await churnEngine.runForAllOrgs();
+          actionTaken = "rescue_triggered";
+        }
+      } else if (suggestedAction === "get_deals") {
+        const { dealHunterService } = await import("./services/dealHunter");
+        dealHunterService.runForOrg(obs.orgId).catch(() => {});
+        actionTaken = "deal_hunt_triggered";
+      }
+
+      // Mark observation as acknowledged
+      await db.update(sophieObservations)
+        .set({ status: "acknowledged", acknowledgedAt: new Date() })
+        .where(eq(sophieObservations.id, obsId));
+
+      res.json({ message: "Action executed", actionTaken });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/admin/founder-briefing/send — manually trigger briefing
+  api.post("/api/admin/founder-briefing/send", isAuthenticated, isFounderAdmin, async (_req, res) => {
+    try {
+      const { sendDailyBriefing } = await import("./services/founderBriefing");
+      // Clear last-sent so it will re-send
+      const { systemMeta } = await import("@shared/schema");
+      await db.delete(systemMeta).where(eq(systemMeta.key, "founder_briefing_last_sent"));
+      await sendDailyBriefing();
+      res.json({ message: "Briefing sent" });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/admin/churn-engine/run — manually trigger churn scoring run
+  api.post("/api/admin/churn-engine/run", isAuthenticated, isFounderAdmin, async (_req, res) => {
+    try {
+      const { churnEngine } = await import("./services/churnEngine");
+      churnEngine.runForAllOrgs().catch(console.error); // run in background
+      res.json({ message: "Churn engine started in background" });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+
+  // ─── Org API Keys ───────────────────────────────────────────────────────────
+  // Per-organization API keys for external integrations.
+
+  // GET /api/org/api-keys — list keys (masked)
+  api.get("/api/org/api-keys", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const rows = await db
+        .select({
+          id: orgApiKeys.id,
+          name: orgApiKeys.name,
+          keyPrefix: orgApiKeys.keyPrefix,
+          scope: orgApiKeys.scope,
+          expiresAt: orgApiKeys.expiresAt,
+          lastUsedAt: orgApiKeys.lastUsedAt,
+          isRevoked: orgApiKeys.isRevoked,
+          createdAt: orgApiKeys.createdAt,
+        })
+        .from(orgApiKeys)
+        .where(and(eq(orgApiKeys.organizationId, org.id), eq(orgApiKeys.isRevoked, false)))
+        .orderBy(desc(orgApiKeys.createdAt));
+      res.json(rows);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/org/api-keys — create key (returns full key ONCE)
+  api.post("/api/org/api-keys", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = req.user as any;
+      const userId = user?.claims?.sub || user?.id;
+      const { name, scope = "read", expiresInDays } = req.body as {
+        name: string;
+        scope?: "read" | "write" | "admin";
+        expiresInDays?: number | null;
+      };
+      if (!name || !name.trim()) {
+        return res.status(400).json({ error: "Name is required" });
+      }
+
+      // Generate: "acos_" + 32 random hex chars
+      const rawKey = "acos_" + crypto.randomBytes(20).toString("hex");
+      const keyHash = crypto.createHash("sha256").update(rawKey).digest("hex");
+      const keyPrefix = rawKey.slice(0, 12); // "acos_" + 7 chars
+
+      const expiresAt = expiresInDays
+        ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000)
+        : null;
+
+      const [row] = await db
+        .insert(orgApiKeys)
+        .values({
+          organizationId: org.id,
+          name: name.trim(),
+          keyHash,
+          keyPrefix,
+          scope: scope || "read",
+          expiresAt,
+          createdBy: null, // team member id lookup not needed here
+        })
+        .returning();
+
+      res.json({ ...row, key: rawKey });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // DELETE /api/org/api-keys/:id — revoke key
+  api.delete("/api/org/api-keys/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const keyId = parseInt(req.params.id);
+      const [updated] = await db
+        .update(orgApiKeys)
+        .set({ isRevoked: true, updatedAt: new Date() })
+        .where(and(eq(orgApiKeys.id, keyId), eq(orgApiKeys.organizationId, org.id)))
+        .returning({ id: orgApiKeys.id });
+      if (!updated) return res.status(404).json({ error: "Key not found" });
+      res.json({ message: "Key revoked" });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ─── Activity / Audit Log ───────────────────────────────────────────────────
+  // GET /api/org/activity-log — last 50 entries for this org
+  api.get("/api/org/activity-log", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const rows = await db
+        .select()
+        .from(auditLog)
+        .where(eq(auditLog.organizationId, org.id))
+        .orderBy(desc(auditLog.createdAt))
+        .limit(50);
+      res.json(rows);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ─── Direct Mail Attribution ────────────────────────────────────────────────
+  // GET /api/campaigns/:id/mail-attribution — responses attributed to direct mail
+  api.get("/api/campaigns/:id/mail-attribution", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const campaignId = parseInt(req.params.id);
+
+      // Get mailing orders for this campaign
+      const orders = await db
+        .select({ id: mailingOrders.id, totalPieces: mailingOrders.totalPieces,
+                  totalCost: mailingOrders.totalCost, completedAt: mailingOrders.completedAt,
+                  createdAt: mailingOrders.createdAt })
+        .from(mailingOrders)
+        .where(and(eq(mailingOrders.organizationId, org.id), eq(mailingOrders.campaignId, campaignId)));
+
+      const totalSent = orders.reduce((s, o) => s + (o.totalPieces || 0), 0);
+      const totalCostCents = orders.reduce((s, o) => s + (o.totalCost || 0), 0);
+
+      // Get all pieces for these orders
+      const orderIds = orders.map(o => o.id);
+      let attributedLeads = 0;
+
+      if (orderIds.length > 0) {
+        const pieces = await db
+          .select({
+            id: mailingOrderPieces.id,
+            leadId: mailingOrderPieces.leadId,
+            recipientAddressLine1: mailingOrderPieces.recipientAddressLine1,
+            recipientZipCode: mailingOrderPieces.recipientZipCode,
+            createdAt: mailingOrderPieces.createdAt,
+          })
+          .from(mailingOrderPieces)
+          .where(inArray(mailingOrderPieces.mailingOrderId, orderIds));
+
+        // Count leads that were updated/created within 30 days of a mail piece
+        const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+        const leadIds = pieces.map(p => p.leadId).filter(Boolean) as number[];
+        if (leadIds.length > 0) {
+          const matchedLeads = await db
+            .select({ id: leads.id, updatedAt: leads.updatedAt, status: leads.status })
+            .from(leads)
+            .where(and(eq(leads.organizationId, org.id), inArray(leads.id, leadIds)));
+
+          for (const lead of matchedLeads) {
+            const piece = pieces.find(p => p.leadId === lead.id);
+            if (piece && lead.updatedAt) {
+              const diff = new Date(lead.updatedAt).getTime() - new Date(piece.createdAt!).getTime();
+              if (diff >= 0 && diff <= thirtyDaysMs && lead.status !== 'new') {
+                attributedLeads++;
+              }
+            }
+          }
+        }
+      }
+
+      const responseRate = totalSent > 0 ? (attributedLeads / totalSent) * 100 : 0;
+      const costPerResponse = attributedLeads > 0 ? totalCostCents / attributedLeads / 100 : null;
+
+      // Estimated delivery: first order's createdAt + 7 days (midpoint 3-10)
+      const firstOrder = orders.sort((a, b) => new Date(a.createdAt!).getTime() - new Date(b.createdAt!).getTime())[0];
+      const estimatedDeliveryDate = firstOrder
+        ? new Date(new Date(firstOrder.createdAt!).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString()
+        : null;
+
+      res.json({
+        totalSent,
+        totalCostCents,
+        attributedResponses: attributedLeads,
+        responseRate: parseFloat(responseRate.toFixed(2)),
+        costPerResponse,
+        estimatedDeliveryDate,
+        industryBenchmarkMin: 1,
+        industryBenchmarkMax: 3,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ============================================
 
 }

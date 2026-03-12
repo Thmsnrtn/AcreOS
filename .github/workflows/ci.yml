@@ -241,7 +241,7 @@ jobs:
         with:
           category: "/language:javascript-typescript"
 
-  # ── 5. Build & Container Image ──────────────────────────────────────────────
+  # ── 6. Build & Container Image ──────────────────────────────────────────────
   build:
     name: Build
     runs-on: ubuntu-latest

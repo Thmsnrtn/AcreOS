@@ -9,24 +9,43 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { 
-  Plus, 
-  Zap, 
-  Clock, 
-  Play, 
-  Pause, 
-  Trash2, 
-  Edit, 
+import {
+  Plus,
+  Zap,
+  Clock,
+  Play,
+  Pause,
+  Trash2,
+  Edit,
   ChevronRight,
   CheckCircle2,
   XCircle,
   Loader2,
   Workflow,
-  AlertCircle
+  AlertCircle,
+  Sparkles,
+  Users,
+  Banknote,
+  Handshake,
 } from "lucide-react";
 import { format } from "date-fns";
 import type { Workflow as WorkflowType, WorkflowRun, WorkflowTrigger, WorkflowAction } from "@shared/schema";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+
+type WorkflowTemplate = {
+  id: string;
+  name: string;
+  description: string;
+  category: "leads" | "notes" | "deals";
+  trigger: WorkflowTrigger;
+  actions: WorkflowAction[];
+};
+
+const TEMPLATE_CATEGORY_ICONS: Record<string, React.ReactNode> = {
+  leads: <Users className="w-4 h-4" />,
+  notes: <Banknote className="w-4 h-4" />,
+  deals: <Handshake className="w-4 h-4" />,
+};
 
 const TRIGGER_LABELS: Record<string, string> = {
   "lead.created": "Lead Created",
@@ -60,6 +79,10 @@ export default function WorkflowsPage() {
   const { data: workflowRuns } = useQuery<WorkflowRun[]>({
     queryKey: ["/api/workflow-runs"],
     enabled: false, // We'll fetch runs per workflow as needed
+  });
+
+  const { data: templates } = useQuery<WorkflowTemplate[]>({
+    queryKey: ["/api/workflow-templates"],
   });
 
   const createMutation = useMutation({
@@ -120,6 +143,29 @@ export default function WorkflowsPage() {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     },
   });
+
+  const [installingTemplateId, setInstallingTemplateId] = useState<string | null>(null);
+
+  const installTemplateMutation = useMutation({
+    mutationFn: async (templateId: string) => {
+      const response = await apiRequest("POST", `/api/workflow-templates/${templateId}/install`, {});
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/workflows"] });
+      setInstallingTemplateId(null);
+      toast({ title: "Template installed", description: "The workflow is now active." });
+    },
+    onError: (error: Error) => {
+      setInstallingTemplateId(null);
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const handleInstallTemplate = (templateId: string) => {
+    setInstallingTemplateId(templateId);
+    installTemplateMutation.mutate(templateId);
+  };
 
   const handleSave = (data: { name: string; description: string; trigger: WorkflowTrigger; actions: WorkflowAction[] }) => {
     if (selectedWorkflow) {
@@ -290,6 +336,76 @@ export default function WorkflowsPage() {
               </Button>
             </CardContent>
           </Card>
+        )}
+
+        {/* Pre-built Templates */}
+        {templates && templates.length > 0 && (
+          <div className="mt-4" data-testid="section-workflow-templates">
+            <div className="flex items-center gap-2 mb-3">
+              <Sparkles className="w-4 h-4 text-primary" />
+              <h2 className="font-semibold text-sm uppercase tracking-wide text-muted-foreground">
+                Pre-built Templates for Land Investing
+              </h2>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              {templates.map((template) => {
+                const alreadyInstalled = workflows?.some(
+                  (w) => w.name === template.name
+                );
+                return (
+                  <Card
+                    key={template.id}
+                    className="hover-elevate"
+                    data-testid={`card-template-${template.id}`}
+                  >
+                    <CardContent className="p-4 flex flex-col gap-3 h-full">
+                      <div className="flex items-start gap-2">
+                        <div className="p-2 rounded-lg bg-primary/10 text-primary shrink-0">
+                          {TEMPLATE_CATEGORY_ICONS[template.category]}
+                        </div>
+                        <div>
+                          <p className="font-semibold text-sm leading-tight">
+                            {template.name}
+                          </p>
+                          <Badge variant="secondary" className="text-xs mt-0.5 capitalize">
+                            {template.category}
+                          </Badge>
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground flex-1">
+                        {template.description}
+                      </p>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-muted-foreground">
+                          {template.actions.length} action{template.actions.length !== 1 ? "s" : ""}
+                        </span>
+                        {alreadyInstalled ? (
+                          <Badge variant="secondary" className="text-xs flex items-center gap-1">
+                            <CheckCircle2 className="w-3 h-3" /> Installed
+                          </Badge>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleInstallTemplate(template.id)}
+                            disabled={installingTemplateId === template.id}
+                            data-testid={`button-install-template-${template.id}`}
+                          >
+                            {installingTemplateId === template.id ? (
+                              <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                            ) : (
+                              <Plus className="w-3 h-3 mr-1" />
+                            )}
+                            Install
+                          </Button>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          </div>
         )}
 
         {/* Builder Dialog */}

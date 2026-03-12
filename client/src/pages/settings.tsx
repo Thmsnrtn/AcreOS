@@ -73,7 +73,7 @@ interface SeatPricing {
   yearly?: { id: string; amount: number; currency: string } | null;
 }
 
-const VALID_TABS = ["general", "appearance", "team", "payments", "communications", "notifications", "ai", "data", "integrations", "developer", "goals", "security"] as const;
+const VALID_TABS = ["general", "appearance", "team", "payments", "communications", "notifications", "ai", "data", "integrations", "developer", "goals", "security", "referral"] as const;
 type TabValue = typeof VALID_TABS[number];
 
 interface StripeConnectStatusResponse {
@@ -769,6 +769,10 @@ export default function Settings() {
                   <Shield className="w-4 h-4 hidden sm:inline" />
                   Security
                 </TabsTrigger>
+                <TabsTrigger value="referral" data-testid="tab-referral" className="gap-1">
+                  <Gift className="w-4 h-4 hidden sm:inline" />
+                  Refer &amp; Earn
+                </TabsTrigger>
               </TabsList>
             </div>
 
@@ -1451,7 +1455,7 @@ export default function Settings() {
                     Manage test data for development and demo purposes.
                   </p>
                 </div>
-                
+
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-base">Demo Data</CardTitle>
@@ -1472,7 +1476,7 @@ export default function Settings() {
                       )}
                       Add Demo Data
                     </Button>
-                    
+
                     <Button
                       variant="destructive"
                       onClick={() => setShowClearConfirm(true)}
@@ -1489,6 +1493,12 @@ export default function Settings() {
                   </CardContent>
                 </Card>
               </div>
+
+              {/* API Key Management */}
+              <ApiKeyManager />
+
+              {/* Activity Audit Log */}
+              <ActivityLogPanel />
             </TabsContent>
 
             {/* ── Goals Tab ─────────────────────────────────────────────── */}
@@ -1500,6 +1510,10 @@ export default function Settings() {
             <TabsContent value="security" className="space-y-6 mt-6" data-testid="tab-content-security">
               <TwoFactorAuthSettings />
               <PasswordChangeSettings />
+            </TabsContent>
+
+            <TabsContent value="referral" className="space-y-6 mt-6" data-testid="tab-content-referral">
+              <ReferralSettings />
             </TabsContent>
           </Tabs>
       <ConfirmDialog
@@ -1731,6 +1745,111 @@ function PasswordChangeSettings() {
   );
 }
 
+// ── Referral Settings component ────────────────────────────────────────────────
+
+function ReferralSettings() {
+  const { toast } = useToast();
+  const appUrl = typeof window !== "undefined" ? window.location.origin : "https://app.acreos.io";
+
+  const codeQuery = useQuery<{ code: string }>({
+    queryKey: ["/api/referral/code"],
+    queryFn: async () => {
+      const res = await fetch("/api/referral/code", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load referral code");
+      return res.json();
+    },
+  });
+
+  const statsQuery = useQuery<{ signups: number; conversions: number; creditsEarned: number; creditBalance: number }>({
+    queryKey: ["/api/referral/stats"],
+    queryFn: async () => {
+      const res = await fetch("/api/referral/stats", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load referral stats");
+      return res.json();
+    },
+  });
+
+  const referralLink = codeQuery.data?.code
+    ? `${appUrl}/?ref=${codeQuery.data.code}`
+    : "";
+
+  const copyLink = () => {
+    if (!referralLink) return;
+    navigator.clipboard.writeText(referralLink).then(() => {
+      toast({ title: "Copied!", description: "Referral link copied to clipboard." });
+    });
+  };
+
+  const stats = statsQuery.data;
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Gift className="w-5 h-5" />
+            Refer &amp; Earn
+          </CardTitle>
+          <CardDescription>
+            Share AcreOS with fellow land investors. They get 30 days free — you get $20 account credit when they subscribe.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Offer callout */}
+          <div className="rounded-xl bg-primary/5 border border-primary/20 p-4 flex items-start gap-3">
+            <Gift className="w-5 h-5 text-primary shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <p className="font-semibold text-sm">Give 30 days free, get $20 credit</p>
+              <p className="text-xs text-muted-foreground">
+                Your referral code gives new users their first 30 days on us.
+                Once they become a paying subscriber, you'll automatically receive a $20 account credit — applied to your next invoice.
+              </p>
+            </div>
+          </div>
+
+          {/* Referral link */}
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Your referral link</p>
+            {codeQuery.isLoading ? (
+              <Skeleton className="h-10 w-full" />
+            ) : codeQuery.isError ? (
+              <p className="text-sm text-destructive">Failed to load referral link. Please refresh.</p>
+            ) : (
+              <div className="flex gap-2">
+                <Input readOnly value={referralLink} className="font-mono text-sm" />
+                <Button variant="outline" size="sm" onClick={copyLink} className="shrink-0">
+                  <Link2 className="w-4 h-4 mr-1" />
+                  Copy
+                </Button>
+              </div>
+            )}
+          </div>
+
+          {/* Stats */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {[
+              { label: "Signups", value: stats?.signups ?? 0, icon: Users },
+              { label: "Converted", value: stats?.conversions ?? 0, icon: CheckCircle2 },
+              { label: "Credits Earned", value: stats ? `$${(stats.creditsEarned / 100).toFixed(0)}` : "$0", icon: Coins },
+              { label: "Available Credit", value: stats ? `$${(stats.creditBalance / 100).toFixed(0)}` : "$0", icon: Wallet },
+            ].map(({ label, value, icon: Icon }) => (
+              <div key={label} className="rounded-lg border border-border/60 bg-card p-4 space-y-1 text-center">
+                <Icon className="w-4 h-4 text-primary mx-auto" />
+                <p className="text-2xl font-bold">{statsQuery.isLoading ? "—" : value}</p>
+                <p className="text-xs text-muted-foreground">{label}</p>
+              </div>
+            ))}
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            Credits are applied automatically to your subscription invoice once a referee has been a paying subscriber for 30+ days.
+          </p>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 // ── Goals Settings component ──────────────────────────────────────────────────
 
 interface GoalPayload {
@@ -1909,6 +2028,329 @@ function GoalsSettings() {
                 );
               })}
             </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ── API Key Manager ────────────────────────────────────────────────────────────
+
+interface OrgApiKey {
+  id: number;
+  name: string;
+  keyPrefix: string;
+  scope: string;
+  expiresAt: string | null;
+  lastUsedAt: string | null;
+  isRevoked: boolean;
+  createdAt: string;
+}
+
+function ApiKeyManager() {
+  const { toast } = useToast();
+  const [showCreate, setShowCreate] = useState(false);
+  const [newKeyName, setNewKeyName] = useState("");
+  const [newKeyScope, setNewKeyScope] = useState<"read" | "write" | "admin">("read");
+  const [newKeyExpiry, setNewKeyExpiry] = useState<string>("never");
+  const [createdKey, setCreatedKey] = useState<string | null>(null);
+  const [revokeId, setRevokeId] = useState<number | null>(null);
+
+  const { data: keys = [], isLoading, refetch } = useQuery<OrgApiKey[]>({
+    queryKey: ["/api/org/api-keys"],
+    queryFn: async () => {
+      const res = await fetch("/api/org/api-keys", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load API keys");
+      return res.json();
+    },
+  });
+
+  const createKey = useMutation({
+    mutationFn: async () => {
+      const expiresInDays = newKeyExpiry === "never" ? null : parseInt(newKeyExpiry);
+      const res = await apiRequest("POST", "/api/org/api-keys", {
+        name: newKeyName,
+        scope: newKeyScope,
+        expiresInDays,
+      });
+      return res.json() as Promise<OrgApiKey & { key: string }>;
+    },
+    onSuccess: (data) => {
+      setCreatedKey((data as any).key);
+      setShowCreate(false);
+      setNewKeyName("");
+      refetch();
+    },
+    onError: () => toast({ title: "Failed to create API key", variant: "destructive" }),
+  });
+
+  const revokeKey = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("DELETE", `/api/org/api-keys/${id}`, undefined);
+      return res.json();
+    },
+    onSuccess: () => {
+      setRevokeId(null);
+      refetch();
+      toast({ title: "API key revoked" });
+    },
+    onError: () => toast({ title: "Failed to revoke key", variant: "destructive" }),
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-semibold flex items-center gap-2">
+            <Code className="w-5 h-5" />
+            API Keys
+          </h2>
+          <p className="text-muted-foreground text-sm">
+            Create API keys to let external tools access your AcreOS data.
+          </p>
+        </div>
+        <Button size="sm" onClick={() => setShowCreate(true)} data-testid="button-create-api-key">
+          <Plus className="w-4 h-4 mr-1" /> Create Key
+        </Button>
+      </div>
+
+      {/* Newly created key — show once */}
+      {createdKey && (
+        <Card className="border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-emerald-700 dark:text-emerald-400 flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4" /> API key created — copy it now, it won't be shown again
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 text-xs bg-muted rounded px-2 py-1.5 font-mono break-all">{createdKey}</code>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  navigator.clipboard.writeText(createdKey);
+                  toast({ title: "Copied to clipboard" });
+                }}
+              >
+                Copy
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setCreatedKey(null)}>
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Create form */}
+      {showCreate && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">New API Key</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <Label>Name</Label>
+              <Input
+                placeholder="e.g. Zapier integration"
+                value={newKeyName}
+                onChange={e => setNewKeyName(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Scope</Label>
+                <Select value={newKeyScope} onValueChange={(v: any) => setNewKeyScope(v)}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="read">Read</SelectItem>
+                    <SelectItem value="write">Write</SelectItem>
+                    <SelectItem value="admin">Admin</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Expiry</Label>
+                <Select value={newKeyExpiry} onValueChange={setNewKeyExpiry}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="never">Never</SelectItem>
+                    <SelectItem value="30">30 days</SelectItem>
+                    <SelectItem value="60">60 days</SelectItem>
+                    <SelectItem value="90">90 days</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                onClick={() => createKey.mutate()}
+                disabled={!newKeyName.trim() || createKey.isPending}
+              >
+                {createKey.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                Create
+              </Button>
+              <Button variant="outline" onClick={() => setShowCreate(false)}>Cancel</Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Keys list */}
+      <Card>
+        <CardContent className="p-0">
+          {isLoading ? (
+            <div className="p-4 text-sm text-muted-foreground">Loading keys…</div>
+          ) : keys.length === 0 ? (
+            <div className="p-6 text-center text-sm text-muted-foreground">
+              No API keys yet. Create one above to get started.
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Key</TableHead>
+                  <TableHead>Scope</TableHead>
+                  <TableHead>Created</TableHead>
+                  <TableHead>Last used</TableHead>
+                  <TableHead>Expires</TableHead>
+                  <TableHead />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {keys.map(k => (
+                  <TableRow key={k.id}>
+                    <TableCell className="font-medium">{k.name}</TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">{k.keyPrefix}…</TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className="text-xs capitalize">{k.scope}</Badge>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {k.createdAt ? new Date(k.createdAt).toLocaleDateString() : "—"}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleDateString() : "Never"}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {k.expiresAt ? new Date(k.expiresAt).toLocaleDateString() : "Never"}
+                    </TableCell>
+                    <TableCell>
+                      {revokeId === k.id ? (
+                        <div className="flex gap-1">
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => revokeKey.mutate(k.id)}
+                            disabled={revokeKey.isPending}
+                          >
+                            Confirm
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => setRevokeId(null)}>
+                            Cancel
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => setRevokeId(k.id)}
+                        >
+                          Revoke
+                        </Button>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ── Activity Audit Log Panel ───────────────────────────────────────────────────
+
+interface AuditLogEntry {
+  id: number;
+  userId: string | null;
+  action: string;
+  entityType: string;
+  entityId: number | null;
+  changes: Record<string, any> | null;
+  ipAddress: string | null;
+  metadata: Record<string, any> | null;
+  createdAt: string;
+}
+
+function ActivityLogPanel() {
+  const { data: entries = [], isLoading } = useQuery<AuditLogEntry[]>({
+    queryKey: ["/api/org/activity-log"],
+    queryFn: async () => {
+      const res = await fetch("/api/org/activity-log", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load activity log");
+      return res.json();
+    },
+  });
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-xl font-semibold flex items-center gap-2">
+          <Shield className="w-5 h-5" />
+          Activity Log
+        </h2>
+        <p className="text-muted-foreground text-sm">
+          Last 50 actions performed in your organization.
+        </p>
+      </div>
+
+      <Card>
+        <CardContent className="p-0">
+          {isLoading ? (
+            <div className="p-4 text-sm text-muted-foreground">Loading…</div>
+          ) : entries.length === 0 ? (
+            <div className="p-6 text-center text-sm text-muted-foreground">No activity recorded yet.</div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Time</TableHead>
+                  <TableHead>Action</TableHead>
+                  <TableHead>Entity</TableHead>
+                  <TableHead>User</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {entries.map(e => (
+                  <TableRow key={e.id}>
+                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                      {new Date(e.createdAt).toLocaleString()}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="text-xs capitalize">{e.action}</Badge>
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      <span className="capitalize">{e.entityType}</span>
+                      {e.entityId && <span className="text-muted-foreground ml-1">#{e.entityId}</span>}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {e.userId ? e.userId.slice(0, 8) + "…" : "System"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           )}
         </CardContent>
       </Card>

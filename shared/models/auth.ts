@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { index, jsonb, pgTable, timestamp, varchar } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, pgTable, serial, text, timestamp, varchar } from "drizzle-orm/pg-core";
 
 // Session storage table (used by connect-pg-simple).
 export const sessions = pgTable(
@@ -26,9 +26,52 @@ export const users = pgTable("users", {
   // Task #8: Account lockout — lock after 5 consecutive failed logins for 30 minutes
   failedLoginAttempts: varchar("failed_login_attempts").default("0"),
   lockedUntil: timestamp("locked_until"),
+  referralCode: varchar("referral_code", { length: 16 }).unique(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
+
+// Password reset tokens table.
+export const passwordResetTokens = pgTable(
+  "password_reset_tokens",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    token: varchar("token", { length: 128 }).notNull().unique(),
+    expiresAt: timestamp("expires_at").notNull(),
+    usedAt: timestamp("used_at"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => [
+    index("IDX_prt_token").on(table.token),
+    index("IDX_prt_user").on(table.userId),
+    index("IDX_prt_expires").on(table.expiresAt),
+  ]
+);
+
+export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
+
+// Referral tracking table.
+export const referrals = pgTable(
+  "referrals",
+  {
+    id: serial("id").primaryKey(),
+    referrerId: varchar("referrer_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    refereeId: varchar("referee_id").references(() => users.id, { onDelete: "set null" }),
+    code: varchar("code", { length: 16 }).notNull().unique(),
+    status: text("status").notNull().default("pending"), // pending | signed_up | converted
+    creditAmount: integer("credit_amount").notNull().default(0), // cents
+    creditedAt: timestamp("credited_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("IDX_referrals_referrer").on(table.referrerId),
+    index("IDX_referrals_code").on(table.code),
+    index("IDX_referrals_referee").on(table.refereeId),
+  ]
+);
+
+export type Referral = typeof referrals.$inferSelect;

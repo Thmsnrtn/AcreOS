@@ -1,14 +1,17 @@
 import { useEffect, useState, lazy, Suspense } from "react";
 import { PageShell } from "@/components/page-shell";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
 import {
   Banknote,
   PieChart,
   TrendingUp,
   BarChart3,
   Landmark,
+  Upload,
 } from "lucide-react";
 import FinancePage from "@/pages/finance";
+import { NotesImportDialog } from "@/components/notes-import-dialog";
 
 const PortfolioOptimizerPage = lazy(() => import("@/pages/portfolio-optimizer"));
 const CashFlowPage = lazy(() => import("@/pages/cash-flow"));
@@ -35,6 +38,7 @@ function TabFallback() {
 
 export default function MoneyPage() {
   const [activeTab, setActiveTab] = useState<TabValue>(getTabFromHash);
+  const [importOpen, setImportOpen] = useState(false);
 
   useEffect(() => {
     const handleHashChange = () => setActiveTab(getTabFromHash());
@@ -54,14 +58,23 @@ export default function MoneyPage() {
 
   return (
     <PageShell>
-      <div>
-        <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-money-title">
-          Money
-        </h1>
-        <p className="text-muted-foreground text-sm md:text-base">
-          Notes, portfolio, cash flow, and capital markets.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-money-title">
+            Money
+          </h1>
+          <p className="text-muted-foreground text-sm md:text-base">
+            Notes, portfolio, cash flow, and capital markets.
+          </p>
+        </div>
+        {activeTab === "notes" && (
+          <Button variant="outline" size="sm" onClick={() => setImportOpen(true)} className="shrink-0">
+            <Upload className="w-4 h-4 mr-2" />
+            Import Notes
+          </Button>
+        )}
       </div>
+      <NotesImportDialog open={importOpen} onOpenChange={setImportOpen} />
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6" data-testid="tabs-money">
         <TabsList className="w-full sm:w-auto overflow-x-auto flex-nowrap" data-testid="tabs-list-money">

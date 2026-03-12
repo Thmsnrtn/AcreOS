@@ -821,6 +821,28 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
   
   const [pricingRecommendation, setPricingRecommendation] = useState<PricingRecommendation | null>(null);
   const [isPricingPopoverOpen, setIsPricingPopoverOpen] = useState(false);
+  const [negotiationScript, setNegotiationScript] = useState<string | null>(null);
+  const [isNegotiationOpen, setIsNegotiationOpen] = useState(false);
+
+  const negotiationMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/ai/negotiation/script", {
+        askingPrice: deal.property?.assessedValue || deal.offerAmount || 50000,
+        offerAmount: deal.offerAmount || undefined,
+        sellerMessages: [],
+        sellerMotivation: "motivated",
+      });
+      if (!response.ok) throw new Error("Failed to generate negotiation script");
+      return response.json() as Promise<{ script: string; counterOffer: any; sellerProfile: any }>;
+    },
+    onSuccess: (data) => {
+      setNegotiationScript(data.script);
+      setIsNegotiationOpen(true);
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to generate script", description: error.message, variant: "destructive" });
+    },
+  });
   
   const pricingMutation = useMutation({
     mutationFn: async () => {
@@ -1130,7 +1152,52 @@ function DealDetailDrawer({ deal, onClose, onDelete }: { deal: DealWithProperty;
                           )}
                         </PopoverContent>
                       </Popover>
+
+                      {/* Negotiation Script Button */}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5 text-violet-600 border-violet-200 hover:bg-violet-50 dark:border-violet-800 dark:hover:bg-violet-950"
+                        onClick={() => negotiationMutation.mutate()}
+                        disabled={negotiationMutation.isPending}
+                        title="AI Negotiation Coaching"
+                      >
+                        {negotiationMutation.isPending ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Sparkles className="w-4 h-4" />
+                        )}
+                        <span className="hidden sm:inline">Negotiate</span>
+                      </Button>
                     </div>
+
+                    {/* Negotiation Script Dialog */}
+                    <Dialog open={isNegotiationOpen} onOpenChange={setIsNegotiationOpen}>
+                      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+                        <DialogHeader>
+                          <DialogTitle className="flex items-center gap-2">
+                            <Sparkles className="w-5 h-5 text-violet-500" />
+                            AI Negotiation Coaching
+                          </DialogTitle>
+                          <p className="text-sm text-muted-foreground">AI-generated negotiation strategy and talking points for this deal</p>
+                        </DialogHeader>
+                        {negotiationScript && (
+                          <div className="space-y-4">
+                            <div className="bg-violet-50 dark:bg-violet-950/30 rounded-lg p-4 border border-violet-200 dark:border-violet-800">
+                              <pre className="text-sm whitespace-pre-wrap font-sans leading-relaxed">{negotiationScript}</pre>
+                            </div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="gap-2"
+                              onClick={() => { navigator.clipboard.writeText(negotiationScript); toast({ title: "Copied to clipboard" }); }}
+                            >
+                              Copy Script
+                            </Button>
+                          </div>
+                        )}
+                      </DialogContent>
+                    </Dialog>
                     <p className="text-xl font-bold font-mono">
                       ${Number(deal.offerAmount || 0).toLocaleString()}
                     </p>

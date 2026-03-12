@@ -5,19 +5,18 @@
  * Founders have unrestricted access to all features, bypassing tier/usage limits
  */
 
-// Hardcoded founder email - always has founder access
-const PRIMARY_FOUNDER_EMAIL = "thmsnrtn@gmail.com";
+// Founder emails from environment variables only
+// Set FOUNDER_EMAIL (single) and/or FOUNDER_EMAILS (comma-separated) in your .env
+const PRIMARY_FOUNDER_EMAIL = (process.env.FOUNDER_EMAIL || "").trim().toLowerCase();
 
-// Additional founder emails from environment variable
 const ADDITIONAL_FOUNDER_EMAILS = (process.env.FOUNDER_EMAILS || "")
   .split(",")
   .map((email) => email.trim().toLowerCase())
   .filter(Boolean);
 
-// Combined list of all founder emails
+// Combined list of all founder emails (deduped, empty strings excluded)
 const FOUNDER_EMAILS = [
-  PRIMARY_FOUNDER_EMAIL.toLowerCase(),
-  ...ADDITIONAL_FOUNDER_EMAILS
+  ...new Set([PRIMARY_FOUNDER_EMAIL, ...ADDITIONAL_FOUNDER_EMAILS].filter(Boolean)),
 ];
 
 /**

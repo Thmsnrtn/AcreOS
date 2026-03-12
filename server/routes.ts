@@ -123,6 +123,7 @@ import { registerAutonomousAgentRoutes } from "./routes-autonomous-agent";
 import { registerIntegrationRoutes } from "./routes-integrations";
 import { registerCRMExtrasRoutes } from "./routes-crm-extras";
 import { registerImportExportRoutes } from "./routes-import-export";
+import { registerReferralRoutes } from "./routes-referral";
 import { registerTeamMessagingRoutes } from "./routes-team-messaging";
 import { registerDocSystemRoutes } from "./routes-doc-system";
 import { registerAnalyticsRoutes } from "./routes-analytics";
@@ -620,6 +621,7 @@ export async function registerRoutes(
   registerIntegrationRoutes(app);
   registerCRMExtrasRoutes(app);
   registerImportExportRoutes(app);
+  registerReferralRoutes(app);
   registerTeamMessagingRoutes(app);
   registerDocSystemRoutes(app);
   registerAnalyticsRoutes(app);
