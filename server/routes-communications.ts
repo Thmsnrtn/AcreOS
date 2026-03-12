@@ -53,7 +53,7 @@ export function registerCommunicationRoutes(app: Express): void {
         teamMemberId: teamMember?.id,
         type,
         fromEmail: finalFromEmail,
-        fromName: fromName || memberName || 'Acreage Land Co.',
+        fromName: fromName || memberName || 'AcreOS',
         replyToEmail,
         replyRoutingMode: replyRoutingMode || 'in_app',
         status: type === 'platform_alias' ? 'verified' : 'pending',

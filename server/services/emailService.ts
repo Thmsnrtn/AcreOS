@@ -271,7 +271,7 @@ export class EmailService {
           await getSESClient(options.organizationId);
         
         const fromAddress = options.from || defaultFromEmail;
-        const fromNameFinal = options.fromName || defaultFromName || 'Acreage Land Co.';
+        const fromNameFinal = options.fromName || defaultFromName || 'AcreOS';
         const fromFormatted = `${fromNameFinal} <${fromAddress}>`;
 
         const command = new SendEmailCommand({
