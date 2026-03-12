@@ -73,6 +73,17 @@ import {
   Navigation,
   ListChecks,
   Bell,
+  Wand2,
+  ImageIcon,
+  PencilLine,
+  Send,
+  ChevronLeft,
+  RotateCcw,
+  Layers,
+  Flame,
+  Heart,
+  Users2,
+  HelpCircle,
 } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 
@@ -3925,11 +3936,66 @@ interface SignupAttribution {
   createdAt: string;
 }
 
+interface AdCopyVariant {
+  angle: string;
+  angleLabel: string;
+  headline: string;
+  primaryText: string;
+  description: string;
+  callToAction: string;
+  hook: string;
+}
+
+interface GeneratedAdImage {
+  style: string;
+  styleLabel: string;
+  url: string;
+  aspectRatio: string;
+  metaImageHash?: string;
+}
+
+interface CreativeBundle {
+  id: string;
+  templateKey: string;
+  status: "generating" | "ready" | "error" | "deployed";
+  copies: AdCopyVariant[] | null;
+  images: GeneratedAdImage[] | null;
+  error: string | null;
+}
+
+const ANGLE_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+  pain_point: Flame,
+  aspiration: Heart,
+  social_proof: Users2,
+  curiosity: HelpCircle,
+};
+
+const ANGLE_COLORS: Record<string, string> = {
+  pain_point: "border-red-200 bg-red-50/50 dark:border-red-900/40 dark:bg-red-950/20",
+  aspiration: "border-purple-200 bg-purple-50/50 dark:border-purple-900/40 dark:bg-purple-950/20",
+  social_proof: "border-blue-200 bg-blue-50/50 dark:border-blue-900/40 dark:bg-blue-950/20",
+  curiosity: "border-amber-200 bg-amber-50/50 dark:border-amber-900/40 dark:bg-amber-950/20",
+};
+
 function GrowthSection() {
   const { toast } = useToast();
+
+  // Ad account form
   const [showAdAccountForm, setShowAdAccountForm] = useState(false);
   const [adForm, setAdForm] = useState({ adAccountId: "", accessToken: "", pixelId: "", appId: "" });
-  const [launchForm, setLaunchForm] = useState<{ templateKey: string; name: string; budget: string } | null>(null);
+
+  // Campaign wizard state
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardStep, setWizardStep] = useState<"setup" | "generating" | "preview" | "deploy">("setup");
+  const [wizardTemplate, setWizardTemplate] = useState("");
+  const [wizardName, setWizardName] = useState("");
+  const [wizardBudget, setWizardBudget] = useState("2000");
+  const [bundleId, setBundleId] = useState<string | null>(null);
+  const [bundle, setBundle] = useState<CreativeBundle | null>(null);
+  const [editingCopy, setEditingCopy] = useState<string | null>(null); // angle being edited
+  const [editDraft, setEditDraft] = useState<Partial<AdCopyVariant>>({});
+  const [selectedImageIdx, setSelectedImageIdx] = useState(0);
+  const [regeneratingAngle, setRegeneratingAngle] = useState<string | null>(null);
 
   const { data: adAccount, refetch: refetchAccount } = useQuery<AdAccount | null>({
     queryKey: ["/api/founder/growth/ad-account"],
@@ -3947,17 +4013,75 @@ function GrowthSection() {
     queryKey: ["/api/founder/growth/attribution"],
   });
 
+  // Poll for creative bundle status while generating
+  const { data: bundleData } = useQuery<CreativeBundle>({
+    queryKey: [`/api/founder/growth/creative-bundles/${bundleId}`],
+    enabled: !!bundleId && wizardStep === "generating",
+    refetchInterval: (query) => {
+      const data = query.state.data as CreativeBundle | undefined;
+      if (data?.status === "generating") return 2000;
+      return false;
+    },
+  });
+
+  // Auto-advance wizard when bundle is ready
+  useEffect(() => {
+    if (bundleData?.status === "ready" && wizardStep === "generating") {
+      setBundle(bundleData);
+      setWizardStep("preview");
+      setSelectedImageIdx(0);
+    }
+    if (bundleData?.status === "error" && wizardStep === "generating") {
+      toast({ title: "Creative generation failed", description: bundleData.error || "Try again", variant: "destructive" });
+      setWizardStep("setup");
+      setBundleId(null);
+    }
+  }, [bundleData, wizardStep]);
+
   const saveAdAccountMutation = useMutation({
     mutationFn: async (data: typeof adForm) => apiRequest("PUT", "/api/founder/growth/ad-account", data),
     onSuccess: () => { refetchAccount(); setShowAdAccountForm(false); toast({ title: "Ad account saved" }); },
     onError: () => toast({ title: "Failed to save ad account", variant: "destructive" }),
   });
 
-  const launchCampaignMutation = useMutation({
-    mutationFn: async ({ templateKey, name, budget }: { templateKey: string; name: string; budget: number }) =>
-      apiRequest("POST", "/api/founder/growth/campaigns", { templateKey, name, dailyBudgetCents: budget }),
-    onSuccess: () => { refetchCampaigns(); setLaunchForm(null); toast({ title: "Campaign launched" }); },
-    onError: (err: any) => toast({ title: err?.message || "Failed to launch campaign", variant: "destructive" }),
+  const generateCreativeMutation = useMutation({
+    mutationFn: async ({ templateKey }: { templateKey: string }) =>
+      apiRequest("POST", "/api/founder/growth/generate-creative", { templateKey }).then((r) => r.json()),
+    onSuccess: (data: { bundleId: string }) => {
+      setBundleId(data.bundleId);
+      setWizardStep("generating");
+    },
+    onError: (err: any) => toast({ title: err?.message || "Failed to start generation", variant: "destructive" }),
+  });
+
+  const regenerateCopyMutation = useMutation({
+    mutationFn: async ({ id, angle }: { id: string; angle: string }) =>
+      apiRequest("POST", `/api/founder/growth/creative-bundles/${id}/regenerate-copy`, { angle }).then((r) => r.json()),
+    onSuccess: (data: CreativeBundle) => {
+      setBundle(data);
+      setRegeneratingAngle(null);
+      toast({ title: "Copy variant refreshed" });
+    },
+    onError: () => { setRegeneratingAngle(null); toast({ title: "Regeneration failed", variant: "destructive" }); },
+  });
+
+  const deployMutation = useMutation({
+    mutationFn: async () => {
+      if (!bundleId) throw new Error("No bundle");
+      const budgetCents = parseInt(wizardBudget) || 2000;
+      return apiRequest("POST", `/api/founder/growth/creative-bundles/${bundleId}/deploy`, {
+        name: wizardName,
+        dailyBudgetCents: budgetCents,
+        targetCountries: ["US"],
+      }).then((r) => r.json());
+    },
+    onSuccess: () => {
+      refetchCampaigns();
+      setWizardOpen(false);
+      resetWizard();
+      toast({ title: "Campaign deployed!", description: "Check Meta Ads Manager to activate it." });
+    },
+    onError: (err: any) => toast({ title: err?.message || "Deploy failed", variant: "destructive" }),
   });
 
   const toggleCampaignMutation = useMutation({
@@ -3973,11 +4097,40 @@ function GrowthSection() {
     onError: () => toast({ title: "Failed to sync stats", variant: "destructive" }),
   });
 
+  function resetWizard() {
+    setWizardStep("setup");
+    setWizardTemplate("");
+    setWizardName("");
+    setWizardBudget("2000");
+    setBundleId(null);
+    setBundle(null);
+    setEditingCopy(null);
+    setEditDraft({});
+    setSelectedImageIdx(0);
+  }
+
+  function saveCopyEdit(angle: string) {
+    if (!bundle?.copies) return;
+    const updated: CreativeBundle = {
+      ...bundle,
+      copies: bundle.copies.map((c) => c.angle === angle ? { ...c, ...editDraft } : c),
+    };
+    setBundle(updated);
+    setEditingCopy(null);
+    setEditDraft({});
+  }
+
   const statusColors: Record<string, string> = {
     active: "bg-green-500/10 text-green-700 border-green-500/20",
     paused: "bg-yellow-500/10 text-yellow-700 border-yellow-500/20",
     draft: "bg-muted text-muted-foreground",
     completed: "bg-blue-500/10 text-blue-700 border-blue-500/20",
+  };
+
+  const TEMPLATE_META: Record<string, { icon: React.ComponentType<{ className?: string }>; color: string; tagline: string }> = {
+    land_investors_signup: { icon: Target, color: "text-green-600", tagline: "Cold audience — land investors & RE buyers" },
+    retargeting_visitors: { icon: RotateCcw, color: "text-orange-600", tagline: "Warm audience — website visitors who didn't convert" },
+    lookalike_subscribers: { icon: Users2, color: "text-purple-600", tagline: "Lookalike — similar to your current subscribers" },
   };
 
   const sourceCounts = (attribution || []).reduce<Record<string, number>>((acc, s) => {
@@ -3986,8 +4139,12 @@ function GrowthSection() {
     return acc;
   }, {});
 
+  const dailyBudgetDollars = Math.round(parseInt(wizardBudget || "2000") / 100);
+  const selectedCopy = bundle?.copies?.find((c) => c.angle === editingCopy);
+
   return (
     <div className="mt-8 p-6 border rounded-xl bg-card space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-xl font-semibold flex items-center gap-2">
@@ -3995,15 +4152,27 @@ function GrowthSection() {
             Growth & Ads
           </h2>
           <p className="text-muted-foreground text-sm mt-0.5">
-            Run paid acquisition campaigns, track signup attribution, and automate growth.
+            AI-generated campaigns with 4 copy variants and 3 images. Deploy in one click.
           </p>
         </div>
-        <Button size="sm" variant="outline" onClick={() => setShowAdAccountForm(true)}>
-          <Key className="w-3 h-3 mr-1" />
-          {adAccount ? "Update Ad Account" : "Connect Meta Ad Account"}
-        </Button>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={() => setShowAdAccountForm(true)}>
+            <Key className="w-3 h-3 mr-1" />
+            {adAccount ? "Update Ad Account" : "Connect Meta"}
+          </Button>
+          <Button
+            size="sm"
+            className="gap-1.5 bg-gradient-to-r from-primary to-accent text-white font-semibold"
+            onClick={() => { resetWizard(); setWizardOpen(true); }}
+            disabled={!adAccount}
+          >
+            <Wand2 className="w-3.5 h-3.5" />
+            Generate Campaign
+          </Button>
+        </div>
       </div>
 
+      {/* Ad account connection form */}
       {showAdAccountForm && (
         <div className="p-4 border rounded-lg bg-muted/30 space-y-3">
           <h3 className="font-medium text-sm">Meta Ad Account Credentials</h3>
@@ -4024,13 +4193,14 @@ function GrowthSection() {
                 onChange={(e) => setAdForm((f) => ({ ...f, pixelId: e.target.value }))} />
             </div>
             <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Page / App ID (for ad creatives)</label>
+              <label className="text-xs text-muted-foreground mb-1 block">Facebook Page / App ID</label>
               <Input placeholder="Meta Page or App ID" className="h-8 text-sm" value={adForm.appId}
                 onChange={(e) => setAdForm((f) => ({ ...f, appId: e.target.value }))} />
             </div>
           </div>
           <div className="flex gap-2">
-            <Button size="sm" onClick={() => saveAdAccountMutation.mutate(adForm)} disabled={saveAdAccountMutation.isPending || !adForm.adAccountId || !adForm.accessToken}>
+            <Button size="sm" onClick={() => saveAdAccountMutation.mutate(adForm)}
+              disabled={saveAdAccountMutation.isPending || !adForm.adAccountId || !adForm.accessToken}>
               Save Credentials
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setShowAdAccountForm(false)}>Cancel</Button>
@@ -4039,94 +4209,385 @@ function GrowthSection() {
       )}
 
       {adAccount && (
-        <div className="flex items-center gap-2 p-2 bg-green-500/5 border border-green-500/20 rounded-lg">
+        <div className="flex items-center gap-2 p-2.5 bg-green-500/5 border border-green-500/20 rounded-lg">
           <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />
-          <span className="text-sm text-green-700">Meta ad account connected: {adAccount.adAccountId}</span>
-          {adAccount.pixelId && <Badge className="text-xs ml-auto">Pixel {adAccount.pixelId}</Badge>}
+          <span className="text-sm text-green-700 font-medium">Meta ad account connected</span>
+          <span className="text-sm text-muted-foreground ml-1">{adAccount.adAccountId}</span>
+          {adAccount.pixelId && <Badge className="text-xs ml-auto">Pixel active</Badge>}
         </div>
       )}
 
-      {/* Campaigns */}
+      {!adAccount && (
+        <div className="p-4 border border-dashed rounded-lg text-center text-sm text-muted-foreground">
+          Connect your Meta ad account above to enable campaign generation and deployment.
+        </div>
+      )}
+
+      {/* Campaign Wizard Dialog */}
+      <Dialog open={wizardOpen} onOpenChange={(o) => { if (!o) { setWizardOpen(false); } }}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Wand2 className="w-5 h-5 text-primary" />
+              {wizardStep === "setup" && "New Campaign — Setup"}
+              {wizardStep === "generating" && "Generating AI Creatives…"}
+              {wizardStep === "preview" && "Preview & Edit Creatives"}
+              {wizardStep === "deploy" && "Ready to Deploy"}
+            </DialogTitle>
+            <DialogDescription>
+              {wizardStep === "setup" && "Choose a campaign template and budget, then let AI generate your creatives."}
+              {wizardStep === "generating" && "GPT-4o is writing 4 copy variants while DALL-E 3 generates 3 HD images. Takes ~30–60 seconds."}
+              {wizardStep === "preview" && "Review and edit each ad variant. All 4 copy angles + 3 images will run as A/B tests."}
+              {wizardStep === "deploy" && "Campaign will be created in Meta Ads Manager in PAUSED state. Activate it there when ready."}
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* ── Step 1: Setup ──────────────────────────────────────────── */}
+          {wizardStep === "setup" && (
+            <div className="space-y-5 pt-2">
+              <div>
+                <label className="text-sm font-medium mb-2 block">Campaign Template</label>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {(templates || []).map((t) => {
+                    const meta = TEMPLATE_META[t.key] || { icon: Radio, color: "text-primary", tagline: t.description };
+                    const Icon = meta.icon;
+                    return (
+                      <button
+                        key={t.key}
+                        type="button"
+                        onClick={() => setWizardTemplate(t.key)}
+                        className={`p-4 border-2 rounded-xl text-left transition-all ${
+                          wizardTemplate === t.key
+                            ? "border-primary bg-primary/5 shadow-sm"
+                            : "border-border hover:border-primary/40"
+                        }`}
+                      >
+                        <Icon className={`w-5 h-5 mb-2 ${meta.color}`} />
+                        <div className="font-medium text-sm">{t.name}</div>
+                        <div className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{meta.tagline}</div>
+                        <div className="text-xs text-muted-foreground mt-1 italic">"{t.headline}"</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-medium mb-1.5 block">Campaign Name</label>
+                  <Input
+                    placeholder="e.g. AcreOS – Land Investors – March 2026"
+                    value={wizardName}
+                    onChange={(e) => setWizardName(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-1.5 block flex justify-between">
+                    Daily Budget
+                    <span className="font-semibold text-primary">${dailyBudgetDollars}/day</span>
+                  </label>
+                  <input
+                    type="range"
+                    min="1000"
+                    max="50000"
+                    step="500"
+                    value={wizardBudget}
+                    onChange={(e) => setWizardBudget(e.target.value)}
+                    className="w-full accent-primary"
+                  />
+                  <div className="flex justify-between text-xs text-muted-foreground mt-0.5">
+                    <span>$10/day</span>
+                    <span>$500/day</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 p-3 bg-muted/40 rounded-lg text-xs text-muted-foreground">
+                <Sparkles className="w-4 h-4 text-primary shrink-0" />
+                <span>
+                  AI will generate <strong>4 copy variants</strong> (pain point, aspiration, social proof, curiosity hook)
+                  and <strong>3 DALL-E 3 HD images</strong> (lifestyle, product UI, aerial land). All will run as A/B tests
+                  within a single ad set.
+                </span>
+              </div>
+
+              <DialogFooter>
+                <Button variant="ghost" onClick={() => setWizardOpen(false)}>Cancel</Button>
+                <Button
+                  onClick={() => generateCreativeMutation.mutate({ templateKey: wizardTemplate })}
+                  disabled={!wizardTemplate || !wizardName || generateCreativeMutation.isPending}
+                  className="gap-2"
+                >
+                  {generateCreativeMutation.isPending
+                    ? <Loader2 className="w-4 h-4 animate-spin" />
+                    : <Wand2 className="w-4 h-4" />}
+                  Generate AI Creatives
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+
+          {/* ── Step 2: Generating ──────────────────────────────────────── */}
+          {wizardStep === "generating" && (
+            <div className="py-12 text-center space-y-6">
+              <div className="relative mx-auto w-20 h-20">
+                <div className="absolute inset-0 rounded-full bg-primary/10 animate-ping" />
+                <div className="relative flex items-center justify-center w-20 h-20 rounded-full bg-primary/15">
+                  <Sparkles className="w-9 h-9 text-primary animate-pulse" />
+                </div>
+              </div>
+              <div>
+                <h3 className="font-semibold text-lg">AI is crafting your campaign</h3>
+                <p className="text-muted-foreground text-sm mt-1 max-w-sm mx-auto">
+                  Writing 4 persuasion-angle copy variants and generating 3 HD images designed specifically for land investor audiences.
+                </p>
+              </div>
+              <div className="flex flex-col gap-2 max-w-xs mx-auto text-left">
+                {[
+                  { label: "GPT-4o writing copy variants", done: false },
+                  { label: "DALL-E 3 generating lifestyle image", done: false },
+                  { label: "DALL-E 3 generating product UI image", done: false },
+                  { label: "DALL-E 3 generating aerial land image", done: false },
+                ].map((item, i) => (
+                  <div key={i} className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="w-3 h-3 animate-spin text-primary shrink-0" />
+                    {item.label}
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">Usually takes 30–60 seconds…</p>
+            </div>
+          )}
+
+          {/* ── Step 3: Preview ─────────────────────────────────────────── */}
+          {wizardStep === "preview" && bundle && (
+            <div className="space-y-5 pt-1">
+              {/* Images row */}
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <ImageIcon className="w-4 h-4 text-primary" />
+                  <span className="font-medium text-sm">Generated Images <span className="text-muted-foreground font-normal">(click to select for preview)</span></span>
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  {(bundle.images || []).map((img, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setSelectedImageIdx(idx)}
+                      className={`relative rounded-lg overflow-hidden border-2 transition-all aspect-square ${
+                        selectedImageIdx === idx ? "border-primary ring-2 ring-primary/30" : "border-border hover:border-primary/50"
+                      }`}
+                    >
+                      <img src={img.url} alt={img.styleLabel} className="w-full h-full object-cover" />
+                      <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs py-1 px-2 text-center">
+                        {img.styleLabel}
+                      </div>
+                      {selectedImageIdx === idx && (
+                        <div className="absolute top-1.5 right-1.5 bg-primary rounded-full p-0.5">
+                          <Check className="w-3 h-3 text-white" />
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                  {(bundle.images?.length || 0) === 0 && (
+                    <div className="col-span-3 p-4 border border-dashed rounded-lg text-center text-sm text-muted-foreground">
+                      Image generation failed. Campaign will deploy without images.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Copy variants */}
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <PencilLine className="w-4 h-4 text-primary" />
+                  <span className="font-medium text-sm">Copy Variants <span className="text-muted-foreground font-normal">(4 angles running as A/B test)</span></span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {(bundle.copies || []).map((copy) => {
+                    const Icon = ANGLE_ICONS[copy.angle] || Radio;
+                    const colorClass = ANGLE_COLORS[copy.angle] || "border-border";
+                    const isEditing = editingCopy === copy.angle;
+                    const isRegenerating = regeneratingAngle === copy.angle;
+
+                    return (
+                      <div key={copy.angle} className={`p-3.5 border rounded-xl ${colorClass}`}>
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-1.5">
+                            <Icon className="w-3.5 h-3.5" />
+                            <span className="text-xs font-semibold uppercase tracking-wide">{copy.angleLabel}</span>
+                          </div>
+                          <div className="flex gap-1">
+                            <button
+                              type="button"
+                              title="Regenerate this variant"
+                              onClick={() => {
+                                if (!bundleId) return;
+                                setRegeneratingAngle(copy.angle);
+                                regenerateCopyMutation.mutate({ id: bundleId, angle: copy.angle });
+                              }}
+                              disabled={isRegenerating || !!regeneratingAngle}
+                              className="p-1 rounded hover:bg-black/5 disabled:opacity-40"
+                            >
+                              {isRegenerating ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />}
+                            </button>
+                            <button
+                              type="button"
+                              title="Edit copy"
+                              onClick={() => {
+                                if (isEditing) { saveCopyEdit(copy.angle); }
+                                else { setEditingCopy(copy.angle); setEditDraft({ ...copy }); }
+                              }}
+                              className="p-1 rounded hover:bg-black/5"
+                            >
+                              {isEditing ? <Check className="w-3 h-3 text-green-600" /> : <PencilLine className="w-3 h-3" />}
+                            </button>
+                          </div>
+                        </div>
+
+                        {isEditing ? (
+                          <div className="space-y-1.5 text-sm">
+                            <div>
+                              <label className="text-xs text-muted-foreground">Headline (≤40 chars)</label>
+                              <Input
+                                value={editDraft.headline || ""}
+                                onChange={(e) => setEditDraft((d) => ({ ...d, headline: e.target.value.slice(0, 40) }))}
+                                className="h-7 text-xs mt-0.5"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-muted-foreground">Primary Text (≤125 chars)</label>
+                              <Textarea
+                                value={editDraft.primaryText || ""}
+                                onChange={(e) => setEditDraft((d) => ({ ...d, primaryText: e.target.value.slice(0, 125) }))}
+                                className="text-xs min-h-[60px] mt-0.5 resize-none"
+                                rows={3}
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-muted-foreground">Description (≤30 chars)</label>
+                              <Input
+                                value={editDraft.description || ""}
+                                onChange={(e) => setEditDraft((d) => ({ ...d, description: e.target.value.slice(0, 30) }))}
+                                className="h-7 text-xs mt-0.5"
+                              />
+                            </div>
+                            <Button size="sm" className="w-full h-7 text-xs mt-1" onClick={() => saveCopyEdit(copy.angle)}>
+                              <Check className="w-3 h-3 mr-1" /> Save
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="space-y-1 text-sm">
+                            <div className="font-semibold leading-tight">{copy.headline}</div>
+                            <p className="text-muted-foreground text-xs leading-relaxed">{copy.primaryText}</p>
+                            <div className="flex items-center justify-between pt-1">
+                              <span className="text-xs text-muted-foreground italic">{copy.description}</span>
+                              <Badge variant="outline" className="text-xs h-5">{copy.callToAction}</Badge>
+                            </div>
+                            {copy.hook && (
+                              <div className="text-xs text-muted-foreground/70 border-t pt-1 mt-1 italic">
+                                Hook: {copy.hook}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 p-3 bg-muted/40 rounded-lg text-xs text-muted-foreground">
+                <Layers className="w-4 h-4 text-primary shrink-0" />
+                <span>
+                  Deploying creates <strong>1 campaign</strong> → <strong>1 ad set</strong> → <strong>{bundle.copies?.length || 4} ads</strong>, one per copy variant.
+                  Meta will automatically optimize toward the best performer.
+                </span>
+              </div>
+
+              <DialogFooter className="flex-col sm:flex-row gap-2">
+                <Button variant="ghost" onClick={() => setWizardStep("setup")} className="gap-1">
+                  <ChevronLeft className="w-4 h-4" /> Back
+                </Button>
+                <Button
+                  onClick={() => deployMutation.mutate()}
+                  disabled={deployMutation.isPending || !wizardName}
+                  className="gap-2 bg-gradient-to-r from-primary to-accent text-white"
+                >
+                  {deployMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                  Deploy {bundle.copies?.length || 4} Ad Variants to Meta
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Live Campaigns */}
       <div>
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-medium text-sm flex items-center gap-2">
             <Radio className="w-4 h-4 text-primary" />
-            Growth Campaigns
+            Live Campaigns
+            {(campaigns?.length || 0) > 0 && (
+              <Badge variant="outline" className="text-xs">{campaigns!.length}</Badge>
+            )}
           </h3>
-          <Button size="sm" variant="outline" className="h-7 text-xs"
-            onClick={() => setLaunchForm({ templateKey: templates?.[0]?.key || "", name: "", budget: "2000" })}
-            disabled={!adAccount}>
-            <Play className="w-3 h-3 mr-1" />
-            Launch Campaign
-          </Button>
+          {(campaigns || []).some((c) => c.externalCampaignId) && (
+            <Button size="sm" variant="ghost" className="h-7 text-xs gap-1"
+              onClick={() => (campaigns || []).forEach((c) => c.externalCampaignId && syncStatsMutation.mutate(c.id))}
+              disabled={syncStatsMutation.isPending}>
+              <RefreshCw className="w-3 h-3" />
+              Sync All
+            </Button>
+          )}
         </div>
 
-        {launchForm && (
-          <div className="mb-3 p-3 border rounded-lg bg-muted/30 space-y-2">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-              <Select value={launchForm.templateKey} onValueChange={(v) => setLaunchForm((f) => f ? { ...f, templateKey: v } : null)}>
-                <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Template" /></SelectTrigger>
-                <SelectContent>
-                  {(templates || []).map((t) => <SelectItem key={t.key} value={t.key}>{t.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <Input placeholder="Campaign name" className="h-8 text-sm" value={launchForm.name}
-                onChange={(e) => setLaunchForm((f) => f ? { ...f, name: e.target.value } : null)} />
-              <Input type="number" placeholder="Daily budget (cents, e.g. 2000 = $20)" className="h-8 text-sm" value={launchForm.budget}
-                onChange={(e) => setLaunchForm((f) => f ? { ...f, budget: e.target.value } : null)} />
-            </div>
-            {templates?.find((t) => t.key === launchForm.templateKey) && (
-              <p className="text-xs text-muted-foreground italic px-1">
-                "{templates.find((t) => t.key === launchForm.templateKey)?.headline}"
-              </p>
-            )}
-            <div className="flex gap-2">
-              <Button size="sm" className="h-8"
-                onClick={() => launchCampaignMutation.mutate({ templateKey: launchForm.templateKey, name: launchForm.name, budget: parseInt(launchForm.budget) })}
-                disabled={launchCampaignMutation.isPending || !launchForm.name || !launchForm.templateKey}>
-                {launchCampaignMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Play className="w-3 h-3 mr-1" />}
-                Launch
-              </Button>
-              <Button size="sm" variant="ghost" className="h-8" onClick={() => setLaunchForm(null)}>Cancel</Button>
-            </div>
-          </div>
-        )}
-
         {(campaigns || []).length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-6">
-            No campaigns yet. Connect your Meta ad account and launch your first growth campaign.
-          </p>
+          <div className="text-center py-8 border border-dashed rounded-lg">
+            <Megaphone className="w-8 h-8 text-muted-foreground/40 mx-auto mb-2" />
+            <p className="text-sm text-muted-foreground">No campaigns yet.</p>
+            <p className="text-xs text-muted-foreground mt-1">Click "Generate Campaign" to create your first AI-powered campaign.</p>
+          </div>
         ) : (
           <div className="space-y-2">
-            {(campaigns || []).map((c) => (
-              <div key={c.id} className="flex items-center gap-3 p-3 border rounded-lg">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-medium text-sm">{c.name}</span>
-                    <Badge className={`text-xs ${statusColors[c.status] || ""}`}>{c.status}</Badge>
-                  </div>
-                  <div className="flex gap-4 mt-1 text-xs text-muted-foreground">
-                    <span>${(c.totalSpendCents / 100).toFixed(2)} spent</span>
-                    <span>{c.impressions.toLocaleString()} impressions</span>
-                    <span>{c.clicks.toLocaleString()} clicks</span>
-                    {c.impressions > 0 && <span>{((c.clicks / c.impressions) * 100).toFixed(2)}% CTR</span>}
+            {(campaigns || []).map((c) => {
+              const ctr = c.impressions > 0 ? ((c.clicks / c.impressions) * 100).toFixed(2) : null;
+              const cpl = c.signups > 0 ? (c.totalSpendCents / 100 / c.signups).toFixed(2) : null;
+              return (
+                <div key={c.id} className="p-3 border rounded-xl hover:bg-muted/20 transition-colors">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium text-sm">{c.name}</span>
+                        <Badge className={`text-xs ${statusColors[c.status] || ""}`}>{c.status}</Badge>
+                      </div>
+                      <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1.5 text-xs text-muted-foreground">
+                        <span className="font-medium">${(c.totalSpendCents / 100).toFixed(2)} spent</span>
+                        <span>{c.impressions.toLocaleString()} impr.</span>
+                        <span>{c.clicks.toLocaleString()} clicks</span>
+                        {ctr && <span>{ctr}% CTR</span>}
+                        {cpl && <span>${cpl} / signup</span>}
+                        <span className="ml-auto">${(c.dailyBudgetCents / 100)}/day budget</span>
+                      </div>
+                    </div>
+                    <div className="flex gap-1 shrink-0">
+                      {c.externalCampaignId && (
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0"
+                          onClick={() => syncStatsMutation.mutate(c.id)} disabled={syncStatsMutation.isPending}>
+                          <RefreshCw className="w-3 h-3" />
+                        </Button>
+                      )}
+                      <Button size="sm" variant="outline" className="h-7 px-2"
+                        onClick={() => toggleCampaignMutation.mutate({ id: c.id, status: c.status === "active" ? "paused" : "active" })}
+                        disabled={toggleCampaignMutation.isPending || !c.externalCampaignId}>
+                        {c.status === "active" ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+                      </Button>
+                    </div>
                   </div>
                 </div>
-                <div className="flex gap-1 shrink-0">
-                  {c.externalCampaignId && (
-                    <Button size="sm" variant="ghost" className="h-7 px-2"
-                      onClick={() => syncStatsMutation.mutate(c.id)} disabled={syncStatsMutation.isPending}>
-                      <RefreshCw className="w-3 h-3" />
-                    </Button>
-                  )}
-                  <Button size="sm" variant="outline" className="h-7 px-2"
-                    onClick={() => toggleCampaignMutation.mutate({ id: c.id, status: c.status === "active" ? "paused" : "active" })}
-                    disabled={toggleCampaignMutation.isPending}>
-                    {c.status === "active" ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
-                  </Button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -4135,29 +4596,29 @@ function GrowthSection() {
       <div>
         <h3 className="font-medium text-sm flex items-center gap-2 mb-3">
           <MousePointerClick className="w-4 h-4 text-primary" />
-          Signup Attribution (last 50)
+          Signup Attribution
         </h3>
         {Object.keys(sourceCounts).length > 0 && (
           <div className="flex flex-wrap gap-2 mb-3">
             {Object.entries(sourceCounts).sort((a, b) => b[1] - a[1]).map(([src, count]) => (
               <Badge key={src} variant="outline" className="text-xs">
-                {src}: {count} signup{count !== 1 ? "s" : ""}
+                {src}: {count}
               </Badge>
             ))}
           </div>
         )}
         {(attribution || []).length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            No signup data yet. UTM attribution will appear here once users sign up from your ads.
+            UTM attribution will appear here once users sign up from your campaigns.
           </p>
         ) : (
-          <div className="space-y-1 max-h-52 overflow-y-auto">
+          <div className="space-y-0 max-h-52 overflow-y-auto border rounded-lg divide-y">
             {(attribution || []).slice(0, 20).map((s) => (
-              <div key={s.organizationId} className="flex items-center gap-2 text-xs py-1 border-b border-border/50 last:border-0">
+              <div key={s.organizationId} className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted/20">
                 <span className="flex-1 font-medium truncate">{s.name}</span>
                 <Badge variant="outline" className="text-xs shrink-0">{s.subscriptionTier}</Badge>
                 <span className="text-muted-foreground shrink-0">
-                  {s.utmSource ? `${s.utmSource}${s.utmCampaign ? ` / ${s.utmCampaign}` : ""}` : "organic"}
+                  {s.utmSource ? `${s.utmSource}${s.utmCampaign ? ` › ${s.utmCampaign}` : ""}` : "organic"}
                 </span>
                 <span className="text-muted-foreground shrink-0">{new Date(s.createdAt).toLocaleDateString()}</span>
               </div>

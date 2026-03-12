@@ -192,6 +192,8 @@ import {
   type FounderAdAccount, type InsertFounderAdAccount,
   growthCampaigns,
   type GrowthCampaign, type InsertGrowthCampaign,
+  adCreativeBundles,
+  type AdCreativeBundle,
 } from "@shared/schema";
 
 // Helper to calculate amortization schedule
@@ -7676,6 +7678,48 @@ Notary Public</p>
     const [updated] = await db.update(growthCampaigns)
       .set({ ...data, updatedAt: new Date() })
       .where(eq(growthCampaigns.id, id))
+      .returning();
+    return updated;
+  }
+
+  // ─── Ad Creative Bundles ───────────────────────────────────────────────────
+
+  async createAdCreativeBundle(data: {
+    templateKey: string;
+    campaignId?: number;
+    status?: string;
+    copies?: any[];
+    images?: any[];
+    error?: string;
+    model?: string;
+  }): Promise<AdCreativeBundle> {
+    const [created] = await db.insert(adCreativeBundles).values({
+      templateKey: data.templateKey,
+      campaignId: data.campaignId ?? null,
+      status: data.status ?? "generating",
+      copies: data.copies ?? null,
+      images: data.images ?? null,
+      error: data.error ?? null,
+      model: data.model ?? "gpt-4o",
+    }).returning();
+    return created;
+  }
+
+  async getAdCreativeBundle(id: string): Promise<AdCreativeBundle | undefined> {
+    const [row] = await db.select().from(adCreativeBundles).where(eq(adCreativeBundles.id, id));
+    return row;
+  }
+
+  async updateAdCreativeBundle(id: string, data: Partial<{
+    status: string;
+    copies: any[];
+    images: any[];
+    campaignId: number;
+    error: string;
+  }>): Promise<AdCreativeBundle | undefined> {
+    const [updated] = await db.update(adCreativeBundles)
+      .set(data)
+      .where(eq(adCreativeBundles.id, id))
       .returning();
     return updated;
   }
