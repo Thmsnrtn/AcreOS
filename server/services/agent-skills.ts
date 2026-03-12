@@ -2189,6 +2189,455 @@ const browserResearchSkill: Skill = {
   },
 };
 
+// ============================================
+// SOPHIE HIGH-VALUE LAND INVESTING SKILLS
+// ============================================
+
+const scoreLeadInputSchema = z.object({
+  leadId: z.number().describe("Lead ID to score"),
+});
+
+const scoreLeadSkill: Skill = {
+  id: "scoreLead",
+  name: "Score This Lead",
+  description: "Runs AI lead scoring on demand for any lead — evaluates motivation, property value, engagement history, and contact quality to produce a 0–100 score with grade and recommended next action",
+  agentTypes: ["research", "deals", "communications"],
+  inputSchema: scoreLeadInputSchema,
+  costEstimate: "low",
+  examples: [
+    'scoreLead({ leadId: 42 })',
+    'scoreLead({ leadId: 101 })',
+  ],
+  execute: async (params, context) => {
+    try {
+      const { leadId } = scoreLeadInputSchema.parse(params);
+
+      const lead = await storage.getLead(context.organizationId, leadId);
+      if (!lead) {
+        return { success: false, error: "Lead not found" };
+      }
+
+      const activities = await storage.getLeadActivities(context.organizationId, leadId);
+
+      let score = 40;
+      const factors: { name: string; impact: number; reason: string }[] = [];
+
+      // Motivation signals from status
+      if (lead.status === "motivated") {
+        score += 20;
+        factors.push({ name: "Motivation", impact: 20, reason: "Lead marked as motivated seller" });
+      } else if (lead.status === "interested") {
+        score += 10;
+        factors.push({ name: "Motivation", impact: 10, reason: "Lead marked as interested" });
+      }
+
+      // Contact quality
+      if (lead.email) {
+        score += 5;
+        factors.push({ name: "Email Available", impact: 5, reason: "Has email address" });
+      }
+      if (lead.phone) {
+        score += 5;
+        factors.push({ name: "Phone Available", impact: 5, reason: "Has phone number" });
+      }
+
+      // Engagement — replies and calls beat passive sends
+      const responses = activities.filter(a =>
+        a.type === "email_replied" || a.type === "sms_replied" || a.type === "call_completed"
+      );
+      if (responses.length >= 3) {
+        score += 20;
+        factors.push({ name: "Engagement", impact: 20, reason: `${responses.length} response events` });
+      } else if (responses.length >= 1) {
+        score += 10;
+        factors.push({ name: "Engagement", impact: 10, reason: `${responses.length} response event(s)` });
+      }
+
+      // Recency — contacted in last 14 days is a positive signal
+      const daysSinceContact = lead.lastContactedAt
+        ? Math.floor((Date.now() - new Date(lead.lastContactedAt).getTime()) / 86_400_000)
+        : 999;
+      if (daysSinceContact <= 7) {
+        score += 10;
+        factors.push({ name: "Recency", impact: 10, reason: "Contacted within last 7 days" });
+      } else if (daysSinceContact > 30) {
+        score -= 10;
+        factors.push({ name: "Recency", impact: -10, reason: `Not contacted in ${daysSinceContact} days` });
+      }
+
+      // Source quality
+      if (lead.source === "referral") {
+        score += 10;
+        factors.push({ name: "Source", impact: 10, reason: "Referral — higher conversion rate" });
+      } else if (lead.source === "inbound") {
+        score += 5;
+        factors.push({ name: "Source", impact: 5, reason: "Inbound — self-motivated" });
+      }
+
+      score = Math.max(0, Math.min(100, score));
+      const grade = score >= 80 ? "A" : score >= 60 ? "B" : score >= 40 ? "C" : "D";
+
+      let nextAction: string;
+      if (score >= 70) nextAction = "Call immediately — high-probability seller";
+      else if (score >= 50) nextAction = "Send personalized follow-up and schedule call";
+      else nextAction = "Add to nurture sequence and revisit in 2 weeks";
+
+      return {
+        success: true,
+        data: { leadId, leadName: `${lead.firstName} ${lead.lastName}`, score, grade, factors, nextAction },
+        message: `Lead score: ${score}/100 (${grade}) — ${nextAction}`,
+      };
+    } catch (error: any) {
+      return { success: false, error: error.message || "Lead scoring failed" };
+    }
+  },
+};
+
+const draftOfferLetterInputSchema = z.object({
+  propertyId: z.number().describe("Property ID to generate the offer letter for"),
+  leadId: z.number().optional().describe("Seller lead ID (optional — used for personalisation)"),
+  offerPrice: z.number().describe("Offer price in dollars"),
+  tone: z.enum(["professional", "friendly", "urgent"]).optional().describe("Letter tone"),
+});
+
+const draftOfferLetterSkill: Skill = {
+  id: "draftOfferLetter",
+  name: "Draft Offer Letter",
+  description: "Generates a professional purchase offer letter for a property, personalised to the seller, with offer price, standard contingencies, and a response deadline",
+  agentTypes: ["deals", "communications"],
+  inputSchema: draftOfferLetterInputSchema,
+  costEstimate: "low",
+  examples: [
+    'draftOfferLetter({ propertyId: 55, offerPrice: 12000 })',
+    'draftOfferLetter({ propertyId: 55, leadId: 42, offerPrice: 18500, tone: "friendly" })',
+  ],
+  execute: async (params, context) => {
+    try {
+      const { propertyId, leadId, offerPrice, tone } = draftOfferLetterInputSchema.parse(params);
+
+      const property = await storage.getProperty(context.organizationId, propertyId);
+      if (!property) {
+        return { success: false, error: "Property not found" };
+      }
+
+      const lead = leadId ? await storage.getLead(context.organizationId, leadId) : null;
+      const sellerName = lead ? `${lead.firstName} ${lead.lastName}` : "Property Owner";
+
+      const toneGuide =
+        tone === "friendly"
+          ? "warm and approachable, like you are talking to a neighbour"
+          : tone === "urgent"
+          ? "professional but time-sensitive, highlighting that the offer window is limited"
+          : "professional and formal";
+
+      const OpenAI = (await import("openai")).default;
+      const openai = new OpenAI();
+
+      const prompt = `Write a land purchase offer letter. Be ${toneGuide}.
+
+Seller: ${sellerName}
+Property: ${property.address || "the property"}, ${property.county ? property.county + " County, " : ""}${property.state || ""}
+APN: ${property.apn || "N/A"}
+Acreage: ${(property as any).sizeAcres || "N/A"} acres
+Offer Price: $${offerPrice.toLocaleString()}
+Payment Terms: All-cash, 30-day closing
+
+Include:
+1. A warm opening that acknowledges the seller
+2. Clear offer terms (price, payment method, closing timeline)
+3. Two standard contingencies (clear title, satisfactory survey)
+4. A response deadline 10 days from today
+5. Professional closing and signature block for [Buyer Company]
+
+Do not include legal advice disclaimers inside the letter body. Keep it under 350 words.`;
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 800,
+      });
+
+      const offerLetter = response.choices[0]?.message?.content || "";
+
+      return {
+        success: true,
+        data: { propertyId, leadId, offerPrice, tone: tone || "professional", offerLetter, generatedAt: new Date().toISOString() },
+        message: `Offer letter drafted for $${offerPrice.toLocaleString()} on ${property.address || `Property #${propertyId}`}`,
+      };
+    } catch (error: any) {
+      return { success: false, error: error.message || "Offer letter generation failed" };
+    }
+  },
+};
+
+const analyzeNoteInputSchema = z.object({
+  noteId: z.number().describe("Seller note (finance note) ID to analyse"),
+});
+
+const analyzeNoteSkill: Skill = {
+  id: "analyzeNote",
+  name: "Analyze This Note",
+  description: "Performs a financial health check on a seller note — calculates yield, remaining balance, payment status, delinquency risk, and provides a portfolio health rating",
+  agentTypes: ["operations", "research", "deals"],
+  inputSchema: analyzeNoteInputSchema,
+  costEstimate: "free",
+  examples: [
+    'analyzeNote({ noteId: 7 })',
+    'analyzeNote({ noteId: 23 })',
+  ],
+  execute: async (params, context) => {
+    try {
+      const { noteId } = analyzeNoteInputSchema.parse(params);
+
+      const notes = await storage.getNotes(context.organizationId);
+      const note = notes.find(n => n.id === noteId);
+      if (!note) {
+        return { success: false, error: "Note not found" };
+      }
+
+      const principal = parseFloat(note.principal?.toString() || "0");
+      const interestRate = parseFloat(note.interestRate?.toString() || "0");
+      const termMonths = note.termMonths || 0;
+      const monthlyPayment = parseFloat(note.monthlyPayment?.toString() || "0");
+
+      // Monthly interest rate
+      const monthlyRate = interestRate / 100 / 12;
+
+      // Remaining balance estimate based on payments made
+      const startDate = note.startDate ? new Date(note.startDate) : new Date();
+      const monthsElapsed = Math.floor(
+        (Date.now() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 30.44)
+      );
+      const monthsRemaining = Math.max(0, termMonths - monthsElapsed);
+
+      let remainingBalance = 0;
+      if (monthlyRate > 0 && monthsRemaining > 0) {
+        remainingBalance =
+          monthlyPayment *
+          ((1 - Math.pow(1 + monthlyRate, -monthsRemaining)) / monthlyRate);
+      } else {
+        remainingBalance = monthlyPayment * monthsRemaining;
+      }
+
+      // Yield (annualised return on remaining principal)
+      const yield_ = remainingBalance > 0 ? ((monthlyPayment * 12 - (remainingBalance * (interestRate / 100))) / remainingBalance) * 100 : interestRate;
+
+      // Delinquency
+      const today = new Date();
+      const nextPayment = note.nextPaymentDate ? new Date(note.nextPaymentDate) : null;
+      const daysPastDue = nextPayment && nextPayment < today
+        ? Math.floor((today.getTime() - nextPayment.getTime()) / 86_400_000)
+        : 0;
+
+      let healthRating: "Excellent" | "Good" | "Watch" | "At Risk" | "Delinquent";
+      if (daysPastDue >= 30) healthRating = "Delinquent";
+      else if (daysPastDue >= 1) healthRating = "At Risk";
+      else if (note.status !== "active") healthRating = "Watch";
+      else if (monthsRemaining <= 6) healthRating = "Good";
+      else healthRating = "Excellent";
+
+      return {
+        success: true,
+        data: {
+          noteId,
+          status: note.status,
+          principal,
+          interestRate,
+          termMonths,
+          monthlyPayment,
+          monthsElapsed,
+          monthsRemaining,
+          remainingBalance: Math.round(remainingBalance),
+          estimatedYield: Math.round(yield_ * 10) / 10,
+          daysPastDue,
+          nextPaymentDate: note.nextPaymentDate,
+          healthRating,
+        },
+        message: `Note #${noteId} — ${healthRating} | Remaining: $${Math.round(remainingBalance).toLocaleString()} | Yield: ~${Math.round(yield_ * 10) / 10}% | ${monthsRemaining} months left`,
+      };
+    } catch (error: any) {
+      return { success: false, error: error.message || "Note analysis failed" };
+    }
+  },
+};
+
+const suggestFollowUpInputSchema = z.object({
+  leadId: z.number().describe("Lead ID to generate follow-up suggestion for"),
+});
+
+const suggestFollowUpSkill: Skill = {
+  id: "suggestFollowUp",
+  name: "Suggest Follow-Up",
+  description: "Analyses a lead's full history (messages, activities, last contact, status) and recommends the best next follow-up action — channel, timing, message approach, and goal",
+  agentTypes: ["communications", "deals"],
+  inputSchema: suggestFollowUpInputSchema,
+  costEstimate: "low",
+  examples: [
+    'suggestFollowUp({ leadId: 42 })',
+    'suggestFollowUp({ leadId: 99 })',
+  ],
+  execute: async (params, context) => {
+    try {
+      const { leadId } = suggestFollowUpInputSchema.parse(params);
+
+      const lead = await storage.getLead(context.organizationId, leadId);
+      if (!lead) {
+        return { success: false, error: "Lead not found" };
+      }
+
+      const activities = await storage.getLeadActivities(context.organizationId, leadId);
+      const conversations = await storage.getConversations(context.organizationId);
+      const leadConversations = conversations.filter(c => c.leadId === leadId);
+
+      const daysSinceContact = lead.lastContactedAt
+        ? Math.floor((Date.now() - new Date(lead.lastContactedAt).getTime()) / 86_400_000)
+        : null;
+
+      const recentReplies = activities.filter(a =>
+        (a.type === "email_replied" || a.type === "sms_replied" || a.type === "call_completed") &&
+        new Date(a.createdAt) > new Date(Date.now() - 30 * 86_400_000)
+      );
+
+      const OpenAI = (await import("openai")).default;
+      const openai = new OpenAI();
+
+      const prompt = `You are a land investing expert. Recommend the best next follow-up action for this lead.
+
+Lead: ${lead.firstName} ${lead.lastName}
+Status: ${lead.status}
+Source: ${lead.source || "unknown"}
+Days since last contact: ${daysSinceContact !== null ? daysSinceContact : "never contacted"}
+Recent replies (last 30 days): ${recentReplies.length}
+Total conversations: ${leadConversations.length}
+Total activities: ${activities.length}
+Has email: ${!!lead.email}
+Has phone: ${!!lead.phone}
+
+Return a JSON object with:
+- channel: "email" | "sms" | "call" | "voicemail"
+- timing: e.g. "Today", "Within 3 days", "Next Monday morning"
+- messageApproach: 1-2 sentences describing tone and angle
+- goal: what outcome to aim for in this touchpoint
+- suggestedSubject: (email only) a compelling subject line
+- suggestedOpener: first sentence of the message
+
+Be specific and actionable.`;
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 400,
+        response_format: { type: "json_object" },
+      });
+
+      let suggestion: Record<string, any> = {};
+      try {
+        suggestion = JSON.parse(response.choices[0]?.message?.content || "{}");
+      } catch {
+        suggestion = { messageApproach: response.choices[0]?.message?.content || "" };
+      }
+
+      return {
+        success: true,
+        data: {
+          leadId,
+          leadName: `${lead.firstName} ${lead.lastName}`,
+          daysSinceContact,
+          ...suggestion,
+        },
+        message: `Follow-up suggestion for ${lead.firstName}: ${suggestion.channel || "email"} — ${suggestion.timing || "as soon as possible"}`,
+      };
+    } catch (error: any) {
+      return { success: false, error: error.message || "Follow-up suggestion failed" };
+    }
+  },
+};
+
+const marketAnalysisInputSchema = z.object({
+  state: z.string().describe("Two-letter state code (e.g. TX, AZ)"),
+  county: z.string().describe("County name (e.g. Travis, Maricopa)"),
+});
+
+const marketAnalysisSkill: Skill = {
+  id: "marketAnalysis",
+  name: "Market Analysis",
+  description: "Summarises land market conditions for a given county — average price per acre, demand signals, best use types, competition level, and a buy/hold/avoid recommendation",
+  agentTypes: ["research", "deals"],
+  inputSchema: marketAnalysisInputSchema,
+  costEstimate: "low",
+  examples: [
+    'marketAnalysis({ state: "TX", county: "Bastrop" })',
+    'marketAnalysis({ state: "FL", county: "Alachua" })',
+  ],
+  execute: async (params, context) => {
+    try {
+      const { state, county } = marketAnalysisInputSchema.parse(params);
+
+      // Pull any existing county research from storage
+      const existing = await storage.getCountyResearch(state.toUpperCase(), county);
+
+      // Pull properties in this county/state for internal data signals
+      const properties = await storage.getProperties(context.organizationId);
+      const countyProperties = properties.filter(
+        p => p.state?.toUpperCase() === state.toUpperCase() && p.county?.toLowerCase() === county.toLowerCase()
+      );
+
+      const avgMarketValue =
+        countyProperties.length > 0
+          ? countyProperties.reduce((sum, p) => sum + parseFloat(p.marketValue?.toString() || "0"), 0) /
+            countyProperties.filter(p => p.marketValue).length
+          : null;
+
+      const OpenAI = (await import("openai")).default;
+      const openai = new OpenAI();
+
+      const prompt = `You are an expert land investor and market analyst. Provide a concise market analysis for land investing in ${county} County, ${state}.
+
+Internal data: ${countyProperties.length} properties tracked in this county${avgMarketValue ? `, average market value $${Math.round(avgMarketValue).toLocaleString()}` : ""}.
+${existing?.marketNotes ? `Previous research notes: ${existing.marketNotes}` : ""}
+
+Return a JSON object with:
+- demandLevel: "Low" | "Moderate" | "High" | "Very High"
+- avgPricePerAcre: estimated dollar range (e.g. "$1,500 – $3,000")
+- bestUseTypes: array of top 2-3 land uses (e.g. ["recreational", "rural residential", "hunting"])
+- competitionLevel: "Low" | "Moderate" | "High"
+- keyTrends: 2-3 bullet points about what's driving the market
+- recommendation: "Buy" | "Hold" | "Avoid"
+- recommendationReason: 1-2 sentences explaining the recommendation
+- targetExitMultiple: e.g. "2x – 3x in 12-18 months"`;
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 500,
+        response_format: { type: "json_object" },
+      });
+
+      let analysis: Record<string, any> = {};
+      try {
+        analysis = JSON.parse(response.choices[0]?.message?.content || "{}");
+      } catch {
+        analysis = { summary: response.choices[0]?.message?.content || "" };
+      }
+
+      return {
+        success: true,
+        data: {
+          state: state.toUpperCase(),
+          county,
+          internalPropertyCount: countyProperties.length,
+          avgMarketValue: avgMarketValue ? Math.round(avgMarketValue) : null,
+          ...analysis,
+          generatedAt: new Date().toISOString(),
+        },
+        message: `Market analysis for ${county}, ${state}: ${analysis.recommendation || "See details"} — ${analysis.recommendationReason || ""}`,
+      };
+    } catch (error: any) {
+      return { success: false, error: error.message || "Market analysis failed" };
+    }
+  },
+};
+
 export class SkillRegistry {
   private skills: Map<string, Skill> = new Map();
 
@@ -2223,6 +2672,12 @@ export class SkillRegistry {
     this.registerSkill(gisEnvironmentalLookupSkill);
     this.registerSkill(gisInfrastructureLookupSkill);
     this.registerSkill(gisHazardsLookupSkill);
+    // Sophie high-value land investing skills
+    this.registerSkill(scoreLeadSkill);
+    this.registerSkill(draftOfferLetterSkill);
+    this.registerSkill(analyzeNoteSkill);
+    this.registerSkill(suggestFollowUpSkill);
+    this.registerSkill(marketAnalysisSkill);
   }
 
   registerSkill(skill: Skill): void {

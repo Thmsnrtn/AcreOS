@@ -1,8 +1,9 @@
 // @ts-nocheck — ORM type refinement deferred; runtime-correct
 import { db } from '../db';
-import { voiceCalls, callTranscripts, properties, leads } from '../../shared/schema';
-import { eq, and, desc } from 'drizzle-orm';
+import { voiceCalls, callTranscripts, properties, leads, activityLog } from '../../shared/schema';
+import { eq, and, desc, sql } from 'drizzle-orm';
 import OpenAI from 'openai';
+import { logActivity } from './systemActivityLogger';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -287,6 +288,9 @@ ${transcript.fullTranscript}`;
               summary,
             })
             .where(eq(voiceCalls.id, callId));
+
+          // Auto-sync insights back to the associated lead
+          await this.updateLeadFromCall(callId);
         }
       }
     } catch (error) {
@@ -423,6 +427,64 @@ ${transcript.fullTranscript}`;
         intentBreakdown: {},
         inboundVsOutbound: { inbound: 0, outbound: 0 },
       };
+    }
+  }
+
+  /**
+   * After a call is analyzed, update the associated lead record with
+   * key insights: sentiment, intent, action items, and a call note.
+   * This closes the loop so callers don't need to manually update leads.
+   */
+  async updateLeadFromCall(callId: number): Promise<void> {
+    try {
+      const call = await db.query.voiceCalls?.findFirst({
+        where: eq(voiceCalls.id, callId),
+      });
+      if (!call?.leadId) return;
+
+      const transcript = await db.query.callTranscripts?.findFirst({
+        where: eq(callTranscripts.callId, callId),
+      });
+      if (!transcript) return;
+
+      // Extract action items
+      const actionItems = await this.extractActionItems(callId);
+
+      // Build a note summarising the call for the lead record
+      const callDate = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      const noteContent = [
+        `📞 Call on ${callDate}`,
+        call.summary ? `Summary: ${call.summary}` : null,
+        call.sentiment ? `Sentiment: ${call.sentiment}` : null,
+        call.intent ? `Intent: ${call.intent}` : null,
+        actionItems.length ? `Action items:\n${actionItems.map((a: string) => `  • ${a}`).join('\n')}` : null,
+      ]
+        .filter(Boolean)
+        .join('\n');
+
+      // Update the lead: bump lastContactedAt, append call note, update engagement score
+      await db
+        .update(leads)
+        .set({
+          lastContactedAt: new Date(),
+          notes: sql`COALESCE(${leads.notes}, '') || ${'\n\n' + noteContent}`,
+          // Bump engagement if call had positive sentiment
+          ...(call.sentiment === 'positive' ? { leadScore: sql`LEAST(100, COALESCE(${leads.leadScore}, 50) + 10)` } : {}),
+          updatedAt: new Date(),
+        })
+        .where(eq(leads.id, call.leadId));
+
+      logActivity({
+        orgId: call.organizationId,
+        job: 'voice_ai',
+        action: 'call_synced_to_lead',
+        summary: `Call transcript analyzed and synced to lead — ${actionItems.length} action item(s) extracted`,
+        entityType: 'lead',
+        entityId: String(call.leadId),
+        metadata: { callId, actionItems },
+      }).catch(() => {});
+    } catch (err) {
+      console.error('[VoiceAI] updateLeadFromCall failed:', err);
     }
   }
 
