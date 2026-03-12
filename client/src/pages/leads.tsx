@@ -378,20 +378,28 @@ function RescoreMenuItem({ leadId }: { leadId: number }) {
   );
 }
 
+function getScoreTier(score: number): { tier: string; color: string } {
+  if (score >= 80) return { tier: 'A', color: 'text-emerald-700 dark:text-emerald-400' };
+  if (score >= 60) return { tier: 'B', color: 'text-blue-700 dark:text-blue-400' };
+  if (score >= 40) return { tier: 'C', color: 'text-amber-700 dark:text-amber-400' };
+  return { tier: 'D', color: 'text-muted-foreground' };
+}
+
 function LeadScoreBadge({ lead }: { lead: LeadWithScore }) {
   const [showDetails, setShowDetails] = useState(false);
   const stage = lead.nurturingStage || "new";
   const normalizedScore = lead.score ?? 0;
+  const { tier, color: tierColor } = getScoreTier(normalizedScore);
   // Use nurturingStage from backend which maps directly to recommendation
-  const recommendation = (stage === "hot" ? "mail" : 
-                          stage === "warm" ? "maybe" : 
+  const recommendation = (stage === "hot" ? "mail" :
+                          stage === "warm" ? "maybe" :
                           "skip") as "mail" | "maybe" | "skip";
-  
+
   return (
     <>
       <Tooltip>
         <TooltipTrigger asChild>
-          <div 
+          <div
             className="flex items-center gap-1 cursor-pointer"
             onClick={() => setShowDetails(true)}
             data-testid={`badge-score-${lead.id}`}
@@ -402,6 +410,7 @@ function LeadScoreBadge({ lead }: { lead: LeadWithScore }) {
             >
               {getStageIcon(stage)}
               {normalizedScore}
+              <span className={`font-bold ml-0.5 ${tierColor}`}>{tier}</span>
             </Badge>
             <Badge
               variant="outline"
@@ -412,12 +421,12 @@ function LeadScoreBadge({ lead }: { lead: LeadWithScore }) {
           </div>
         </TooltipTrigger>
         <TooltipContent>
-          <span data-testid={`tooltip-score-${lead.id}`}>Score: {normalizedScore}/100 - Click for details</span>
+          <span data-testid={`tooltip-score-${lead.id}`}>Score: {normalizedScore}/100 — Tier {tier} — Click for details</span>
         </TooltipContent>
       </Tooltip>
-      <ScoreDetailsDialog 
-        lead={lead} 
-        open={showDetails} 
+      <ScoreDetailsDialog
+        lead={lead}
+        open={showDetails}
         onOpenChange={setShowDetails}
       />
     </>
@@ -1041,6 +1050,41 @@ export default function LeadsPage() {
               </Dialog>
             </div>
           </div>
+
+          {/* Lead Quality Tier Distribution */}
+          {leads && (leads as LeadWithScore[]).length > 0 && (() => {
+            const allLeads = leads as LeadWithScore[];
+            const tierA = allLeads.filter(l => (l.score ?? 0) >= 80).length;
+            const tierB = allLeads.filter(l => (l.score ?? 0) >= 60 && (l.score ?? 0) < 80).length;
+            const tierC = allLeads.filter(l => (l.score ?? 0) >= 40 && (l.score ?? 0) < 60).length;
+            const tierD = allLeads.filter(l => (l.score ?? 0) < 40).length;
+            const total = allLeads.length;
+            const overdue = allLeads.filter(l => getDaysSinceContact(l) > 7).length;
+            return (
+              <div className="rounded-xl border bg-card p-4 space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-medium text-muted-foreground uppercase tracking-wide">Lead Quality Distribution — {total} total</span>
+                  {overdue > 0 && (
+                    <span className="flex items-center gap-1 text-amber-600 font-medium">
+                      <Clock className="w-3 h-3" /> {overdue} overdue for follow-up
+                    </span>
+                  )}
+                </div>
+                <div className="flex h-2 rounded-full overflow-hidden gap-0.5">
+                  {tierA > 0 && <div className="bg-emerald-500 transition-all" style={{ width: `${(tierA/total)*100}%` }} title={`A Tier: ${tierA}`} />}
+                  {tierB > 0 && <div className="bg-blue-400 transition-all" style={{ width: `${(tierB/total)*100}%` }} title={`B Tier: ${tierB}`} />}
+                  {tierC > 0 && <div className="bg-amber-400 transition-all" style={{ width: `${(tierC/total)*100}%` }} title={`C Tier: ${tierC}`} />}
+                  {tierD > 0 && <div className="bg-muted-foreground/30 transition-all" style={{ width: `${(tierD/total)*100}%` }} title={`D Tier: ${tierD}`} />}
+                </div>
+                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                  {tierA > 0 && <span className="text-[10px] text-emerald-700 dark:text-emerald-400">A Tier <strong>{tierA}</strong></span>}
+                  {tierB > 0 && <span className="text-[10px] text-blue-700 dark:text-blue-400">B Tier <strong>{tierB}</strong></span>}
+                  {tierC > 0 && <span className="text-[10px] text-amber-700 dark:text-amber-400">C Tier <strong>{tierC}</strong></span>}
+                  {tierD > 0 && <span className="text-[10px] text-muted-foreground">D Tier <strong>{tierD}</strong></span>}
+                </div>
+              </div>
+            );
+          })()}
 
           <div className="flex flex-col lg:flex-row gap-6">
             <div className="flex-1 min-w-0">
