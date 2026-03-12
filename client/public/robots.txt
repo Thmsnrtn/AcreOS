@@ -1,0 +1,9 @@
+User-agent: *
+Disallow: /api/
+Disallow: /admin/
+Disallow: /founder/
+Disallow: /portal/
+Allow: /
+Allow: /auth
+Allow: /terms
+Allow: /privacy

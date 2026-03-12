@@ -1,21 +1,5 @@
-import { PageShell } from "@/components/page-shell";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Construction } from "lucide-react";
+import { Redirect } from "wouter";
 
 export default function BetaIntakePage() {
-  return (
-    <PageShell>
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Construction className="w-5 h-5" />
-            Beta Intake
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground">This page is under construction.</p>
-        </CardContent>
-      </Card>
-    </PageShell>
-  );
+  return <Redirect to="/auth" />;
 }
