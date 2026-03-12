@@ -48,6 +48,9 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
     const now = new Date();
     const trialEnds = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
+    // Capture UTM attribution stored in session during registration
+    const sessionUtm = (req.session as any).utmAttribution || {};
+
     org = await storage.createOrganization({
       name: `${displayName}'s Organization`,
       slug,
@@ -58,6 +61,10 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
       trialEndsAt: isFounder ? null : trialEnds,
       trialUsed: isFounder ? true : false,
       isFounder,
+      utmSource: sessionUtm.utmSource || null,
+      utmMedium: sessionUtm.utmMedium || null,
+      utmCampaign: sessionUtm.utmCampaign || null,
+      utmContent: sessionUtm.utmContent || null,
     });
 
     // Add user as owner team member

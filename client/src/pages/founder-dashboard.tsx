@@ -53,6 +53,17 @@ import {
   HandHelping,
   Key,
   Search,
+  ToggleLeft,
+  ToggleRight,
+  Tag,
+  Percent,
+  Radio,
+  Megaphone,
+  MousePointerClick,
+  BarChart,
+  Pause,
+  Target,
+  TrendingUp as TrendingUpIcon,
 } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 
@@ -3378,6 +3389,15 @@ export default function FounderDashboard() {
         </DialogContent>
       </Dialog>
 
+      {/* Feature Flags Control */}
+      <FeatureFlagsSection />
+
+      {/* Pricing & Promotions */}
+      <PricingSection />
+
+      {/* Growth & Ad Campaigns */}
+      <GrowthSection />
+
       {/* AI Models Management */}
       <AIModelsSection />
 
@@ -3571,6 +3591,558 @@ function SystemApiKeysSection() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// FEATURE FLAGS SECTION
+// ─────────────────────────────────────────────────────────────────────
+interface FeatureFlag {
+  id: number;
+  key: string;
+  label: string;
+  description: string;
+  enabled: boolean;
+  controlledRoutes: string[];
+}
+
+function FeatureFlagsSection() {
+  const { toast } = useToast();
+
+  const { data: flags, isLoading, refetch } = useQuery<FeatureFlag[]>({
+    queryKey: ["/api/founder/feature-flags"],
+  });
+
+  const toggleMutation = useMutation({
+    mutationFn: async ({ key, enabled }: { key: string; enabled: boolean }) =>
+      apiRequest("PUT", `/api/founder/feature-flags/${key}`, { enabled }),
+    onSuccess: () => {
+      refetch();
+      queryClient.invalidateQueries({ queryKey: ["/api/config/features"] });
+    },
+    onError: () => toast({ title: "Failed to update flag", variant: "destructive" }),
+  });
+
+  return (
+    <div className="mt-8 p-6 border rounded-xl bg-card space-y-4">
+      <div>
+        <h2 className="text-xl font-semibold flex items-center gap-2">
+          <ToggleRight className="w-5 h-5 text-primary" />
+          Feature Flags
+        </h2>
+        <p className="text-muted-foreground text-sm mt-0.5">
+          Control which features are live for all users. Disabled features are hidden from the sidebar and return 404.
+        </p>
+      </div>
+
+      {isLoading ? (
+        <div className="animate-pulse h-40 rounded-lg bg-muted/50" />
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {(flags || []).map((flag) => (
+            <div key={flag.key} className="flex items-start gap-3 p-3 border rounded-lg">
+              <Switch
+                checked={flag.enabled}
+                onCheckedChange={(enabled) => toggleMutation.mutate({ key: flag.key, enabled })}
+                disabled={toggleMutation.isPending}
+                className="mt-0.5 shrink-0"
+              />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-sm">{flag.label}</span>
+                  <Badge variant={flag.enabled ? "default" : "outline"} className="text-xs">
+                    {flag.enabled ? "Live" : "Hidden"}
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{flag.description}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// PRICING SECTION
+// ─────────────────────────────────────────────────────────────────────
+interface PricingConfigRow {
+  id: number;
+  tier: string;
+  displayPriceMonthly: number;
+  displayPriceYearly: number;
+  promoLabel: string | null;
+  promoDiscountPercent: number | null;
+  promoEndsAt: string | null;
+  stripeCouponId: string | null;
+  allowPromoCodes: boolean;
+}
+
+function PricingSection() {
+  const { toast } = useToast();
+  const [editingTier, setEditingTier] = useState<string | null>(null);
+  const [draftPrices, setDraftPrices] = useState<{ monthly: string; yearly: string }>({ monthly: "", yearly: "" });
+  const [promoForm, setPromoForm] = useState<{ tier: string; label: string; discount: string; endsAt: string } | null>(null);
+
+  const { data: configs, isLoading, refetch } = useQuery<PricingConfigRow[]>({
+    queryKey: ["/api/founder/pricing"],
+  });
+
+  const updatePriceMutation = useMutation({
+    mutationFn: async ({ tier, monthly, yearly }: { tier: string; monthly: number; yearly: number }) =>
+      apiRequest("PUT", `/api/founder/pricing/${tier}`, {
+        displayPriceMonthly: monthly,
+        displayPriceYearly: yearly,
+      }),
+    onSuccess: () => { refetch(); setEditingTier(null); toast({ title: "Prices updated" }); },
+    onError: () => toast({ title: "Failed to update prices", variant: "destructive" }),
+  });
+
+  const createPromoMutation = useMutation({
+    mutationFn: async ({ tier, label, discount, endsAt }: { tier: string; label: string; discount: number; endsAt: string }) =>
+      apiRequest("POST", `/api/founder/pricing/${tier}/promo`, {
+        promoLabel: label,
+        promoDiscountPercent: discount,
+        promoEndsAt: endsAt,
+      }),
+    onSuccess: () => { refetch(); setPromoForm(null); toast({ title: "Promotion activated" }); },
+    onError: () => toast({ title: "Failed to create promotion", variant: "destructive" }),
+  });
+
+  const clearPromoMutation = useMutation({
+    mutationFn: async (tier: string) => apiRequest("DELETE", `/api/founder/pricing/${tier}/promo`),
+    onSuccess: () => { refetch(); toast({ title: "Promotion cleared" }); },
+    onError: () => toast({ title: "Failed to clear promotion", variant: "destructive" }),
+  });
+
+  const togglePromoCodesMutation = useMutation({
+    mutationFn: async ({ tier, allow }: { tier: string; allow: boolean }) =>
+      apiRequest("PUT", `/api/founder/pricing/${tier}`, { allowPromoCodes: allow }),
+    onSuccess: () => refetch(),
+    onError: () => toast({ title: "Failed to update", variant: "destructive" }),
+  });
+
+  const tierLabels: Record<string, string> = {
+    starter: "Starter",
+    pro: "Pro",
+    growth: "Growth",
+    enterprise: "Enterprise",
+  };
+
+  return (
+    <div className="mt-8 p-6 border rounded-xl bg-card space-y-4">
+      <div>
+        <h2 className="text-xl font-semibold flex items-center gap-2">
+          <Tag className="w-5 h-5 text-primary" />
+          Pricing & Promotions
+        </h2>
+        <p className="text-muted-foreground text-sm mt-0.5">
+          Adjust display pricing, run flash sales, and manage Stripe promo codes.
+        </p>
+      </div>
+
+      {isLoading ? (
+        <div className="animate-pulse h-40 rounded-lg bg-muted/50" />
+      ) : (
+        <div className="space-y-3">
+          {(configs || []).map((cfg) => {
+            const isExpired = cfg.promoEndsAt && new Date(cfg.promoEndsAt) < new Date();
+            const hasActivePromo = cfg.promoLabel && !isExpired;
+            return (
+              <div key={cfg.tier} className="p-4 border rounded-lg space-y-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <span className="font-medium">{tierLabels[cfg.tier] || cfg.tier}</span>
+                    {hasActivePromo && (
+                      <Badge className="ml-2 bg-green-500/10 text-green-700 border-green-500/20">
+                        <Percent className="w-3 h-3 mr-1" />
+                        {cfg.promoDiscountPercent}% off — {cfg.promoLabel}
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {editingTier === cfg.tier ? (
+                      <>
+                        <Input
+                          type="number"
+                          className="h-8 w-24 text-sm"
+                          placeholder="Monthly ¢"
+                          value={draftPrices.monthly}
+                          onChange={(e) => setDraftPrices((p) => ({ ...p, monthly: e.target.value }))}
+                        />
+                        <Input
+                          type="number"
+                          className="h-8 w-24 text-sm"
+                          placeholder="Yearly ¢"
+                          value={draftPrices.yearly}
+                          onChange={(e) => setDraftPrices((p) => ({ ...p, yearly: e.target.value }))}
+                        />
+                        <Button
+                          size="sm"
+                          className="h-8"
+                          onClick={() => updatePriceMutation.mutate({ tier: cfg.tier, monthly: parseInt(draftPrices.monthly), yearly: parseInt(draftPrices.yearly) })}
+                          disabled={updatePriceMutation.isPending}
+                        >
+                          Save
+                        </Button>
+                        <Button size="sm" variant="ghost" className="h-8" onClick={() => setEditingTier(null)}>Cancel</Button>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-sm text-muted-foreground font-mono">
+                          ${(cfg.displayPriceMonthly / 100).toFixed(0)}/mo · ${(cfg.displayPriceYearly / 100).toFixed(0)}/mo yearly
+                        </span>
+                        <Button size="sm" variant="outline" className="h-8 text-xs"
+                          onClick={() => { setEditingTier(cfg.tier); setDraftPrices({ monthly: String(cfg.displayPriceMonthly), yearly: String(cfg.displayPriceYearly) }); }}>
+                          Edit Prices
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 flex-wrap">
+                  {hasActivePromo ? (
+                    <Button size="sm" variant="destructive" className="h-7 text-xs"
+                      onClick={() => clearPromoMutation.mutate(cfg.tier)}
+                      disabled={clearPromoMutation.isPending}>
+                      End Promotion
+                    </Button>
+                  ) : (
+                    <Button size="sm" variant="outline" className="h-7 text-xs"
+                      onClick={() => setPromoForm({ tier: cfg.tier, label: "", discount: "", endsAt: "" })}>
+                      <Percent className="w-3 h-3 mr-1" />
+                      Flash Sale
+                    </Button>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={cfg.allowPromoCodes}
+                      onCheckedChange={(allow) => togglePromoCodesMutation.mutate({ tier: cfg.tier, allow })}
+                      className="scale-75"
+                    />
+                    <span className="text-xs text-muted-foreground">User promo codes at checkout</span>
+                  </div>
+                  {cfg.promoEndsAt && !isExpired && (
+                    <span className="text-xs text-muted-foreground">
+                      Ends {new Date(cfg.promoEndsAt).toLocaleDateString()}
+                    </span>
+                  )}
+                </div>
+
+                {promoForm?.tier === cfg.tier && (
+                  <div className="p-3 bg-muted/50 rounded-lg space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input placeholder="Label (e.g. Spring Sale)" className="h-8 text-sm"
+                        value={promoForm.label} onChange={(e) => setPromoForm((p) => p ? { ...p, label: e.target.value } : null)} />
+                      <Input type="number" min="1" max="99" placeholder="Discount %" className="h-8 text-sm"
+                        value={promoForm.discount} onChange={(e) => setPromoForm((p) => p ? { ...p, discount: e.target.value } : null)} />
+                      <Input type="datetime-local" className="h-8 text-sm col-span-2"
+                        value={promoForm.endsAt} onChange={(e) => setPromoForm((p) => p ? { ...p, endsAt: e.target.value } : null)} />
+                    </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" className="h-8"
+                        onClick={() => createPromoMutation.mutate({ tier: cfg.tier, label: promoForm.label, discount: parseInt(promoForm.discount), endsAt: promoForm.endsAt })}
+                        disabled={createPromoMutation.isPending || !promoForm.label || !promoForm.discount || !promoForm.endsAt}>
+                        Activate Promo
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-8" onClick={() => setPromoForm(null)}>Cancel</Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// GROWTH / AD CAMPAIGNS SECTION
+// ─────────────────────────────────────────────────────────────────────
+interface GrowthCampaignItem {
+  id: number;
+  name: string;
+  templateKey: string;
+  status: string;
+  externalCampaignId: string | null;
+  dailyBudgetCents: number;
+  totalSpendCents: number;
+  impressions: number;
+  clicks: number;
+  signups: number;
+  createdAt: string;
+}
+
+interface AdAccount {
+  adAccountId: string;
+  pixelId: string | null;
+  isActive: boolean;
+  accessToken: string;
+}
+
+interface CampaignTemplate {
+  key: string;
+  name: string;
+  objective: string;
+  headline: string;
+  description: string;
+}
+
+interface SignupAttribution {
+  organizationId: number;
+  name: string;
+  subscriptionTier: string;
+  utmSource: string | null;
+  utmMedium: string | null;
+  utmCampaign: string | null;
+  createdAt: string;
+}
+
+function GrowthSection() {
+  const { toast } = useToast();
+  const [showAdAccountForm, setShowAdAccountForm] = useState(false);
+  const [adForm, setAdForm] = useState({ adAccountId: "", accessToken: "", pixelId: "", appId: "" });
+  const [launchForm, setLaunchForm] = useState<{ templateKey: string; name: string; budget: string } | null>(null);
+
+  const { data: adAccount, refetch: refetchAccount } = useQuery<AdAccount | null>({
+    queryKey: ["/api/founder/growth/ad-account"],
+  });
+
+  const { data: campaigns, refetch: refetchCampaigns } = useQuery<GrowthCampaignItem[]>({
+    queryKey: ["/api/founder/growth/campaigns"],
+  });
+
+  const { data: templates } = useQuery<CampaignTemplate[]>({
+    queryKey: ["/api/founder/growth/templates"],
+  });
+
+  const { data: attribution } = useQuery<SignupAttribution[]>({
+    queryKey: ["/api/founder/growth/attribution"],
+  });
+
+  const saveAdAccountMutation = useMutation({
+    mutationFn: async (data: typeof adForm) => apiRequest("PUT", "/api/founder/growth/ad-account", data),
+    onSuccess: () => { refetchAccount(); setShowAdAccountForm(false); toast({ title: "Ad account saved" }); },
+    onError: () => toast({ title: "Failed to save ad account", variant: "destructive" }),
+  });
+
+  const launchCampaignMutation = useMutation({
+    mutationFn: async ({ templateKey, name, budget }: { templateKey: string; name: string; budget: number }) =>
+      apiRequest("POST", "/api/founder/growth/campaigns", { templateKey, name, dailyBudgetCents: budget }),
+    onSuccess: () => { refetchCampaigns(); setLaunchForm(null); toast({ title: "Campaign launched" }); },
+    onError: (err: any) => toast({ title: err?.message || "Failed to launch campaign", variant: "destructive" }),
+  });
+
+  const toggleCampaignMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: number; status: string }) =>
+      apiRequest("PUT", `/api/founder/growth/campaigns/${id}/status`, { status }),
+    onSuccess: () => { refetchCampaigns(); toast({ title: "Campaign updated" }); },
+    onError: () => toast({ title: "Failed to update campaign", variant: "destructive" }),
+  });
+
+  const syncStatsMutation = useMutation({
+    mutationFn: async (id: number) => apiRequest("POST", `/api/founder/growth/campaigns/${id}/sync`),
+    onSuccess: () => { refetchCampaigns(); toast({ title: "Stats synced" }); },
+    onError: () => toast({ title: "Failed to sync stats", variant: "destructive" }),
+  });
+
+  const statusColors: Record<string, string> = {
+    active: "bg-green-500/10 text-green-700 border-green-500/20",
+    paused: "bg-yellow-500/10 text-yellow-700 border-yellow-500/20",
+    draft: "bg-muted text-muted-foreground",
+    completed: "bg-blue-500/10 text-blue-700 border-blue-500/20",
+  };
+
+  const sourceCounts = (attribution || []).reduce<Record<string, number>>((acc, s) => {
+    const src = s.utmSource || "organic";
+    acc[src] = (acc[src] || 0) + 1;
+    return acc;
+  }, {});
+
+  return (
+    <div className="mt-8 p-6 border rounded-xl bg-card space-y-6">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h2 className="text-xl font-semibold flex items-center gap-2">
+            <Megaphone className="w-5 h-5 text-primary" />
+            Growth & Ads
+          </h2>
+          <p className="text-muted-foreground text-sm mt-0.5">
+            Run paid acquisition campaigns, track signup attribution, and automate growth.
+          </p>
+        </div>
+        <Button size="sm" variant="outline" onClick={() => setShowAdAccountForm(true)}>
+          <Key className="w-3 h-3 mr-1" />
+          {adAccount ? "Update Ad Account" : "Connect Meta Ad Account"}
+        </Button>
+      </div>
+
+      {showAdAccountForm && (
+        <div className="p-4 border rounded-lg bg-muted/30 space-y-3">
+          <h3 className="font-medium text-sm">Meta Ad Account Credentials</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Ad Account ID</label>
+              <Input placeholder="act_123456789" className="h-8 text-sm" value={adForm.adAccountId}
+                onChange={(e) => setAdForm((f) => ({ ...f, adAccountId: e.target.value }))} />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Access Token</label>
+              <Input type="password" placeholder="EAAxxxxxxx" className="h-8 text-sm" value={adForm.accessToken}
+                onChange={(e) => setAdForm((f) => ({ ...f, accessToken: e.target.value }))} />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Pixel ID (for conversion tracking)</label>
+              <Input placeholder="123456789" className="h-8 text-sm" value={adForm.pixelId}
+                onChange={(e) => setAdForm((f) => ({ ...f, pixelId: e.target.value }))} />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Page / App ID (for ad creatives)</label>
+              <Input placeholder="Meta Page or App ID" className="h-8 text-sm" value={adForm.appId}
+                onChange={(e) => setAdForm((f) => ({ ...f, appId: e.target.value }))} />
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" onClick={() => saveAdAccountMutation.mutate(adForm)} disabled={saveAdAccountMutation.isPending || !adForm.adAccountId || !adForm.accessToken}>
+              Save Credentials
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setShowAdAccountForm(false)}>Cancel</Button>
+          </div>
+        </div>
+      )}
+
+      {adAccount && (
+        <div className="flex items-center gap-2 p-2 bg-green-500/5 border border-green-500/20 rounded-lg">
+          <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />
+          <span className="text-sm text-green-700">Meta ad account connected: {adAccount.adAccountId}</span>
+          {adAccount.pixelId && <Badge className="text-xs ml-auto">Pixel {adAccount.pixelId}</Badge>}
+        </div>
+      )}
+
+      {/* Campaigns */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-medium text-sm flex items-center gap-2">
+            <Radio className="w-4 h-4 text-primary" />
+            Growth Campaigns
+          </h3>
+          <Button size="sm" variant="outline" className="h-7 text-xs"
+            onClick={() => setLaunchForm({ templateKey: templates?.[0]?.key || "", name: "", budget: "2000" })}
+            disabled={!adAccount}>
+            <Play className="w-3 h-3 mr-1" />
+            Launch Campaign
+          </Button>
+        </div>
+
+        {launchForm && (
+          <div className="mb-3 p-3 border rounded-lg bg-muted/30 space-y-2">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+              <Select value={launchForm.templateKey} onValueChange={(v) => setLaunchForm((f) => f ? { ...f, templateKey: v } : null)}>
+                <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Template" /></SelectTrigger>
+                <SelectContent>
+                  {(templates || []).map((t) => <SelectItem key={t.key} value={t.key}>{t.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Input placeholder="Campaign name" className="h-8 text-sm" value={launchForm.name}
+                onChange={(e) => setLaunchForm((f) => f ? { ...f, name: e.target.value } : null)} />
+              <Input type="number" placeholder="Daily budget (cents, e.g. 2000 = $20)" className="h-8 text-sm" value={launchForm.budget}
+                onChange={(e) => setLaunchForm((f) => f ? { ...f, budget: e.target.value } : null)} />
+            </div>
+            {templates?.find((t) => t.key === launchForm.templateKey) && (
+              <p className="text-xs text-muted-foreground italic px-1">
+                "{templates.find((t) => t.key === launchForm.templateKey)?.headline}"
+              </p>
+            )}
+            <div className="flex gap-2">
+              <Button size="sm" className="h-8"
+                onClick={() => launchCampaignMutation.mutate({ templateKey: launchForm.templateKey, name: launchForm.name, budget: parseInt(launchForm.budget) })}
+                disabled={launchCampaignMutation.isPending || !launchForm.name || !launchForm.templateKey}>
+                {launchCampaignMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Play className="w-3 h-3 mr-1" />}
+                Launch
+              </Button>
+              <Button size="sm" variant="ghost" className="h-8" onClick={() => setLaunchForm(null)}>Cancel</Button>
+            </div>
+          </div>
+        )}
+
+        {(campaigns || []).length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-6">
+            No campaigns yet. Connect your Meta ad account and launch your first growth campaign.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {(campaigns || []).map((c) => (
+              <div key={c.id} className="flex items-center gap-3 p-3 border rounded-lg">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium text-sm">{c.name}</span>
+                    <Badge className={`text-xs ${statusColors[c.status] || ""}`}>{c.status}</Badge>
+                  </div>
+                  <div className="flex gap-4 mt-1 text-xs text-muted-foreground">
+                    <span>${(c.totalSpendCents / 100).toFixed(2)} spent</span>
+                    <span>{c.impressions.toLocaleString()} impressions</span>
+                    <span>{c.clicks.toLocaleString()} clicks</span>
+                    {c.impressions > 0 && <span>{((c.clicks / c.impressions) * 100).toFixed(2)}% CTR</span>}
+                  </div>
+                </div>
+                <div className="flex gap-1 shrink-0">
+                  {c.externalCampaignId && (
+                    <Button size="sm" variant="ghost" className="h-7 px-2"
+                      onClick={() => syncStatsMutation.mutate(c.id)} disabled={syncStatsMutation.isPending}>
+                      <RefreshCw className="w-3 h-3" />
+                    </Button>
+                  )}
+                  <Button size="sm" variant="outline" className="h-7 px-2"
+                    onClick={() => toggleCampaignMutation.mutate({ id: c.id, status: c.status === "active" ? "paused" : "active" })}
+                    disabled={toggleCampaignMutation.isPending}>
+                    {c.status === "active" ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Attribution */}
+      <div>
+        <h3 className="font-medium text-sm flex items-center gap-2 mb-3">
+          <MousePointerClick className="w-4 h-4 text-primary" />
+          Signup Attribution (last 50)
+        </h3>
+        {Object.keys(sourceCounts).length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-3">
+            {Object.entries(sourceCounts).sort((a, b) => b[1] - a[1]).map(([src, count]) => (
+              <Badge key={src} variant="outline" className="text-xs">
+                {src}: {count} signup{count !== 1 ? "s" : ""}
+              </Badge>
+            ))}
+          </div>
+        )}
+        {(attribution || []).length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No signup data yet. UTM attribution will appear here once users sign up from your ads.
+          </p>
+        ) : (
+          <div className="space-y-1 max-h-52 overflow-y-auto">
+            {(attribution || []).slice(0, 20).map((s) => (
+              <div key={s.organizationId} className="flex items-center gap-2 text-xs py-1 border-b border-border/50 last:border-0">
+                <span className="flex-1 font-medium truncate">{s.name}</span>
+                <Badge variant="outline" className="text-xs shrink-0">{s.subscriptionTier}</Badge>
+                <span className="text-muted-foreground shrink-0">
+                  {s.utmSource ? `${s.utmSource}${s.utmCampaign ? ` / ${s.utmCampaign}` : ""}` : "organic"}
+                </span>
+                <span className="text-muted-foreground shrink-0">{new Date(s.createdAt).toLocaleDateString()}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -11,12 +11,13 @@ export class StripeService {
   }
 
   async createCheckoutSession(
-    customerId: string, 
-    priceId: string, 
-    successUrl: string, 
+    customerId: string,
+    priceId: string,
+    successUrl: string,
     cancelUrl: string,
     metadata?: Record<string, string>,
-    trialDays?: number
+    trialDays?: number,
+    options?: { couponId?: string; allowPromoCodes?: boolean }
   ) {
     const stripe = await getUncachableStripeClient();
     const sessionConfig: any = {
@@ -28,14 +29,21 @@ export class StripeService {
       cancel_url: cancelUrl,
       metadata,
     };
-    
+
     // Add trial period if specified (for first-time subscribers only)
     if (trialDays && trialDays > 0) {
       sessionConfig.subscription_data = {
         trial_period_days: trialDays,
       };
     }
-    
+
+    // Apply a specific coupon (founder-set flash sale) or allow user-entered promo codes
+    if (options?.couponId) {
+      sessionConfig.discounts = [{ coupon: options.couponId }];
+    } else if (options?.allowPromoCodes) {
+      sessionConfig.allow_promotion_codes = true;
+    }
+
     return await stripe.checkout.sessions.create(sessionConfig);
   }
 

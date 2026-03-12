@@ -44,6 +44,18 @@ const resetPasswordSchema = z.object({
 // ============================================
 
 export function registerAuthRoutes(app: Express): void {
+  // UTM attribution: called from landing page before register to persist UTM params in session
+  app.post("/api/auth/attribution", (req, res) => {
+    const { utmSource, utmMedium, utmCampaign, utmContent } = req.body;
+    (req.session as any).utmAttribution = {
+      utmSource: utmSource || null,
+      utmMedium: utmMedium || null,
+      utmCampaign: utmCampaign || null,
+      utmContent: utmContent || null,
+    };
+    res.json({ ok: true });
+  });
+
   // Register new account
   app.post("/api/auth/register", async (req, res, next) => {
     try {

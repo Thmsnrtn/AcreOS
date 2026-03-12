@@ -5,6 +5,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/use-auth";
+import { useFeatureFlags } from "@/hooks/use-feature-flags";
 import { Loader2 } from "lucide-react";
 import { telemetry } from "@/lib/telemetry";
 import { ThemeProvider } from "@/contexts/theme-context";
@@ -129,6 +130,24 @@ function FounderProtectedRoute({ component: Component }: { component: React.Comp
     return <NotFound />;
   }
 
+  return <Component />;
+}
+
+// Feature-flagged protected route: if the feature is disabled globally, render NotFound
+function FlaggedRoute({ route, component: Component }: { route: string; component: React.ComponentType }) {
+  const { user, isLoading: authLoading } = useAuth();
+  const { isRouteEnabled, isLoading: flagsLoading } = useFeatureFlags();
+
+  if (authLoading || flagsLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!user) return <Redirect to="/auth" />;
+  if (!isRouteEnabled(route)) return <NotFound />;
   return <Component />;
 }
 
@@ -264,52 +283,52 @@ function Router() {
         {() => <FounderProtectedRoute component={FounderDashboard} />}
       </Route>
       <Route path="/marketplace">
-        {() => <ProtectedRoute component={MarketplacePage} />}
+        {() => <FlaggedRoute route="/marketplace" component={MarketplacePage} />}
       </Route>
       <Route path="/academy">
-        {() => <ProtectedRoute component={AcademyPage} />}
+        {() => <FlaggedRoute route="/academy" component={AcademyPage} />}
       </Route>
       <Route path="/land-credit">
-        {() => <ProtectedRoute component={LandCreditPage} />}
+        {() => <FlaggedRoute route="/land-credit" component={LandCreditPage} />}
       </Route>
       <Route path="/radar">
-        {() => <ProtectedRoute component={AcquisitionRadarPage} />}
+        {() => <FlaggedRoute route="/radar" component={AcquisitionRadarPage} />}
       </Route>
       <Route path="/portfolio-optimizer">
-        {() => <ProtectedRoute component={PortfolioOptimizerPage} />}
+        {() => <FlaggedRoute route="/portfolio-optimizer" component={PortfolioOptimizerPage} />}
       </Route>
       <Route path="/avm">
-        {() => <ProtectedRoute component={AVMPage} />}
+        {() => <FlaggedRoute route="/avm" component={AVMPage} />}
       </Route>
       <Route path="/maps">
         {() => <ProtectedRoute component={MapsPage} />}
       </Route>
       <Route path="/negotiation">
-        {() => <ProtectedRoute component={NegotiationCopilotPage} />}
+        {() => <FlaggedRoute route="/negotiation" component={NegotiationCopilotPage} />}
       </Route>
       <Route path="/cash-flow">
         {() => <ProtectedRoute component={CashFlowPage} />}
       </Route>
       <Route path="/deal-hunter">
-        {() => <ProtectedRoute component={DealHunterPage} />}
+        {() => <FlaggedRoute route="/deal-hunter" component={DealHunterPage} />}
       </Route>
       <Route path="/vision-ai">
-        {() => <ProtectedRoute component={VisionAIPage} />}
+        {() => <FlaggedRoute route="/vision-ai" component={VisionAIPage} />}
       </Route>
       <Route path="/capital-markets">
-        {() => <ProtectedRoute component={CapitalMarketsPage} />}
+        {() => <FlaggedRoute route="/capital-markets" component={CapitalMarketsPage} />}
       </Route>
       <Route path="/market-intelligence">
-        {() => <ProtectedRoute component={MarketIntelligencePage} />}
+        {() => <FlaggedRoute route="/market-intelligence" component={MarketIntelligencePage} />}
       </Route>
       <Route path="/compliance">
-        {() => <ProtectedRoute component={CompliancePage} />}
+        {() => <FlaggedRoute route="/compliance" component={CompliancePage} />}
       </Route>
       <Route path="/tax-researcher">
-        {() => <ProtectedRoute component={TaxResearcherPage} />}
+        {() => <FlaggedRoute route="/tax-researcher" component={TaxResearcherPage} />}
       </Route>
       <Route path="/document-intelligence">
-        {() => <ProtectedRoute component={DocumentIntelligencePage} />}
+        {() => <FlaggedRoute route="/document-intelligence" component={DocumentIntelligencePage} />}
       </Route>
       <Route path="/admin/beta">
         {() => <FounderProtectedRoute component={React.lazy(() => import("@/pages/beta-dashboard"))} />}

@@ -294,6 +294,24 @@ export class WebhookHandlers {
 
       await storage.updateOrganization(org.id, updates);
       console.log(`[webhook] Subscription updated: Org ${org.id}, Status: ${subscription.status}${newTier ? `, Tier: ${newTier}` : ''}`);
+
+      // Founder notification: new paid signup or upgrade
+      if (newTier && newTier !== 'free' && subscription.status === 'active') {
+        const isUpgrade = org.subscriptionTier !== 'free' && org.subscriptionTier !== newTier;
+        const isNewPaid = org.subscriptionTier === 'free' || !org.subscriptionTier;
+        if (isNewPaid || isUpgrade) {
+          await storage.createSystemAlert({
+            organizationId: null as any, // Platform-wide alert for founder
+            type: 'new_subscriber',
+            severity: 'info',
+            title: isUpgrade ? `Upgrade: ${org.name}` : `New subscriber: ${org.name}`,
+            message: isUpgrade
+              ? `${org.name} upgraded from ${org.subscriptionTier} → ${newTier}.`
+              : `${org.name} converted to the ${newTier} plan.`,
+            metadata: { organizationId: org.id, fromTier: org.subscriptionTier, toTier: newTier },
+          });
+        }
+      }
     } catch (err) {
       console.error('Error processing subscription updated:', err);
     }

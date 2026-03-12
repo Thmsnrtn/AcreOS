@@ -2315,5 +2315,290 @@ export function registerAdminRoutes(app: Express): void {
   });
 
   // ============================================
+  // FEATURE FLAGS (Founder-controlled feature visibility)
+  // ============================================
+
+  // Public endpoint – clients call this to know which features are enabled
+  api.get("/api/config/features", async (_req, res) => {
+    try {
+      const flags = await storage.getEnabledFeatureFlags();
+      const enabledKeys = flags.map(f => f.key);
+      const enabledRoutes = flags.flatMap(f => f.controlledRoutes as string[]);
+      res.json({ enabledKeys, enabledRoutes });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.get("/api/founder/feature-flags", isAuthenticated, isFounderAdmin, async (_req, res) => {
+    try {
+      const flags = await storage.getAllFeatureFlags();
+      res.json(flags);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.put("/api/founder/feature-flags/:key", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { key } = req.params;
+      const { enabled } = req.body as { enabled: boolean };
+      if (typeof enabled !== "boolean") {
+        return res.status(400).json({ message: "enabled must be a boolean" });
+      }
+      const flag = await storage.updateFeatureFlag(key, enabled);
+      if (!flag) return res.status(404).json({ message: "Feature flag not found" });
+      res.json(flag);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // PRICING CONFIG (Founder-controlled pricing + promotions)
+  // ============================================
+
+  // Public endpoint – landing page + checkout calls this
+  api.get("/api/config/pricing", async (_req, res) => {
+    try {
+      const configs = await storage.getAllPricingConfig();
+      // Filter out expired promos
+      const now = new Date();
+      const cleaned = configs.map(c => ({
+        ...c,
+        promoLabel: c.promoEndsAt && c.promoEndsAt < now ? null : c.promoLabel,
+        promoDiscountPercent: c.promoEndsAt && c.promoEndsAt < now ? null : c.promoDiscountPercent,
+        promoEndsAt: c.promoEndsAt && c.promoEndsAt < now ? null : c.promoEndsAt,
+        stripeCouponId: c.promoEndsAt && c.promoEndsAt < now ? null : c.stripeCouponId,
+      }));
+      res.json(cleaned);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.get("/api/founder/pricing", isAuthenticated, isFounderAdmin, async (_req, res) => {
+    try {
+      const configs = await storage.getAllPricingConfig();
+      res.json(configs);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.put("/api/founder/pricing/:tier", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { tier } = req.params;
+      const { displayPriceMonthly, displayPriceYearly, allowPromoCodes } = req.body;
+      const updated = await storage.updatePricingConfig(tier, {
+        ...(displayPriceMonthly !== undefined && { displayPriceMonthly }),
+        ...(displayPriceYearly !== undefined && { displayPriceYearly }),
+        ...(allowPromoCodes !== undefined && { allowPromoCodes }),
+      });
+      if (!updated) return res.status(404).json({ message: "Tier not found" });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Create / activate a flash sale promo for a tier
+  api.post("/api/founder/pricing/:tier/promo", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { tier } = req.params;
+      const { promoLabel, promoDiscountPercent, promoEndsAt } = req.body as {
+        promoLabel: string;
+        promoDiscountPercent: number;
+        promoEndsAt: string; // ISO date string
+      };
+      if (!promoLabel || !promoDiscountPercent || !promoEndsAt) {
+        return res.status(400).json({ message: "promoLabel, promoDiscountPercent, promoEndsAt required" });
+      }
+      // Create a Stripe coupon
+      const { getUncachableStripeClient } = await import("./stripeClient");
+      const stripe = await getUncachableStripeClient();
+      const coupon = await stripe.coupons.create({
+        percent_off: promoDiscountPercent,
+        duration: "once",
+        name: promoLabel,
+        metadata: { tier, created_by: "founder_dashboard" },
+      });
+      const updated = await storage.updatePricingConfig(tier, {
+        promoLabel,
+        promoDiscountPercent,
+        promoEndsAt: new Date(promoEndsAt),
+        stripeCouponId: coupon.id,
+      });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // End / clear a promo for a tier
+  api.delete("/api/founder/pricing/:tier/promo", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { tier } = req.params;
+      await storage.clearPricingPromo(tier);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // GROWTH / AD MARKETING (AcreOS customer acquisition)
+  // ============================================
+
+  api.get("/api/founder/growth/attribution", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string || "50");
+      const signups = await storage.getRecentSignupsWithAttribution(limit);
+      res.json(signups);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Get or update founder Meta ad account credentials
+  api.get("/api/founder/growth/ad-account", isAuthenticated, isFounderAdmin, async (_req, res) => {
+    try {
+      const account = await storage.getFounderAdAccount("meta");
+      if (!account) return res.json(null);
+      // Mask the access token for display
+      res.json({ ...account, accessToken: account.accessToken ? "••••••••" + account.accessToken.slice(-4) : null });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.put("/api/founder/growth/ad-account", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { adAccountId, accessToken, pixelId, appId, appSecret } = req.body;
+      if (!adAccountId || !accessToken) {
+        return res.status(400).json({ message: "adAccountId and accessToken are required" });
+      }
+      const account = await storage.upsertFounderAdAccount({
+        platform: "meta",
+        adAccountId,
+        accessToken,
+        pixelId: pixelId || null,
+        appId: appId || null,
+        appSecret: appSecret || null,
+        isActive: true,
+      });
+      res.json({ ...account, accessToken: "••••••••" + account.accessToken.slice(-4) });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Available campaign templates
+  api.get("/api/founder/growth/templates", isAuthenticated, isFounderAdmin, async (_req, res) => {
+    try {
+      const { growthAdService } = await import("./services/growthAdService");
+      res.json(growthAdService.getTemplates());
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // List growth campaigns
+  api.get("/api/founder/growth/campaigns", isAuthenticated, isFounderAdmin, async (_req, res) => {
+    try {
+      const campaigns = await storage.getGrowthCampaigns();
+      res.json(campaigns);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Launch a new growth campaign
+  api.post("/api/founder/growth/campaigns", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { name, templateKey, dailyBudgetCents, targetCountries } = req.body;
+      if (!name || !templateKey) {
+        return res.status(400).json({ message: "name and templateKey are required" });
+      }
+      const adAccount = await storage.getFounderAdAccount("meta");
+      if (!adAccount) {
+        return res.status(400).json({ message: "No Meta ad account configured. Add your Meta ad account credentials first." });
+      }
+
+      // Create the campaign in Meta via the growth ad service
+      const { growthAdService } = await import("./services/growthAdService");
+      const externalCampaignId = await growthAdService.launchCampaign({
+        adAccount,
+        templateKey,
+        name,
+        dailyBudgetCents: dailyBudgetCents || 2000,
+        targetCountries: targetCountries || ["US"],
+      });
+
+      const campaign = await storage.createGrowthCampaign({
+        name,
+        templateKey,
+        externalCampaignId,
+        status: externalCampaignId ? "active" : "draft",
+        dailyBudgetCents: dailyBudgetCents || 2000,
+        targetCountries: targetCountries || ["US"],
+        totalSpendCents: 0,
+        impressions: 0,
+        clicks: 0,
+        signups: 0,
+        conversions: 0,
+      });
+      res.json(campaign);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Pause / resume a campaign
+  api.put("/api/founder/growth/campaigns/:id/status", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { status } = req.body as { status: "active" | "paused" };
+      const campaign = await storage.getGrowthCampaign(id);
+      if (!campaign) return res.status(404).json({ message: "Campaign not found" });
+
+      if (campaign.externalCampaignId) {
+        const adAccount = await storage.getFounderAdAccount("meta");
+        if (adAccount) {
+          const { growthAdService } = await import("./services/growthAdService");
+          await growthAdService.setCampaignStatus(adAccount, campaign.externalCampaignId, status);
+        }
+      }
+      const updated = await storage.updateGrowthCampaign(id, { status });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Sync campaign stats from Meta
+  api.post("/api/founder/growth/campaigns/:id/sync", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const campaign = await storage.getGrowthCampaign(id);
+      if (!campaign || !campaign.externalCampaignId) {
+        return res.status(404).json({ message: "Campaign not found or not yet live" });
+      }
+      const adAccount = await storage.getFounderAdAccount("meta");
+      if (!adAccount) return res.status(400).json({ message: "No ad account configured" });
+      const { growthAdService } = await import("./services/growthAdService");
+      const stats = await growthAdService.getCampaignStats(adAccount, campaign.externalCampaignId);
+      const updated = await storage.updateGrowthCampaign(id, {
+        totalSpendCents: stats.spendCents,
+        impressions: stats.impressions,
+        clicks: stats.clicks,
+      });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
 
 }

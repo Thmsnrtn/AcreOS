@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -119,6 +120,24 @@ const PLANS = [
 ];
 
 export default function LandingPage() {
+  // Capture UTM params from URL and persist them in session for attribution
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const utm = {
+      utmSource: params.get("utm_source"),
+      utmMedium: params.get("utm_medium"),
+      utmCampaign: params.get("utm_campaign"),
+      utmContent: params.get("utm_content"),
+    };
+    if (utm.utmSource || utm.utmMedium || utm.utmCampaign) {
+      fetch("/api/auth/attribution", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(utm),
+      }).catch(() => {}); // Non-fatal
+    }
+  }, []);
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* Nav */}
