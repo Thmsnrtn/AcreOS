@@ -1,5 +1,5 @@
 import { PageShell } from "@/components/page-shell";
-import { useDeals, useCreateDeal, useUpdateDeal, useDeleteDeal, useSaveDealAnalysis } from "@/hooks/use-deals";
+import { useDeals, useCreateDeal, useUpdateDeal, useDeleteDeal, useSaveDealAnalysis, useBulkStageUpdate, useBulkStageUndo, type BulkStageUpdateResult } from "@/hooks/use-deals";
 import { useProperties } from "@/hooks/use-properties";
 import { ListSkeleton } from "@/components/list-skeleton";
 import { telemetry } from "@/lib/telemetry";
@@ -33,7 +33,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, MapPin, DollarSign, Calendar, Building, TrendingUp, CheckCircle, X, GripVertical, FileText, Trash2, Loader2, Briefcase, Calculator, ClipboardCheck, Upload, AlertTriangle, CheckSquare, Square, Clock, Download, Package, Play, Eye, FolderPlus, Sparkles, Flame, Snowflake, Minus, LayoutGrid, List, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, MapPin, DollarSign, Calendar, Building, TrendingUp, CheckCircle, X, GripVertical, FileText, Trash2, Loader2, Briefcase, Calculator, ClipboardCheck, Upload, AlertTriangle, CheckSquare, Square, Clock, Download, Package, Play, Eye, FolderPlus, Sparkles, Flame, Snowflake, Minus, LayoutGrid, List, ChevronLeft, ChevronRight, Undo2, Layers } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { DealsEmptyState } from "@/components/empty-states";
 import { SavedViewsSelector } from "@/components/saved-views-selector";
@@ -104,6 +104,7 @@ export default function DealsPage() {
   const urlParams = new URLSearchParams(searchString);
   const actionFromUrl = urlParams.get("action");
   const { isMobile } = useIsMobile();
+  const { toast } = useToast();
   
   const [isCreateOpen, setIsCreateOpen] = useState(actionFromUrl === "new");
   const [selectedDeal, setSelectedDeal] = useState<DealWithProperty | null>(null);
@@ -132,6 +133,14 @@ export default function DealsPage() {
     // Optimistic update via cache, then persist
     updateDealStage({ id: dealId, status: newStage });
   };
+
+  // Bulk selection state for bulk stage update with undo
+  const [bulkStageDialogOpen, setBulkStageDialogOpen] = useState(false);
+  const [bulkTargetStage, setBulkTargetStage] = useState<string>("");
+  const [lastUndoState, setLastUndoState] = useState<Array<{ id: number; previousStage: string }> | null>(null);
+
+  const { mutate: bulkStageUpdate, isPending: isBulkStageUpdating } = useBulkStageUpdate();
+  const { mutate: undoBulkUpdate, isPending: isUndoing } = useBulkStageUndo();
 
   const handleExport = async () => {
     setIsExporting(true);
@@ -244,6 +253,72 @@ export default function DealsPage() {
         },
       });
     }
+  };
+  
+  // Bulk selection helpers
+  const toggleDealSelection = (dealId: number) => {
+    setSelectedDealIds(prev => {
+      const next = new Set(prev);
+      if (next.has(dealId)) {
+        next.delete(dealId);
+      } else {
+        next.add(dealId);
+      }
+      return next;
+    });
+  };
+  
+  const clearSelection = () => {
+    setSelectedDealIds(new Set());
+  };
+  
+  const selectAllInStage = (stageValue: string) => {
+    const stageDeals = enrichedDeals.filter(d => d.status === stageValue);
+    setSelectedDealIds(prev => {
+      const next = new Set(prev);
+      stageDeals.forEach(d => next.add(d.id));
+      return next;
+    });
+  };
+  
+  const handleBulkStageUpdate = () => {
+    if (!bulkTargetStage || selectedDealIds.size === 0) return;
+    
+    bulkStageUpdate(
+      { ids: Array.from(selectedDealIds), newStage: bulkTargetStage, confirmed: true },
+      {
+        onSuccess: (data) => {
+          if ('success' in data && data.success) {
+            const result = data as BulkStageUpdateResult;
+            setLastUndoState(result.previousStates);
+            clearSelection();
+            setBulkStageDialogOpen(false);
+            setBulkTargetStage("");
+            toast({
+              title: "Deals Updated",
+              description: result.message,
+              action: result.undoAvailable ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (result.previousStates) {
+                      undoBulkUpdate(result.previousStates, {
+                        onSuccess: () => setLastUndoState(null),
+                      });
+                    }
+                  }}
+                  disabled={isUndoing}
+                >
+                  <Undo2 className="w-4 h-4 mr-1" />
+                  Undo
+                </Button>
+              ) : undefined,
+            });
+          }
+        },
+      }
+    );
   };
 
   return (
@@ -427,14 +502,28 @@ export default function DealsPage() {
                 <Button variant="outline" className="min-h-[44px] md:min-h-8" onClick={handleBulkExport} data-testid="button-bulk-export-deals">
                   <Download className="w-4 h-4 mr-1" /> Export
                 </Button>
-                <Select onValueChange={handleBulkStageChange} disabled={isBulkUpdating}>
+                <Select
+                  value={bulkTargetStage}
+                  onValueChange={setBulkTargetStage}
+                >
                   <SelectTrigger className="min-h-[44px] md:min-h-8 w-full md:w-[160px]" data-testid="select-bulk-stage-deals">
                     <SelectValue placeholder={isBulkUpdating ? "Updating..." : "Change Stage"} />
                   </SelectTrigger>
                   <SelectContent>
                     {dealStages.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
+                    <SelectItem value="cancelled">Cancelled</SelectItem>
                   </SelectContent>
                 </Select>
+                <Button
+                  onClick={() => setBulkStageDialogOpen(true)}
+                  disabled={!bulkTargetStage || isBulkStageUpdating}
+                  data-testid="button-bulk-update"
+                >
+                  {isBulkStageUpdating ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : null}
+                  Update Stage
+                </Button>
                 <Button variant="destructive" className="min-h-[44px] md:min-h-8 col-span-2 md:col-span-1" onClick={() => setShowBulkDeleteConfirm(true)} disabled={isBulkDeleting} data-testid="button-bulk-delete-deals">
                   <Trash2 className="w-4 h-4 mr-1" /> Delete
                 </Button>
@@ -589,6 +678,8 @@ export default function DealsPage() {
                                 key={deal.id} 
                                 deal={deal} 
                                 onSelect={() => setSelectedDeal(deal)}
+                                isSelected={selectedDealIds.has(deal.id)}
+                                onToggleSelect={toggleDealSelection}
                               />
                             ))
                           )}
@@ -678,6 +769,16 @@ export default function DealsPage() {
         onConfirm={handleBulkDelete}
         isLoading={isBulkDeleting}
         variant="destructive"
+      />
+
+      <ConfirmDialog
+        open={bulkStageDialogOpen}
+        onOpenChange={setBulkStageDialogOpen}
+        title="Update Deal Stages"
+        description={`Move ${selectedDealIds.size} deal${selectedDealIds.size > 1 ? 's' : ''} to "${dealStages.find(s => s.value === bulkTargetStage)?.label || bulkTargetStage}"? You can undo this action.`}
+        confirmLabel="Update Stages"
+        onConfirm={handleBulkStageUpdate}
+        isLoading={isBulkStageUpdating}
       />
     </PageShell>
   );
