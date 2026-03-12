@@ -23,6 +23,19 @@ import { initSentry, Sentry } from "./utils/sentry";
 // Initialize Sentry ASAP — must run before any other code
 initSentry();
 
+// Global safety net for unhandled errors — log and report to Sentry
+process.on("unhandledRejection", (reason: unknown) => {
+  console.error("[process] Unhandled promise rejection:", reason);
+  Sentry.captureException(reason);
+});
+
+process.on("uncaughtException", (err: Error) => {
+  console.error("[process] Uncaught exception:", err);
+  Sentry.captureException(err);
+  // Allow Sentry to flush, then exit so the process manager can restart
+  Sentry.close(2000).finally(() => process.exit(1));
+});
+
 const app = express();
 const httpServer = createServer(app);
 
