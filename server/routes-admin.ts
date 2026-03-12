@@ -2315,6 +2315,195 @@ export function registerAdminRoutes(app: Express): void {
   });
 
   // ============================================
+  // LAUNCH READINESS — Founder onboarding checklist
+  // ============================================
+
+  api.get("/api/founder/launch-readiness", isAuthenticated, isFounderAdmin, async (_req, res) => {
+    try {
+      // Fetch all system API keys in one query
+      const keys = await db.select({
+        provider: systemApiKeys.provider,
+        hasKey: sql<boolean>`(api_key IS NOT NULL AND api_key != '')`,
+        updatedAt: systemApiKeys.updatedAt,
+        createdAt: systemApiKeys.createdAt,
+      }).from(systemApiKeys);
+
+      const keyMap = new Map(keys.map(k => [k.provider, k]));
+      const hasSystemKey = (provider: string) => keyMap.get(provider)?.hasKey === true;
+      const hasEnv = (v: string) => !!process.env[v];
+
+      // Check stripe via env (system key OR env var)
+      const stripeConfigured = hasSystemKey("stripe") || hasEnv("STRIPE_SECRET_KEY");
+
+      // Check if Stripe has products (fast - just try to list)
+      let stripeProductsExist = false;
+      if (stripeConfigured) {
+        try {
+          const { stripeService } = await import("./stripeService");
+          const products = await stripeService.listProductsWithPrices();
+          stripeProductsExist = products.length > 0;
+        } catch { /* no products or key invalid */ }
+      }
+
+      // Check email — sendgrid system key OR AWS SES env vars
+      const emailConfigured =
+        hasSystemKey("sendgrid") ||
+        (hasEnv("AWS_ACCESS_KEY_ID") && hasEnv("AWS_SES_FROM_EMAIL"));
+
+      // Check if any feature flags have been intentionally toggled
+      const { pricingConfig: pricingConfigTable, platformFeatureFlags, founderAdAccounts, growthCampaigns } = await import("@shared/schema");
+      const [{ toggledFlags }] = await db.select({
+        toggledFlags: sql<number>`count(*)`,
+      }).from(platformFeatureFlags)
+        .where(sql`updated_at > created_at + interval '1 second'`);
+
+      // Check if any pricing has been modified from seed
+      const [{ modifiedPricing }] = await db.select({
+        modifiedPricing: sql<number>`count(*)`,
+      }).from(pricingConfigTable)
+        .where(sql`updated_at > created_at + interval '1 second'`);
+
+      // Check growth ads
+      const [{ adAccounts }] = await db.select({ adAccounts: sql<number>`count(*)` }).from(founderAdAccounts);
+      const [{ campaigns }] = await db.select({ campaigns: sql<number>`count(*)` }).from(growthCampaigns);
+
+      const items = [
+        // ── CRITICAL ─────────────────────────────────────────
+        {
+          key: "stripe_configured",
+          label: "Stripe payment processing",
+          description: "Required for subscriptions and billing",
+          priority: "critical",
+          status: stripeConfigured ? "complete" : "incomplete",
+          section: "section-config",
+          helpText: "Add your Stripe Secret Key in System API Keys below",
+        },
+        {
+          key: "stripe_products",
+          label: "Stripe subscription products",
+          description: "At least one active product with pricing must exist in Stripe",
+          priority: "critical",
+          status: stripeProductsExist ? "complete" : (stripeConfigured ? "incomplete" : "blocked"),
+          section: "section-config",
+          helpText: "Create subscription products in your Stripe Dashboard, then add their price IDs here",
+        },
+        {
+          key: "openai_configured",
+          label: "OpenAI API key",
+          description: "Powers all AI features — lead scoring, Sophie, deal analysis",
+          priority: "critical",
+          status: hasSystemKey("openai") || hasEnv("AI_INTEGRATIONS_OPENAI_API_KEY") || hasEnv("OPENAI_API_KEY") ? "complete" : "incomplete",
+          section: "section-config",
+          helpText: "Add your OpenAI API key in System API Keys",
+        },
+        {
+          key: "app_url",
+          label: "Production app URL",
+          description: "Used for email links, Stripe webhooks, and ad landing pages",
+          priority: "critical",
+          status: hasEnv("APP_URL") && !process.env.APP_URL?.includes("localhost") ? "complete" : "incomplete",
+          section: "section-config",
+          helpText: "Set APP_URL environment variable to your production domain (e.g. https://app.acreos.com)",
+        },
+        {
+          key: "founder_email",
+          label: "Founder email configured",
+          description: "Grants admin access to this dashboard",
+          priority: "critical",
+          status: hasEnv("FOUNDER_EMAIL") ? "complete" : "incomplete",
+          section: "section-config",
+          helpText: "Set FOUNDER_EMAIL environment variable to your email address",
+        },
+        // ── CORE ─────────────────────────────────────────────
+        {
+          key: "email_configured",
+          label: "Transactional email (SendGrid or AWS SES)",
+          description: "Required for welcome emails, password resets, and notifications",
+          priority: "core",
+          status: emailConfigured ? "complete" : "incomplete",
+          section: "section-config",
+          helpText: "Configure SendGrid in System API Keys, or set AWS SES environment variables",
+        },
+        {
+          key: "twilio_configured",
+          label: "Twilio SMS & voice calling",
+          description: "Powers SMS outreach, voicedrops, and AI phone calls",
+          priority: "core",
+          status: hasSystemKey("twilio") ? "complete" : "incomplete",
+          section: "section-config",
+          helpText: "Add your Twilio API credentials in System API Keys",
+        },
+        {
+          key: "mapbox_configured",
+          label: "Mapbox maps & parcel layers",
+          description: "Required for the map view and GIS features",
+          priority: "core",
+          status: hasEnv("VITE_MAPBOX_ACCESS_TOKEN") ? "complete" : "incomplete",
+          section: "section-config",
+          helpText: "Set VITE_MAPBOX_ACCESS_TOKEN environment variable",
+        },
+        // ── LAUNCH ───────────────────────────────────────────
+        {
+          key: "feature_flags_reviewed",
+          label: "Feature flags reviewed",
+          description: "Decide which features are live for your users",
+          priority: "launch",
+          status: Number(toggledFlags) > 0 ? "complete" : "incomplete",
+          section: "section-features",
+          helpText: "Go to Feature Flags and enable the features you want live",
+        },
+        {
+          key: "pricing_reviewed",
+          label: "Pricing confirmed",
+          description: "Review and confirm your subscription tier prices",
+          priority: "launch",
+          status: Number(modifiedPricing) > 0 ? "complete" : "incomplete",
+          section: "section-pricing",
+          helpText: "Go to Pricing & Promotions and adjust prices for your market",
+        },
+        {
+          key: "regrid_configured",
+          label: "RegGrid parcel data",
+          description: "Unlocks county-level parcel ownership data",
+          priority: "launch",
+          status: hasSystemKey("regrid") ? "complete" : "incomplete",
+          section: "section-config",
+          helpText: "Add your RegGrid API key in System API Keys",
+        },
+        // ── GROWTH ───────────────────────────────────────────
+        {
+          key: "growth_ads_connected",
+          label: "Meta growth ad account connected",
+          description: "Required to launch paid acquisition campaigns for AcreOS",
+          priority: "growth",
+          status: Number(adAccounts) > 0 ? "complete" : "incomplete",
+          section: "section-growth",
+          helpText: "Connect your Meta Ads account in the Growth & Ads section",
+        },
+        {
+          key: "first_campaign",
+          label: "First growth campaign launched",
+          description: "Start driving land investor signups with a pre-built Meta campaign",
+          priority: "growth",
+          status: Number(campaigns) > 0 ? "complete" : "incomplete",
+          section: "section-growth",
+          helpText: "Launch your first campaign from the Growth & Ads section",
+        },
+      ];
+
+      // Score: weight critical 3x, core 2x, launch 1.5x, growth 1x
+      const weights: Record<string, number> = { critical: 3, core: 2, launch: 1.5, growth: 1 };
+      const totalWeight = items.reduce((s, i) => s + (weights[i.priority] || 1), 0);
+      const earnedWeight = items.reduce((s, i) => s + (i.status === "complete" ? (weights[i.priority] || 1) : 0), 0);
+      const score = Math.round((earnedWeight / totalWeight) * 100);
+
+      res.json({ score, items });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
   // FEATURE FLAGS (Founder-controlled feature visibility)
   // ============================================
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -64,6 +64,15 @@ import {
   Pause,
   Target,
   TrendingUp as TrendingUpIcon,
+  ChevronRight,
+  Rocket,
+  AlertOctagon,
+  Sparkles,
+  ArrowRight,
+  CircleDot,
+  Navigation,
+  ListChecks,
+  Bell,
 } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 
@@ -1067,13 +1076,14 @@ export default function FounderDashboard() {
 
   return (
     <PageShell>
+          {/* ── Header ── */}
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <div>
               <h1 className="text-3xl font-bold text-foreground flex items-center gap-2" data-testid="text-founder-dashboard-title">
                 <Crown className="w-8 h-8 text-amber-500" />
                 Founder Dashboard
               </h1>
-              <p className="text-muted-foreground mt-1">System-wide metrics and health overview</p>
+              <p className="text-muted-foreground mt-1">Command center for launching and operating AcreOS</p>
             </div>
             <Badge variant="outline" className="self-start md:self-auto">
               <Activity className="w-3 h-3 mr-1" />
@@ -1081,7 +1091,19 @@ export default function FounderDashboard() {
             </Badge>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {/* ── Sticky nav ── */}
+          <FounderNavBar />
+
+          {/* ── Launch Readiness Onboarding ── */}
+          <div id="section-readiness">
+            <LaunchReadinessSection />
+          </div>
+
+          {/* ── New subscriber live feed ── */}
+          <NewSubscriberFeed alerts={alerts} />
+
+          {/* ── Overview ── */}
+          <div id="section-overview" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <Card data-testid="card-revenue-analytics">
               <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
                 <CardTitle 
@@ -1471,6 +1493,7 @@ export default function FounderDashboard() {
           <SystemHealth />
 
           {/* Feature Requests Section */}
+          <div id="section-users" className="scroll-mt-16" />
           <Card data-testid="card-feature-requests">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -2396,6 +2419,7 @@ export default function FounderDashboard() {
           </Card>
 
           {/* Subscription Lifecycle */}
+          <div id="section-revenue" className="scroll-mt-16 col-span-full" />
           <Card data-testid="card-subscription-lifecycle" className="col-span-full">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -3390,18 +3414,16 @@ export default function FounderDashboard() {
       </Dialog>
 
       {/* Feature Flags Control */}
-      <FeatureFlagsSection />
+      <div id="section-features" className="scroll-mt-16"><FeatureFlagsSection /></div>
 
       {/* Pricing & Promotions */}
-      <PricingSection />
+      <div id="section-pricing" className="scroll-mt-16"><PricingSection /></div>
 
       {/* Growth & Ad Campaigns */}
-      <GrowthSection />
+      <div id="section-growth" className="scroll-mt-16"><GrowthSection /></div>
 
-      {/* AI Models Management */}
+      {/* AI Models + System API Keys = Config */}
       <AIModelsSection />
-
-      {/* System API Keys Management */}
       <SystemApiKeysSection />
     </PageShell>
   );
@@ -3431,7 +3453,7 @@ function AIModelsSection() {
   });
 
   return (
-    <div className="mt-8 p-6 border rounded-xl bg-card space-y-4" data-testid="section-ai-models">
+    <div id="section-config" className="mt-8 p-6 border rounded-xl bg-card space-y-4 scroll-mt-16" data-testid="section-ai-models">
       <div>
         <h2 className="text-xl font-semibold flex items-center gap-2">
           <Bot className="w-5 h-5 text-primary" />
@@ -3530,7 +3552,7 @@ function SystemApiKeysSection() {
   });
 
   return (
-    <div className="mt-6 mb-8 p-6 border rounded-xl bg-card space-y-4" data-testid="section-system-api-keys">
+    <div className="mt-6 mb-8 p-6 border rounded-xl bg-card space-y-4 scroll-mt-16" data-testid="section-system-api-keys">
       <div>
         <h2 className="text-xl font-semibold flex items-center gap-2">
           <Key className="w-5 h-5 text-primary" />
@@ -4142,6 +4164,353 @@ function GrowthSection() {
             ))}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// FOUNDER STICKY NAV
+// Appears below the header, sticky at top, with section anchors and
+// an IntersectionObserver to highlight the active section.
+// ─────────────────────────────────────────────────────────────────────
+
+const NAV_ITEMS = [
+  { label: "Overview", href: "section-overview", icon: BarChart },
+  { label: "Readiness", href: "section-readiness", icon: Rocket },
+  { label: "Features", href: "section-features", icon: ToggleRight },
+  { label: "Pricing", href: "section-pricing", icon: Tag },
+  { label: "Growth", href: "section-growth", icon: Megaphone },
+  { label: "Users", href: "section-users", icon: Users },
+  { label: "Revenue", href: "section-revenue", icon: DollarSign },
+  { label: "Config", href: "section-config", icon: Key },
+] as const;
+
+function FounderNavBar() {
+  const [active, setActive] = useState<string>("section-overview");
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const ids = NAV_ITEMS.map(n => n.href);
+    const observers: IntersectionObserver[] = [];
+
+    ids.forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const obs = new IntersectionObserver(
+        ([entry]) => { if (entry.isIntersecting) setActive(id); },
+        { rootMargin: "-40% 0px -55% 0px", threshold: 0 }
+      );
+      obs.observe(el);
+      observers.push(obs);
+    });
+
+    return () => observers.forEach(o => o.disconnect());
+  }, []);
+
+  const scrollTo = (id: string) => {
+    const el = document.getElementById(id);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    setActive(id);
+  };
+
+  return (
+    <div className="sticky top-0 z-30 -mx-4 px-4 bg-background/95 backdrop-blur-sm border-b border-border/60 py-0">
+      <div
+        ref={scrollRef}
+        className="flex items-center gap-1 overflow-x-auto py-2"
+        style={{ scrollbarWidth: "none", msOverflowStyle: "none" } as React.CSSProperties}
+      >
+        {NAV_ITEMS.map(({ label, href, icon: Icon }) => {
+          const isActive = active === href;
+          return (
+            <button
+              key={href}
+              onClick={() => scrollTo(href)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-all ${
+                isActive
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              }`}
+            >
+              <Icon className="w-3 h-3" />
+              {label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// LAUNCH READINESS SECTION
+// Interactive onboarding checklist for the founder to get AcreOS
+// configured and ready to accept paying customers.
+// ─────────────────────────────────────────────────────────────────────
+
+interface ReadinessItem {
+  key: string;
+  label: string;
+  description: string;
+  priority: "critical" | "core" | "launch" | "growth";
+  status: "complete" | "incomplete" | "blocked";
+  section: string;
+  helpText?: string;
+}
+
+interface LaunchReadiness {
+  score: number;
+  items: ReadinessItem[];
+}
+
+const PRIORITY_CONFIG = {
+  critical: {
+    label: "Critical",
+    color: "text-red-600",
+    bg: "bg-red-500/10 border-red-500/20",
+    badgeClass: "bg-red-500/10 text-red-600 border-red-500/20",
+    icon: AlertOctagon,
+  },
+  core: {
+    label: "Core Features",
+    color: "text-orange-600",
+    bg: "bg-orange-500/10 border-orange-500/20",
+    badgeClass: "bg-orange-500/10 text-orange-600 border-orange-500/20",
+    icon: Zap,
+  },
+  launch: {
+    label: "Launch Ready",
+    color: "text-blue-600",
+    bg: "bg-blue-500/10 border-blue-500/20",
+    badgeClass: "bg-blue-500/10 text-blue-600 border-blue-500/20",
+    icon: Rocket,
+  },
+  growth: {
+    label: "Growth",
+    color: "text-purple-600",
+    bg: "bg-purple-500/10 border-purple-500/20",
+    badgeClass: "bg-purple-500/10 text-purple-600 border-purple-500/20",
+    icon: Sparkles,
+  },
+} as const;
+
+function LaunchReadinessSection() {
+  const [dismissed, setDismissed] = useState(() => {
+    try { return localStorage.getItem("founder-readiness-dismissed") === "true"; } catch { return false; }
+  });
+  const [expanded, setExpanded] = useState(true);
+
+  const { data, isLoading, refetch } = useQuery<LaunchReadiness>({
+    queryKey: ["/api/founder/launch-readiness"],
+    refetchInterval: 60_000, // re-check every minute
+  });
+
+  const scrollToSection = (sectionId: string) => {
+    const el = document.getElementById(sectionId);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const dismiss = () => {
+    try { localStorage.setItem("founder-readiness-dismissed", "true"); } catch {}
+    setDismissed(true);
+  };
+
+  if (dismissed && (data?.score ?? 0) >= 100) return null;
+
+  const score = data?.score ?? 0;
+  const isLive = score >= 80;
+
+  // Group by priority
+  const grouped = (data?.items ?? []).reduce<Record<string, ReadinessItem[]>>((acc, item) => {
+    (acc[item.priority] ??= []).push(item);
+    return acc;
+  }, {});
+
+  const incompleteCount = (data?.items ?? []).filter(i => i.status === "incomplete").length;
+  const criticalIncomplete = (data?.items ?? []).filter(i => i.priority === "critical" && i.status === "incomplete").length;
+
+  return (
+    <div className="mt-4">
+      {/* Header bar */}
+      <div
+        className={`flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-all ${
+          isLive
+            ? "bg-green-500/5 border-green-500/30"
+            : criticalIncomplete > 0
+            ? "bg-red-500/5 border-red-500/30"
+            : "bg-amber-500/5 border-amber-500/30"
+        }`}
+        onClick={() => setExpanded(e => !e)}
+      >
+        <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
+          isLive ? "bg-green-500/20" : criticalIncomplete > 0 ? "bg-red-500/20" : "bg-amber-500/20"
+        }`}>
+          {isLoading ? (
+            <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+          ) : isLive ? (
+            <Rocket className={`w-5 h-5 text-green-600`} />
+          ) : (
+            <ListChecks className={`w-5 h-5 ${criticalIncomplete > 0 ? "text-red-600" : "text-amber-600"}`} />
+          )}
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-semibold text-sm">
+              {isLive ? "AcreOS is live-ready" : "App Launch Checklist"}
+            </span>
+            {!isLoading && (
+              <Badge
+                className={`text-xs ${
+                  isLive
+                    ? "bg-green-500/10 text-green-700 border-green-500/20"
+                    : criticalIncomplete > 0
+                    ? "bg-red-500/10 text-red-700 border-red-500/20"
+                    : "bg-amber-500/10 text-amber-700 border-amber-500/20"
+                }`}
+              >
+                {score}% ready
+              </Badge>
+            )}
+            {incompleteCount > 0 && (
+              <span className="text-xs text-muted-foreground">{incompleteCount} item{incompleteCount !== 1 ? "s" : ""} remaining</span>
+            )}
+          </div>
+
+          {/* Progress bar */}
+          {!isLoading && (
+            <div className="mt-1.5 h-1.5 bg-muted rounded-full overflow-hidden w-full max-w-sm">
+              <div
+                className={`h-full rounded-full transition-all duration-700 ${
+                  isLive ? "bg-green-500" : criticalIncomplete > 0 ? "bg-red-500" : "bg-amber-500"
+                }`}
+                style={{ width: `${score}%` }}
+              />
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 text-xs"
+            onClick={(e) => { e.stopPropagation(); refetch(); }}
+          >
+            <RefreshCw className="w-3 h-3" />
+          </Button>
+          {isLive && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-xs text-muted-foreground"
+              onClick={(e) => { e.stopPropagation(); dismiss(); }}
+            >
+              Dismiss
+            </Button>
+          )}
+          <ChevronRight
+            className={`w-4 h-4 text-muted-foreground transition-transform ${expanded ? "rotate-90" : ""}`}
+          />
+        </div>
+      </div>
+
+      {/* Expanded checklist */}
+      {expanded && (
+        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+          {(["critical", "core", "launch", "growth"] as const).map((priority) => {
+            const items = grouped[priority] ?? [];
+            if (items.length === 0) return null;
+            const cfg = PRIORITY_CONFIG[priority];
+            const PriorityIcon = cfg.icon;
+            const allDone = items.every(i => i.status === "complete");
+
+            return (
+              <div key={priority} className={`p-4 rounded-xl border ${allDone ? "bg-muted/30 border-border/50" : cfg.bg}`}>
+                <div className="flex items-center gap-2 mb-3">
+                  <PriorityIcon className={`w-4 h-4 ${allDone ? "text-green-600" : cfg.color}`} />
+                  <span className={`text-xs font-semibold uppercase tracking-wide ${allDone ? "text-green-600" : cfg.color}`}>
+                    {cfg.label}
+                  </span>
+                  {allDone && (
+                    <Badge className="ml-auto text-xs bg-green-500/10 text-green-700 border-green-500/20">All done</Badge>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  {items.map((item) => {
+                    const done = item.status === "complete";
+                    return (
+                      <div key={item.key} className={`flex items-start gap-2.5 p-2.5 rounded-lg transition-colors ${done ? "" : "hover:bg-background/60 cursor-pointer"}`}
+                        onClick={() => !done && scrollToSection(item.section)}>
+                        <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
+                          done ? "bg-green-500" : item.status === "blocked" ? "bg-muted" : "bg-background border-2 border-muted-foreground/30"
+                        }`}>
+                          {done ? (
+                            <Check className="w-3 h-3 text-white" />
+                          ) : item.status === "blocked" ? (
+                            <X className="w-3 h-3 text-muted-foreground" />
+                          ) : (
+                            <CircleDot className="w-2.5 h-2.5 text-muted-foreground/50" />
+                          )}
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className={`text-sm font-medium ${done ? "text-muted-foreground line-through" : ""}`}>
+                              {item.label}
+                            </span>
+                            {!done && (
+                              <ArrowRight className="w-3 h-3 text-muted-foreground shrink-0" />
+                            )}
+                          </div>
+                          {!done && (
+                            <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                              {item.helpText || item.description}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// NEW SUBSCRIBER LIVE FEED
+// Shows recent new_subscriber system alerts prominently in the overview.
+// Usage: <NewSubscriberFeed alerts={alerts} />
+// ─────────────────────────────────────────────────────────────────────
+
+export function NewSubscriberFeed({ alerts }: { alerts: SystemAlert[] | undefined }) {
+  const newSubs = (alerts ?? []).filter(a => a.alertType === "new_subscriber").slice(0, 5);
+  if (newSubs.length === 0) return null;
+
+  return (
+    <div className="p-4 border rounded-xl bg-gradient-to-br from-green-500/5 to-background border-green-500/20">
+      <div className="flex items-center gap-2 mb-3">
+        <Bell className="w-4 h-4 text-green-600" />
+        <span className="font-medium text-sm text-green-700">Recent subscribers</span>
+        <Badge className="ml-auto text-xs bg-green-500/10 text-green-700 border-green-500/20">{newSubs.length} new</Badge>
+      </div>
+      <div className="space-y-2">
+        {newSubs.map(alert => (
+          <div key={alert.id} className="flex items-center gap-2 text-sm">
+            <CheckCircle2 className="w-3.5 h-3.5 text-green-600 shrink-0" />
+            <span className="flex-1 truncate">{alert.message}</span>
+            <span className="text-xs text-muted-foreground shrink-0">
+              {formatDistanceToNow(new Date(alert.createdAt!), { addSuffix: true })}
+            </span>
+          </div>
+        ))}
       </div>
     </div>
   );
