@@ -20,7 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import {
-  Server, Bot, CreditCard, Mail, Map, FileText, Phone, Database,
+  Server, Bot, CreditCard, Mail, Map as LucideMap, FileText, Phone, Database,
   Sparkles, Key, CheckCircle2, XCircle, AlertCircle, Loader2,
   Eye, EyeOff, Copy, RefreshCw, ExternalLink, ChevronRight,
   ChevronLeft, Zap, Shield, ArrowRight, Info,
@@ -77,7 +77,7 @@ interface ValidationResult {
 // ─── Icon map ────────────────────────────────────────────────────────────────
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
-  Server, Bot, CreditCard, Mail, Map, FileText, Phone, Database, Sparkles, Key,
+  Server, Bot, CreditCard, Mail, Map: LucideMap, FileText, Phone, Database, Sparkles, Key,
 };
 
 // ─── Credential hints ────────────────────────────────────────────────────────
@@ -299,8 +299,8 @@ export function FounderSetupWizard({ open, onClose }: Props) {
     enabled: open,
   });
 
-  const credMap: Map<string, CredentialEntry> = new Map(
-    (status?.credentials ?? []).map(c => [c.key, c])
+  const credMap = new Map<string, CredentialEntry>(
+    (status?.credentials ?? []).map(c => [c.key, c] as [string, CredentialEntry])
   );
 
   const currentStepDef = STEPS[step];
@@ -672,7 +672,7 @@ export function FounderSetupWizard({ open, onClose }: Props) {
                 <StepSection
                   title="Maps (Mapbox)"
                   description="Parcel overlay maps, county heat maps, and geographic lead visualization."
-                  icon={<Map className="w-4 h-4 text-purple-500" />}
+                  icon={<LucideMap className="w-4 h-4 text-purple-500" />}
                   service="mapbox"
                   stepKeys={KEYS_BY_STEP.mapbox}
                   credMap={credMap}
