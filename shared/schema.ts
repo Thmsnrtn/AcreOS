@@ -93,6 +93,8 @@ export const organizations = pgTable("organizations", {
   utmMedium: text("utm_medium"),     // e.g. 'cpc', 'social', 'email'
   utmCampaign: text("utm_campaign"), // e.g. 'land-investors-q1'
   utmContent: text("utm_content"),   // e.g. 'carousel-ad-1'
+  // Referral program credit balance (in cents)
+  referralCredits: integer("referral_credits").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

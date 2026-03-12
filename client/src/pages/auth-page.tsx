@@ -95,7 +95,8 @@ export default function AuthPage() {
     if (mode === "login") {
       login({ email, password });
     } else {
-      register({ email, password, firstName, lastName, agreedToTerms });
+      const referralCode = localStorage.getItem("acreos_ref") || undefined;
+      register({ email, password, firstName, lastName, agreedToTerms, referralCode });
     }
   };
 

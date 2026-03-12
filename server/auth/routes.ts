@@ -26,6 +26,7 @@ const registerSchema = z.object({
   agreedToTerms: z.literal(true, {
     errorMap: () => ({ message: "You must accept the Terms of Service to create an account." }),
   }),
+  referralCode: z.string().max(16).optional(),
 });
 
 const loginSchema = z.object({
@@ -68,8 +69,20 @@ export function registerAuthRoutes(app: Express): void {
         return res.status(400).json({ message: errors[0] });
       }
 
-      const { email, password, firstName, lastName } = parsed.data;
+      const { email, password, firstName, lastName, referralCode } = parsed.data;
       const user = await createUser({ email, password, firstName, lastName });
+
+      // Apply referral code post-registration (non-blocking)
+      if (referralCode) {
+        fetch(`${req.protocol}://${req.get("host")}/api/referral/apply`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: referralCode, refereeId: user.id }),
+        }).catch((err: any) => {
+          console.error("[auth] Failed to apply referral code:", err?.message);
+        });
+        // Clear the stored code so it can't be reused by the same browser
+      }
 
       // Send welcome email (non-blocking — don't fail registration if email fails)
       emailService

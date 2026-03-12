@@ -120,9 +120,16 @@ const PLANS = [
 ];
 
 export default function LandingPage() {
-  // Capture UTM params from URL and persist them in session for attribution
+  // Capture UTM params and referral code from URL
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+
+    // Persist referral code in localStorage so auth-page can pick it up at registration
+    const ref = params.get("ref");
+    if (ref) {
+      localStorage.setItem("acreos_ref", ref.toUpperCase());
+    }
+
     const utm = {
       utmSource: params.get("utm_source"),
       utmMedium: params.get("utm_medium"),
@@ -318,7 +325,9 @@ export default function LandingPage() {
             </div>
             <span className="font-medium text-foreground">AcreOS</span>
           </div>
-          <div className="flex gap-6">
+          <div className="flex gap-6 flex-wrap justify-center">
+            <Link href="/compare/lg-pass" className="hover:text-foreground transition-colors">vs LG Pass</Link>
+            <Link href="/compare/geekpay" className="hover:text-foreground transition-colors">vs GeekPay</Link>
             <Link href="/terms" className="hover:text-foreground transition-colors">Terms</Link>
             <Link href="/privacy" className="hover:text-foreground transition-colors">Privacy</Link>
             <Link href="/auth" className="hover:text-foreground transition-colors">Sign In</Link>

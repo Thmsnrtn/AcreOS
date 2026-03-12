@@ -8,6 +8,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import multer from "multer";
 import {
   parseCSV, previewImport, importLeads, importProperties, importDeals,
+  importNotesFromCSV, NOTE_COLUMN_MAP,
   exportLeadsToCSV, exportPropertiesToCSV, exportDealsToCSV, exportNotesToCSV,
   getLeadsData, getPropertiesData, getDealsData, getNotesData,
   createBackupZip, getExpectedColumns, type ExportFilters,
@@ -130,6 +131,76 @@ export function registerImportExportRoutes(app: Express): void {
     } catch (error: any) {
       console.error("Import error:", error);
       res.status(500).json({ message: error.message || "Failed to import data" });
+    }
+  });
+
+  // Notes import (GeekPay-compatible) — supports user-provided field mapping
+  api.get("/api/import/notes/columns", isAuthenticated, (_req, res) => {
+    res.json({
+      columns: [
+        "borrowerFirstName", "borrowerLastName", "borrowerEmail", "borrowerPhone",
+        "originalPrincipal", "currentBalance", "interestRate", "termMonths",
+        "monthlyPayment", "paymentDayOfMonth", "serviceFee", "lateFeeAmount",
+        "gracePeriodDays", "status", "propertyAddress", "internalNotes",
+      ],
+      geekpayHints: NOTE_COLUMN_MAP,
+    });
+  });
+
+  api.post("/api/import/notes", isAuthenticated, getOrCreateOrg, upload.single("file"), async (req, res) => {
+    try {
+      const org = (req as any).organization;
+
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+
+      const csvString = req.file.buffer.toString("utf-8");
+      const data = parseCSV(csvString);
+
+      if (data.length > MAX_CSV_IMPORT_ROWS) {
+        return res.status(400).json({
+          message: `CSV file exceeds maximum of ${MAX_CSV_IMPORT_ROWS} rows. Please split into smaller files.`,
+        });
+      }
+
+      // Optional user-provided field map (JSON-encoded in request body)
+      let userFieldMap: Record<string, string> | undefined;
+      if (req.body?.fieldMap) {
+        try {
+          userFieldMap = JSON.parse(req.body.fieldMap);
+        } catch {
+          // ignore malformed fieldMap
+        }
+      }
+
+      const result = await importNotesFromCSV(data, org.id, userFieldMap);
+
+      const user = req.user as any;
+      const userId = user?.claims?.sub || user?.id;
+      await storage.createAuditLogEntry({
+        organizationId: org.id,
+        userId,
+        action: "import",
+        entityType: "notes",
+        entityId: 0,
+        changes: {
+          before: {},
+          after: {
+            totalRows: data.length,
+            imported: result.successCount,
+            errors: result.errorCount,
+          },
+          fields: ["import"],
+        },
+        ipAddress: req.ip || req.socket?.remoteAddress,
+        userAgent: req.headers["user-agent"],
+      }).catch(() => {}); // non-blocking
+
+      res.json(result);
+    } catch (error: any) {
+      console.error("[import/notes] Error:", error);
+      res.status(500).json({ message: error.message || "Failed to import notes" });
     }
   });
 

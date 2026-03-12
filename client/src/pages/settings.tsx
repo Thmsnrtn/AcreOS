@@ -73,7 +73,7 @@ interface SeatPricing {
   yearly?: { id: string; amount: number; currency: string } | null;
 }
 
-const VALID_TABS = ["general", "appearance", "team", "payments", "communications", "notifications", "ai", "data", "integrations", "developer", "goals"] as const;
+const VALID_TABS = ["general", "appearance", "team", "payments", "communications", "notifications", "ai", "data", "integrations", "developer", "goals", "referral"] as const;
 type TabValue = typeof VALID_TABS[number];
 
 interface StripeConnectStatusResponse {
@@ -764,6 +764,10 @@ export default function Settings() {
                 <TabsTrigger value="goals" data-testid="tab-goals" className="gap-1">
                   <Target className="w-4 h-4 hidden sm:inline" />
                   Goals
+                </TabsTrigger>
+                <TabsTrigger value="referral" data-testid="tab-referral" className="gap-1">
+                  <Gift className="w-4 h-4 hidden sm:inline" />
+                  Refer &amp; Earn
                 </TabsTrigger>
               </TabsList>
             </div>
@@ -1491,6 +1495,9 @@ export default function Settings() {
             <TabsContent value="goals" className="space-y-6 mt-6" data-testid="tab-content-goals">
               <GoalsSettings />
             </TabsContent>
+            <TabsContent value="referral" className="space-y-6 mt-6" data-testid="tab-content-referral">
+              <ReferralSettings />
+            </TabsContent>
           </Tabs>
       <ConfirmDialog
         open={showClearConfirm}
@@ -1503,6 +1510,111 @@ export default function Settings() {
         variant="destructive"
       />
     </PageShell>
+  );
+}
+
+// ── Referral Settings component ────────────────────────────────────────────────
+
+function ReferralSettings() {
+  const { toast } = useToast();
+  const appUrl = typeof window !== "undefined" ? window.location.origin : "https://app.acreos.io";
+
+  const codeQuery = useQuery<{ code: string }>({
+    queryKey: ["/api/referral/code"],
+    queryFn: async () => {
+      const res = await fetch("/api/referral/code", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load referral code");
+      return res.json();
+    },
+  });
+
+  const statsQuery = useQuery<{ signups: number; conversions: number; creditsEarned: number; creditBalance: number }>({
+    queryKey: ["/api/referral/stats"],
+    queryFn: async () => {
+      const res = await fetch("/api/referral/stats", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load referral stats");
+      return res.json();
+    },
+  });
+
+  const referralLink = codeQuery.data?.code
+    ? `${appUrl}/?ref=${codeQuery.data.code}`
+    : "";
+
+  const copyLink = () => {
+    if (!referralLink) return;
+    navigator.clipboard.writeText(referralLink).then(() => {
+      toast({ title: "Copied!", description: "Referral link copied to clipboard." });
+    });
+  };
+
+  const stats = statsQuery.data;
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Gift className="w-5 h-5" />
+            Refer &amp; Earn
+          </CardTitle>
+          <CardDescription>
+            Share AcreOS with fellow land investors. They get 30 days free — you get $20 account credit when they subscribe.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Offer callout */}
+          <div className="rounded-xl bg-primary/5 border border-primary/20 p-4 flex items-start gap-3">
+            <Gift className="w-5 h-5 text-primary shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <p className="font-semibold text-sm">Give 30 days free, get $20 credit</p>
+              <p className="text-xs text-muted-foreground">
+                Your referral code gives new users their first 30 days on us.
+                Once they become a paying subscriber, you'll automatically receive a $20 account credit — applied to your next invoice.
+              </p>
+            </div>
+          </div>
+
+          {/* Referral link */}
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Your referral link</p>
+            {codeQuery.isLoading ? (
+              <Skeleton className="h-10 w-full" />
+            ) : codeQuery.isError ? (
+              <p className="text-sm text-destructive">Failed to load referral link. Please refresh.</p>
+            ) : (
+              <div className="flex gap-2">
+                <Input readOnly value={referralLink} className="font-mono text-sm" />
+                <Button variant="outline" size="sm" onClick={copyLink} className="shrink-0">
+                  <Link2 className="w-4 h-4 mr-1" />
+                  Copy
+                </Button>
+              </div>
+            )}
+          </div>
+
+          {/* Stats */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {[
+              { label: "Signups", value: stats?.signups ?? 0, icon: Users },
+              { label: "Converted", value: stats?.conversions ?? 0, icon: CheckCircle2 },
+              { label: "Credits Earned", value: stats ? `$${(stats.creditsEarned / 100).toFixed(0)}` : "$0", icon: Coins },
+              { label: "Available Credit", value: stats ? `$${(stats.creditBalance / 100).toFixed(0)}` : "$0", icon: Wallet },
+            ].map(({ label, value, icon: Icon }) => (
+              <div key={label} className="rounded-lg border border-border/60 bg-card p-4 space-y-1 text-center">
+                <Icon className="w-4 h-4 text-primary mx-auto" />
+                <p className="text-2xl font-bold">{statsQuery.isLoading ? "—" : value}</p>
+                <p className="text-xs text-muted-foreground">{label}</p>
+              </div>
+            ))}
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            Credits are applied automatically to your subscription invoice once a referee has been a paying subscriber for 30+ days.
+          </p>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
