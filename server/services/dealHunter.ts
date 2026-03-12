@@ -14,6 +14,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, gte, lte, inArray, sql } from "drizzle-orm";
 import { browserAutomationService } from "./browserAutomation";
+import { wsServer } from "../websocket";
 
 export class DealHunterService {
   
@@ -163,35 +164,58 @@ export class DealHunterService {
   }
   
   /**
-   * Save a scraped deal
+   * Save a scraped deal with deduplication.
+   * Checks for existing deals with the same address (or APN+county+state) within 7 days.
+   * If found, updates price only instead of creating a duplicate.
    */
   private async saveDeal(dealData: any) {
-    // Check for duplicates
-    const existing = await db.select()
-      .from(scrapedDeals)
-      .where(and(
-        eq(scrapedDeals.apn, dealData.apn || ""),
-        eq(scrapedDeals.state, dealData.state),
-        eq(scrapedDeals.county, dealData.county)
-      ))
-      .limit(1);
-    
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+    // Deduplication: match by address within the last 7 days
+    let existing: any[] = [];
+    if (dealData.address) {
+      existing = await db.select()
+        .from(scrapedDeals)
+        .where(and(
+          eq(scrapedDeals.address, dealData.address),
+          eq(scrapedDeals.state, dealData.state),
+          gte(scrapedDeals.scrapedAt, sevenDaysAgo)
+        ))
+        .limit(1);
+    }
+
+    // Fallback: deduplicate by APN+county+state if no address match
+    if (existing.length === 0 && dealData.apn) {
+      existing = await db.select()
+        .from(scrapedDeals)
+        .where(and(
+          eq(scrapedDeals.apn, dealData.apn),
+          eq(scrapedDeals.state, dealData.state),
+          eq(scrapedDeals.county, dealData.county),
+          gte(scrapedDeals.scrapedAt, sevenDaysAgo)
+        ))
+        .limit(1);
+    }
+
     if (existing.length > 0) {
-      // Update existing deal
+      // Update price-related fields only — avoid creating a duplicate
       await db.update(scrapedDeals)
         .set({
-          ...dealData,
+          listPrice: dealData.listPrice ?? existing[0].listPrice,
+          minimumBid: dealData.minimumBid ?? existing[0].minimumBid,
+          assessedValue: dealData.assessedValue ?? existing[0].assessedValue,
+          taxesOwed: dealData.taxesOwed ?? existing[0].taxesOwed,
           lastVerified: new Date(),
           updatedAt: new Date(),
         })
         .where(eq(scrapedDeals.id, existing[0].id));
-      
+
       return existing[0].id;
     }
-    
+
     // Calculate distress score
     const distressScore = this.calculateDistressScore(dealData);
-    
+
     // Create new deal
     const [saved] = await db.insert(scrapedDeals).values({
       ...dealData,
@@ -199,10 +223,10 @@ export class DealHunterService {
       status: "new",
       scrapedAt: new Date(),
     }).returning();
-    
-    // Check for matching auto-bid rules
+
+    // Check for matching auto-bid rules (also broadcasts WS alerts for matched orgs)
     await this.checkAutoBidRules(saved);
-    
+
     return saved.id;
   }
   
@@ -267,21 +291,51 @@ export class DealHunterService {
   }
   
   /**
-   * Check if deal matches any auto-bid rules
+   * Check if deal matches any auto-bid rules.
+   * Also broadcasts a real-time WebSocket alert to orgs whose rules match
+   * or when the deal's distress score exceeds 70.
    */
   private async checkAutoBidRules(deal: any) {
     const rules = await db.select()
       .from(autoBidRules)
       .where(eq(autoBidRules.isActive, true));
-    
+
+    const notifiedOrgs = new Set<number>();
+
     for (const rule of rules) {
       if (this.dealMatchesRule(deal, rule)) {
         await this.createDealAlert(deal, rule);
-        
+
+        // Broadcast real-time deal_match event to the org
+        if (rule.organizationId && !notifiedOrgs.has(rule.organizationId)) {
+          notifiedOrgs.add(rule.organizationId);
+          wsServer.broadcastToOrg(rule.organizationId, "deal_match", {
+            id: deal.id,
+            title: deal.address || `${deal.county}, ${deal.state}`,
+            price: deal.minimumBid ?? deal.listPrice ?? null,
+            matchScore: deal.distressScore ?? 0,
+            url: `/deal-hunter`,
+          });
+        }
+
         // Auto-bid if enabled and no approval required
         if (!rule.requiresApproval && rule.maxBidAmount) {
           await this.placeAutoBid(deal, rule);
         }
+      }
+    }
+
+    // If no rule matched but distress score is high, broadcast to all orgs with active rules
+    if (notifiedOrgs.size === 0 && (deal.distressScore ?? 0) > 70) {
+      const orgIds = [...new Set(rules.map((r: any) => r.organizationId).filter(Boolean))];
+      for (const orgId of orgIds) {
+        wsServer.broadcastToOrg(orgId as number, "deal_match", {
+          id: deal.id,
+          title: deal.address || `${deal.county}, ${deal.state}`,
+          price: deal.minimumBid ?? deal.listPrice ?? null,
+          matchScore: deal.distressScore,
+          url: `/deal-hunter`,
+        });
       }
     }
   }

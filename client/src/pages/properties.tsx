@@ -158,6 +158,7 @@ export default function PropertiesPage() {
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
   const [gisFilters, setGisFilters] = useState<GisFilterState>(defaultGisFilters);
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [distressFilter, setDistressFilter] = useState<string>("any");
   const { toast } = useToast();
   const { mutate: fetchAllParcels, isPending: isFetchingAllParcels } = useFetchAllParcels();
 
@@ -168,6 +169,18 @@ export default function PropertiesPage() {
 
     if (statusFilter !== "all") {
       result = result.filter(p => p.status === statusFilter);
+    }
+
+    if (distressFilter !== "any") {
+      result = result.filter(p => {
+        const enrichment = p.enrichmentData as any;
+        const score = enrichment?.scores?.overallScore ?? enrichment?.scores?.investmentScore;
+        if (score == null) return distressFilter === "none";
+        if (distressFilter === "high") return score >= 70;
+        if (distressFilter === "medium") return score >= 40 && score < 70;
+        if (distressFilter === "low") return score < 40;
+        return true;
+      });
     }
 
     const hasActiveGisFilters = gisFilters.excludeFloodZones ||
@@ -182,7 +195,7 @@ export default function PropertiesPage() {
     }
 
     return result;
-  }, [properties, gisFilters, statusFilter]);
+  }, [properties, gisFilters, statusFilter, distressFilter]);
 
   const handleSelectAll = (checked: boolean) => {
     if (checked && filteredProperties.length > 0) {
@@ -515,6 +528,18 @@ export default function PropertiesPage() {
                 onChange={setGisFilters}
                 activeFilterCount={countActiveGisFilters(gisFilters)}
               />
+              <Select value={distressFilter} onValueChange={setDistressFilter}>
+                <SelectTrigger className="h-8 w-[160px]" data-testid="select-distress-filter">
+                  <SelectValue placeholder="Distress Score" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="any">Distress: Any</SelectItem>
+                  <SelectItem value="high">High (70+)</SelectItem>
+                  <SelectItem value="medium">Medium (40–69)</SelectItem>
+                  <SelectItem value="low">Low (&lt;40)</SelectItem>
+                  <SelectItem value="none">No Score</SelectItem>
+                </SelectContent>
+              </Select>
               {filteredProperties.length !== properties.length && (
                 <span className="hidden md:inline text-sm text-muted-foreground" data-testid="text-filtered-count">
                   Showing {filteredProperties.length} of {properties.length} properties
@@ -893,6 +918,25 @@ function PropertyCard({ property, onDelete }: {
             <span>${Number(property.marketValue || 0).toLocaleString()}</span>
           </div>
         </div>
+        {(() => {
+          const enrichment = property.enrichmentData as any;
+          const score = enrichment?.scores?.overallScore ?? enrichment?.scores?.investmentScore;
+          if (score == null) return null;
+          const color = score >= 70
+            ? "bg-red-100 text-red-700 border-red-200"
+            : score >= 40
+            ? "bg-yellow-100 text-yellow-700 border-yellow-200"
+            : "bg-green-100 text-green-700 border-green-200";
+          const label = score >= 70 ? "High" : score >= 40 ? "Medium" : "Low";
+          return (
+            <div className="mt-2">
+              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium border ${color}`} data-testid={`badge-distress-${property.id}`}>
+                <Flame className="w-3 h-3" />
+                Distress {label} {score}
+              </span>
+            </div>
+          );
+        })()}
         <div className="mt-3 pt-3 border-t flex items-center justify-between gap-2">
           <Button 
             variant="outline" 
