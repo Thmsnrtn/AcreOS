@@ -9,9 +9,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Headphones, AlertTriangle, CheckCircle, Clock, Users, TrendingUp, MessageSquare, Send, ArrowLeft, User, Bot, Loader2 } from "lucide-react";
+import { Headphones, AlertTriangle, CheckCircle, Clock, Users, TrendingUp, MessageSquare, Send, ArrowLeft, User, Bot, Loader2, Timer } from "lucide-react";
 import { PageShell } from "@/components/page-shell";
-import type { SupportCase, SupportMessage } from "@shared/schema";
+import type { SupportCase, SupportMessage, SlaStatus } from "@shared/schema";
 
 type SupportMetrics = {
   totalCases: number;
@@ -22,11 +22,41 @@ type SupportMetrics = {
   autoResolvedRate: number;
 };
 
+type SupportCaseWithSla = SupportCase & {
+  slaDeadline?: string;
+  slaStatus?: SlaStatus;
+  hoursUntilBreached?: number;
+};
+
 type CaseWithMessages = {
-  case: SupportCase;
+  case: SupportCaseWithSla;
   messages: SupportMessage[];
   actions: any[];
 };
+
+function getSlaColor(status: SlaStatus | undefined): string {
+  switch (status) {
+    case "breached": return "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20";
+    case "at_risk": return "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-500/20";
+    case "on_track": return "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20";
+    default: return "bg-muted text-muted-foreground border-border";
+  }
+}
+
+function formatSlaTime(hoursUntilBreached: number | undefined): string {
+  if (hoursUntilBreached === undefined) return "";
+  const abs = Math.abs(hoursUntilBreached);
+  if (abs < 1) {
+    const mins = Math.round(abs * 60);
+    return hoursUntilBreached < 0 ? `${mins}m overdue` : `${mins}m left`;
+  }
+  if (abs < 24) {
+    const h = Math.round(abs);
+    return hoursUntilBreached < 0 ? `${h}h overdue` : `${h}h left`;
+  }
+  const d = Math.round(abs / 24);
+  return hoursUntilBreached < 0 ? `${d}d overdue` : `${d}d left`;
+}
 
 function getPriorityColor(priority: number): string {
   switch (priority) {
@@ -120,7 +150,7 @@ export default function AdminSupportPage() {
     queryKey: ["/api/admin/support/metrics"],
   });
 
-  const { data: escalatedCases, isLoading: casesLoading } = useQuery<SupportCase[]>({
+  const { data: escalatedCases, isLoading: casesLoading } = useQuery<SupportCaseWithSla[]>({
     queryKey: ["/api/admin/support/escalated"],
   });
 
@@ -226,6 +256,16 @@ export default function AdminSupportPage() {
             </div>
           )}
 
+          {escalatedCases && escalatedCases.some(c => c.slaStatus === "breached") && (
+            <div className="flex items-center gap-3 p-4 rounded-lg border border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-400" data-testid="alert-sla-breach">
+              <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+              <div>
+                <span className="font-semibold">SLA Breach — </span>
+                {escalatedCases.filter(c => c.slaStatus === "breached").length} ticket(s) have exceeded their response time target and require immediate attention.
+              </div>
+            </div>
+          )}
+
           <div className="grid lg:grid-cols-[400px_1fr] gap-6">
             <Card className="lg:h-[calc(100vh-320px)]">
               <CardHeader className="pb-3">
@@ -278,9 +318,17 @@ export default function AdminSupportPage() {
                             <span className="text-muted-foreground/50">|</span>
                             <span className="capitalize">{c.category}</span>
                           </div>
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                            <Clock className="w-3 h-3" />
-                            <span>Escalated {formatTimeAgo(c.escalatedAt)}</span>
+                          <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                            <div className="flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              <span>Escalated {formatTimeAgo(c.escalatedAt)}</span>
+                            </div>
+                            {c.slaStatus && (
+                              <Badge variant="outline" className={`text-xs ${getSlaColor(c.slaStatus)}`} data-testid={`badge-sla-${c.id}`}>
+                                <Timer className="w-3 h-3 mr-1" />
+                                {formatSlaTime(c.hoursUntilBreached)}
+                              </Badge>
+                            )}
                           </div>
                           {c.escalationReason && (
                             <p className="text-xs text-muted-foreground mt-2 line-clamp-2 italic">
@@ -339,6 +387,12 @@ export default function AdminSupportPage() {
                           <span className="text-xs text-muted-foreground">
                             Created {formatDate(selectedCase?.createdAt)}
                           </span>
+                          {selectedCase?.slaStatus && (
+                            <Badge variant="outline" className={`text-xs ${getSlaColor(selectedCase.slaStatus)}`}>
+                              <Timer className="w-3 h-3 mr-1" />
+                              SLA: {formatSlaTime(selectedCase.hoursUntilBreached)}
+                            </Badge>
+                          )}
                         </div>
                         {selectedCase?.escalationReason && (
                           <p className="text-sm text-muted-foreground mt-2">

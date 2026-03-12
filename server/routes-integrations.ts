@@ -289,7 +289,7 @@ export function registerIntegrationRoutes(app: Express): void {
         to: recipientEmail,
         templateData: {
           title: 'Test Email',
-          message: `This is a test email from Acreage Land Co. If you received this, your AWS SES configuration is working correctly.`,
+          message: `This is a test email from AcreOS. If you received this, your AWS SES configuration is working correctly.`,
           subject: 'Test Email - AWS SES Configuration',
         },
         organizationId: org.id,

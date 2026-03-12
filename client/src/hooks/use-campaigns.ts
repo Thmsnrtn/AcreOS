@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import type { Campaign, InsertCampaign } from "@shared/schema";
+import type { Campaign, InsertCampaign, CampaignOptimization } from "@shared/schema";
 
 // Direct mail status response type
 export interface DirectMailStatus {
@@ -172,5 +172,93 @@ export function useBulkVerifyAddresses() {
         }>;
       }>;
     },
+  });
+}
+
+// Campaign optimization hooks
+
+export function useCampaignOptimizations(campaignId: number) {
+  return useQuery<CampaignOptimization[]>({
+    queryKey: ['/api/campaigns', campaignId, 'optimizations'],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/campaigns/${campaignId}/optimizations`);
+      return res.json();
+    },
+    enabled: !!campaignId,
+  });
+}
+
+export interface OptimizeResult {
+  success: boolean;
+  campaignId: number;
+  metrics: Record<string, number>;
+  score: number;
+  suggestionsGenerated: number;
+  suggestions: CampaignOptimization[];
+}
+
+export function useOptimizeCampaign() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (campaignId: number) => {
+      const res = await apiRequest("POST", `/api/campaigns/${campaignId}/optimize`);
+      return res.json() as Promise<OptimizeResult>;
+    },
+    onSuccess: (_data, campaignId) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/campaigns', campaignId, 'optimizations'] });
+    },
+  });
+}
+
+export function useMarkOptimizationImplemented() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ optimizationId, campaignId }: { optimizationId: number; campaignId: number }) => {
+      const res = await apiRequest("PUT", `/api/optimizations/${optimizationId}/implement`, {});
+      return res.json() as Promise<CampaignOptimization>;
+    },
+    onSuccess: (_data, { campaignId }) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/campaigns', campaignId, 'optimizations'] });
+    },
+  });
+}
+
+// Campaign response trend (daily counts for the past 7 days)
+export interface DailyResponseCount {
+  date: string;   // ISO date string YYYY-MM-DD
+  count: number;
+}
+
+export function useCampaignResponseTrend(campaignId: number) {
+  return useQuery<DailyResponseCount[]>({
+    queryKey: ['/api/campaigns', campaignId, 'response-trend'],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/campaigns/${campaignId}/response-trend`);
+      return res.json();
+    },
+    enabled: !!campaignId,
+  });
+}
+
+// Direct mail attribution hook
+export interface MailAttributionData {
+  totalSent: number;
+  totalCostCents: number;
+  attributedResponses: number;
+  responseRate: number;
+  costPerResponse: number | null;
+  estimatedDeliveryDate: string | null;
+  industryBenchmarkMin: number;
+  industryBenchmarkMax: number;
+}
+
+export function useMailAttribution(campaignId: number) {
+  return useQuery<MailAttributionData>({
+    queryKey: ['/api/campaigns', campaignId, 'mail-attribution'],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/campaigns/${campaignId}/mail-attribution`);
+      return res.json();
+    },
+    enabled: !!campaignId,
   });
 }

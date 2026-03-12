@@ -1,12 +1,13 @@
-import { useCampaigns, useCreateCampaign, useUpdateCampaign, useDirectMailStatus, useUpdateMailMode, useSendDirectMail, useMailEstimate } from "@/hooks/use-campaigns";
+import { useCampaigns, useCreateCampaign, useUpdateCampaign, useDirectMailStatus, useUpdateMailMode, useSendDirectMail, useMailEstimate, useCampaignOptimizations, useOptimizeCampaign, useMarkOptimizationImplemented, useCampaignResponseTrend, useMailAttribution } from "@/hooks/use-campaigns";
 import { useLeads } from "@/hooks/use-leads";
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertCampaignSchema, type Campaign } from "@shared/schema";
+import { insertCampaignSchema, type Campaign, type CampaignOptimization } from "@shared/schema";
 import { z } from "zod";
 import { CampaignAnalytics } from "@/components/campaign-analytics";
 import { AbTestManager } from "@/components/ab-test-manager";
+import { CampaignVariantsPanel } from "@/components/campaign-variants-panel";
 
 const campaignFormSchema = insertCampaignSchema.omit({ organizationId: true });
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogFooter } from "@/components/ui/dialog";
@@ -17,7 +18,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Mail, MessageSquare, Send, Calendar, BarChart3, Users, Clock, Play, Pause, CheckCircle, FileText, Target, TrendingUp, Eye, TestTube, Zap, AlertTriangle, DollarSign, Loader2 } from "lucide-react";
+import { Plus, Mail, MessageSquare, Send, Calendar, BarChart3, Users, Clock, Play, Pause, CheckCircle, FileText, Target, TrendingUp, Eye, TestTube, Zap, AlertTriangle, DollarSign, Loader2, Lightbulb, ChevronDown, ChevronUp, Sparkles } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { ListSkeleton } from "@/components/list-skeleton";
 import { CampaignsEmptyState } from "@/components/empty-states";
@@ -192,6 +193,211 @@ Have a great week!
     },
   ],
 } as const;
+
+// ─── Sparkline: 7-day response trend ─────────────────────────────────────────
+
+function SparklineTrend({ campaignId }: { campaignId: number }) {
+  const { data: trend } = useCampaignResponseTrend(campaignId);
+
+  if (!trend || trend.every((d) => d.count === 0)) return null;
+
+  const max = Math.max(...trend.map((d) => d.count), 1);
+  const width = 80;
+  const height = 28;
+  const gap = width / (trend.length - 1);
+
+  const points = trend
+    .map((d, i) => {
+      const x = i * gap;
+      const y = height - (d.count / max) * height;
+      return `${x},${y}`;
+    })
+    .join(" ");
+
+  const totalThisWeek = trend.reduce((s, d) => s + d.count, 0);
+
+  return (
+    <div className="flex items-center gap-2 mt-3">
+      <svg width={width} height={height} className="text-emerald-500 shrink-0">
+        <polyline
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+          points={points}
+        />
+      </svg>
+      <span className="text-xs text-muted-foreground whitespace-nowrap">
+        {totalThisWeek} responses (7d)
+      </span>
+    </div>
+  );
+}
+
+// ─── AI Optimizer Suggestions Panel ──────────────────────────────────────────
+
+const priorityConfig: Record<string, { label: string; className: string }> = {
+  high: { label: "High", className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
+  medium: { label: "Medium", className: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" },
+  low: { label: "Low", className: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" },
+};
+
+const typeIcons: Record<string, React.ReactNode> = {
+  content: <FileText className="w-3.5 h-3.5" />,
+  timing: <Clock className="w-3.5 h-3.5" />,
+  audience: <Users className="w-3.5 h-3.5" />,
+  budget: <DollarSign className="w-3.5 h-3.5" />,
+};
+
+function OptimizerSuggestionsPanel({ campaign }: { campaign: Campaign }) {
+  const { data: suggestions, isLoading } = useCampaignOptimizations(campaign.id);
+  const optimizeMutation = useOptimizeCampaign();
+  const implementMutation = useMarkOptimizationImplemented();
+  const { toast } = useToast();
+  const [expanded, setExpanded] = useState(true);
+
+  const pending = suggestions?.filter((s) => !s.implemented) ?? [];
+  const done = suggestions?.filter((s) => s.implemented) ?? [];
+
+  const handleRunOptimizer = async () => {
+    try {
+      const result = await optimizeMutation.mutateAsync(campaign.id);
+      toast({
+        title: "AI Optimizer Complete",
+        description: `Generated ${result.suggestionsGenerated} suggestions. Campaign score: ${result.score}/100.`,
+      });
+    } catch (err: any) {
+      toast({ title: "Optimizer failed", description: err.message, variant: "destructive" });
+    }
+  };
+
+  const handleImplement = async (suggestion: CampaignOptimization) => {
+    try {
+      await implementMutation.mutateAsync({ optimizationId: suggestion.id, campaignId: campaign.id });
+      toast({ title: "Marked as implemented", description: suggestion.suggestion.slice(0, 80) });
+    } catch (err: any) {
+      toast({ title: "Update failed", description: err.message, variant: "destructive" });
+    }
+  };
+
+  return (
+    <Card className="glass-panel">
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Lightbulb className="w-4 h-4 text-amber-500" />
+            AI Optimization Suggestions
+            {pending.length > 0 && (
+              <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 ml-1">
+                {pending.length}
+              </Badge>
+            )}
+          </CardTitle>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleRunOptimizer}
+              disabled={optimizeMutation.isPending}
+              data-testid="button-run-optimizer"
+            >
+              {optimizeMutation.isPending ? (
+                <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+              ) : (
+                <Sparkles className="w-3.5 h-3.5 mr-1" />
+              )}
+              {optimizeMutation.isPending ? "Analyzing…" : "Run AI Analysis"}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setExpanded(!expanded)}
+              aria-label={expanded ? "Collapse" : "Expand"}
+            >
+              {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </Button>
+          </div>
+        </div>
+        {campaign.optimizationScore != null && (
+          <div className="flex items-center gap-2 mt-1">
+            <span className="text-xs text-muted-foreground">Optimization score</span>
+            <div className="flex-1 max-w-[120px]">
+              <Progress value={campaign.optimizationScore} className="h-1.5" />
+            </div>
+            <span className="text-xs font-medium">{campaign.optimizationScore}/100</span>
+          </div>
+        )}
+      </CardHeader>
+
+      {expanded && (
+        <CardContent className="pt-0 space-y-3">
+          {isLoading && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Loading suggestions…
+            </div>
+          )}
+
+          {!isLoading && pending.length === 0 && done.length === 0 && (
+            <p className="text-sm text-muted-foreground py-2">
+              No suggestions yet. Click "Run AI Analysis" to generate recommendations.
+            </p>
+          )}
+
+          {pending.map((s) => {
+            const pc = priorityConfig[s.priority] ?? priorityConfig.medium;
+            return (
+              <div
+                key={s.id}
+                className="rounded-lg border bg-muted/30 p-3 space-y-1.5"
+                data-testid={`suggestion-${s.id}`}
+              >
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-muted-foreground">{typeIcons[s.type] ?? <Lightbulb className="w-3.5 h-3.5" />}</span>
+                  <span className="text-xs capitalize font-medium text-muted-foreground">{s.type}</span>
+                  <Badge className={`text-xs ${pc.className}`}>{pc.label} priority</Badge>
+                </div>
+                <p className="text-sm font-medium leading-snug">{s.suggestion}</p>
+                <p className="text-xs text-muted-foreground leading-snug">{s.reasoning}</p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="mt-1 h-7 text-xs"
+                  onClick={() => handleImplement(s)}
+                  disabled={implementMutation.isPending}
+                  data-testid={`button-implement-${s.id}`}
+                >
+                  <CheckCircle className="w-3 h-3 mr-1" />
+                  Mark Implemented
+                </Button>
+              </div>
+            );
+          })}
+
+          {done.length > 0 && (
+            <details className="text-xs text-muted-foreground cursor-pointer">
+              <summary className="select-none hover:text-foreground transition-colors">
+                {done.length} implemented suggestion{done.length !== 1 ? "s" : ""}
+              </summary>
+              <div className="mt-2 space-y-2">
+                {done.map((s) => (
+                  <div key={s.id} className="rounded-lg border border-dashed p-2 opacity-60">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <CheckCircle className="w-3 h-3 text-emerald-500" />
+                      <span className="capitalize">{s.type}</span>
+                    </div>
+                    <p className="leading-snug">{s.suggestion}</p>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+        </CardContent>
+      )}
+    </Card>
+  );
+}
 
 function MailModeIndicator() {
   const { data: mailStatus, isLoading } = useDirectMailStatus();
@@ -499,6 +705,8 @@ function CampaignList({ campaigns, isLoading, onSelect, onCreateNew }: {
                   <Progress value={Number(deliveryRate)} className="h-1.5" />
                 </div>
               ) : null}
+
+              <SparklineTrend campaignId={campaign.id} />
             </CardContent>
           </Card>
         );
@@ -703,8 +911,9 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
   const { mutate: updateCampaign, isPending } = useUpdateCampaign();
   const { data: leads } = useLeads();
   const { data: mailStatus } = useDirectMailStatus();
+  const { data: mailAttribution } = useMailAttribution(campaign.id);
   const [showSendDialog, setShowSendDialog] = useState(false);
-  
+
   const toggleStatus = () => {
     const newStatus = campaign.status === 'active' ? 'paused' : 'active';
     updateCampaign({ id: campaign.id, status: newStatus });
@@ -815,6 +1024,67 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
             </CardContent>
           </Card>
 
+          {isDirectMail && mailAttribution && (
+            <Card className="glass-panel border-blue-200 dark:border-blue-800">
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Mail className="w-4 h-4 text-blue-500" />
+                  Direct Mail Performance
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-muted/50 rounded-lg p-3 text-center">
+                    <p className="text-2xl font-bold">{mailAttribution.totalSent.toLocaleString()}</p>
+                    <p className="text-xs text-muted-foreground">Pieces Sent</p>
+                  </div>
+                  <div className="bg-muted/50 rounded-lg p-3 text-center">
+                    <p className="text-2xl font-bold text-emerald-600">{mailAttribution.attributedResponses}</p>
+                    <p className="text-xs text-muted-foreground">Responses Attributed</p>
+                  </div>
+                </div>
+
+                {mailAttribution.estimatedDeliveryDate && (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Calendar className="w-4 h-4" />
+                    <span>Est. delivery: {format(new Date(mailAttribution.estimatedDeliveryDate), 'PPP')}</span>
+                  </div>
+                )}
+
+                <div>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span>Response Rate</span>
+                    <span className="font-medium">{mailAttribution.responseRate.toFixed(1)}%</span>
+                  </div>
+                  <Progress value={Math.min(mailAttribution.responseRate, 10)} max={10} className="h-2" />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Industry benchmark: {mailAttribution.industryBenchmarkMin}–{mailAttribution.industryBenchmarkMax}%
+                    {mailAttribution.responseRate >= mailAttribution.industryBenchmarkMin && (
+                      <span className="text-emerald-600 ml-1">— above average</span>
+                    )}
+                  </p>
+                </div>
+
+                {mailAttribution.costPerResponse !== null && (
+                  <div className="flex items-center justify-between text-sm border-t pt-3">
+                    <span className="text-muted-foreground flex items-center gap-1">
+                      <DollarSign className="w-3.5 h-3.5" />
+                      Cost per response
+                    </span>
+                    <span className="font-mono font-medium">${mailAttribution.costPerResponse.toFixed(2)}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground flex items-center gap-1">
+                    <DollarSign className="w-3.5 h-3.5" />
+                    Total spend
+                  </span>
+                  <span className="font-mono">${(mailAttribution.totalCostCents / 100).toFixed(2)}</span>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {campaign.content && (
             <Card className="glass-panel">
               <CardHeader>
@@ -860,8 +1130,14 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
             </Card>
           )}
 
+          <OptimizerSuggestionsPanel campaign={campaign} />
+
           <div className="pt-4 border-t">
             <AbTestManager campaign={campaign} />
+          </div>
+
+          <div className="pt-4 border-t">
+            <CampaignVariantsPanel campaign={campaign} />
           </div>
 
           <div className="pt-4 border-t">

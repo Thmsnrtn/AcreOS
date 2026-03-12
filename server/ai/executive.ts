@@ -592,6 +592,23 @@ async function createMessage(data: { conversationId: number; role: string; conte
   return msg;
 }
 
+/**
+ * Load user preference memories from agentMemory and format them for system prompt injection.
+ * Preferences teach the AI about the user's communication style, deal criteria, and workflow habits.
+ */
+async function loadUserPreferenceContext(orgId: number): Promise<string> {
+  try {
+    const memories = await storage.getAgentMemories(orgId, undefined, 50);
+    const preferences = memories.filter(m => m.memoryType === "preference");
+    if (preferences.length === 0) return "";
+
+    const lines = preferences.map(m => `- ${m.key}: ${JSON.stringify(m.value)}`).join("\n");
+    return `\n\n--- USER PREFERENCES (learned from past interactions) ---\n${lines}\n--- END USER PREFERENCES ---`;
+  } catch {
+    return ""; // Non-blocking — never fail a chat request over a missing preference
+  }
+}
+
 export async function getOrCreateConversation(
   orgId: number,
   userId: string,
@@ -695,7 +712,9 @@ export async function processChat(
     _memoryCtx = formatMemoriesForContext(memories);
   } catch (_memErr) { /* non-blocking */ }
 
-  const _systemContent = profile.systemPrompt + (_memoryCtx || "") + (_enrichCtx || "");
+  // Inject learned user preferences into the system prompt (non-blocking)
+  const _prefCtx = await loadUserPreferenceContext(org.id);
+  const _systemContent = profile.systemPrompt + (_memoryCtx || "") + (_enrichCtx || "") + (_prefCtx || "");
 
   const chatMessages: OpenAI.ChatCompletionMessageParam[] = [
     { role: "system", content: _systemContent },
@@ -939,7 +958,9 @@ export async function* processChatStream(
     _memoryCtx = formatMemoriesForContext(memories);
   } catch (_memErr) { /* non-blocking */ }
 
-  const _systemContent = profile.systemPrompt + (_memoryCtx || "") + (_enrichCtx || "");
+  // Inject learned user preferences into the system prompt (non-blocking)
+  const _prefCtx = await loadUserPreferenceContext(org.id);
+  const _systemContent = profile.systemPrompt + (_memoryCtx || "") + (_enrichCtx || "") + (_prefCtx || "");
 
   const chatMessages: OpenAI.ChatCompletionMessageParam[] = [
     { role: "system", content: _systemContent },

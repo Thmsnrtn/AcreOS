@@ -19,11 +19,23 @@ type FeatureHint = {
   description: string;
   position?: "top" | "bottom" | "left" | "right";
   priority: number;
+  /** If set, hint only shows when usedFeatures satisfies this predicate */
+  condition?: (usedFeatures: UsedFeatures) => boolean;
+};
+
+type UsedFeatures = {
+  /** How many leads the org has imported/created */
+  leadCount: number;
+  /** How many campaigns the org has created */
+  campaignCount: number;
+  /** How many notes/seller-finance records exist */
+  noteCount: number;
 };
 
 type HintsContextValue = {
   showTips: boolean;
   dismissedHints: string[];
+  usedFeatures: UsedFeatures;
   dismissHint: (id: string) => void;
   dismissAllHints: () => void;
   resetHints: () => void;
@@ -97,17 +109,56 @@ const FEATURE_HINTS: FeatureHint[] = [
     position: "bottom",
     priority: 3,
   },
+  // --- Adaptive hints: only show based on actual usage data ---
+  {
+    id: "campaigns-from-leads",
+    target: "campaigns-page",
+    title: "Ready to Market to Your Leads?",
+    description: "You have leads but no campaigns yet. Launch a direct mail or email campaign to start converting them.",
+    position: "bottom",
+    priority: 1,
+    condition: (f) => f.leadCount >= 10 && f.campaignCount === 0,
+  },
+  {
+    id: "notes-from-deals",
+    target: "notes-page",
+    title: "Start Collecting Payments",
+    description: "You have closed deals — set up seller-finance notes to automate payment tracking.",
+    position: "bottom",
+    priority: 2,
+    condition: (f) => f.noteCount === 0 && f.leadCount > 0,
+  },
 ];
 
 export function HintsProvider({ children }: { children: React.ReactNode }) {
   const [dismissedHints, setDismissedHints] = useState<string[]>([]);
-  
+
   const { data: organization } = useQuery<any>({
     queryKey: ["/api/organization"],
   });
-  
+
+  // Fetch lightweight usage counts to drive adaptive hints
+  const { data: leadsData } = useQuery<{ total: number } | any>({
+    queryKey: ["/api/leads?limit=0"],
+    select: (d: any) => ({ total: d?.total ?? d?.leads?.length ?? 0 }),
+  });
+  const { data: campaignsData } = useQuery<{ total: number } | any>({
+    queryKey: ["/api/campaigns?limit=0"],
+    select: (d: any) => ({ total: d?.total ?? (Array.isArray(d) ? d.length : 0) }),
+  });
+  const { data: notesData } = useQuery<{ total: number } | any>({
+    queryKey: ["/api/notes?limit=0"],
+    select: (d: any) => ({ total: d?.total ?? (Array.isArray(d) ? d.length : 0) }),
+  });
+
+  const usedFeatures: UsedFeatures = {
+    leadCount: leadsData?.total ?? 0,
+    campaignCount: campaignsData?.total ?? 0,
+    noteCount: notesData?.total ?? 0,
+  };
+
   const showTips = organization?.settings?.showTips !== false;
-  
+
   useEffect(() => {
     const stored = localStorage.getItem("dismissed_hints");
     if (stored) {
@@ -118,37 +169,39 @@ export function HintsProvider({ children }: { children: React.ReactNode }) {
       }
     }
   }, []);
-  
+
   const dismissHint = (id: string) => {
     const updated = [...dismissedHints, id];
     setDismissedHints(updated);
     localStorage.setItem("dismissed_hints", JSON.stringify(updated));
   };
-  
+
   const dismissAllHints = () => {
     const allIds = FEATURE_HINTS.map(h => h.id);
     setDismissedHints(allIds);
     localStorage.setItem("dismissed_hints", JSON.stringify(allIds));
   };
-  
+
   const resetHints = () => {
     setDismissedHints([]);
     localStorage.removeItem("dismissed_hints");
   };
-  
+
   const getHintForTarget = (target: string) => {
     if (!showTips) return undefined;
-    const hint = FEATURE_HINTS.find(h => h.target === target);
-    if (hint && !dismissedHints.includes(hint.id)) {
-      return hint;
-    }
-    return undefined;
+    // Find the highest-priority matching hint that passes its condition
+    const candidates = FEATURE_HINTS
+      .filter(h => h.target === target && !dismissedHints.includes(h.id))
+      .filter(h => !h.condition || h.condition(usedFeatures))
+      .sort((a, b) => a.priority - b.priority);
+    return candidates[0];
   };
-  
+
   return (
     <HintsContext.Provider value={{
       showTips,
       dismissedHints,
+      usedFeatures,
       dismissHint,
       dismissAllHints,
       resetHints,

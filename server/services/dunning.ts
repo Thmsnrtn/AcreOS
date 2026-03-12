@@ -1,12 +1,13 @@
 import { storage } from "../storage";
-import { 
-  DUNNING_CONFIG, 
-  DUNNING_STAGES, 
-  type DunningStage, 
-  type InsertDunningEvent, 
+import {
+  DUNNING_CONFIG,
+  DUNNING_STAGES,
+  type DunningStage,
+  type InsertDunningEvent,
   type InsertSystemAlert,
   type Organization
 } from "@shared/schema";
+import { logActivity } from "./systemActivityLogger";
 
 class DunningService {
   private readonly HIGH_VALUE_THRESHOLD_CENTS = 10000; // $100+ = high value customer
@@ -87,6 +88,13 @@ class DunningService {
       }
 
       console.log(`[Dunning] Updated org ${organizationId} to stage: ${newStage}, next retry: ${nextRetryAt?.toISOString() || 'none'}`);
+      logActivity({
+        orgId: organizationId,
+        job: "dunning",
+        action: "dunning_stage_advanced",
+        summary: `Payment failure (attempt ${attemptNumber}): org advanced to dunning stage "${newStage}"`,
+        metadata: { newStage, amountDueCents, attemptNumber },
+      }).catch(() => {});
     } catch (error) {
       console.error(`[Dunning] Error handling payment failure for org ${organizationId}:`, error);
       throw error;
@@ -131,6 +139,13 @@ class DunningService {
       }
 
       console.log(`[Dunning] Resolved dunning for org ${organizationId}, payment of ${amountPaidCents} cents received`);
+      logActivity({
+        orgId: organizationId,
+        job: "dunning",
+        action: "payment_recovered",
+        summary: `Payment recovered: dunning cleared for org after receiving ${(amountPaidCents / 100).toFixed(2)} payment`,
+        metadata: { amountPaidCents, stripeInvoiceId },
+      }).catch(() => {});
     } catch (error) {
       console.error(`[Dunning] Error handling payment success for org ${organizationId}:`, error);
       throw error;

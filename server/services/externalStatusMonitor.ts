@@ -1,6 +1,7 @@
 import { db } from "../db";
 import { systemAlerts, organizations } from "@shared/schema";
 import { eq, and, gte, desc, sql, notInArray } from "drizzle-orm";
+import { logActivity } from "./systemActivityLogger";
 
 interface ServiceStatus {
   name: string;
@@ -210,13 +211,27 @@ export const externalStatusMonitor = {
           if (outage.status.status === "outage") {
             await this.notifyUsersOfOutage(outage.service, outage.impact);
             console.log(`[external-status] Detected ${outage.service} outage, notifying users`);
+            logActivity({
+              job: "external_monitor",
+              action: "service_alert_created",
+              summary: `${SERVICE_ENDPOINTS[outage.service]?.name || outage.service} outage detected — alerts created for all orgs`,
+              metadata: { service: outage.service, status: outage.status.status },
+            }).catch(() => {});
           }
         }
         
         for (const service of Object.keys(SERVICE_ENDPOINTS)) {
           const status = await this.getServiceStatus(service);
           if (status.status === "operational") {
-            await this.resolveOutageNotifications(service);
+            const resolved = await this.resolveOutageNotifications(service);
+            if (resolved > 0) {
+              logActivity({
+                job: "external_monitor",
+                action: "service_alert_resolved",
+                summary: `${SERVICE_ENDPOINTS[service]?.name || service} is back online — outage alerts auto-resolved`,
+                metadata: { service, resolved },
+              }).catch(() => {});
+            }
           }
         }
       } catch (error) {

@@ -88,6 +88,14 @@ export class WebhookHandlers {
         await WebhookHandlers.markProcessed(event.id, event.type);
         return;
       }
+
+      // Subscription checkout — eagerly record the subscription ID so the org
+      // is updated even if customer.subscription.updated fires before we process it.
+      if (session.mode === 'subscription' && session.subscription) {
+        await WebhookHandlers.processSubscriptionCheckoutCompleted(session);
+        await WebhookHandlers.markProcessed(event.id, event.type);
+        return;
+      }
     }
 
     // Handle invoice payment failed - trigger dunning
@@ -114,6 +122,15 @@ export class WebhookHandlers {
       return;
     }
 
+    // customer.subscription.created fires when any new subscription is created.
+    // Reuse processSubscriptionUpdated since the payload shape is identical.
+    if (event.type === 'customer.subscription.created') {
+      const subscription = event.data.object as Stripe.Subscription;
+      await WebhookHandlers.processSubscriptionUpdated(subscription);
+      await WebhookHandlers.markProcessed(event.id, event.type);
+      return;
+    }
+
     if (event.type === 'customer.subscription.updated') {
       const subscription = event.data.object as Stripe.Subscription;
       await WebhookHandlers.processSubscriptionUpdated(subscription);
@@ -131,6 +148,40 @@ export class WebhookHandlers {
     // Unhandled event type — log and acknowledge
     console.log(`[webhook] Unhandled Stripe event type: ${event.type}`);
     await WebhookHandlers.markProcessed(event.id, event.type);
+  }
+
+  /**
+   * Eagerly record the subscription ID when a subscription checkout completes.
+   * customer.subscription.updated will handle tier detection, but this ensures
+   * stripeSubscriptionId is saved immediately and provides a reliable fallback.
+   */
+  static async processSubscriptionCheckoutCompleted(session: Stripe.Checkout.Session): Promise<void> {
+    try {
+      const organizationId = session.metadata?.organizationId
+        ? parseInt(session.metadata.organizationId, 10)
+        : null;
+
+      if (!organizationId) {
+        console.warn('[webhook] subscription checkout missing organizationId metadata');
+        return;
+      }
+
+      const subscriptionId = typeof session.subscription === 'string'
+        ? session.subscription
+        : session.subscription?.id;
+
+      if (!subscriptionId) return;
+
+      await storage.updateOrganization(organizationId, {
+        stripeSubscriptionId: subscriptionId,
+        subscriptionStatus: 'active',
+        trialUsed: true, // Mark here, not at checkout creation — abandoned checkouts must not consume the trial
+      });
+
+      console.log(`[webhook] Subscription checkout completed: Org ${organizationId}, sub ${subscriptionId}`);
+    } catch (err) {
+      console.error('[webhook] Error processing subscription checkout:', err);
+    }
   }
 
   static async processPaymentFailed(invoice: Stripe.Invoice): Promise<void> {
@@ -294,6 +345,24 @@ export class WebhookHandlers {
 
       await storage.updateOrganization(org.id, updates);
       console.log(`[webhook] Subscription updated: Org ${org.id}, Status: ${subscription.status}${newTier ? `, Tier: ${newTier}` : ''}`);
+
+      // Founder notification: new paid signup or upgrade
+      if (newTier && newTier !== 'free' && subscription.status === 'active') {
+        const isUpgrade = org.subscriptionTier !== 'free' && org.subscriptionTier !== newTier;
+        const isNewPaid = org.subscriptionTier === 'free' || !org.subscriptionTier;
+        if (isNewPaid || isUpgrade) {
+          await storage.createSystemAlert({
+            organizationId: null as any, // Platform-wide alert for founder
+            type: 'new_subscriber',
+            severity: 'info',
+            title: isUpgrade ? `Upgrade: ${org.name}` : `New subscriber: ${org.name}`,
+            message: isUpgrade
+              ? `${org.name} upgraded from ${org.subscriptionTier} → ${newTier}.`
+              : `${org.name} converted to the ${newTier} plan.`,
+            metadata: { organizationId: org.id, fromTier: org.subscriptionTier, toTier: newTier },
+          });
+        }
+      }
     } catch (err) {
       console.error('Error processing subscription updated:', err);
     }

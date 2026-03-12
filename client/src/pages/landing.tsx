@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +15,7 @@ import {
   BarChart3,
   Banknote,
   CheckCircle,
+  CheckCircle2,
   ArrowRight,
   Star,
   Globe,
@@ -26,6 +28,7 @@ import {
   DollarSign,
   PieChart,
   GitBranch,
+  Map,
 } from "lucide-react";
 
 const FEATURES = [
@@ -85,6 +88,13 @@ const FEATURES = [
     color: "text-slate-500",
     bg: "bg-slate-50 dark:bg-slate-900/20",
   },
+  {
+    icon: Users,
+    title: "Team Collaboration",
+    description: "Bring your VA, acquisitions team, and disposition staff under one roof with role-based access.",
+    color: "text-cyan-500",
+    bg: "bg-cyan-50 dark:bg-cyan-900/20",
+  },
 ];
 
 const STATS = [
@@ -134,6 +144,15 @@ const TESTIMONIALS = [
 ];
 
 const PRICING = [
+  {
+    name: "Free",
+    price: "$0",
+    period: "forever",
+    description: "Try the platform with no credit card required.",
+    features: ["50 leads", "10 properties", "5 notes", "Basic CRM", "100 AI credits/mo"],
+    cta: "Start Free",
+    highlighted: false,
+  },
   {
     name: "Starter",
     price: "$97",
@@ -190,6 +209,31 @@ const PRICING = [
 ];
 
 export default function LandingPage() {
+  // Capture UTM params and referral code from URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+
+    // Persist referral code in localStorage so auth-page can pick it up at registration
+    const ref = params.get("ref");
+    if (ref) {
+      localStorage.setItem("acreos_ref", ref.toUpperCase());
+    }
+
+    const utm = {
+      utmSource: params.get("utm_source"),
+      utmMedium: params.get("utm_medium"),
+      utmCampaign: params.get("utm_campaign"),
+      utmContent: params.get("utm_content"),
+    };
+    if (utm.utmSource || utm.utmMedium || utm.utmCampaign) {
+      fetch("/api/auth/attribution", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(utm),
+      }).catch(() => {}); // Non-fatal
+    }
+  }, []);
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* Navigation */}
@@ -550,7 +594,11 @@ export default function LandingPage() {
 
           <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
             <p className="text-sm text-muted-foreground">© {new Date().getFullYear()} AcreOS. All rights reserved.</p>
-            <p className="text-sm text-muted-foreground">Built for land investors, by land investors.</p>
+            <div className="flex gap-4 text-sm text-muted-foreground flex-wrap justify-center">
+              <Link href="/compare/lg-pass" className="hover:text-foreground transition-colors">vs LG Pass</Link>
+              <Link href="/compare/geekpay" className="hover:text-foreground transition-colors">vs GeekPay</Link>
+              <span>Built for land investors, by land investors.</span>
+            </div>
           </div>
         </div>
       </footer>
