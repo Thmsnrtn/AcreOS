@@ -276,14 +276,6 @@ export default function AuthPage() {
                 </div>
               )}
 
-            {mode === "login" && (
-              <div className="text-right -mt-2">
-                <Link href="/forgot-password" className="text-xs text-white/50 hover:text-white/80">
-                  Forgot password?
-                </Link>
-              </div>
-            )}
-
             <Button
               type="submit"
               size="lg"
@@ -295,6 +287,7 @@ export default function AuthPage() {
               {mode === "login" ? "Sign In" : "Create Account"}
             </Button>
           </form>
+          )}
 
           {/* ── Forgot password form ── */}
           {mode === "forgot" && (

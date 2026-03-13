@@ -466,6 +466,7 @@ export function FocusList() {
                   <TooltipContent>Mark as contacted</TooltipContent>
                 </Tooltip>
               </div>
+              </div>
 
               {/* Next Action Guidance */}
               <div className="mt-2 pt-2 border-t border-dashed">

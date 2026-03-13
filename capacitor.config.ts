@@ -1,5 +1,7 @@
 import type { CapacitorConfig } from "@capacitor/cli";
 
+const isDev = process.env.NODE_ENV === "development";
+
 const config: CapacitorConfig = {
   appId: "com.acreos.app",
   appName: "AcreOS",
@@ -7,6 +9,10 @@ const config: CapacitorConfig = {
   server: {
     androidScheme: "https",
     iosScheme: "https",
+    // In dev mode, use livereload; in production, serve from bundled assets
+    ...(isDev
+      ? {}
+      : { url: "https://app.acreos.com", cleartext: false }),
   },
   plugins: {
     // ── Splash Screen ────────────────────────────────────────────────────────
@@ -39,6 +45,35 @@ const config: CapacitorConfig = {
       iconColor: "#8B4513",
       sound: "beep.wav",
     },
+    // ── Camera ──────────────────────────────────────────────────────────────
+    Camera: {
+      // Photo quality (0-100)
+      quality: 85,
+      // Save captured photos to device gallery
+      saveToGallery: true,
+      // iOS-specific usage descriptions
+      iosCameraUsageDescription:
+        "AcreOS needs camera access to capture field photos of properties and land parcels.",
+      iosPhotoLibraryUsageDescription:
+        "AcreOS needs photo library access to attach existing photos to field visits.",
+    },
+    // ── Geolocation ─────────────────────────────────────────────────────────
+    Geolocation: {
+      // Enable high-accuracy GPS for precise field coordinates
+      enableHighAccuracy: true,
+      // Timeout for position requests (ms)
+      timeout: 15000,
+      // Maximum age of cached position (ms)
+      maximumAge: 0,
+      iosLocationUsageDescription:
+        "AcreOS needs your location to record field visit coordinates and navigate to properties.",
+      iosLocationAlwaysUsageDescription:
+        "AcreOS uses background location to track field visit routes while scouting properties.",
+    },
+    // ── Network ─────────────────────────────────────────────────────────────
+    Network: {
+      // No special config needed; plugin auto-detects connection changes
+    },
     // ── Voice / Microphone (for voice call features) ─────────────────────────
     // Uses the @capacitor/microphone or @capgo/capacitor-callkit plugin.
     // Declare microphone usage description so iOS/Android prompt correctly.
@@ -58,8 +93,9 @@ const config: CapacitorConfig = {
   ios: {
     contentInset: "automatic",
     preferredContentMode: "mobile",
-    // Request microphone permission on app startup
     useLegacyBridge: false,
+    // Background modes for continuous location tracking during field visits
+    backgroundModes: ["location"],
   },
   android: {
     allowMixedContent: false,
