@@ -1,10 +1,11 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Flame, Sun, Snowflake, Skull, Phone, Mail, MessageSquare, Target, Loader2 } from "lucide-react";
+import { Flame, Sun, Snowflake, Skull, Phone, Mail, MessageSquare, Target, Loader2, CheckCircle, ArrowRight, Sparkles } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { useToast } from "@/hooks/use-toast";
 import type { Lead } from "@shared/schema";
 
 type LeadWithScore = Lead & {
@@ -39,9 +40,161 @@ function getStageStyle(stage: string) {
   }
 }
 
+// Determine the recommended next action based on lead data
+interface NextAction {
+  type: "call" | "email" | "sms" | "research";
+  label: string;
+  reason: string;
+  priority: "high" | "medium" | "low";
+}
+
+function getNextAction(lead: LeadWithScore): NextAction {
+  const hasPhone = !!lead.phone;
+  const hasEmail = !!lead.email;
+  const neverContacted = !lead.lastContactedAt;
+  const stage = lead.nurturingStage;
+  const status = lead.status;
+  
+  // Hot leads: prioritize direct contact
+  if (stage === "hot") {
+    if (hasPhone) {
+      return {
+        type: "call",
+        label: "Call now",
+        reason: neverContacted ? "Hot lead, never contacted" : "Hot lead, ready to engage",
+        priority: "high",
+      };
+    }
+    if (hasEmail) {
+      return {
+        type: "email",
+        label: "Send email",
+        reason: "Hot lead, no phone - email urgently",
+        priority: "high",
+      };
+    }
+    return {
+      type: "research",
+      label: "Find contact",
+      reason: "Hot lead but missing contact info",
+      priority: "high",
+    };
+  }
+  
+  // Warm leads: balanced approach
+  if (stage === "warm") {
+    if (status === "contacting" && hasPhone) {
+      return {
+        type: "call",
+        label: "Follow up call",
+        reason: "Continue conversation",
+        priority: "medium",
+      };
+    }
+    if (hasEmail) {
+      return {
+        type: "email",
+        label: "Send email",
+        reason: neverContacted ? "Introduce yourself" : "Check in with email",
+        priority: "medium",
+      };
+    }
+    if (hasPhone) {
+      return {
+        type: "sms",
+        label: "Send SMS",
+        reason: "Quick text to re-engage",
+        priority: "medium",
+      };
+    }
+    return {
+      type: "research",
+      label: "Research lead",
+      reason: "Gather more info before outreach",
+      priority: "low",
+    };
+  }
+  
+  // Cold leads: gentle nurturing
+  if (hasEmail) {
+    return {
+      type: "email",
+      label: "Nurture email",
+      reason: "Keep relationship warm",
+      priority: "low",
+    };
+  }
+  if (hasPhone) {
+    return {
+      type: "sms",
+      label: "Check-in text",
+      reason: "Light touch to stay top of mind",
+      priority: "low",
+    };
+  }
+  return {
+    type: "research",
+    label: "Update info",
+    reason: "Missing contact details",
+    priority: "low",
+  };
+}
+
+function getActionIcon(type: NextAction["type"]) {
+  switch (type) {
+    case "call":
+      return <Phone className="w-3 h-3" />;
+    case "email":
+      return <Mail className="w-3 h-3" />;
+    case "sms":
+      return <MessageSquare className="w-3 h-3" />;
+    case "research":
+      return <Target className="w-3 h-3" />;
+  }
+}
+
+function getPriorityStyle(priority: NextAction["priority"]) {
+  switch (priority) {
+    case "high":
+      return "bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-900/20 dark:text-orange-300 dark:border-orange-800";
+    case "medium":
+      return "bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-900/20 dark:text-yellow-300 dark:border-yellow-800";
+    case "low":
+      return "bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-800/50 dark:text-slate-300 dark:border-slate-700";
+  }
+}
+
 export function FocusList() {
   const { data: focusLeads, isLoading } = useQuery<LeadWithScore[]>({
     queryKey: ["/api/leads/focus"],
+  });
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  const markContactedMutation = useMutation({
+    mutationFn: async (leadId: number) => {
+      const res = await fetch(`/api/leads/${leadId}/mark-contacted`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to mark as contacted");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/leads/focus"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
+      toast({
+        title: "Lead updated",
+        description: "Marked as contacted - great follow-up!",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to update lead",
+        variant: "destructive",
+      });
+    },
   });
 
   const handleCall = (lead: LeadWithScore) => {
@@ -59,6 +212,23 @@ export function FocusList() {
   const handleSMS = (lead: LeadWithScore) => {
     if (lead.phone) {
       window.open(`sms:${lead.phone}`, "_self");
+    }
+  };
+
+  const executeAction = (lead: LeadWithScore, action: NextAction) => {
+    switch (action.type) {
+      case "call":
+        handleCall(lead);
+        break;
+      case "email":
+        handleEmail(lead);
+        break;
+      case "sms":
+        handleSMS(lead);
+        break;
+      case "research":
+        // Could navigate to lead detail in future
+        break;
     }
   };
 
@@ -88,9 +258,17 @@ export function FocusList() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground text-center py-4">
-            No leads need attention today
-          </p>
+          <div className="text-center py-6">
+            <div className="w-12 h-12 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mx-auto mb-3">
+              <Sparkles className="w-6 h-6 text-green-600 dark:text-green-400" />
+            </div>
+            <p className="text-sm font-medium text-green-700 dark:text-green-400">
+              All caught up!
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              No leads need follow-up today
+            </p>
+          </div>
         </CardContent>
       </Card>
     );
@@ -107,91 +285,90 @@ export function FocusList() {
           Top leads not contacted in 24h
         </p>
       </CardHeader>
-      <CardContent className="space-y-3">
-        {focusLeads.map((lead) => (
-          <div
-            key={lead.id}
-            className="flex items-start gap-3 p-2 rounded-md hover-elevate"
-            data-testid={`focus-lead-${lead.id}`}
-          >
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-medium text-sm truncate">
-                  {lead.firstName} {lead.lastName}
-                </span>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Badge
-                      variant="outline"
-                      className={`text-xs border-0 flex items-center gap-1 ${getStageStyle(lead.nurturingStage)}`}
-                      data-testid={`badge-score-${lead.id}`}
-                    >
-                      {getStageIcon(lead.nurturingStage)}
-                      {lead.nurturingStage}
-                    </Badge>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <span>Score: {lead.score}/100</span>
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-              <div className="text-xs text-muted-foreground mt-1">
-                {lead.lastContactedAt ? (
-                  <>Last contact: {formatDistanceToNow(new Date(lead.lastContactedAt), { addSuffix: true })}</>
-                ) : (
-                  <>Never contacted</>
-                )}
-              </div>
-            </div>
-            <div className="flex items-center gap-1">
-              {lead.phone && (
-                <>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => handleCall(lead)}
-                        data-testid={`button-call-${lead.id}`}
-                      >
-                        <Phone className="w-4 h-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Call</TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => handleSMS(lead)}
-                        data-testid={`button-sms-${lead.id}`}
-                      >
-                        <MessageSquare className="w-4 h-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>SMS</TooltipContent>
-                  </Tooltip>
-                </>
-              )}
-              {lead.email && (
+      <CardContent className="space-y-2">
+        {focusLeads.map((lead) => {
+          const nextAction = getNextAction(lead);
+          return (
+            <div
+              key={lead.id}
+              className="p-3 rounded-lg border bg-card hover:shadow-sm transition-shadow"
+              data-testid={`focus-lead-${lead.id}`}
+            >
+              <div className="flex items-start gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium text-sm truncate">
+                      {lead.firstName} {lead.lastName}
+                    </span>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Badge
+                          variant="outline"
+                          className={`text-xs border-0 flex items-center gap-1 ${getStageStyle(lead.nurturingStage)}`}
+                          data-testid={`badge-score-${lead.id}`}
+                        >
+                          {getStageIcon(lead.nurturingStage)}
+                          {lead.nurturingStage}
+                        </Badge>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <span>Score: {lead.score}/100</span>
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    {lead.lastContactedAt ? (
+                      <>Last contact: {formatDistanceToNow(new Date(lead.lastContactedAt), { addSuffix: true })}</>
+                    ) : (
+                      <>Never contacted</>
+                    )}
+                  </div>
+                </div>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
                       size="icon"
                       variant="ghost"
-                      onClick={() => handleEmail(lead)}
-                      data-testid={`button-email-${lead.id}`}
+                      className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-900/30"
+                      onClick={() => markContactedMutation.mutate(lead.id)}
+                      disabled={markContactedMutation.isPending}
+                      data-testid={`button-mark-contacted-${lead.id}`}
                     >
-                      <Mail className="w-4 h-4" />
+                      {markContactedMutation.isPending ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <CheckCircle className="w-4 h-4" />
+                      )}
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>Email</TooltipContent>
+                  <TooltipContent>Mark as contacted</TooltipContent>
                 </Tooltip>
-              )}
+              </div>
+              
+              {/* Next Action Guidance */}
+              <div className="mt-2 pt-2 border-t border-dashed">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => executeAction(lead, nextAction)}
+                      className={`w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded-md text-xs font-medium border transition-colors hover:opacity-90 ${getPriorityStyle(nextAction.priority)}`}
+                      data-testid={`button-next-action-${lead.id}`}
+                    >
+                      <span className="flex items-center gap-1.5">
+                        {getActionIcon(nextAction.type)}
+                        {nextAction.label}
+                      </span>
+                      <ArrowRight className="w-3 h-3 opacity-60" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <span>{nextAction.reason}</span>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </CardContent>
     </Card>
   );
