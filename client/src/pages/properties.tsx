@@ -121,10 +121,11 @@ import { PropertyAnalysisChat } from "@/components/property-analysis-chat";
 import { GisFilters, type GisFilterState, defaultGisFilters, countActiveGisFilters, applyGisFiltersToProperty } from "@/components/gis-filters";
 import { SavedViewsSelector } from "@/components/saved-views-selector";
 import type { SavedView } from "@shared/schema";
+import { QueryErrorState } from "@/components/query-error-state";
 import { Bot } from "lucide-react";
 
 export default function PropertiesPage() {
-  const { data: properties, isLoading } = useProperties();
+  const { data: properties, isLoading, error, refetch, isRefetching } = useProperties();
   const searchString = useSearch();
   const urlParams = new URLSearchParams(searchString);
   const actionFromUrl = urlParams.get("action");
@@ -576,6 +577,15 @@ export default function PropertiesPage() {
             <div data-testid="skeleton-properties-grid">
               <ListSkeleton count={6} variant="card" />
             </div>
+          ) : error ? (
+            <QueryErrorState
+              error={error}
+              onRetry={() => refetch()}
+              isRetrying={isRefetching}
+              title="Unable to load properties"
+              description="We couldn't fetch your property inventory. This might be a temporary issue."
+              testId="query-error-state-properties"
+            />
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredProperties.map((property) => (
