@@ -32,11 +32,25 @@ export function validateEnv(): void {
   }
 
   if (errors.length > 0) {
-    console.error(
-      "\n[startup] ❌ Environment validation failed — fix the following before starting the server:\n" +
-        errors.map((e) => `  • ${e}`).join("\n") +
-        "\n"
-    );
-    process.exit(1);
+    // Separate hard errors (DATABASE_URL, SESSION_SECRET) from soft warnings (optional services)
+    const hardErrors = errors.filter(e => e.includes("DATABASE_URL") || e.includes("SESSION_SECRET"));
+    const warnings = errors.filter(e => !e.includes("DATABASE_URL") && !e.includes("SESSION_SECRET"));
+
+    if (warnings.length > 0) {
+      console.warn(
+        "\n[startup] ⚠️  Missing recommended environment variables:\n" +
+          warnings.map((e) => `  • ${e}`).join("\n") +
+          "\n"
+      );
+    }
+
+    if (hardErrors.length > 0) {
+      console.error(
+        "\n[startup] ❌ Environment validation failed — fix the following before starting the server:\n" +
+          hardErrors.map((e) => `  • ${e}`).join("\n") +
+          "\n"
+      );
+      process.exit(1);
+    }
   }
 }
