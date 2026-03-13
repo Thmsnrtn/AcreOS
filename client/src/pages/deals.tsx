@@ -33,7 +33,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, MapPin, DollarSign, Calendar, Building, TrendingUp, CheckCircle, X, GripVertical, FileText, Trash2, Loader2, Briefcase, Calculator, ClipboardCheck, Upload, AlertTriangle, CheckSquare, Square, Clock, Download, Package, Play, Eye, FolderPlus, Sparkles, Flame, Snowflake, Minus, LayoutGrid, List, ChevronLeft, ChevronRight, Undo2, Layers } from "lucide-react";
+import { Plus, MapPin, DollarSign, Calendar, Building, TrendingUp, CheckCircle, X, GripVertical, FileText, Trash2, Loader2, Briefcase, Calculator, ClipboardCheck, Upload, AlertTriangle, CheckSquare, Square, Clock, Download, Package, Play, Eye, FolderPlus, Sparkles, Flame, Snowflake, Minus, LayoutGrid, List, ChevronLeft, ChevronRight, Undo2, Layers, Send, Phone, ArrowRight } from "lucide-react";
+import { getDealNextAction, getDaysInStage, getDealUrgency, type DealNextAction } from "@/lib/deal-utils";
 import { EmptyState } from "@/components/empty-state";
 import { DealsEmptyState } from "@/components/empty-states";
 import { SavedViewsSelector } from "@/components/saved-views-selector";
@@ -832,11 +833,25 @@ function KanbanColumn({
   );
 }
 
+const nextActionIcons: Record<DealNextAction["icon"], React.ReactNode> = {
+  send: <Send className="w-3 h-3" />,
+  eye: <Eye className="w-3 h-3" />,
+  phone: <Phone className="w-3 h-3" />,
+  file: <FileText className="w-3 h-3" />,
+  calendar: <Calendar className="w-3 h-3" />,
+  check: <CheckCircle className="w-3 h-3" />,
+  alert: <AlertTriangle className="w-3 h-3" />,
+};
+
 function DealCard({ deal, onSelect, isDragging = false }: { deal: DealWithProperty; onSelect: () => void; isDragging?: boolean }) {
   const { attributes, listeners, setNodeRef, transform } = useDraggable({ id: deal.id });
   const style = transform ? { transform: CSS.Translate.toString(transform) } : undefined;
   const health = getDealHealth(deal);
   const isClosed = deal.status === 'closed' || deal.status === 'cancelled';
+  const nextAction = getDealNextAction(deal);
+  const daysInStage = getDaysInStage(deal);
+  const urgency = getDealUrgency(deal);
+  const isActiveStage = !isClosed;
 
   return (
     <Card
@@ -860,9 +875,14 @@ function DealCard({ deal, onSelect, isDragging = false }: { deal: DealWithProper
                 <Badge variant={deal.type === 'acquisition' ? 'default' : 'secondary'} className="text-xs">
                   {deal.type === 'acquisition' ? 'Buy' : 'Sell'}
                 </Badge>
+                {isActiveStage && daysInStage > 0 && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground" data-testid={`badge-days-in-stage-${deal.id}`}>
+                    {daysInStage}d
+                  </span>
+                )}
               </div>
               {!isClosed && (
-                <div className="flex items-center gap-1 shrink-0" title={`${health.status === 'healthy' ? 'Active' : health.status === 'warning' ? 'Getting stale' : 'Stalled'} — ${health.days}d since update`}>
+                <div className="flex items-center gap-1 shrink-0" title={`${health.status === 'healthy' ? 'Active' : health.status === 'warning' ? 'Getting stale' : 'Stalled'} -- ${health.days}d since update`}>
                   <span className={`w-2 h-2 rounded-full ${HEALTH_DOT[health.status]} ${health.status !== 'healthy' ? 'animate-pulse' : ''}`} />
                   <span className="text-[10px] text-muted-foreground">{health.days}d</span>
                 </div>
@@ -888,6 +908,16 @@ function DealCard({ deal, onSelect, isDragging = false }: { deal: DealWithProper
                 <DollarSign className="w-4 h-4 text-emerald-600" />
                 <span className="text-base font-mono font-medium text-emerald-600">
                   ${Number(deal.acceptedAmount || deal.offerAmount || 0).toLocaleString()}
+                </span>
+              </div>
+            )}
+            {/* Next Action Indicator */}
+            {isActiveStage && (
+              <div className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground" data-testid={`next-action-${deal.id}`}>
+                <ArrowRight className="w-3 h-3 flex-shrink-0" />
+                <span className="flex items-center gap-1">
+                  {nextActionIcons[nextAction.icon]}
+                  {nextAction.action}
                 </span>
               </div>
             )}

@@ -1,0 +1,48 @@
+{
+  "page": "Deals",
+  "lastAuditDate": "2026-02-16",
+  "improvements": [
+    {
+      "id": "deals-001",
+      "area": "next-action-guidance",
+      "severity": "high",
+      "title": "Deal cards lack next-action guidance",
+      "description": "Deal cards in the kanban view only show basic information (type, location, amount) but don't surface what the user should do next. Land investors need quick visual cues to prioritize their pipeline based on urgency and required actions.",
+      "currentState": "Cards show: deal type badge, property location, acreage, and offer/accepted amount",
+      "proposedImprovement": "Add a 'Next Action' indicator to deal cards showing the most important pending task based on deal stage (e.g., 'Send Offer', 'Review Counter', 'Order Title', 'Schedule Closing'). Include days-in-stage indicator for stale deals.",
+      "userImpact": "Users will immediately see what needs attention, reducing cognitive load when scanning the pipeline and preventing deals from going stale.",
+      "implementationNotes": "Add getNextAction() helper function that returns action based on stage + checklist status. Show action badge + days-in-stage on DealCard component.",
+      "status": "complete"
+    },
+    {
+      "id": "deals-002", 
+      "area": "stage-transitions",
+      "severity": "medium",
+      "title": "Stage transitions lack confirmation feedback",
+      "description": "When moving a deal between stages, there's minimal visual feedback about what changed and what's expected next.",
+      "currentState": "Status dropdown updates the stage, toast shows 'Deal updated successfully'",
+      "proposedImprovement": "After stage change, show contextual guidance about what typically happens in the new stage",
+      "status": "backlog"
+    },
+    {
+      "id": "deals-003",
+      "area": "empty-states",
+      "severity": "low", 
+      "title": "Empty pipeline columns could be more actionable",
+      "description": "Empty stage columns just show 'No deals' without guidance",
+      "currentState": "Simple 'No deals' text in empty columns",
+      "proposedImprovement": "Add contextual tips for each empty stage (e.g., 'Deals move here when sellers respond to your offer')",
+      "status": "backlog"
+    },
+    {
+      "id": "deals-004",
+      "area": "pipeline-clarity",
+      "severity": "medium",
+      "title": "Pipeline metrics don't show velocity or aging",
+      "description": "Summary cards show totals but not how fast deals are moving or which are stuck",
+      "currentState": "Shows counts and dollar values only",
+      "proposedImprovement": "Add average days-in-pipeline metric and highlight stale deals",
+      "status": "backlog"
+    }
+  ]
+}
