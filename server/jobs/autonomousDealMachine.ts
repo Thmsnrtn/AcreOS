@@ -49,7 +49,7 @@ import {
 import { eq, and, desc, gte, lte, lt, sql, or, isNull, not } from "drizzle-orm";
 import { subDays, addDays, format, differenceInDays } from "date-fns";
 import { computeSellerMotivationScore, getOptimalOutreachTiming } from "../services/sellerMotivationEngine";
-import { sendEmail } from "../services/emailService";
+import { emailService } from "../services/emailService";
 import { getRelevantMemories, formatMemoriesForContext } from "../services/atlasMemory";
 
 export const AUTONOMOUS_DEAL_MACHINE_QUEUE = "autonomous-deal-machine";
@@ -835,7 +835,7 @@ export async function sendEnhancedMorningBriefings(): Promise<{ sent: number; fa
           ? `☀️ ${hotCount} hot deal(s) overnight + your morning briefing`
           : `☀️ Your AcreOS morning briefing — ${data.date}`;
 
-      await sendEmail({
+      await emailService.sendEmail({
         to: data.recipientEmail,
         subject,
         html,

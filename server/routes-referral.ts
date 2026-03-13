@@ -4,7 +4,7 @@ import { db } from "./db";
 import { users, referrals } from "@shared/models/auth";
 import { organizations } from "@shared/schema";
 import { isAuthenticated } from "./auth/localAuth";
-import { getOrCreateOrg } from "./services/getOrCreateOrg";
+import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { eq, count, sql } from "drizzle-orm";
 
 // Generate a random 8-char alphanumeric referral code

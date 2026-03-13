@@ -171,8 +171,6 @@ export function FocusList() {
   const { data: focusLeads, isLoading } = useQuery<LeadWithScore[]>({
     queryKey: ["/api/leads/focus"],
   });
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
 
   const markContactedMutation = useMutation({
     mutationFn: async (leadId: number) => {

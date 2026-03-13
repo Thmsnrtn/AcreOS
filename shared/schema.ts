@@ -10856,3 +10856,98 @@ export const fieldScoutPhotos = pgTable("field_scout_photos", {
 export const insertFieldScoutPhotoSchema = createInsertSchema(fieldScoutPhotos).omit({ id: true, createdAt: true });
 export type FieldScoutPhoto = typeof fieldScoutPhotos.$inferSelect;
 export type InsertFieldScoutPhoto = z.infer<typeof insertFieldScoutPhotoSchema>;
+
+// ============================================
+// CAMPAIGN LEADS (join table)
+// ============================================
+
+export const campaignLeads = pgTable("campaign_leads", {
+  id: serial("id").primaryKey(),
+  campaignId: integer("campaign_id").references(() => campaigns.id).notNull(),
+  leadId: integer("lead_id").references(() => leads.id).notNull(),
+  organizationId: integer("organization_id").references(() => organizations.id),
+  status: text("status").default("pending"),
+  scheduledAt: timestamp("scheduled_at"),
+  sentAt: timestamp("sent_at"),
+  touchNumber: integer("touch_number").default(1),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("campaign_leads_campaign_idx").on(table.campaignId),
+  index("campaign_leads_lead_idx").on(table.leadId),
+]);
+
+export const insertCampaignLeadSchema = createInsertSchema(campaignLeads).omit({ id: true, createdAt: true });
+export type CampaignLead = typeof campaignLeads.$inferSelect;
+export type InsertCampaignLead = z.infer<typeof insertCampaignLeadSchema>;
+
+// ============================================
+// COUNTY MARKETS
+// ============================================
+
+export const countyMarkets = pgTable("county_markets", {
+  id: serial("id").primaryKey(),
+  state: text("state").notNull(),
+  county: text("county").notNull(),
+  medianPricePerAcre: numeric("median_price_per_acre"),
+  recentSalesCount: integer("recent_sales_count").default(0),
+  avgDaysOnMarket: integer("avg_days_on_market"),
+  priceChangePercent: numeric("price_change_percent"),
+  investorDemandScore: integer("investor_demand_score"),
+  lastUpdated: timestamp("last_updated").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("county_markets_state_county_idx").on(table.state, table.county),
+]);
+
+export const insertCountyMarketSchema = createInsertSchema(countyMarkets).omit({ id: true, createdAt: true });
+export type CountyMarket = typeof countyMarkets.$inferSelect;
+export type InsertCountyMarket = z.infer<typeof insertCountyMarketSchema>;
+
+// ============================================
+// TERRITORIES
+// ============================================
+
+export const territories = pgTable("territories", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  states: jsonb("states"), // array of state codes
+  counties: jsonb("counties"), // array of county names / FIPS
+  assignedTo: integer("assigned_to"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("territories_org_idx").on(table.organizationId),
+]);
+
+export const insertTerritorySchema = createInsertSchema(territories).omit({ id: true, createdAt: true, updatedAt: true });
+export type Territory = typeof territories.$inferSelect;
+export type InsertTerritory = z.infer<typeof insertTerritorySchema>;
+
+// ============================================
+// NOTES RECEIVABLE
+// ============================================
+
+export const notesReceivable = pgTable("notes_receivable", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  dealId: integer("deal_id"),
+  buyerName: text("buyer_name"),
+  originalBalance: numeric("original_balance"),
+  remainingBalance: numeric("remaining_balance"),
+  interestRate: numeric("interest_rate"),
+  monthlyPayment: numeric("monthly_payment"),
+  status: text("status").default("active"), // active, paid_off, defaulted
+  startDate: timestamp("start_date"),
+  maturityDate: timestamp("maturity_date"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("notes_receivable_org_idx").on(table.organizationId),
+]);
+
+export const insertNoteReceivableSchema = createInsertSchema(notesReceivable).omit({ id: true, createdAt: true, updatedAt: true });
+export type NoteReceivable = typeof notesReceivable.$inferSelect;
+export type InsertNoteReceivable = z.infer<typeof insertNoteReceivableSchema>;

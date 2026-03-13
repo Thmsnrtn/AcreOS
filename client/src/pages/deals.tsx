@@ -116,7 +116,6 @@ export default function DealsPage() {
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
-  const { toast } = useToast();
   const [mobileViewMode, setMobileViewMode] = useState<'kanban' | 'list'>('kanban');
   const [selectedStageIndex, setSelectedStageIndex] = useState(0);
   const [activeDragId, setActiveDragId] = useState<number | null>(null);
