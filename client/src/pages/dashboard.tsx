@@ -17,7 +17,7 @@ import { OnboardingWizard, OnboardingProgress } from "@/components/onboarding";
 import { GettingStartedChecklist } from "@/components/getting-started-checklist";
 import { ActivityFeed } from "@/components/activity-feed";
 import { DashboardSettings, loadSettings, type DashboardWidgetSettings } from "@/components/dashboard-settings";
-import { AnomalyAlerts, PredictiveInsights, NextBestActions } from "@/components/dashboard";
+import { AnomalyAlerts, PredictiveInsights, NextBestActions, TasksDueWidget } from "@/components/dashboard";
 import { PlaybookCard } from "@/components/playbooks/PlaybookCard";
 import { Link } from "wouter";
 import { WorkspaceManager } from "@/components/workspace/WorkspaceManager";
@@ -258,6 +258,18 @@ export default function Dashboard() {
                 trendDirection={pipelineValue > 0 ? "up" : "neutral"}
               />
             </motion.div>
+          </motion.div>
+        );
+
+      case "tasksDue":
+        return (
+          <motion.div
+            key={widgetId}
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.05 * index }}
+          >
+            <TasksDueWidget />
           </motion.div>
         );
 
