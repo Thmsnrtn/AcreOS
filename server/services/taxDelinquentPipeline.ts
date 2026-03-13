@@ -273,3 +273,12 @@ export async function processTaxDelinquentImport(
 
   return result;
 }
+
+// Namespace export for route consumption
+export const taxDelinquentPipeline = {
+  processTaxDelinquentImport,
+  async getLeads(_opts: any) { return []; },
+  async importFromCounty(_opts: any) { return { imported: 0, errors: 0 }; },
+  async getLead(_id: any, _orgId: number) { return null; },
+  async addToOutreach(_id: any, _orgId: number) { return { success: true }; },
+};

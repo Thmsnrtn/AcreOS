@@ -42,7 +42,7 @@ import {
 } from "@shared/schema";
 import { eq, and, gte, desc, count, sum, sql, lt } from "drizzle-orm";
 import { subHours, subDays, format } from "date-fns";
-import { sendEmail } from "../services/emailService";
+import { emailService } from "../services/emailService";
 import { clearAICache, getAICacheStats } from "../services/aiRouter";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -528,7 +528,7 @@ async function notifyFounderIfNeeded(checks: HealthCheckResult[]): Promise<boole
 
   for (const email of config.FOUNDER_EMAILS) {
     try {
-      await sendEmail({ to: email, subject, html, text: `Critical alert:\n\n${issueList}\n\nOpen dashboard: ${appUrl}/founder/intelligence` });
+      await emailService.sendEmail({ to: email, subject, html, text: `Critical alert:\n\n${issueList}\n\nOpen dashboard: ${appUrl}/founder/intelligence` });
     } catch (err: any) {
       console.warn(`[HealthMonitor] Failed to notify founder ${email}:`, err.message);
     }

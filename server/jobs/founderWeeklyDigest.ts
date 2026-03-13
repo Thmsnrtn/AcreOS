@@ -40,7 +40,7 @@ import {
 } from "@shared/schema";
 import { eq, and, gte, lt, desc, count, sum, avg, sql } from "drizzle-orm";
 import { subDays, subWeeks, format, startOfWeek, endOfWeek } from "date-fns";
-import { sendEmail } from "../services/emailService";
+import { emailService } from "../services/emailService";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Data collection
@@ -879,7 +879,7 @@ export async function sendFounderWeeklyDigest(): Promise<{ sent: number; failed:
 
     for (const email of founderEmails) {
       try {
-        await sendEmail({
+        await emailService.sendEmail({
           to: email,
           subject,
           html,

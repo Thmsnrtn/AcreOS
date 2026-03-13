@@ -9,7 +9,7 @@
  */
 
 import { Router, type Request, type Response } from "express";
-import { kpiStreamingService } from "./services/kpiStreamingService";
+import { kpiStreaming as kpiStreamingService } from "./services/kpiStreamingService";
 
 const router = Router();
 

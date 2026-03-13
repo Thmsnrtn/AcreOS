@@ -54,7 +54,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, isNull, sql, lte } from "drizzle-orm";
 import { routeCriticalTask } from "./aiRouter";
-import { sendEmail } from "./emailService";
+import { emailService } from "./emailService";
 import { format } from "date-fns";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -310,7 +310,7 @@ async function executeChurnRiskApproval(
   const body = decision.retentionMessage || `Hi there,\n\nI noticed things have been a bit quiet on your AcreOS account lately and wanted to personally reach out.\n\nIf there's anything we can do to help you get more value from the platform — whether it's a walkthrough, adjusting your setup, or just answering questions — I'm here for it.\n\nJust hit reply and let me know.\n\nBest,\nAcreOS Team`;
 
   try {
-    await sendEmail({
+    await emailService.sendEmail({
       to: ownerEmail,
       subject: "Checking in — how can we help?",
       html: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#1a1a1a;">

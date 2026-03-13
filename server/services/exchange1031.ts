@@ -257,3 +257,17 @@ IMPORTANT: This is a template. Review with a qualified tax attorney or CPA befor
 A 1031 exchange must be properly structured with a Qualified Intermediary to be valid.
 `;
 }
+
+// Namespace export for route consumption
+export const exchange1031Service = {
+  calculateDeadlines,
+  estimateCapitalGains,
+  getExchangeAlerts,
+  generateIdentificationLetter,
+  // Stub methods used by routes — to be implemented
+  async listExchanges(_orgId: number) { return []; },
+  async createExchange(_data: any) { return {}; },
+  async getExchange(_id: any, _orgId: number) { return null; },
+  async addReplacementProperty(_id: any, _orgId: number, _data: any) { return null; },
+  async completeExchange(_id: any, _orgId: number) { return null; },
+};

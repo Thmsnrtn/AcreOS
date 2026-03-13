@@ -17,7 +17,7 @@
  *   kpiStreaming.emitOfferSent(orgId, offerId)
  */
 
-import { wss } from "../websocket";
+import { wsServer as wss } from "../websocket";
 import { db } from "../db";
 import { leads, deals, notesReceivable, payments } from "@shared/schema";
 import { eq, and, count, sum, sql } from "drizzle-orm";

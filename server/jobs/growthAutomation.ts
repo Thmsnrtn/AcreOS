@@ -52,7 +52,7 @@ import {
 } from "@shared/schema";
 import { eq, and, gte, lt, lte, desc, count, sql, not, isNull, ne } from "drizzle-orm";
 import { subDays, subHours, addDays, format, differenceInDays } from "date-fns";
-import { sendEmail } from "../services/emailService";
+import { emailService } from "../services/emailService";
 import { routeComplexTask } from "../services/aiRouter";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -179,7 +179,7 @@ async function runUpsellEngine(): Promise<{ sent: number }> {
     const nextTier = limits.nextTier.charAt(0).toUpperCase() + limits.nextTier.slice(1);
 
     try {
-      await sendEmail({
+      await emailService.sendEmail({
         to: contact.email,
         subject: `You've used ${usagePct}% of your ${limits.name} plan — here's what's next`,
         html: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#1a1a1a;">
@@ -318,7 +318,7 @@ async function runWinBackEngine(): Promise<{ sent: number }> {
         textBody = `Last note from AcreOS. We'd love to have you back — reply to this email if you want to reconnect.`;
       }
 
-      await sendEmail({ to: contact.email, subject, html: htmlBody, text: textBody });
+      await emailService.sendEmail({ to: contact.email, subject, html: htmlBody, text: textBody });
       await logGrowthEmail(orgId, touchType, `Win-back touch ${touchNumber} sent (${daysSinceCancel}d post-cancel)`);
       sent++;
     } catch (err: any) {
@@ -373,7 +373,7 @@ async function runReferralActivation(): Promise<{ sent: number }> {
     if (!contact) continue;
 
     try {
-      await sendEmail({
+      await emailService.sendEmail({
         to: contact.email,
         subject: "You've been active — want to earn rewards for it?",
         html: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;">
@@ -468,7 +468,7 @@ async function runEngagementReactivation(): Promise<{ sent: number }> {
     if (expiringDealCount > 0) urgentItems.push(`${expiringDealCount} deal(s) in negotiation — response pending`);
 
     try {
-      await sendEmail({
+      await emailService.sendEmail({
         to: contact.email,
         subject: `${urgentItems.length} item(s) need your attention in AcreOS`,
         html: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;">
