@@ -1071,6 +1071,265 @@ export async function registerRoutes(
   app.use("/api/v1/*", (req, res) => {
     const newPath = req.originalUrl.replace("/api/v1/", "/api/");
     res.redirect(307, newPath);
+
+  api.get("/api/tasks", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const orgId = (req as any).organization!.id;
+      const filters: { status?: string; priority?: string; assignedTo?: number; entityType?: string; entityId?: number } = {};
+      
+      if (req.query.status) filters.status = req.query.status as string;
+      if (req.query.priority) filters.priority = req.query.priority as string;
+      if (req.query.assignedTo) filters.assignedTo = parseInt(req.query.assignedTo as string);
+      if (req.query.entityType) filters.entityType = req.query.entityType as string;
+      if (req.query.entityId) filters.entityId = parseInt(req.query.entityId as string);
+      
+      const tasks = await storage.getTasks(orgId, Object.keys(filters).length > 0 ? filters : undefined);
+      res.json(tasks);
+    } catch (error: any) {
+      console.error("Get tasks error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch tasks" });
+    }
+  });
+
+  api.get("/api/tasks/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const orgId = (req as any).organization!.id;
+      const id = parseInt(req.params.id);
+      
+      const task = await storage.getTask(orgId, id);
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      
+      res.json(task);
+    } catch (error: any) {
+      console.error("Get task error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch task" });
+    }
+  });
+
+  api.post("/api/tasks", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const orgId = (req as any).organization!.id;
+      const userId = (req.user as any).id;
+      
+      const validated = insertTaskSchema.parse({
+        ...req.body,
+        organizationId: orgId,
+        createdBy: userId,
+        dueDate: req.body.dueDate ? new Date(req.body.dueDate) : null,
+        nextOccurrence: req.body.nextOccurrence ? new Date(req.body.nextOccurrence) : null,
+      });
+      
+      const task = await storage.createTask(validated);
+      
+      await activityLogger.logTaskCreated(
+        orgId,
+        task.id,
+        task.title,
+        task.entityType as any,
+        task.entityId ?? undefined,
+        userId
+      );
+      
+      await storage.createAuditLogEntry({
+        organizationId: orgId,
+        userId,
+        action: "create",
+        entityType: "task",
+        entityId: task.id,
+        changes: { after: validated, fields: Object.keys(validated) },
+        ipAddress: req.ip || req.socket?.remoteAddress,
+        userAgent: req.headers["user-agent"],
+      });
+      
+      res.status(201).json(task);
+    } catch (error: any) {
+      console.error("Create task error:", error);
+      res.status(500).json({ message: error.message || "Failed to create task" });
+    }
+  });
+
+  api.put("/api/tasks/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const orgId = (req as any).organization!.id;
+      const userId = (req.user as any).id;
+      const id = parseInt(req.params.id);
+      
+      const existingTask = await storage.getTask(orgId, id);
+      if (!existingTask) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      
+      const updates: any = { ...req.body };
+      if (updates.dueDate) updates.dueDate = new Date(updates.dueDate);
+      if (updates.nextOccurrence) updates.nextOccurrence = new Date(updates.nextOccurrence);
+      
+      const task = await storage.updateTask(id, updates);
+      
+      const changes = Object.keys(updates).filter(k => k !== 'updatedAt').join(', ');
+      await activityLogger.logTaskUpdated(
+        orgId,
+        task.id,
+        task.title,
+        changes,
+        task.entityType as any,
+        task.entityId ?? undefined,
+        userId
+      );
+      
+      await storage.createAuditLogEntry({
+        organizationId: orgId,
+        userId,
+        action: "update",
+        entityType: "task",
+        entityId: task.id,
+        changes: { before: existingTask, after: task, fields: Object.keys(updates) },
+        ipAddress: req.ip || req.socket?.remoteAddress,
+        userAgent: req.headers["user-agent"],
+      });
+      
+      res.json(task);
+    } catch (error: any) {
+      console.error("Update task error:", error);
+      res.status(500).json({ message: error.message || "Failed to update task" });
+    }
+  });
+
+  api.delete("/api/tasks/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const orgId = (req as any).organization!.id;
+      const id = parseInt(req.params.id);
+      
+      const task = await storage.getTask(orgId, id);
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      
+      const user = req.user as any;
+      const userId = user?.claims?.sub || user?.id;
+      
+      await storage.deleteTask(id);
+      
+      await storage.createAuditLogEntry({
+        organizationId: orgId,
+        userId,
+        action: "delete",
+        entityType: "task",
+        entityId: id,
+        changes: { before: task, fields: ["deleted"] },
+        ipAddress: req.ip || req.socket?.remoteAddress,
+        userAgent: req.headers["user-agent"],
+      });
+      
+      res.json({ message: "Task deleted" });
+    } catch (error: any) {
+      console.error("Delete task error:", error);
+      res.status(500).json({ message: error.message || "Failed to delete task" });
+    }
+  });
+
+  api.post("/api/tasks/:id/complete", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const orgId = (req as any).organization!.id;
+      const userId = (req.user as any).id;
+      const id = parseInt(req.params.id);
+      
+      const existingTask = await storage.getTask(orgId, id);
+      if (!existingTask) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      
+      const completedTask = await storage.completeTask(id);
+      
+      await activityLogger.logTaskCompleted(
+        orgId,
+        completedTask.id,
+        completedTask.title,
+        completedTask.entityType as any,
+        completedTask.entityId ?? undefined,
+        userId
+      );
+      
+      if (completedTask.isRecurring && completedTask.recurrenceRule) {
+        const nextTask = await storage.createNextRecurringTask(completedTask);
+        return res.json({ completedTask, nextTask });
+      }
+      
+      res.json({ completedTask });
+    } catch (error: any) {
+      console.error("Complete task error:", error);
+      res.status(500).json({ message: error.message || "Failed to complete task" });
+    }
+  });
+
+  api.post("/api/tasks/process-recurring", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const recurringTasksDue = await storage.getRecurringTasksDue();
+      const createdTasks = [];
+      
+      for (const task of recurringTasksDue) {
+        const nextTask = await storage.createNextRecurringTask(task);
+        createdTasks.push(nextTask);
+      }
+      
+      res.json({ processed: recurringTasksDue.length, created: createdTasks });
+    } catch (error: any) {
+      console.error("Process recurring tasks error:", error);
+      res.status(500).json({ message: error.message || "Failed to process recurring tasks" });
+    }
+  });
+
+  // Dashboard summary: overdue + today's pending tasks
+  api.get("/api/tasks/dashboard-summary", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const orgId = (req as any).organization!.id;
+      
+      // Get all pending/in_progress tasks
+      const allTasks = await storage.getTasks(orgId);
+      const activeTasks = allTasks.filter(t => t.status === "pending" || t.status === "in_progress");
+      
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const todayEnd = new Date(todayStart);
+      todayEnd.setDate(todayEnd.getDate() + 1);
+      
+      const overdue: typeof activeTasks = [];
+      const dueToday: typeof activeTasks = [];
+      
+      for (const task of activeTasks) {
+        if (!task.dueDate) continue;
+        const due = new Date(task.dueDate);
+        if (due < todayStart) {
+          overdue.push(task);
+        } else if (due >= todayStart && due < todayEnd) {
+          dueToday.push(task);
+        }
+      }
+      
+      // Sort by priority (urgent > high > medium > low), then by dueDate
+      const priorityOrder: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 };
+      const sortFn = (a: typeof activeTasks[0], b: typeof activeTasks[0]) => {
+        const pa = priorityOrder[a.priority] ?? 4;
+        const pb = priorityOrder[b.priority] ?? 4;
+        if (pa !== pb) return pa - pb;
+        if (a.dueDate && b.dueDate) return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+        return 0;
+      };
+      
+      overdue.sort(sortFn);
+      dueToday.sort(sortFn);
+      
+      res.json({
+        overdue: overdue.slice(0, 10),
+        dueToday: dueToday.slice(0, 10),
+        overdueCount: overdue.length,
+        dueTodayCount: dueToday.length,
+      });
+    } catch (error: any) {
+      console.error("Get dashboard tasks summary error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch tasks summary" });
+    }
   });
 
   return httpServer;

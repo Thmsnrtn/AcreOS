@@ -9,3 +9,4 @@ export { MRRTrajectory } from "./MRRTrajectory";
 export { ChurnIntelligence } from "./ChurnIntelligence";
 export { GrowthEngine } from "./GrowthEngine";
 export { PlatformPassiveScore } from "./PlatformPassiveScore";
+export { TasksDueWidget } from "./TasksDueWidget";
