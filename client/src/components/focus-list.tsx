@@ -6,6 +6,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Flame, Sun, Snowflake, Skull, Phone, Mail, MessageSquare, Target, Loader2, CheckCircle, ArrowRight, Sparkles } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 import type { Lead } from "@shared/schema";
 
 type LeadWithScore = Lead & {
@@ -165,6 +166,8 @@ function getPriorityStyle(priority: NextAction["priority"]) {
 }
 
 export function FocusList() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
   const { data: focusLeads, isLoading } = useQuery<LeadWithScore[]>({
     queryKey: ["/api/leads/focus"],
   });
@@ -197,21 +200,80 @@ export function FocusList() {
     },
   });
 
+  // Mutation for marking lead as contacted
+  const recordContactMutation = useMutation({
+    mutationFn: async ({ leadId, method }: { leadId: number; method: string }) => {
+      const res = await apiRequest("POST", `/api/leads/${leadId}/record-contact`, { method });
+      if (!res.ok) {
+        throw new Error("Failed to record contact");
+      }
+      return res.json();
+    },
+    onMutate: async ({ leadId }) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ["/api/leads/focus"] });
+      
+      // Snapshot previous value
+      const previousLeads = queryClient.getQueryData<LeadWithScore[]>(["/api/leads/focus"]);
+      
+      // Optimistically remove the lead from the focus list
+      queryClient.setQueryData<LeadWithScore[]>(["/api/leads/focus"], (old) => 
+        old?.filter((lead) => lead.id !== leadId) ?? []
+      );
+      
+      return { previousLeads };
+    },
+    onSuccess: () => {
+      // Invalidate leads list to reflect the updated lastContactedAt
+      queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
+      
+      toast({
+        title: "Contact recorded",
+        description: "Lead marked as contacted.",
+      });
+    },
+    onError: (error, _, context) => {
+      // Roll back on error
+      if (context?.previousLeads) {
+        queryClient.setQueryData(["/api/leads/focus"], context.previousLeads);
+      }
+      toast({
+        title: "Error",
+        description: "Failed to record contact. Please try again.",
+        variant: "destructive",
+      });
+    },
+    onSettled: () => {
+      // Refetch to ensure consistency
+      queryClient.invalidateQueries({ queryKey: ["/api/leads/focus"] });
+    },
+  });
+
+  const handleMarkContacted = (lead: LeadWithScore, method: string = "manual") => {
+    recordContactMutation.mutate({ leadId: lead.id, method });
+  };
+
   const handleCall = (lead: LeadWithScore) => {
     if (lead.phone) {
       window.open(`tel:${lead.phone}`, "_self");
+      // Auto-mark as contacted when calling
+      handleMarkContacted(lead, "call");
     }
   };
 
   const handleEmail = (lead: LeadWithScore) => {
     if (lead.email) {
       window.open(`mailto:${lead.email}`, "_blank");
+      // Auto-mark as contacted when emailing
+      handleMarkContacted(lead, "email");
     }
   };
 
   const handleSMS = (lead: LeadWithScore) => {
     if (lead.phone) {
       window.open(`sms:${lead.phone}`, "_self");
+      // Auto-mark as contacted when texting
+      handleMarkContacted(lead, "sms");
     }
   };
 
@@ -280,6 +342,9 @@ export function FocusList() {
         <CardTitle className="text-base flex items-center gap-2">
           <Target className="w-4 h-4" />
           Daily Focus
+          <Badge variant="secondary" className="ml-auto text-xs">
+            {focusLeads.length}
+          </Badge>
         </CardTitle>
         <p className="text-xs text-muted-foreground">
           Top leads not contacted in 24h
@@ -288,10 +353,15 @@ export function FocusList() {
       <CardContent className="space-y-2">
         {focusLeads.map((lead) => {
           const nextAction = getNextAction(lead);
+          const isPending = recordContactMutation?.isPending &&
+            recordContactMutation.variables?.leadId === lead.id;
+
           return (
             <div
               key={lead.id}
-              className="p-3 rounded-lg border bg-card hover:shadow-sm transition-shadow"
+              className={`p-3 rounded-lg border bg-card transition-shadow ${
+                isPending ? "opacity-50" : "hover:shadow-sm"
+              }`}
               data-testid={`focus-lead-${lead.id}`}
             >
               <div className="flex items-start gap-3">
@@ -324,17 +394,69 @@ export function FocusList() {
                     )}
                   </div>
                 </div>
+              <div className="flex items-center gap-1 shrink-0">
+                {lead.phone && (
+                  <>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8"
+                          onClick={() => handleCall(lead)}
+                          disabled={isPending}
+                          data-testid={`button-call-${lead.id}`}
+                        >
+                          <Phone className="w-4 h-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Call & mark contacted</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8"
+                          onClick={() => handleSMS(lead)}
+                          disabled={isPending}
+                          data-testid={`button-sms-${lead.id}`}
+                        >
+                          <MessageSquare className="w-4 h-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>SMS & mark contacted</TooltipContent>
+                    </Tooltip>
+                  </>
+                )}
+                {lead.email && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8"
+                        onClick={() => handleEmail(lead)}
+                        disabled={isPending}
+                        data-testid={`button-email-${lead.id}`}
+                      >
+                        <Mail className="w-4 h-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Email & mark contacted</TooltipContent>
+                  </Tooltip>
+                )}
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
                       size="icon"
                       variant="ghost"
                       className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-900/30"
-                      onClick={() => markContactedMutation.mutate(lead.id)}
-                      disabled={markContactedMutation.isPending}
+                      onClick={() => handleMarkContacted ? handleMarkContacted(lead, "manual") : markContactedMutation.mutate(lead.id)}
+                      disabled={isPending || markContactedMutation?.isPending}
                       data-testid={`button-mark-contacted-${lead.id}`}
                     >
-                      {markContactedMutation.isPending ? (
+                      {isPending || markContactedMutation?.isPending ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
                       ) : (
                         <CheckCircle className="w-4 h-4" />
@@ -344,7 +466,7 @@ export function FocusList() {
                   <TooltipContent>Mark as contacted</TooltipContent>
                 </Tooltip>
               </div>
-              
+
               {/* Next Action Guidance */}
               <div className="mt-2 pt-2 border-t border-dashed">
                 <Tooltip>

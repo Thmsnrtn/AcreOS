@@ -566,6 +566,64 @@ export async function registerRoutes(
     }
   });
   
+  // Record contact (marks lead as contacted now)
+  api.post("/api/leads/:id/record-contact", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const leadId = Number(req.params.id);
+      
+      if (isNaN(leadId)) {
+        return res.status(400).json({ message: "Invalid lead ID" });
+      }
+      
+      const existingLead = await storage.getLead(org.id, leadId);
+      if (!existingLead) {
+        return res.status(404).json({ message: "Lead not found" });
+      }
+      
+      const contactMethod = req.body.method || "manual"; // call, email, sms, manual
+      const notes = req.body.notes || null;
+      const now = new Date();
+      
+      // Update last contacted timestamp
+      const updated = await storage.updateLead(leadId, {
+        lastContactedAt: now,
+      });
+      
+      // Record activity event
+      await storage.createActivityEvent({
+        organizationId: org.id,
+        entityType: "lead",
+        entityId: leadId,
+        eventType: "contact_recorded",
+        eventData: { method: contactMethod, notes, recordedAt: now.toISOString() },
+      });
+      
+      // Audit log
+      const user = req.user as any;
+      const userId = user?.claims?.sub || user?.id;
+      await storage.createAuditLogEntry({
+        organizationId: org.id,
+        userId,
+        action: "record_contact",
+        entityType: "lead",
+        entityId: leadId,
+        changes: { method: contactMethod, timestamp: now.toISOString() },
+        ipAddress: req.ip || req.socket?.remoteAddress,
+        userAgent: req.headers["user-agent"],
+      });
+      
+      res.json({
+        success: true,
+        lead: updated,
+        contactedAt: now.toISOString(),
+      });
+    } catch (error: any) {
+      console.error("Record contact error:", error);
+      res.status(500).json({ message: error.message || "Failed to record contact" });
+    }
+  });
+
   api.post("/api/leads/bulk-delete", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteLeads"), async (req, res) => {
     try {
       const org = (req as any).organization;
