@@ -3,7 +3,8 @@ import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { telemetry } from "@/lib/telemetry";
-import { apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import {
   Command,
   CommandEmpty,
@@ -46,6 +47,11 @@ import {
   Send,
   MessageSquare,
   Map,
+  ListTodo,
+  Phone,
+  ArrowRight,
+  CheckCircle,
+  Keyboard,
 } from "lucide-react";
 
 interface RecentItem {
@@ -59,6 +65,42 @@ interface RecentItemsResponse {
   properties: RecentItem[];
   deals: RecentItem[];
 }
+
+interface Lead {
+  id: number;
+  firstName: string;
+  lastName: string;
+  status: string;
+  email?: string;
+  phone?: string;
+}
+
+interface Deal {
+  id: number;
+  status: string;
+  type: string;
+  property?: {
+    county?: string;
+    state?: string;
+  };
+}
+
+const leadStatuses = [
+  { value: 'new', label: 'New' },
+  { value: 'contacting', label: 'Contacting' },
+  { value: 'negotiation', label: 'Negotiation' },
+  { value: 'closed', label: 'Closed' },
+  { value: 'dead', label: 'Dead' },
+];
+
+const dealStages = [
+  { value: 'negotiating', label: 'Negotiating' },
+  { value: 'offer_sent', label: 'Offer Sent' },
+  { value: 'countered', label: 'Countered' },
+  { value: 'accepted', label: 'Accepted' },
+  { value: 'in_escrow', label: 'In Escrow' },
+  { value: 'closed', label: 'Closed' },
+];
 
 const pages = [
   { name: "Dashboard", icon: LayoutDashboard, path: "/" },
@@ -91,6 +133,7 @@ const quickActions = [
   { name: "New Lead", icon: UserPlus, action: "new-lead", path: "/leads?new=true" },
   { name: "New Property", icon: Home, action: "new-property", path: "/properties?new=true" },
   { name: "New Deal", icon: FileText, action: "new-deal", path: "/deals?new=true" },
+  { name: "New Task", icon: ListTodo, action: "new-task", path: "/tasks?action=new" },
   { name: "Send Email", icon: Mail, action: "send-email", path: "/inbox" },
   { name: "Generate Offer", icon: Sparkles, action: "generate-offer", path: "/offers?generate=true" },
 ];
@@ -106,8 +149,12 @@ export function CommandPalette() {
   const [inputValue, setInputValue] = useState("");
   const [aiMode, setAiMode] = useState(false);
   const [aiResponse, setAiResponse] = useState<AIResponse | null>(null);
+  const [search, setSearch] = useState("");
+  const [selectedLeadId, setSelectedLeadId] = useState<number | null>(null);
+  const [selectedDealId, setSelectedDealId] = useState<number | null>(null);
   const [, setLocation] = useLocation();
   const inputRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
 
   const { data: recentItemsData } = useQuery<RecentItemsResponse>({
     queryKey: ["/api/recent-items"],
@@ -121,6 +168,74 @@ export function CommandPalette() {
     },
     onSuccess: (data) => {
       setAiResponse(data);
+    },
+  });
+
+  // Fetch leads for contextual actions (only when searching)
+  const { data: leadsData } = useQuery<Lead[]>({
+    queryKey: ["/api/leads"],
+    enabled: open && search.length > 0,
+  });
+
+  // Fetch deals for contextual actions (only when searching)
+  const { data: dealsData } = useQuery<Deal[]>({
+    queryKey: ["/api/deals"],
+    enabled: open && search.length > 0,
+  });
+
+  // Mutation for updating lead status
+  const updateLeadMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: number; status: string }) => {
+      const res = await apiRequest("PUT", `/api/leads/${id}`, { status });
+      if (!res.ok) throw new Error("Failed to update lead");
+      return res.json();
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/recent-items"] });
+      const statusLabel = leadStatuses.find(s => s.value === variables.status)?.label || variables.status;
+      toast({
+        title: "Lead updated",
+        description: `Status changed to ${statusLabel}`,
+      });
+      telemetry.actionCompleted('command_palette_lead_status_update', { newStatus: variables.status });
+      setSelectedLeadId(null);
+      setOpen(false);
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to update lead status",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Mutation for updating deal stage
+  const updateDealMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: number; status: string }) => {
+      const res = await apiRequest("PUT", `/api/deals/${id}`, { status });
+      if (!res.ok) throw new Error("Failed to update deal");
+      return res.json();
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/deals"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/recent-items"] });
+      const stageLabel = dealStages.find(s => s.value === variables.status)?.label || variables.status;
+      toast({
+        title: "Deal updated",
+        description: `Stage changed to ${stageLabel}`,
+      });
+      telemetry.actionCompleted('command_palette_deal_stage_update', { newStage: variables.status });
+      setSelectedDealId(null);
+      setOpen(false);
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to update deal stage",
+        variant: "destructive",
+      });
     },
   });
 
@@ -138,11 +253,14 @@ export function CommandPalette() {
       if (aiMode) {
         setAiMode(false);
         setAiResponse(null);
+      } else if (selectedLeadId || selectedDealId) {
+        setSelectedLeadId(null);
+        setSelectedDealId(null);
       } else {
         setOpen(false);
       }
     }
-  }, [open, aiMode]);
+  }, [open, aiMode, selectedLeadId, selectedDealId]);
 
   useEffect(() => {
     window.addEventListener("keydown", handleKeyDown);
@@ -152,6 +270,11 @@ export function CommandPalette() {
   useEffect(() => {
     if (open) {
       telemetry.featureUsed('command_palette');
+    } else {
+      // Reset state when closing
+      setSearch("");
+      setSelectedLeadId(null);
+      setSelectedDealId(null);
     }
   }, [open]);
 
@@ -206,6 +329,24 @@ export function CommandPalette() {
 
   const showAIMode = aiMode || (inputValue.length > 3 && isAIQuery(inputValue));
 
+  // Filter leads matching search
+  const matchingLeads = search.length >= 2 ? (leadsData || []).filter(lead => {
+    const fullName = `${lead.firstName} ${lead.lastName}`.toLowerCase();
+    return fullName.includes(search.toLowerCase());
+  }).slice(0, 5) : [];
+
+  // Filter deals matching search
+  const matchingDeals = search.length >= 2 ? (dealsData || []).filter(deal => {
+    const dealName = deal.property 
+      ? `${deal.property.county || ''} ${deal.property.state || ''} ${deal.type}`.toLowerCase()
+      : deal.type.toLowerCase();
+    return dealName.includes(search.toLowerCase()) || deal.type.toLowerCase().includes(search.toLowerCase());
+  }).slice(0, 5) : [];
+
+  // Get current lead/deal for sub-menu
+  const selectedLead = selectedLeadId ? leadsData?.find(l => l.id === selectedLeadId) : null;
+  const selectedDeal = selectedDealId ? dealsData?.find(d => d.id === selectedDealId) : null;
+
   return (
     <AnimatePresence>
       {open && (
@@ -231,9 +372,9 @@ export function CommandPalette() {
               <div className="relative">
                 <CommandInput
                   ref={inputRef}
-                  placeholder={showAIMode ? "Ask me anything about your land business..." : "Search pages, actions, or type a question..."}
+                  placeholder={showAIMode ? "Ask me anything about your land business..." : selectedLeadId ? "Choose new status..." : selectedDealId ? "Choose new stage..." : "Search pages, actions, or type a question..."}
                   value={inputValue}
-                  onValueChange={setInputValue}
+                  onValueChange={(val) => { setInputValue(val); setSearch(val); }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && showAIMode) {
                       e.preventDefault();
@@ -299,9 +440,123 @@ export function CommandPalette() {
               )}
 
               <CommandList className="max-h-[360px]">
-                {!showAIMode && (
+                {/* Lead Status Sub-menu */}
+                {selectedLead && (
+                  <>
+                    <CommandGroup heading={`Update ${selectedLead.firstName} ${selectedLead.lastName}`}>
+                      {leadStatuses.map((status) => (
+                        <CommandItem
+                          key={status.value}
+                          onSelect={() => updateLeadMutation.mutate({ id: selectedLead.id, status: status.value })}
+                          disabled={selectedLead.status === status.value || updateLeadMutation.isPending}
+                          className="cursor-pointer"
+                          data-testid={`command-lead-status-${status.value}`}
+                        >
+                          {selectedLead.status === status.value ? (
+                            <CheckCircle className="mr-2 h-4 w-4 text-green-500" />
+                          ) : (
+                            <ArrowRight className="mr-2 h-4 w-4 text-muted-foreground" />
+                          )}
+                          <span>{status.label}</span>
+                          {selectedLead.status === status.value && (
+                            <span className="ml-auto text-xs text-muted-foreground">(current)</span>
+                          )}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                    <div className="border-t px-3 py-2 text-xs text-muted-foreground">
+                      Press <kbd className="mx-1 px-1.5 py-0.5 rounded border bg-muted font-mono text-[10px]">esc</kbd> to go back
+                    </div>
+                  </>
+                )}
+
+                {/* Deal Stage Sub-menu */}
+                {selectedDeal && (
+                  <>
+                    <CommandGroup heading={`Update ${selectedDeal.property?.county || selectedDeal.type} Deal`}>
+                      {dealStages.map((stage) => (
+                        <CommandItem
+                          key={stage.value}
+                          onSelect={() => updateDealMutation.mutate({ id: selectedDeal.id, status: stage.value })}
+                          disabled={selectedDeal.status === stage.value || updateDealMutation.isPending}
+                          className="cursor-pointer"
+                          data-testid={`command-deal-stage-${stage.value}`}
+                        >
+                          {selectedDeal.status === stage.value ? (
+                            <CheckCircle className="mr-2 h-4 w-4 text-green-500" />
+                          ) : (
+                            <ArrowRight className="mr-2 h-4 w-4 text-muted-foreground" />
+                          )}
+                          <span>{stage.label}</span>
+                          {selectedDeal.status === stage.value && (
+                            <span className="ml-auto text-xs text-muted-foreground">(current)</span>
+                          )}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                    <div className="border-t px-3 py-2 text-xs text-muted-foreground">
+                      Press <kbd className="mx-1 px-1.5 py-0.5 rounded border bg-muted font-mono text-[10px]">esc</kbd> to go back
+                    </div>
+                  </>
+                )}
+
+                {!showAIMode && !selectedLeadId && !selectedDealId && (
                   <>
                     <CommandEmpty>No results found. Start with "?" to ask AI.</CommandEmpty>
+
+                    {/* Contextual Lead Actions */}
+                    {matchingLeads.length > 0 && (
+                      <>
+                        <CommandGroup heading="Leads - Quick Actions">
+                          {matchingLeads.map((lead) => (
+                            <CommandItem
+                              key={`lead-action-${lead.id}`}
+                              onSelect={() => setSelectedLeadId(lead.id)}
+                              className="cursor-pointer"
+                              data-testid={`command-lead-${lead.id}`}
+                            >
+                              <Users className="mr-2 h-4 w-4 text-muted-foreground" />
+                              <div className="flex flex-col">
+                                <span>{lead.firstName} {lead.lastName}</span>
+                                <span className="text-xs text-muted-foreground capitalize">
+                                  {lead.status} {lead.phone && `\u00b7 ${lead.phone}`}
+                                </span>
+                              </div>
+                              <ArrowRight className="ml-auto h-4 w-4 text-muted-foreground" />
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                        <CommandSeparator />
+                      </>
+                    )}
+
+                    {/* Contextual Deal Actions */}
+                    {matchingDeals.length > 0 && (
+                      <>
+                        <CommandGroup heading="Deals - Quick Actions">
+                          {matchingDeals.map((deal) => (
+                            <CommandItem
+                              key={`deal-action-${deal.id}`}
+                              onSelect={() => setSelectedDealId(deal.id)}
+                              className="cursor-pointer"
+                              data-testid={`command-deal-${deal.id}`}
+                            >
+                              <Handshake className="mr-2 h-4 w-4 text-muted-foreground" />
+                              <div className="flex flex-col">
+                                <span>
+                                  {deal.property?.county ? `${deal.property.county}, ${deal.property.state}` : deal.type}
+                                </span>
+                                <span className="text-xs text-muted-foreground capitalize">
+                                  {deal.type} \u00b7 {deal.status.replace('_', ' ')}
+                                </span>
+                              </div>
+                              <ArrowRight className="ml-auto h-4 w-4 text-muted-foreground" />
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                        <CommandSeparator />
+                      </>
+                    )}
 
                     <CommandGroup heading="Pages">
                       {pages.map((page) => (
@@ -358,26 +613,34 @@ export function CommandPalette() {
                 )}
               </CommandList>
 
-              <div className="border-t px-3 py-2 text-xs text-muted-foreground flex items-center justify-between">
-                <span>
-                  <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
-                    ↑↓
-                  </kbd>{" "}
-                  navigate
-                </span>
-                <span>
-                  <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
-                    ↵
-                  </kbd>{" "}
-                  {showAIMode ? "ask AI" : "select"}
-                </span>
-                <span>
-                  <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
-                    esc
-                  </kbd>{" "}
-                  close
-                </span>
-              </div>
+              {!selectedLeadId && !selectedDealId && (
+                <div className="border-t px-3 py-2 text-xs text-muted-foreground flex items-center justify-between">
+                  <span>
+                    <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
+                      ↑↓
+                    </kbd>{" "}
+                    navigate
+                  </span>
+                  <span>
+                    <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
+                      ↵
+                    </kbd>{" "}
+                    {showAIMode ? "ask AI" : "select"}
+                  </span>
+                  <span>
+                    <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
+                      ⌘K
+                    </kbd>{" "}
+                    toggle
+                  </span>
+                  <span>
+                    <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
+                      esc
+                    </kbd>{" "}
+                    close
+                  </span>
+                </div>
+              )}
             </Command>
           </motion.div>
         </>
