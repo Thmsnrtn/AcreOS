@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
-import { ChevronDown, ChevronUp, MapPin, Droplets, AlertTriangle, Building2, TrendingUp, Info, X } from "lucide-react";
+import { ChevronDown, ChevronUp, MapPin, Droplets, AlertTriangle, Building2, TrendingUp, Info, X, Share2, Check } from "lucide-react";
 
 export interface GisFilterState {
   excludeFloodZones: boolean;
@@ -29,10 +29,13 @@ interface GisFiltersProps {
   filters: GisFilterState;
   onChange: (filters: GisFilterState) => void;
   activeFilterCount?: number;
+  onShare?: () => string;
+  onReset?: () => void;
 }
 
-export function GisFilters({ filters, onChange, activeFilterCount = 0 }: GisFiltersProps) {
+export function GisFilters({ filters, onChange, activeFilterCount = 0, onShare, onReset }: GisFiltersProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [showCopied, setShowCopied] = useState(false);
 
   const handleFilterChange = <K extends keyof GisFilterState>(
     key: K,
@@ -42,7 +45,25 @@ export function GisFilters({ filters, onChange, activeFilterCount = 0 }: GisFilt
   };
 
   const handleClearFilters = () => {
-    onChange(defaultGisFilters);
+    if (onReset) {
+      onReset();
+    } else {
+      onChange(defaultGisFilters);
+    }
+  };
+
+  const handleShare = async () => {
+    if (onShare) {
+      const url = onShare();
+      try {
+        await navigator.clipboard.writeText(url);
+        setShowCopied(true);
+        setTimeout(() => setShowCopied(false), 2000);
+      } catch (e) {
+        // Fallback: prompt user
+        window.prompt("Copy this URL to share filters:", url);
+      }
+    }
   };
 
   const hasActiveFilters = 
@@ -82,18 +103,44 @@ export function GisFilters({ filters, onChange, activeFilterCount = 0 }: GisFilt
               <MapPin className="w-4 h-4 text-primary" />
               <span className="hidden sm:inline">GIS-Based Filters</span>
               <span className="sm:hidden">Filters</span>
+              <Badge variant="outline" className="text-xs font-normal hidden sm:inline-flex">
+                Persisted
+              </Badge>
             </h4>
-            {hasActiveFilters && (
-              <Button 
-                variant="ghost" 
-                onClick={handleClearFilters}
-                className="text-xs min-h-[44px] sm:min-h-7 px-3"
-                data-testid="button-clear-gis-filters"
-              >
-                <X className="w-4 h-4 sm:w-3 sm:h-3 mr-1" />
-                Clear
-              </Button>
-            )}
+            <div className="flex items-center gap-1">
+              {hasActiveFilters && onShare && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button 
+                      variant="ghost" 
+                      onClick={handleShare}
+                      className="text-xs min-h-[44px] sm:min-h-7 px-2"
+                      data-testid="button-share-gis-filters"
+                    >
+                      {showCopied ? (
+                        <><Check className="w-4 h-4 sm:w-3 sm:h-3 text-green-600" /></>
+                      ) : (
+                        <><Share2 className="w-4 h-4 sm:w-3 sm:h-3" /></>
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">
+                    <p>{showCopied ? "Copied!" : "Copy shareable link with filters"}</p>
+                  </TooltipContent>
+                </Tooltip>
+              )}
+              {hasActiveFilters && (
+                <Button 
+                  variant="ghost" 
+                  onClick={handleClearFilters}
+                  className="text-xs min-h-[44px] sm:min-h-7 px-3"
+                  data-testid="button-clear-gis-filters"
+                >
+                  <X className="w-4 h-4 sm:w-3 sm:h-3 mr-1" />
+                  Clear
+                </Button>
+              )}
+            </div>
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">

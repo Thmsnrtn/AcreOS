@@ -123,6 +123,7 @@ import { SavedViewsSelector } from "@/components/saved-views-selector";
 import type { SavedView } from "@shared/schema";
 import { QueryErrorState } from "@/components/query-error-state";
 import { ResearchSummaryPanel } from "@/components/research-summary-panel";
+import { usePersistedGisFilters } from "@/hooks/use-persisted-gis-filters";
 import { Bot } from "lucide-react";
 
 export default function PropertiesPage() {
@@ -158,7 +159,7 @@ export default function PropertiesPage() {
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
-  const [gisFilters, setGisFilters] = useState<GisFilterState>(defaultGisFilters);
+  const { filters: gisFilters, setFilters: setGisFilters, resetFilters: resetGisFilters, getShareableUrl } = usePersistedGisFilters();
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [distressFilter, setDistressFilter] = useState<string>("any");
   const { toast } = useToast();
@@ -529,6 +530,8 @@ export default function PropertiesPage() {
                 filters={gisFilters}
                 onChange={setGisFilters}
                 activeFilterCount={countActiveGisFilters(gisFilters)}
+                onShare={getShareableUrl}
+                onReset={resetGisFilters}
               />
               <Select value={distressFilter} onValueChange={setDistressFilter}>
                 <SelectTrigger className="h-8 w-[160px]" data-testid="select-distress-filter">
