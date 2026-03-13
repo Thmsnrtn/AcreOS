@@ -6,6 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useState, useMemo } from "react";
 import type { InboxMessage, Lead, Conversation, Message } from "@shared/schema";
 import { format } from "date-fns";
+import { ProviderReadinessBanner, ProviderStatusIndicator } from "@/components/provider-readiness-banner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -447,9 +448,13 @@ function EmailMessageDetail({
           {showReply && (
             <Card className="mt-4">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Reply to {message.senderName || message.senderEmail}</CardTitle>
+                <div className="flex items-center justify-between gap-2">
+                  <CardTitle className="text-sm">Reply to {message.senderName || message.senderEmail}</CardTitle>
+                  <ProviderStatusIndicator channel="email" />
+                </div>
               </CardHeader>
               <CardContent className="space-y-3">
+                <ProviderReadinessBanner channel="email" compact />
                 <Textarea
                   placeholder="Type your reply..."
                   value={replyText}
@@ -613,7 +618,8 @@ function SMSConversationDetail({
         )}
       </ScrollArea>
 
-      <div className="border-t p-4">
+      <div className="border-t p-4 space-y-3">
+        <ProviderReadinessBanner channel="sms" compact />
         <div className="flex gap-2">
           <Textarea
             placeholder="Type your message..."
