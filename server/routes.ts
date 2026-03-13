@@ -82,6 +82,7 @@ import recordingFeesRouter from "./routes-recording-fees";
 import bookkeepingRouter from "./routes-bookkeeping";
 import abTestsRouter from "./routes-ab-tests";
 import doddFrankRouter from "./routes-dodd-frank";
+import fieldScoutRouter from "./routes-field-scout";
 
 // Rate limiting middleware
 import { createRateLimiter, rateLimiters, RATE_LIMIT_CONFIGS, authLimiter, aiLimiter, webhookLimiter, importLimiter } from "./middleware/rateLimit";
@@ -492,7 +493,8 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Bulk delete preview error:", error);
       res.status(500).json({ message: error.message || "Failed to preview bulk delete" });
-
+    }
+  });
 
     // Mark a lead as contacted (updates lastContactedAt timestamp)
   api.post("/api/leads/:id/mark-contacted", isAuthenticated, getOrCreateOrg, async (req, res) => {
@@ -563,9 +565,7 @@ export async function registerRoutes(
       res.status(500).json({ message: "Failed to merge leads" });
     }
   });
-    }
-  });
-  
+
   // Record contact (marks lead as contacted now)
   api.post("/api/leads/:id/record-contact", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
@@ -1059,6 +1059,9 @@ export async function registerRoutes(
   app.use('/api/ab-tests', isAuthenticated, getOrCreateOrg, abTestsRouter);
   app.use('/api/dodd-frank', isAuthenticated, doddFrankRouter);
 
+  // Field Scout: parcel lookup, voice transcription, photo uploads, visits, reports
+  app.use('/api', isAuthenticated, getOrCreateOrg, fieldScoutRouter);
+
   // Phase 5-6 routes
   app.use('/api/investor-verification', isAuthenticated, getOrCreateOrg, investorVerificationRouter);
   app.use('/api/transaction-fees', isAuthenticated, getOrCreateOrg, transactionFeesRouter);
@@ -1129,6 +1132,7 @@ export async function registerRoutes(
   app.use("/api/v1/*", (req, res) => {
     const newPath = req.originalUrl.replace("/api/v1/", "/api/");
     res.redirect(307, newPath);
+  });
 
   api.get("/api/tasks", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {

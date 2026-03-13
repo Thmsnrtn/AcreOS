@@ -196,6 +196,10 @@ import {
   type GrowthCampaign, type InsertGrowthCampaign,
   adCreativeBundles,
   type AdCreativeBundle,
+  fieldScoutVisits,
+  fieldScoutPhotos,
+  type FieldScoutVisit, type InsertFieldScoutVisit,
+  type FieldScoutPhoto, type InsertFieldScoutPhoto,
 } from "@shared/schema";
 
 // Helper to calculate amortization schedule
@@ -1108,6 +1112,17 @@ export interface IStorage {
   getBorrowerMessages(noteId: number): Promise<BorrowerMessage[]>;
   markBorrowerMessagesRead(noteId: number, senderType: string): Promise<void>;
   countUnreadBorrowerMessages(noteId: number, senderType: string): Promise<number>;
+
+  // Field Scout Visits
+  createFieldScoutVisit(data: InsertFieldScoutVisit): Promise<FieldScoutVisit>;
+  getFieldScoutVisit(id: number): Promise<FieldScoutVisit | undefined>;
+  getFieldScoutVisits(visitorId: string, limit?: number, offset?: number): Promise<FieldScoutVisit[]>;
+  countFieldScoutVisits(visitorId: string): Promise<number>;
+
+  // Field Scout Photos
+  createFieldScoutPhoto(data: InsertFieldScoutPhoto): Promise<FieldScoutPhoto>;
+  getFieldScoutPhotosByVisit(visitId: number): Promise<FieldScoutPhoto[]>;
+  getFieldScoutPhotosByLead(leadId: number): Promise<FieldScoutPhoto[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -7874,6 +7889,53 @@ Notary Public</p>
         sql`${borrowerMessages.readAt} IS NULL`
       ));
     return Number(result?.cnt ?? 0);
+  }
+
+  // ─── Field Scout Visits ─────────────────────────────────────────────────────
+
+  async createFieldScoutVisit(data: InsertFieldScoutVisit): Promise<FieldScoutVisit> {
+    const [created] = await db.insert(fieldScoutVisits).values(data).returning();
+    return created;
+  }
+
+  async getFieldScoutVisit(id: number): Promise<FieldScoutVisit | undefined> {
+    const [row] = await db.select().from(fieldScoutVisits).where(eq(fieldScoutVisits.id, id));
+    return row;
+  }
+
+  async getFieldScoutVisits(visitorId: string, limit: number = 50, offset: number = 0): Promise<FieldScoutVisit[]> {
+    return await db.select().from(fieldScoutVisits)
+      .where(eq(fieldScoutVisits.visitorId, visitorId))
+      .orderBy(desc(fieldScoutVisits.createdAt))
+      .limit(limit)
+      .offset(offset);
+  }
+
+  async countFieldScoutVisits(visitorId: string): Promise<number> {
+    const [result] = await db
+      .select({ cnt: count() })
+      .from(fieldScoutVisits)
+      .where(eq(fieldScoutVisits.visitorId, visitorId));
+    return Number(result?.cnt ?? 0);
+  }
+
+  // ─── Field Scout Photos ─────────────────────────────────────────────────────
+
+  async createFieldScoutPhoto(data: InsertFieldScoutPhoto): Promise<FieldScoutPhoto> {
+    const [created] = await db.insert(fieldScoutPhotos).values(data).returning();
+    return created;
+  }
+
+  async getFieldScoutPhotosByVisit(visitId: number): Promise<FieldScoutPhoto[]> {
+    return await db.select().from(fieldScoutPhotos)
+      .where(eq(fieldScoutPhotos.visitId, visitId))
+      .orderBy(desc(fieldScoutPhotos.createdAt));
+  }
+
+  async getFieldScoutPhotosByLead(leadId: number): Promise<FieldScoutPhoto[]> {
+    return await db.select().from(fieldScoutPhotos)
+      .where(eq(fieldScoutPhotos.leadId, leadId))
+      .orderBy(desc(fieldScoutPhotos.createdAt));
   }
 }
 

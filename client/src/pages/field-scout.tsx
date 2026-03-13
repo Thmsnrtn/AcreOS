@@ -29,10 +29,18 @@ import {
   Eye,
   Clock,
   Zap,
+  FileText,
+  ClipboardList,
+  History,
+  Save,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { format, formatDistanceToNow } from "date-fns";
+import { InspectionChecklist, type ChecklistResults } from "@/components/field-scout/inspection-checklist";
+import { PhotoGallery, type ScoutPhoto } from "@/components/field-scout/photo-gallery";
+import { ScoutReportCard, type FieldScoutVisit } from "@/components/field-scout/scout-report-card";
+import { OfflineSyncBanner, type SyncState } from "@/components/field-scout/offline-sync-banner";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -60,7 +68,7 @@ interface ScoutLead {
 
 interface OfflineAction {
   id: string;
-  type: "create_lead" | "add_note" | "add_photo" | "update_status";
+  type: "create_lead" | "add_note" | "add_photo" | "update_status" | "save_visit";
   payload: any;
   timestamp: number;
 }
@@ -229,10 +237,22 @@ export default function FieldScout() {
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [currentNote, setCurrentNote] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeView, setActiveView] = useState<"scout" | "leads" | "map">("scout");
+  const [activeView, setActiveView] = useState<"scout" | "leads" | "map" | "visits">("scout");
   const [selectedLead, setSelectedLead] = useState<ScoutLead | null>(null);
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [newLeadForm, setNewLeadForm] = useState<Partial<ScoutLead>>({});
+
+  // New state for enhanced features
+  const [scoutPhotos, setScoutPhotos] = useState<ScoutPhoto[]>([]);
+  const [checklistResults, setChecklistResults] = useState<ChecklistResults | undefined>(undefined);
+  const [showChecklist, setShowChecklist] = useState(false);
+  const [visitStartTime] = useState<string>(new Date().toISOString());
+  const [syncState, setSyncState] = useState<SyncState>("idle");
+  const [syncProgress, setSyncProgress] = useState(0);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | undefined>(
+    localStorage.getItem("acreos_last_sync") || undefined
+  );
+  const [syncError, setSyncError] = useState<string | undefined>(undefined);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -258,8 +278,14 @@ export default function FieldScout() {
     const queue = getOfflineQueue();
     if (queue.length === 0) return;
 
+    setSyncState("syncing");
+    setSyncProgress(0);
+    setSyncError(undefined);
+
     let synced = 0;
-    for (const action of queue) {
+    let failed = 0;
+    for (let i = 0; i < queue.length; i++) {
+      const action = queue[i];
       try {
         if (action.type === "create_lead") {
           await apiRequest("POST", "/api/leads", action.payload);
@@ -269,16 +295,42 @@ export default function FieldScout() {
             notes: action.payload.note,
           });
           synced++;
+        } else if (action.type === "save_visit") {
+          await apiRequest("POST", "/api/field-scout/visits", action.payload);
+          synced++;
+        } else if (action.type === "add_photo") {
+          const formData = new FormData();
+          formData.append("photo", action.payload.photoBlob);
+          await fetch(`/api/leads/${action.payload.leadId}/photos`, {
+            method: "POST",
+            body: formData,
+          });
+          synced++;
         }
       } catch (err) {
         console.error("Sync failed for action:", action.id);
+        failed++;
       }
+      setSyncProgress(Math.round(((i + 1) / queue.length) * 100));
+    }
+
+    if (failed > 0) {
+      setSyncState("error");
+      setSyncError(`${failed} action${failed > 1 ? "s" : ""} failed to sync. Tap retry to try again.`);
+    } else {
+      setSyncState("success");
+      const now = new Date().toISOString();
+      setLastSyncedAt(now);
+      localStorage.setItem("acreos_last_sync", now);
+      // Auto-clear success state after 3 seconds
+      setTimeout(() => setSyncState("idle"), 3000);
     }
 
     if (synced > 0) {
       clearOfflineQueue();
-      setOfflineQueue([]);
+      setOfflineQueue(getOfflineQueue());
       queryClient.invalidateQueries({ queryKey: ["/api/leads"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/field-scout/visits"] });
       toast({
         title: `${synced} offline action${synced > 1 ? "s" : ""} synced`,
         description: "Your field work has been saved to AcreOS.",
@@ -380,6 +432,163 @@ export default function FieldScout() {
       });
     },
   });
+
+  // Past visits query
+  const { data: pastVisits = [] } = useQuery<FieldScoutVisit[]>({
+    queryKey: ["/api/field-scout/visits"],
+    queryFn: async () => {
+      if (!isOnline) {
+        try {
+          return JSON.parse(localStorage.getItem("acreos_cached_visits") || "[]");
+        } catch {
+          return [];
+        }
+      }
+      const resp = await apiRequest("GET", "/api/field-scout/visits?limit=20");
+      const data = await resp.json();
+      const visits = data.visits || data || [];
+      localStorage.setItem("acreos_cached_visits", JSON.stringify(visits));
+      return visits;
+    },
+  });
+
+  // Save complete visit mutation
+  const saveVisitMutation = useMutation({
+    mutationFn: async (visitData: {
+      lead: Partial<ScoutLead>;
+      checklist?: ChecklistResults;
+      photos: ScoutPhoto[];
+      notes: string;
+      startedAt: string;
+      endedAt: string;
+      gpsTrack?: { lat: number; lng: number; timestamp: number }[];
+    }) => {
+      if (!isOnline) {
+        const action: OfflineAction = {
+          id: `visit_${Date.now()}`,
+          type: "save_visit",
+          payload: visitData,
+          timestamp: Date.now(),
+        };
+        addToOfflineQueue(action);
+        setOfflineQueue(getOfflineQueue());
+        return { id: `offline_${Date.now()}`, synced: false };
+      }
+      const resp = await apiRequest("POST", "/api/field-scout/visits", visitData);
+      return resp.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/field-scout/visits"] });
+      toast({
+        title: "Visit saved!",
+        description: (data as any).synced === false
+          ? "Saved locally — will sync when back online."
+          : "Complete visit record saved to AcreOS.",
+      });
+      // Reset scout state
+      setScoutPhotos([]);
+      setChecklistResults(undefined);
+      setShowChecklist(false);
+      setCurrentNote("");
+      setShowQuickAdd(false);
+      setNewLeadForm({});
+    },
+  });
+
+  // Photo upload mutation
+  const uploadPhotoMutation = useMutation({
+    mutationFn: async ({ leadId, file }: { leadId: number; file: File }) => {
+      const formData = new FormData();
+      formData.append("photo", file);
+      const resp = await fetch(`/api/leads/${leadId}/photos`, {
+        method: "POST",
+        body: formData,
+      });
+      return resp.json();
+    },
+  });
+
+  // Handle adding a photo from camera
+  const handleAddPhoto = useCallback(() => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.capture = "environment";
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      const url = URL.createObjectURL(file);
+      const newPhoto: ScoutPhoto = {
+        id: `photo_${Date.now()}`,
+        url,
+        thumbnailUrl: url,
+        caption: "",
+        latitude: coords?.latitude,
+        longitude: coords?.longitude,
+        bearing: compass.heading ?? undefined,
+        timestamp: new Date().toISOString(),
+      };
+      setScoutPhotos((prev) => [...prev, newPhoto]);
+      toast({ title: "Photo captured", description: "Added to visit gallery." });
+    };
+    input.click();
+  }, [coords, compass.heading, toast]);
+
+  // Handle deleting a photo
+  const handleDeletePhoto = useCallback((id: string) => {
+    setScoutPhotos((prev) => prev.filter((p) => p.id !== id));
+  }, []);
+
+  // Handle updating photo caption
+  const handleUpdatePhotoCaption = useCallback((id: string, caption: string) => {
+    setScoutPhotos((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, caption } : p))
+    );
+  }, []);
+
+  // Handle checklist completion
+  const handleChecklistComplete = useCallback((results: ChecklistResults) => {
+    setChecklistResults(results);
+    toast({
+      title: "Inspection complete",
+      description: `Score: ${results.overallScore}% passing`,
+    });
+  }, [toast]);
+
+  // Handle "Complete Visit" flow
+  const handleCompleteVisit = useCallback(() => {
+    const endedAt = new Date().toISOString();
+    const startMs = new Date(visitStartTime).getTime();
+    const endMs = new Date(endedAt).getTime();
+    const durationMinutes = Math.round((endMs - startMs) / 60000);
+
+    saveVisitMutation.mutate({
+      lead: newLeadForm,
+      checklist: checklistResults,
+      photos: scoutPhotos,
+      notes: currentNote,
+      startedAt: visitStartTime,
+      endedAt,
+    });
+  }, [visitStartTime, newLeadForm, checklistResults, scoutPhotos, currentNote, saveVisitMutation]);
+
+  // Generate report handler
+  const handleGenerateReport = useCallback((visitId: string) => {
+    toast({
+      title: "Generating report...",
+      description: "Your scout report is being compiled.",
+    });
+    // In production, this would navigate to a report generation page or trigger a PDF export
+  }, [toast]);
+
+  // Sync to deal handler
+  const handleSyncToDeal = useCallback((visitId: string) => {
+    toast({
+      title: "Link to deal",
+      description: "Select a deal to link this visit to.",
+    });
+    // In production, this would open a deal selection dialog
+  }, [toast]);
 
   // Voice recording
   const startRecording = async () => {
@@ -558,6 +767,7 @@ export default function FieldScout() {
           { key: "scout", label: "Scout", icon: Navigation },
           { key: "leads", label: "Leads", icon: MapPin },
           { key: "map", label: "Map", icon: Map },
+          { key: "visits", label: "Visits", icon: History },
         ].map(({ key, label, icon: Icon }) => (
           <button
             key={key}
@@ -574,6 +784,18 @@ export default function FieldScout() {
           </button>
         ))}
       </div>
+
+      {/* Offline Sync Banner */}
+      <OfflineSyncBanner
+        isOnline={isOnline}
+        queueCount={offlineQueue.length}
+        syncState={syncState}
+        syncProgress={syncProgress}
+        lastSyncedAt={lastSyncedAt}
+        syncError={syncError}
+        onSyncNow={syncOfflineQueue}
+        onRetry={syncOfflineQueue}
+      />
 
       {/* SCOUT VIEW */}
       {activeView === "scout" && (
@@ -729,17 +951,15 @@ export default function FieldScout() {
                     variant="outline"
                     size="sm"
                     className="flex-1 border-gray-700"
-                    onClick={() => {
-                      // Open camera
-                      const input = document.createElement("input");
-                      input.type = "file";
-                      input.accept = "image/*";
-                      input.capture = "environment";
-                      input.click();
-                    }}
+                    onClick={handleAddPhoto}
                   >
                     <Camera className="w-4 h-4 mr-1" />
                     Photo
+                    {scoutPhotos.length > 0 && (
+                      <Badge variant="secondary" className="ml-1 text-[9px] px-1 py-0 h-4 bg-blue-900/50 text-blue-300">
+                        {scoutPhotos.length}
+                      </Badge>
+                    )}
                   </Button>
                 </div>
 
@@ -772,6 +992,64 @@ export default function FieldScout() {
                 </div>
               </CardContent>
             </Card>
+          )}
+
+          {/* Inspection Checklist (collapsible) */}
+          <Card className="bg-gray-900 border-gray-800">
+            <button
+              onClick={() => setShowChecklist(!showChecklist)}
+              className="w-full px-4 py-3 flex items-center justify-between text-left"
+            >
+              <div className="flex items-center gap-2">
+                <ClipboardList className="w-4 h-4 text-emerald-400" />
+                <span className="text-sm font-medium">Property Inspection</span>
+                {checklistResults && (
+                  <Badge
+                    className={cn(
+                      "text-[10px]",
+                      checklistResults.overallScore >= 80
+                        ? "bg-emerald-900/50 text-emerald-300"
+                        : checklistResults.overallScore >= 50
+                        ? "bg-yellow-900/50 text-yellow-300"
+                        : "bg-red-900/50 text-red-300"
+                    )}
+                  >
+                    {checklistResults.overallScore}%
+                  </Badge>
+                )}
+              </div>
+              {showChecklist ? (
+                <ChevronUp className="w-4 h-4 text-gray-500" />
+              ) : (
+                <ChevronDown className="w-4 h-4 text-gray-500" />
+              )}
+            </button>
+          </Card>
+          {showChecklist && (
+            <InspectionChecklist
+              onComplete={handleChecklistComplete}
+              initialData={checklistResults}
+            />
+          )}
+
+          {/* Photo Gallery */}
+          <PhotoGallery
+            photos={scoutPhotos}
+            onDelete={handleDeletePhoto}
+            onUpdateCaption={handleUpdatePhotoCaption}
+            onAddPhoto={handleAddPhoto}
+          />
+
+          {/* Complete Visit button */}
+          {(scoutPhotos.length > 0 || checklistResults || currentNote || newLeadForm.ownerName) && (
+            <Button
+              onClick={handleCompleteVisit}
+              disabled={saveVisitMutation.isPending}
+              className="w-full bg-emerald-600 hover:bg-emerald-700 h-12 text-sm font-medium"
+            >
+              <Save className="w-4 h-4 mr-2" />
+              {saveVisitMutation.isPending ? "Saving Visit..." : "Complete Visit"}
+            </Button>
           )}
 
           {/* Quick Actions for selected lead */}
@@ -1057,6 +1335,49 @@ export default function FieldScout() {
               );
             })}
           </div>
+        </div>
+      )}
+
+      {/* VISITS VIEW */}
+      {activeView === "visits" && (
+        <div className="p-4 space-y-3">
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="text-xs text-gray-400 uppercase tracking-wide">Past Scout Visits</h2>
+            <Badge variant="secondary" className="text-[10px] bg-gray-800 text-gray-400">
+              {pastVisits.length} visit{pastVisits.length !== 1 ? "s" : ""}
+            </Badge>
+          </div>
+
+          {pastVisits.length === 0 ? (
+            <Card className="bg-gray-900 border-gray-800">
+              <CardContent className="py-8 text-center">
+                <FileText className="w-10 h-10 mx-auto mb-2 text-gray-700" />
+                <p className="text-sm text-gray-500">No visits recorded yet</p>
+                <p className="text-xs text-gray-600 mt-1">
+                  Complete a scout visit to see it here.
+                </p>
+                <Button
+                  size="sm"
+                  className="mt-3 bg-emerald-600 hover:bg-emerald-700 text-xs"
+                  onClick={() => setActiveView("scout")}
+                >
+                  <Navigation className="w-3 h-3 mr-1" />
+                  Start Scouting
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-3">
+              {pastVisits.map((visit) => (
+                <ScoutReportCard
+                  key={visit.id}
+                  visit={visit}
+                  onGenerateReport={handleGenerateReport}
+                  onSyncToDeal={handleSyncToDeal}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
 

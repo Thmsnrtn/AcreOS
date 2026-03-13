@@ -10808,3 +10808,51 @@ export const insertOrgApiKeySchema = createInsertSchema(orgApiKeys).omit({
 });
 export type OrgApiKey = typeof orgApiKeys.$inferSelect;
 export type InsertOrgApiKey = z.infer<typeof insertOrgApiKeySchema>;
+
+// ============================================
+// FIELD SCOUT VISITS
+// ============================================
+
+export const fieldScoutVisits = pgTable("field_scout_visits", {
+  id: serial("id").primaryKey(),
+  visitorId: text("visitor_id").notNull(), // references users.id (varchar PK)
+  leadId: integer("lead_id").references(() => leads.id).notNull(),
+  propertyId: integer("property_id").references(() => properties.id),
+  latitude: numeric("latitude").notNull(),
+  longitude: numeric("longitude").notNull(),
+  duration: integer("duration"), // minutes
+  notes: text("notes"),
+  checklistResults: jsonb("checklist_results"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("field_scout_visits_visitor_idx").on(table.visitorId),
+  index("field_scout_visits_lead_idx").on(table.leadId),
+]);
+
+export const insertFieldScoutVisitSchema = createInsertSchema(fieldScoutVisits).omit({ id: true, createdAt: true });
+export type FieldScoutVisit = typeof fieldScoutVisits.$inferSelect;
+export type InsertFieldScoutVisit = z.infer<typeof insertFieldScoutVisitSchema>;
+
+// ============================================
+// FIELD SCOUT PHOTOS
+// ============================================
+
+export const fieldScoutPhotos = pgTable("field_scout_photos", {
+  id: serial("id").primaryKey(),
+  visitId: integer("visit_id").references(() => fieldScoutVisits.id),
+  leadId: integer("lead_id").references(() => leads.id).notNull(),
+  filename: text("filename").notNull(),
+  mimeType: text("mime_type").notNull(),
+  sizeBytes: integer("size_bytes").notNull(),
+  latitude: numeric("latitude"),
+  longitude: numeric("longitude"),
+  capturedAt: timestamp("captured_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("field_scout_photos_visit_idx").on(table.visitId),
+  index("field_scout_photos_lead_idx").on(table.leadId),
+]);
+
+export const insertFieldScoutPhotoSchema = createInsertSchema(fieldScoutPhotos).omit({ id: true, createdAt: true });
+export type FieldScoutPhoto = typeof fieldScoutPhotos.$inferSelect;
+export type InsertFieldScoutPhoto = z.infer<typeof insertFieldScoutPhotoSchema>;
