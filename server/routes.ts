@@ -492,6 +492,77 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Bulk delete preview error:", error);
       res.status(500).json({ message: error.message || "Failed to preview bulk delete" });
+
+
+    // Mark a lead as contacted (updates lastContactedAt timestamp)
+  api.post("/api/leads/:id/mark-contacted", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const leadId = Number(req.params.id);
+      
+      if (isNaN(leadId)) {
+        return res.status(400).json({ message: "Invalid lead ID" });
+      }
+      
+      const existingLead = await storage.getLead(org.id, leadId);
+      if (!existingLead) {
+        return res.status(404).json({ message: "Lead not found" });
+      }
+      
+      const now = new Date();
+      const lead = await storage.updateLead(leadId, { lastContactedAt: now });
+      
+      // Log the action
+      const user = req.user as any;
+      const userId = user?.claims?.sub || user?.id;
+      await storage.createAuditLogEntry({
+        organizationId: org.id,
+        userId,
+        action: "update",
+        entityType: "lead",
+        entityId: leadId,
+        changes: { 
+          before: { lastContactedAt: existingLead.lastContactedAt },
+          after: { lastContactedAt: now },
+          fields: ["lastContactedAt"] 
+        },
+        ipAddress: req.ip || req.socket?.remoteAddress,
+        userAgent: req.headers["user-agent"],
+      });
+      
+      res.json({
+        success: true,
+        message: "Lead marked as contacted",
+        lead,
+      });
+    } catch (err) {
+      console.error("Mark contacted error:", err);
+      res.status(500).json({ message: "Failed to mark lead as contacted" });
+    }
+  });
+
+    // Merge two leads
+  api.post("/api/leads/merge", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { primaryId, duplicateId } = req.body;
+      
+      if (!primaryId || !duplicateId) {
+        return res.status(400).json({ message: "Primary and duplicate lead IDs are required" });
+      }
+      
+      const merged = await storage.mergeLeads(org.id, primaryId, duplicateId);
+      
+      res.json({
+        success: true,
+        message: "Leads merged successfully",
+        lead: merged,
+      });
+    } catch (err) {
+      console.error("Merge leads error:", err);
+      res.status(500).json({ message: "Failed to merge leads" });
+    }
+  });
     }
   });
   
