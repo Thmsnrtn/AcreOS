@@ -4,6 +4,7 @@ import { ListSkeleton } from "@/components/list-skeleton";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { OfferPreflightChecklist } from "@/components/offer-preflight-checklist";
 import type { OfferLetter, OfferTemplate, Lead, Property } from "@shared/schema";
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -21,7 +22,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { EmptyState } from "@/components/empty-state";
 import { 
   Calculator, Mail, Send, FileText, Plus, Trash2, Edit, Eye, 
-  Loader2, Calendar, DollarSign, Clock, Filter, Check, X
+  Loader2, Calendar, DollarSign, Clock, Filter, Check, X, ClipboardCheck
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -57,6 +58,9 @@ export default function OffersPage() {
   const [isTemplateDialogOpen, setIsTemplateDialogOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<OfferTemplate | null>(null);
   const [templateForm, setTemplateForm] = useState({ name: "", type: "blind_offer", subject: "", content: "" });
+  
+  // Preflight checklist state
+  const [isPreflightOpen, setIsPreflightOpen] = useState(false);
   
   // Queries
   const { data: offerLetters, isLoading: offersLoading } = useQuery<OfferLetter[]>({
@@ -185,12 +189,28 @@ export default function OffersPage() {
     };
   }, [selectedLeadIds, offerPercent, propertyMap]);
   
+  const handlePreflightCheck = () => {
+    if (selectedLeadIds.length === 0) {
+      toast({ title: "No Leads Selected", description: "Please select at least one lead.", variant: "destructive" });
+      return;
+    }
+    setIsPreflightOpen(true);
+  };
+  
   const handleGenerateBatch = () => {
     if (selectedLeadIds.length === 0) {
       toast({ title: "No Leads Selected", description: "Please select at least one lead.", variant: "destructive" });
       return;
     }
     createBatchMutation.mutate({ leadIds: selectedLeadIds, offerPercent, expirationDays });
+  };
+  
+  const handleRemoveInvalidLeads = (leadIds: number[]) => {
+    setSelectedLeadIds(prev => prev.filter(id => !leadIds.includes(id)));
+    toast({ 
+      title: "Leads Removed", 
+      description: `${leadIds.length} lead(s) with errors removed from selection.` 
+    });
   };
   
   const handleSendSelected = () => {
@@ -510,16 +530,16 @@ export default function OffersPage() {
                     
                     <Button 
                       className="w-full" 
-                      onClick={handleGenerateBatch}
+                      onClick={handlePreflightCheck}
                       disabled={createBatchMutation.isPending || selectedLeadIds.length === 0}
-                      data-testid="button-generate-batch"
+                      data-testid="button-preflight-check"
                     >
                       {createBatchMutation.isPending ? (
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                       ) : (
-                        <Send className="w-4 h-4 mr-2" />
+                        <ClipboardCheck className="w-4 h-4 mr-2" />
                       )}
-                      Generate {selectedLeadIds.length} Batch Offers
+                      Review & Generate {selectedLeadIds.length} Offers
                     </Button>
                   </CardContent>
                 </Card>
@@ -772,6 +792,16 @@ export default function OffersPage() {
               )}
             </TabsContent>
           </Tabs>
+          {/* Preflight Checklist Dialog */}
+          <OfferPreflightChecklist
+            open={isPreflightOpen}
+            onOpenChange={setIsPreflightOpen}
+            selectedLeadIds={selectedLeadIds}
+            leads={leads || []}
+            propertyMap={propertyMap}
+            onProceed={handleGenerateBatch}
+            onRemoveLeads={handleRemoveInvalidLeads}
+          />
     </PageShell>
   );
 }
