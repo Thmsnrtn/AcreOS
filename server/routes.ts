@@ -6,6 +6,9 @@ import { storage, db } from "./storage";
 
 // Auth imports
 import { setupAuth, registerAuthRoutes, isAuthenticated } from "./auth";
+import { requirePermission } from "./utils/permissions";
+import { insertTaskSchema } from "@shared/schema";
+import { activityLogger } from "./services/activityLogger";
 
 // Feature routes (Router-based)
 import { registerAIOperationsRoutes } from "./routes-ai-operations";
