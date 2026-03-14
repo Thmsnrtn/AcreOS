@@ -1565,7 +1565,7 @@ function ReferralSettings() {
             Refer &amp; Earn
           </CardTitle>
           <CardDescription>
-            Share AcreOS with fellow land investors. They get 30 days free — you get $20 account credit when they subscribe.
+            Share AcreOS with fellow real estate investors. They get 30 days free — you get $20 account credit when they subscribe.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
