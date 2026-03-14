@@ -40,7 +40,9 @@ validateSecrets();
 
 // Global safety net for unhandled errors — log and report to Sentry
 process.on("unhandledRejection", (reason: unknown) => {
-  console.error("[process] Unhandled promise rejection:", reason);
+  // Log the full error — reason can be an empty object {}, so serialize it
+  const msg = reason instanceof Error ? reason.stack : JSON.stringify(reason, null, 2);
+  console.error("[process] Unhandled promise rejection:", msg);
   Sentry.captureException(reason);
 });
 
@@ -412,7 +414,11 @@ app.use("/api/auth", async (req, res, next) => {
   });
 
   // Initialize distributed tracing before routes so Express instrumentation captures all routes
-  await initTracing();
+  try {
+    await initTracing();
+  } catch (e) {
+    console.warn("[startup] Tracing init skipped:", (e as Error).message);
+  }
 
   // Load founder-configured credentials from DB into process.env (non-fatal if DB not ready)
   try {
@@ -621,7 +627,10 @@ app.use("/api/auth", async (req, res, next) => {
       startFounderBriefingJob();
     },
   );
-})();
+})().catch((err) => {
+  console.error("[startup] Fatal error during server initialization:", err);
+  process.exit(1);
+});
 
 // Auto-seed county GIS endpoints on startup
 async function seedCountyGisEndpointsOnStartup() {
