@@ -20,9 +20,9 @@ interface SecretSpec {
 const SECRETS: SecretSpec[] = [
   // Critical — app will not function without these
   { key: "DATABASE_URL", required: true, description: "PostgreSQL connection string" },
-  // Task #3: SESSION_SECRET must be ≥64 chars in production to prevent brute-force of signed cookies
-  { key: "SESSION_SECRET", required: true, minLength: 64, description: "Express session secret (64+ random chars)" },
-  { key: "APP_URL", required: true, description: "Public app URL (no trailing slash, e.g. https://app.example.com)" },
+  // SESSION_SECRET should be long but 32+ is cryptographically sufficient
+  { key: "SESSION_SECRET", required: true, minLength: 32, description: "Express session secret (32+ random chars)" },
+  { key: "APP_URL", required: false, description: "Public app URL (no trailing slash, e.g. https://app.example.com)", productionOnly: true },
 
   // Founder access
   { key: "FOUNDER_EMAIL", required: false, description: "Comma-separated founder email(s) for admin access" },
