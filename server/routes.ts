@@ -467,7 +467,7 @@ export async function registerRoutes(
   });
 
   // Preview leads that will be affected by bulk delete
-  api.post("/api/leads/bulk-delete/preview", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  app.post("/api/leads/bulk-delete/preview", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = (req as any).organization;
       const { ids } = req.body;
@@ -497,7 +497,7 @@ export async function registerRoutes(
   });
 
     // Mark a lead as contacted (updates lastContactedAt timestamp)
-  api.post("/api/leads/:id/mark-contacted", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  app.post("/api/leads/:id/mark-contacted", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = (req as any).organization;
       const leadId = Number(req.params.id);
@@ -544,7 +544,7 @@ export async function registerRoutes(
   });
 
     // Merge two leads
-  api.post("/api/leads/merge", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  app.post("/api/leads/merge", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = (req as any).organization;
       const { primaryId, duplicateId } = req.body;
@@ -567,7 +567,7 @@ export async function registerRoutes(
   });
 
   // Record contact (marks lead as contacted now)
-  api.post("/api/leads/:id/record-contact", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  app.post("/api/leads/:id/record-contact", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = (req as any).organization;
       const leadId = Number(req.params.id);
@@ -624,7 +624,7 @@ export async function registerRoutes(
     }
   });
 
-  api.post("/api/leads/bulk-delete", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteLeads"), async (req, res) => {
+  app.post("/api/leads/bulk-delete", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteLeads"), async (req, res) => {
     try {
       const org = (req as any).organization;
       const { ids } = req.body;
@@ -669,7 +669,7 @@ export async function registerRoutes(
   });
   
   // Get deleted/trashed leads
-  api.get("/api/leads/deleted", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  app.get("/api/leads/deleted", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = (req as any).organization;
       const deletedLeads = await storage.getDeletedLeads(org.id);
@@ -681,7 +681,7 @@ export async function registerRoutes(
   });
   
   // Restore soft-deleted leads
-  api.post("/api/leads/restore", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteLeads"), async (req, res) => {
+  app.post("/api/leads/restore", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteLeads"), async (req, res) => {
     try {
       const org = (req as any).organization;
       const { ids } = req.body;
@@ -714,7 +714,7 @@ export async function registerRoutes(
   });
   
   // Permanently delete leads (empty trash)
-  api.post("/api/leads/permanent-delete", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteLeads"), async (req, res) => {
+  app.post("/api/leads/permanent-delete", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteLeads"), async (req, res) => {
     try {
       const org = (req as any).organization;
       const { ids } = req.body;
@@ -834,7 +834,7 @@ export async function registerRoutes(
   }
 
     // Bulk stage update for deals with undo support
-  api.post("/api/deals/bulk-stage-update", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  app.post("/api/deals/bulk-stage-update", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = (req as any).organization;
       const { ids, newStage, confirmed } = req.body;
@@ -945,7 +945,7 @@ export async function registerRoutes(
   });
   
   // Undo bulk stage update
-  api.post("/api/deals/bulk-stage-undo", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  app.post("/api/deals/bulk-stage-undo", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = (req as any).organization;
       const { previousStates } = req.body;
@@ -1134,7 +1134,7 @@ export async function registerRoutes(
     res.redirect(307, newPath);
   });
 
-  api.get("/api/tasks", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  app.get("/api/tasks", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const orgId = (req as any).organization!.id;
       const filters: { status?: string; priority?: string; assignedTo?: number; entityType?: string; entityId?: number } = {};
@@ -1153,7 +1153,7 @@ export async function registerRoutes(
     }
   });
 
-  api.get("/api/tasks/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  app.get("/api/tasks/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const orgId = (req as any).organization!.id;
       const id = parseInt(req.params.id);
@@ -1170,7 +1170,7 @@ export async function registerRoutes(
     }
   });
 
-  api.post("/api/tasks", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  app.post("/api/tasks", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const orgId = (req as any).organization!.id;
       const userId = (req.user as any).id;
@@ -1212,7 +1212,7 @@ export async function registerRoutes(
     }
   });
 
-  api.put("/api/tasks/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  app.put("/api/tasks/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const orgId = (req as any).organization!.id;
       const userId = (req.user as any).id;
@@ -1258,7 +1258,7 @@ export async function registerRoutes(
     }
   });
 
-  api.delete("/api/tasks/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  app.delete("/api/tasks/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const orgId = (req as any).organization!.id;
       const id = parseInt(req.params.id);
@@ -1291,7 +1291,7 @@ export async function registerRoutes(
     }
   });
 
-  api.post("/api/tasks/:id/complete", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  app.post("/api/tasks/:id/complete", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const orgId = (req as any).organization!.id;
       const userId = (req.user as any).id;
@@ -1325,7 +1325,7 @@ export async function registerRoutes(
     }
   });
 
-  api.post("/api/tasks/process-recurring", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  app.post("/api/tasks/process-recurring", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const recurringTasksDue = await storage.getRecurringTasksDue();
       const createdTasks = [];
@@ -1343,7 +1343,7 @@ export async function registerRoutes(
   });
 
   // Dashboard summary: overdue + today's pending tasks
-  api.get("/api/tasks/dashboard-summary", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  app.get("/api/tasks/dashboard-summary", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const orgId = (req as any).organization!.id;
       
