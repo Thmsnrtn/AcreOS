@@ -628,7 +628,17 @@ app.use("/api/auth", async (req, res, next) => {
     },
   );
 })().catch((err) => {
-  console.error("[startup] Fatal error during server initialization:", err);
+  console.error("[startup] Fatal error during server initialization:");
+  if (err instanceof Error) {
+    console.error("  Name:", err.name);
+    console.error("  Message:", err.message);
+    console.error("  Stack:", err.stack);
+  } else {
+    console.error("  Type:", typeof err);
+    console.error("  Value:", JSON.stringify(err, null, 2));
+    console.error("  String:", String(err));
+    try { console.error("  Keys:", Object.keys(err)); } catch {}
+  }
   process.exit(1);
 });
 
