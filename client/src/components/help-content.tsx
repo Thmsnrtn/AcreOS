@@ -26,7 +26,7 @@ const featureGuides = [
   {
     icon: Users,
     title: "Leads & CRM",
-    description: "Manage your land seller leads with a full-featured CRM system.",
+    description: "Manage your seller and buyer leads with a full-featured CRM system.",
     details: [
       "Import leads from various sources or add them manually",
       "Track lead status through customizable pipelines",
@@ -62,7 +62,7 @@ const featureGuides = [
   {
     icon: Mail,
     title: "Campaigns (Email, SMS, Direct Mail)",
-    description: "Run multi-channel marketing campaigns to reach land sellers.",
+    description: "Run multi-channel marketing campaigns to reach motivated sellers.",
     details: [
       "Create email campaigns with templates and personalization",
       "Send SMS messages to leads with opt-in/opt-out management",
@@ -150,8 +150,8 @@ export function HelpContent({ onNavigateToSupport }: HelpContentProps) {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-muted-foreground">
-            AcreOS is an all-in-one platform designed for land investors. It helps you manage every aspect of your 
-            land investing business, from finding motivated sellers to closing deals and managing seller-financed notes.
+            AcreOS is an all-in-one platform designed for real estate investors. It helps you manage every aspect of your
+            investing business, from finding motivated sellers to closing deals and managing seller-financed notes.
           </p>
           
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4">

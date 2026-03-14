@@ -13,17 +13,16 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { useOrganization } from "@/hooks/use-organization";
-import { 
-  Sparkles, 
-  ArrowRight, 
+import {
+  Sparkles,
+  ArrowRight,
   ArrowLeft,
-  Map, 
-  FileText, 
+  Map,
+  FileText,
   Database,
   Users,
   Mail,
@@ -35,6 +34,7 @@ import {
   Loader2,
   SkipForward,
   Building2,
+  Building,
   X,
   Upload,
   Home,
@@ -44,12 +44,22 @@ import {
   Megaphone,
   Check,
   Circle,
-  ExternalLink
+  ExternalLink,
+  Hammer,
+  TrendingUp,
+  Layers,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link } from "wouter";
 
-type BusinessType = "land_flipper" | "note_investor" | "hybrid";
+type BusinessType =
+  | "land_flipper"
+  | "note_investor"
+  | "hybrid"
+  | "residential_wholesaler"
+  | "fix_and_flip"
+  | "buy_and_hold"
+  | "commercial";
 
 type OnboardingStatus = {
   completed: boolean;
@@ -70,22 +80,58 @@ type OnboardingStatus = {
 
 const STORAGE_KEY = "acreos_onboarding";
 
+// Investor type definitions for the card grid in step 0
+const INVESTOR_TYPES: {
+  value: BusinessType;
+  label: string;
+  description: string;
+  icon: ElementType;
+}[] = [
+  { value: "land_flipper",          label: "Land Flipper",            icon: Map,       description: "Buy raw land at wholesale and resell for profit." },
+  { value: "residential_wholesaler",label: "Residential Wholesaler",  icon: Home,      description: "Find distressed homes and assign contracts to cash buyers." },
+  { value: "fix_and_flip",          label: "Fix & Flip",              icon: Hammer,    description: "Acquire distressed properties, renovate, and resell." },
+  { value: "buy_and_hold",          label: "Buy & Hold / Rental",     icon: TrendingUp,description: "Build a rental portfolio for long-term cash flow." },
+  { value: "commercial",            label: "Commercial Investor",     icon: Building,  description: "Office, retail, multi-family, and industrial acquisitions." },
+  { value: "note_investor",         label: "Note Investor",           icon: FileText,  description: "Seller-finance real estate sales and collect payments." },
+  { value: "hybrid",                label: "Land + Notes (Hybrid)",   icon: Layers,    description: "Cash flips and seller-financed deals — both strategies." },
+];
+
 // Role-specific next steps shown after the welcome/role-selection step
 const ROLE_NEXT_STEPS: Record<BusinessType, { icon: ElementType; label: string; description: string; href: string }[]> = {
   note_investor: [
-    { icon: Link2, label: "Set Up ACH Payments", description: "Connect your bank to collect note payments automatically.", href: "/settings?tab=integrations" },
-    { icon: Upload, label: "Import Existing Notes", description: "Bring in your current seller-financed portfolio.", href: "/leads?action=import" },
-    { icon: Users, label: "Add First Borrower", description: "Create a borrower profile for your first active note.", href: "/leads?action=add" },
+    { icon: Link2,     label: "Set Up ACH Payments",      description: "Connect your bank to collect note payments automatically.",     href: "/settings?tab=integrations" },
+    { icon: Upload,    label: "Import Existing Notes",     description: "Bring in your current seller-financed portfolio.",              href: "/leads?action=import" },
+    { icon: Users,     label: "Add First Borrower",        description: "Create a borrower profile for your first active note.",         href: "/leads?action=add" },
   ],
   land_flipper: [
-    { icon: Upload, label: "Import Leads", description: "Upload your CSV list of motivated seller leads.", href: "/leads?action=import" },
-    { icon: Megaphone, label: "Set Up Campaign", description: "Launch your first direct mail or email campaign.", href: "/campaigns" },
-    { icon: Settings, label: "Configure Deal Criteria", description: "Define your buy box: target counties, lot size, and price range.", href: "/settings?tab=deal-criteria" },
+    { icon: Upload,    label: "Import Leads",              description: "Upload your CSV list of motivated seller leads.",               href: "/leads?action=import" },
+    { icon: Megaphone, label: "Set Up Campaign",           description: "Launch your first direct mail or email campaign.",             href: "/campaigns" },
+    { icon: Settings,  label: "Configure Deal Criteria",   description: "Define your buy box: target counties, lot size, and price range.", href: "/settings?tab=deal-criteria" },
   ],
   hybrid: [
-    { icon: Upload, label: "Import Leads", description: "Start by loading your existing lead list.", href: "/leads?action=import" },
-    { icon: Link2, label: "Set Up ACH Payments", description: "Enable automatic payment collection for seller-financed deals.", href: "/settings?tab=integrations" },
-    { icon: Megaphone, label: "Set Up Campaign", description: "Launch your first outreach campaign.", href: "/campaigns" },
+    { icon: Upload,    label: "Import Leads",              description: "Start by loading your existing lead list.",                     href: "/leads?action=import" },
+    { icon: Link2,     label: "Set Up ACH Payments",       description: "Enable automatic payment collection for seller-financed deals.", href: "/settings?tab=integrations" },
+    { icon: Megaphone, label: "Set Up Campaign",           description: "Launch your first outreach campaign.",                          href: "/campaigns" },
+  ],
+  residential_wholesaler: [
+    { icon: Upload,    label: "Build Your Buyer List",     description: "Import your cash buyers — this is your most valuable asset.",  href: "/leads?action=import" },
+    { icon: Megaphone, label: "Set Up Seller Outreach",    description: "Launch your SMS + email motivated seller campaign.",           href: "/campaigns" },
+    { icon: Settings,  label: "Define Your Buy Box",       description: "Set your target neighborhoods, price range, and deal criteria.", href: "/settings?tab=deal-criteria" },
+  ],
+  fix_and_flip: [
+    { icon: Plus,      label: "Add Your First Deal",       description: "Create a deal and track your acquisition and rehab plan.",     href: "/pipeline" },
+    { icon: Upload,    label: "Import Leads",              description: "Upload your list of distressed property leads.",               href: "/leads?action=import" },
+    { icon: Megaphone, label: "Set Up Outreach Campaign",  description: "Launch direct mail or SMS to find your next deal.",           href: "/campaigns" },
+  ],
+  buy_and_hold: [
+    { icon: Upload,    label: "Add a Rental Property",     description: "Track your existing portfolio or add your first target.",      href: "/properties" },
+    { icon: Megaphone, label: "Set Up Off-Market Outreach",description: "Find sellers before they list with targeted campaigns.",       href: "/campaigns" },
+    { icon: Link2,     label: "Set Up Payment Collection", description: "If you seller-finance, connect ACH for automated payments.",  href: "/settings?tab=integrations" },
+  ],
+  commercial: [
+    { icon: Plus,      label: "Add a Property or Deal",    description: "Start tracking your pipeline — properties and active deals.",  href: "/pipeline" },
+    { icon: Megaphone, label: "Set Up Outreach Campaign",  description: "Reach off-market owners with targeted email campaigns.",       href: "/campaigns" },
+    { icon: Upload,    label: "Import Your Contacts",      description: "Load your existing owner and broker contact list.",            href: "/leads?action=import" },
   ],
 };
 
@@ -129,7 +175,7 @@ const WIZARD_STEPS = [
     id: 5,
     name: "complete",
     title: "Complete",
-    description: "You're all set to start growing your land business!",
+    description: "You're all set to start growing your real estate business!",
     icon: PartyPopper,
   },
 ];
@@ -382,94 +428,57 @@ export function OnboardingWizard() {
     switch (currentStep) {
       case 0:
         return (
-          <div className="space-y-4">
+          <div className="space-y-5">
             <div className="space-y-2">
               <Label htmlFor="org-name">Organization Name</Label>
               <Input
                 id="org-name"
                 value={organizationName}
                 onChange={(e) => setOrganizationName(e.target.value)}
-                placeholder="My Land Company"
+                placeholder="My Real Estate Company"
                 data-testid="input-org-name"
               />
             </div>
-            
+
             <div className="space-y-2">
               <Label>What type of investing do you do?</Label>
+              <p className="text-xs text-muted-foreground">
+                We'll customize your workspace, templates, and campaigns to match your strategy.
+              </p>
             </div>
-            
-            <RadioGroup
-              value={businessType}
-              onValueChange={(value) => setBusinessType(value as BusinessType)}
-              className="grid gap-3"
-            >
-              <Label
-                htmlFor="land_flipper"
-                className={`flex items-start gap-4 p-4 rounded-md border cursor-pointer transition-colors ${
-                  businessType === "land_flipper" ? "border-primary bg-primary/5" : "border-border"
-                }`}
-                data-testid="option-land-flipper"
-              >
-                <RadioGroupItem value="land_flipper" id="land_flipper" className="mt-1" />
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Map className="w-4 h-4 text-primary" />
-                    <span className="font-medium">Land Flipper</span>
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    Buy land at wholesale and resell for profit.
-                  </p>
-                </div>
-              </Label>
-              
-              <Label
-                htmlFor="note_investor"
-                className={`flex items-start gap-4 p-4 rounded-md border cursor-pointer transition-colors ${
-                  businessType === "note_investor" ? "border-primary bg-primary/5" : "border-border"
-                }`}
-                data-testid="option-note-investor"
-              >
-                <RadioGroupItem value="note_investor" id="note_investor" className="mt-1" />
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <FileText className="w-4 h-4 text-primary" />
-                    <span className="font-medium">Note Investor</span>
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    Seller-finance land sales and collect payments.
-                  </p>
-                </div>
-              </Label>
-              
-              <Label
-                htmlFor="hybrid"
-                className={`flex items-start gap-4 p-4 rounded-md border cursor-pointer transition-colors ${
-                  businessType === "hybrid" ? "border-primary bg-primary/5" : "border-border"
-                }`}
-                data-testid="option-hybrid"
-              >
-                <RadioGroupItem value="hybrid" id="hybrid" className="mt-1" />
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Building2 className="w-4 h-4 text-primary" />
-                    <span className="font-medium">Both</span>
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    Cash flips and seller-financed deals.
-                  </p>
-                </div>
-              </Label>
-            </RadioGroup>
+
+            <div className="grid grid-cols-2 gap-2">
+              {INVESTOR_TYPES.map((type) => {
+                const TypeIcon = type.icon;
+                const selected = businessType === type.value;
+                return (
+                  <button
+                    key={type.value}
+                    type="button"
+                    onClick={() => setBusinessType(type.value)}
+                    data-testid={`option-${type.value}`}
+                    className={`flex flex-col items-start gap-2 p-3 rounded-md border text-left transition-colors ${
+                      selected
+                        ? "border-primary bg-primary/5"
+                        : "border-border hover:border-primary/40 hover:bg-muted/40"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 w-full">
+                      <TypeIcon className={`w-4 h-4 flex-shrink-0 ${selected ? "text-primary" : "text-muted-foreground"}`} />
+                      <span className={`font-medium text-sm ${selected ? "text-primary" : ""}`}>{type.label}</span>
+                      {selected && <CheckCircle2 className="w-3.5 h-3.5 text-primary ml-auto flex-shrink-0" />}
+                    </div>
+                    <p className="text-xs text-muted-foreground leading-snug">{type.description}</p>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         );
 
       case 1: {
         const roleSteps = ROLE_NEXT_STEPS[businessType] ?? ROLE_NEXT_STEPS.land_flipper;
-        const roleLabel = businessType === "note_investor"
-          ? "note investor"
-          : businessType === "hybrid"
-            ? "hybrid investor"
-            : "land flipper";
+        const roleLabel = INVESTOR_TYPES.find((t) => t.value === businessType)?.label ?? "investor";
         return (
           <div className="space-y-4">
             <p className="text-muted-foreground text-center">
@@ -557,18 +566,20 @@ export function OnboardingWizard() {
                 </div>
               </div>
               
-              <div className="space-y-2">
-                <Label htmlFor="property-acres">Acres</Label>
-                <Input
-                  id="property-acres"
-                  type="number"
-                  step="0.01"
-                  value={propertyAcres}
-                  onChange={(e) => setPropertyAcres(e.target.value)}
-                  placeholder="5.25"
-                  data-testid="input-property-acres"
-                />
-              </div>
+              {(businessType === "land_flipper" || businessType === "note_investor" || businessType === "hybrid") && (
+                <div className="space-y-2">
+                  <Label htmlFor="property-acres">Acres</Label>
+                  <Input
+                    id="property-acres"
+                    type="number"
+                    step="0.01"
+                    value={propertyAcres}
+                    onChange={(e) => setPropertyAcres(e.target.value)}
+                    placeholder="5.25"
+                    data-testid="input-property-acres"
+                  />
+                </div>
+              )}
             </div>
 
             <div className="pt-2">
@@ -647,6 +658,10 @@ export function OnboardingWizard() {
                     {businessType === "land_flipper" && "Acquisition mailer templates ready"}
                     {businessType === "note_investor" && "Payment reminder templates ready"}
                     {businessType === "hybrid" && "Full campaign suite created"}
+                    {businessType === "residential_wholesaler" && "Motivated seller & buyer campaigns ready"}
+                    {businessType === "fix_and_flip" && "Distressed property outreach templates ready"}
+                    {businessType === "buy_and_hold" && "Off-market acquisition campaigns ready"}
+                    {businessType === "commercial" && "Commercial outreach templates ready"}
                   </p>
                 </div>
                 <ExternalLink className="w-4 h-4 text-muted-foreground" />
@@ -690,6 +705,8 @@ export function OnboardingWizard() {
               <h3 className="text-xl font-semibold mb-2">You're All Set!</h3>
               <p className="text-muted-foreground">
                 Your AcreOS account is ready. Start finding and closing deals.
+                {" "}Your workspace has been tailored for{" "}
+                <strong>{INVESTOR_TYPES.find((t) => t.value === businessType)?.label ?? "your strategy"}</strong>.
               </p>
             </div>
             

@@ -71,6 +71,7 @@ import { prefetchRoute } from "@/lib/queryClient";
 import { NotificationCenter } from "@/components/notification-center";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useFeatureFlags } from "@/hooks/use-feature-flags";
+import { useOrganization } from "@/hooks/use-organization";
 
 // ─────────────────────────────────────────────────────────────────────
 // Sophie proactive notification badge
@@ -274,7 +275,7 @@ const NAV_MODULES: NavModule[] = [
     label: "Dashboard",
     icon: LayoutDashboard,
     href: "/",
-    description: "Overview of your land investment business",
+    description: "Overview of your real estate business",
   },
   {
     id: "inbox",
@@ -289,7 +290,7 @@ const NAV_MODULES: NavModule[] = [
     label: "Leads",
     icon: Users,
     href: "/leads",
-    description: "Manage your land seller leads",
+    description: "Manage your leads and sellers",
     children: [
       { label: "All Leads", icon: Users, href: "/leads", description: "All your leads" },
       { label: "Campaigns", icon: Mail, href: "/campaigns", description: "Email, SMS, and direct mail campaigns" },
@@ -427,6 +428,14 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
 
 // ─────────────────────────────────────────────────────────────────────
 // Main Sidebar component
+// Routes hidden for non-land investor types
+const BUSINESS_TYPE_HIDDEN_ROUTES: Record<string, string[]> = {
+  residential_wholesaler: ["/maps", "/land-credit"],
+  fix_and_flip:           ["/maps", "/land-credit"],
+  buy_and_hold:           ["/maps", "/land-credit"],
+  commercial:             ["/maps", "/land-credit"],
+};
+
 // ─────────────────────────────────────────────────────────────────────
 export function Sidebar() {
   const [location] = useLocation();
@@ -434,17 +443,25 @@ export function Sidebar() {
   const [isOpen, setIsOpen] = useState(false);
   const { isCollapsed, setIsCollapsed } = useSidebarCollapsed();
   const { isRouteEnabled, isLoading: flagsLoading } = useFeatureFlags();
+  const { data: organization } = useOrganization();
+
+  const businessType = (organization?.onboardingData as any)?.businessType as string | undefined;
+  const hiddenForType = businessType ? (BUSINESS_TYPE_HIDDEN_ROUTES[businessType] ?? []) : [];
 
   // Filter NAV_MODULES: hide any nav items whose route is feature-flagged off
+  // or hidden for the user's investor type.
   // While flags are loading we show everything (prevents flicker on initial load)
   const visibleModules = flagsLoading
     ? NAV_MODULES
     : NAV_MODULES.map((module) => ({
         ...module,
-        children: module.children?.filter((child) => isRouteEnabled(child.href)),
+        children: module.children?.filter(
+          (child) => isRouteEnabled(child.href) && !hiddenForType.includes(child.href)
+        ),
       })).filter((module) => {
         // If the module itself has a controlled route, check it
         if (!isRouteEnabled(module.href)) return false;
+        if (hiddenForType.includes(module.href)) return false;
         // If all children were filtered out and the module is purely a container, hide it
         if (module.children !== undefined && module.children.length === 0) return false;
         return true;
@@ -550,7 +567,7 @@ export function Sidebar() {
         )}
         {!isCollapsed && (
           <p className="text-xs text-muted-foreground mt-1">
-            Land Investment Platform
+            Real Estate Investor OS
           </p>
         )}
       </div>

@@ -16,7 +16,7 @@ const onboardingSteps = [
   {
     icon: Sparkles,
     title: "Welcome to AcreOS",
-    description: "Your complete land investment management platform. Let's get you set up for success.",
+    description: "The operating system for real estate investors. Let's get you set up for success.",
     highlight: "We'll guide you through the key features to help you get started quickly.",
   },
   {

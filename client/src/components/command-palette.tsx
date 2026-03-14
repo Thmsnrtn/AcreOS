@@ -231,7 +231,7 @@ export function CommandPalette() {
               <div className="relative">
                 <CommandInput
                   ref={inputRef}
-                  placeholder={showAIMode ? "Ask me anything about your land business..." : "Search pages, actions, or type a question..."}
+                  placeholder={showAIMode ? "Ask me anything about your real estate business..." : "Search pages, actions, or type a question..."}
                   value={inputValue}
                   onValueChange={setInputValue}
                   onKeyDown={(e) => {

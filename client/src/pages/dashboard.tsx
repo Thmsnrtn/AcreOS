@@ -459,7 +459,7 @@ export default function Dashboard() {
                 <h1 className="text-3xl font-bold text-foreground" data-testid="text-dashboard-title">
                   Dashboard
                 </h1>
-                <p className="text-muted-foreground mt-2">Overview of your land investment performance.</p>
+                <p className="text-muted-foreground mt-2">Overview of your real estate investment performance.</p>
               </div>
               <div className="flex items-center gap-2">
                 <WorkspaceManager />
