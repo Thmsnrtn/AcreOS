@@ -6,6 +6,7 @@ import {
   CheckCircle2, AlertCircle, Globe, BarChart2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PaxEditDiff } from "@/components/pax-edit-diff";
 
 export type ToolStatus = "running" | "done" | "error";
 
@@ -15,6 +16,8 @@ export interface ToolEvent {
   args?: Record<string, any>;
   resultSummary?: string;
   status: ToolStatus;
+  diffBefore?: Record<string, any>;
+  diffAfter?: Record<string, any>;
 }
 
 interface ToolMeta {
@@ -38,6 +41,7 @@ const TOOL_META: Record<string, ToolMeta> = {
   get_deals:             { icon: Building,     label: "Looking up deals",            paramSummary: (a) => a.status ?? "all" },
   create_deal:           { icon: Building,     label: "Creating deal",               paramSummary: (a) => a.propertyId ? `property #${a.propertyId}` : "" },
   update_deal:           { icon: RefreshCw,    label: "Updating deal",               paramSummary: (a) => `→ ${a.status ?? a.stage ?? ""}` },
+  update_property:       { icon: RefreshCw,    label: "Updating property",           paramSummary: (a) => `#${a.property_id ?? ""}` },
   get_notes:             { icon: FileText,     label: "Loading notes",               paramSummary: (a) => a.status ?? "all" },
   calculate_amortization:{ icon: Calculator,   label: "Calculating amortization",    paramSummary: (a) => a.principal ? `$${Number(a.principal).toLocaleString()}` : "" },
   calculate_roi:         { icon: TrendingUp,   label: "Calculating ROI",             paramSummary: (a) => a.purchasePrice ? `$${Number(a.purchasePrice).toLocaleString()}` : "" },
@@ -50,6 +54,13 @@ const TOOL_META: Record<string, ToolMeta> = {
   get_campaigns:         { icon: Zap,          label: "Loading campaigns",           paramSummary: () => "" },
   web_search:            { icon: Globe,        label: "Searching the web",           paramSummary: (a) => a.query ?? "" },
 };
+
+const MUTATION_TOOLS = new Set([
+  "update_lead_status",
+  "update_deal",
+  "update_property",
+  "schedule_followup",
+]);
 
 function getToolMeta(name: string): ToolMeta {
   return TOOL_META[name] ?? {
@@ -75,6 +86,14 @@ function resultToSummary(name: string, result: any): string {
   }
 }
 
+function getEntityLabel(event: ToolEvent): string {
+  const args = event.args ?? {};
+  if (event.name === "update_lead_status") return args.lead_id ? `Lead #${args.lead_id}` : "lead";
+  if (event.name === "update_deal") return args.deal_id ? `Deal #${args.deal_id}` : "deal";
+  if (event.name === "update_property") return args.property_id ? `Property #${args.property_id}` : "property";
+  return "record";
+}
+
 interface ToolCardProps {
   event: ToolEvent;
 }
@@ -83,57 +102,81 @@ function ToolCard({ event }: ToolCardProps) {
   const [expanded, setExpanded] = useState(false);
   const meta = getToolMeta(event.name);
   const Icon = meta.icon;
+  const isMutation = MUTATION_TOOLS.has(event.name);
 
   let paramStr = "";
   try {
     paramStr = event.args ? meta.paramSummary(event.args) : "";
   } catch {}
 
+  const showDiff =
+    event.status === "done" &&
+    isMutation &&
+    event.diffBefore !== undefined &&
+    event.diffAfter !== undefined;
+
   return (
-    <div
-      className={cn(
-        "rounded-md border text-xs transition-colors",
-        event.status === "running" && "border-blue-500/30 bg-blue-500/5",
-        event.status === "done"    && "border-green-500/30 bg-green-500/5",
-        event.status === "error"   && "border-red-500/30 bg-red-500/5"
-      )}
-    >
-      <button
-        type="button"
-        className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left"
-        onClick={() => setExpanded((v) => !v)}
+    <div className="space-y-0.5">
+      <div
+        className={cn(
+          "rounded-md border text-xs transition-colors",
+          event.status === "running" && "border-blue-500/30 bg-blue-500/5",
+          event.status === "done"    && "border-green-500/30 bg-green-500/5",
+          event.status === "error"   && "border-red-500/30 bg-red-500/5"
+        )}
       >
-        {/* Status indicator */}
-        {event.status === "running" && <Loader2 className="w-3 h-3 text-blue-500 animate-spin flex-shrink-0" />}
-        {event.status === "done"    && <CheckCircle2 className="w-3 h-3 text-green-500 flex-shrink-0" />}
-        {event.status === "error"   && <AlertCircle  className="w-3 h-3 text-red-500 flex-shrink-0" />}
+        <button
+          type="button"
+          className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left"
+          onClick={() => setExpanded((v) => !v)}
+        >
+          {/* Status indicator */}
+          {event.status === "running" && (
+            isMutation
+              ? <Loader2 className="w-3 h-3 text-blue-500 animate-spin flex-shrink-0" />
+              : <Loader2 className="w-3 h-3 text-blue-500 animate-spin flex-shrink-0" />
+          )}
+          {event.status === "done"    && <CheckCircle2 className="w-3 h-3 text-green-500 flex-shrink-0" />}
+          {event.status === "error"   && <AlertCircle  className="w-3 h-3 text-red-500 flex-shrink-0" />}
 
-        <Icon className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+          <Icon className="w-3 h-3 text-muted-foreground flex-shrink-0" />
 
-        <span className="font-medium text-foreground">{meta.label}</span>
-
-        {paramStr && (
-          <span className="text-muted-foreground truncate flex-1">{paramStr}</span>
-        )}
-
-        {event.resultSummary && event.status === "done" && (
-          <span className="text-green-600 dark:text-green-400 ml-auto flex-shrink-0">
-            → {event.resultSummary}
+          <span className="font-medium text-foreground">
+            {event.status === "running" && isMutation ? "Pax is editing…" : meta.label}
           </span>
+
+          {paramStr && (
+            <span className="text-muted-foreground truncate flex-1">{paramStr}</span>
+          )}
+
+          {event.resultSummary && event.status === "done" && !showDiff && (
+            <span className="text-green-600 dark:text-green-400 ml-auto flex-shrink-0">
+              → {event.resultSummary}
+            </span>
+          )}
+
+          {expanded
+            ? <ChevronDown className="w-3 h-3 text-muted-foreground ml-1 flex-shrink-0" />
+            : <ChevronRight className="w-3 h-3 text-muted-foreground ml-1 flex-shrink-0" />
+          }
+        </button>
+
+        {expanded && event.args && (
+          <div className="px-2.5 pb-1.5 border-t border-dashed border-border/50 mt-0.5 pt-1">
+            <pre className="text-[10px] text-muted-foreground whitespace-pre-wrap break-all leading-relaxed">
+              {JSON.stringify(event.args, null, 2)}
+            </pre>
+          </div>
         )}
+      </div>
 
-        {expanded
-          ? <ChevronDown className="w-3 h-3 text-muted-foreground ml-1 flex-shrink-0" />
-          : <ChevronRight className="w-3 h-3 text-muted-foreground ml-1 flex-shrink-0" />
-        }
-      </button>
-
-      {expanded && event.args && (
-        <div className="px-2.5 pb-1.5 border-t border-dashed border-border/50 mt-0.5 pt-1">
-          <pre className="text-[10px] text-muted-foreground whitespace-pre-wrap break-all leading-relaxed">
-            {JSON.stringify(event.args, null, 2)}
-          </pre>
-        </div>
+      {showDiff && (
+        <PaxEditDiff
+          toolName={event.name}
+          entityLabel={getEntityLabel(event)}
+          before={event.diffBefore!}
+          after={event.diffAfter!}
+        />
       )}
     </div>
   );
