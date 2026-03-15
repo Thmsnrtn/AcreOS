@@ -791,6 +791,22 @@ Respond in JSON format:
         relatedEntityId: transcriptId,
       });
 
+      // Trigger event-driven nudge for voice-to-action pipeline
+      process.nextTick(async () => {
+        try {
+          const { handleDomainEvent } = await import("./paxNudges");
+          await handleDomainEvent({
+            organizationId: transcript.organizationId,
+            eventType: "call_processing_completed",
+            payload: {
+              transcriptId,
+              summary: finalTranscript.summary as string | undefined,
+              actionItemCount: (finalTranscript.actionItems as any[] || []).length,
+            },
+          });
+        } catch {}
+      });
+
       return finalTranscript;
     } catch (error) {
       await db.insert(agentEvents).values({

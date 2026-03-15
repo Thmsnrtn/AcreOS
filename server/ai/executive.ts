@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import { db } from "../db";
 import { eq, desc } from "drizzle-orm";
-import { toolDefinitions, executeTool, getOpenAITools, getToolsForRole } from "./tools";
+import { toolDefinitions, executeTool, getOpenAITools, getToolsForRole, APPROVAL_REQUIRED_TOOLS } from "./tools";
 import { aiConversations, aiMessages, type Organization, type AiConversation, type AiMessage } from "@shared/schema";
 import {
   selectProviderAndModel,
@@ -1035,6 +1035,21 @@ export async function* processChatStream(
         for (const toolCall of currentToolCalls) {
           yield { type: "tool_start", toolCall: { name: toolCall.function.name } };
           const args = JSON.parse(toolCall.function.arguments);
+
+          // Pre-approval gate for communication/payment tools
+          if (APPROVAL_REQUIRED_TOOLS.has(toolCall.function.name)) {
+            yield { type: "approval_required", toolCallId: toolCall.id, toolName: toolCall.function.name, args };
+            const syntheticResult = {
+              success: false,
+              requiresApproval: true,
+              message: `This action requires your explicit approval before it can be sent. The user will confirm in the chat.`,
+            };
+            toolCallsExecuted.push({ name: toolCall.function.name, arguments: args, result: syntheticResult });
+            yield { type: "tool_result", toolCall: { name: toolCall.function.name, result: syntheticResult } };
+            toolResults.push({ role: "tool", tool_call_id: toolCall.id, content: JSON.stringify(syntheticResult) });
+            continue;
+          }
+
           const result = await executeTool(toolCall.function.name, args, org);
           toolCallsExecuted.push({ name: toolCall.function.name, arguments: args, result });
           yield { type: "tool_result", toolCall: { name: toolCall.function.name, result } };

@@ -112,6 +112,17 @@ export function registerAIRoutes(app: Express): void {
   // Get conversation history
   api.get("/api/ai/conversations", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = (req as any).organization;
+    const q = (req.query.q as string | undefined)?.trim();
+    if (q) {
+      const { ilike } = await import("drizzle-orm");
+      const { aiConversations: convs } = await import("@shared/schema");
+      const { desc: _desc } = await import("drizzle-orm");
+      const results = await db.select().from(convs)
+        .where(and(eq(convs.organizationId, org.id), ilike(convs.title, `%${q}%`)))
+        .orderBy(_desc(convs.updatedAt))
+        .limit(30);
+      return res.json(results);
+    }
     const conversations = await storage.getAiConversations(org.id);
     res.json(conversations);
   });
@@ -1436,6 +1447,154 @@ export function registerAIRoutes(app: Express): void {
       res.status(500).json({ message: error.message });
     }
   });
-  
 
+  // ============================================
+  // VOICE TRANSCRIPTION (Whisper mic input)
+  // ============================================
+
+  api.post("/api/ai/voice/transcribe", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const multer = (await import("multer")).default;
+      const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
+      upload.single("audio")(req as any, res as any, async (err: any) => {
+        if (err) return res.status(400).json({ message: err.message });
+        const file = (req as any).file;
+        if (!file) return res.status(400).json({ message: "No audio file provided" });
+        try {
+          const { default: OpenAI } = await import("openai");
+          const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+          const { Readable } = await import("stream");
+          const audioStream = Readable.from(file.buffer);
+          (audioStream as any).name = file.originalname || "audio.webm";
+          const transcription = await client.audio.transcriptions.create({
+            file: audioStream as any,
+            model: "whisper-1",
+            response_format: "text",
+          });
+          res.json({ transcript: transcription });
+        } catch (transcribeErr: any) {
+          res.status(500).json({ message: transcribeErr.message || "Transcription failed" });
+        }
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // AI MEMORY VIEWER
+  // ============================================
+
+  api.get("/api/ai/memory", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { aiMemory: memTable } = await import("@shared/schema");
+      const { desc: _desc, eq: _eq } = await import("drizzle-orm");
+      const memories = await db.select().from(memTable)
+        .where(_eq(memTable.organizationId, org.id))
+        .orderBy(_desc(memTable.createdAt))
+        .limit(100);
+      res.json(memories);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.delete("/api/ai/memory/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const { aiMemory: memTable } = await import("@shared/schema");
+      const { eq: _eq, and: _and } = await import("drizzle-orm");
+      await db.delete(memTable).where(_and(_eq(memTable.id, id), _eq(memTable.organizationId, org.id)));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // SCHEDULED TASK RUN HISTORY
+  // ============================================
+
+  api.get("/api/ai/scheduled-tasks/:id/runs", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const taskId = parseInt(req.params.id);
+      const { paxScheduledTaskRuns } = await import("@shared/schema");
+      const { desc: _desc, eq: _eq, and: _and } = await import("drizzle-orm");
+      const runs = await db.select().from(paxScheduledTaskRuns)
+        .where(_and(_eq(paxScheduledTaskRuns.taskId, taskId), _eq(paxScheduledTaskRuns.organizationId, org.id)))
+        .orderBy(_desc(paxScheduledTaskRuns.runAt))
+        .limit(20);
+      res.json(runs);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // PRE-APPROVAL GATE FOR DESTRUCTIVE TOOLS
+  // ============================================
+
+  // In-memory pending approvals: conversationId+toolCallId → { toolName, args, orgId, resolve }
+  const pendingApprovals = new Map<string, { toolName: string; args: any; resolve: (approved: boolean) => void }>();
+
+  // Expose the map so executive.ts can use it via module-level export
+  (global as any).__paxPendingApprovals = pendingApprovals;
+
+  api.post("/api/ai/conversations/:id/approve-tool", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { toolCallId, approved } = req.body;
+      const key = `${req.params.id}:${toolCallId}`;
+      const pending = pendingApprovals.get(key);
+      if (!pending) return res.status(404).json({ message: "No pending approval found" });
+      pendingApprovals.delete(key);
+      pending.resolve(!!approved);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // SSE: REAL-TIME OBSERVATIONS STREAM
+  // ============================================
+
+  // Map of orgId → Set of SSE response objects
+  const obsClients = new Map<number, Set<any>>();
+  (global as any).__paxObsClients = obsClients;
+
+  api.get("/api/pax/observations/stream", isAuthenticated, getOrCreateOrg, (req, res) => {
+    const org = (req as any).organization;
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders();
+
+    if (!obsClients.has(org.id)) obsClients.set(org.id, new Set());
+    obsClients.get(org.id)!.add(res);
+
+    // Heartbeat every 25s
+    const heartbeat = setInterval(() => {
+      try { res.write(": heartbeat\n\n"); } catch {}
+    }, 25_000);
+
+    req.on("close", () => {
+      clearInterval(heartbeat);
+      obsClients.get(org.id)?.delete(res);
+    });
+  });
+
+}
+
+// Push a new observation to all connected SSE clients for an org
+export function pushObservationSSE(orgId: number, observation: any) {
+  const clients: Set<any> | undefined = (global as any).__paxObsClients?.get(orgId);
+  if (!clients || clients.size === 0) return;
+  const payload = `data: ${JSON.stringify(observation)}\n\n`;
+  for (const res of clients) {
+    try { res.write(payload); } catch {}
+  }
 }

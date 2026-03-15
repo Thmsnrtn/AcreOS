@@ -143,6 +143,110 @@ async function generateNudgesForOrg(org: Organization): Promise<void> {
   }
 }
 
+// ── Event-driven nudge creation ───────────────────────────────────────────────
+
+export async function handleDomainEvent(event: {
+  organizationId: number;
+  eventType: string;
+  payload?: Record<string, any>;
+}): Promise<void> {
+  const { organizationId: orgId, eventType, payload = {} } = event;
+  let nudge: any | null = null;
+
+  try {
+    switch (eventType) {
+      case "payment.missed":
+        nudge = {
+          organizationId: orgId,
+          content: `Payment missed${payload.leadName ? ` from ${payload.leadName}` : ""}. Dunning sequence auto-started — review now.`,
+          category: "payment_missed",
+          entityType: "deal",
+          entityId: payload.dealId,
+          priority: 1,
+          actionPrompt: payload.dealId
+            ? `Check the dunning status on deal ID ${payload.dealId} and suggest next steps.`
+            : `/cashflow — A payment was just missed. Show me the delinquency overview.`,
+        };
+        break;
+
+      case "lead.responded":
+        nudge = {
+          organizationId: orgId,
+          content: `${payload.leadName ?? "A lead"} just replied to your message. Open conversation?`,
+          category: "lead_response",
+          entityType: "lead",
+          entityId: payload.leadId,
+          priority: 1,
+          actionPrompt: payload.leadId
+            ? `Lead ID ${payload.leadId} just responded. Review their message and draft a reply.`
+            : `A lead just responded — help me draft a follow-up.`,
+        };
+        break;
+
+      case "deal.deadline_approaching":
+        nudge = {
+          organizationId: orgId,
+          content: `Closing deadline for "${payload.dealName ?? "a deal"}" is in ${payload.daysRemaining ?? 3} days.`,
+          category: "deal_deadline",
+          entityType: "deal",
+          entityId: payload.dealId,
+          priority: 1,
+          actionPrompt: payload.dealId
+            ? `Deal ID ${payload.dealId} has a closing deadline in ${payload.daysRemaining ?? 3} days. What needs to happen before close?`
+            : `/pipeline — I have a deal closing soon. What needs attention?`,
+        };
+        break;
+
+      case "lead.created":
+        nudge = {
+          organizationId: orgId,
+          content: `New lead received${payload.source ? ` from ${payload.source}` : ""}${payload.leadName ? `: ${payload.leadName}` : ""}. Score them now?`,
+          category: "new_lead",
+          entityType: "lead",
+          entityId: payload.leadId,
+          priority: 2,
+          actionPrompt: payload.leadId
+            ? `A new lead just came in (ID: ${payload.leadId}). Score and qualify them.`
+            : `/score — A new lead just came in. Help me prioritize them.`,
+        };
+        break;
+
+      case "call_processing_completed":
+        if (payload.summary || payload.actionItemCount > 0) {
+          nudge = {
+            organizationId: orgId,
+            content: `Call processed${payload.actionItemCount ? ` — ${payload.actionItemCount} action item${payload.actionItemCount > 1 ? "s" : ""} extracted` : ""}. Review and follow up?`,
+            category: "call_completed",
+            entityType: "call_transcript",
+            entityId: payload.transcriptId,
+            priority: 2,
+            actionPrompt: payload.transcriptId
+              ? `I just finished a call (transcript ID: ${payload.transcriptId}). Summarize the key points and draft a follow-up email.`
+              : `I just finished a call. Summarize the key points and draft a follow-up email.`,
+          };
+        }
+        break;
+
+      default:
+        return; // Unknown event type — no nudge
+    }
+
+    if (nudge) {
+      await db.insert(paxNudges as any).values(nudge);
+
+      // Push via SSE to connected clients
+      try {
+        const { pushObservationSSE } = await import("../routes-ai");
+        pushObservationSSE(orgId, { type: "nudge", ...nudge });
+      } catch {}
+
+      console.log(`[PaxNudges] Event-driven nudge created for org ${orgId}: ${eventType}`);
+    }
+  } catch (err) {
+    console.error(`[PaxNudges] handleDomainEvent error (${eventType}):`, err);
+  }
+}
+
 export async function processPaxNudges(): Promise<void> {
   try {
     const allOrgs = await db.select({ id: organizations.id, name: organizations.name })

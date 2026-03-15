@@ -313,7 +313,7 @@ class PaxObserverService {
    * Trigger notification based on type (passive or active)
    */
   private async triggerNotification(
-    observation: PaxObservation, 
+    observation: PaxObservation,
     decision: NotificationDecision
   ): Promise<void> {
     if (decision.notificationType === 'active') {
@@ -321,6 +321,19 @@ class PaxObserverService {
     } else if (decision.notificationType === 'passive') {
       console.log(`[paxObserver] Passive notification (badge) for org ${observation.organizationId}: ${observation.title}`);
     }
+
+    // Push via SSE to connected clients
+    try {
+      const { pushObservationSSE } = await import("../routes-ai");
+      pushObservationSSE(observation.organizationId, {
+        id: observation.id,
+        type: observation.type,
+        severity: observation.severity,
+        title: observation.title,
+        description: observation.description,
+        createdAt: observation.createdAt ?? new Date(),
+      });
+    } catch {}
   }
 
   /**

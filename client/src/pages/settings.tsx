@@ -21,7 +21,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, Crown, Check, ExternalLink, CreditCard, Loader2, Lightbulb, RotateCcw, Database, Trash2, BarChart3, Users, Home, FileText, Sparkles, TrendingUp, Coins, Shield, Mail, Phone, Bell, Code, Settings as SettingsIcon, Gift, Link2, AlertCircle, CheckCircle2, Clock, RefreshCw, Unlink, Wallet, Target, Plus, X, Calendar } from "lucide-react";
+import { Building2, Crown, Check, ExternalLink, CreditCard, Loader2, Lightbulb, RotateCcw, Database, Trash2, BarChart3, Users, Home, FileText, Sparkles, TrendingUp, Coins, Shield, Mail, Phone, Bell, Code, Settings as SettingsIcon, Gift, Link2, AlertCircle, CheckCircle2, Clock, RefreshCw, Unlink, Wallet, Target, Plus, X, Calendar, Zap } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Progress } from "@/components/ui/progress";
@@ -40,6 +40,8 @@ import { NotificationPreferences } from "@/components/notification-preferences";
 import { ImportExportManager } from "@/components/import-export";
 import { ComplianceSettings } from "@/components/compliance-settings";
 import { AISettings } from "@/components/ai-settings";
+import { WorkflowsSettingsTab } from "@/components/workflows-settings-tab";
+import { PaxTasksSettingsTab } from "@/components/pax-tasks-settings-tab";
 import { ProviderSettings } from "@/components/provider-settings";
 import { AICostDashboard } from "@/components/ai-cost-dashboard";
 import { ByokSettings } from "@/components/settings/ByokSettings";
@@ -73,7 +75,7 @@ interface SeatPricing {
   yearly?: { id: string; amount: number; currency: string } | null;
 }
 
-const VALID_TABS = ["general", "appearance", "team", "payments", "communications", "notifications", "ai", "data", "integrations", "developer", "goals", "referral"] as const;
+const VALID_TABS = ["general", "appearance", "team", "payments", "communications", "notifications", "ai", "data", "integrations", "developer", "goals", "referral", "automations", "ai-tasks"] as const;
 type TabValue = typeof VALID_TABS[number];
 
 interface StripeConnectStatusResponse {
@@ -768,6 +770,14 @@ export default function Settings() {
                 <TabsTrigger value="referral" data-testid="tab-referral" className="gap-1">
                   <Gift className="w-4 h-4 hidden sm:inline" />
                   Refer &amp; Earn
+                </TabsTrigger>
+                <TabsTrigger value="automations" data-testid="tab-automations" className="gap-1">
+                  <Zap className="w-4 h-4 hidden sm:inline" />
+                  Automations
+                </TabsTrigger>
+                <TabsTrigger value="ai-tasks" data-testid="tab-ai-tasks" className="gap-1">
+                  <Clock className="w-4 h-4 hidden sm:inline" />
+                  AI Tasks
                 </TabsTrigger>
               </TabsList>
             </div>
@@ -1503,6 +1513,14 @@ export default function Settings() {
             </TabsContent>
             <TabsContent value="referral" className="space-y-6 mt-6" data-testid="tab-content-referral">
               <ReferralSettings />
+            </TabsContent>
+
+            <TabsContent value="automations" className="space-y-6 mt-6" data-testid="tab-content-automations">
+              <WorkflowsSettingsTab />
+            </TabsContent>
+
+            <TabsContent value="ai-tasks" className="space-y-6 mt-6" data-testid="tab-content-ai-tasks">
+              <PaxTasksSettingsTab />
             </TabsContent>
           </Tabs>
       <ConfirmDialog
