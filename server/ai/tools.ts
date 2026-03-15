@@ -673,7 +673,7 @@ export async function executeTool(
           });
         }
         invalidateContextCache(org.id);
-        return { success: true, data: { message: `Lead status updated to ${args.status}`, lead: updated } };
+        return { success: true, data: { message: `Lead status updated to ${args.status}`, lead: updated, before: { status: leadBeforeUpdate?.status }, after: { status: args.status } } };
       }
 
       case "create_lead": {
@@ -861,10 +861,18 @@ export async function executeTool(
         if (args.listPrice !== undefined) updates.listPrice = String(args.listPrice);
         if (args.marketValue !== undefined) updates.marketValue = String(args.marketValue);
         if (args.notes) updates.notes = args.notes;
-        
+
+        const propertyBeforeUpdate = await storage.getProperty(org.id, args.property_id);
+        const before: Record<string, any> = {};
+        const after: Record<string, any> = {};
+        for (const key of Object.keys(updates)) {
+          before[key] = (propertyBeforeUpdate as any)?.[key];
+          after[key] = updates[key];
+        }
+
         const property = await storage.updateProperty(args.property_id, updates);
         invalidateContextCache(org.id);
-        return { success: true, data: { message: "Property updated successfully", property } };
+        return { success: true, data: { message: "Property updated successfully", property, before, after } };
       }
 
       // Deal CRUD
@@ -901,10 +909,19 @@ export async function executeTool(
         if (args.status) dealUpdates.status = args.status;
         if (args.offerAmount !== undefined) dealUpdates.offerAmount = String(args.offerAmount);
         if (args.notes) dealUpdates.notes = args.notes;
-        
+
+        const dealsForOrg = await storage.getDeals(org.id);
+        const dealBeforeUpdate = dealsForOrg.find((d) => d.id === args.deal_id);
+        const dealBefore: Record<string, any> = {};
+        const dealAfter: Record<string, any> = {};
+        for (const key of Object.keys(dealUpdates)) {
+          dealBefore[key] = (dealBeforeUpdate as any)?.[key];
+          dealAfter[key] = dealUpdates[key];
+        }
+
         const deal = await storage.updateDeal(args.deal_id, dealUpdates);
         invalidateContextCache(org.id);
-        return { success: true, data: { message: "Deal updated successfully", deal } };
+        return { success: true, data: { message: "Deal updated successfully", deal, before: dealBefore, after: dealAfter } };
       }
 
       // Task CRUD

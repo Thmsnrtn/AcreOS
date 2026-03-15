@@ -814,6 +814,26 @@ export async function* processChatStream(
 
         yield { type: "tool_result", toolCall: { name: toolCall.function.name, result } };
 
+        // Emit artifact event for tools that produce structured outputs
+        const ARTIFACT_TOOLS: Record<string, { type: "card" | "table" | "document"; title: string }> = {
+          calculate_roi:            { type: "card",     title: "ROI Analysis" },
+          calculate_amortization:   { type: "table",    title: "Amortization Schedule" },
+          run_comps_analysis:       { type: "table",    title: "Comparable Sales" },
+          generate_offer:           { type: "document", title: "Offer" },
+          generate_offer_letter:    { type: "document", title: "Offer Letter" },
+          get_cashflow_summary:     { type: "card",     title: "Cash Flow Summary" },
+        };
+        const artifactMeta = ARTIFACT_TOOLS[toolCall.function.name];
+        if (artifactMeta) {
+          try {
+            const parsed = typeof result === "string" ? JSON.parse(result) : result;
+            const data = parsed?.data ?? parsed;
+            if (data) {
+              yield { type: "artifact", artifactType: artifactMeta.type, title: artifactMeta.title, data };
+            }
+          } catch {}
+        }
+
         toolResults.push({
           role: "tool",
           tool_call_id: toolCall.id,

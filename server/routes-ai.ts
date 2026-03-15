@@ -130,6 +130,28 @@ export function registerAIRoutes(app: Express): void {
     res.json({ conversation, messages });
   });
   
+  // Get messages for a conversation (lightweight, for session restore)
+  api.get("/api/ai/conversations/:id/messages", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const conversationId = parseInt(req.params.id);
+    const limit = Math.min(parseInt((req.query.limit as string) ?? "20"), 50);
+
+    const conversation = await storage.getAiConversation(conversationId);
+    if (!conversation || conversation.organizationId !== org.id) {
+      return res.status(404).json({ message: "Conversation not found" });
+    }
+
+    const allMessages = await storage.getAiMessages(conversationId);
+    const messages = allMessages.slice(-limit);
+
+    res.json({
+      conversationId,
+      title: conversation.title,
+      updatedAt: conversation.updatedAt,
+      messages,
+    });
+  });
+
   // Create new conversation
   api.post("/api/ai/conversations", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = (req as any).organization;

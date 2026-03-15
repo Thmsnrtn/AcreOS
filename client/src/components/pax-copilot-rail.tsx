@@ -6,15 +6,18 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
-  Sparkles, Send, Loader2, X, ChevronRight, ChevronLeft,
+  Sparkles, Send, Loader2, X, ChevronRight,
   Users, MapPin, Building, Megaphone, LayoutDashboard,
   Zap, Bell, CheckCircle2, AlertCircle, RefreshCw,
+  Paperclip, Clock, MessageSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePaxRail } from "@/contexts/pax-rail-context";
 import { ToolCallStream, type ToolEvent, parseToolResultSummary } from "@/components/tool-call-stream";
+import { PaxArtifact, type PaxArtifactData } from "@/components/pax-artifact";
 
 // ─── Page context awareness ─────────────────────────────────────────────────
 
@@ -75,9 +78,11 @@ interface RailMessage {
   content: string;
   isStreaming?: boolean;
   toolEvents?: ToolEvent[];
+  artifacts?: PaxArtifactData[];
+  attachments?: { name: string }[];
 }
 
-// ─── Observation (Pax initiative feed) ───────────────────────────────────
+// ─── Observation ─────────────────────────────────────────────────────────────
 
 interface PaxObservation {
   id: number;
@@ -89,10 +94,42 @@ interface PaxObservation {
   acknowledged?: boolean;
 }
 
-// ─── Main Component ─────────────────────────────────────────────────────────
+// ─── File helpers ────────────────────────────────────────────────────────────
+
+const ACCEPTED_MIME = [
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "text/csv", "text/plain", "application/json",
+  "image/png", "image/jpeg", "image/webp",
+];
+const MAX_FILES = 3;
+const MAX_FILE_BYTES = 10 * 1024 * 1024;
+
+function readAsDataURL(file: File): Promise<{ name: string; content: string; size: number }> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve({ name: file.name, content: reader.result as string, size: file.size });
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+// ─── Recent conversation shape ───────────────────────────────────────────────
+
+interface RecentConversation {
+  id: number;
+  title: string;
+  updatedAt: string;
+}
+
+// ─── Main Component ──────────────────────────────────────────────────────────
 
 export function PaxCopilotRail() {
-  const { isOpen, setOpen, toggle, pendingContext, clearPendingContext } = usePaxRail();
+  const {
+    isOpen, setOpen, toggle,
+    pendingContext, clearPendingContext,
+    activeConversationId, setActiveConversationId,
+  } = usePaxRail();
   const [location] = useLocation();
   const pageMeta = useMemo(() => getPageMeta(location), [location]);
   const PageIcon = pageMeta.icon;
@@ -101,7 +138,6 @@ export function PaxCopilotRail() {
   const [messages, setMessages] = useState<RailMessage[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
-  const [conversationId, setConversationId] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -109,7 +145,20 @@ export function PaxCopilotRail() {
   // Running tool events indexed by message id
   const [activeToolEvents, setActiveToolEvents] = useState<Record<string, ToolEvent[]>>({});
 
-  // Pax observations (initiative feed)
+  // Session restore state
+  const [sessionRestored, setSessionRestored] = useState(false);
+  const [restoredFromDate, setRestoredFromDate] = useState<string | null>(null);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+
+  // Conversation switcher
+  const [showConvSwitcher, setShowConvSwitcher] = useState(false);
+
+  // File attachments
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Pax observations
   const { data: observationsData, refetch: refetchObs } = useQuery<PaxObservation[]>({
     queryKey: ["/api/pax/observations", { unread: true }],
     queryFn: async () => {
@@ -128,7 +177,54 @@ export function PaxCopilotRail() {
     onSuccess: () => refetchObs(),
   });
 
+  // Recent conversations (for switcher)
+  const { data: recentConversations } = useQuery<RecentConversation[]>({
+    queryKey: ["/api/ai/conversations"],
+    queryFn: async () => {
+      const r = await fetch("/api/ai/conversations", { credentials: "include" });
+      if (!r.ok) return [];
+      return r.json();
+    },
+    enabled: isOpen,
+    staleTime: 30_000,
+  });
+
   const observations = observationsData ?? [];
+
+  // ── Session restore ──────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!isOpen || sessionRestored || !activeConversationId || isLoadingHistory) return;
+    setIsLoadingHistory(true);
+    fetch(`/api/ai/conversations/${activeConversationId}/messages?limit=20`, { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data?.messages?.length) {
+          setSessionRestored(true);
+          return;
+        }
+        const restored: RailMessage[] = data.messages.map((m: any) => ({
+          id: `db-${m.id}`,
+          role: m.role as "user" | "assistant",
+          content: m.content ?? "",
+          isStreaming: false,
+          toolEvents: Array.isArray(m.toolCalls)
+            ? m.toolCalls.map((tc: any) => ({
+                id: `tc-${tc.name}-${m.id}`,
+                name: tc.name,
+                args: typeof tc.arguments === "string" ? JSON.parse(tc.arguments) : tc.arguments,
+                status: "done" as const,
+                resultSummary: parseToolResultSummary(tc.name, tc.result),
+              }))
+            : [],
+        }));
+        setMessages(restored);
+        setRestoredFromDate(data.updatedAt ?? null);
+        setSessionRestored(true);
+      })
+      .catch(() => setSessionRestored(true))
+      .finally(() => setIsLoadingHistory(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, activeConversationId, sessionRestored]);
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -140,18 +236,17 @@ export function PaxCopilotRail() {
     if (isOpen) setTimeout(() => inputRef.current?.focus(), 100);
   }, [isOpen]);
 
-  // Consume pending entity context
+  // Consume pending entity context (gate behind history loading)
   useEffect(() => {
-    if (!isOpen || !pendingContext) return;
+    if (!isOpen || !pendingContext || isLoadingHistory) return;
     const prompt = pendingContext.starterPrompt
       ?? `I'm looking at the ${pendingContext.entityType} "${pendingContext.entityName}" (#${pendingContext.entityId}). What should I know and what's the best next action?`;
     clearPendingContext();
-    // Small delay so the rail has rendered
     setTimeout(() => sendMessage(prompt), 150);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, pendingContext]);
+  }, [isOpen, pendingContext, isLoadingHistory]);
 
-  // ── Create conversation ─────────────────────────────────────────────────
+  // ── Create conversation ──────────────────────────────────────────────────
   const createConversation = useCallback(async (): Promise<number | null> => {
     try {
       const res = await fetch("/api/ai/conversations", {
@@ -165,18 +260,32 @@ export function PaxCopilotRail() {
     return null;
   }, []);
 
-  // ── Send message ────────────────────────────────────────────────────────
+  // ── Send message ─────────────────────────────────────────────────────────
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || isStreaming) return;
 
-    const userMsg: RailMessage = { id: `u-${Date.now()}`, role: "user", content: text.trim() };
+    // Read attached files
+    let filePayload: { name: string; content: string; size: number }[] = [];
+    if (attachedFiles.length > 0) {
+      try {
+        filePayload = await Promise.all(attachedFiles.map(readAsDataURL));
+      } catch {}
+      setAttachedFiles([]);
+    }
+
+    const userMsg: RailMessage = {
+      id: `u-${Date.now()}`,
+      role: "user",
+      content: text.trim(),
+      attachments: filePayload.length > 0 ? filePayload.map((f) => ({ name: f.name })) : undefined,
+    };
     setMessages((prev) => [...prev, userMsg]);
     setInputValue("");
 
-    let activeConvId = conversationId;
+    let activeConvId = activeConversationId;
     if (!activeConvId) {
       activeConvId = await createConversation();
-      if (activeConvId) setConversationId(activeConvId);
+      if (activeConvId) setActiveConversationId(activeConvId);
     }
 
     const asstId = `a-${Date.now()}`;
@@ -186,16 +295,19 @@ export function PaxCopilotRail() {
 
     try {
       abortRef.current = new AbortController();
+      const body: Record<string, any> = {
+        message: userMsg.content,
+        conversationId: activeConvId,
+        agentRole: "executive",
+        context: { page: pageMeta.label },
+      };
+      if (filePayload.length > 0) body.files = filePayload;
+
       const res = await fetch("/api/ai/chat/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({
-          message: userMsg.content,
-          conversationId: activeConvId,
-          agentRole: "executive",
-          context: { page: pageMeta.label },
-        }),
+        body: JSON.stringify(body),
         signal: abortRef.current.signal,
       });
 
@@ -213,8 +325,7 @@ export function PaxCopilotRail() {
       const reader = res.body?.getReader();
       const decoder = new TextDecoder();
       let accumulated = "";
-      // Track in-progress tool event IDs
-      const pendingToolIds: Record<string, string> = {}; // toolName→eventId
+      const pendingToolIds: Record<string, string> = {};
 
       if (reader) {
         while (true) {
@@ -248,18 +359,42 @@ export function PaxCopilotRail() {
                 const evtId = pendingToolIds[toolName];
                 if (evtId) {
                   const summary = parseToolResultSummary(toolName, data.toolCall.result);
+                  let diffBefore: Record<string, any> | undefined;
+                  let diffAfter: Record<string, any> | undefined;
+                  try {
+                    const parsed = typeof data.toolCall.result === "string"
+                      ? JSON.parse(data.toolCall.result)
+                      : data.toolCall.result;
+                    if (parsed?.data?.before) diffBefore = parsed.data.before;
+                    if (parsed?.data?.after) diffAfter = parsed.data.after;
+                  } catch {}
                   setActiveToolEvents((prev) => ({
                     ...prev,
                     [asstId]: (prev[asstId] ?? []).map((e) =>
-                      e.id === evtId ? { ...e, status: "done" as const, resultSummary: summary } : e
+                      e.id === evtId
+                        ? { ...e, status: "done" as const, resultSummary: summary, diffBefore, diffAfter }
+                        : e
                     ),
                   }));
                   delete pendingToolIds[toolName];
                 }
+              } else if (data.type === "artifact") {
+                const newArtifact: PaxArtifactData = {
+                  artifactType: data.artifactType,
+                  title: data.title,
+                  data: data.data,
+                };
+                setMessages((prev) => prev.map((m) =>
+                  m.id === asstId
+                    ? { ...m, artifacts: [...(m.artifacts ?? []), newArtifact] }
+                    : m
+                ));
               } else if (data.type === "done") {
                 setMessages((prev) => prev.map((m) =>
                   m.id === asstId ? { ...m, isStreaming: false } : m
                 ));
+                // Refresh conversation list
+                queryClient.invalidateQueries({ queryKey: ["/api/ai/conversations"] });
               } else if (data.type === "error") {
                 setMessages((prev) => prev.map((m) =>
                   m.id === asstId ? { ...m, role: "error" as const, content: data.error ?? "An error occurred", isStreaming: false } : m
@@ -289,7 +424,8 @@ export function PaxCopilotRail() {
       setIsStreaming(false);
       abortRef.current = null;
     }
-  }, [isStreaming, conversationId, createConversation, pageMeta.label]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isStreaming, activeConversationId, createConversation, pageMeta.label, attachedFiles]);
 
   const handleSubmit = () => { if (inputValue.trim()) sendMessage(inputValue); };
 
@@ -306,12 +442,50 @@ export function PaxCopilotRail() {
     abortRef.current?.abort();
     setMessages([]);
     setActiveToolEvents({});
-    setConversationId(null);
+    setActiveConversationId(null);
     setIsStreaming(false);
+    setSessionRestored(false);
+    setRestoredFromDate(null);
+    setShowConvSwitcher(false);
     setTimeout(() => inputRef.current?.focus(), 50);
   };
 
-  // ── Render ──────────────────────────────────────────────────────────────
+  const switchConversation = (convId: number) => {
+    if (convId === activeConversationId) {
+      setShowConvSwitcher(false);
+      return;
+    }
+    abortRef.current?.abort();
+    setMessages([]);
+    setActiveToolEvents({});
+    setIsStreaming(false);
+    setSessionRestored(false);
+    setRestoredFromDate(null);
+    setShowConvSwitcher(false);
+    setActiveConversationId(convId);
+  };
+
+  const removeArtifact = (msgId: string, artifactIdx: number) => {
+    setMessages((prev) => prev.map((m) =>
+      m.id === msgId
+        ? { ...m, artifacts: m.artifacts?.filter((_, i) => i !== artifactIdx) }
+        : m
+    ));
+  };
+
+  // File drag handlers
+  const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragOver(true); };
+  const handleDragLeave = () => setIsDragOver(false);
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    const dropped = Array.from(e.dataTransfer.files)
+      .filter((f) => ACCEPTED_MIME.includes(f.type) && f.size <= MAX_FILE_BYTES)
+      .slice(0, MAX_FILES - attachedFiles.length);
+    setAttachedFiles((prev) => [...prev, ...dropped].slice(0, MAX_FILES));
+  };
+
+  // ── Render ───────────────────────────────────────────────────────────────
   return (
     <div
       className={cn(
@@ -320,8 +494,36 @@ export function PaxCopilotRail() {
         "transition-[width] duration-200 ease-in-out",
         isOpen ? "w-[360px] shadow-2xl" : "w-12"
       )}
+      onDragOver={isOpen ? handleDragOver : undefined}
+      onDragLeave={isOpen ? handleDragLeave : undefined}
+      onDrop={isOpen ? handleDrop : undefined}
     >
-      {/* ── Collapsed strip ─────────────────────────────────────── */}
+      {/* Drag-over overlay */}
+      {isOpen && isDragOver && (
+        <div className="absolute inset-0 z-50 bg-primary/10 border-2 border-primary border-dashed rounded flex flex-col items-center justify-center gap-2 pointer-events-none">
+          <Paperclip className="w-8 h-8 text-primary" />
+          <p className="text-sm font-medium text-primary">Drop files here</p>
+          <p className="text-xs text-muted-foreground">PDF, DOCX, CSV, images · max 10 MB · up to 3 files</p>
+        </div>
+      )}
+
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        className="hidden"
+        multiple
+        accept=".pdf,.docx,.csv,.txt,.json,.png,.jpg,.jpeg,.webp"
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? [])
+            .filter((f) => f.size <= MAX_FILE_BYTES)
+            .slice(0, MAX_FILES - attachedFiles.length);
+          setAttachedFiles((prev) => [...prev, ...files].slice(0, MAX_FILES));
+          e.target.value = "";
+        }}
+      />
+
+      {/* ── Collapsed strip ─────────────────────────────────── */}
       {!isOpen && (
         <div className="flex flex-col items-center gap-3 pt-4 pb-4 h-full">
           <Tooltip>
@@ -352,11 +554,11 @@ export function PaxCopilotRail() {
         </div>
       )}
 
-      {/* ── Expanded panel ──────────────────────────────────────── */}
+      {/* ── Expanded panel ──────────────────────────────────── */}
       {isOpen && (
         <>
           {/* Header */}
-          <div className="flex items-center gap-2 px-3 py-2.5 border-b flex-shrink-0">
+          <div className="flex items-center gap-2 px-3 py-2.5 border-b flex-shrink-0 relative">
             <div className="w-7 h-7 rounded-md bg-primary/10 flex items-center justify-center flex-shrink-0">
               <Sparkles className="w-3.5 h-3.5 text-primary" />
             </div>
@@ -371,6 +573,20 @@ export function PaxCopilotRail() {
               </div>
             </div>
             <div className="flex items-center gap-1">
+              {/* Conversation switcher toggle */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => setShowConvSwitcher((v) => !v)}
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Switch conversation</TooltipContent>
+              </Tooltip>
               {messages.length > 0 && (
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -390,10 +606,52 @@ export function PaxCopilotRail() {
                 <TooltipContent>Collapse (⌘J)</TooltipContent>
               </Tooltip>
             </div>
+
+            {/* Conversation switcher dropdown */}
+            {showConvSwitcher && (
+              <div className="absolute top-full right-0 left-0 z-50 bg-background border border-border rounded-b-lg shadow-lg">
+                <div className="px-3 py-2 border-b">
+                  <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Recent conversations</p>
+                </div>
+                {(recentConversations ?? []).slice(0, 5).length === 0 ? (
+                  <p className="text-xs text-muted-foreground px-3 py-2">No conversations yet</p>
+                ) : (
+                  (recentConversations ?? []).slice(0, 5).map((conv) => (
+                    <button
+                      key={conv.id}
+                      onClick={() => switchConversation(conv.id)}
+                      className={cn(
+                        "w-full text-left px-3 py-2 text-xs hover:bg-muted/50 flex items-start gap-2",
+                        conv.id === activeConversationId && "bg-primary/5"
+                      )}
+                    >
+                      <MessageSquare className="w-3 h-3 text-muted-foreground mt-0.5 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="truncate font-medium text-foreground">{conv.title}</p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {new Date(conv.updatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                        </p>
+                      </div>
+                      {conv.id === activeConversationId && (
+                        <span className="text-[9px] text-primary font-medium flex-shrink-0">Active</span>
+                      )}
+                    </button>
+                  ))
+                )}
+                <div className="px-3 py-2 border-t">
+                  <button
+                    onClick={handleNewChat}
+                    className="text-[11px] text-primary hover:underline"
+                  >
+                    + New conversation
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Initiative Feed */}
-          {observations.length > 0 && messages.length === 0 && (
+          {observations.length > 0 && messages.length === 0 && !isLoadingHistory && (
             <div className="flex-shrink-0 border-b px-3 py-2 space-y-1.5 max-h-[180px] overflow-y-auto">
               <div className="flex items-center gap-1.5 mb-1">
                 <Bell className="w-3 h-3 text-muted-foreground" />
@@ -430,8 +688,8 @@ export function PaxCopilotRail() {
             </div>
           )}
 
-          {/* Quick Actions (show when no messages) */}
-          {messages.length === 0 && (
+          {/* Quick Actions (show when no messages and not loading) */}
+          {messages.length === 0 && !isLoadingHistory && (
             <div className="flex-shrink-0 px-3 py-2 border-b">
               <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5">Quick actions</p>
               <div className="flex flex-col gap-1">
@@ -448,10 +706,36 @@ export function PaxCopilotRail() {
             </div>
           )}
 
+          {/* Resumed session banner */}
+          {restoredFromDate && messages.length > 0 && !isLoadingHistory && (
+            <div className="flex-shrink-0 px-3 py-1.5 flex items-center gap-1.5 bg-muted/30 border-b">
+              <Clock className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+              <span className="text-[11px] text-muted-foreground">
+                Resumed from {new Date(restoredFromDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+              </span>
+              <button
+                className="text-[11px] text-primary hover:underline ml-auto flex-shrink-0"
+                onClick={handleNewChat}
+              >
+                Start fresh
+              </button>
+            </div>
+          )}
+
           {/* Chat messages */}
           <ScrollArea className="flex-1 min-h-0">
             <div className="px-3 py-3 space-y-3">
-              {messages.length === 0 && observations.length === 0 && (
+              {/* Loading skeleton */}
+              {isLoadingHistory && (
+                <div className="space-y-3">
+                  <div className="flex justify-end"><Skeleton className="h-8 w-48 rounded-xl" /></div>
+                  <div className="space-y-1"><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-4/5" /></div>
+                  <div className="flex justify-end"><Skeleton className="h-8 w-36 rounded-xl" /></div>
+                  <div className="space-y-1"><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-3/4" /></div>
+                </div>
+              )}
+
+              {!isLoadingHistory && messages.length === 0 && observations.length === 0 && (
                 <div className="text-center py-8">
                   <Sparkles className="w-8 h-8 text-primary/30 mx-auto mb-2" />
                   <p className="text-xs text-muted-foreground">
@@ -461,13 +745,29 @@ export function PaxCopilotRail() {
                 </div>
               )}
 
-              {messages.map((msg) => {
-                const toolEvts = activeToolEvents[msg.id] ?? [];
+              {!isLoadingHistory && messages.map((msg) => {
+                const toolEvts = activeToolEvents[msg.id] ?? msg.toolEvents ?? [];
                 return (
-                  <div key={msg.id} className={cn("space-y-1", msg.role === "user" ? "flex justify-end" : "")}>
+                  <div key={msg.id} className={cn("space-y-1", msg.role === "user" ? "flex flex-col items-end" : "")}>
                     {msg.role === "user" ? (
-                      <div className="max-w-[85%] bg-primary text-primary-foreground rounded-xl rounded-tr-sm px-3 py-2 text-sm">
-                        {msg.content}
+                      <div className="space-y-1 flex flex-col items-end">
+                        <div className="max-w-[85%] bg-primary text-primary-foreground rounded-xl rounded-tr-sm px-3 py-2 text-sm">
+                          {msg.content}
+                        </div>
+                        {/* File attachment chips */}
+                        {msg.attachments && msg.attachments.length > 0 && (
+                          <div className="flex flex-wrap gap-1 justify-end">
+                            {msg.attachments.map((a) => (
+                              <div
+                                key={a.name}
+                                className="inline-flex items-center gap-1 text-[10px] bg-primary/20 text-primary rounded px-1.5 py-0.5"
+                              >
+                                <Paperclip className="w-2.5 h-2.5" />
+                                {a.name}
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <div className="space-y-1">
@@ -496,6 +796,16 @@ export function PaxCopilotRail() {
                             )}
                           </div>
                         )}
+                        {/* Artifact renders */}
+                        {(msg.artifacts ?? []).map((art, i) => (
+                          <PaxArtifact
+                            key={i}
+                            artifactType={art.artifactType}
+                            title={art.title}
+                            data={art.data}
+                            onDismiss={() => removeArtifact(msg.id, i)}
+                          />
+                        ))}
                       </div>
                     )}
                   </div>
@@ -507,6 +817,26 @@ export function PaxCopilotRail() {
 
           {/* Input area */}
           <div className="flex-shrink-0 border-t p-2.5 space-y-1.5">
+            {/* Attached file chips */}
+            {attachedFiles.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {attachedFiles.map((f, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center gap-1 text-[11px] bg-muted rounded px-2 py-0.5 border"
+                  >
+                    <Paperclip className="w-3 h-3 text-muted-foreground" />
+                    <span className="truncate max-w-[100px]">{f.name}</span>
+                    <button
+                      onClick={() => setAttachedFiles((prev) => prev.filter((_, j) => j !== i))}
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="w-2.5 h-2.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="flex gap-1.5 items-end">
               <Textarea
                 ref={inputRef}
@@ -519,6 +849,21 @@ export function PaxCopilotRail() {
                 rows={2}
               />
               <div className="flex flex-col gap-1">
+                {/* Paperclip attach button */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8 flex-shrink-0"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isStreaming || attachedFiles.length >= MAX_FILES}
+                    >
+                      <Paperclip className="w-3.5 h-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="left">Attach file (PDF, CSV, image…)</TooltipContent>
+                </Tooltip>
                 {isStreaming ? (
                   <Button size="icon" variant="destructive" className="h-8 w-8 flex-shrink-0" onClick={handleStop}>
                     <X className="w-3.5 h-3.5" />
@@ -528,7 +873,7 @@ export function PaxCopilotRail() {
                     size="icon"
                     className="h-8 w-8 flex-shrink-0"
                     onClick={handleSubmit}
-                    disabled={!inputValue.trim()}
+                    disabled={!inputValue.trim() && attachedFiles.length === 0}
                     data-testid="pax-rail-send"
                   >
                     <Send className="w-3.5 h-3.5" />
