@@ -5,6 +5,7 @@ import {
   deals,
   leadActivities,
   agentEvents,
+  paxMemory,
   type CallTranscript,
   type InsertCallTranscript,
 } from "@shared/schema";
@@ -806,6 +807,42 @@ Respond in JSON format:
           });
         } catch {}
       });
+
+      // Pillar 5: Extract seller preference signals and write to paxMemory
+      // This deepens Pax's understanding of each lead's motivations over time
+      if (finalTranscript.leadId && finalTranscript.extractedData) {
+        process.nextTick(async () => {
+          try {
+            const extracted = finalTranscript.extractedData as Record<string, any>;
+            const signals: string[] = [];
+
+            if (extracted.sellerMotivation) signals.push(`Seller motivation: ${extracted.sellerMotivation}`);
+            if (extracted.timeline) signals.push(`Timeline: ${extracted.timeline}`);
+            if (extracted.priceExpectation) signals.push(`Price expectation: ${extracted.priceExpectation}`);
+            if (extracted.concerns) signals.push(`Concerns: ${Array.isArray(extracted.concerns) ? extracted.concerns.join(", ") : extracted.concerns}`);
+            if (extracted.propertyUse) signals.push(`How seller uses property: ${extracted.propertyUse}`);
+
+            if (signals.length > 0) {
+              const summary = signals.join(" | ");
+              await db.insert(paxMemory).values({
+                organizationId: transcript.organizationId,
+                userId: "system",
+                memoryType: "fact",
+                key: `lead_${finalTranscript.leadId}_call_signals`,
+                value: {
+                  summary,
+                  details: { transcriptId, leadId: finalTranscript.leadId, extracted },
+                  timestamp: new Date().toISOString(),
+                },
+                importance: 7,
+              }).onConflictDoUpdate({
+                target: [paxMemory.organizationId, paxMemory.key, paxMemory.userId],
+                set: { value: { summary, details: { transcriptId, leadId: finalTranscript.leadId, extracted }, timestamp: new Date().toISOString() }, updatedAt: new Date() },
+              } as any).catch(() => {});
+            }
+          } catch {}
+        });
+      }
 
       return finalTranscript;
     } catch (error) {

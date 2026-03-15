@@ -17,6 +17,7 @@ import {
 } from "@shared/schema";
 import { eq, and, gte, lte, desc, asc, sql } from "drizzle-orm";
 import { DataSourceBroker } from "./data-source-broker";
+import { getCountyNetworkIntelligence } from "./marketNetworkContributor";
 
 const dataSourceBroker = new DataSourceBroker();
 
@@ -67,6 +68,16 @@ export interface MarketAnalysisResult {
     currentVsHistoricalAvg: number; // Percent difference
     isAboveHistoricalAvg: boolean;
   };
+
+  // Cross-org network intelligence (only populated when cohort ≥ 5 deals)
+  networkIntelligence?: {
+    medianPricePerAcre: number;
+    minPricePerAcre: number;
+    maxPricePerAcre: number;
+    transactionCount: number;
+    dataAvailable: boolean;
+    summary: string; // Human-readable sentence for Pax context injection
+  } | null;
 }
 
 export interface MarketHealthResult {
@@ -290,11 +301,12 @@ class MarketIntelligenceService {
   async analyzeMarket(county: string, state: string): Promise<MarketAnalysisResult> {
     const location: MarketLocation = { county, state };
     
-    // Fetch historical metrics from database
-    const historicalMetrics = await this.getHistoricalMetrics(county, state, 12);
-    
-    // Fetch fresh data from data sources
-    const freshData = await this.fetchMarketData(county, state);
+    // Fetch historical metrics, fresh data, and network intelligence in parallel
+    const [historicalMetrics, freshData, networkData] = await Promise.all([
+      this.getHistoricalMetrics(county, state, 12),
+      this.fetchMarketData(county, state),
+      getCountyNetworkIntelligence(county, state).catch(() => null),
+    ]);
     
     // Calculate current metrics
     const latestMetric = historicalMetrics[0] || freshData.metrics;
@@ -418,9 +430,17 @@ class MarketIntelligenceService {
         currentVsHistoricalAvg,
         isAboveHistoricalAvg: currentVsHistoricalAvg > 0,
       },
+      networkIntelligence: networkData
+        ? {
+            ...networkData,
+            summary: networkData.dataAvailable
+              ? `${networkData.transactionCount} AcreOS operators closed deals in ${county} County over the last 90 days at $${networkData.minPricePerAcre.toLocaleString()}–$${networkData.maxPricePerAcre.toLocaleString()}/acre (median $${networkData.medianPricePerAcre.toLocaleString()}/acre).`
+              : `Platform data for ${county} County is accumulating (${networkData.transactionCount} deal${networkData.transactionCount === 1 ? "" : "s"} so far — ${5 - networkData.transactionCount} more needed to unlock aggregate pricing).`,
+          }
+        : null,
     };
   }
-  
+
   /**
    * Quick market health score
    */
@@ -442,6 +462,9 @@ class MarketIntelligenceService {
     // If no recent data, fetch fresh
     if (!latestMetric || this.isStaleData(latestMetric.updatedAt)) {
       const analysis = await this.analyzeMarket(county, state);
+      if (analysis.networkIntelligence?.dataAvailable) {
+        alerts.push(analysis.networkIntelligence.summary);
+      }
       return {
         location,
         healthScore: analysis.scores.marketHealth,
@@ -455,7 +478,15 @@ class MarketIntelligenceService {
         alerts,
       };
     }
-    
+
+    // Check for network intelligence on cached path too
+    const networkData = await getCountyNetworkIntelligence(county, state).catch(() => null);
+    if (networkData?.dataAvailable) {
+      alerts.push(
+        `${networkData.transactionCount} AcreOS operators closed deals in ${county} County over the last 90 days at $${networkData.minPricePerAcre.toLocaleString()}–$${networkData.maxPricePerAcre.toLocaleString()}/acre (median $${networkData.medianPricePerAcre.toLocaleString()}/acre).`
+      );
+    }
+
     // Generate alerts based on metrics
     if (latestMetric.marketStatus === "heating") {
       alerts.push("Market is heating up - prices may be rising quickly");

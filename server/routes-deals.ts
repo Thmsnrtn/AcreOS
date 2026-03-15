@@ -8,6 +8,8 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { leadScoringService } from "./services/leadScoring";
 import { propertyEnrichmentService } from "./services/propertyEnrichment";
 import { checkUsageLimit } from "./services/usageLimits";
+import { db } from "./db";
+import { outcomeTelemetry } from "@shared/schema";
 
 // Partial update schema for PUT endpoints
 const updateDealSchema = insertDealSchema.partial().omit({ organizationId: true });
@@ -158,6 +160,29 @@ export function registerDealRoutes(app: Express): void {
         } catch (conversionErr) {
           console.error("Failed to record conversion:", conversionErr);
         }
+
+        // Write outcome telemetry for the feedback loop (non-blocking)
+        db.insert(outcomeTelemetry).values({
+          organizationId: org.id,
+          outcomeType: "deal_won",
+          outcome: {
+            success: true,
+            value: deal.acceptedAmount ? parseFloat(String(deal.acceptedAmount)) : undefined,
+            details: { dealType: deal.dealType, stage: deal.status },
+          },
+          contributingFactors: {
+            offerAmount: deal.offerAmount ? parseFloat(String(deal.offerAmount)) : undefined,
+            sequenceUsed: deal.sequenceId ? String(deal.sequenceId) : undefined,
+            marketConditions: deal.analysisResults ?? undefined,
+          },
+          relatedDealId: deal.id,
+          relatedPropertyId: deal.propertyId ?? undefined,
+        }).catch(() => {});
+
+        // Fire Pillar 3 market signal contribution (non-blocking)
+        import("./services/marketNetworkContributor").then(({ contributeMarketSignal }) => {
+          contributeMarketSignal(org.id, deal).catch(() => {});
+        }).catch(() => {});
       }
       
       res.json(deal);

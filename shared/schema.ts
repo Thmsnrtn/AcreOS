@@ -88,6 +88,8 @@ export const organizations = pgTable("organizations", {
   trialTokensGrantedAt: timestamp("trial_tokens_granted_at").defaultNow(), // When tokens were last granted
   // Pax proactive notification settings
   proactiveNotificationLevel: varchar("proactive_notification_level", { length: 50 }).default("balanced"), // minimal, balanced, proactive, off
+  // Pax autonomy level — controls how much Pax can act without per-action approval
+  paxAutonomyLevel: varchar("pax_autonomy_level", { length: 20 }).default("assisted"), // assisted, supervised, autonomous
   // UTM attribution for customer acquisition tracking
   utmSource: text("utm_source"),     // e.g. 'meta', 'google', 'organic'
   utmMedium: text("utm_medium"),     // e.g. 'cpc', 'social', 'email'
