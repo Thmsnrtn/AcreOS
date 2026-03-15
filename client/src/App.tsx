@@ -36,6 +36,7 @@ import SettingsPage from "@/pages/settings";
 import HelpPage from "@/pages/help";
 import AdminSupportPage from "@/pages/admin-support";
 import FounderDashboard from "@/pages/founder-dashboard";
+import FounderAiObservatory from "@/pages/founder-ai-observatory";
 import SequencesPage from "@/pages/sequences";
 import AbTestsPage from "@/pages/ab-tests";
 import TasksPage from "@/pages/tasks";
@@ -289,6 +290,9 @@ function Router() {
       </Route>
       <Route path="/founder">
         {() => <FounderProtectedRoute component={FounderDashboard} />}
+      </Route>
+      <Route path="/founder/ai-observatory">
+        {() => <FounderProtectedRoute component={FounderAiObservatory} />}
       </Route>
       <Route path="/marketplace">
         {() => <FlaggedRoute route="/marketplace" component={MarketplacePage} />}

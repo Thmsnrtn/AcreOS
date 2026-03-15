@@ -835,7 +835,72 @@ export const toolDefinitions = {
       required: ["data"],
     },
   },
+
+  // ── Memory tools ─────────────────────────────────────────────────────────
+
+  remember_fact: {
+    name: "remember_fact",
+    description: "Permanently remember an important fact, preference, decision, or insight for this organization. Use proactively when the user states preferences, makes key decisions, or shares important context that should persist across conversations.",
+    parameters: {
+      type: "object",
+      properties: {
+        fact: { type: "string", description: "The fact or preference to remember, written as a clear statement" },
+        category: {
+          type: "string",
+          enum: ["preference", "insight", "decision", "contact"],
+          description: "Category of the memory"
+        },
+      },
+      required: ["fact", "category"],
+    },
+  },
+
+  recall_facts: {
+    name: "recall_facts",
+    description: "Recall previously remembered facts and preferences for this organization. Use before answering questions where context from past conversations might be relevant.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Topic or keyword to search remembered facts" },
+        category: {
+          type: "string",
+          enum: ["preference", "insight", "decision", "contact"],
+          description: "Optional category to filter by"
+        },
+        limit: { type: "number", description: "Max facts to return (default 10)" },
+      },
+      required: ["query"],
+    },
+  },
+
+  // ── Sub-agent tool ────────────────────────────────────────────────────────
+
+  spawn_subagent: {
+    name: "spawn_subagent",
+    description: "Spawn a sub-agent to handle an independent subtask and return its result. Use for parallelizable research tasks, e.g. analyzing multiple properties or markets simultaneously. Max depth: 2.",
+    parameters: {
+      type: "object",
+      properties: {
+        prompt: { type: "string", description: "The full task or question for the sub-agent to handle" },
+        role: {
+          type: "string",
+          enum: ["executive", "research", "underwriting", "acquisitions"],
+          description: "Agent role best suited for this subtask (default: research)"
+        },
+      },
+      required: ["prompt"],
+    },
+  },
 };
+
+// Tools that require user approval before execution (communication + payment tools)
+export const APPROVAL_REQUIRED_TOOLS = new Set([
+  "send_email",
+  "send_sms",
+  "send_gmail",
+  "send_slack_message",
+  "create_stripe_payment_link",
+]);
 
 // Tool executor functions
 export async function executeTool(
@@ -2030,6 +2095,53 @@ export async function executeTool(
         };
       }
 
+      // ── Memory tools ─────────────────────────────────────────────────────────
+
+      case "remember_fact": {
+        const { paxMemory } = await import("@shared/schema");
+        const { db } = await import("../db");
+        await db.insert(paxMemory).values({
+          organizationId: org.id,
+          userId: "pax",
+          memoryType: args.category || "insight",
+          key: args.fact?.slice(0, 100) || "remembered_fact",
+          value: { content: args.fact },
+          importance: 8,
+          source: "pax_explicit_memory",
+        } as any);
+        return { success: true, data: { remembered: args.fact } };
+      }
+
+      case "recall_facts": {
+        const { paxMemory: pm } = await import("@shared/schema");
+        const { db: _db } = await import("../db");
+        const { ilike, and: _and, eq: _eq } = await import("drizzle-orm");
+        const conditions: any[] = [_eq(pm.organizationId, org.id)];
+        if (args.category) conditions.push(_eq(pm.memoryType, args.category));
+        if (args.query) conditions.push(ilike(pm.key, `%${args.query}%`));
+        const facts = await _db.select().from(pm)
+          .where(_and(...conditions))
+          .limit(args.limit || 10)
+          .orderBy(pm.updatedAt);
+        return { success: true, data: { facts: facts.map(f => ({ category: f.memoryType, fact: (f.value as any)?.content || f.key, remembered: f.createdAt })) } };
+      }
+
+      // ── Sub-agent tool ────────────────────────────────────────────────────────
+
+      case "spawn_subagent": {
+        const currentDepth = (org as any).__subAgentDepth ?? 0;
+        if (currentDepth >= 2) {
+          return { success: false, error: "Sub-agent depth limit reached (max 2)" };
+        }
+        const { processChat } = await import("./executive");
+        const subOrg = { ...org, __subAgentDepth: currentDepth + 1 } as any;
+        const subResult = await processChat(args.prompt, subOrg, "pax_subagent", {
+          agentRole: (args.role || "research") as any,
+          subAgentDepth: currentDepth + 1,
+        });
+        return { success: true, data: { response: subResult.response, conversationId: subResult.conversationId } };
+      }
+
       // ── Connector tools ──────────────────────────────────────────────────────
 
       case "search_gmail": {
@@ -2122,12 +2234,13 @@ export function getToolsForRole(role: string) {
   const allTools = Object.keys(toolDefinitions);
   const coreTools = ["get_system_context", "get_dashboard_stats"];
   
+  const memoryTools = ["remember_fact", "recall_facts"];
   const roleToolMap: Record<string, string[]> = {
     executive: allTools,
-    acquisitions: [...coreTools, "get_leads", "get_lead_details", "update_lead_status", "create_lead", "get_properties", "create_property", "get_deals", "create_deal", "get_tasks", "create_task", "get_pipeline_summary", "generate_offer", "generate_offer_letter", "send_email", "send_sms", "run_comps_analysis", "schedule_followup", "draft_offer", "schedule_follow_up", "run_comps", "get_stale_leads", "draft_outreach_message"],
-    underwriting: [...coreTools, "get_properties", "get_property_details", "update_property", "get_notes", "calculate_amortization", "get_cashflow_summary", "get_deals", "update_deal", "run_comps_analysis", "run_comps", "calculate_roi", "calculate_payment_schedule", "research_property", "draft_offer"],
-    marketing: [...coreTools, "get_leads", "get_properties", "get_pipeline_summary", "create_task", "send_email", "send_sms", "get_stale_leads", "draft_outreach_message"],
-    research: [...coreTools, "get_properties", "get_property_details", "get_leads", "create_property", "update_property", "run_comps_analysis", "run_comps", "research_property", "calculate_roi", "browse_web"],
+    acquisitions: [...coreTools, ...memoryTools, "get_leads", "get_lead_details", "update_lead_status", "create_lead", "get_properties", "create_property", "get_deals", "create_deal", "get_tasks", "create_task", "get_pipeline_summary", "generate_offer", "generate_offer_letter", "send_email", "send_sms", "run_comps_analysis", "schedule_followup", "draft_offer", "schedule_follow_up", "run_comps", "get_stale_leads", "draft_outreach_message"],
+    underwriting: [...coreTools, ...memoryTools, "get_properties", "get_property_details", "update_property", "get_notes", "calculate_amortization", "get_cashflow_summary", "get_deals", "update_deal", "run_comps_analysis", "run_comps", "calculate_roi", "calculate_payment_schedule", "research_property", "draft_offer"],
+    marketing: [...coreTools, ...memoryTools, "get_leads", "get_properties", "get_pipeline_summary", "create_task", "send_email", "send_sms", "get_stale_leads", "draft_outreach_message"],
+    research: [...coreTools, ...memoryTools, "get_properties", "get_property_details", "get_leads", "create_property", "update_property", "run_comps_analysis", "run_comps", "research_property", "calculate_roi", "browse_web"],
     documents: [...coreTools, "get_leads", "get_lead_details", "get_properties", "get_property_details", "get_notes", "get_deals", "generate_offer_letter", "draft_offer"],
     assistant: allTools // Full access for the main assistant
   };
