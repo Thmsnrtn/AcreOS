@@ -191,6 +191,8 @@ interface ChatOptions {
   propertyId?: number;
   mentionedEntities?: { type: string; id: number; name: string; preview: string }[];
   activeProjectId?: number;
+  modelOverride?: string; // Override automatic model selection
+  subAgentDepth?: number; // Internal: depth counter for spawn_subagent recursion guard
 }
 
 function decodeBase64ToText(base64: string): string {
@@ -233,9 +235,28 @@ function parseCSV(content: string): { headers: string[]; rows: string[][]; total
   return { headers, rows, totalRows: lines.length - 1 };
 }
 
+// Detect if a file is an image
+function isImageFile(file: { name: string; mimeType?: string }): boolean {
+  const ext = file.name.split('.').pop()?.toLowerCase() || '';
+  return (file as any).mimeType?.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff'].includes(ext);
+}
+
+// Build an image content part for vision-capable models
+function buildImageContentPart(file: FileAttachment): { type: "image_url"; image_url: { url: string } } {
+  const ext = file.name.split('.').pop()?.toLowerCase() || 'jpeg';
+  const mimeType = (file as any).mimeType || `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+  const base64Data = file.content.includes(',') ? file.content.split(',')[1] : file.content;
+  return { type: "image_url", image_url: { url: `data:${mimeType};base64,${base64Data}` } };
+}
+
 async function formatFileContentAsync(file: FileAttachment): Promise<string> {
   const extension = file.name.split('.').pop()?.toLowerCase() || '';
-  
+
+  // Images are handled separately as content parts — return a placeholder
+  if (isImageFile(file)) {
+    return `[Image file attached: ${file.name}]`;
+  }
+
   // For DOCX files, use mammoth to extract text
   if (extension === 'docx') {
     try {
@@ -417,6 +438,48 @@ export async function formatFileContentFromBase64(file: { name: string; content:
   return formatFileContentAsync({ name: file.name, content: file.content, size: 0 } as FileAttachment);
 }
 
+// Auto-compaction: summarize old messages when conversation grows too long
+async function compactConversationIfNeeded(
+  conversationId: number,
+  messages: AiMessage[]
+): Promise<AiMessage[]> {
+  if (messages.length < 20) return messages;
+  const totalChars = messages.reduce((s, m) => s + (m.content?.length ?? 0), 0);
+  if (totalChars < 80_000) return messages; // ~20k tokens threshold
+
+  const compactUpTo = Math.floor(messages.length / 2);
+  const toCompact = messages.slice(0, compactUpTo);
+  const toKeep = messages.slice(compactUpTo);
+
+  try {
+    const { selectProviderAndModel, TaskComplexity: TC } = await import('../services/aiRouter');
+    const { client: sc, model: sm } = selectProviderAndModel(TC.SIMPLE);
+    const res = await sc.chat.completions.create({
+      model: sm,
+      messages: [
+        { role: "system", content: "Summarize this conversation as concise bullet points. Preserve all property details, deal terms, decisions made, and action items. Be specific, not generic." },
+        { role: "user", content: toCompact.map(m => `${m.role.toUpperCase()}: ${m.content?.slice(0, 600)}`).join('\n\n') }
+      ],
+      max_tokens: 1200
+    });
+    const summary = res.choices[0]?.message?.content || "";
+    // Store summary async (non-blocking)
+    process.nextTick(() => {
+      db.update(aiConversations)
+        .set({ contextSummary: summary } as any)
+        .where(eq(aiConversations.id, conversationId))
+        .catch(() => {});
+    });
+    console.log(`[AI] Auto-compacted ${compactUpTo} messages for conversation ${conversationId}`);
+    return [
+      { id: -1, conversationId, role: "assistant", content: `=== CONVERSATION SUMMARY (auto-compacted) ===\n${summary}\n=== END SUMMARY ===`, createdAt: new Date() } as AiMessage,
+      ...toKeep
+    ];
+  } catch {
+    return messages; // Non-blocking — if compaction fails, use original
+  }
+}
+
 export async function getOrCreateConversation(
   orgId: number,
   userId: string,
@@ -477,7 +540,8 @@ export async function processChat(
     content: displayMessage
   });
 
-  const messages = await getMessages(conversation.id);
+  let messages = await getMessages(conversation.id);
+  messages = await compactConversationIfNeeded(conversation.id, messages);
 
   // Inject property enrichment context into the system prompt when a property is open
   let _enrichCtx = "";
@@ -536,6 +600,14 @@ export async function processChat(
     chatMessages[chatMessages.length - 1] = { role: "user", content: fullMessage };
   }
 
+  // Replace image files with vision content parts in the last user message
+  const imageFiles = (files ?? []).filter(isImageFile);
+  if (imageFiles.length > 0 && chatMessages.length > 1) {
+    const textPart = { type: "text" as const, text: fullMessage };
+    const imageParts = imageFiles.map(buildImageContentPart);
+    chatMessages[chatMessages.length - 1] = { role: "user", content: [textPart, ...imageParts] };
+  }
+
   const hasFileAttachments = files && files.length > 0;
   const complexity = classifyFromMessages("chat", chatMessages.map(m => ({
     role: m.role as string,
@@ -550,12 +622,14 @@ export async function processChat(
     const result = getChatProviderAndModel(complexity);
     client = result.client;
     provider = result.provider;
-    model = result.model;
+    // Apply model override if specified; force vision-capable model for image inputs
+    model = options.modelOverride
+      || (imageFiles.length > 0 && !result.model.includes('gpt-4o') && !result.model.includes('claude') ? 'openai/gpt-4o' : result.model);
   } catch (error: any) {
     console.error('[AI Chat] Failed to get AI provider:', error.message);
     throw new Error("AI service temporarily unavailable. Please try again.");
   }
-  
+
   console.log(`[AI Chat] Routing chat (${complexity}) -> ${provider}/${model}`);
 
   let response: OpenAI.ChatCompletion;
@@ -593,25 +667,32 @@ export async function processChat(
   let assistantMessage = response.choices[0].message;
   const toolCallsExecuted: any[] = [];
 
-  while (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
-    const toolResults: OpenAI.ChatCompletionToolMessageParam[] = [];
+  // Read-only tool prefixes — safe to parallelize
+  const READ_ONLY_PREFIXES = ["get_", "search_", "calculate_", "list_", "recall_", "browse_"];
 
-    for (const toolCall of assistantMessage.tool_calls) {
-      if ('function' in toolCall) {
+  while (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
+    const validToolCalls = assistantMessage.tool_calls.filter((tc): tc is typeof tc & { id: string; function: { name: string; arguments: string } } => 'function' in tc);
+    const allReadOnly = validToolCalls.every(tc => READ_ONLY_PREFIXES.some(p => tc.function.name.startsWith(p)));
+
+    let toolResults: OpenAI.ChatCompletionToolMessageParam[];
+
+    if (allReadOnly && validToolCalls.length > 1) {
+      // Execute read-only tools in parallel for performance
+      toolResults = await Promise.all(
+        validToolCalls.map(async (toolCall) => {
+          const args = JSON.parse(toolCall.function.arguments);
+          const result = await executeTool(toolCall.function.name, args, org);
+          toolCallsExecuted.push({ name: toolCall.function.name, arguments: args, result });
+          return { role: "tool" as const, tool_call_id: toolCall.id, content: JSON.stringify(result) };
+        })
+      );
+    } else {
+      toolResults = [];
+      for (const toolCall of validToolCalls) {
         const args = JSON.parse(toolCall.function.arguments);
         const result = await executeTool(toolCall.function.name, args, org);
-
-        toolCallsExecuted.push({
-          name: toolCall.function.name,
-          arguments: args,
-          result
-        });
-
-        toolResults.push({
-          role: "tool",
-          tool_call_id: toolCall.id,
-          content: JSON.stringify(result)
-        });
+        toolCallsExecuted.push({ name: toolCall.function.name, arguments: args, result });
+        toolResults.push({ role: "tool", tool_call_id: toolCall.id, content: JSON.stringify(result) });
       }
     }
 
@@ -712,7 +793,8 @@ export async function* processChatStream(
     content: displayMessage
   });
 
-  const messages = await getMessages(conversation.id);
+  let messages = await getMessages(conversation.id);
+  messages = await compactConversationIfNeeded(conversation.id, messages);
 
   // Inject property enrichment context into the system prompt when a property is open
   let _enrichCtx = "";
@@ -766,8 +848,13 @@ export async function* processChatStream(
     }))
   ];
 
-  // Replace the last message with full content (including file data) for AI processing
-  if (files && files.length > 0 && chatMessages.length > 1) {
+  // Handle image files — build vision content parts
+  const streamImageFiles = (files ?? []).filter(isImageFile);
+  if (streamImageFiles.length > 0 && chatMessages.length > 1) {
+    const textPart = { type: "text" as const, text: fullMessage };
+    const imageParts = streamImageFiles.map(buildImageContentPart);
+    chatMessages[chatMessages.length - 1] = { role: "user", content: [textPart, ...imageParts] };
+  } else if (files && files.length > 0 && chatMessages.length > 1) {
     chatMessages[chatMessages.length - 1] = { role: "user", content: fullMessage };
   }
 
@@ -785,40 +872,69 @@ export async function* processChatStream(
     const result = getChatProviderAndModel(complexity);
     client = result.client;
     provider = result.provider;
-    model = result.model;
+    model = options.modelOverride
+      || (streamImageFiles.length > 0 && !result.model.includes('gpt-4o') && !result.model.includes('claude') ? 'openai/gpt-4o' : result.model);
   } catch (error: any) {
     console.error('[AI Stream] Failed to get AI provider:', error.message);
     yield { type: "error", content: "AI service temporarily unavailable. Please try again." };
     return;
   }
 
-  // Reasoning trace — for HIGH complexity requests, stream a brief thinking block
+  // Reasoning trace — for COMPLEX requests
   if (complexity === TaskComplexity.COMPLEX) {
     try {
       yield { type: "thinking_start" };
       let thinkingText = "";
-      const thinkingStream = await client.chat.completions.create({
-        model,
-        messages: [
-          { role: "system", content: "You are planning how to answer a complex real estate question. Think step-by-step about what information you need, what tools to use, and what the user actually wants. Be brief but thorough. Max 3-4 sentences." },
-          { role: "user", content: message }
-        ],
-        max_tokens: 300,
-        stream: true,
-      });
-      for await (const chunk of thinkingStream) {
-        const delta = chunk.choices[0]?.delta?.content;
-        if (delta) {
-          thinkingText += delta;
-          yield { type: "thinking", content: delta };
+
+      if (model.includes('claude')) {
+        // Real Claude extended thinking via OpenRouter
+        // Use a non-streaming call to get native thinking content blocks
+        const thinkingResponse = await client.chat.completions.create({
+          model,
+          messages: chatMessages as any,
+          max_tokens: 8000,
+          // @ts-ignore — OpenRouter passes thinking param to Anthropic API
+          thinking: { type: "enabled", budget_tokens: 6000 },
+        } as any);
+        const msgContent = (thinkingResponse as any).choices?.[0]?.message?.content;
+        if (Array.isArray(msgContent)) {
+          for (const block of msgContent) {
+            if (block.type === 'thinking' && block.thinking) {
+              // Stream thinking text in chunks for smooth UI
+              const chunks = (block.thinking as string).match(/.{1,60}/gs) || [];
+              for (const chunk of chunks) {
+                thinkingText += chunk;
+                yield { type: "thinking", content: chunk };
+              }
+            }
+          }
+        }
+      } else {
+        // Simulated thinking for non-Claude models
+        const thinkingStream = await client.chat.completions.create({
+          model,
+          messages: [
+            { role: "system", content: "You are planning how to answer a complex real estate question. Think step-by-step about what information you need, what tools to use, and what the user actually wants. Be brief but thorough. Max 3-4 sentences." },
+            { role: "user", content: message }
+          ],
+          max_tokens: 300,
+          stream: true,
+        });
+        for await (const chunk of thinkingStream) {
+          const delta = chunk.choices[0]?.delta?.content;
+          if (delta) {
+            thinkingText += delta;
+            yield { type: "thinking", content: delta };
+          }
         }
       }
+
       yield { type: "thinking_done" };
     } catch {
       // Non-blocking — ignore thinking errors
     }
   }
-  
+
   console.log(`[AI Stream] Routing chat stream (${complexity}) -> ${provider}/${model}`);
 
   let fullResponse = "";
@@ -876,47 +992,62 @@ export async function* processChatStream(
     }
 
     if (currentToolCalls.length > 0) {
+      const ARTIFACT_TOOLS: Record<string, { type: "card" | "table" | "document"; title: string }> = {
+        calculate_roi:            { type: "card",     title: "ROI Analysis" },
+        calculate_amortization:   { type: "table",    title: "Amortization Schedule" },
+        run_comps_analysis:       { type: "table",    title: "Comparable Sales" },
+        generate_offer:           { type: "document", title: "Offer" },
+        generate_offer_letter:    { type: "document", title: "Offer Letter" },
+        get_cashflow_summary:     { type: "card",     title: "Cash Flow Summary" },
+      };
+
+      const STREAM_READ_ONLY = ["get_", "search_", "calculate_", "list_", "recall_", "browse_"];
+      const streamAllReadOnly = currentToolCalls.every(tc => STREAM_READ_ONLY.some(p => tc.function.name.startsWith(p)));
       const toolResults: OpenAI.ChatCompletionToolMessageParam[] = [];
 
-      for (const toolCall of currentToolCalls) {
-        yield { type: "tool_start", toolCall: { name: toolCall.function.name } };
-
-        const args = JSON.parse(toolCall.function.arguments);
-        const result = await executeTool(toolCall.function.name, args, org);
-
-        toolCallsExecuted.push({
-          name: toolCall.function.name,
-          arguments: args,
-          result
-        });
-
-        yield { type: "tool_result", toolCall: { name: toolCall.function.name, result } };
-
-        // Emit artifact event for tools that produce structured outputs
-        const ARTIFACT_TOOLS: Record<string, { type: "card" | "table" | "document"; title: string }> = {
-          calculate_roi:            { type: "card",     title: "ROI Analysis" },
-          calculate_amortization:   { type: "table",    title: "Amortization Schedule" },
-          run_comps_analysis:       { type: "table",    title: "Comparable Sales" },
-          generate_offer:           { type: "document", title: "Offer" },
-          generate_offer_letter:    { type: "document", title: "Offer Letter" },
-          get_cashflow_summary:     { type: "card",     title: "Cash Flow Summary" },
-        };
-        const artifactMeta = ARTIFACT_TOOLS[toolCall.function.name];
-        if (artifactMeta) {
-          try {
-            const parsed = typeof result === "string" ? JSON.parse(result) : result;
-            const data = parsed?.data ?? parsed;
-            if (data) {
-              yield { type: "artifact", artifactType: artifactMeta.type, title: artifactMeta.title, data };
-            }
-          } catch {}
+      if (streamAllReadOnly && currentToolCalls.length > 1) {
+        // Emit all tool_start events first (parallel signal to UI)
+        for (const toolCall of currentToolCalls) {
+          yield { type: "tool_start", toolCall: { name: toolCall.function.name } };
         }
-
-        toolResults.push({
-          role: "tool",
-          tool_call_id: toolCall.id,
-          content: JSON.stringify(result)
-        });
+        // Execute in parallel
+        const parallelResults = await Promise.all(
+          currentToolCalls.map(async (toolCall) => {
+            const args = JSON.parse(toolCall.function.arguments);
+            const result = await executeTool(toolCall.function.name, args, org);
+            return { toolCall, args, result };
+          })
+        );
+        for (const { toolCall, args, result } of parallelResults) {
+          toolCallsExecuted.push({ name: toolCall.function.name, arguments: args, result });
+          yield { type: "tool_result", toolCall: { name: toolCall.function.name, result } };
+          const artifactMeta = ARTIFACT_TOOLS[toolCall.function.name];
+          if (artifactMeta) {
+            try {
+              const parsed = typeof result === "string" ? JSON.parse(result) : result;
+              const data = parsed?.data ?? parsed;
+              if (data) yield { type: "artifact", artifactType: artifactMeta.type, title: artifactMeta.title, data };
+            } catch {}
+          }
+          toolResults.push({ role: "tool", tool_call_id: toolCall.id, content: JSON.stringify(result) });
+        }
+      } else {
+        for (const toolCall of currentToolCalls) {
+          yield { type: "tool_start", toolCall: { name: toolCall.function.name } };
+          const args = JSON.parse(toolCall.function.arguments);
+          const result = await executeTool(toolCall.function.name, args, org);
+          toolCallsExecuted.push({ name: toolCall.function.name, arguments: args, result });
+          yield { type: "tool_result", toolCall: { name: toolCall.function.name, result } };
+          const artifactMeta = ARTIFACT_TOOLS[toolCall.function.name];
+          if (artifactMeta) {
+            try {
+              const parsed = typeof result === "string" ? JSON.parse(result) : result;
+              const data = parsed?.data ?? parsed;
+              if (data) yield { type: "artifact", artifactType: artifactMeta.type, title: artifactMeta.title, data };
+            } catch {}
+          }
+          toolResults.push({ role: "tool", tool_call_id: toolCall.id, content: JSON.stringify(result) });
+        }
       }
 
       chatMessages.push({

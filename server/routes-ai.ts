@@ -236,7 +236,7 @@ export function registerAIRoutes(app: Express): void {
       const org = (req as any).organization;
       const user = req.user as any;
       const userId = user.claims?.sub || user.id;
-      const { message, conversationId, agentRole, files, propertyId: streamPropertyId, mentionedEntities, activeProjectId } = req.body;
+      const { message, conversationId, agentRole, files, propertyId: streamPropertyId, mentionedEntities, activeProjectId, modelOverride } = req.body;
       
       if (!message) {
         return res.status(400).json({ message: "Message is required" });
@@ -279,6 +279,7 @@ export function registerAIRoutes(app: Express): void {
         propertyId: streamPropertyId ? Number(streamPropertyId) : undefined,
         mentionedEntities,
         activeProjectId: activeProjectId ? Number(activeProjectId) : undefined,
+        modelOverride: modelOverride || undefined,
       });
       
       let streamCompleted = false;
@@ -589,6 +590,182 @@ export function registerAIRoutes(app: Express): void {
       const { executeTask } = await import("./services/paxScheduler");
       await executeTask(task, org);
       res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // MESSAGE RATING
+  // ============================================
+
+  api.patch("/api/ai/messages/:id/rating", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { rating } = req.body; // 1 or -1
+      const msgId = parseInt(req.params.id);
+      if (rating !== 1 && rating !== -1) return res.status(400).json({ message: "rating must be 1 or -1" });
+      const { aiMessages } = await import("@shared/schema");
+      const { eq: _eq } = await import("drizzle-orm");
+      await db.update(aiMessages).set({ rating } as any).where(_eq(aiMessages.id, msgId));
+      // Async learning ingestion (non-blocking)
+      process.nextTick(async () => {
+        try {
+          const { paxLearningService } = await import("./services/paxLearning");
+          if (paxLearningService.learnFromRating) {
+            await paxLearningService.learnFromRating(msgId, rating);
+          }
+        } catch {}
+      });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // CONVERSATION EXPORT
+  // ============================================
+
+  api.get("/api/ai/conversations/:id/export", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const convId = parseInt(req.params.id);
+      const format = (req.query.format as string) || "markdown";
+      const { aiConversations, aiMessages: msgs } = await import("@shared/schema");
+      const { eq: _eq, and: _and } = await import("drizzle-orm");
+      const [conv] = await db.select().from(aiConversations).where(_eq(aiConversations.id, convId));
+      if (!conv || conv.organizationId !== org.id) return res.status(404).json({ message: "Not found" });
+      const messages = await db.select().from(msgs).where(_eq(msgs.conversationId, convId)).orderBy(msgs.createdAt);
+      // Build Markdown
+      const md = [
+        `# ${conv.title}`,
+        `_Exported ${new Date().toLocaleDateString()} · Agent: ${conv.agentRole}_`,
+        "",
+        ...messages.map(m => {
+          const roleLabel = m.role === "user" ? "**You**" : "**Pax**";
+          const toolLine = (m.toolCalls as any[])?.length
+            ? `\n> _Tools used: ${(m.toolCalls as any[]).map((t: any) => t.name).join(", ")}_\n`
+            : "";
+          return `${roleLabel}\n\n${m.content}${toolLine}\n\n---`;
+        })
+      ].join("\n");
+
+      if (format === "pdf") {
+        const PDFDocument = (await import("pdfkit")).default;
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `attachment; filename="pax-conversation-${convId}.pdf"`);
+        const doc = new PDFDocument({ margin: 50 });
+        doc.pipe(res);
+        doc.fontSize(18).text(conv.title, { underline: true });
+        doc.fontSize(10).fillColor("gray").text(`Exported ${new Date().toLocaleDateString()} · Agent: ${conv.agentRole}`);
+        doc.moveDown();
+        for (const m of messages) {
+          doc.fontSize(11).fillColor(m.role === "user" ? "#1a56db" : "#111827").text(m.role === "user" ? "You:" : "Pax:", { continued: false });
+          doc.fontSize(10).fillColor("#374151").text(m.content?.slice(0, 2000) || "", { lineGap: 2 });
+          doc.moveDown(0.5);
+        }
+        doc.end();
+      } else {
+        res.setHeader("Content-Type", "text/markdown");
+        res.setHeader("Content-Disposition", `attachment; filename="pax-conversation-${convId}.md"`);
+        res.send(md);
+      }
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // PAX NUDGES (Proactive Ambient Intelligence)
+  // ============================================
+
+  api.get("/api/ai/nudges", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = req.user as any;
+      const userId = user?.claims?.sub || user?.id;
+      const { paxNudges } = await import("@shared/schema");
+      const { eq: _eq, and: _and, isNull } = await import("drizzle-orm");
+      const nudges = await db.select().from(paxNudges)
+        .where(_and(_eq(paxNudges.organizationId, org.id), isNull(paxNudges.dismissedAt)))
+        .orderBy(paxNudges.priority, paxNudges.createdAt)
+        .limit(5);
+      res.json(nudges);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.post("/api/ai/nudges/:id/dismiss", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { paxNudges } = await import("@shared/schema");
+      const { eq: _eq } = await import("drizzle-orm");
+      await db.update(paxNudges).set({ dismissedAt: new Date() } as any).where(_eq(paxNudges.id, parseInt(req.params.id)));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // FOUNDER AI OBSERVATORY
+  // ============================================
+
+  api.get("/api/founder/ai/telemetry", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const isFounder = user?.id === 'founder' || user?.claims?.sub === 'founder';
+      if (!isFounder) return res.status(403).json({ message: "Founder only" });
+      const { aiConversations, aiMessages: msgs, organizations } = await import("@shared/schema");
+      const { desc: _desc, eq: _eq } = await import("drizzle-orm");
+      // Last 50 conversations across all orgs
+      const conversations = await db.select({
+        id: aiConversations.id,
+        title: aiConversations.title,
+        agentRole: aiConversations.agentRole,
+        organizationId: aiConversations.organizationId,
+        createdAt: aiConversations.createdAt,
+        orgName: organizations.name,
+      })
+        .from(aiConversations)
+        .leftJoin(organizations, _eq(aiConversations.organizationId, organizations.id))
+        .orderBy(_desc(aiConversations.createdAt))
+        .limit(50);
+      res.json(conversations);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.get("/api/founder/ai/stats", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const isFounder = user?.id === 'founder' || user?.claims?.sub === 'founder';
+      if (!isFounder) return res.status(403).json({ message: "Founder only" });
+      const { aiConversations, aiMessages: msgs, paxConnectorInstances, organizations } = await import("@shared/schema");
+      const { count: _count, eq: _eq, desc: _desc } = await import("drizzle-orm");
+      const startOfMonth = new Date(); startOfMonth.setDate(1); startOfMonth.setHours(0, 0, 0, 0);
+      // Conversation count per org
+      const convPerOrg = await db.select({
+        organizationId: aiConversations.organizationId,
+        orgName: organizations.name,
+        convCount: _count(aiConversations.id),
+      })
+        .from(aiConversations)
+        .leftJoin(organizations, _eq(aiConversations.organizationId, organizations.id))
+        .groupBy(aiConversations.organizationId, organizations.name)
+        .orderBy(_desc(_count(aiConversations.id)))
+        .limit(20);
+      // Connector adoption
+      const connectorAdoption = await db.select({
+        connectorId: paxConnectorInstances.connectorId,
+        orgCount: _count(paxConnectorInstances.id),
+      })
+        .from(paxConnectorInstances)
+        .where(_eq(paxConnectorInstances.status, "connected"))
+        .groupBy(paxConnectorInstances.connectorId)
+        .orderBy(_desc(_count(paxConnectorInstances.id)));
+      res.json({ convPerOrg, connectorAdoption, generatedAt: new Date() });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

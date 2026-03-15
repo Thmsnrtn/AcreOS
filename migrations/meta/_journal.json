@@ -36,6 +36,13 @@
       "when": 1773871600000,
       "tag": "0016_pax_connectors",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1773958000000,
+      "tag": "0017_pax_next_gen",
+      "breakpoints": true
     }
   ]
 }

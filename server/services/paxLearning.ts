@@ -956,5 +956,39 @@ This requires human investigation.`,
     }
     
     return predictions;
-  }
+  },
+
+  // Learn from user thumbs-up / thumbs-down on a message
+  async learnFromRating(messageId: number, rating: 1 | -1): Promise<void> {
+    try {
+      const { aiMessages } = await import("@shared/schema");
+      const [msg] = await db.select().from(aiMessages).where(eq(aiMessages.id, messageId));
+      if (!msg || msg.role !== "assistant") return;
+      if (rating === -1) {
+        // Negative: store as a correction pattern
+        await db.insert(paxMemory).values({
+          organizationId: (msg as any).organizationId ?? 0,
+          userId: "pax_feedback",
+          memoryType: "correction",
+          key: `feedback_negative_${messageId}`,
+          value: { content: msg.content?.slice(0, 500), messageId, feedback: "negative" },
+          importance: 6,
+          source: "user_feedback",
+        } as any);
+      } else {
+        // Positive: store as a reinforcement
+        await db.insert(paxMemory).values({
+          organizationId: (msg as any).organizationId ?? 0,
+          userId: "pax_feedback",
+          memoryType: "reinforcement",
+          key: `feedback_positive_${messageId}`,
+          value: { content: msg.content?.slice(0, 200), messageId, feedback: "positive" },
+          importance: 4,
+          source: "user_feedback",
+        } as any);
+      }
+    } catch (err) {
+      console.error("[PaxLearning] learnFromRating error:", err);
+    }
+  },
 };

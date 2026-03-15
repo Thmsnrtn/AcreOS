@@ -8,11 +8,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Sparkles, Send, Loader2, X, ChevronRight,
   Users, MapPin, Building, Megaphone, LayoutDashboard,
   Zap, Bell, CheckCircle2, AlertCircle, RefreshCw,
   Paperclip, Clock, MessageSquare, BookOpen, FolderOpen, Plug,
+  ThumbsUp, ThumbsDown, Download, ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePaxRail } from "@/contexts/pax-rail-context";
@@ -119,7 +121,7 @@ const ACCEPTED_MIME = [
   "application/pdf",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "text/csv", "text/plain", "application/json",
-  "image/png", "image/jpeg", "image/webp",
+  "image/png", "image/jpeg", "image/webp", "image/gif",
 ];
 const MAX_FILES = 3;
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
@@ -210,6 +212,21 @@ export function PaxCopilotRail() {
   // Scheduled task results banner
   const [pendingResults, setPendingResults] = useState<PendingTaskResult[]>([]);
   const [showResultsBanner, setShowResultsBanner] = useState(false);
+
+  // Model selector
+  const [modelOverride, setModelOverride] = useState<string>(() =>
+    localStorage.getItem("pax_model_override") || "auto"
+  );
+
+  // Message ratings (local optimistic state: messageId → 1 | -1)
+  const [ratings, setRatings] = useState<Record<string, 1 | -1>>({});
+
+  // Pax nudges
+  const { data: nudges = [], refetch: refetchNudges } = useQuery<any[]>({
+    queryKey: ["/api/ai/nudges"],
+    enabled: false, // fetched on demand when rail opens
+  });
+  const [dismissedNudgeIds, setDismissedNudgeIds] = useState<number[]>([]);
 
   // Pax observations
   const { data: observationsData, refetch: refetchObs } = useQuery<PaxObservation[]>({
@@ -307,6 +324,8 @@ export function PaxCopilotRail() {
       })
       .catch(() => {});
     localStorage.setItem("pax-last-seen", new Date().toISOString());
+    // Fetch proactive nudges
+    refetchNudges();
   }, [isOpen]);
 
   // Scroll to bottom on new messages
@@ -432,6 +451,7 @@ export function PaxCopilotRail() {
       if (filePayload.length > 0) body.files = filePayload;
       if (currentEntities.length > 0) body.mentionedEntities = currentEntities;
       if (activeProjectId) body.activeProjectId = activeProjectId;
+      if (modelOverride && modelOverride !== "auto") body.modelOverride = modelOverride;
 
       const res = await fetch("/api/ai/chat/stream", {
         method: "POST",
@@ -634,6 +654,53 @@ export function PaxCopilotRail() {
     }
   };
 
+  // ── Export conversation ───────────────────────────────────────────────────
+  const handleExport = async (format: "markdown" | "pdf") => {
+    if (!activeConversationId) return;
+    const url = `/api/ai/conversations/${activeConversationId}/export?format=${format}`;
+    if (format === "markdown") {
+      try {
+        const res = await fetch(url, { credentials: "include" });
+        if (res.ok) {
+          const text = await res.text();
+          const blob = new Blob([text], { type: "text/markdown" });
+          const a = document.createElement("a");
+          a.href = URL.createObjectURL(blob);
+          a.download = `pax-conversation-${activeConversationId}.md`;
+          a.click();
+          URL.revokeObjectURL(a.href);
+        }
+      } catch {}
+    } else {
+      window.open(url, "_blank");
+    }
+  };
+
+  // ── Message rating ────────────────────────────────────────────────────────
+  const handleRating = async (messageId: string, rating: 1 | -1) => {
+    setRatings((prev) => ({ ...prev, [messageId]: rating }));
+    // Only persist if we have a DB-backed id (format "db-{n}")
+    if (!messageId.startsWith("db-")) return;
+    const numericId = parseInt(messageId.slice(3), 10);
+    if (isNaN(numericId)) return;
+    try {
+      await fetch(`/api/ai/messages/${numericId}/rating`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ rating }),
+      });
+    } catch {}
+  };
+
+  // ── Dismiss nudge ─────────────────────────────────────────────────────────
+  const handleDismissNudge = async (nudgeId: number) => {
+    setDismissedNudgeIds((prev) => [...prev, nudgeId]);
+    try {
+      await fetch(`/api/ai/nudges/${nudgeId}/dismiss`, { method: "POST", credentials: "include" });
+    } catch {}
+  };
+
   // File drag handlers
   const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragOver(true); };
   const handleDragLeave = () => setIsDragOver(false);
@@ -773,6 +840,33 @@ export function PaxCopilotRail() {
                   </TooltipTrigger>
                   <TooltipContent>Projects</TooltipContent>
                 </Tooltip>
+                {/* Model selector */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div>
+                      <Select
+                        value={modelOverride}
+                        onValueChange={(v) => {
+                          setModelOverride(v);
+                          localStorage.setItem("pax_model_override", v);
+                        }}
+                      >
+                        <SelectTrigger className="h-6 w-auto text-[10px] border-0 bg-transparent px-1.5 gap-0.5 hover:bg-muted/50 focus:ring-0">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent align="end" className="text-xs min-w-[110px]">
+                          <SelectItem value="auto" className="text-xs">Auto</SelectItem>
+                          <SelectItem value="fast" className="text-xs">Fast</SelectItem>
+                          <SelectItem value="balanced" className="text-xs">Balanced</SelectItem>
+                          <SelectItem value="powerful" className="text-xs">Powerful</SelectItem>
+                          <SelectItem value="reasoning" className="text-xs">Reasoning</SelectItem>
+                          <SelectItem value="claude" className="text-xs">Claude</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent>Model: Auto uses smart routing · Fast = DeepSeek · Powerful = GPT-4o · Claude = Sonnet</TooltipContent>
+                </Tooltip>
                 {/* Conversation switcher toggle */}
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -788,14 +882,29 @@ export function PaxCopilotRail() {
                   <TooltipContent>Switch conversation</TooltipContent>
                 </Tooltip>
                 {messages.length > 0 && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleNewChat}>
-                        <RefreshCw className="w-3.5 h-3.5" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>New chat</TooltipContent>
-                  </Tooltip>
+                  <>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleNewChat}>
+                          <RefreshCw className="w-3.5 h-3.5" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>New chat</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => handleExport("pdf")}
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Export conversation (PDF / Markdown)</TooltipContent>
+                    </Tooltip>
+                  </>
                 )}
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -951,6 +1060,46 @@ export function PaxCopilotRail() {
               </div>
             )}
 
+            {/* Proactive Pax nudges */}
+            {nudges.filter((n: any) => !dismissedNudgeIds.includes(n.id)).length > 0 && messages.length === 0 && !isLoadingHistory && (
+              <div className="flex-shrink-0 border-b px-3 py-2 space-y-1.5 max-h-[200px] overflow-y-auto">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Sparkles className="w-3 h-3 text-primary" />
+                  <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">From Pax</span>
+                </div>
+                {nudges
+                  .filter((n: any) => !dismissedNudgeIds.includes(n.id))
+                  .slice(0, 3)
+                  .map((nudge: any) => (
+                    <div key={nudge.id} className="rounded-md border border-primary/20 bg-primary/5 p-2 text-xs">
+                      <div className="flex items-start gap-1.5">
+                        <Zap className="w-3 h-3 text-primary flex-shrink-0 mt-0.5" />
+                        <p className="flex-1 min-w-0 leading-snug text-foreground">{nudge.content}</p>
+                      </div>
+                      <div className="flex items-center gap-2 mt-1.5">
+                        {nudge.actionPrompt && (
+                          <button
+                            className="text-primary hover:underline text-[10px] font-medium"
+                            onClick={() => {
+                              handleDismissNudge(nudge.id);
+                              sendMessage(nudge.actionPrompt);
+                            }}
+                          >
+                            Explore →
+                          </button>
+                        )}
+                        <button
+                          className="text-muted-foreground hover:text-foreground text-[10px] ml-auto"
+                          onClick={() => handleDismissNudge(nudge.id)}
+                        >
+                          Dismiss
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            )}
+
             {/* Chat messages */}
             <ScrollArea className="flex-1 min-h-0">
               <div className="px-3 py-3 space-y-3">
@@ -1012,7 +1161,7 @@ export function PaxCopilotRail() {
                           )}
                         </div>
                       ) : (
-                        <div className="space-y-1">
+                        <div className="space-y-1 group">
                           {/* Thinking block */}
                           {msg.thinkingContent !== undefined && (
                             <PaxThinkingBlock content={msg.thinkingContent} isStreaming={msg.isThinking} />
@@ -1052,6 +1201,31 @@ export function PaxCopilotRail() {
                               onDismiss={() => removeArtifact(msg.id, i)}
                             />
                           ))}
+                          {/* Rating buttons (shown after streaming completes) */}
+                          {!msg.isStreaming && msg.role !== "error" && msg.content && (
+                            <div className="flex items-center gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button
+                                onClick={() => handleRating(msg.id, 1)}
+                                className={cn(
+                                  "p-0.5 rounded hover:bg-muted transition-colors",
+                                  ratings[msg.id] === 1 ? "text-green-500" : "text-muted-foreground/40 hover:text-muted-foreground"
+                                )}
+                                title="Good response"
+                              >
+                                <ThumbsUp className="w-3 h-3" />
+                              </button>
+                              <button
+                                onClick={() => handleRating(msg.id, -1)}
+                                className={cn(
+                                  "p-0.5 rounded hover:bg-muted transition-colors",
+                                  ratings[msg.id] === -1 ? "text-red-500" : "text-muted-foreground/40 hover:text-muted-foreground"
+                                )}
+                                title="Poor response"
+                              >
+                                <ThumbsDown className="w-3 h-3" />
+                              </button>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1086,21 +1260,34 @@ export function PaxCopilotRail() {
               {/* Attached file chips */}
               {attachedFiles.length > 0 && (
                 <div className="flex flex-wrap gap-1">
-                  {attachedFiles.map((f, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center gap-1 text-[11px] bg-muted rounded px-2 py-0.5 border"
-                    >
-                      <Paperclip className="w-3 h-3 text-muted-foreground" />
-                      <span className="truncate max-w-[100px]">{f.name}</span>
-                      <button
-                        onClick={() => setAttachedFiles((prev) => prev.filter((_, j) => j !== i))}
-                        className="text-muted-foreground hover:text-foreground"
+                  {attachedFiles.map((f, i) => {
+                    const isImage = f.type.startsWith("image/");
+                    const previewUrl = isImage ? URL.createObjectURL(f) : null;
+                    return (
+                      <div
+                        key={i}
+                        className="flex items-center gap-1 text-[11px] bg-muted rounded px-2 py-0.5 border"
                       >
-                        <X className="w-2.5 h-2.5" />
-                      </button>
-                    </div>
-                  ))}
+                        {isImage && previewUrl ? (
+                          <img
+                            src={previewUrl}
+                            alt={f.name}
+                            className="w-6 h-6 object-cover rounded"
+                            onLoad={() => URL.revokeObjectURL(previewUrl)}
+                          />
+                        ) : (
+                          <Paperclip className="w-3 h-3 text-muted-foreground" />
+                        )}
+                        <span className="truncate max-w-[100px]">{f.name}</span>
+                        <button
+                          onClick={() => setAttachedFiles((prev) => prev.filter((_, j) => j !== i))}
+                          className="text-muted-foreground hover:text-foreground"
+                        >
+                          <X className="w-2.5 h-2.5" />
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
 

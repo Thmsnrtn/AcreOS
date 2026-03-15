@@ -347,6 +347,9 @@ app.use("/api/properties/import", importLimiter);
       // Start Pax scheduled tasks (every minute)
       startPaxSchedulerJob();
 
+      // Start Pax nudges (every 6 hours)
+      startPaxNudgesJob();
+
       // Start job queue worker (every 10 seconds)
       startJobQueueWorker();
       
@@ -703,6 +706,26 @@ function startPaxSchedulerJob() {
       log(`Pax scheduler run failed: ${err}`, 'pax-scheduler');
     });
   }, ONE_MINUTE);
+}
+
+// ── Pax Nudges background job (every 6 hours) ─────────────────────────────────
+async function runPaxNudges() {
+  try {
+    const { processPaxNudges } = await import("./services/paxNudges");
+    await processPaxNudges();
+  } catch (err: any) {
+    log(`Pax nudges error: ${err.message}`, 'pax-nudges');
+  }
+}
+
+function startPaxNudgesJob() {
+  // Run 5 minutes after startup, then every 6 hours
+  setTimeout(() => {
+    withJobLock('pax_nudges', TTL_SECONDS, runPaxNudges).catch(() => {});
+  }, 5 * 60 * 1000);
+  setInterval(() => {
+    withJobLock('pax_nudges', TTL_SECONDS, runPaxNudges).catch(() => {});
+  }, 6 * 60 * 60 * 1000);
 }
 
 // Deal Hunter daily scraping job

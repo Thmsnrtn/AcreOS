@@ -1618,6 +1618,27 @@ export const paxScheduledTasks = pgTable("pax_scheduled_tasks", {
 ]);
 export type PaxScheduledTask = typeof paxScheduledTasks.$inferSelect;
 
+// ============================================
+// PAX NUDGES — proactive ambient intelligence cards
+// ============================================
+export const paxNudges = pgTable("pax_nudges", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").notNull(),
+  userId: text("user_id"), // null = org-wide nudge
+  content: text("content").notNull(), // Human-readable insight
+  category: text("category").notNull(), // "stale_leads" | "stuck_deal" | "streak" | "task_due" | "opportunity"
+  entityType: text("entity_type"), // "lead" | "property" | "deal" | null
+  entityId: integer("entity_id"),
+  priority: integer("priority").notNull().default(5), // 1 (high) – 10 (low)
+  actionPrompt: text("action_prompt"), // Auto-send this to Pax when user clicks the nudge
+  dismissedAt: timestamp("dismissed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => [
+  index("pax_nudges_org_idx").on(t.organizationId),
+  index("pax_nudges_active_idx").on(t.organizationId, t.dismissedAt),
+]);
+export type PaxNudge = typeof paxNudges.$inferSelect;
+
 export const aiConversations = pgTable("ai_conversations", {
   id: serial("id").primaryKey(),
   organizationId: integer("organization_id").notNull(),
@@ -1625,6 +1646,7 @@ export const aiConversations = pgTable("ai_conversations", {
   title: text("title").notNull(),
   agentRole: text("agent_role").notNull().default("executive"),
   activeProjectId: integer("active_project_id"),
+  contextSummary: text("context_summary"), // Auto-compaction summary of older messages
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -1638,6 +1660,7 @@ export const aiMessages = pgTable("ai_messages", {
   toolCalls: jsonb("tool_calls").$type<any[]>(),
   mentionedEntities: jsonb("mentioned_entities").$type<{ type: string; id: number; name: string; preview: string }[]>(),
   thinkingContent: text("thinking_content"),
+  rating: integer("rating"), // 1 = thumbs up, -1 = thumbs down, null = no rating
   createdAt: timestamp("created_at").defaultNow(),
 });
 
