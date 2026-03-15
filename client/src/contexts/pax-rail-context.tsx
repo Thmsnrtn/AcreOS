@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
 
-const STORAGE_KEY = "sophie-rail-open";
+const STORAGE_KEY = "pax-rail-open";
 
 export interface RailEntityContext {
   entityType: string;   // "lead" | "deal" | "property" | "campaign"
@@ -9,7 +9,7 @@ export interface RailEntityContext {
   starterPrompt?: string;
 }
 
-interface SophieRailContextType {
+interface PaxRailContextType {
   isOpen: boolean;
   setOpen: (v: boolean) => void;
   toggle: () => void;
@@ -18,9 +18,9 @@ interface SophieRailContextType {
   openWithContext: (ctx: RailEntityContext) => void;
 }
 
-const SophieRailContext = createContext<SophieRailContextType | null>(null);
+const PaxRailContext = createContext<PaxRailContextType | null>(null);
 
-export function SophieRailProvider({ children }: { children: ReactNode }) {
+export function PaxRailProvider({ children }: { children: ReactNode }) {
   const [isOpen, setIsOpenRaw] = useState<boolean>(() => {
     try {
       return localStorage.getItem(STORAGE_KEY) === "true";
@@ -59,14 +59,14 @@ export function SophieRailProvider({ children }: { children: ReactNode }) {
   }, [isOpen, setOpen]);
 
   return (
-    <SophieRailContext.Provider value={{ isOpen, setOpen, toggle, pendingContext, clearPendingContext, openWithContext }}>
+    <PaxRailContext.Provider value={{ isOpen, setOpen, toggle, pendingContext, clearPendingContext, openWithContext }}>
       {children}
-    </SophieRailContext.Provider>
+    </PaxRailContext.Provider>
   );
 }
 
-export function useSophieRail(): SophieRailContextType {
-  const ctx = useContext(SophieRailContext);
-  if (!ctx) throw new Error("useSophieRail must be used within SophieRailProvider");
+export function usePaxRail(): PaxRailContextType {
+  const ctx = useContext(PaxRailContext);
+  if (!ctx) throw new Error("usePaxRail must be used within PaxRailProvider");
   return ctx;
 }

@@ -1,5 +1,5 @@
 import { PageShell } from "@/components/page-shell";
-import { SophieContextButton } from "@/components/sophie-context-button";
+import { PaxContextButton } from "@/components/pax-context-button";
 import { useDeals, useCreateDeal, useUpdateDeal, useDeleteDeal, useSaveDealAnalysis } from "@/hooks/use-deals";
 import { useProperties } from "@/hooks/use-properties";
 import { ListSkeleton } from "@/components/list-skeleton";
@@ -668,7 +668,7 @@ function DealCard({ deal, onSelect, isDragging = false }: { deal: DealWithProper
               <Badge variant={deal.type === 'acquisition' ? 'default' : 'secondary'} className="text-xs">
                 {deal.type === 'acquisition' ? 'Buy' : 'Sell'}
               </Badge>
-              <SophieContextButton
+              <PaxContextButton
                 entityType="deal"
                 entityId={deal.id}
                 entityName={deal.property ? `${deal.property.county}, ${deal.property.state}` : `Deal #${deal.id}`}

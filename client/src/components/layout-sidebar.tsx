@@ -74,13 +74,13 @@ import { useFeatureFlags } from "@/hooks/use-feature-flags";
 import { useOrganization } from "@/hooks/use-organization";
 
 // ─────────────────────────────────────────────────────────────────────
-// Sophie proactive notification badge
-// Polls GET /api/sophie/observations?unread=true every 2 min.
-// Shows a Sparkles icon with a red count bubble when Sophie has new
+// Pax proactive notification badge
+// Polls GET /api/pax/observations?unread=true every 2 min.
+// Shows a Sparkles icon with a red count bubble when Pax has new
 // observations for the org.  Clicking opens a popover with the
 // latest insights and quick-dismiss actions.
 // ─────────────────────────────────────────────────────────────────────
-interface SophieObservation {
+interface PaxObservation {
   id: number;
   type: string;
   severity: string;
@@ -91,11 +91,11 @@ interface SophieObservation {
   metadata?: Record<string, any>;
 }
 
-function SophieNotificationBadge() {
+function PaxNotificationBadge() {
   const { data: unreadData } = useQuery<{ count: number }>({
-    queryKey: ["/api/sophie/observations", "unread"],
+    queryKey: ["/api/pax/observations", "unread"],
     queryFn: async () => {
-      const res = await fetch("/api/sophie/observations?unread=true", { credentials: "include" });
+      const res = await fetch("/api/pax/observations?unread=true", { credentials: "include" });
       if (!res.ok) return { count: 0 };
       return res.json();
     },
@@ -103,10 +103,10 @@ function SophieNotificationBadge() {
     staleTime: 60 * 1000,
   });
 
-  const { data: observationsData, refetch: refetchObservations } = useQuery<{ observations: SophieObservation[] }>({
-    queryKey: ["/api/sophie/observations"],
+  const { data: observationsData, refetch: refetchObservations } = useQuery<{ observations: PaxObservation[] }>({
+    queryKey: ["/api/pax/observations"],
     queryFn: async () => {
-      const res = await fetch("/api/sophie/observations?limit=10", { credentials: "include" });
+      const res = await fetch("/api/pax/observations?limit=10", { credentials: "include" });
       if (!res.ok) return { observations: [] };
       return res.json();
     },
@@ -119,7 +119,7 @@ function SophieNotificationBadge() {
 
   const handleDismiss = async (id: number) => {
     try {
-      await fetch(`/api/sophie/observations/${id}/dismiss`, {
+      await fetch(`/api/pax/observations/${id}/dismiss`, {
         method: "POST",
         credentials: "include",
       });
@@ -129,7 +129,7 @@ function SophieNotificationBadge() {
 
   const handleAcknowledge = async (id: number) => {
     try {
-      await fetch(`/api/sophie/observations/${id}/acknowledge`, {
+      await fetch(`/api/pax/observations/${id}/acknowledge`, {
         method: "POST",
         credentials: "include",
       });
@@ -151,8 +151,8 @@ function SophieNotificationBadge() {
           <PopoverTrigger asChild>
             <button
               className="relative p-1.5 rounded-lg text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
-              aria-label="Sophie AI insights"
-              data-testid="button-sophie-notifications"
+              aria-label="Pax AI insights"
+              data-testid="button-pax-notifications"
             >
               <Sparkles className="w-4 h-4" />
               {unreadCount > 0 && (
@@ -164,7 +164,7 @@ function SophieNotificationBadge() {
           </PopoverTrigger>
         </TooltipTrigger>
         <TooltipContent side="right">
-          <p className="font-medium">Sophie AI Insights</p>
+          <p className="font-medium">Pax AI Insights</p>
           {unreadCount > 0 && (
             <p className="text-xs text-muted-foreground">{unreadCount} new observation{unreadCount === 1 ? "" : "s"}</p>
           )}
@@ -175,7 +175,7 @@ function SophieNotificationBadge() {
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <div className="flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-primary" />
-            <span className="font-semibold text-sm">Sophie Insights</span>
+            <span className="font-semibold text-sm">Pax Insights</span>
             {unreadCount > 0 && (
               <Badge variant="secondary" className="text-xs">{unreadCount} new</Badge>
             )}
@@ -186,7 +186,7 @@ function SophieNotificationBadge() {
           {observations.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
               <Sparkles className="w-8 h-8 text-muted-foreground/40 mb-2" />
-              <p className="text-sm text-muted-foreground">Sophie is watching for insights.</p>
+              <p className="text-sm text-muted-foreground">Pax is watching for insights.</p>
               <p className="text-xs text-muted-foreground mt-1">You'll be notified when something needs attention.</p>
             </div>
           ) : (
@@ -560,7 +560,7 @@ export function Sidebar() {
               )}
             </div>
             <div className="flex items-center gap-1">
-              <SophieNotificationBadge />
+              <PaxNotificationBadge />
               <NotificationCenter />
             </div>
           </div>
@@ -829,7 +829,7 @@ export function Sidebar() {
             )}
           </div>
           <div className="flex items-center gap-1">
-            <SophieNotificationBadge />
+            <PaxNotificationBadge />
             <NotificationCenter />
           </div>
         </div>

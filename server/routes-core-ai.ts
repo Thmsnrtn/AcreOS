@@ -283,50 +283,50 @@ export function registerCoreAIRoutes(app: Express): void {
   });
 
   // ──────────────────────────────────────────────
-  // SOPHIE OBSERVATIONS — proactive insight feed
+  // PAX OBSERVATIONS — proactive insight feed
   // ──────────────────────────────────────────────
 
   /**
-   * GET /api/sophie/observations
-   * Returns recent, unread sophie observations for the org.
+   * GET /api/pax/observations
+   * Returns recent, unread pax observations for the org.
    * Used by the sidebar notification badge and the insight feed.
    * Query params:
    *   limit  – max records (default 20)
    *   unread – if "true", return only status=detected entries (for badge count)
    */
-  api.get("/api/sophie/observations", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.get("/api/pax/observations", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = (req as any).organization;
       const limit = parseInt(req.query.limit as string) || 20;
       const unreadOnly = req.query.unread === "true";
 
-      const { sophieObserver } = await import('./services/sophieObserver');
+      const { paxObserver } = await import('./services/paxObserver');
 
       if (unreadOnly) {
-        const count = await sophieObserver.getUnreadPassiveCount(org.id);
+        const count = await paxObserver.getUnreadPassiveCount(org.id);
         return res.json({ count });
       }
 
-      const observations = await sophieObserver.getActiveObservations(org.id, limit);
+      const observations = await paxObserver.getActiveObservations(org.id, limit);
       res.json({ observations });
     } catch (err: any) {
-      console.error("Sophie observations error:", err);
+      console.error("Pax observations error:", err);
       res.status(500).json({ message: err.message });
     }
   });
 
   /**
-   * POST /api/sophie/observations/:id/acknowledge
+   * POST /api/pax/observations/:id/acknowledge
    * Marks a specific observation as acknowledged (seen by user).
    */
-  api.post("/api/sophie/observations/:id/acknowledge", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/pax/observations/:id/acknowledge", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const observationId = parseInt(req.params.id);
       if (isNaN(observationId)) {
         return res.status(400).json({ message: "Invalid observation ID" });
       }
-      const { sophieObserver } = await import('./services/sophieObserver');
-      const ok = await sophieObserver.acknowledgeObservation(observationId);
+      const { paxObserver } = await import('./services/paxObserver');
+      const ok = await paxObserver.acknowledgeObservation(observationId);
       res.json({ success: ok });
     } catch (err: any) {
       console.error("Acknowledge observation error:", err);
@@ -335,17 +335,17 @@ export function registerCoreAIRoutes(app: Express): void {
   });
 
   /**
-   * POST /api/sophie/observations/:id/dismiss
+   * POST /api/pax/observations/:id/dismiss
    * Dismisses an observation so it no longer appears.
    */
-  api.post("/api/sophie/observations/:id/dismiss", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/pax/observations/:id/dismiss", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const observationId = parseInt(req.params.id);
       if (isNaN(observationId)) {
         return res.status(400).json({ message: "Invalid observation ID" });
       }
-      const { sophieObserver } = await import('./services/sophieObserver');
-      const ok = await sophieObserver.dismissObservation(observationId);
+      const { paxObserver } = await import('./services/paxObserver');
+      const ok = await paxObserver.dismissObservation(observationId);
       res.json({ success: ok });
     } catch (err: any) {
       console.error("Dismiss observation error:", err);

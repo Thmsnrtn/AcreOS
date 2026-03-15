@@ -191,7 +191,7 @@ export default function CompareGeekPayPage() {
               {
                 icon: Bot,
                 title: "AI deal intelligence",
-                body: "Atlas AI scores deals, answers due diligence questions, and recommends next actions — across both your acquisition pipeline and your note portfolio.",
+                body: "Pax AI scores deals, answers due diligence questions, and recommends next actions — across both your acquisition pipeline and your note portfolio.",
               },
               {
                 icon: Mail,

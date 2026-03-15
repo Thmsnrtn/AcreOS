@@ -664,7 +664,7 @@ export async function executeTool(
         if (leadBeforeUpdate) {
           await storage.logActivity({
             organizationId: org.id,
-            agentType: "atlas",
+            agentType: "pax",
             action: "status_changed",
             entityType: "lead",
             entityId: args.lead_id,
@@ -1538,11 +1538,11 @@ export async function executeTool(
 
         const draftText = aiResponse.choices[0].message.content || "";
 
-        // Store in sophieMemory for reference
+        // Store in paxMemory for reference
         try {
           const { db: dbInstance } = await import("../db");
-          const { sophieMemory } = await import("@shared/schema");
-          await dbInstance.insert(sophieMemory).values({
+          const { paxMemory } = await import("@shared/schema");
+          await dbInstance.insert(paxMemory).values({
             organizationId: org.id,
             userId: "ai-assistant",
             memoryType: "context",

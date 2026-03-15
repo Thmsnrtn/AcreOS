@@ -25,11 +25,11 @@ function getChatProviderAndModel(complexity: TaskComplexity): { client: OpenAI; 
 
 export const agentProfiles = {
   executive: {
-    name: "Atlas",
+    name: "Pax",
     role: "executive",
     displayName: "Executive Assistant",
     description: "Your AI-powered executive assistant for land investment operations",
-    systemPrompt: `You are Atlas, an AI executive assistant for a land investment company using AcreOS.
+    systemPrompt: `You are Pax, an AI executive assistant for a land investment company using AcreOS.
 
 IMPORTANT: You have FULL ACCESS to the entire AcreOS system and can work across ALL modules regardless of what page the user is currently viewing. You can:
 - Create and manage Leads in the CRM

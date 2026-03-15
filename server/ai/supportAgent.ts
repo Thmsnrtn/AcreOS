@@ -9,7 +9,7 @@ import {
   supportTickets, supportTicketMessages, knowledgeBaseArticles, 
   supportResolutionHistory, organizations, leads, properties, 
   deals, notes, tasks, campaigns, payments, teamMembers,
-  activityLog, auditLog, apiUsageLogs, sophieMemory, systemAlerts
+  activityLog, auditLog, apiUsageLogs, paxMemory, systemAlerts
 } from "@shared/schema";
 import { gte, lte } from "drizzle-orm";
 
@@ -263,7 +263,7 @@ export const supportToolDefinitions = {
         severity: { type: "string", enum: ["info", "warning", "critical"], description: "Severity level" },
         message: { type: "string", description: "Clear explanation of the predicted issue" },
         recommended_action: { type: "string", description: "What the user should do to prevent the issue" },
-        auto_resolve_possible: { type: "boolean", description: "Whether Sophie can automatically resolve this" }
+        auto_resolve_possible: { type: "boolean", description: "Whether Pax can automatically resolve this" }
       },
       required: ["warning_type", "severity", "message", "recommended_action"]
     }
@@ -354,7 +354,7 @@ export const supportToolDefinitions = {
   
   learn_from_human_resolution: {
     name: "learn_from_human_resolution",
-    description: "When a human (founder/admin) resolves a ticket that Sophie escalated, use this to extract and learn the solution for future similar issues.",
+    description: "When a human (founder/admin) resolves a ticket that Pax escalated, use this to extract and learn the solution for future similar issues.",
     parameters: {
       type: "object",
       properties: {
@@ -813,7 +813,7 @@ export const supportToolDefinitions = {
       properties: {
         issue_type: {
           type: "string",
-          enum: ["login_auth", "sync_refresh", "billing_payment", "missing_data", "ai_atlas", "map_gis", "slow_performance", "export_import", "notifications", "permissions"],
+          enum: ["login_auth", "sync_refresh", "billing_payment", "missing_data", "ai_pax", "map_gis", "slow_performance", "export_import", "notifications", "permissions"],
           description: "The type of issue to get troubleshooting steps for"
         },
         user_reported_symptom: {
@@ -1534,9 +1534,9 @@ export async function executeSupportTool(
             
             // Gather user memories for context
             const userMemories = await db.select()
-              .from(sophieMemory)
-              .where(eq(sophieMemory.organizationId, org.id))
-              .orderBy(desc(sophieMemory.createdAt))
+              .from(paxMemory)
+              .where(eq(paxMemory.organizationId, org.id))
+              .orderBy(desc(paxMemory.createdAt))
               .limit(10);
             
             // Gather data counts
@@ -1607,7 +1607,7 @@ export async function executeSupportTool(
               }))
             };
           } catch (err) {
-            console.error("[sophie] Error gathering diagnostic bundle:", err);
+            console.error("[pax] Error gathering diagnostic bundle:", err);
             diagnosticBundle = { error: "Failed to gather full diagnostics", partial: true };
           }
         }
@@ -1639,12 +1639,12 @@ export async function executeSupportTool(
             ticketId,
             role: "system",
             content: escalationContent,
-            agentName: "Sophie"
+            agentName: "Pax"
           });
         }
         
         // Save escalation to memory for future context
-        await db.insert(sophieMemory).values({
+        await db.insert(paxMemory).values({
           organizationId: org.id,
           userId: org.ownerId,
           memoryType: "escalation",
@@ -1707,7 +1707,7 @@ export async function executeSupportTool(
         
         // Also save to user memory for personalized future support
         if (was_successful) {
-          await db.insert(sophieMemory).values({
+          await db.insert(paxMemory).values({
             organizationId: org.id,
             userId: org.ownerId,
             memoryType: "solution_tried",
@@ -1815,7 +1815,7 @@ export async function executeSupportTool(
         }
         
         // Also save as a memory preference
-        await db.insert(sophieMemory).values({
+        await db.insert(paxMemory).values({
           organizationId: org.id,
           userId: org.ownerId,
           memoryType: "preference",
@@ -2007,7 +2007,7 @@ export async function executeSupportTool(
         });
         
         // Also save to user memory
-        await db.insert(sophieMemory).values({
+        await db.insert(paxMemory).values({
           organizationId: org.id,
           userId: org.ownerId,
           memoryType: "solution_tried",
@@ -2132,7 +2132,7 @@ export async function executeSupportTool(
         });
         
         // Also save to memory for context
-        await db.insert(sophieMemory).values({
+        await db.insert(paxMemory).values({
           organizationId: org.id,
           userId: org.ownerId,
           memoryType: "context",
@@ -2325,13 +2325,13 @@ export async function executeSupportTool(
             severity: urgency === "high" ? "critical" : urgency === "medium" ? "warning" : "info",
             title: subject,
             message: message,
-            metadata: { issueType: issue_type, source: "sophie_outreach" }
+            metadata: { issueType: issue_type, source: "pax_outreach" }
           });
           jobs.push("in_app_notification");
         }
         
         // Log to memory
-        await db.insert(sophieMemory).values({
+        await db.insert(paxMemory).values({
           organizationId: org.id,
           userId: org.ownerId,
           memoryType: "context",
@@ -2468,7 +2468,7 @@ export async function executeSupportTool(
               { step: 5, action: "Drag deal to update stage", tip: "Move cards between columns to update status" },
               { step: 6, action: "Add notes and documents", tip: "Click on deal card to add details" }
             ],
-            proTips: skill_level !== "beginner" ? ["Use Atlas AI for deal analysis", "Set up automated follow-ups when deals move stages"] : []
+            proTips: skill_level !== "beginner" ? ["Use Pax AI for deal analysis", "Set up automated follow-ups when deals move stages"] : []
           },
           send_campaign: {
             title: "Sending a Marketing Campaign",
@@ -2502,7 +2502,7 @@ export async function executeSupportTool(
             estimatedTime: "4-5 minutes",
             steps: [
               { step: 1, action: "Open Command Center", path: "/ai", tip: "Click the AI icon or navigate to Command Center" },
-              { step: 2, action: "Choose your agent", options: ["Atlas (Executive)", "Sophie (Support)"], tip: "Atlas helps with business tasks, Sophie with support" },
+              { step: 2, action: "Choose your agent", options: ["Pax (Executive)", "Pax (Support)"], tip: "Pax helps with business tasks, Pax with support" },
               { step: 3, action: "Describe what you need", tip: "Be specific: 'Analyze the deal at 123 Main St'" },
               { step: 4, action: "Review agent suggestions", tip: "AI will show analysis, recommendations, or take actions" },
               { step: 5, action: "Approve or modify actions", tip: "Some actions require your approval" },
@@ -2615,7 +2615,7 @@ export async function executeSupportTool(
               "Review AI suggestions before approving",
               "Check task history for previous requests"
             ],
-            tips: ["Be specific about what you need", "Atlas can research, analyze, and take actions"]
+            tips: ["Be specific about what you need", "Pax can research, analyze, and take actions"]
           },
           "deal_pipeline": {
             name: "Deal Pipeline",
@@ -2784,8 +2784,8 @@ export async function executeSupportTool(
       
       case "learn_from_human_resolution": {
         const { ticket_id } = args;
-        const { sophieLearningService } = await import("../services/sophieLearning");
-        const result = await sophieLearningService.learnFromHumanResolution(ticket_id);
+        const { paxLearningService } = await import("../services/paxLearning");
+        const result = await paxLearningService.learnFromHumanResolution(ticket_id);
         
         return {
           success: result.learned,
@@ -2797,8 +2797,8 @@ export async function executeSupportTool(
       
       case "trace_root_cause": {
         const { symptoms, error_context } = args;
-        const { sophieLearningService } = await import("../services/sophieLearning");
-        const trace = await sophieLearningService.traceRootCause(org.id, error_context || {}, symptoms);
+        const { paxLearningService } = await import("../services/paxLearning");
+        const trace = await paxLearningService.traceRootCause(org.id, error_context || {}, symptoms);
         
         return {
           success: true,
@@ -2814,8 +2814,8 @@ export async function executeSupportTool(
       
       case "detect_bulk_issue": {
         const { issue_pattern } = args;
-        const { sophieLearningService } = await import("../services/sophieLearning");
-        const result = await sophieLearningService.detectBulkIssue(issue_pattern);
+        const { paxLearningService } = await import("../services/paxLearning");
+        const result = await paxLearningService.detectBulkIssue(issue_pattern);
         
         return {
           success: true,
@@ -2831,8 +2831,8 @@ export async function executeSupportTool(
       
       case "apply_bulk_fix": {
         const { issue_type, fix_action, affected_org_ids } = args;
-        const { sophieLearningService } = await import("../services/sophieLearning");
-        const result = await sophieLearningService.applyBulkFix(issue_type, fix_action, affected_org_ids);
+        const { paxLearningService } = await import("../services/paxLearning");
+        const result = await paxLearningService.applyBulkFix(issue_type, fix_action, affected_org_ids);
         
         return {
           success: result.success,
@@ -3008,7 +3008,7 @@ export async function executeSupportTool(
             "How do I connect Stripe for payments?"
           ],
           "/ai": [
-            "What can Atlas help me with?",
+            "What can Pax help me with?",
             "How do I use AI agents?",
             "How do I research a property with AI?",
             "How do I generate an offer letter?",
@@ -3050,8 +3050,8 @@ export async function executeSupportTool(
       }
       
       case "predict_user_issues": {
-        const { sophieLearningService } = await import("../services/sophieLearning");
-        const predictions = await sophieLearningService.predictUserIssues(org.id);
+        const { paxLearningService } = await import("../services/paxLearning");
+        const predictions = await paxLearningService.predictUserIssues(org.id);
         
         return {
           success: true,
@@ -3066,8 +3066,8 @@ export async function executeSupportTool(
       }
       
       case "detect_data_integrity_issues": {
-        const { sophieLearningService } = await import("../services/sophieLearning");
-        const issues = await sophieLearningService.detectDataIntegrityIssues(org.id);
+        const { paxLearningService } = await import("../services/paxLearning");
+        const issues = await paxLearningService.detectDataIntegrityIssues(org.id);
         
         return {
           success: true,
@@ -3084,8 +3084,8 @@ export async function executeSupportTool(
       
       case "fix_data_integrity_issue": {
         const { issue_type } = args;
-        const { sophieLearningService } = await import("../services/sophieLearning");
-        const result = await sophieLearningService.fixDataIntegrityIssue(org.id, issue_type);
+        const { paxLearningService } = await import("../services/paxLearning");
+        const result = await paxLearningService.fixDataIntegrityIssue(org.id, issue_type);
         
         return {
           success: result.fixed,
@@ -3148,8 +3148,8 @@ export async function executeSupportTool(
       }
       
       case "detect_onboarding_stuck": {
-        const { sophieLearningService } = await import("../services/sophieLearning");
-        const result = await sophieLearningService.detectOnboardingStuck(org.id);
+        const { paxLearningService } = await import("../services/paxLearning");
+        const result = await paxLearningService.detectOnboardingStuck(org.id);
         
         return {
           success: true,
@@ -3169,8 +3169,8 @@ export async function executeSupportTool(
       
       case "apply_self_healing_fix": {
         const { issue_pattern } = args;
-        const { sophieLearningService } = await import("../services/sophieLearning");
-        const result = await sophieLearningService.applySelfHealingFix(org.id, issue_pattern);
+        const { paxLearningService } = await import("../services/paxLearning");
+        const result = await paxLearningService.applySelfHealingFix(org.id, issue_pattern);
         
         return {
           success: result.applied,
@@ -3209,7 +3209,7 @@ export async function executeSupportTool(
         const { alert_id, resolution_details } = args;
         const { proactiveMonitor } = await import("../services/proactiveMonitor");
         
-        const resolved = await proactiveMonitor.autoResolveAlert(alert_id, resolution_details, "sophie");
+        const resolved = await proactiveMonitor.autoResolveAlert(alert_id, resolution_details, "pax");
         
         return {
           success: resolved,
@@ -3575,7 +3575,7 @@ export async function executeSupportTool(
               const invoice = await stripe.invoices.pay(invoice_id);
               
               // Log to memory
-              await db.insert(sophieMemory).values({
+              await db.insert(paxMemory).values({
                 organizationId: org.id,
                 userId: org.ownerId,
                 memoryType: "issue_history",
@@ -3632,7 +3632,7 @@ export async function executeSupportTool(
               });
               
               // Log to memory
-              await db.insert(sophieMemory).values({
+              await db.insert(paxMemory).values({
                 organizationId: org.id,
                 userId: org.ownerId,
                 memoryType: "issue_history",
@@ -4042,7 +4042,7 @@ export async function executeSupportTool(
                 if (search_pattern && !JSON.stringify(log).toLowerCase().includes(search_pattern.toLowerCase())) {
                   return false;
                 }
-                if (log_type === "ai_operations" && !["ai", "atlas", "agent"].some(t => log.action?.includes(t) || log.agentType?.includes(t))) {
+                if (log_type === "ai_operations" && !["ai", "pax", "agent"].some(t => log.action?.includes(t) || log.agentType?.includes(t))) {
                   return false;
                 }
                 return true;
@@ -4113,7 +4113,7 @@ export async function executeSupportTool(
           .filter(act => {
             if (activity_type === "all") return true;
             if (activity_type === "data_changes" && ["create", "update", "delete"].some(a => act.action?.includes(a))) return true;
-            if (activity_type === "ai_operations" && ["ai", "atlas", "agent"].some(a => act.action?.includes(a) || act.agentType?.includes(a))) return true;
+            if (activity_type === "ai_operations" && ["ai", "pax", "agent"].some(a => act.action?.includes(a) || act.agentType?.includes(a))) return true;
             if (activity_type === "login_events" && ["login", "auth", "session"].some(a => act.action?.includes(a))) return true;
             return false;
           })
@@ -4318,8 +4318,8 @@ export async function executeSupportTool(
             escalationTriggers: ["User claims data was deleted without their action", "Import job completed but data missing", "Database inconsistencies found"]
           },
           
-          ai_atlas: {
-            title: "AI Assistant (Atlas) Issues",
+          ai_pax: {
+            title: "AI Assistant (Pax) Issues",
             estimatedTime: "2-5 minutes",
             steps: [
               { step: 1, action: "Check AI service health", tool: "check_service_health", condition: "Verify OpenAI/AI services are operational" },
@@ -4428,14 +4428,14 @@ export async function executeSupportTool(
         
         // Get memories for this user, sorted by importance and recency
         const memories = await db.select()
-          .from(sophieMemory)
+          .from(paxMemory)
           .where(and(
-            eq(sophieMemory.organizationId, org.id),
-            eq(sophieMemory.userId, org.ownerId),
-            sql`(${sophieMemory.expiresAt} IS NULL OR ${sophieMemory.expiresAt} > NOW())`,
-            sql`${sophieMemory.memoryType} = ANY(ARRAY[${sql.raw(types.map((t: string) => `'${t}'`).join(','))}])`
+            eq(paxMemory.organizationId, org.id),
+            eq(paxMemory.userId, org.ownerId),
+            sql`(${paxMemory.expiresAt} IS NULL OR ${paxMemory.expiresAt} > NOW())`,
+            sql`${paxMemory.memoryType} = ANY(ARRAY[${sql.raw(types.map((t: string) => `'${t}'`).join(','))}])`
           ))
-          .orderBy(desc(sophieMemory.importance), desc(sophieMemory.createdAt))
+          .orderBy(desc(paxMemory.importance), desc(paxMemory.createdAt))
           .limit(limit);
         
         // Group memories by type for easier reading
@@ -4480,17 +4480,17 @@ export async function executeSupportTool(
         
         // Check if this key already exists (update instead of insert)
         const existing = await db.select()
-          .from(sophieMemory)
+          .from(paxMemory)
           .where(and(
-            eq(sophieMemory.organizationId, org.id),
-            eq(sophieMemory.userId, org.ownerId),
-            eq(sophieMemory.key, key)
+            eq(paxMemory.organizationId, org.id),
+            eq(paxMemory.userId, org.ownerId),
+            eq(paxMemory.key, key)
           ))
           .limit(1);
         
         if (existing.length > 0) {
           // Update existing memory
-          await db.update(sophieMemory)
+          await db.update(paxMemory)
             .set({
               memoryType: memory_type,
               value: { summary, details, timestamp: new Date().toISOString() },
@@ -4498,7 +4498,7 @@ export async function executeSupportTool(
               expiresAt,
               updatedAt: new Date()
             })
-            .where(eq(sophieMemory.id, existing[0].id));
+            .where(eq(paxMemory.id, existing[0].id));
           
           return {
             success: true,
@@ -4512,7 +4512,7 @@ export async function executeSupportTool(
           };
         } else {
           // Insert new memory
-          const [newMemory] = await db.insert(sophieMemory)
+          const [newMemory] = await db.insert(paxMemory)
             .values({
               organizationId: org.id,
               userId: org.ownerId,
@@ -4523,7 +4523,7 @@ export async function executeSupportTool(
               expiresAt,
               sourceTicketId: ticketId
             })
-            .returning({ id: sophieMemory.id });
+            .returning({ id: paxMemory.id });
           
           return {
             success: true,
@@ -4998,7 +4998,7 @@ export async function executeSupportTool(
   }
 }
 
-const SOPHIE_SYSTEM_PROMPT = `You are Sophie, the AcreOS Support Agent. You help customers resolve issues with their AcreOS land investment platform.
+const PAX_SYSTEM_PROMPT = `You are Pax, the AcreOS Support Agent. You help customers resolve issues with their AcreOS land investment platform.
 
 YOUR PERSONALITY:
 - Friendly, patient, and empathetic
@@ -5055,7 +5055,7 @@ ISSUE TYPE CATEGORIES (for decision trees):
 - sync_refresh: Data not syncing, stale data, refresh problems
 - billing_payment: Subscription, credits, payments, Stripe issues
 - missing_data: Data disappeared, imports failed, records not showing
-- ai_atlas: AI assistant errors, Atlas not responding, AI credits
+- ai_pax: AI assistant errors, Pax not responding, AI credits
 - map_gis: Map not loading, parcel boundaries, GIS features
 - slow_performance: App slow, loading issues, timeouts
 - export_import: CSV export/import, data import failures
@@ -5142,7 +5142,7 @@ export async function processSupportChat(
     .orderBy(supportTicketMessages.createdAt);
   
   const chatMessages: OpenAI.ChatCompletionMessageParam[] = [
-    { role: "system", content: SOPHIE_SYSTEM_PROMPT }
+    { role: "system", content: PAX_SYSTEM_PROMPT }
   ];
   
   for (const msg of previousMessages) {
@@ -5212,7 +5212,7 @@ export async function processSupportChat(
     ticketId,
     role: "agent",
     content: finalResponse,
-    agentName: "Sophie",
+    agentName: "Pax",
     toolsUsed: toolsUsed.length > 0 ? toolsUsed : null,
     actionsPerformed: actionsPerformed.length > 0 ? actionsPerformed : null
   });
@@ -5328,7 +5328,7 @@ export async function createSupportTicket(
     pageContext: options.pageContext,
     errorContext: Object.keys(mergedContext).length > 0 ? mergedContext : null,
     source: options.source || "in_app",
-    assignedAgent: "sophie",
+    assignedAgent: "pax",
     status: "open"
   }).returning();
   
@@ -5338,7 +5338,7 @@ export async function createSupportTicket(
     content: description
   });
   
-  // If there's critical context, add it as a system message for Sophie
+  // If there's critical context, add it as a system message for Pax
   if (systemContext && (systemContext.activeAlerts > 0 || systemContext.accountHealth !== "healthy")) {
     const contextMessage = `[SYSTEM CONTEXT - AUTO-ATTACHED]
 Account Health: ${systemContext.accountHealth}

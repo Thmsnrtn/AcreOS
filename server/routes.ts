@@ -30,7 +30,7 @@ import taxResearcherRouter from "./routes-tax-researcher";
 import voiceLearningRouter from "./routes-voice-learning";
 import whiteLabelRouter from "./routes-white-label";
 import realtimeRouter from "./routes-realtime";
-import atlasInsightsRouter from "./routes-atlas-insights";
+import paxInsightsRouter from "./routes-pax-insights";
 import voiceRouter from "./routes-voice";
 
 // Rate limiting middleware
@@ -238,7 +238,7 @@ export async function registerRoutes(
   app.use('/api/intelligence', isAuthenticated, getOrCreateOrg, voiceLearningRouter);
   app.use('/api/white-label', isAuthenticated, getOrCreateOrg, whiteLabelRouter);
   app.use('/api/realtime', isAuthenticated, getOrCreateOrg, realtimeRouter);
-  app.use('/api/atlas', aiLimiter, isAuthenticated, getOrCreateOrg, atlasInsightsRouter);
+  app.use('/api/pax', aiLimiter, isAuthenticated, getOrCreateOrg, paxInsightsRouter);
   app.post('/api/mcp/execute', mcpHandler);
 
   // Voice pipeline: webhook (no auth) + authenticated API routes

@@ -100,7 +100,7 @@ const SEVERITY_BADGE: Record<
 
 // ─── Greeting Banner ──────────────────────────────────────────────────────────
 
-const GREETING_DISMISSED_KEY = "atlas_greeting_dismissed";
+const GREETING_DISMISSED_KEY = "pax_greeting_dismissed";
 
 function GreetingBanner() {
   const [dismissed, setDismissed] = useState<boolean>(() => {
@@ -112,7 +112,7 @@ function GreetingBanner() {
   });
 
   const { data } = useQuery<{ message: string | null; isFirstSession: boolean }>({
-    queryKey: ["/api/atlas/greeting"],
+    queryKey: ["/api/pax/greeting"],
     enabled: !dismissed,
   });
 
@@ -148,7 +148,7 @@ function GreetingBanner() {
 
 function InsightsTabContent() {
   const { data, isLoading } = useQuery<InsightsData>({
-    queryKey: ["/api/atlas/insights"],
+    queryKey: ["/api/pax/insights"],
   });
 
   if (isLoading) {
@@ -186,7 +186,7 @@ function InsightsTabContent() {
       <div className="flex flex-col items-center justify-center py-20 text-center space-y-2">
         <Sparkles className="h-8 w-8 text-muted-foreground mb-2" />
         <p className="text-base font-medium text-muted-foreground">
-          All clear — Atlas is keeping watch.
+          All clear — Pax is keeping watch.
         </p>
         <p className="text-sm text-muted-foreground max-w-sm">
           Check back after your next campaign sends.
@@ -197,11 +197,11 @@ function InsightsTabContent() {
 
   return (
     <div className="space-y-8">
-      {/* Atlas Noticed */}
+      {/* Pax Noticed */}
       {observations.length > 0 && (
         <section>
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-            Atlas Noticed
+            Pax Noticed
           </h2>
           <div className="space-y-3">
             {observations.map((obs) => (
@@ -346,7 +346,7 @@ function InsightsTabContent() {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-export default function AtlasPage() {
+export default function PaxPage() {
   const [activeTab, setActiveTab] = useState<TabValue>(getTabFromHash);
 
   useEffect(() => {
@@ -368,8 +368,8 @@ export default function AtlasPage() {
   return (
     <PageShell>
       <div>
-        <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-atlas-title">
-          Atlas
+        <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-pax-title">
+          Pax
         </h1>
         <p className="text-muted-foreground text-sm md:text-base">
           AI assistant, agents, and automation for your land business.
@@ -378,8 +378,8 @@ export default function AtlasPage() {
 
       <GreetingBanner />
 
-      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6" data-testid="tabs-atlas">
-        <TabsList className="w-full sm:w-auto overflow-x-auto flex-nowrap" data-testid="tabs-list-atlas">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6" data-testid="tabs-pax">
+        <TabsList className="w-full sm:w-auto overflow-x-auto flex-nowrap" data-testid="tabs-list-pax">
           <TabsTrigger value="insights" className="flex items-center gap-2 min-w-max" data-testid="tab-insights">
             <Sparkles className="h-4 w-4" />
             <span>Insights</span>

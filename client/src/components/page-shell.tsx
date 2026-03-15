@@ -1,7 +1,7 @@
 import { Sidebar, useSidebarCollapsed } from "@/components/layout-sidebar";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { PageHeaderSkeleton } from "@/components/list-skeleton";
-import { useSophieRail } from "@/contexts/sophie-rail-context";
+import { usePaxRail } from "@/contexts/pax-rail-context";
 
 interface PageShellProps {
   children: React.ReactNode;
@@ -43,7 +43,7 @@ const MAX_WIDTH_CLASSES = {
 
 export function PageShell({ children, isLoading, loadingFallback, maxWidth = "7xl" }: PageShellProps) {
   const { isCollapsed } = useSidebarCollapsed();
-  const { isOpen: railOpen } = useSophieRail();
+  const { isOpen: railOpen } = usePaxRail();
   return (
     <div className="flex min-h-screen bg-background desert-gradient">
       <Sidebar />

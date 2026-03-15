@@ -1,23 +1,23 @@
 /**
- * Sophie Observer Service
+ * Pax Observer Service
  * 
- * Graceful proactive detection system for Sophie AI assistant.
+ * Graceful proactive detection system for Pax AI assistant.
  * Records observations with confidence scores and manages notifications
  * based on organization preferences.
  */
 
 import { db } from "../db";
 import {
-  sophieObservations,
+  paxObservations,
   organizations,
   leads,
   deals,
-  InsertSophieObservation,
-  SophieObservation,
-  SophieObservationType,
+  InsertPaxObservation,
+  PaxObservation,
+  PaxObservationType,
   ProactiveNotificationLevel,
   PROACTIVE_NOTIFICATION_LEVELS,
-  sophieCrossOrgLearnings
+  paxCrossOrgLearnings
 } from "@shared/schema";
 import { eq, and, desc, gte, ne, sql, like, lt, lte } from "drizzle-orm";
 
@@ -28,7 +28,7 @@ export type ObservationStatus = 'detected' | 'acknowledged' | 'dismissed' | 'esc
 interface RecordObservationOptions {
   organizationId: number;
   userId?: string;
-  type: SophieObservationType;
+  type: PaxObservationType;
   confidenceScore: number;
   severity: ObservationSeverity;
   title: string;
@@ -60,17 +60,17 @@ const SOFT_LANGUAGE_PREFIXES = {
 const BATCH_WINDOW_MS = 15 * 60 * 1000;
 const MAX_SIMILAR_OBSERVATIONS_BEFORE_BATCH = 3;
 
-class SophieObserverService {
-  private static instance: SophieObserverService;
+class PaxObserverService {
+  private static instance: PaxObserverService;
   private recentObservations: Map<string, { count: number; lastSeen: Date }> = new Map();
 
   private constructor() {}
 
-  static getInstance(): SophieObserverService {
-    if (!SophieObserverService.instance) {
-      SophieObserverService.instance = new SophieObserverService();
+  static getInstance(): PaxObserverService {
+    if (!PaxObserverService.instance) {
+      PaxObserverService.instance = new PaxObserverService();
     }
-    return SophieObserverService.instance;
+    return PaxObserverService.instance;
   }
 
   /**
@@ -89,7 +89,7 @@ class SophieObserverService {
       }
       return org.level as ProactiveNotificationLevel;
     } catch (error) {
-      console.error(`[sophieObserver] Error getting notification level for org ${orgId}:`, error);
+      console.error(`[paxObserver] Error getting notification level for org ${orgId}:`, error);
       return 'balanced';
     }
   }
@@ -190,7 +190,7 @@ class SophieObserverService {
   /**
    * Record an observation with confidence scoring and notification decision
    */
-  async recordObservation(options: RecordObservationOptions): Promise<SophieObservation | null> {
+  async recordObservation(options: RecordObservationOptions): Promise<PaxObservation | null> {
     try {
       const {
         organizationId,
@@ -212,7 +212,7 @@ class SophieObserverService {
         if (shouldBatch) {
           const batchedObservation = await this.updateBatchedObservation(organizationId, batchKey, existingCount + 1);
           if (batchedObservation) {
-            console.log(`[sophieObserver] Batched observation for org ${organizationId}: ${type} (${existingCount + 1} occurrences)`);
+            console.log(`[paxObserver] Batched observation for org ${organizationId}: ${type} (${existingCount + 1} occurrences)`);
             return batchedObservation;
           }
         }
@@ -223,7 +223,7 @@ class SophieObserverService {
       const softTitle = this.applySoftLanguage(title, severity);
 
       const [observation] = await db
-        .insert(sophieObservations)
+        .insert(paxObservations)
         .values({
           organizationId,
           userId,
@@ -243,7 +243,7 @@ class SophieObserverService {
         })
         .returning();
 
-      console.log(`[sophieObserver] Recorded observation for org ${organizationId}: ${type} (${severity}, ${confidenceScore}% confidence, notify: ${notificationDecision.notificationType})`);
+      console.log(`[paxObserver] Recorded observation for org ${organizationId}: ${type} (${severity}, ${confidenceScore}% confidence, notify: ${notificationDecision.notificationType})`);
 
       if (notificationDecision.shouldNotify) {
         await this.triggerNotification(observation, notificationDecision);
@@ -251,7 +251,7 @@ class SophieObserverService {
 
       return observation;
     } catch (error) {
-      console.error('[sophieObserver] Error recording observation:', error);
+      console.error('[paxObserver] Error recording observation:', error);
       return null;
     }
   }
@@ -263,20 +263,20 @@ class SophieObserverService {
     organizationId: number, 
     batchKey: string, 
     occurrenceCount: number
-  ): Promise<SophieObservation | null> {
+  ): Promise<PaxObservation | null> {
     try {
       const recentWindow = new Date(Date.now() - BATCH_WINDOW_MS);
       
       const existing = await db
         .select()
-        .from(sophieObservations)
+        .from(paxObservations)
         .where(and(
-          eq(sophieObservations.organizationId, organizationId),
-          gte(sophieObservations.detectedAt, recentWindow),
-          ne(sophieObservations.status, 'dismissed'),
-          ne(sophieObservations.status, 'auto_resolved')
+          eq(paxObservations.organizationId, organizationId),
+          gte(paxObservations.detectedAt, recentWindow),
+          ne(paxObservations.status, 'dismissed'),
+          ne(paxObservations.status, 'auto_resolved')
         ))
-        .orderBy(desc(sophieObservations.detectedAt))
+        .orderBy(desc(paxObservations.detectedAt))
         .limit(10);
 
       const matchingObs = existing.find(obs => {
@@ -287,7 +287,7 @@ class SophieObserverService {
       if (matchingObs) {
         const currentMeta = matchingObs.metadata as any || {};
         const [updated] = await db
-          .update(sophieObservations)
+          .update(paxObservations)
           .set({
             metadata: {
               ...currentMeta,
@@ -296,7 +296,7 @@ class SophieObserverService {
             description: `${matchingObs.description} (${occurrenceCount} similar occurrences)`,
             updatedAt: new Date()
           })
-          .where(eq(sophieObservations.id, matchingObs.id))
+          .where(eq(paxObservations.id, matchingObs.id))
           .returning();
 
         return updated;
@@ -304,7 +304,7 @@ class SophieObserverService {
 
       return null;
     } catch (error) {
-      console.error('[sophieObserver] Error updating batched observation:', error);
+      console.error('[paxObserver] Error updating batched observation:', error);
       return null;
     }
   }
@@ -313,33 +313,33 @@ class SophieObserverService {
    * Trigger notification based on type (passive or active)
    */
   private async triggerNotification(
-    observation: SophieObservation, 
+    observation: PaxObservation, 
     decision: NotificationDecision
   ): Promise<void> {
     if (decision.notificationType === 'active') {
-      console.log(`[sophieObserver] Active notification for org ${observation.organizationId}: ${observation.title}`);
+      console.log(`[paxObserver] Active notification for org ${observation.organizationId}: ${observation.title}`);
     } else if (decision.notificationType === 'passive') {
-      console.log(`[sophieObserver] Passive notification (badge) for org ${observation.organizationId}: ${observation.title}`);
+      console.log(`[paxObserver] Passive notification (badge) for org ${observation.organizationId}: ${observation.title}`);
     }
   }
 
   /**
    * Get active observations for an organization
    */
-  async getActiveObservations(orgId: number, limit = 20): Promise<SophieObservation[]> {
+  async getActiveObservations(orgId: number, limit = 20): Promise<PaxObservation[]> {
     try {
       return await db
         .select()
-        .from(sophieObservations)
+        .from(paxObservations)
         .where(and(
-          eq(sophieObservations.organizationId, orgId),
-          ne(sophieObservations.status, 'dismissed'),
-          ne(sophieObservations.status, 'auto_resolved')
+          eq(paxObservations.organizationId, orgId),
+          ne(paxObservations.status, 'dismissed'),
+          ne(paxObservations.status, 'auto_resolved')
         ))
-        .orderBy(desc(sophieObservations.detectedAt))
+        .orderBy(desc(paxObservations.detectedAt))
         .limit(limit);
     } catch (error) {
-      console.error('[sophieObserver] Error getting active observations:', error);
+      console.error('[paxObserver] Error getting active observations:', error);
       return [];
     }
   }
@@ -351,16 +351,16 @@ class SophieObserverService {
     try {
       const result = await db
         .select({ count: sql<number>`count(*)` })
-        .from(sophieObservations)
+        .from(paxObservations)
         .where(and(
-          eq(sophieObservations.organizationId, orgId),
-          eq(sophieObservations.status, 'detected'),
-          eq(sophieObservations.notificationType, 'passive')
+          eq(paxObservations.organizationId, orgId),
+          eq(paxObservations.status, 'detected'),
+          eq(paxObservations.notificationType, 'passive')
         ));
 
       return result[0]?.count || 0;
     } catch (error) {
-      console.error('[sophieObserver] Error getting unread passive count:', error);
+      console.error('[paxObserver] Error getting unread passive count:', error);
       return 0;
     }
   }
@@ -371,17 +371,17 @@ class SophieObserverService {
   async acknowledgeObservation(observationId: number): Promise<boolean> {
     try {
       await db
-        .update(sophieObservations)
+        .update(paxObservations)
         .set({
           status: 'acknowledged',
           acknowledgedAt: new Date(),
           updatedAt: new Date()
         })
-        .where(eq(sophieObservations.id, observationId));
+        .where(eq(paxObservations.id, observationId));
 
       return true;
     } catch (error) {
-      console.error('[sophieObserver] Error acknowledging observation:', error);
+      console.error('[paxObserver] Error acknowledging observation:', error);
       return false;
     }
   }
@@ -392,17 +392,17 @@ class SophieObserverService {
   async dismissObservation(observationId: number): Promise<boolean> {
     try {
       await db
-        .update(sophieObservations)
+        .update(paxObservations)
         .set({
           status: 'dismissed',
           resolvedAt: new Date(),
           updatedAt: new Date()
         })
-        .where(eq(sophieObservations.id, observationId));
+        .where(eq(paxObservations.id, observationId));
 
       return true;
     } catch (error) {
-      console.error('[sophieObserver] Error dismissing observation:', error);
+      console.error('[paxObserver] Error dismissing observation:', error);
       return false;
     }
   }
@@ -413,17 +413,17 @@ class SophieObserverService {
   async escalateObservation(observationId: number): Promise<boolean> {
     try {
       await db
-        .update(sophieObservations)
+        .update(paxObservations)
         .set({
           status: 'escalated',
           escalatedAt: new Date(),
           updatedAt: new Date()
         })
-        .where(eq(sophieObservations.id, observationId));
+        .where(eq(paxObservations.id, observationId));
 
       return true;
     } catch (error) {
-      console.error('[sophieObserver] Error escalating observation:', error);
+      console.error('[paxObserver] Error escalating observation:', error);
       return false;
     }
   }
@@ -438,7 +438,7 @@ class SophieObserverService {
   ): Promise<boolean> {
     try {
       await db
-        .update(sophieObservations)
+        .update(paxObservations)
         .set({
           status: 'auto_resolved',
           autoResolveAttempted: true,
@@ -447,11 +447,11 @@ class SophieObserverService {
           resolvedAt: new Date(),
           updatedAt: new Date()
         })
-        .where(eq(sophieObservations.id, observationId));
+        .where(eq(paxObservations.id, observationId));
 
       return true;
     } catch (error) {
-      console.error('[sophieObserver] Error auto-resolving observation:', error);
+      console.error('[paxObserver] Error auto-resolving observation:', error);
       return false;
     }
   }
@@ -465,7 +465,7 @@ class SophieObserverService {
     current: number,
     limit: number,
     percentage: number
-  ): Promise<SophieObservation | null> {
+  ): Promise<PaxObservation | null> {
     const severity: ObservationSeverity = percentage >= 95 ? 'high' : percentage >= 80 ? 'medium' : 'low';
     const confidence = Math.min(100, Math.round(percentage));
 
@@ -499,7 +499,7 @@ class SophieObserverService {
     table: string,
     count: number,
     description: string
-  ): Promise<SophieObservation | null> {
+  ): Promise<PaxObservation | null> {
     return this.recordObservation({
       organizationId: orgId,
       type: 'data_issue',
@@ -524,7 +524,7 @@ class SophieObserverService {
     recentCount: number,
     avgDailyBaseline: number,
     dropPercentage: number
-  ): Promise<SophieObservation | null> {
+  ): Promise<PaxObservation | null> {
     return this.recordObservation({
       organizationId: orgId,
       type: 'activity_drop',
@@ -548,7 +548,7 @@ class SophieObserverService {
     serviceName: string,
     status: string,
     message: string
-  ): Promise<SophieObservation | null> {
+  ): Promise<PaxObservation | null> {
     if (!orgId) return null;
 
     const severity: ObservationSeverity = status === 'unavailable' ? 'high' : 'medium';
@@ -579,20 +579,20 @@ class SophieObserverService {
       cutoff.setDate(cutoff.getDate() - daysOld);
 
       const result = await db
-        .delete(sophieObservations)
+        .delete(paxObservations)
         .where(and(
-          eq(sophieObservations.status, 'auto_resolved'),
-          sql`${sophieObservations.resolvedAt} < ${cutoff}`
+          eq(paxObservations.status, 'auto_resolved'),
+          sql`${paxObservations.resolvedAt} < ${cutoff}`
         ))
-        .returning({ id: sophieObservations.id });
+        .returning({ id: paxObservations.id });
 
       if (result.length > 0) {
-        console.log(`[sophieObserver] Cleaned up ${result.length} old observations`);
+        console.log(`[paxObserver] Cleaned up ${result.length} old observations`);
       }
 
       return result.length;
     } catch (error) {
-      console.error('[sophieObserver] Error cleaning up old observations:', error);
+      console.error('[paxObserver] Error cleaning up old observations:', error);
       return 0;
     }
   }
@@ -602,14 +602,14 @@ class SophieObserverService {
    */
   clearCache(): void {
     this.recentObservations.clear();
-    console.log('[sophieObserver] Observation cache cleared');
+    console.log('[paxObserver] Observation cache cleared');
   }
 
   /**
    * Check if an observation matches a known fix pattern with >70% success rate
    * and attempt proactive self-healing before notifying user
    */
-  async checkAndApplyProactiveFix(observation: SophieObservation): Promise<{
+  async checkAndApplyProactiveFix(observation: PaxObservation): Promise<{
     attempted: boolean;
     success: boolean;
     action?: string;
@@ -621,12 +621,12 @@ class SophieObserverService {
       
       const matchingPatterns = await db
         .select()
-        .from(sophieCrossOrgLearnings)
+        .from(paxCrossOrgLearnings)
         .where(and(
-          gte(sophieCrossOrgLearnings.successRate, "70"),
-          eq(sophieCrossOrgLearnings.isAutoFixable, true)
+          gte(paxCrossOrgLearnings.successRate, "70"),
+          eq(paxCrossOrgLearnings.isAutoFixable, true)
         ))
-        .orderBy(desc(sophieCrossOrgLearnings.successRate))
+        .orderBy(desc(paxCrossOrgLearnings.successRate))
         .limit(50);
       
       let matchedPattern = null;
@@ -647,10 +647,10 @@ class SophieObserverService {
         return { attempted: false, success: false };
       }
       
-      console.log(`[sophieObserver] Found matching fix pattern for observation ${observation.id}: ${matchedPattern.issuePattern?.substring(0, 50)}`);
+      console.log(`[paxObserver] Found matching fix pattern for observation ${observation.id}: ${matchedPattern.issuePattern?.substring(0, 50)}`);
       
-      const { sophieLearningService } = await import("./sophieLearning");
-      const fixResult = await sophieLearningService.applySelfHealingFix(
+      const { paxLearningService } = await import("./paxLearning");
+      const fixResult = await paxLearningService.applySelfHealingFix(
         observation.organizationId,
         `${observation.title} ${observation.description}`,
         { observationId: observation.id }
@@ -658,9 +658,9 @@ class SophieObserverService {
       
       if (fixResult.applied) {
         await this.autoResolveObservation(observation.id, true, fixResult.result);
-        console.log(`[sophieObserver] Proactively fixed observation ${observation.id}: ${fixResult.result}`);
+        console.log(`[paxObserver] Proactively fixed observation ${observation.id}: ${fixResult.result}`);
       } else {
-        console.log(`[sophieObserver] Proactive fix attempt failed for observation ${observation.id}: ${fixResult.result}`);
+        console.log(`[paxObserver] Proactive fix attempt failed for observation ${observation.id}: ${fixResult.result}`);
       }
       
       return {
@@ -670,7 +670,7 @@ class SophieObserverService {
         result: fixResult.result
       };
     } catch (error) {
-      console.error('[sophieObserver] Error in proactive self-healing:', error);
+      console.error('[paxObserver] Error in proactive self-healing:', error);
       return { attempted: false, success: false };
     }
   }
@@ -679,7 +679,7 @@ class SophieObserverService {
    * Record an observation and attempt proactive fix if applicable
    */
   async recordObservationWithProactiveFix(options: RecordObservationOptions): Promise<{
-    observation: SophieObservation | null;
+    observation: PaxObservation | null;
     proactiveFix: {
       attempted: boolean;
       success: boolean;
@@ -715,14 +715,14 @@ class SophieObserverService {
 
       const patterns = await db
         .select({
-          id: sophieCrossOrgLearnings.id,
-          issuePattern: sophieCrossOrgLearnings.issuePattern,
-          autoFixAction: sophieCrossOrgLearnings.autoFixAction,
-          successRate: sophieCrossOrgLearnings.successRate
+          id: paxCrossOrgLearnings.id,
+          issuePattern: paxCrossOrgLearnings.issuePattern,
+          autoFixAction: paxCrossOrgLearnings.autoFixAction,
+          successRate: paxCrossOrgLearnings.successRate
         })
-        .from(sophieCrossOrgLearnings)
-        .where(gte(sophieCrossOrgLearnings.successRate, "70"))
-        .orderBy(desc(sophieCrossOrgLearnings.successRate))
+        .from(paxCrossOrgLearnings)
+        .where(gte(paxCrossOrgLearnings.successRate, "70"))
+        .orderBy(desc(paxCrossOrgLearnings.successRate))
         .limit(20);
 
       return patterns.filter(pattern => {
@@ -730,20 +730,20 @@ class SophieObserverService {
         return keywords.some(k => patternLower.includes(k));
       });
     } catch (error) {
-      console.error('[sophieObserver] Error finding matching fix patterns:', error);
+      console.error('[paxObserver] Error finding matching fix patterns:', error);
       return [];
     }
   }
 
   // ============================================================
-  // PROACTIVE MONITORING CHECKS (Atlas-powered)
+  // PROACTIVE MONITORING CHECKS (Pax-powered)
   // ============================================================
 
   /**
    * Check for leads that haven't been contacted in 14+ days.
-   * Surfaces an actionable insight so Atlas can draft outreach.
+   * Surfaces an actionable insight so Pax can draft outreach.
    */
-  async checkStaleLeads(orgId: number): Promise<SophieObservation | null> {
+  async checkStaleLeads(orgId: number): Promise<PaxObservation | null> {
     try {
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - 14);
@@ -787,7 +787,7 @@ class SophieObserverService {
         },
       });
     } catch (error) {
-      console.error('[sophieObserver] Error checking stale leads:', error);
+      console.error('[paxObserver] Error checking stale leads:', error);
       return null;
     }
   }
@@ -795,7 +795,7 @@ class SophieObserverService {
   /**
    * Check for deals in offer_sent stage where the offer is 7+ days old with no response.
    */
-  async checkExpiringOffers(orgId: number): Promise<SophieObservation | null> {
+  async checkExpiringOffers(orgId: number): Promise<PaxObservation | null> {
     try {
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - 7);
@@ -847,7 +847,7 @@ class SophieObserverService {
         },
       });
     } catch (error) {
-      console.error('[sophieObserver] Error checking expiring offers:', error);
+      console.error('[paxObserver] Error checking expiring offers:', error);
       return null;
     }
   }
@@ -856,7 +856,7 @@ class SophieObserverService {
    * Compare deals closed this month vs last month.
    * If velocity has dropped >20%, surface an insight.
    */
-  async checkPipelineVelocity(orgId: number): Promise<SophieObservation | null> {
+  async checkPipelineVelocity(orgId: number): Promise<PaxObservation | null> {
     try {
       const now = new Date();
 
@@ -915,7 +915,7 @@ class SophieObserverService {
         },
       });
     } catch (error) {
-      console.error('[sophieObserver] Error checking pipeline velocity:', error);
+      console.error('[paxObserver] Error checking pipeline velocity:', error);
       return null;
     }
   }
@@ -924,7 +924,7 @@ class SophieObserverService {
    * Check for high-value leads (estimated property value >$50k) with no contact in 7 days.
    * Surfaces a priority alert.
    */
-  async checkHighValueInactiveLeads(orgId: number): Promise<SophieObservation | null> {
+  async checkHighValueInactiveLeads(orgId: number): Promise<PaxObservation | null> {
     try {
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - 7);
@@ -994,7 +994,7 @@ class SophieObserverService {
         },
       });
     } catch (error) {
-      console.error('[sophieObserver] Error checking high-value inactive leads:', error);
+      console.error('[paxObserver] Error checking high-value inactive leads:', error);
       return null;
     }
   }
@@ -1004,12 +1004,12 @@ class SophieObserverService {
    * Call this on a schedule (e.g., hourly) to surface insights.
    */
   async runProactiveChecks(orgId: number): Promise<{
-    staleLeads: SophieObservation | null;
-    expiringOffers: SophieObservation | null;
-    pipelineVelocity: SophieObservation | null;
-    highValueInactive: SophieObservation | null;
+    staleLeads: PaxObservation | null;
+    expiringOffers: PaxObservation | null;
+    pipelineVelocity: PaxObservation | null;
+    highValueInactive: PaxObservation | null;
   }> {
-    console.log(`[sophieObserver] Running proactive checks for org ${orgId}`);
+    console.log(`[paxObserver] Running proactive checks for org ${orgId}`);
     const [staleLeads, expiringOffers, pipelineVelocity, highValueInactive] = await Promise.all([
       this.checkStaleLeads(orgId),
       this.checkExpiringOffers(orgId),
@@ -1020,4 +1020,4 @@ class SophieObserverService {
   }
 }
 
-export const sophieObserver = SophieObserverService.getInstance();
+export const paxObserver = PaxObserverService.getInstance();

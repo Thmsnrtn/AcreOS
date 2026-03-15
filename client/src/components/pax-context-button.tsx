@@ -1,9 +1,9 @@
 import { Sparkles } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useSophieRail, type RailEntityContext } from "@/contexts/sophie-rail-context";
+import { usePaxRail, type RailEntityContext } from "@/contexts/pax-rail-context";
 import { cn } from "@/lib/utils";
 
-interface SophieContextButtonProps {
+interface PaxContextButtonProps {
   entityType: RailEntityContext["entityType"];
   entityId: number;
   entityName: string;
@@ -12,21 +12,21 @@ interface SophieContextButtonProps {
 }
 
 /**
- * A subtle "Ask Sophie" sparkle button that appears on hover.
+ * A subtle "Ask Pax" sparkle button that appears on hover.
  * Wire into table rows and cards:
- *   <SophieContextButton entityType="lead" entityId={lead.id} entityName={lead.firstName} />
+ *   <PaxContextButton entityType="lead" entityId={lead.id} entityName={lead.firstName} />
  */
-export function SophieContextButton({
+export function PaxContextButton({
   entityType, entityId, entityName, starterPrompt, className,
-}: SophieContextButtonProps) {
-  const { openWithContext } = useSophieRail();
+}: PaxContextButtonProps) {
+  const { openWithContext } = usePaxRail();
 
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <button
           type="button"
-          data-testid={`sophie-ctx-${entityType}-${entityId}`}
+          data-testid={`pax-ctx-${entityType}-${entityId}`}
           className={cn(
             "inline-flex items-center justify-center",
             "w-6 h-6 rounded-md",
@@ -44,7 +44,7 @@ export function SophieContextButton({
         </button>
       </TooltipTrigger>
       <TooltipContent side="left" className="text-xs">
-        Ask Sophie about this {entityType}
+        Ask Pax about this {entityType}
       </TooltipContent>
     </Tooltip>
   );

@@ -143,8 +143,8 @@ export function OnboardingProgress() {
       isComplete: stripeConnected,
     },
     {
-      id: "atlas",
-      title: "Chat with Atlas AI",
+      id: "pax",
+      title: "Chat with Pax AI",
       description: "Try the AI assistant",
       icon: Bot,
       href: "/command-center",

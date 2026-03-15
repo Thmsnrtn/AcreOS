@@ -403,7 +403,7 @@ const JOB_COLORS: Record<string, string> = {
   support_brain:       "bg-cyan-500",
   dunning:             "bg-red-500",
   external_monitor:    "bg-orange-500",
-  sophie:              "bg-violet-500",
+  pax:              "bg-violet-500",
   churn_engine:        "bg-rose-500",
   founder_briefing:    "bg-emerald-500",
   default:             "bg-zinc-400",
@@ -555,7 +555,7 @@ function ChurnRiskPanel() {
   const triggerRescue = async (orgId: number, orgName: string) => {
     try {
       await apiRequest("POST", `/api/admin/churn-risk/${orgId}/rescue`);
-      toast({ title: "Rescue triggered", description: `Sophie will reach out to ${orgName}` });
+      toast({ title: "Rescue triggered", description: `Pax will reach out to ${orgName}` });
       refetch();
     } catch {
       toast({ title: "Error", description: "Failed to trigger rescue", variant: "destructive" });
@@ -574,7 +574,7 @@ function ChurnRiskPanel() {
           <ShieldAlert className="w-4 h-4 text-rose-500" />
           Churn Risk Radar
         </CardTitle>
-        <CardDescription className="text-xs">Paying orgs with elevated churn risk — Sophie auto-rescues at 85+</CardDescription>
+        <CardDescription className="text-xs">Paying orgs with elevated churn risk — Pax auto-rescues at 85+</CardDescription>
       </CardHeader>
       <CardContent>
         {isLoading ? (
@@ -594,7 +594,7 @@ function ChurnRiskPanel() {
                     <Badge variant="outline" className="text-xs py-0">{org.subscriptionTier}</Badge>
                     {org.churnRescueSentAt && (
                       <span className="text-xs text-violet-600 flex items-center gap-1">
-                        <BrainCircuit className="w-3 h-3" /> Sophie intervened
+                        <BrainCircuit className="w-3 h-3" /> Pax intervened
                       </span>
                     )}
                   </div>
@@ -623,7 +623,7 @@ function ChurnRiskPanel() {
   );
 }
 
-/** Sophie's Eyes — observations and cross-org learnings */
+/** Pax's Eyes — observations and cross-org learnings */
 const ACTION_LABELS: Record<string, string> = {
   proactive_outreach: "Re-engage",
   draft_outreach_message: "Re-engage",
@@ -634,20 +634,20 @@ const ACTION_LABELS: Record<string, string> = {
   review_data: "Acknowledge",
 };
 
-function SophieEyesPanel() {
+function PaxEyesPanel() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { data, isLoading } = useQuery({
-    queryKey: ["/api/admin/sophie-observations"],
-    queryFn: () => apiRequest("GET", "/api/admin/sophie-observations?limit=25").then(r => r.json()),
+    queryKey: ["/api/admin/pax-observations"],
+    queryFn: () => apiRequest("GET", "/api/admin/pax-observations?limit=25").then(r => r.json()),
     refetchInterval: 2 * 60_000,
   });
 
   const executeMutation = useMutation({
     mutationFn: (obsId: number) =>
-      apiRequest("POST", `/api/admin/sophie-observations/${obsId}/execute`).then(r => r.json()),
+      apiRequest("POST", `/api/admin/pax-observations/${obsId}/execute`).then(r => r.json()),
     onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/sophie-observations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/pax-observations"] });
       toast({ title: "Action executed", description: data.actionTaken?.replace(/_/g, " ") });
     },
     onError: () => toast({ title: "Failed to execute action", variant: "destructive" }),
@@ -674,9 +674,9 @@ function SophieEyesPanel() {
       <CardHeader className="pb-3">
         <CardTitle className="text-base font-semibold flex items-center gap-2">
           <BrainCircuit className="w-4 h-4 text-violet-500" />
-          Sophie's Eyes
+          Pax's Eyes
         </CardTitle>
-        <CardDescription className="text-xs">What Sophie has observed and learned across all organizations</CardDescription>
+        <CardDescription className="text-xs">What Pax has observed and learned across all organizations</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Observations */}
@@ -1519,11 +1519,11 @@ export default function FounderDashboard() {
             </div>
             {/* Activity stream spans full width */}
             <SystemActivityPanel />
-            {/* Job health + churn risk + Sophie in a responsive grid */}
+            {/* Job health + churn risk + Pax in a responsive grid */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <JobHealthPanel />
               <ChurnRiskPanel />
-              <SophieEyesPanel />
+              <PaxEyesPanel />
             </div>
           </div>
 
@@ -2048,7 +2048,7 @@ export default function FounderDashboard() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <MessageSquare className="w-5 h-5 text-purple-500" />
-                Support Analytics (Sophie AI)
+                Support Analytics (Pax AI)
               </CardTitle>
               <CardDescription>AI-powered customer support metrics</CardDescription>
             </CardHeader>
@@ -2205,7 +2205,7 @@ export default function FounderDashboard() {
                 <div className="text-center py-8 text-muted-foreground">
                   <CheckCircle2 className="w-10 h-10 mx-auto mb-2 text-green-500" />
                   <p className="text-sm">No escalations pending</p>
-                  <p className="text-xs">Sophie is handling all support requests</p>
+                  <p className="text-xs">Pax is handling all support requests</p>
                 </div>
               )}
             </CardContent>

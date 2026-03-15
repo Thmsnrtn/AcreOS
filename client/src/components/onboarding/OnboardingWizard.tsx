@@ -47,7 +47,7 @@ type OnboardingStatus = {
     dataImported?: boolean;
     propertyAdded?: boolean;
     stripeConnected?: boolean;
-    atlasExplored?: boolean;
+    paxExplored?: boolean;
     completedSteps?: number[];
     skippedSteps?: number[];
   };
@@ -87,8 +87,8 @@ const WIZARD_STEPS = [
   },
   {
     id: 4,
-    name: "explore_atlas",
-    title: "Explore Atlas AI",
+    name: "explore_pax",
+    title: "Explore Pax AI",
     description: "Meet your AI assistant for land investing",
     icon: Bot,
   },
@@ -697,7 +697,7 @@ export function OnboardingWizard() {
               >
                 <PartyPopper className="w-10 h-10 text-green-500" />
               </motion.div>
-              <h2 className="text-2xl font-bold mb-2">Meet Atlas AI</h2>
+              <h2 className="text-2xl font-bold mb-2">Meet Pax AI</h2>
               <p className="text-muted-foreground">Your AI assistant for land investing</p>
             </div>
             
@@ -708,7 +708,7 @@ export function OnboardingWizard() {
                     <Bot className="w-6 h-6 text-primary" />
                   </div>
                   <div>
-                    <h3 className="font-semibold mb-2">What Atlas AI can do:</h3>
+                    <h3 className="font-semibold mb-2">What Pax AI can do:</h3>
                     <ul className="text-sm text-muted-foreground space-y-2">
                       <li className="flex items-start gap-2">
                         <Check className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
@@ -733,7 +733,7 @@ export function OnboardingWizard() {
             </Card>
 
             <p className="text-sm text-center text-muted-foreground">
-              Click the chat bubble in the bottom right corner to start chatting with Atlas.
+              Click the chat bubble in the bottom right corner to start chatting with Pax.
             </p>
           </motion.div>
         );
