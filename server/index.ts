@@ -186,7 +186,7 @@ const aiLimiter = rateLimit({
   message: { message: "AI request limit reached. Please wait a moment." },
 });
 app.use("/api/ai", aiLimiter);
-app.use("/api/atlas", aiLimiter);
+app.use("/api/pax", aiLimiter);
 app.use("/api/chat", aiLimiter);
 app.use("/api/executive", aiLimiter);
 app.use("/api/document-generation", aiLimiter);

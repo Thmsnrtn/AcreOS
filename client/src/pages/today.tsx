@@ -76,7 +76,7 @@ interface SystemAlert {
   createdAt: string;
 }
 
-interface AtlasObservation {
+interface PaxObservation {
   id: number;
   type: string;
   severity: string; // high | medium | low | info
@@ -86,28 +86,28 @@ interface AtlasObservation {
   createdAt: string | null;
 }
 
-interface AtlasStaleLead {
+interface PaxStaleLead {
   id: number;
   firstName: string;
   lastName: string;
   daysSinceContact: number;
 }
 
-interface AtlasExpiringOffer {
+interface PaxExpiringOffer {
   id: number;
   title: string;
   offerExpiresAt: string | null;
   leadName: string;
 }
 
-interface AtlasInsights {
-  observations: AtlasObservation[];
-  staleLeads: AtlasStaleLead[];
-  expiringOffers: AtlasExpiringOffer[];
+interface PaxInsights {
+  observations: PaxObservation[];
+  staleLeads: PaxStaleLead[];
+  expiringOffers: PaxExpiringOffer[];
   generatedAt: string;
 }
 
-interface SophieSuggestion {
+interface PaxSuggestion {
   id: string;
   suggestion: string;
   rationale: string;
@@ -119,8 +119,8 @@ interface SophieSuggestion {
   confidence: number;
 }
 
-interface SophieSuggestionsResponse {
-  suggestions: SophieSuggestion[];
+interface PaxSuggestionsResponse {
+  suggestions: PaxSuggestion[];
   generatedAt: string;
 }
 
@@ -170,15 +170,15 @@ export default function TodayPage() {
       staleTime: 5 * 60 * 1000,
     });
 
-  const { data: atlasInsights, isLoading: atlasLoading } =
-    useQuery<AtlasInsights>({
-      queryKey: ["/api/atlas/insights"],
+  const { data: paxInsights, isLoading: paxLoading } =
+    useQuery<PaxInsights>({
+      queryKey: ["/api/pax/insights"],
       staleTime: 5 * 60 * 1000,
     });
 
-  const { data: sophieSuggestionsData, isLoading: sophieLoading } =
-    useQuery<SophieSuggestionsResponse>({
-      queryKey: ["/api/atlas/sophie-suggestions"],
+  const { data: paxSuggestionsData, isLoading: paxLoading } =
+    useQuery<PaxSuggestionsResponse>({
+      queryKey: ["/api/pax/pax-suggestions"],
       staleTime: 5 * 60 * 1000,
     });
 
@@ -234,12 +234,12 @@ export default function TodayPage() {
 
   const aiActions = intelligence?.actions?.slice(0, 5) ?? [];
 
-  const atlasObservations = atlasInsights?.observations ?? [];
-  const atlasStaleLeads = atlasInsights?.staleLeads ?? [];
-  const atlasExpiringOffers = atlasInsights?.expiringOffers ?? [];
-  const atlasItemCount = atlasObservations.length + atlasStaleLeads.length + atlasExpiringOffers.length;
+  const paxObservations = paxInsights?.observations ?? [];
+  const paxStaleLeads = paxInsights?.staleLeads ?? [];
+  const paxExpiringOffers = paxInsights?.expiringOffers ?? [];
+  const paxItemCount = paxObservations.length + paxStaleLeads.length + paxExpiringOffers.length;
 
-  const sophieSuggestions = sophieSuggestionsData?.suggestions ?? [];
+  const paxSuggestions = paxSuggestionsData?.suggestions ?? [];
 
   return (
     <PageShell>
@@ -380,23 +380,23 @@ export default function TodayPage() {
         </div>
       )}
 
-      {/* Section 2b: Atlas Noticed */}
-      {!atlasLoading && atlasItemCount > 0 && (
-        <div data-testid="section-atlas-noticed">
+      {/* Section 2b: Pax Noticed */}
+      {!paxLoading && paxItemCount > 0 && (
+        <div data-testid="section-pax-noticed">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-violet-500" />
-              <h2 className="text-lg font-semibold">Atlas Noticed</h2>
+              <h2 className="text-lg font-semibold">Pax Noticed</h2>
               <Badge variant="secondary" className="bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300 text-xs">
                 AI
               </Badge>
-              {atlasItemCount > 0 && (
+              {paxItemCount > 0 && (
                 <Badge variant="secondary" className="bg-primary/10 text-primary text-xs">
-                  {atlasItemCount}
+                  {paxItemCount}
                 </Badge>
               )}
             </div>
-            <Link href="/atlas#insights">
+            <Link href="/pax#insights">
               <Button variant="ghost" size="sm" className="gap-1 text-xs">
                 View All <ArrowRight className="w-3 h-3" />
               </Button>
@@ -405,7 +405,7 @@ export default function TodayPage() {
 
           <div className="space-y-2">
             {/* Observation cards */}
-            {atlasObservations.map((obs) => {
+            {paxObservations.map((obs) => {
               const isHigh = obs.severity === "high";
               const isMedium = obs.severity === "medium";
               const isLow = obs.severity === "low";
@@ -440,7 +440,7 @@ export default function TodayPage() {
             })}
 
             {/* Stale lead cards */}
-            {atlasStaleLeads.map((lead) => (
+            {paxStaleLeads.map((lead) => (
               <div key={`stale-${lead.id}`} className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20 p-3">
                 <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-500" />
                 <div className="flex-1 min-w-0">
@@ -458,7 +458,7 @@ export default function TodayPage() {
             ))}
 
             {/* Expiring offer cards */}
-            {atlasExpiringOffers.map((offer) => (
+            {paxExpiringOffers.map((offer) => (
               <div key={`offer-${offer.id}`} className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20 p-3">
                 <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-red-500" />
                 <div className="flex-1 min-w-0">
@@ -476,12 +476,12 @@ export default function TodayPage() {
         </div>
       )}
 
-      {/* Section 2c: Sophie Suggests */}
-      <div data-testid="section-sophie-suggests">
+      {/* Section 2c: Pax Suggests */}
+      <div data-testid="section-pax-suggests">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-emerald-500" />
-            <h2 className="text-lg font-semibold">Sophie Suggests</h2>
+            <h2 className="text-lg font-semibold">Pax Suggests</h2>
             <Badge variant="secondary" className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 text-xs">
               AI
             </Badge>
@@ -493,20 +493,20 @@ export default function TodayPage() {
           </Link>
         </div>
 
-        {sophieLoading ? (
+        {paxLoading ? (
           <div className="space-y-2">
             {[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full" />)}
           </div>
-        ) : sophieSuggestions.length === 0 ? (
+        ) : paxSuggestions.length === 0 ? (
           <Card>
             <CardContent className="flex items-center gap-3 py-5 px-4">
               <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
-              <p className="text-sm text-muted-foreground">No proactive suggestions right now. Sophie is monitoring your pipeline.</p>
+              <p className="text-sm text-muted-foreground">No proactive suggestions right now. Pax is monitoring your pipeline.</p>
             </CardContent>
           </Card>
         ) : (
           <div className="space-y-2">
-            {sophieSuggestions.map((s) => {
+            {paxSuggestions.map((s) => {
               const confidencePct = Math.round(s.confidence * 100);
               const confBadgeClass = confidencePct >= 85
                 ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"

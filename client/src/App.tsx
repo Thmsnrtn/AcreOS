@@ -9,7 +9,7 @@ import { useFeatureFlags } from "@/hooks/use-feature-flags";
 import { Loader2 } from "lucide-react";
 import { telemetry } from "@/lib/telemetry";
 import { ThemeProvider } from "@/contexts/theme-context";
-import { SophieRailProvider } from "@/contexts/sophie-rail-context";
+import { PaxRailProvider } from "@/contexts/pax-rail-context";
 import { AnimatePresence, motion } from "framer-motion";
 import { pageTransition } from "@/lib/animations";
 
@@ -22,7 +22,7 @@ import { QuickActionsMenu } from "@/components/quick-actions-menu";
 import TodayPage from "@/pages/today";
 import PipelinePage from "@/pages/pipeline";
 import MoneyPage from "@/pages/money";
-import AtlasPage from "@/pages/atlas";
+import PaxPage from "@/pages/pax";
 import LeadsPage from "@/pages/leads";
 import PropertiesPage from "@/pages/properties";
 import FinancePage from "@/pages/finance";
@@ -92,7 +92,7 @@ import { useSwipeNavigation } from "@/hooks/use-swipe-gesture";
 import { MobileBottomNav } from "@/components/mobile";
 import { BetaFeedbackWidget } from "@/components/beta-feedback-widget";
 import { BetaActivationDetector } from "@/components/beta-activation-detector";
-import { SophieCopilotRail } from "@/components/sophie-copilot-rail";
+import { PaxCopilotRail } from "@/components/pax-copilot-rail";
 
 // Protected Route Wrapper
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
@@ -194,8 +194,8 @@ function Router() {
       <Route path="/money">
         {() => <ProtectedRoute component={MoneyPage} />}
       </Route>
-      <Route path="/atlas">
-        {() => <ProtectedRoute component={AtlasPage} />}
+      <Route path="/pax">
+        {() => <ProtectedRoute component={PaxPage} />}
       </Route>
       <Route path="/leads">
         {() => <ProtectedRoute component={LeadsPage} />}
@@ -404,7 +404,7 @@ function AppContent() {
       {user && <OnboardingWizard />}
       {user && <BetaFeedbackWidget />}
       {user && <BetaActivationDetector />}
-      {user && <SophieCopilotRail />}
+      {user && <PaxCopilotRail />}
       <PWAInstallPrompt />
     </>
   );
@@ -415,7 +415,7 @@ function App() {
     <ErrorBoundary>
       <ThemeProvider>
         <SidebarProvider>
-          <SophieRailProvider>
+          <PaxRailProvider>
           <QueryClientProvider client={queryClient}>
             <TooltipProvider>
               <HintsProvider>
@@ -428,7 +428,7 @@ function App() {
               </HintsProvider>
             </TooltipProvider>
           </QueryClientProvider>
-          </SophieRailProvider>
+          </PaxRailProvider>
         </SidebarProvider>
       </ThemeProvider>
     </ErrorBoundary>

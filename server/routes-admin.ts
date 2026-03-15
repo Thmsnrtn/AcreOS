@@ -8,7 +8,7 @@ import {
   SUBSCRIPTION_TIERS, payments, notes, deals, properties, leads, activityLog, organizations,
   offers, organizationIntegrations, dataSources,
   supportTickets, supportTicketMessages, knowledgeBaseArticles,
-  sophieMemory, sophieObservations, sophieCrossOrgLearnings, systemAlerts,
+  paxMemory, paxObservations, paxCrossOrgLearnings, systemAlerts,
   countyGisEndpoints,
   aiModelConfigs,
   systemApiKeys,
@@ -2489,7 +2489,7 @@ export function registerAdminRoutes(app: Express): void {
         {
           key: "openai_configured",
           label: "OpenAI API key",
-          description: "Powers all AI features — lead scoring, Sophie, deal analysis",
+          description: "Powers all AI features — lead scoring, Pax, deal analysis",
           priority: "critical",
           status: hasSystemKey("openai") || hasEnv("AI_INTEGRATIONS_OPENAI_API_KEY") || hasEnv("OPENAI_API_KEY") ? "complete" : "incomplete",
           section: "section-config",
@@ -3547,35 +3547,35 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
     }
   });
 
-  // GET /api/admin/sophie-observations — Sophie's recent observations
-  api.get("/api/admin/sophie-observations", isAuthenticated, isFounderAdmin, async (req, res) => {
+  // GET /api/admin/pax-observations — Pax's recent observations
+  api.get("/api/admin/pax-observations", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
       const limit = Math.min(Number(req.query.limit) || 30, 100);
 
-      // Use sophieObservations (proactive monitor results) — includes suggestedAction
+      // Use paxObservations (proactive monitor results) — includes suggestedAction
       const observations = await db
         .select({
-          id: sophieObservations.id,
-          orgId: sophieObservations.organizationId,
+          id: paxObservations.id,
+          orgId: paxObservations.organizationId,
           orgName: organizations.name,
-          type: sophieObservations.type,
-          content: sophieObservations.description,
-          confidence: sophieObservations.confidenceScore,
-          severity: sophieObservations.severity,
-          status: sophieObservations.status,
-          suggestedAction: sql<string>`${sophieObservations.metadata}->>'suggestedAction'`,
-          createdAt: sophieObservations.createdAt,
+          type: paxObservations.type,
+          content: paxObservations.description,
+          confidence: paxObservations.confidenceScore,
+          severity: paxObservations.severity,
+          status: paxObservations.status,
+          suggestedAction: sql<string>`${paxObservations.metadata}->>'suggestedAction'`,
+          createdAt: paxObservations.createdAt,
         })
-        .from(sophieObservations)
-        .leftJoin(organizations, eq(sophieObservations.organizationId, organizations.id))
-        .where(sql`${sophieObservations.status} NOT IN ('dismissed','auto_resolved')`)
-        .orderBy(desc(sophieObservations.createdAt))
+        .from(paxObservations)
+        .leftJoin(organizations, eq(paxObservations.organizationId, organizations.id))
+        .where(sql`${paxObservations.status} NOT IN ('dismissed','auto_resolved')`)
+        .orderBy(desc(paxObservations.createdAt))
         .limit(limit);
 
       const learnings = await db
         .select()
-        .from(sophieCrossOrgLearnings)
-        .orderBy(desc(sophieCrossOrgLearnings.createdAt))
+        .from(paxCrossOrgLearnings)
+        .orderBy(desc(paxCrossOrgLearnings.createdAt))
         .limit(10);
 
       res.json({ observations, learnings });
@@ -3584,14 +3584,14 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
     }
   });
 
-  // POST /api/admin/sophie-observations/:id/execute — execute the suggested action for an observation
-  api.post("/api/admin/sophie-observations/:id/execute", isAuthenticated, isFounderAdmin, async (req, res) => {
+  // POST /api/admin/pax-observations/:id/execute — execute the suggested action for an observation
+  api.post("/api/admin/pax-observations/:id/execute", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
       const obsId = Number(req.params.id);
       const [obs] = await db
-        .select({ orgId: sophieObservations.organizationId, metadata: sophieObservations.metadata })
-        .from(sophieObservations)
-        .where(eq(sophieObservations.id, obsId))
+        .select({ orgId: paxObservations.organizationId, metadata: paxObservations.metadata })
+        .from(paxObservations)
+        .where(eq(paxObservations.id, obsId))
         .limit(1);
 
       if (!obs) return res.status(404).json({ message: "Observation not found" });
@@ -3616,9 +3616,9 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       }
 
       // Mark observation as acknowledged
-      await db.update(sophieObservations)
+      await db.update(paxObservations)
         .set({ status: "acknowledged", acknowledgedAt: new Date() })
-        .where(eq(sophieObservations.id, obsId));
+        .where(eq(paxObservations.id, obsId));
 
       res.json({ message: "Action executed", actionTaken });
     } catch (err: any) {

@@ -90,7 +90,7 @@ tests/               Vitest test suites
 - **Rate limiting**: Sliding-window in-memory rate limiter (`server/middleware/rateLimit.ts`). IP-based for public endpoints, user-ID-based for authenticated.
 - **CSRF**: Double-submit cookie pattern (`server/middleware/csrf.ts`).
 - **Subscriptions**: Stripe integration with tiered plans (free → starter → pro → scale → enterprise). Founders bypass all limits.
-- **AI**: OpenAI-powered agents for lead scoring, deal analysis, campaign optimization, and a conversational assistant (Sophie).
+- **AI**: OpenAI-powered agents for lead scoring, deal analysis, campaign optimization, and a conversational assistant (Pax).
 
 ## Health Check
 

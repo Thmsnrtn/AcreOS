@@ -13,7 +13,7 @@ import {
   Zap, Bell, CheckCircle2, AlertCircle, RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useSophieRail } from "@/contexts/sophie-rail-context";
+import { usePaxRail } from "@/contexts/pax-rail-context";
 import { ToolCallStream, type ToolEvent, parseToolResultSummary } from "@/components/tool-call-stream";
 
 // ─── Page context awareness ─────────────────────────────────────────────────
@@ -77,9 +77,9 @@ interface RailMessage {
   toolEvents?: ToolEvent[];
 }
 
-// ─── Observation (Sophie initiative feed) ───────────────────────────────────
+// ─── Observation (Pax initiative feed) ───────────────────────────────────
 
-interface SophieObservation {
+interface PaxObservation {
   id: number;
   type: string;
   severity: string;
@@ -91,8 +91,8 @@ interface SophieObservation {
 
 // ─── Main Component ─────────────────────────────────────────────────────────
 
-export function SophieCopilotRail() {
-  const { isOpen, setOpen, toggle, pendingContext, clearPendingContext } = useSophieRail();
+export function PaxCopilotRail() {
+  const { isOpen, setOpen, toggle, pendingContext, clearPendingContext } = usePaxRail();
   const [location] = useLocation();
   const pageMeta = useMemo(() => getPageMeta(location), [location]);
   const PageIcon = pageMeta.icon;
@@ -109,11 +109,11 @@ export function SophieCopilotRail() {
   // Running tool events indexed by message id
   const [activeToolEvents, setActiveToolEvents] = useState<Record<string, ToolEvent[]>>({});
 
-  // Sophie observations (initiative feed)
-  const { data: observationsData, refetch: refetchObs } = useQuery<SophieObservation[]>({
-    queryKey: ["/api/sophie/observations", { unread: true }],
+  // Pax observations (initiative feed)
+  const { data: observationsData, refetch: refetchObs } = useQuery<PaxObservation[]>({
+    queryKey: ["/api/pax/observations", { unread: true }],
     queryFn: async () => {
-      const res = await fetch("/api/sophie/observations?unread=true&limit=5", { credentials: "include" });
+      const res = await fetch("/api/pax/observations?unread=true&limit=5", { credentials: "include" });
       if (!res.ok) return [];
       return res.json();
     },
@@ -123,7 +123,7 @@ export function SophieCopilotRail() {
 
   const dismissMutation = useMutation({
     mutationFn: async (id: number) => {
-      await fetch(`/api/sophie/observations/${id}/acknowledge`, { method: "POST", credentials: "include" });
+      await fetch(`/api/pax/observations/${id}/acknowledge`, { method: "POST", credentials: "include" });
     },
     onSuccess: () => refetchObs(),
   });
@@ -329,7 +329,7 @@ export function SophieCopilotRail() {
               <button
                 onClick={toggle}
                 className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-primary/10 transition-colors relative"
-                data-testid="sophie-rail-expand"
+                data-testid="pax-rail-expand"
               >
                 <Sparkles className="w-4 h-4 text-primary" />
                 {observations.length > 0 && (
@@ -338,16 +338,16 @@ export function SophieCopilotRail() {
               </button>
             </TooltipTrigger>
             <TooltipContent side="left">
-              Open Sophie Co-Pilot (⌘J)
+              Open Pax Co-Pilot (⌘J)
             </TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
               <div className="mt-auto mb-4 text-xs text-muted-foreground [writing-mode:vertical-rl] [text-orientation:mixed] rotate-180 select-none opacity-40">
-                Sophie
+                Pax
               </div>
             </TooltipTrigger>
-            <TooltipContent side="left">Sophie Co-Pilot</TooltipContent>
+            <TooltipContent side="left">Pax Co-Pilot</TooltipContent>
           </Tooltip>
         </div>
       )}
@@ -362,7 +362,7 @@ export function SophieCopilotRail() {
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
-                <span className="text-sm font-semibold">Sophie</span>
+                <span className="text-sm font-semibold">Pax</span>
                 {isStreaming && <Loader2 className="w-3 h-3 text-primary animate-spin" />}
               </div>
               <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
@@ -397,7 +397,7 @@ export function SophieCopilotRail() {
             <div className="flex-shrink-0 border-b px-3 py-2 space-y-1.5 max-h-[180px] overflow-y-auto">
               <div className="flex items-center gap-1.5 mb-1">
                 <Bell className="w-3 h-3 text-muted-foreground" />
-                <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Sophie noticed</span>
+                <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Pax noticed</span>
               </div>
               {observations.slice(0, 4).map((obs) => (
                 <div key={obs.id} className="rounded-md border bg-muted/30 p-2 text-xs group">
@@ -455,7 +455,7 @@ export function SophieCopilotRail() {
                 <div className="text-center py-8">
                   <Sparkles className="w-8 h-8 text-primary/30 mx-auto mb-2" />
                   <p className="text-xs text-muted-foreground">
-                    Sophie is your AI co-pilot. Ask anything about your business or use the quick actions above.
+                    Pax is your AI co-pilot. Ask anything about your business or use the quick actions above.
                   </p>
                   <p className="text-[10px] text-muted-foreground/60 mt-2">⌘J to toggle · Enter to send</p>
                 </div>
@@ -513,7 +513,7 @@ export function SophieCopilotRail() {
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Ask Sophie anything…"
+                placeholder="Ask Pax anything…"
                 className="resize-none text-sm min-h-[60px] max-h-[120px]"
                 disabled={isStreaming}
                 rows={2}
@@ -529,7 +529,7 @@ export function SophieCopilotRail() {
                     className="h-8 w-8 flex-shrink-0"
                     onClick={handleSubmit}
                     disabled={!inputValue.trim()}
-                    data-testid="sophie-rail-send"
+                    data-testid="pax-rail-send"
                   >
                     <Send className="w-3.5 h-3.5" />
                   </Button>
@@ -537,7 +537,7 @@ export function SophieCopilotRail() {
               </div>
             </div>
             <p className="text-[10px] text-muted-foreground/50 text-center">
-              Sophie can take real actions · Always review before sharing sensitive info
+              Pax can take real actions · Always review before sharing sensitive info
             </p>
           </div>
         </>

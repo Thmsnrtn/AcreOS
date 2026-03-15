@@ -86,7 +86,7 @@ export const organizations = pgTable("organizations", {
   // Trial tokens for sampling premium actions (free tier users)
   trialTokens: integer("trial_tokens").default(5), // Free tokens to try premium actions
   trialTokensGrantedAt: timestamp("trial_tokens_granted_at").defaultNow(), // When tokens were last granted
-  // Sophie proactive notification settings
+  // Pax proactive notification settings
   proactiveNotificationLevel: varchar("proactive_notification_level", { length: 50 }).default("balanced"), // minimal, balanced, proactive, off
   // UTM attribution for customer acquisition tracking
   utmSource: text("utm_source"),     // e.g. 'meta', 'google', 'organic'
@@ -3160,11 +3160,11 @@ export type InsertSystemAlert = z.infer<typeof insertSystemAlertSchema>;
 export type SystemAlert = typeof systemAlerts.$inferSelect;
 
 // ============================================
-// SOPHIE OBSERVATIONS (Proactive Detection)
+// PAX OBSERVATIONS (Proactive Detection)
 // ============================================
 
-// Sophie proactive observation types
-export const SOPHIE_OBSERVATION_TYPES = [
+// Pax proactive observation types
+export const PAX_OBSERVATION_TYPES = [
   'anomaly',           // Unusual patterns detected
   'performance',       // Performance degradation
   'error_pattern',     // Repeated errors
@@ -3177,14 +3177,14 @@ export const SOPHIE_OBSERVATION_TYPES = [
   'optimization',      // Optimization suggestion
 ] as const;
 
-export type SophieObservationType = typeof SOPHIE_OBSERVATION_TYPES[number];
+export type PaxObservationType = typeof PAX_OBSERVATION_TYPES[number];
 
 // Notification level options for organizations
 export const PROACTIVE_NOTIFICATION_LEVELS = ['minimal', 'balanced', 'proactive', 'off'] as const;
 export type ProactiveNotificationLevel = typeof PROACTIVE_NOTIFICATION_LEVELS[number];
 
-// Sophie observations table - graceful proactive detection
-export const sophieObservations = pgTable("sophie_observations", {
+// Pax observations table - graceful proactive detection
+export const paxObservations = pgTable("pax_observations", {
   id: serial("id").primaryKey(),
   organizationId: integer("organization_id").references(() => organizations.id).notNull(),
   userId: text("user_id"), // Nullable - may be org-wide observation
@@ -3229,20 +3229,20 @@ export const sophieObservations = pgTable("sophie_observations", {
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
-  index("sophie_obs_org_idx").on(table.organizationId),
-  index("sophie_obs_status_idx").on(table.status),
-  index("sophie_obs_type_idx").on(table.type),
-  index("sophie_obs_detected_at_idx").on(table.detectedAt),
+  index("pax_obs_org_idx").on(table.organizationId),
+  index("pax_obs_status_idx").on(table.status),
+  index("pax_obs_type_idx").on(table.type),
+  index("pax_obs_detected_at_idx").on(table.detectedAt),
 ]);
 
-export const insertSophieObservationSchema = createInsertSchema(sophieObservations).omit({ 
+export const insertPaxObservationSchema = createInsertSchema(paxObservations).omit({ 
   id: true, 
   createdAt: true, 
   updatedAt: true,
   detectedAt: true 
 });
-export type InsertSophieObservation = z.infer<typeof insertSophieObservationSchema>;
-export type SophieObservation = typeof sophieObservations.$inferSelect;
+export type InsertPaxObservation = z.infer<typeof insertPaxObservationSchema>;
+export type PaxObservation = typeof paxObservations.$inferSelect;
 
 // ============================================
 // API JOB QUEUE
@@ -7833,7 +7833,7 @@ export const supportTickets = pgTable("support_tickets", {
   status: text("status").notNull().default("open"), // open, in_progress, waiting_on_customer, resolved, closed
   
   // AI handling
-  assignedAgent: text("assigned_agent"), // sophie (Support Agent), atlas, or null for human
+  assignedAgent: text("assigned_agent"), // pax (Support Agent), pax, or null for human
   aiHandled: boolean("ai_handled").default(false),
   aiConfidenceScore: numeric("ai_confidence_score"), // 0-100 confidence in resolution
   aiResolutionAttempts: integer("ai_resolution_attempts").default(0),
@@ -7887,7 +7887,7 @@ export const supportTicketMessages = pgTable("support_ticket_messages", {
   
   role: text("role").notNull(), // user, agent, system
   content: text("content").notNull(),
-  agentName: text("agent_name"), // Sophie, Atlas, or human agent name
+  agentName: text("agent_name"), // Pax, Pax, or human agent name
   
   // For AI messages
   toolsUsed: jsonb("tools_used").$type<string[]>(),
@@ -7998,8 +7998,8 @@ export const insertSupportResolutionHistorySchema = createInsertSchema(supportRe
 export type InsertSupportResolutionHistory = z.infer<typeof insertSupportResolutionHistorySchema>;
 export type SupportResolutionHistory = typeof supportResolutionHistory.$inferSelect;
 
-// Multi-session memory for Sophie - stores context across conversations
-export const sophieMemory = pgTable("sophie_memory", {
+// Multi-session memory for Pax - stores context across conversations
+export const paxMemory = pgTable("pax_memory", {
   id: serial("id").primaryKey(),
   organizationId: integer("organization_id").references(() => organizations.id).notNull(),
   userId: text("user_id").notNull(),
@@ -8029,18 +8029,18 @@ export const sophieMemory = pgTable("sophie_memory", {
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
-  index("sophie_memory_org_user_idx").on(table.organizationId, table.userId),
-  index("sophie_memory_type_idx").on(table.memoryType),
-  index("sophie_memory_key_idx").on(table.key),
+  index("pax_memory_org_user_idx").on(table.organizationId, table.userId),
+  index("pax_memory_type_idx").on(table.memoryType),
+  index("pax_memory_key_idx").on(table.key),
 ]);
 
-export const insertSophieMemorySchema = createInsertSchema(sophieMemory).omit({
+export const insertPaxMemorySchema = createInsertSchema(paxMemory).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
 });
-export type InsertSophieMemory = z.infer<typeof insertSophieMemorySchema>;
-export type SophieMemory = typeof sophieMemory.$inferSelect;
+export type InsertPaxMemory = z.infer<typeof insertPaxMemorySchema>;
+export type PaxMemory = typeof paxMemory.$inferSelect;
 
 // Track self-healing fix attempts with retry logic
 export const fixAttempts = pgTable("fix_attempts", {
@@ -8061,7 +8061,7 @@ export const fixAttempts = pgTable("fix_attempts", {
     retryAfter?: string;
   }>(),
   
-  sourceObservationId: integer("source_observation_id").references(() => sophieObservations.id),
+  sourceObservationId: integer("source_observation_id").references(() => paxObservations.id),
   sourceTicketId: integer("source_ticket_id").references(() => supportTickets.id),
   escalatedAt: timestamp("escalated_at"),
   
@@ -8082,7 +8082,7 @@ export type InsertFixAttempt = z.infer<typeof insertFixAttemptSchema>;
 export type FixAttempt = typeof fixAttempts.$inferSelect;
 
 // Cross-org learning patterns - learnings that apply across all organizations
-export const sophieCrossOrgLearnings = pgTable("sophie_cross_org_learnings", {
+export const paxCrossOrgLearnings = pgTable("pax_cross_org_learnings", {
   id: serial("id").primaryKey(),
   
   issuePattern: text("issue_pattern").notNull(),
@@ -8112,13 +8112,13 @@ export const sophieCrossOrgLearnings = pgTable("sophie_cross_org_learnings", {
   index("cross_org_learnings_pattern_idx").on(table.issuePattern),
 ]);
 
-export const insertSophieCrossOrgLearningSchema = createInsertSchema(sophieCrossOrgLearnings).omit({
+export const insertPaxCrossOrgLearningSchema = createInsertSchema(paxCrossOrgLearnings).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
 });
-export type InsertSophieCrossOrgLearning = z.infer<typeof insertSophieCrossOrgLearningSchema>;
-export type SophieCrossOrgLearning = typeof sophieCrossOrgLearnings.$inferSelect;
+export type InsertPaxCrossOrgLearning = z.infer<typeof insertPaxCrossOrgLearningSchema>;
+export type PaxCrossOrgLearning = typeof paxCrossOrgLearnings.$inferSelect;
 
 // ============================================
 // PHASE 1: INTELLIGENCE AMPLIFICATION
@@ -9193,7 +9193,7 @@ export const voiceCalls = pgTable("voice_calls", {
   callStatus: text("call_status"), // ringing, in-progress, completed, failed
   
   // AI agent
-  agentType: text("agent_type").notNull(), // sophie, atlas, custom
+  agentType: text("agent_type").notNull(), // pax, pax, custom
   agentObjective: text("agent_objective"), // qualify_lead, schedule_showing, answer_questions
   
   // Results
@@ -9875,7 +9875,7 @@ export type AdCreativeBundle = typeof adCreativeBundles.$inferSelect;
 export const systemActivity = pgTable("system_activity", {
   id: serial("id").primaryKey(),
   orgId: integer("org_id").references(() => organizations.id, { onDelete: "set null" }),
-  jobName: text("job_name").notNull(),   // 'finance_agent', 'sophie', 'dunning', etc.
+  jobName: text("job_name").notNull(),   // 'finance_agent', 'pax', 'dunning', etc.
   action: text("action").notNull(),      // 'payment_reminder_sent', 'ticket_resolved', etc.
   summary: text("summary").notNull(),    // human-readable narrative
   entityType: text("entity_type"),       // 'note', 'lead', 'campaign', 'support_case'

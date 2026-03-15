@@ -1,9 +1,9 @@
 // @ts-nocheck — ORM type refinement deferred; runtime-correct
 import { db } from "../db";
 import { 
-  supportTickets, supportResolutionHistory, sophieMemory, 
+  supportTickets, supportResolutionHistory, paxMemory, 
   organizations, activityLog, leads, properties, deals,
-  fixAttempts, sophieCrossOrgLearnings, knowledgeBaseArticles
+  fixAttempts, paxCrossOrgLearnings, knowledgeBaseArticles
 } from "@shared/schema";
 import { eq, and, desc, gte, sql, count, like, or } from "drizzle-orm";
 import OpenAI from "openai";
@@ -13,7 +13,7 @@ const openai = new OpenAI();
 const MAX_RETRY_ATTEMPTS = 3;
 const BASE_BACKOFF_MS = 1000;
 
-export const sophieLearningService = {
+export const paxLearningService = {
   
   async learnFromHumanResolution(ticketId: number): Promise<{
     learned: boolean;
@@ -105,11 +105,11 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
           ticket.organizationId
         );
       } catch (crossOrgErr) {
-        console.error("[sophie-learning] Error updating cross-org learning:", crossOrgErr);
+        console.error("[pax-learning] Error updating cross-org learning:", crossOrgErr);
       }
       
       try {
-        await db.insert(sophieMemory).values({
+        await db.insert(paxMemory).values({
           organizationId: ticket.organizationId,
           userId: ticket.userId || "system",
           memoryType: "solution_tried",
@@ -130,14 +130,14 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
           sourceTicketId: ticket.id
         });
       } catch (memErr) {
-        console.error("[sophie-learning] Error saving memory:", memErr);
+        console.error("[pax-learning] Error saving memory:", memErr);
       }
       
-      console.log(`[sophie-learning] Learned from human resolution of ticket ${ticketId}`);
+      console.log(`[pax-learning] Learned from human resolution of ticket ${ticketId}`);
       
       return { learned: true, learningEntry: resolutionEntry, crossOrgLearning };
     } catch (error) {
-      console.error("[sophie-learning] Error learning from resolution:", error);
+      console.error("[pax-learning] Error learning from resolution:", error);
       return { learned: false, error: String(error) };
     }
   },
@@ -155,8 +155,8 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
     orgId: number
   ): Promise<any> {
     const existingPattern = await db.select()
-      .from(sophieCrossOrgLearnings)
-      .where(like(sophieCrossOrgLearnings.issuePattern, `%${issuePattern.substring(0, 50)}%`))
+      .from(paxCrossOrgLearnings)
+      .where(like(paxCrossOrgLearnings.issuePattern, `%${issuePattern.substring(0, 50)}%`))
       .limit(1);
     
     if (existingPattern.length > 0) {
@@ -176,7 +176,7 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
       const totalAttempts = newSuccessCount + (existing.failureCount || 0);
       const newSuccessRate = totalAttempts > 0 ? (newSuccessCount / totalAttempts * 100).toFixed(2) : "0";
       
-      const [updated] = await db.update(sophieCrossOrgLearnings)
+      const [updated] = await db.update(paxCrossOrgLearnings)
         .set({
           successCount: newSuccessCount,
           successRate: newSuccessRate,
@@ -185,13 +185,13 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
           contributingOrgs: contributingOrgIds.length,
           updatedAt: new Date()
         })
-        .where(eq(sophieCrossOrgLearnings.id, existing.id))
+        .where(eq(paxCrossOrgLearnings.id, existing.id))
         .returning();
       
-      console.log(`[sophie-learning] Updated cross-org learning pattern: ${issuePattern.substring(0, 50)}`);
+      console.log(`[pax-learning] Updated cross-org learning pattern: ${issuePattern.substring(0, 50)}`);
       return updated;
     } else {
-      const [newLearning] = await db.insert(sophieCrossOrgLearnings).values({
+      const [newLearning] = await db.insert(paxCrossOrgLearnings).values({
         issuePattern,
         issueCategory,
         resolutionApproach,
@@ -208,7 +208,7 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
         contributingOrgs: 1
       }).returning();
       
-      console.log(`[sophie-learning] Created new cross-org learning pattern: ${issuePattern.substring(0, 50)}`);
+      console.log(`[pax-learning] Created new cross-org learning pattern: ${issuePattern.substring(0, 50)}`);
       return newLearning;
     }
   },
@@ -224,8 +224,8 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
     };
   }> {
     const crossOrgLearnings = await db.select()
-      .from(sophieCrossOrgLearnings)
-      .orderBy(desc(sophieCrossOrgLearnings.successCount))
+      .from(paxCrossOrgLearnings)
+      .orderBy(desc(paxCrossOrgLearnings.successCount))
       .limit(limit);
     
     const recentResolutions = await db.select()
@@ -235,9 +235,9 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
       .limit(20);
     
     const memoryInsights = await db.select()
-      .from(sophieMemory)
-      .where(eq(sophieMemory.memoryType, "solution_tried"))
-      .orderBy(desc(sophieMemory.createdAt))
+      .from(paxMemory)
+      .where(eq(paxMemory.memoryType, "solution_tried"))
+      .orderBy(desc(paxMemory.createdAt))
       .limit(20);
     
     const totalLearnings = crossOrgLearnings.length;
@@ -262,9 +262,9 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
     const keywords = issueText.toLowerCase().split(/\s+/).filter(w => w.length > 3);
     
     const learnings = await db.select()
-      .from(sophieCrossOrgLearnings)
-      .where(gte(sophieCrossOrgLearnings.successRate, "70"))
-      .orderBy(desc(sophieCrossOrgLearnings.successRate))
+      .from(paxCrossOrgLearnings)
+      .where(gte(paxCrossOrgLearnings.successRate, "70"))
+      .orderBy(desc(paxCrossOrgLearnings.successRate))
       .limit(50);
     
     for (const learning of learnings) {
@@ -445,28 +445,28 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
           case "clear_cache":
             const { contextAggregator } = await import("./aiContextAggregator");
             contextAggregator.invalidateCache(orgId, "all");
-            console.log(`[sophie-bulk-fix] Cleared cache for org ${orgId}`);
+            console.log(`[pax-bulk-fix] Cleared cache for org ${orgId}`);
             break;
           case "resync_data":
             const { healthCheckService } = await import("./healthCheck");
             await healthCheckService.runHealthCheck(orgId);
-            console.log(`[sophie-bulk-fix] Resynced health data for org ${orgId}`);
+            console.log(`[pax-bulk-fix] Resynced health data for org ${orgId}`);
             break;
           case "retry_failed_jobs":
             const { jobQueueService } = await import("./jobQueue");
             await jobQueueService.processJobs();
-            console.log(`[sophie-bulk-fix] Processed pending jobs for org ${orgId}`);
+            console.log(`[pax-bulk-fix] Processed pending jobs for org ${orgId}`);
             break;
           case "refresh_sessions":
-            console.log(`[sophie-bulk-fix] Session refresh recommended for org ${orgId}`);
+            console.log(`[pax-bulk-fix] Session refresh recommended for org ${orgId}`);
             break;
           case "reset_limits":
-            console.log(`[sophie-bulk-fix] Limits reset not available for org ${orgId}`);
+            console.log(`[pax-bulk-fix] Limits reset not available for org ${orgId}`);
             break;
         }
         fixedOrgs.push(orgId);
       } catch (err) {
-        console.error(`[sophie-bulk-fix] Failed to apply ${fixAction} for org ${orgId}:`, err);
+        console.error(`[pax-bulk-fix] Failed to apply ${fixAction} for org ${orgId}:`, err);
         failedOrgs.push(orgId);
       }
     }
@@ -487,9 +487,9 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
     isAutoFixable: boolean;
   }>> {
     const crossOrgPatterns = await db.select()
-      .from(sophieCrossOrgLearnings)
-      .where(gte(sophieCrossOrgLearnings.successRate, "70"))
-      .orderBy(desc(sophieCrossOrgLearnings.successRate))
+      .from(paxCrossOrgLearnings)
+      .where(gte(paxCrossOrgLearnings.successRate, "70"))
+      .orderBy(desc(paxCrossOrgLearnings.successRate))
       .limit(100);
     
     const patterns: Array<{
@@ -613,7 +613,7 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
     
     const backoffDelay = BASE_BACKOFF_MS * Math.pow(2, failedCount);
     if (failedCount > 0) {
-      console.log(`[sophie-self-heal] Waiting ${backoffDelay}ms before retry attempt ${currentAttemptNumber}`);
+      console.log(`[pax-self-heal] Waiting ${backoffDelay}ms before retry attempt ${currentAttemptNumber}`);
       await new Promise(resolve => setTimeout(resolve, backoffDelay));
     }
     
@@ -628,25 +628,25 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
         contextAggregator.invalidateCache(orgId, "all");
         result = "Cache cleared successfully";
         success = true;
-        console.log(`[sophie-self-heal] Cleared cache for org ${orgId} (attempt ${currentAttemptNumber})`);
+        console.log(`[pax-self-heal] Cleared cache for org ${orgId} (attempt ${currentAttemptNumber})`);
       } else if (fixAction.includes("retry") || fixAction.includes("job")) {
         const { jobQueueService } = await import("./jobQueue");
         const jobResult = await jobQueueService.processJobs();
         result = `Failed jobs retried: ${jobResult.processed} processed, ${jobResult.failed} failed`;
         success = jobResult.failed === 0;
-        console.log(`[sophie-self-heal] Retried jobs for org ${orgId}: ${JSON.stringify(jobResult)}`);
+        console.log(`[pax-self-heal] Retried jobs for org ${orgId}: ${JSON.stringify(jobResult)}`);
       } else if (fixAction.includes("sync") || fixAction.includes("refresh")) {
         const { healthCheckService } = await import("./healthCheck");
         await healthCheckService.runHealthCheck(orgId);
         result = "Data resynced via health check";
         success = true;
-        console.log(`[sophie-self-heal] Resynced data for org ${orgId}`);
+        console.log(`[pax-self-heal] Resynced data for org ${orgId}`);
       } else {
         errorMessage = "Fix requires manual intervention";
         success = false;
       }
     } catch (fixErr) {
-      console.error(`[sophie-self-heal] Error applying fix for org ${orgId}:`, fixErr);
+      console.error(`[pax-self-heal] Error applying fix for org ${orgId}:`, fixErr);
       errorMessage = String(fixErr);
       success = false;
     }
@@ -670,7 +670,7 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
     
     if (success) {
       try {
-        await db.insert(sophieMemory).values({
+        await db.insert(paxMemory).values({
           organizationId: orgId,
           userId: "system",
           memoryType: "solution_tried",
@@ -686,29 +686,29 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
           importance: 7
         });
       } catch (memErr) {
-        console.error("[sophie-learning] Error saving self-heal memory:", memErr);
+        console.error("[pax-learning] Error saving self-heal memory:", memErr);
       }
       
       try {
-        await db.update(sophieCrossOrgLearnings)
+        await db.update(paxCrossOrgLearnings)
           .set({
-            successCount: sql`${sophieCrossOrgLearnings.successCount} + 1`,
+            successCount: sql`${paxCrossOrgLearnings.successCount} + 1`,
             updatedAt: new Date()
           })
-          .where(like(sophieCrossOrgLearnings.issuePattern, `%${matchingFix.issuePattern.substring(0, 50)}%`));
+          .where(like(paxCrossOrgLearnings.issuePattern, `%${matchingFix.issuePattern.substring(0, 50)}%`));
       } catch (updateErr) {
-        console.error("[sophie-learning] Error updating cross-org success count:", updateErr);
+        console.error("[pax-learning] Error updating cross-org success count:", updateErr);
       }
     } else {
       try {
-        await db.update(sophieCrossOrgLearnings)
+        await db.update(paxCrossOrgLearnings)
           .set({
-            failureCount: sql`${sophieCrossOrgLearnings.failureCount} + 1`,
+            failureCount: sql`${paxCrossOrgLearnings.failureCount} + 1`,
             updatedAt: new Date()
           })
-          .where(like(sophieCrossOrgLearnings.issuePattern, `%${matchingFix.issuePattern.substring(0, 50)}%`));
+          .where(like(paxCrossOrgLearnings.issuePattern, `%${matchingFix.issuePattern.substring(0, 50)}%`));
       } catch (updateErr) {
-        console.error("[sophie-learning] Error updating cross-org failure count:", updateErr);
+        console.error("[pax-learning] Error updating cross-org failure count:", updateErr);
       }
     }
     
@@ -738,7 +738,7 @@ Page Context: ${JSON.stringify(ticket.pageContext || {})}`
         organizationId: orgId,
         userId: "system",
         subject: `[Auto-Escalated] Self-healing failed: ${issuePattern.substring(0, 100)}`,
-        description: `Sophie attempted to fix this issue ${MAX_RETRY_ATTEMPTS} times but was unsuccessful.
+        description: `Pax attempted to fix this issue ${MAX_RETRY_ATTEMPTS} times but was unsuccessful.
 
 Issue Pattern: ${issuePattern}
 
@@ -752,10 +752,10 @@ This requires human investigation.`,
         source: "auto_escalation"
       }).returning();
       
-      console.log(`[sophie-learning] Escalated to human: ${issuePattern.substring(0, 50)} (ticket ${ticket.id})`);
+      console.log(`[pax-learning] Escalated to human: ${issuePattern.substring(0, 50)} (ticket ${ticket.id})`);
       return true;
     } catch (err) {
-      console.error("[sophie-learning] Error escalating to human:", err);
+      console.error("[pax-learning] Error escalating to human:", err);
       return false;
     }
   },
