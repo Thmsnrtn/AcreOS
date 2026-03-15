@@ -9,6 +9,7 @@ import { useFeatureFlags } from "@/hooks/use-feature-flags";
 import { Loader2 } from "lucide-react";
 import { telemetry } from "@/lib/telemetry";
 import { ThemeProvider } from "@/contexts/theme-context";
+import { SophieRailProvider } from "@/contexts/sophie-rail-context";
 import { AnimatePresence, motion } from "framer-motion";
 import { pageTransition } from "@/lib/animations";
 
@@ -91,6 +92,7 @@ import { useSwipeNavigation } from "@/hooks/use-swipe-gesture";
 import { MobileBottomNav } from "@/components/mobile";
 import { BetaFeedbackWidget } from "@/components/beta-feedback-widget";
 import { BetaActivationDetector } from "@/components/beta-activation-detector";
+import { SophieCopilotRail } from "@/components/sophie-copilot-rail";
 
 // Protected Route Wrapper
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
@@ -402,6 +404,7 @@ function AppContent() {
       {user && <OnboardingWizard />}
       {user && <BetaFeedbackWidget />}
       {user && <BetaActivationDetector />}
+      {user && <SophieCopilotRail />}
       <PWAInstallPrompt />
     </>
   );
@@ -412,6 +415,7 @@ function App() {
     <ErrorBoundary>
       <ThemeProvider>
         <SidebarProvider>
+          <SophieRailProvider>
           <QueryClientProvider client={queryClient}>
             <TooltipProvider>
               <HintsProvider>
@@ -424,6 +428,7 @@ function App() {
               </HintsProvider>
             </TooltipProvider>
           </QueryClientProvider>
+          </SophieRailProvider>
         </SidebarProvider>
       </ThemeProvider>
     </ErrorBoundary>

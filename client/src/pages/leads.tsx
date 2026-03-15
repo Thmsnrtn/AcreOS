@@ -1,4 +1,5 @@
 import { PageShell } from "@/components/page-shell";
+import { SophieContextButton } from "@/components/sophie-context-button";
 import { useLeads, useCreateLead, useUpdateLead, useDeleteLead } from "@/hooks/use-leads";
 import { useProperties } from "@/hooks/use-properties";
 import { useTeamMembers, useUserPermissions, getRoleBadgeStyle, getRoleLabel } from "@/hooks/use-organization";
@@ -1337,7 +1338,14 @@ export default function LeadsPage() {
                                 />
                               </TableCell>
                               <TableCell className="font-medium">
-                                {lead.firstName} {lead.lastName}
+                                <div className="flex items-center gap-1.5">
+                                  <span>{lead.firstName} {lead.lastName}</span>
+                                  <SophieContextButton
+                                    entityType="lead"
+                                    entityId={lead.id}
+                                    entityName={`${lead.firstName} ${lead.lastName}`}
+                                  />
+                                </div>
                               </TableCell>
                               <TableCell>
                                 <div className="flex items-center gap-2 flex-wrap">
