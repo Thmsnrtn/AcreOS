@@ -1523,12 +1523,85 @@ export const aiMemory = pgTable("ai_memory", {
 });
 
 // AI Conversations - chat history with AI agents
+export const paxKnowledgeFiles = pgTable("pax_knowledge_files", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  mimeType: text("mime_type").notNull(),
+  sizeBytes: integer("size_bytes").notNull(),
+  extractedContent: text("extracted_content").notNull(),
+  uploadedBy: text("uploaded_by").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  usageCount: integer("usage_count").notNull().default(0),
+  lastUsedAt: timestamp("last_used_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => [
+  index("pax_kb_org_idx").on(t.organizationId),
+  index("pax_kb_active_idx").on(t.isActive),
+]);
+export type PaxKnowledgeFile = typeof paxKnowledgeFiles.$inferSelect;
+
+export const paxProjects = pgTable("pax_projects", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").notNull(),
+  userId: text("user_id").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  entityType: text("entity_type"),
+  entityId: integer("entity_id"),
+  isActive: boolean("is_active").notNull().default(true),
+  fileCount: integer("file_count").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => [
+  index("pax_proj_org_idx").on(t.organizationId),
+  index("pax_proj_entity_idx").on(t.entityType, t.entityId),
+]);
+export type PaxProject = typeof paxProjects.$inferSelect;
+
+export const paxProjectFiles = pgTable("pax_project_files", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id").notNull(),
+  fileName: text("file_name").notNull(),
+  mimeType: text("mime_type").notNull(),
+  sizeBytes: integer("size_bytes").notNull(),
+  extractedContent: text("extracted_content").notNull(),
+  uploadedBy: text("uploaded_by").notNull(),
+  uploadedAt: timestamp("uploaded_at").defaultNow(),
+}, (t) => [index("pax_pf_proj_idx").on(t.projectId)]);
+export type PaxProjectFile = typeof paxProjectFiles.$inferSelect;
+
+export const paxScheduledTasks = pgTable("pax_scheduled_tasks", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").notNull(),
+  userId: text("user_id").notNull(),
+  name: text("name").notNull(),
+  prompt: text("prompt").notNull(),
+  agentRole: text("agent_role").notNull().default("executive"),
+  schedule: text("schedule").notNull(),
+  timezone: text("timezone").notNull().default("America/New_York"),
+  isActive: boolean("is_active").notNull().default(true),
+  lastRunAt: timestamp("last_run_at"),
+  nextRunAt: timestamp("next_run_at"),
+  lastRunConversationId: integer("last_run_conversation_id"),
+  lastRunStatus: text("last_run_status"),
+  lastRunSummary: text("last_run_summary"),
+  runCount: integer("run_count").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (t) => [
+  index("pax_tasks_org_idx").on(t.organizationId),
+  index("pax_tasks_next_run_idx").on(t.nextRunAt),
+]);
+export type PaxScheduledTask = typeof paxScheduledTasks.$inferSelect;
+
 export const aiConversations = pgTable("ai_conversations", {
   id: serial("id").primaryKey(),
   organizationId: integer("organization_id").notNull(),
   userId: text("user_id").notNull(),
   title: text("title").notNull(),
   agentRole: text("agent_role").notNull().default("executive"),
+  activeProjectId: integer("active_project_id"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -1540,6 +1613,8 @@ export const aiMessages = pgTable("ai_messages", {
   role: text("role").notNull(), // user, assistant, system
   content: text("content").notNull(),
   toolCalls: jsonb("tool_calls").$type<any[]>(),
+  mentionedEntities: jsonb("mentioned_entities").$type<{ type: string; id: number; name: string; preview: string }[]>(),
+  thinkingContent: text("thinking_content"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
