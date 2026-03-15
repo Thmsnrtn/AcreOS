@@ -1,4 +1,5 @@
 import { PageShell } from "@/components/page-shell";
+import { SophieContextButton } from "@/components/sophie-context-button";
 import { useDeals, useCreateDeal, useUpdateDeal, useDeleteDeal, useSaveDealAnalysis } from "@/hooks/use-deals";
 import { useProperties } from "@/hooks/use-properties";
 import { ListSkeleton } from "@/components/list-skeleton";
@@ -650,7 +651,7 @@ function DealCard({ deal, onSelect, isDragging = false }: { deal: DealWithProper
     <Card
       ref={setNodeRef}
       style={style}
-      className={`floating-window cursor-pointer hover-elevate active:scale-[0.98] transition-transform touch-manipulation ${isDragging ? "opacity-40" : ""}`}
+      className={`group floating-window cursor-pointer hover-elevate active:scale-[0.98] transition-transform touch-manipulation ${isDragging ? "opacity-40" : ""}`}
       onClick={onSelect}
       data-testid={`card-deal-${deal.id}`}
     >
@@ -667,6 +668,11 @@ function DealCard({ deal, onSelect, isDragging = false }: { deal: DealWithProper
               <Badge variant={deal.type === 'acquisition' ? 'default' : 'secondary'} className="text-xs">
                 {deal.type === 'acquisition' ? 'Buy' : 'Sell'}
               </Badge>
+              <SophieContextButton
+                entityType="deal"
+                entityId={deal.id}
+                entityName={deal.property ? `${deal.property.county}, ${deal.property.state}` : `Deal #${deal.id}`}
+              />
             </div>
             <div className="mt-2">
               {deal.property ? (

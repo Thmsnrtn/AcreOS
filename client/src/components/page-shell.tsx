@@ -1,6 +1,7 @@
 import { Sidebar, useSidebarCollapsed } from "@/components/layout-sidebar";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { PageHeaderSkeleton } from "@/components/list-skeleton";
+import { useSophieRail } from "@/contexts/sophie-rail-context";
 
 interface PageShellProps {
   children: React.ReactNode;
@@ -42,13 +43,14 @@ const MAX_WIDTH_CLASSES = {
 
 export function PageShell({ children, isLoading, loadingFallback, maxWidth = "7xl" }: PageShellProps) {
   const { isCollapsed } = useSidebarCollapsed();
+  const { isOpen: railOpen } = useSophieRail();
   return (
     <div className="flex min-h-screen bg-background desert-gradient">
       <Sidebar />
       <main
-        className={`flex-1 p-4 pt-16 md:pt-8 md:p-8 pb-8 overflow-x-hidden content-spring ${
+        className={`flex-1 p-4 pt-16 md:pt-8 md:p-8 pb-8 overflow-x-hidden content-spring transition-[margin-right] duration-200 ${
           isCollapsed ? "md:ml-[76px]" : "md:ml-[17rem]"
-        }`}
+        } ${railOpen ? "md:mr-[360px]" : "md:mr-12"}`}
       >
         <div className={`${MAX_WIDTH_CLASSES[maxWidth]} mx-auto space-y-6 md:space-y-8 page-enter`}>
           <ErrorBoundary>

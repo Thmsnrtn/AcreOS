@@ -905,7 +905,14 @@ function PropertyCard({ property, onDelete }: {
       </div>
       <CardContent className="p-4">
         <div className="mb-3">
-          <h3 className="font-bold text-base truncate">{property.county}, {property.state}</h3>
+          <div className="flex items-center gap-1.5">
+            <h3 className="font-bold text-base truncate">{property.county}, {property.state}</h3>
+            <SophieContextButton
+              entityType="property"
+              entityId={property.id}
+              entityName={`${property.county}, ${property.state}`}
+            />
+          </div>
           <p className="text-xs text-muted-foreground font-mono">APN: {property.apn}</p>
         </div>
         
