@@ -1,5 +1,7 @@
 import { storage } from "../storage";
+import { db } from "../db";
 import { processChat } from "../ai/executive";
+import { paxScheduledTaskRuns } from "@shared/schema";
 import type { PaxScheduledTask } from "@shared/schema";
 import type { Organization } from "@shared/schema";
 
@@ -64,6 +66,7 @@ export async function executeTask(task: PaxScheduledTask, org: Organization): Pr
     return;
   }
   runningOrgs.add(org.id);
+  const startedAt = Date.now();
   try {
     const result = await processChat(
       task.prompt,
@@ -89,6 +92,17 @@ export async function executeTask(task: PaxScheduledTask, org: Organization): Pr
       title: `[Scheduled] ${task.name} — ${date}`,
     });
 
+    // Log run history
+    await db.insert(paxScheduledTaskRuns as any).values({
+      taskId: task.id,
+      organizationId: org.id,
+      runAt: new Date(),
+      status: "success",
+      summary: summary,
+      conversationId: result.conversationId,
+      durationMs: Date.now() - startedAt,
+    } as any).catch(() => {});
+
     console.log(`[pax-scheduler] Task ${task.id} "${task.name}" completed (conv ${result.conversationId})`);
   } catch (err: any) {
     console.error(`[pax-scheduler] Task ${task.id} "${task.name}" failed:`, err.message);
@@ -98,6 +112,14 @@ export async function executeTask(task: PaxScheduledTask, org: Organization): Pr
       lastRunStatus: "error",
       lastRunSummary: err.message?.slice(0, 200) ?? "Unknown error",
     });
+    await db.insert(paxScheduledTaskRuns as any).values({
+      taskId: task.id,
+      organizationId: org.id,
+      runAt: new Date(),
+      status: "error",
+      summary: err.message?.slice(0, 200) ?? "Unknown error",
+      durationMs: Date.now() - startedAt,
+    } as any).catch(() => {});
   } finally {
     runningOrgs.delete(org.id);
   }

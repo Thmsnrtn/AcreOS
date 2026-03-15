@@ -15,6 +15,7 @@ import {
   Zap, Bell, CheckCircle2, AlertCircle, RefreshCw,
   Paperclip, Clock, MessageSquare, BookOpen, FolderOpen, Plug,
   ThumbsUp, ThumbsDown, Download, ChevronDown,
+  Mic, MicOff, BrainCircuit,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePaxRail } from "@/contexts/pax-rail-context";
@@ -23,10 +24,12 @@ import { PaxArtifact, type PaxArtifactData } from "@/components/pax-artifact";
 import { PaxCommandPalette, PaxSlashPicker, type SlashCommand } from "@/components/pax-command-palette";
 import { PaxEntityPicker, type MentionedEntity } from "@/components/pax-entity-picker";
 import { PaxThinkingBlock } from "@/components/pax-thinking-block";
+import { Input } from "@/components/ui/input";
 import { PaxKnowledgePanel } from "@/components/pax-knowledge-panel";
 import { PaxProjectPanel } from "@/components/pax-project-panel";
 import { PaxScheduleButton } from "@/components/pax-schedule-button";
 import { PaxConnectorPanel } from "@/components/pax-connector-panel";
+import { PaxMemoryPanel } from "@/components/pax-memory-panel";
 
 // ─── Page context awareness ─────────────────────────────────────────────────
 
@@ -92,6 +95,25 @@ interface RailMessage {
   mentionChips?: { type: string; id: number; name: string }[];
   thinkingContent?: string;
   isThinking?: boolean;
+  approvalRequired?: { toolCallId: string; toolName: string; args: any };
+}
+
+// ─── Approval args formatter ─────────────────────────────────────────────────
+
+function formatApprovalArgs(toolName: string, args: any): string {
+  try {
+    if (toolName === "send_email" || toolName === "send_gmail") {
+      const to = args?.to ?? args?.recipient ?? "unknown";
+      const subject = args?.subject ?? "";
+      return `to ${to}${subject ? `: "${subject}"` : ""}`;
+    }
+    if (toolName === "send_sms") return `SMS to ${args?.to ?? args?.phone ?? "unknown"}`;
+    if (toolName === "send_slack_message") return `in #${args?.channel ?? "unknown"}`;
+    if (toolName === "create_stripe_payment_link") return `$${args?.amount ?? "?"} — ${args?.description ?? "payment"}`;
+    return JSON.stringify(args).slice(0, 80);
+  } catch {
+    return "";
+  }
 }
 
 // ─── Observation ─────────────────────────────────────────────────────────────
@@ -221,6 +243,20 @@ export function PaxCopilotRail() {
   // Message ratings (local optimistic state: messageId → 1 | -1)
   const [ratings, setRatings] = useState<Record<string, 1 | -1>>({});
 
+  // Memory panel
+  const [showMemory, setShowMemory] = useState(false);
+
+  // Conversation search
+  const [convSearch, setConvSearch] = useState("");
+
+  // Voice mic
+  const [micState, setMicState] = useState<"idle" | "recording" | "transcribing">("idle");
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+
+  // Ambient auto-brief
+  const [autoBriefPending, setAutoBriefPending] = useState(false);
+
   // Pax nudges
   const { data: nudges = [], refetch: refetchNudges } = useQuery<any[]>({
     queryKey: ["/api/ai/nudges"],
@@ -228,7 +264,7 @@ export function PaxCopilotRail() {
   });
   const [dismissedNudgeIds, setDismissedNudgeIds] = useState<number[]>([]);
 
-  // Pax observations
+  // Pax observations (initial load; real-time updates come via SSE below)
   const { data: observationsData, refetch: refetchObs } = useQuery<PaxObservation[]>({
     queryKey: ["/api/pax/observations", { unread: true }],
     queryFn: async () => {
@@ -236,9 +272,9 @@ export function PaxCopilotRail() {
       if (!res.ok) return [];
       return res.json();
     },
-    refetchInterval: 2 * 60 * 1000,
     staleTime: 60 * 1000,
   });
+  const [sseObservations, setSseObservations] = useState<PaxObservation[]>([]);
 
   const dismissMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -259,7 +295,9 @@ export function PaxCopilotRail() {
     staleTime: 30_000,
   });
 
-  const observations = observationsData ?? [];
+  const observations = [...sseObservations, ...(observationsData ?? [])].filter(
+    (obs, idx, arr) => arr.findIndex((o) => o.id === obs.id) === idx
+  );
 
   // ── Cmd+K to open command palette ────────────────────────────────────────
   useEffect(() => {
@@ -272,6 +310,58 @@ export function PaxCopilotRail() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [isOpen]);
+
+  // ── Real-time observations via SSE ────────────────────────────────────────
+  useEffect(() => {
+    if (!isOpen) return;
+    let es: EventSource | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    const connect = () => {
+      es = new EventSource("/api/pax/observations/stream", { withCredentials: true } as any);
+      (es as EventSource).onmessage = (evt) => {
+        try {
+          const obs = JSON.parse(evt.data) as PaxObservation;
+          setSseObservations((prev) => {
+            if (prev.find((o) => o.id === obs.id)) return prev;
+            return [obs, ...prev];
+          });
+        } catch {}
+      };
+      (es as EventSource).onerror = () => {
+        es?.close();
+        reconnectTimer = setTimeout(connect, 5_000);
+      };
+    };
+    connect();
+    return () => {
+      es?.close();
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+    };
+  }, [isOpen]);
+
+  // ── Pax ambient mode — auto-open and brief if away 12+ hours ─────────────
+  useEffect(() => {
+    const lastActive = localStorage.getItem("pax-last-active");
+    const twelveHours = 12 * 60 * 60 * 1000;
+    if (lastActive && Date.now() - new Date(lastActive).getTime() > twelveHours) {
+      setTimeout(() => setOpen(true), 1500);
+      setAutoBriefPending(true);
+    }
+    localStorage.setItem("pax-last-active", new Date().toISOString());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Send auto-brief once rail is ready ───────────────────────────────────
+  useEffect(() => {
+    if (!autoBriefPending || !isOpen || isLoadingHistory || messages.length > 0) return;
+    if (!sessionRestored && activeConversationId) return;
+    setAutoBriefPending(false);
+    const timer = setTimeout(() => {
+      sendMessage("Daily briefing: What happened in the last 12 hours across leads, deals, payments, and tasks? Be concise.");
+    }, 600);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoBriefPending, isOpen, isLoadingHistory, messages.length, sessionRestored, activeConversationId]);
 
   // ── Session restore ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -560,6 +650,19 @@ export function PaxCopilotRail() {
                 setMessages((prev) => prev.map((m) =>
                   m.id === asstId ? { ...m, role: "error" as const, content: data.error ?? "An error occurred", isStreaming: false } : m
                 ));
+              } else if (data.type === "approval_required") {
+                let parsedArgs = data.args;
+                if (typeof parsedArgs === "string") {
+                  try { parsedArgs = JSON.parse(parsedArgs); } catch {}
+                }
+                setMessages((prev) => prev.map((m) =>
+                  m.id === asstId ? {
+                    ...m,
+                    isStreaming: false,
+                    approvalRequired: { toolCallId: data.toolCallId, toolName: data.toolName, args: parsedArgs },
+                  } : m
+                ));
+                setIsStreaming(false);
               }
             } catch {}
           }
@@ -620,6 +723,7 @@ export function PaxCopilotRail() {
   const switchConversation = (convId: number) => {
     if (convId === activeConversationId) {
       setShowConvSwitcher(false);
+      setConvSearch("");
       return;
     }
     abortRef.current?.abort();
@@ -629,6 +733,7 @@ export function PaxCopilotRail() {
     setSessionRestored(false);
     setRestoredFromDate(null);
     setShowConvSwitcher(false);
+    setConvSearch("");
     setActiveConversationId(convId);
     setActiveProjectId(null);
   };
@@ -698,6 +803,68 @@ export function PaxCopilotRail() {
     setDismissedNudgeIds((prev) => [...prev, nudgeId]);
     try {
       await fetch(`/api/ai/nudges/${nudgeId}/dismiss`, { method: "POST", credentials: "include" });
+    } catch {}
+  };
+
+  // ── Voice mic ─────────────────────────────────────────────────────────────
+  const handleMicToggle = async () => {
+    if (micState === "recording") {
+      mediaRecorderRef.current?.stop();
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      audioChunksRef.current = [];
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        setMicState("transcribing");
+        const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+        const form = new FormData();
+        form.append("audio", blob, "recording.webm");
+        try {
+          const res = await fetch("/api/ai/voice/transcribe", {
+            method: "POST",
+            credentials: "include",
+            body: form,
+          });
+          if (res.ok) {
+            const { transcript } = await res.json();
+            if (transcript) setInputValue((prev) => prev + (prev ? " " : "") + transcript);
+          }
+        } catch {}
+        setMicState("idle");
+      };
+      mediaRecorderRef.current = recorder;
+      recorder.start();
+      setMicState("recording");
+    } catch {
+      setMicState("idle");
+    }
+  };
+
+  // ── Pre-approval gate ─────────────────────────────────────────────────────
+  const handleApprove = async (toolCallId: string, msgId: string, approved: boolean) => {
+    setMessages((prev) => prev.map((m) =>
+      m.id === msgId ? { ...m, approvalRequired: undefined } : m
+    ));
+    if (!approved) {
+      sendMessage("I've decided not to proceed with that action.");
+      return;
+    }
+    try {
+      const res = await fetch(`/api/ai/conversations/${activeConversationId}/approve-tool`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ toolCallId, approved: true }),
+      });
+      if (res.ok) {
+        sendMessage("Confirmed, please proceed with the action.");
+      }
     } catch {}
   };
 
@@ -840,6 +1007,15 @@ export function PaxCopilotRail() {
                   </TooltipTrigger>
                   <TooltipContent>Projects</TooltipContent>
                 </Tooltip>
+                {/* Memory panel button */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setShowMemory(true)}>
+                      <BrainCircuit className="w-3.5 h-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Pax Memory</TooltipContent>
+                </Tooltip>
                 {/* Model selector */}
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -919,34 +1095,50 @@ export function PaxCopilotRail() {
               {/* Conversation switcher dropdown */}
               {showConvSwitcher && (
                 <div className="absolute top-full right-0 left-0 z-50 bg-background border border-border rounded-b-lg shadow-lg">
-                  <div className="px-3 py-2 border-b">
+                  <div className="px-3 py-2 border-b space-y-1.5">
                     <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Recent conversations</p>
+                    <Input
+                      placeholder="Search…"
+                      value={convSearch}
+                      onChange={(e) => setConvSearch(e.target.value)}
+                      className="h-7 text-xs"
+                      autoFocus
+                    />
                   </div>
-                  {(recentConversations ?? []).slice(0, 5).length === 0 ? (
-                    <p className="text-xs text-muted-foreground px-3 py-2">No conversations yet</p>
-                  ) : (
-                    (recentConversations ?? []).slice(0, 5).map((conv) => (
-                      <button
-                        key={conv.id}
-                        onClick={() => switchConversation(conv.id)}
-                        className={cn(
-                          "w-full text-left px-3 py-2 text-xs hover:bg-muted/50 flex items-start gap-2",
-                          conv.id === activeConversationId && "bg-primary/5"
-                        )}
-                      >
-                        <MessageSquare className="w-3 h-3 text-muted-foreground mt-0.5 flex-shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <p className="truncate font-medium text-foreground">{conv.title}</p>
-                          <p className="text-[10px] text-muted-foreground">
-                            {new Date(conv.updatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                          </p>
-                        </div>
-                        {conv.id === activeConversationId && (
-                          <span className="text-[9px] text-primary font-medium flex-shrink-0">Active</span>
-                        )}
-                      </button>
-                    ))
-                  )}
+                  {(() => {
+                    const filtered = convSearch.trim()
+                      ? (recentConversations ?? []).filter((c) =>
+                          c.title.toLowerCase().includes(convSearch.toLowerCase())
+                        )
+                      : (recentConversations ?? []).slice(0, 5);
+                    return filtered.length === 0 ? (
+                      <p className="text-xs text-muted-foreground px-3 py-2">
+                        {convSearch.trim() ? "No matches" : "No conversations yet"}
+                      </p>
+                    ) : (
+                      filtered.map((conv) => (
+                        <button
+                          key={conv.id}
+                          onClick={() => switchConversation(conv.id)}
+                          className={cn(
+                            "w-full text-left px-3 py-2 text-xs hover:bg-muted/50 flex items-start gap-2",
+                            conv.id === activeConversationId && "bg-primary/5"
+                          )}
+                        >
+                          <MessageSquare className="w-3 h-3 text-muted-foreground mt-0.5 flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="truncate font-medium text-foreground">{conv.title}</p>
+                            <p className="text-[10px] text-muted-foreground">
+                              {new Date(conv.updatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                            </p>
+                          </div>
+                          {conv.id === activeConversationId && (
+                            <span className="text-[9px] text-primary font-medium flex-shrink-0">Active</span>
+                          )}
+                        </button>
+                      ))
+                    );
+                  })()}
                   <div className="px-3 py-2 border-t">
                     <button
                       onClick={handleNewChat}
@@ -1191,6 +1383,36 @@ export function PaxCopilotRail() {
                               )}
                             </div>
                           )}
+                          {/* Pre-approval card */}
+                          {msg.approvalRequired && (
+                            <div className="rounded-md border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 p-3 text-xs space-y-2 mt-1">
+                              <div className="flex items-center gap-1.5">
+                                <AlertCircle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                                <span className="font-medium text-amber-900 dark:text-amber-300">Action requires your approval</span>
+                              </div>
+                              <p className="text-amber-800 dark:text-amber-400 leading-snug">
+                                <span className="font-mono bg-amber-100 dark:bg-amber-900 px-1 rounded text-[11px]">{msg.approvalRequired.toolName}</span>
+                                {" "}{formatApprovalArgs(msg.approvalRequired.toolName, msg.approvalRequired.args)}
+                              </p>
+                              <div className="flex gap-2">
+                                <Button
+                                  size="sm"
+                                  className="h-7 text-xs"
+                                  onClick={() => handleApprove(msg.approvalRequired!.toolCallId, msg.id, true)}
+                                >
+                                  Approve
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 text-xs"
+                                  onClick={() => handleApprove(msg.approvalRequired!.toolCallId, msg.id, false)}
+                                >
+                                  Deny
+                                </Button>
+                              </div>
+                            </div>
+                          )}
                           {/* Artifact renders */}
                           {(msg.artifacts ?? []).map((art, i) => (
                             <PaxArtifact
@@ -1339,6 +1561,32 @@ export function PaxCopilotRail() {
                     </TooltipTrigger>
                     <TooltipContent side="left">Attach file (PDF, CSV, image…)</TooltipContent>
                   </Tooltip>
+                  {/* Voice mic button */}
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="icon"
+                        variant={micState === "recording" ? "destructive" : "ghost"}
+                        className={cn(
+                          "h-8 w-8 flex-shrink-0",
+                          micState === "recording" && "animate-pulse"
+                        )}
+                        onClick={handleMicToggle}
+                        disabled={isStreaming || micState === "transcribing"}
+                      >
+                        {micState === "recording" ? (
+                          <MicOff className="w-3.5 h-3.5" />
+                        ) : micState === "transcribing" ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Mic className="w-3.5 h-3.5" />
+                        )}
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="left">
+                      {micState === "recording" ? "Stop recording" : micState === "transcribing" ? "Transcribing…" : "Voice input"}
+                    </TooltipContent>
+                  </Tooltip>
                   {isStreaming ? (
                     <Button size="icon" variant="destructive" className="h-8 w-8 flex-shrink-0" onClick={handleStop}>
                       <X className="w-3.5 h-3.5" />
@@ -1374,6 +1622,9 @@ export function PaxCopilotRail() {
           setTimeout(() => sendMessage(cmd.prompt), 50);
         }}
       />
+
+      {/* Memory Panel (Sheet) */}
+      <PaxMemoryPanel open={showMemory} onClose={() => setShowMemory(false)} />
 
       {/* Knowledge Panel (Sheet) */}
       <PaxKnowledgePanel open={showKnowledge} onClose={() => setShowKnowledge(false)} />

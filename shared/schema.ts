@@ -1619,6 +1619,24 @@ export const paxScheduledTasks = pgTable("pax_scheduled_tasks", {
 export type PaxScheduledTask = typeof paxScheduledTasks.$inferSelect;
 
 // ============================================
+// PAX SCHEDULED TASK RUN HISTORY
+// ============================================
+export const paxScheduledTaskRuns = pgTable("pax_scheduled_task_runs", {
+  id: serial("id").primaryKey(),
+  taskId: integer("task_id").notNull(),
+  organizationId: integer("organization_id").notNull(),
+  runAt: timestamp("run_at").defaultNow().notNull(),
+  status: text("status").notNull(), // "success" | "error"
+  summary: text("summary"),
+  conversationId: integer("conversation_id"),
+  durationMs: integer("duration_ms"),
+}, (t) => [
+  index("pax_task_runs_task_idx").on(t.taskId),
+  index("pax_task_runs_org_idx").on(t.organizationId),
+]);
+export type PaxScheduledTaskRun = typeof paxScheduledTaskRuns.$inferSelect;
+
+// ============================================
 // PAX NUDGES — proactive ambient intelligence cards
 // ============================================
 export const paxNudges = pgTable("pax_nudges", {
