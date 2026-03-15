@@ -1573,12 +1573,23 @@ export function registerAIRoutes(app: Express): void {
     res.setHeader("X-Accel-Buffering", "no");
     res.flushHeaders();
 
+    const MAX_CLIENTS_PER_ORG = 10;
     if (!obsClients.has(org.id)) obsClients.set(org.id, new Set());
-    obsClients.get(org.id)!.add(res);
+    const orgSet = obsClients.get(org.id)!;
+
+    // Evict oldest client if at cap (oldest = first inserted, but Set doesn't track order;
+    // if at cap, reject this new connection gracefully instead of evicting silently)
+    if (orgSet.size >= MAX_CLIENTS_PER_ORG) {
+      // Remove the first (oldest) client to make room
+      const oldest = orgSet.values().next().value;
+      try { oldest?.end(); } catch {}
+      orgSet.delete(oldest);
+    }
+    orgSet.add(res);
 
     // Heartbeat every 25s
     const heartbeat = setInterval(() => {
-      try { res.write(": heartbeat\n\n"); } catch {}
+      try { res.write(": heartbeat\n\n"); } catch { clearInterval(heartbeat); }
     }, 25_000);
 
     req.on("close", () => {

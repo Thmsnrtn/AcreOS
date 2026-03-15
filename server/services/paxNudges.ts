@@ -227,6 +227,20 @@ export async function handleDomainEvent(event: {
         }
         break;
 
+      case "lead.opted_out":
+        nudge = {
+          organizationId: orgId,
+          content: `${payload.leadName ?? "A lead"} replied STOP and has been opted out of SMS. Active sequences cancelled.`,
+          category: "compliance",
+          entityType: "lead",
+          entityId: payload.leadId,
+          priority: 1,
+          actionPrompt: payload.leadId
+            ? `Lead ID ${payload.leadId} opted out of SMS. Review their record and determine alternative follow-up.`
+            : `A lead opted out of SMS. Review your active sequences for compliance.`,
+        };
+        break;
+
       default:
         return; // Unknown event type — no nudge
     }

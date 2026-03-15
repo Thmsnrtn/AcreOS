@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
@@ -30,6 +30,85 @@ import { PaxProjectPanel } from "@/components/pax-project-panel";
 import { PaxScheduleButton } from "@/components/pax-schedule-button";
 import { PaxConnectorPanel } from "@/components/pax-connector-panel";
 import { PaxMemoryPanel } from "@/components/pax-memory-panel";
+
+// ─── Lightweight markdown renderer ──────────────────────────────────────────
+function PaxMarkdown({ content }: { content: string }) {
+  const lines = content.split("\n");
+  const elements: React.ReactNode[] = [];
+  let i = 0;
+
+  const inlineFormat = (text: string): React.ReactNode => {
+    // Handle inline code, bold, italic with simple regex splits
+    const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|__[^_]+__|_[^_]+_)/g);
+    return parts.map((part, idx) => {
+      if (part.startsWith("`") && part.endsWith("`")) return <code key={idx} className="bg-muted px-1 py-0.5 rounded text-[11px] font-mono">{part.slice(1, -1)}</code>;
+      if ((part.startsWith("**") && part.endsWith("**")) || (part.startsWith("__") && part.endsWith("__"))) return <strong key={idx}>{part.slice(2, -2)}</strong>;
+      if ((part.startsWith("*") && part.endsWith("*")) || (part.startsWith("_") && part.endsWith("_"))) return <em key={idx}>{part.slice(1, -1)}</em>;
+      return part;
+    });
+  };
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // Fenced code block
+    if (line.startsWith("```")) {
+      const lang = line.slice(3).trim();
+      const codeLines: string[] = [];
+      i++;
+      while (i < lines.length && !lines[i].startsWith("```")) {
+        codeLines.push(lines[i]);
+        i++;
+      }
+      elements.push(
+        <pre key={i} className="bg-muted rounded-md p-2.5 my-1.5 overflow-x-auto text-[11px] font-mono leading-relaxed">
+          <code>{codeLines.join("\n")}</code>
+        </pre>
+      );
+      i++;
+      continue;
+    }
+
+    // Headings
+    const h3 = line.match(/^### (.+)/); if (h3) { elements.push(<h3 key={i} className="font-semibold text-sm mt-2 mb-0.5">{inlineFormat(h3[1])}</h3>); i++; continue; }
+    const h2 = line.match(/^## (.+)/);  if (h2) { elements.push(<h2 key={i} className="font-semibold text-sm mt-2 mb-0.5">{inlineFormat(h2[1])}</h2>); i++; continue; }
+    const h1 = line.match(/^# (.+)/);   if (h1) { elements.push(<h1 key={i} className="font-semibold text-sm mt-2 mb-0.5">{inlineFormat(h1[1])}</h1>); i++; continue; }
+
+    // Unordered list
+    if (line.match(/^[-*+] /)) {
+      const listItems: string[] = [];
+      while (i < lines.length && lines[i].match(/^[-*+] /)) {
+        listItems.push(lines[i].replace(/^[-*+] /, ""));
+        i++;
+      }
+      elements.push(<ul key={i} className="list-disc list-inside space-y-0.5 my-1 pl-1">{listItems.map((item, j) => <li key={j} className="text-sm">{inlineFormat(item)}</li>)}</ul>);
+      continue;
+    }
+
+    // Ordered list
+    if (line.match(/^\d+\. /)) {
+      const listItems: string[] = [];
+      while (i < lines.length && lines[i].match(/^\d+\. /)) {
+        listItems.push(lines[i].replace(/^\d+\. /, ""));
+        i++;
+      }
+      elements.push(<ol key={i} className="list-decimal list-inside space-y-0.5 my-1 pl-1">{listItems.map((item, j) => <li key={j} className="text-sm">{inlineFormat(item)}</li>)}</ol>);
+      continue;
+    }
+
+    // Horizontal rule
+    if (line.match(/^---+$/)) { elements.push(<hr key={i} className="border-border my-2" />); i++; continue; }
+
+    // Blank line → spacing
+    if (line.trim() === "") { elements.push(<div key={i} className="h-1.5" />); i++; continue; }
+
+    // Normal paragraph
+    elements.push(<p key={i} className="text-sm leading-relaxed">{inlineFormat(line)}</p>);
+    i++;
+  }
+
+  return <div className="space-y-0.5">{elements}</div>;
+}
 
 // ─── Page context awareness ─────────────────────────────────────────────────
 
@@ -1366,11 +1445,11 @@ export function PaxCopilotRail() {
                           {(msg.content || msg.isStreaming) && (
                             <div
                               className={cn(
-                                "text-sm leading-relaxed text-foreground",
+                                "leading-relaxed text-foreground",
                                 msg.role === "error" && "text-destructive"
                               )}
                             >
-                              {msg.content}
+                              {msg.role === "error" ? msg.content : <PaxMarkdown content={msg.content} />}
                               {msg.isStreaming && !msg.content && toolEvts.length === 0 && !msg.isThinking && (
                                 <span className="inline-flex gap-0.5 ml-1">
                                   <span className="w-1 h-1 rounded-full bg-primary animate-bounce [animation-delay:0ms]" />
