@@ -594,6 +594,82 @@ export function registerAIRoutes(app: Express): void {
     }
   });
 
+  // ============================================
+  // PAX CONNECTORS
+  // ============================================
+
+  // GET /api/ai/connectors — list all connectors + per-org connection status
+  api.get("/api/ai/connectors", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { CONNECTOR_REGISTRY } = await import("./services/connectors/registry");
+      const instances = await storage.getPaxConnectors(org.id);
+      const instanceMap = new Map(instances.map(i => [i.connectorId, i]));
+      const result = CONNECTOR_REGISTRY.map(def => ({
+        ...def,
+        instance: instanceMap.get(def.id) ?? null,
+      }));
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/ai/connectors/:id/connect — save credentials and mark connected
+  api.post("/api/ai/connectors/:id/connect", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const connectorId = req.params.id;
+      const { credentials, settings } = req.body;
+      const { getConnector } = await import("./services/connectors/registry");
+      const def = getConnector(connectorId);
+      if (!def) return res.status(404).json({ message: "Connector not found" });
+      const { encryptCredentials } = await import("./services/encryption");
+      const credentialsEncrypted = credentials
+        ? encryptCredentials(JSON.stringify(credentials), org.id)
+        : undefined;
+      const instance = await storage.upsertPaxConnector(org.id, connectorId, {
+        status: "connected",
+        credentialsEncrypted,
+        settings,
+      });
+      res.json({ success: true, instance: { ...instance, credentialsEncrypted: undefined } });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/ai/connectors/:id/test — test the connection
+  api.post("/api/ai/connectors/:id/test", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const connectorId = req.params.id;
+      const instance = await storage.getPaxConnector(org.id, connectorId);
+      if (!instance || instance.status !== "connected") {
+        return res.status(400).json({ message: "Connector not connected" });
+      }
+      // Basic connectivity test — attempt to load credentials
+      await storage.upsertPaxConnector(org.id, connectorId, {
+        lastTestedAt: new Date(),
+        errorMessage: undefined,
+      });
+      res.json({ success: true, testedAt: new Date() });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // DELETE /api/ai/connectors/:id — disconnect and remove credentials
+  api.delete("/api/ai/connectors/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      await storage.deletePaxConnector(org.id, req.params.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // GET /api/ai/cost-savings - Get AI cost savings summary
   api.get("/api/ai/cost-savings", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {

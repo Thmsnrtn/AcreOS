@@ -608,7 +608,233 @@ export const toolDefinitions = {
       },
       required: ["leadId", "messageType"]
     }
-  }
+  },
+
+  // ── Connector tools — only active when the connector is configured ──────
+
+  search_gmail: {
+    name: "search_gmail",
+    description: "Search the user's Gmail inbox. Use to find emails from leads, sellers, or about specific properties.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Gmail search query (e.g. 'from:seller@email.com', 'subject:offer', 'property address')" },
+        maxResults: { type: "number", description: "Max results to return (default: 10)" },
+      },
+      required: ["query"],
+    },
+  },
+
+  send_gmail: {
+    name: "send_gmail",
+    description: "Send an email via the user's Gmail account.",
+    parameters: {
+      type: "object",
+      properties: {
+        to: { type: "string", description: "Recipient email address" },
+        subject: { type: "string", description: "Email subject" },
+        body: { type: "string", description: "Email body (plain text)" },
+      },
+      required: ["to", "subject", "body"],
+    },
+  },
+
+  send_slack_message: {
+    name: "send_slack_message",
+    description: "Send a message to a Slack channel. Use for deal alerts, lead notifications, or team updates.",
+    parameters: {
+      type: "object",
+      properties: {
+        message: { type: "string", description: "Message text to send" },
+        channel: { type: "string", description: "Slack channel (e.g. #deals). Optional — uses default if not specified." },
+      },
+      required: ["message"],
+    },
+  },
+
+  get_stripe_customer: {
+    name: "get_stripe_customer",
+    description: "Look up a customer in Stripe by email or customer ID.",
+    parameters: {
+      type: "object",
+      properties: {
+        email: { type: "string", description: "Customer email address" },
+        customerId: { type: "string", description: "Stripe customer ID (cus_...)" },
+      },
+    },
+  },
+
+  list_stripe_payments: {
+    name: "list_stripe_payments",
+    description: "List recent Stripe charges/payments. Can filter by customer.",
+    parameters: {
+      type: "object",
+      properties: {
+        limit: { type: "number", description: "Number of payments to return (default: 10)" },
+        customerId: { type: "string", description: "Filter by Stripe customer ID" },
+      },
+    },
+  },
+
+  create_stripe_payment_link: {
+    name: "create_stripe_payment_link",
+    description: "Create a Stripe payment link for a deal (e.g. earnest money, option fee, down payment).",
+    parameters: {
+      type: "object",
+      properties: {
+        amount: { type: "number", description: "Amount in dollars" },
+        description: { type: "string", description: "Payment description (e.g. 'Earnest money — 123 Oak St')" },
+        currency: { type: "string", description: "Currency code (default: usd)" },
+      },
+      required: ["amount", "description"],
+    },
+  },
+
+  search_drive: {
+    name: "search_drive",
+    description: "Search Google Drive for property documents, contracts, or due diligence files.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Search term (file name or content)" },
+        maxResults: { type: "number", description: "Max results (default: 10)" },
+      },
+      required: ["query"],
+    },
+  },
+
+  get_drive_file: {
+    name: "get_drive_file",
+    description: "Get metadata and view link for a specific Google Drive file.",
+    parameters: {
+      type: "object",
+      properties: {
+        fileId: { type: "string", description: "Google Drive file ID" },
+      },
+      required: ["fileId"],
+    },
+  },
+
+  list_calendar_events: {
+    name: "list_calendar_events",
+    description: "List upcoming Google Calendar events. Use to check schedule before booking showings or closings.",
+    parameters: {
+      type: "object",
+      properties: {
+        days: { type: "number", description: "Number of days ahead to look (default: 7)" },
+      },
+    },
+  },
+
+  create_calendar_event: {
+    name: "create_calendar_event",
+    description: "Create a Google Calendar event (showing, closing, call, follow-up).",
+    parameters: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Event title" },
+        startDateTime: { type: "string", description: "Start date-time in ISO format (e.g. 2025-04-01T10:00:00-05:00)" },
+        endDateTime: { type: "string", description: "End date-time in ISO format" },
+        description: { type: "string", description: "Event description or notes" },
+        location: { type: "string", description: "Location (address or video call link)" },
+        attendees: { type: "array", items: { type: "string" }, description: "List of attendee email addresses" },
+      },
+      required: ["title", "startDateTime", "endDateTime"],
+    },
+  },
+
+  propstream_lookup: {
+    name: "propstream_lookup",
+    description: "Look up owner info, equity, liens, and property history via PropStream.",
+    parameters: {
+      type: "object",
+      properties: {
+        address: { type: "string", description: "Full property address" },
+      },
+      required: ["address"],
+    },
+  },
+
+  propstream_comps: {
+    name: "propstream_comps",
+    description: "Pull comparable sales from PropStream for a given address.",
+    parameters: {
+      type: "object",
+      properties: {
+        address: { type: "string", description: "Subject property address" },
+        radius: { type: "number", description: "Search radius in miles (default: 1)" },
+      },
+      required: ["address"],
+    },
+  },
+
+  batch_leads_skip_trace: {
+    name: "batch_leads_skip_trace",
+    description: "Skip trace a lead via BatchLeads to find phone numbers and contact info.",
+    parameters: {
+      type: "object",
+      properties: {
+        firstName: { type: "string" },
+        lastName: { type: "string" },
+        address: { type: "string", description: "Property address" },
+        phone: { type: "string", description: "Known phone number (optional)" },
+      },
+    },
+  },
+
+  search_mls_listings: {
+    name: "search_mls_listings",
+    description: "Search MLS listings via RESO API. Find active listings or sold comps.",
+    parameters: {
+      type: "object",
+      properties: {
+        city: { type: "string" },
+        state: { type: "string" },
+        minPrice: { type: "number" },
+        maxPrice: { type: "number" },
+        status: { type: "string", enum: ["Active", "Closed", "Pending"], description: "Listing status" },
+        limit: { type: "number", description: "Max results (default: 10)" },
+      },
+    },
+  },
+
+  get_mls_comps: {
+    name: "get_mls_comps",
+    description: "Get comparable sold listings from MLS for a given property address.",
+    parameters: {
+      type: "object",
+      properties: {
+        address: { type: "string", description: "Subject property address" },
+        radius: { type: "number", description: "Search radius in miles" },
+        limit: { type: "number" },
+      },
+      required: ["address"],
+    },
+  },
+
+  trigger_zapier: {
+    name: "trigger_zapier",
+    description: "Trigger a Zapier webhook with structured data. Use to automate follow-up sequences, CRM updates, or any downstream workflow.",
+    parameters: {
+      type: "object",
+      properties: {
+        data: { type: "object", description: "Payload to send to Zapier (any key-value pairs)" },
+      },
+      required: ["data"],
+    },
+  },
+
+  trigger_make: {
+    name: "trigger_make",
+    description: "Trigger a Make (Integromat) webhook scenario with structured data.",
+    parameters: {
+      type: "object",
+      properties: {
+        data: { type: "object", description: "Payload to send to Make" },
+      },
+      required: ["data"],
+    },
+  },
 };
 
 // Tool executor functions
@@ -1802,6 +2028,77 @@ export async function executeTool(
               : undefined,
           }
         };
+      }
+
+      // ── Connector tools ──────────────────────────────────────────────────────
+
+      case "search_gmail": {
+        const { searchGmail } = await import("../services/connectors/executor");
+        return searchGmail(org, args);
+      }
+      case "send_gmail": {
+        const { sendGmail } = await import("../services/connectors/executor");
+        return sendGmail(org, args);
+      }
+      case "send_slack_message": {
+        const { sendSlackMessage } = await import("../services/connectors/executor");
+        return sendSlackMessage(org, args);
+      }
+      case "get_stripe_customer": {
+        const { getStripeCustomer } = await import("../services/connectors/executor");
+        return getStripeCustomer(org, args);
+      }
+      case "list_stripe_payments": {
+        const { listStripePayments } = await import("../services/connectors/executor");
+        return listStripePayments(org, args);
+      }
+      case "create_stripe_payment_link": {
+        const { createStripePaymentLink } = await import("../services/connectors/executor");
+        return createStripePaymentLink(org, args);
+      }
+      case "search_drive": {
+        const { searchDrive } = await import("../services/connectors/executor");
+        return searchDrive(org, args);
+      }
+      case "get_drive_file": {
+        const { getDriveFile } = await import("../services/connectors/executor");
+        return getDriveFile(org, args);
+      }
+      case "list_calendar_events": {
+        const { listCalendarEvents } = await import("../services/connectors/executor");
+        return listCalendarEvents(org, args);
+      }
+      case "create_calendar_event": {
+        const { createCalendarEvent } = await import("../services/connectors/executor");
+        return createCalendarEvent(org, args);
+      }
+      case "propstream_lookup": {
+        const { propstreamLookup } = await import("../services/connectors/executor");
+        return propstreamLookup(org, args);
+      }
+      case "propstream_comps": {
+        const { propstreamComps } = await import("../services/connectors/executor");
+        return propstreamComps(org, args);
+      }
+      case "batch_leads_skip_trace": {
+        const { batchLeadsSkipTrace } = await import("../services/connectors/executor");
+        return batchLeadsSkipTrace(org, args);
+      }
+      case "search_mls_listings": {
+        const { searchMlsListings } = await import("../services/connectors/executor");
+        return searchMlsListings(org, args);
+      }
+      case "get_mls_comps": {
+        const { getMlsComps } = await import("../services/connectors/executor");
+        return getMlsComps(org, args);
+      }
+      case "trigger_zapier": {
+        const { triggerZapier } = await import("../services/connectors/executor");
+        return triggerZapier(org, args);
+      }
+      case "trigger_make": {
+        const { triggerMake } = await import("../services/connectors/executor");
+        return triggerMake(org, args);
       }
 
       default:

@@ -9,6 +9,7 @@ import {
   TaskComplexity,
   AIProvider,
 } from "../services/aiRouter";
+import { buildConnectorContextBlock } from "../services/connectors/registry";
 import mammoth from "mammoth";
 import { storage } from "../storage";
 
@@ -518,7 +519,9 @@ export async function processChat(
   const _mentionCtx = options.mentionedEntities?.length
     ? `\n\n=== MENTIONED ENTITIES ===\n${options.mentionedEntities.map(e => `[${e.type.toUpperCase()}] ${e.name}: ${e.preview}`).join("\n")}\n=== END MENTIONED ENTITIES ===`
     : "";
-  const _systemContent = profile.systemPrompt + (_enrichCtx || "") + (_prefCtx || "") + (_knowledgeCtx || "") + (_projectCtx || "") + (_mentionCtx || "");
+  const _connectedIds = await storage.getConnectedConnectorIds(org.id);
+  const _connectorCtx = buildConnectorContextBlock(_connectedIds);
+  const _systemContent = profile.systemPrompt + (_enrichCtx || "") + (_prefCtx || "") + (_knowledgeCtx || "") + (_projectCtx || "") + (_mentionCtx || "") + (_connectorCtx || "");
 
   const chatMessages: OpenAI.ChatCompletionMessageParam[] = [
     { role: "system", content: _systemContent },
@@ -751,7 +754,9 @@ export async function* processChatStream(
   const _mentionCtx = options.mentionedEntities?.length
     ? `\n\n=== MENTIONED ENTITIES ===\n${options.mentionedEntities.map(e => `[${e.type.toUpperCase()}] ${e.name}: ${e.preview}`).join("\n")}\n=== END MENTIONED ENTITIES ===`
     : "";
-  const _systemContent = profile.systemPrompt + (_enrichCtx || "") + (_prefCtx || "") + (_knowledgeCtx || "") + (_projectCtx || "") + (_mentionCtx || "");
+  const _connectedIds = await storage.getConnectedConnectorIds(org.id);
+  const _connectorCtx = buildConnectorContextBlock(_connectedIds);
+  const _systemContent = profile.systemPrompt + (_enrichCtx || "") + (_prefCtx || "") + (_knowledgeCtx || "") + (_projectCtx || "") + (_mentionCtx || "") + (_connectorCtx || "");
 
   const chatMessages: OpenAI.ChatCompletionMessageParam[] = [
     { role: "system", content: _systemContent },

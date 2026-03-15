@@ -196,6 +196,7 @@ import {
   type GrowthCampaign, type InsertGrowthCampaign,
   adCreativeBundles,
   type AdCreativeBundle,
+  paxConnectorInstances, type PaxConnectorInstance,
   paxKnowledgeFiles, type PaxKnowledgeFile,
   paxProjects, type PaxProject,
   paxProjectFiles, type PaxProjectFile,
@@ -2133,6 +2134,57 @@ export class DatabaseStorage implements IStorage {
     }
 
     return results.slice(0, limit);
+  }
+
+  // ============================================
+  // PAX CONNECTOR INSTANCES
+  // ============================================
+
+  async getPaxConnectors(orgId: number): Promise<PaxConnectorInstance[]> {
+    return db.select().from(paxConnectorInstances)
+      .where(eq(paxConnectorInstances.organizationId, orgId))
+      .orderBy(paxConnectorInstances.connectorId);
+  }
+
+  async getPaxConnector(orgId: number, connectorId: string): Promise<PaxConnectorInstance | undefined> {
+    const [row] = await db.select().from(paxConnectorInstances)
+      .where(and(eq(paxConnectorInstances.organizationId, orgId), eq(paxConnectorInstances.connectorId, connectorId)));
+    return row;
+  }
+
+  async upsertPaxConnector(orgId: number, connectorId: string, updates: {
+    status?: string;
+    credentialsEncrypted?: string;
+    settings?: Record<string, unknown>;
+    lastTestedAt?: Date;
+    lastErrorAt?: Date;
+    errorMessage?: string;
+  }): Promise<PaxConnectorInstance> {
+    const existing = await this.getPaxConnector(orgId, connectorId);
+    if (existing) {
+      const [row] = await db.update(paxConnectorInstances)
+        .set({ ...updates, updatedAt: new Date() })
+        .where(and(eq(paxConnectorInstances.organizationId, orgId), eq(paxConnectorInstances.connectorId, connectorId)))
+        .returning();
+      return row;
+    } else {
+      const [row] = await db.insert(paxConnectorInstances)
+        .values({ organizationId: orgId, connectorId, status: "disconnected", ...updates })
+        .returning();
+      return row;
+    }
+  }
+
+  async deletePaxConnector(orgId: number, connectorId: string): Promise<void> {
+    await db.delete(paxConnectorInstances)
+      .where(and(eq(paxConnectorInstances.organizationId, orgId), eq(paxConnectorInstances.connectorId, connectorId)));
+  }
+
+  async getConnectedConnectorIds(orgId: number): Promise<string[]> {
+    const rows = await db.select({ connectorId: paxConnectorInstances.connectorId })
+      .from(paxConnectorInstances)
+      .where(and(eq(paxConnectorInstances.organizationId, orgId), eq(paxConnectorInstances.status, "connected")));
+    return rows.map(r => r.connectorId);
   }
 
   // ============================================

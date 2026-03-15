@@ -1523,6 +1523,29 @@ export const aiMemory = pgTable("ai_memory", {
 });
 
 // AI Conversations - chat history with AI agents
+// ============================================
+// PAX CONNECTORS — per-org connector instances
+// ============================================
+
+export const paxConnectorInstances = pgTable("pax_connector_instances", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").notNull(),
+  connectorId: text("connector_id").notNull(), // 'gmail' | 'google_drive' | 'stripe' | etc.
+  status: text("status").notNull().default("disconnected"), // 'disconnected' | 'connected' | 'error'
+  // Encrypted credentials JSON (access_token, refresh_token, api_key, webhook_url, etc.)
+  credentialsEncrypted: text("credentials_encrypted"),
+  settings: jsonb("settings").$type<Record<string, any>>(),
+  lastTestedAt: timestamp("last_tested_at"),
+  lastErrorAt: timestamp("last_error_at"),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (t) => [
+  index("pax_ci_org_idx").on(t.organizationId),
+  index("pax_ci_connector_idx").on(t.organizationId, t.connectorId),
+]);
+export type PaxConnectorInstance = typeof paxConnectorInstances.$inferSelect;
+
 export const paxKnowledgeFiles = pgTable("pax_knowledge_files", {
   id: serial("id").primaryKey(),
   organizationId: integer("organization_id").notNull(),
