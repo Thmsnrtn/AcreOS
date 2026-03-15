@@ -12,7 +12,7 @@ import {
   Sparkles, Send, Loader2, X, ChevronRight,
   Users, MapPin, Building, Megaphone, LayoutDashboard,
   Zap, Bell, CheckCircle2, AlertCircle, RefreshCw,
-  Paperclip, Clock, MessageSquare, BookOpen, FolderOpen,
+  Paperclip, Clock, MessageSquare, BookOpen, FolderOpen, Plug,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePaxRail } from "@/contexts/pax-rail-context";
@@ -24,6 +24,7 @@ import { PaxThinkingBlock } from "@/components/pax-thinking-block";
 import { PaxKnowledgePanel } from "@/components/pax-knowledge-panel";
 import { PaxProjectPanel } from "@/components/pax-project-panel";
 import { PaxScheduleButton } from "@/components/pax-schedule-button";
+import { PaxConnectorPanel } from "@/components/pax-connector-panel";
 
 // ─── Page context awareness ─────────────────────────────────────────────────
 
@@ -198,6 +199,9 @@ export function PaxCopilotRail() {
 
   // Knowledge panel
   const [showKnowledge, setShowKnowledge] = useState(false);
+
+  // Connector panel
+  const [showConnectors, setShowConnectors] = useState(false);
 
   // Project panel
   const [showProjects, setShowProjects] = useState(false);
@@ -746,6 +750,15 @@ export function PaxCopilotRail() {
                   </TooltipTrigger>
                   <TooltipContent>Knowledge Base</TooltipContent>
                 </Tooltip>
+                {/* Connectors button */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setShowConnectors(true)}>
+                      <Plug className="w-3.5 h-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Integrations</TooltipContent>
+                </Tooltip>
                 {/* Projects button */}
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -1177,6 +1190,9 @@ export function PaxCopilotRail() {
 
       {/* Knowledge Panel (Sheet) */}
       <PaxKnowledgePanel open={showKnowledge} onClose={() => setShowKnowledge(false)} />
+
+      {/* Connector Panel (Sheet) */}
+      <PaxConnectorPanel open={showConnectors} onOpenChange={setShowConnectors} />
 
       {/* Project Panel (Sheet) */}
       <PaxProjectPanel
