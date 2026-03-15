@@ -306,6 +306,33 @@ class DunningService {
     }
     return null;
   }
+
+  async handlePaymentRecovered(organizationId: number): Promise<void> {
+    try {
+      const org = await storage.getOrganization(organizationId);
+      if (!org || !org.dunningStage || org.dunningStage === "none") return;
+
+      console.log(`[Dunning] Payment recovered for org ${organizationId} — clearing dunning stage`);
+      await storage.updateOrganization(organizationId, {
+        dunningStage: "none",
+        dunningStartedAt: null,
+        subscriptionStatus: "active",
+      } as any);
+
+      // Log the recovery event
+      try {
+        const { logActivity } = await import("./systemActivityLogger");
+        await logActivity({
+          organizationId,
+          type: "dunning_recovered",
+          description: "Payment recovered — dunning stage cleared",
+          metadata: { previousStage: org.dunningStage },
+        } as any);
+      } catch {}
+    } catch (err: any) {
+      console.error(`[Dunning] handlePaymentRecovered error for org ${organizationId}:`, err.message);
+    }
+  }
 }
 
 export const dunningService = new DunningService();

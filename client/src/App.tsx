@@ -19,68 +19,71 @@ import { KeyboardShortcutsProvider } from "@/hooks/use-keyboard-shortcuts";
 import { KeyboardShortcutsModal } from "@/components/keyboard-shortcuts";
 import { NewItemMenu } from "@/components/new-item-menu";
 import { QuickActionsMenu } from "@/components/quick-actions-menu";
-import TodayPage from "@/pages/today";
-import PipelinePage from "@/pages/pipeline";
-import MoneyPage from "@/pages/money";
-import PaxPage from "@/pages/pax";
-import LeadsPage from "@/pages/leads";
-import PropertiesPage from "@/pages/properties";
-import FinancePage from "@/pages/finance";
-import PortfolioPage from "@/pages/portfolio";
-import CampaignsPage from "@/pages/campaigns";
-import DealsPage from "@/pages/deals";
-import ToolsPage from "@/pages/tools";
-import CommandCenterPage from "@/pages/command-center";
-import SupportPage from "@/pages/support";
-import SettingsPage from "@/pages/settings";
-import HelpPage from "@/pages/help";
-import AdminSupportPage from "@/pages/admin-support";
-import FounderDashboard from "@/pages/founder-dashboard";
-import FounderAiObservatory from "@/pages/founder-ai-observatory";
-import SequencesPage from "@/pages/sequences";
-import AbTestsPage from "@/pages/ab-tests";
-import TasksPage from "@/pages/tasks";
-import TeamDashboardPage from "@/pages/team-dashboard";
-import TeamInboxPage from "@/pages/team-inbox";
-import AutomationPage from "@/pages/automation";
-import WorkflowsPage from "@/pages/workflows";
-import ActivityPage from "@/pages/activity";
-import CountiesPage from "@/pages/counties";
-import OffersPage from "@/pages/offers";
-import ListingsPage from "@/pages/listings";
-import DocumentsPage from "@/pages/documents";
-import AnalyticsPage from "@/pages/analytics";
-import EmailSettingsPage from "@/pages/email-settings";
-import MailSettingsPage from "@/pages/mail-settings";
-import InboxPage from "@/pages/inbox";
-import MarketplacePage from "@/pages/marketplace";
-import AcademyPage from "@/pages/academy";
-import LandCreditPage from "@/pages/land-credit";
-import AcquisitionRadarPage from "@/pages/acquisition-radar";
-import PortfolioOptimizerPage from "@/pages/portfolio-optimizer";
-import AVMPage from "@/pages/avm";
-import MapsPage from "@/pages/maps";
-import NegotiationCopilotPage from "@/pages/negotiation-copilot";
-import CashFlowPage from "@/pages/cash-flow";
-import DealHunterPage from "@/pages/deal-hunter";
-import VisionAIPage from "@/pages/vision-ai";
-import CapitalMarketsPage from "@/pages/capital-markets";
-import MarketIntelligencePage from "@/pages/market-intelligence";
-import CompliancePage from "@/pages/compliance";
-import TaxResearcherPage from "@/pages/tax-researcher";
-import DocumentIntelligencePage from "@/pages/document-intelligence";
+// ── Eagerly loaded (critical-path: auth + minimal shell) ─────────────────────
 import AuthPage from "@/pages/auth-page";
+import LandingPage from "@/pages/landing";
+import NotFound from "@/pages/not-found";
 import BorrowerPortal from "@/pages/borrower-portal";
 import TermsOfService from "@/pages/terms";
 import PrivacyPolicy from "@/pages/privacy";
-import LandingPage from "@/pages/landing";
-import NotFound from "@/pages/not-found";
-import SafetyGatesPage from "@/pages/safety-gates";
-import DecisionQueuePage from "@/pages/decision-queue";
-import OpsDashboardPage from "@/pages/ops-dashboard";
-import BetaIntakePage from "@/pages/beta-intake";
-import CompareLGPassPage from "@/pages/compare-lgpass";
-import CompareGeekPayPage from "@/pages/compare-geekpay";
+
+// ── Lazy loaded (all app pages — route-level code splitting) ─────────────────
+const TodayPage = React.lazy(() => import("@/pages/today"));
+const PipelinePage = React.lazy(() => import("@/pages/pipeline"));
+const MoneyPage = React.lazy(() => import("@/pages/money"));
+const PaxPage = React.lazy(() => import("@/pages/pax"));
+const LeadsPage = React.lazy(() => import("@/pages/leads"));
+const PropertiesPage = React.lazy(() => import("@/pages/properties"));
+const FinancePage = React.lazy(() => import("@/pages/finance"));
+const PortfolioPage = React.lazy(() => import("@/pages/portfolio"));
+const CampaignsPage = React.lazy(() => import("@/pages/campaigns"));
+const DealsPage = React.lazy(() => import("@/pages/deals"));
+const ToolsPage = React.lazy(() => import("@/pages/tools"));
+const CommandCenterPage = React.lazy(() => import("@/pages/command-center"));
+const SupportPage = React.lazy(() => import("@/pages/support"));
+const SettingsPage = React.lazy(() => import("@/pages/settings"));
+const HelpPage = React.lazy(() => import("@/pages/help"));
+const AdminSupportPage = React.lazy(() => import("@/pages/admin-support"));
+const FounderDashboard = React.lazy(() => import("@/pages/founder-dashboard"));
+const FounderAiObservatory = React.lazy(() => import("@/pages/founder-ai-observatory"));
+const SequencesPage = React.lazy(() => import("@/pages/sequences"));
+const AbTestsPage = React.lazy(() => import("@/pages/ab-tests"));
+const TasksPage = React.lazy(() => import("@/pages/tasks"));
+const TeamDashboardPage = React.lazy(() => import("@/pages/team-dashboard"));
+const TeamInboxPage = React.lazy(() => import("@/pages/team-inbox"));
+const AutomationPage = React.lazy(() => import("@/pages/automation"));
+const WorkflowsPage = React.lazy(() => import("@/pages/workflows"));
+const ActivityPage = React.lazy(() => import("@/pages/activity"));
+const CountiesPage = React.lazy(() => import("@/pages/counties"));
+const OffersPage = React.lazy(() => import("@/pages/offers"));
+const ListingsPage = React.lazy(() => import("@/pages/listings"));
+const DocumentsPage = React.lazy(() => import("@/pages/documents"));
+const AnalyticsPage = React.lazy(() => import("@/pages/analytics"));
+const EmailSettingsPage = React.lazy(() => import("@/pages/email-settings"));
+const MailSettingsPage = React.lazy(() => import("@/pages/mail-settings"));
+const InboxPage = React.lazy(() => import("@/pages/inbox"));
+const MarketplacePage = React.lazy(() => import("@/pages/marketplace"));
+const AcademyPage = React.lazy(() => import("@/pages/academy"));
+const LandCreditPage = React.lazy(() => import("@/pages/land-credit"));
+const AcquisitionRadarPage = React.lazy(() => import("@/pages/acquisition-radar"));
+const PortfolioOptimizerPage = React.lazy(() => import("@/pages/portfolio-optimizer"));
+const AVMPage = React.lazy(() => import("@/pages/avm"));
+const MapsPage = React.lazy(() => import("@/pages/maps"));
+const NegotiationCopilotPage = React.lazy(() => import("@/pages/negotiation-copilot"));
+const CashFlowPage = React.lazy(() => import("@/pages/cash-flow"));
+const DealHunterPage = React.lazy(() => import("@/pages/deal-hunter"));
+const VisionAIPage = React.lazy(() => import("@/pages/vision-ai"));
+const CapitalMarketsPage = React.lazy(() => import("@/pages/capital-markets"));
+const MarketIntelligencePage = React.lazy(() => import("@/pages/market-intelligence"));
+const CompliancePage = React.lazy(() => import("@/pages/compliance"));
+const TaxResearcherPage = React.lazy(() => import("@/pages/tax-researcher"));
+const DocumentIntelligencePage = React.lazy(() => import("@/pages/document-intelligence"));
+const SafetyGatesPage = React.lazy(() => import("@/pages/safety-gates"));
+const DecisionQueuePage = React.lazy(() => import("@/pages/decision-queue"));
+const OpsDashboardPage = React.lazy(() => import("@/pages/ops-dashboard"));
+const BetaIntakePage = React.lazy(() => import("@/pages/beta-intake"));
+const CompareLGPassPage = React.lazy(() => import("@/pages/compare-lgpass"));
+const CompareGeekPayPage = React.lazy(() => import("@/pages/compare-geekpay"));
 import { OnboardingWizard } from "@/components/onboarding-wizard";
 import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
 import { ConversationTray } from "@/components/conversation-tray";
@@ -171,6 +174,11 @@ function HomeRoute() {
 
 function Router() {
   return (
+    <React.Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    }>
     <Switch>
       <Route path="/auth" component={AuthPage} />
       <Route path="/terms" component={TermsOfService} />
@@ -360,6 +368,7 @@ function Router() {
 
       <Route component={NotFound} />
     </Switch>
+    </React.Suspense>
   );
 }
 

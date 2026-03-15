@@ -26,6 +26,8 @@ import {
   X,
   Target,
   Sparkles,
+  TrendingUp,
+  AlertCircle,
 } from "lucide-react";
 import { format, isToday, isBefore, startOfDay, subDays } from "date-fns";
 
@@ -188,6 +190,15 @@ export default function TodayPage() {
     staleTime: 5 * 60 * 1000,
   });
 
+  // Cash position: upcoming note payments in next 30/60/90 days
+  const { data: allNotes = [], isLoading: notesLoading } = useQuery<{
+    id: number; status: string; currentBalance: string; monthlyPayment: string;
+    nextPaymentDate?: string; borrowerName?: string;
+  }[]>({
+    queryKey: ["/api/notes"],
+    staleTime: 5 * 60 * 1000,
+  });
+
   const pendingDecisionCount = (() => {
     const nowTs = new Date();
     const stalledLeads = leads.filter((l: any) => {
@@ -240,6 +251,36 @@ export default function TodayPage() {
   const paxItemCount = paxObservations.length + paxStaleLeads.length + paxExpiringOffers.length;
 
   const paxSuggestions = paxSuggestionsData?.suggestions ?? [];
+
+  // Cash position calculations
+  const cashPosition = (() => {
+    const now = new Date();
+    const activeNotes = allNotes.filter(n => n.status === "active" || n.status === "late" || n.status === "delinquent");
+    const lateCount = allNotes.filter(n => n.status === "late" || n.status === "delinquent").length;
+    const upcoming30 = activeNotes.filter(n => {
+      if (!n.nextPaymentDate) return false;
+      const due = new Date(n.nextPaymentDate);
+      const diff = (due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+      return diff >= 0 && diff <= 30;
+    });
+    const next3 = upcoming30
+      .sort((a, b) => new Date(a.nextPaymentDate!).getTime() - new Date(b.nextPaymentDate!).getTime())
+      .slice(0, 3);
+    const projected30 = upcoming30.reduce((s, n) => s + parseFloat(n.monthlyPayment || "0"), 0);
+    const projected60 = activeNotes.filter(n => {
+      if (!n.nextPaymentDate) return false;
+      const due = new Date(n.nextPaymentDate);
+      const diff = (due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+      return diff >= 0 && diff <= 60;
+    }).reduce((s, n) => s + parseFloat(n.monthlyPayment || "0"), 0);
+    const projected90 = activeNotes.filter(n => {
+      if (!n.nextPaymentDate) return false;
+      const due = new Date(n.nextPaymentDate);
+      const diff = (due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+      return diff >= 0 && diff <= 90;
+    }).reduce((s, n) => s + parseFloat(n.monthlyPayment || "0"), 0);
+    return { next3, lateCount, projected30, projected60, projected90, activeCount: activeNotes.length };
+  })();
 
   return (
     <PageShell>
@@ -626,6 +667,80 @@ export default function TodayPage() {
           </div>
         )}
       </div>
+
+      {/* Section 3b: Cash Position */}
+      {(cashPosition.activeCount > 0 || notesLoading) && (
+        <div data-testid="section-cash-position">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-emerald-500" />
+              <h2 className="text-lg font-semibold">Cash Position</h2>
+              {cashPosition.lateCount > 0 && (
+                <Badge variant="secondary" className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 text-xs">
+                  {cashPosition.lateCount} late
+                </Badge>
+              )}
+            </div>
+            <Link href="/finance">
+              <Button variant="ghost" size="sm" className="gap-1 text-xs">
+                View Finance <ArrowRight className="w-3 h-3" />
+              </Button>
+            </Link>
+          </div>
+          {notesLoading ? (
+            <Skeleton className="h-28 w-full" />
+          ) : (
+            <div className="space-y-2">
+              {/* 30/60/90 forecast row */}
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { label: "30d", value: cashPosition.projected30 },
+                  { label: "60d", value: cashPosition.projected60 },
+                  { label: "90d", value: cashPosition.projected90 },
+                ].map(({ label, value }) => (
+                  <Card key={label} className="border-emerald-100 dark:border-emerald-900/30">
+                    <CardContent className="py-3 px-3 text-center">
+                      <p className="text-xs text-muted-foreground mb-0.5">{label} projected</p>
+                      <p className="text-base font-semibold text-emerald-700 dark:text-emerald-400">
+                        ${value.toLocaleString("en-US", { maximumFractionDigits: 0 })}
+                      </p>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+              {/* Upcoming payments */}
+              {cashPosition.next3.length > 0 && (
+                <div className="space-y-1.5">
+                  {cashPosition.next3.map((note) => (
+                    <Card key={note.id} className="hover:shadow-sm transition-shadow">
+                      <CardContent className="flex items-center justify-between py-2.5 px-4">
+                        <div className="flex items-center gap-2.5">
+                          {(note.status === "late" || note.status === "delinquent") ? (
+                            <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+                          ) : (
+                            <Banknote className="w-4 h-4 text-emerald-500 shrink-0" />
+                          )}
+                          <div>
+                            <p className="text-sm font-medium leading-tight">
+                              {note.borrowerName ?? `Note #${note.id}`}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              Due {note.nextPaymentDate ? format(new Date(note.nextPaymentDate), "MMM d") : "—"}
+                            </p>
+                          </div>
+                        </div>
+                        <span className={`text-sm font-semibold ${note.status === "late" || note.status === "delinquent" ? "text-red-600 dark:text-red-400" : "text-emerald-700 dark:text-emerald-400"}`}>
+                          ${parseFloat(note.monthlyPayment || "0").toLocaleString("en-US", { maximumFractionDigits: 0 })}
+                        </span>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Section 4: KPI Stats */}
       <div data-testid="section-stats">
