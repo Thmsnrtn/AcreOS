@@ -236,7 +236,7 @@ export function registerAIRoutes(app: Express): void {
       const org = (req as any).organization;
       const user = req.user as any;
       const userId = user.claims?.sub || user.id;
-      const { message, conversationId, agentRole, files, propertyId: streamPropertyId } = req.body;
+      const { message, conversationId, agentRole, files, propertyId: streamPropertyId, mentionedEntities, activeProjectId } = req.body;
       
       if (!message) {
         return res.status(400).json({ message: "Message is required" });
@@ -277,6 +277,8 @@ export function registerAIRoutes(app: Express): void {
         agentRole,
         files,
         propertyId: streamPropertyId ? Number(streamPropertyId) : undefined,
+        mentionedEntities,
+        activeProjectId: activeProjectId ? Number(activeProjectId) : undefined,
       });
       
       let streamCompleted = false;
@@ -330,6 +332,266 @@ export function registerAIRoutes(app: Express): void {
     
     await storage.deleteAiConversation(conversationId);
     res.json({ success: true });
+  });
+
+  // PATCH /api/ai/conversations/:id/project — set active project for conversation
+  api.patch("/api/ai/conversations/:id/project", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const conversationId = parseInt(req.params.id);
+      const conversation = await storage.getAiConversation(conversationId);
+      if (!conversation || conversation.organizationId !== org.id) {
+        return res.status(404).json({ message: "Conversation not found" });
+      }
+      const { projectId } = req.body;
+      await storage.setConversationProject(conversationId, projectId ?? null);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // KNOWLEDGE BASE ROUTES
+  // ============================================
+
+  api.get("/api/ai/knowledge", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const files = await storage.getKnowledgeFiles(org.id);
+      res.json(files);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.post("/api/ai/knowledge", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const userId = (req as any).user?.id ?? "unknown";
+      const { name, content, mimeType, sizeBytes } = req.body;
+
+      // Check limit
+      const existing = await storage.getKnowledgeFiles(org.id);
+      if (existing.length >= 8) {
+        return res.status(400).json({ message: "Knowledge base file limit (8) reached." });
+      }
+
+      // Extract text from base64 content via executive helper
+      const { formatFileContentFromBase64 } = await import("./ai/executive");
+      let extractedContent = await formatFileContentFromBase64({ name, content, mimeType });
+      // Cap at 6000 chars
+      if (extractedContent.length > 6000) extractedContent = extractedContent.slice(0, 6000) + "\n[truncated]";
+
+      const file = await storage.createKnowledgeFile({
+        organizationId: org.id,
+        name,
+        mimeType,
+        sizeBytes: sizeBytes ?? 0,
+        extractedContent,
+        uploadedBy: userId,
+        isActive: true,
+      });
+      res.json(file);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.patch("/api/ai/knowledge/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { isActive, description } = req.body;
+      await storage.updateKnowledgeFile(parseInt(req.params.id), { isActive, description });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.delete("/api/ai/knowledge/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      await storage.deleteKnowledgeFile(parseInt(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // ENTITY SEARCH (@ mentions)
+  // ============================================
+
+  api.get("/api/ai/search-entities", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const q = (req.query.q as string) ?? "";
+      const type = (req.query.type as string) ?? "all";
+      const limit = parseInt((req.query.limit as string) ?? "6");
+      if (!q) return res.json([]);
+      const results = await storage.searchPaxEntities(org.id, q, type, limit);
+      res.json(results);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // PROJECT ROUTES
+  // ============================================
+
+  api.get("/api/ai/projects", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      res.json(await storage.getPaxProjects(org.id));
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.post("/api/ai/projects", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const userId = (req as any).user?.id ?? "unknown";
+      const { name, description, entityType, entityId } = req.body;
+      if (!name) return res.status(400).json({ message: "name required" });
+      const proj = await storage.createPaxProject({ organizationId: org.id, userId, name, description, entityType, entityId });
+      res.json(proj);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.patch("/api/ai/projects/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { name, description, isActive } = req.body;
+      await storage.updatePaxProject(parseInt(req.params.id), { name, description, isActive });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.delete("/api/ai/projects/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      await storage.deletePaxProject(parseInt(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.get("/api/ai/projects/:id/files", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      res.json(await storage.getPaxProjectFiles(parseInt(req.params.id)));
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.post("/api/ai/projects/:id/files", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const userId = (req as any).user?.id ?? "unknown";
+      const projectId = parseInt(req.params.id);
+      const { fileName, content, mimeType, sizeBytes } = req.body;
+
+      const { formatFileContentFromBase64 } = await import("./ai/executive");
+      let extractedContent = await formatFileContentFromBase64({ name: fileName, content, mimeType });
+      if (extractedContent.length > 8000) extractedContent = extractedContent.slice(0, 8000) + "\n[truncated]";
+
+      const file = await storage.createPaxProjectFile({ projectId, fileName, mimeType, sizeBytes: sizeBytes ?? 0, extractedContent, uploadedBy: userId });
+      res.json(file);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.delete("/api/ai/projects/:id/files/:fileId", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      await storage.deletePaxProjectFile(parseInt(req.params.fileId));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // SCHEDULED TASK ROUTES
+  // ============================================
+
+  api.get("/api/ai/scheduled-tasks/pending-results", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const since = req.query.since ? new Date(req.query.since as string) : new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const results = await storage.getPaxPendingTaskResults(org.id, since);
+      res.json(results.map((t) => ({ id: t.id, name: t.name, lastRunAt: t.lastRunAt, lastRunConversationId: t.lastRunConversationId })));
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.get("/api/ai/scheduled-tasks", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      res.json(await storage.getPaxScheduledTasks(org.id));
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.post("/api/ai/scheduled-tasks", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const userId = (req as any).user?.id ?? "unknown";
+      const { name, prompt, schedule, timezone } = req.body;
+      if (!name || !prompt || !schedule) return res.status(400).json({ message: "name, prompt, schedule required" });
+
+      const { computeNextRun } = await import("./services/paxScheduler");
+      const nextRunAt = computeNextRun(schedule, timezone ?? "America/New_York");
+
+      const task = await storage.createPaxScheduledTask({ organizationId: org.id, userId, name, prompt, schedule, timezone, nextRunAt });
+      res.json(task);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.patch("/api/ai/scheduled-tasks/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { isActive, schedule, timezone } = req.body;
+      const updates: any = { isActive };
+      if (schedule) {
+        const { computeNextRun } = await import("./services/paxScheduler");
+        updates.schedule = schedule;
+        updates.nextRunAt = computeNextRun(schedule, timezone ?? "America/New_York");
+      }
+      await storage.updatePaxScheduledTask(parseInt(req.params.id), updates);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.delete("/api/ai/scheduled-tasks/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      await storage.deletePaxScheduledTask(parseInt(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.post("/api/ai/scheduled-tasks/:id/run-now", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const tasks = await storage.getPaxScheduledTasks(org.id);
+      const task = tasks.find((t) => t.id === parseInt(req.params.id));
+      if (!task) return res.status(404).json({ message: "Task not found" });
+      const { executeTask } = await import("./services/paxScheduler");
+      await executeTask(task, org);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
   // GET /api/ai/cost-savings - Get AI cost savings summary

@@ -196,6 +196,10 @@ import {
   type GrowthCampaign, type InsertGrowthCampaign,
   adCreativeBundles,
   type AdCreativeBundle,
+  paxKnowledgeFiles, type PaxKnowledgeFile,
+  paxProjects, type PaxProject,
+  paxProjectFiles, type PaxProjectFile,
+  paxScheduledTasks, type PaxScheduledTask,
 } from "@shared/schema";
 
 // Helper to calculate amortization schedule
@@ -1947,9 +1951,188 @@ export class DatabaseStorage implements IStorage {
       .orderBy(aiMessages.createdAt);
   }
 
-  async createAiMessage(message: { conversationId: number; role: string; content: string; toolCalls?: any[] }) {
+  async createAiMessage(message: { conversationId: number; role: string; content: string; toolCalls?: any[]; mentionedEntities?: any[]; thinkingContent?: string }) {
     const [newMessage] = await db.insert(aiMessages).values(message).returning();
     return newMessage;
+  }
+
+  // ============================================
+  // PAX KNOWLEDGE BASE
+  // ============================================
+
+  async getActiveKnowledgeFiles(orgId: number): Promise<PaxKnowledgeFile[]> {
+    return db.select().from(paxKnowledgeFiles)
+      .where(and(eq(paxKnowledgeFiles.organizationId, orgId), eq(paxKnowledgeFiles.isActive, true)))
+      .orderBy(paxKnowledgeFiles.createdAt);
+  }
+
+  async getKnowledgeFiles(orgId: number): Promise<PaxKnowledgeFile[]> {
+    return db.select().from(paxKnowledgeFiles)
+      .where(eq(paxKnowledgeFiles.organizationId, orgId))
+      .orderBy(paxKnowledgeFiles.createdAt);
+  }
+
+  async createKnowledgeFile(data: Omit<PaxKnowledgeFile, 'id' | 'createdAt' | 'usageCount' | 'lastUsedAt'>): Promise<PaxKnowledgeFile> {
+    const [row] = await db.insert(paxKnowledgeFiles).values(data).returning();
+    return row;
+  }
+
+  async updateKnowledgeFile(id: number, updates: { isActive?: boolean; description?: string }): Promise<void> {
+    await db.update(paxKnowledgeFiles).set(updates).where(eq(paxKnowledgeFiles.id, id));
+  }
+
+  async deleteKnowledgeFile(id: number): Promise<void> {
+    await db.delete(paxKnowledgeFiles).where(eq(paxKnowledgeFiles.id, id));
+  }
+
+  async incrementKnowledgeFileUsage(orgId: number): Promise<void> {
+    await db.update(paxKnowledgeFiles)
+      .set({ usageCount: sql`${paxKnowledgeFiles.usageCount} + 1`, lastUsedAt: new Date() })
+      .where(and(eq(paxKnowledgeFiles.organizationId, orgId), eq(paxKnowledgeFiles.isActive, true)));
+  }
+
+  // ============================================
+  // PAX PROJECTS
+  // ============================================
+
+  async getPaxProjects(orgId: number): Promise<PaxProject[]> {
+    return db.select().from(paxProjects)
+      .where(eq(paxProjects.organizationId, orgId))
+      .orderBy(desc(paxProjects.createdAt));
+  }
+
+  async getPaxProject(id: number): Promise<PaxProject | null> {
+    const [row] = await db.select().from(paxProjects).where(eq(paxProjects.id, id));
+    return row ?? null;
+  }
+
+  async createPaxProject(data: { organizationId: number; userId: string; name: string; description?: string; entityType?: string; entityId?: number }): Promise<PaxProject> {
+    const [row] = await db.insert(paxProjects).values(data).returning();
+    return row;
+  }
+
+  async updatePaxProject(id: number, updates: { name?: string; description?: string; isActive?: boolean }): Promise<void> {
+    await db.update(paxProjects).set(updates).where(eq(paxProjects.id, id));
+  }
+
+  async deletePaxProject(id: number): Promise<void> {
+    await db.delete(paxProjectFiles).where(eq(paxProjectFiles.projectId, id));
+    await db.delete(paxProjects).where(eq(paxProjects.id, id));
+  }
+
+  async getPaxProjectFiles(projectId: number): Promise<PaxProjectFile[]> {
+    return db.select().from(paxProjectFiles)
+      .where(eq(paxProjectFiles.projectId, projectId))
+      .orderBy(paxProjectFiles.uploadedAt);
+  }
+
+  async createPaxProjectFile(data: Omit<PaxProjectFile, 'id' | 'uploadedAt'>): Promise<PaxProjectFile> {
+    const [row] = await db.insert(paxProjectFiles).values(data).returning();
+    await db.update(paxProjects)
+      .set({ fileCount: sql`${paxProjects.fileCount} + 1` })
+      .where(eq(paxProjects.id, data.projectId));
+    return row;
+  }
+
+  async deletePaxProjectFile(fileId: number): Promise<void> {
+    const [file] = await db.select().from(paxProjectFiles).where(eq(paxProjectFiles.id, fileId));
+    if (file) {
+      await db.delete(paxProjectFiles).where(eq(paxProjectFiles.id, fileId));
+      await db.update(paxProjects)
+        .set({ fileCount: sql`GREATEST(${paxProjects.fileCount} - 1, 0)` })
+        .where(eq(paxProjects.id, file.projectId));
+    }
+  }
+
+  async setConversationProject(conversationId: number, projectId: number | null): Promise<void> {
+    await db.update(aiConversations)
+      .set({ activeProjectId: projectId, updatedAt: new Date() } as any)
+      .where(eq(aiConversations.id, conversationId));
+  }
+
+  // ============================================
+  // PAX SCHEDULED TASKS
+  // ============================================
+
+  async getPaxScheduledTasks(orgId: number): Promise<PaxScheduledTask[]> {
+    return db.select().from(paxScheduledTasks)
+      .where(eq(paxScheduledTasks.organizationId, orgId))
+      .orderBy(paxScheduledTasks.createdAt);
+  }
+
+  async getPaxScheduledTasksDue(now: Date): Promise<PaxScheduledTask[]> {
+    return db.select().from(paxScheduledTasks)
+      .where(and(
+        eq(paxScheduledTasks.isActive, true),
+        lte(paxScheduledTasks.nextRunAt, now)
+      ));
+  }
+
+  async createPaxScheduledTask(data: { organizationId: number; userId: string; name: string; prompt: string; schedule: string; timezone?: string; nextRunAt: Date }): Promise<PaxScheduledTask> {
+    const [row] = await db.insert(paxScheduledTasks).values(data).returning();
+    return row;
+  }
+
+  async updatePaxScheduledTask(id: number, updates: { isActive?: boolean; schedule?: string; lastRunAt?: Date; nextRunAt?: Date; lastRunConversationId?: number; lastRunStatus?: string; lastRunSummary?: string; runCount?: number; updatedAt?: Date }): Promise<void> {
+    await db.update(paxScheduledTasks).set({ ...updates, updatedAt: new Date() }).where(eq(paxScheduledTasks.id, id));
+  }
+
+  async deletePaxScheduledTask(id: number): Promise<void> {
+    await db.delete(paxScheduledTasks).where(eq(paxScheduledTasks.id, id));
+  }
+
+  async getPaxPendingTaskResults(orgId: number, since: Date): Promise<PaxScheduledTask[]> {
+    return db.select().from(paxScheduledTasks)
+      .where(and(
+        eq(paxScheduledTasks.organizationId, orgId),
+        gte(paxScheduledTasks.lastRunAt, since),
+        eq(paxScheduledTasks.lastRunStatus, 'success')
+      ))
+      .orderBy(desc(paxScheduledTasks.lastRunAt));
+  }
+
+  // ============================================
+  // PAX ENTITY SEARCH (for @ mentions)
+  // ============================================
+
+  async searchPaxEntities(orgId: number, query: string, type: string, limit: number): Promise<{ type: string; id: number; name: string; preview: string }[]> {
+    const results: { type: string; id: number; name: string; preview: string }[] = [];
+    const q = `%${query}%`;
+
+    if (type === 'all' || type === 'lead') {
+      const leadRows = await db.select({ id: leads.id, firstName: leads.firstName, lastName: leads.lastName, email: leads.email, status: leads.status })
+        .from(leads)
+        .where(and(
+          eq(leads.organizationId, orgId),
+          or(ilike(leads.firstName, q), ilike(leads.lastName, q), ilike(leads.email, q))
+        ))
+        .limit(limit);
+      for (const r of leadRows) {
+        results.push({ type: 'lead', id: r.id, name: `${r.firstName ?? ''} ${r.lastName ?? ''}`.trim(), preview: `${r.email ?? ''} · ${r.status ?? ''}` });
+      }
+    }
+
+    if (type === 'all' || type === 'property') {
+      const propRows = await db.select({ id: properties.id, address: properties.address, state: properties.state, status: properties.status })
+        .from(properties)
+        .where(and(eq(properties.organizationId, orgId), ilike(properties.address, q)))
+        .limit(limit);
+      for (const r of propRows) {
+        results.push({ type: 'property', id: r.id, name: r.address ?? `Property #${r.id}`, preview: `${r.state ?? ''} · ${r.status ?? ''}` });
+      }
+    }
+
+    if (type === 'all' || type === 'deal') {
+      const dealRows = await db.select({ id: deals.id, name: deals.name, status: deals.status, dealValue: deals.dealValue })
+        .from(deals)
+        .where(and(eq(deals.organizationId, orgId), ilike(deals.name, q)))
+        .limit(limit);
+      for (const r of dealRows) {
+        results.push({ type: 'deal', id: r.id, name: r.name ?? `Deal #${r.id}`, preview: `$${r.dealValue?.toLocaleString() ?? '0'} · ${r.status ?? ''}` });
+      }
+    }
+
+    return results.slice(0, limit);
   }
 
   // ============================================

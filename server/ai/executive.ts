@@ -188,6 +188,8 @@ interface ChatOptions {
   stream?: boolean;
   files?: FileAttachment[];
   propertyId?: number;
+  mentionedEntities?: { type: string; id: number; name: string; preview: string }[];
+  activeProjectId?: number;
 }
 
 function decodeBase64ToText(base64: string): string {
@@ -380,6 +382,40 @@ async function loadUserPreferenceContext(orgId: number): Promise<string> {
   }
 }
 
+async function loadOrgKnowledgeContext(orgId: number): Promise<string> {
+  try {
+    const files = await storage.getActiveKnowledgeFiles(orgId);
+    if (files.length === 0) return "";
+    const sections = files.map(f =>
+      `--- KNOWLEDGE: ${f.name} ---\n${f.extractedContent}\n--- END: ${f.name} ---`
+    ).join("\n\n");
+    // Non-blocking usage tracking
+    process.nextTick(() => storage.incrementKnowledgeFileUsage(orgId).catch(() => {}));
+    return `\n\n=== COMPANY KNOWLEDGE BASE ===\n${sections}\n=== END COMPANY KNOWLEDGE ===`;
+  } catch {
+    return "";
+  }
+}
+
+async function loadProjectContext(projectId: number): Promise<string> {
+  try {
+    const project = await storage.getPaxProject(projectId);
+    if (!project) return "";
+    const files = await storage.getPaxProjectFiles(projectId);
+    const sections = files
+      .map(f => `--- File: ${f.fileName} ---\n${f.extractedContent}\n--- End: ${f.fileName} ---`)
+      .join("\n\n");
+    return `\n\n=== PROJECT: ${project.name} ===\n${project.description ? `Description: ${project.description}\n` : ""}${sections}\n=== END PROJECT ===`;
+  } catch {
+    return "";
+  }
+}
+
+// Exported helper used by knowledge/project upload routes
+export async function formatFileContentFromBase64(file: { name: string; content: string; mimeType: string }): Promise<string> {
+  return formatFileContentAsync({ name: file.name, content: file.content, size: 0 } as FileAttachment);
+}
+
 export async function getOrCreateConversation(
   orgId: number,
   userId: string,
@@ -477,7 +513,12 @@ export async function processChat(
 
   // Inject learned user preferences into the system prompt (non-blocking)
   const _prefCtx = await loadUserPreferenceContext(org.id);
-  const _systemContent = profile.systemPrompt + (_enrichCtx || "") + (_prefCtx || "");
+  const _knowledgeCtx = await loadOrgKnowledgeContext(org.id);
+  const _projectCtx = options.activeProjectId ? await loadProjectContext(options.activeProjectId) : "";
+  const _mentionCtx = options.mentionedEntities?.length
+    ? `\n\n=== MENTIONED ENTITIES ===\n${options.mentionedEntities.map(e => `[${e.type.toUpperCase()}] ${e.name}: ${e.preview}`).join("\n")}\n=== END MENTIONED ENTITIES ===`
+    : "";
+  const _systemContent = profile.systemPrompt + (_enrichCtx || "") + (_prefCtx || "") + (_knowledgeCtx || "") + (_projectCtx || "") + (_mentionCtx || "");
 
   const chatMessages: OpenAI.ChatCompletionMessageParam[] = [
     { role: "system", content: _systemContent },
@@ -497,11 +538,11 @@ export async function processChat(
     role: m.role as string,
     content: typeof m.content === 'string' ? m.content : ''
   })), hasFileAttachments);
-  
+
   let client: OpenAI;
   let provider: AIProvider;
   let model: string;
-  
+
   try {
     const result = getChatProviderAndModel(complexity);
     client = result.client;
@@ -705,7 +746,12 @@ export async function* processChatStream(
 
   // Inject learned user preferences into the system prompt (non-blocking)
   const _prefCtx = await loadUserPreferenceContext(org.id);
-  const _systemContent = profile.systemPrompt + (_enrichCtx || "") + (_prefCtx || "");
+  const _knowledgeCtx = await loadOrgKnowledgeContext(org.id);
+  const _projectCtx = options.activeProjectId ? await loadProjectContext(options.activeProjectId) : "";
+  const _mentionCtx = options.mentionedEntities?.length
+    ? `\n\n=== MENTIONED ENTITIES ===\n${options.mentionedEntities.map(e => `[${e.type.toUpperCase()}] ${e.name}: ${e.preview}`).join("\n")}\n=== END MENTIONED ENTITIES ===`
+    : "";
+  const _systemContent = profile.systemPrompt + (_enrichCtx || "") + (_prefCtx || "") + (_knowledgeCtx || "") + (_projectCtx || "") + (_mentionCtx || "");
 
   const chatMessages: OpenAI.ChatCompletionMessageParam[] = [
     { role: "system", content: _systemContent },
@@ -725,11 +771,11 @@ export async function* processChatStream(
     role: m.role as string,
     content: typeof m.content === 'string' ? m.content : ''
   })), hasFileAttachments);
-  
+
   let client: OpenAI;
   let provider: AIProvider;
   let model: string;
-  
+
   try {
     const result = getChatProviderAndModel(complexity);
     client = result.client;
@@ -739,6 +785,33 @@ export async function* processChatStream(
     console.error('[AI Stream] Failed to get AI provider:', error.message);
     yield { type: "error", content: "AI service temporarily unavailable. Please try again." };
     return;
+  }
+
+  // Reasoning trace — for HIGH complexity requests, stream a brief thinking block
+  if (complexity === TaskComplexity.COMPLEX) {
+    try {
+      yield { type: "thinking_start" };
+      let thinkingText = "";
+      const thinkingStream = await client.chat.completions.create({
+        model,
+        messages: [
+          { role: "system", content: "You are planning how to answer a complex real estate question. Think step-by-step about what information you need, what tools to use, and what the user actually wants. Be brief but thorough. Max 3-4 sentences." },
+          { role: "user", content: message }
+        ],
+        max_tokens: 300,
+        stream: true,
+      });
+      for await (const chunk of thinkingStream) {
+        const delta = chunk.choices[0]?.delta?.content;
+        if (delta) {
+          thinkingText += delta;
+          yield { type: "thinking", content: delta };
+        }
+      }
+      yield { type: "thinking_done" };
+    } catch {
+      // Non-blocking — ignore thinking errors
+    }
   }
   
   console.log(`[AI Stream] Routing chat stream (${complexity}) -> ${provider}/${model}`);

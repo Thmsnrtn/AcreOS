@@ -343,7 +343,10 @@ app.use("/api/properties/import", importLimiter);
       
       // Start scheduled task runner background job (every minute)
       startScheduledTaskRunnerJob();
-      
+
+      // Start Pax scheduled tasks (every minute)
+      startPaxSchedulerJob();
+
       // Start job queue worker (every 10 seconds)
       startJobQueueWorker();
       
@@ -674,6 +677,30 @@ function startScheduledTaskRunnerJob() {
   setInterval(() => {
     withJobLock('scheduled_tasks', TTL_SECONDS, processScheduledTasks).catch(err => {
       log(`Scheduled task runner run failed: ${err}`, 'task-runner');
+    });
+  }, ONE_MINUTE);
+}
+
+// ── Pax scheduled tasks background job ───────────────────────────────────────
+async function runPaxScheduledTasks() {
+  try {
+    const { processPaxScheduledTasks } = await import("./services/paxScheduler");
+    await processPaxScheduledTasks();
+  } catch (err: any) {
+    log(`Pax scheduler error: ${err.message}`, 'pax-scheduler');
+  }
+}
+
+function startPaxSchedulerJob() {
+  setTimeout(() => {
+    withJobLock('pax_scheduler', TTL_SECONDS, runPaxScheduledTasks).catch(err => {
+      log(`Initial pax scheduler run failed: ${err}`, 'pax-scheduler');
+    });
+  }, 90000); // 90s after startup
+
+  setInterval(() => {
+    withJobLock('pax_scheduler', TTL_SECONDS, runPaxScheduledTasks).catch(err => {
+      log(`Pax scheduler run failed: ${err}`, 'pax-scheduler');
     });
   }, ONE_MINUTE);
 }
