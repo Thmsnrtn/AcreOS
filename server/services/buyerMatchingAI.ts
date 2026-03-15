@@ -5,6 +5,7 @@ import {
   properties,
   leads,
   agentEvents,
+  paxMemory,
   type BuyerProfile,
   type InsertBuyerProfile,
   type BuyerPropertyMatch,
@@ -824,6 +825,57 @@ ${property.listPrice ? `Listed at $${parseFloat(property.listPrice).toLocaleStri
       status,
       response,
     }, "buyer_property_match", matchId);
+
+    // Pillar 5: Write buyer preference fingerprint to paxMemory on positive response
+    // So Pax can proactively notify when future properties match this buyer's criteria
+    if (status === "interested" || status === "purchased") {
+      process.nextTick(async () => {
+        try {
+          const [profile] = await db.select().from(buyerProfiles)
+            .where(eq(buyerProfiles.id, updated.buyerProfileId))
+            .limit(1);
+          if (!profile) return;
+
+          const prefs = profile.preferences as Record<string, any> | null;
+          const financial = profile.financialInfo as Record<string, any> | null;
+          const intent = profile.intent as Record<string, any> | null;
+
+          const parts: string[] = [];
+          if (prefs?.states?.length) parts.push(`States: ${prefs.states.join(", ")}`);
+          if (prefs?.counties?.length) parts.push(`Counties: ${prefs.counties.join(", ")}`);
+          if (prefs?.minAcreage || prefs?.maxAcreage) parts.push(`Acreage: ${prefs.minAcreage ?? "any"}–${prefs.maxAcreage ?? "any"} acres`);
+          if (prefs?.zoningTypes?.length) parts.push(`Zoning: ${prefs.zoningTypes.join(", ")}`);
+          if (financial?.budget) parts.push(`Budget: $${financial.budget.toLocaleString()}`);
+          if (financial?.financingType) parts.push(`Financing: ${financial.financingType}`);
+          if (intent?.purchaseTimeline) parts.push(`Timeline: ${intent.purchaseTimeline}`);
+          if (intent?.primaryUse) parts.push(`Use: ${intent.primaryUse}`);
+
+          const summary = parts.length > 0
+            ? `Buyer ${updated.buyerProfileId} (${profile.profileType}) marked ${status} — criteria: ${parts.join(" | ")}`
+            : `Buyer ${updated.buyerProfileId} (${profile.profileType}) marked ${status}`;
+
+          await db.insert(paxMemory).values({
+            organizationId: updated.organizationId,
+            userId: "system",
+            memoryType: "preference",
+            key: `buyer_${updated.buyerProfileId}_fingerprint`,
+            value: {
+              summary,
+              details: { buyerProfileId: updated.buyerProfileId, propertyId: updated.propertyId, status, preferences: prefs, financial, intent },
+              timestamp: new Date().toISOString(),
+            },
+            importance: status === "purchased" ? 9 : 7,
+          }).onConflictDoUpdate({
+            target: [paxMemory.organizationId, paxMemory.key, paxMemory.userId],
+            set: {
+              value: { summary, details: { buyerProfileId: updated.buyerProfileId, status }, timestamp: new Date().toISOString() },
+              importance: status === "purchased" ? 9 : 7,
+              updatedAt: new Date(),
+            },
+          } as any).catch(() => {});
+        } catch {}
+      });
+    }
 
     return updated;
   }

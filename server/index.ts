@@ -388,6 +388,9 @@ app.use("/api/properties/import", importLimiter);
 
       // Founder daily briefing email at 7am
       startFounderBriefingJob();
+
+      // Outcome analyzer: close the feedback loop nightly (2am)
+      startOutcomeAnalyzerJob();
     },
   );
 })();
@@ -1017,6 +1020,32 @@ function startFounderBriefingJob() {
     const now = new Date();
     if (now.getHours() === 7 && now.getMinutes() < 5) {
       processFounderBriefing();
+    }
+  }, 5 * 60 * 1000);
+}
+
+// ── Outcome Analyzer: nightly feedback loop at 2am ───────────────────────────
+async function processOutcomeAnalyzerJob() {
+  try {
+    const { processOutcomeAnalysis } = await import("./services/outcomeAnalyzer");
+    await processOutcomeAnalysis();
+    jobSupervisor.notifyResult('outcome_analyzer', 24 * 60 * 60 * 1000, true);
+  } catch (err) {
+    log(`Outcome analyzer job error: ${err}`, 'outcome-analyzer');
+    jobSupervisor.notifyResult('outcome_analyzer', 24 * 60 * 60 * 1000, false, undefined, String(err));
+  }
+}
+
+function startOutcomeAnalyzerJob() {
+  log('Starting outcome analyzer job (nightly at 2am)', 'outcome-analyzer');
+  // Run once 3 minutes after startup (first pass, likely few data points)
+  setTimeout(() => { processOutcomeAnalyzerJob(); }, 3 * 60 * 1000);
+  setInterval(() => {
+    const now = new Date();
+    if (now.getHours() === 2 && now.getMinutes() < 5) {
+      withJobLock('outcome_analyzer', 23 * 60 * 60, processOutcomeAnalyzerJob).catch(err => {
+        log(`Outcome analyzer lock error: ${err}`, 'outcome-analyzer');
+      });
     }
   }, 5 * 60 * 1000);
 }

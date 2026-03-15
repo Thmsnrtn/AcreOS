@@ -19,12 +19,13 @@ import { SkillRegistry } from "./agent-skills";
 
 const skillRegistry = new SkillRegistry();
 
-export type SessionType = 
+export type SessionType =
   | "due_diligence_pod"
   | "acquisition_research"
   | "deal_analysis"
   | "market_intelligence"
   | "portfolio_monitoring"
+  | "autonomous_acquisition_pipeline"   // Pillar 2: hands-off deal flow
   | "custom";
 
 export type StepStatus = "pending" | "running" | "completed" | "failed" | "skipped" | "awaiting_approval";
