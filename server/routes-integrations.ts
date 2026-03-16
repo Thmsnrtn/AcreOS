@@ -436,7 +436,22 @@ export function registerIntegrationRoutes(app: Express): void {
         fromName: fromName || org.name,
         isDefault: false,
       });
-      
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          action: "create",
+          entityType: "email_domain",
+          entityId: newDomain.id,
+          changes: { after: { domain, fromEmail, fromName }, fields: ["domain", "fromEmail", "fromName"] },
+          ipAddress: req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          metadata: {},
+        });
+      } catch (e) { /* non-fatal */ }
+
       res.json(newDomain);
     } catch (err: any) {
       console.error("Add email domain error:", err);
@@ -542,24 +557,39 @@ export function registerIntegrationRoutes(app: Express): void {
         fromName: fromName ?? domainRecord.fromName,
         isDefault: isDefault ?? domainRecord.isDefault,
       });
-      
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          action: "update",
+          entityType: "email_domain",
+          entityId: domainId,
+          changes: { before: domainRecord, after: req.body, fields: Object.keys(req.body) },
+          ipAddress: req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          metadata: {},
+        });
+      } catch (e) { /* non-fatal */ }
+
       res.json(updatedDomain);
     } catch (err: any) {
       console.error("Update email domain error:", err);
       res.status(500).json({ message: err.message });
     }
   });
-  
+
   api.delete("/api/email-domains/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = (req as any).organization;
       const domainId = Number(req.params.id);
-      
+
       const domainRecord = await storage.getVerifiedEmailDomain(domainId);
       if (!domainRecord || domainRecord.organizationId !== org.id) {
         return res.status(404).json({ message: "Domain not found" });
       }
-      
+
       if (domainRecord.sendgridDomainId) {
         const integration = await storage.getOrganizationIntegration(org.id, 'sendgrid');
         if (integration?.credentials?.encrypted) {
@@ -569,7 +599,7 @@ export function registerIntegrationRoutes(app: Express): void {
               integration.credentials.encrypted,
               org.id
             );
-            
+
             await fetch(
               `https://api.sendgrid.com/v3/whitelabel/domains/${domainRecord.sendgridDomainId}`,
               {
@@ -584,8 +614,24 @@ export function registerIntegrationRoutes(app: Express): void {
           }
         }
       }
-      
+
       await storage.deleteVerifiedEmailDomain(domainId);
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          action: "delete",
+          entityType: "email_domain",
+          entityId: domainId,
+          changes: { before: domainRecord, fields: ["deleted"] },
+          ipAddress: req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          metadata: {},
+        });
+      } catch (e) { /* non-fatal */ }
+
       res.json({ success: true });
     } catch (err: any) {
       console.error("Delete email domain error:", err);
@@ -724,25 +770,40 @@ export function registerIntegrationRoutes(app: Express): void {
         isDefault: false,
         purchasedAt: new Date(),
       });
-      
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          action: "create",
+          entityType: "phone_number",
+          entityId: newPhone.id,
+          changes: { after: { phoneNumber: newPhone.phoneNumber, friendlyName: newPhone.friendlyName }, fields: ["phoneNumber", "friendlyName"] },
+          ipAddress: req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          metadata: {},
+        });
+      } catch (e) { /* non-fatal */ }
+
       res.json(newPhone);
     } catch (err: any) {
       console.error("Purchase phone number error:", err);
       res.status(500).json({ message: err.message });
     }
   });
-  
+
   api.patch("/api/phone-numbers/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = (req as any).organization;
       const phoneId = Number(req.params.id);
       const { friendlyName, isDefault } = req.body;
-      
+
       const phoneRecord = await storage.getProvisionedPhoneNumber(phoneId);
       if (!phoneRecord || phoneRecord.organizationId !== org.id) {
         return res.status(404).json({ message: "Phone number not found" });
       }
-      
+
       if (isDefault === true) {
         const allPhones = await storage.getProvisionedPhoneNumbers(org.id);
         for (const p of allPhones) {
@@ -751,29 +812,44 @@ export function registerIntegrationRoutes(app: Express): void {
           }
         }
       }
-      
+
       const updatedPhone = await storage.updateProvisionedPhoneNumber(phoneId, {
         friendlyName: friendlyName ?? phoneRecord.friendlyName,
         isDefault: isDefault ?? phoneRecord.isDefault,
       });
-      
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          action: "update",
+          entityType: "phone_number",
+          entityId: phoneId,
+          changes: { before: phoneRecord, after: req.body, fields: Object.keys(req.body) },
+          ipAddress: req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          metadata: {},
+        });
+      } catch (e) { /* non-fatal */ }
+
       res.json(updatedPhone);
     } catch (err: any) {
       console.error("Update phone number error:", err);
       res.status(500).json({ message: err.message });
     }
   });
-  
+
   api.delete("/api/phone-numbers/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = (req as any).organization;
       const phoneId = Number(req.params.id);
-      
+
       const phoneRecord = await storage.getProvisionedPhoneNumber(phoneId);
       if (!phoneRecord || phoneRecord.organizationId !== org.id) {
         return res.status(404).json({ message: "Phone number not found" });
       }
-      
+
       if (phoneRecord.twilioSid) {
         const integration = await storage.getOrganizationIntegration(org.id, 'twilio');
         if (integration?.credentials?.encrypted) {
@@ -783,9 +859,9 @@ export function registerIntegrationRoutes(app: Express): void {
               integration.credentials.encrypted,
               org.id
             );
-            
+
             const auth = Buffer.from(`${credentials.accountSid}:${credentials.authToken}`).toString('base64');
-            
+
             await fetch(
               `https://api.twilio.com/2010-04-01/Accounts/${credentials.accountSid}/IncomingPhoneNumbers/${phoneRecord.twilioSid}.json`,
               {
@@ -800,8 +876,24 @@ export function registerIntegrationRoutes(app: Express): void {
           }
         }
       }
-      
+
       await storage.deleteProvisionedPhoneNumber(phoneId);
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          action: "delete",
+          entityType: "phone_number",
+          entityId: phoneId,
+          changes: { before: phoneRecord, fields: ["deleted"] },
+          ipAddress: req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          metadata: {},
+        });
+      } catch (e) { /* non-fatal */ }
+
       res.json({ success: true });
     } catch (err: any) {
       console.error("Delete phone number error:", err);
@@ -1236,6 +1328,22 @@ export function registerIntegrationRoutes(app: Express): void {
         organizationId: org.id
       });
       const definition = await storage.createCustomFieldDefinition(parsed);
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          action: "create",
+          entityType: "custom_field_definition",
+          entityId: definition.id,
+          changes: { after: parsed, fields: Object.keys(parsed) },
+          ipAddress: req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          metadata: {},
+        });
+      } catch (e) { /* non-fatal */ }
+
       res.status(201).json(definition);
     } catch (err: any) {
       if (err.name === "ZodError") {
@@ -1249,13 +1357,29 @@ export function registerIntegrationRoutes(app: Express): void {
     try {
       const org = (req as any).organization;
       const id = Number(req.params.id);
-      
+
       const existing = await storage.getCustomFieldDefinition(org.id, id);
       if (!existing) {
         return res.status(404).json({ message: "Custom field definition not found" });
       }
-      
+
       const updated = await storage.updateCustomFieldDefinition(id, req.body);
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          action: "update",
+          entityType: "custom_field_definition",
+          entityId: id,
+          changes: { before: existing, after: req.body, fields: Object.keys(req.body) },
+          ipAddress: req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          metadata: {},
+        });
+      } catch (e) { /* non-fatal */ }
+
       res.json(updated);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -1266,13 +1390,29 @@ export function registerIntegrationRoutes(app: Express): void {
     try {
       const org = (req as any).organization;
       const id = Number(req.params.id);
-      
+
       const existing = await storage.getCustomFieldDefinition(org.id, id);
       if (!existing) {
         return res.status(404).json({ message: "Custom field definition not found" });
       }
-      
+
       await storage.deleteCustomFieldDefinition(id);
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          action: "delete",
+          entityType: "custom_field_definition",
+          entityId: id,
+          changes: { before: existing, fields: ["deleted"] },
+          ipAddress: req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          metadata: {},
+        });
+      } catch (e) { /* non-fatal */ }
+
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -1371,6 +1511,21 @@ export function registerIntegrationRoutes(app: Express): void {
         createdBy: user?.id || null
       });
       const view = await storage.createSavedView(parsed);
+
+      try {
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          action: "create",
+          entityType: "saved_view",
+          entityId: view.id,
+          changes: { after: parsed, fields: Object.keys(parsed) },
+          ipAddress: req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          metadata: {},
+        });
+      } catch (e) { /* non-fatal */ }
+
       res.status(201).json(view);
     } catch (err: any) {
       if (err.name === "ZodError") {
@@ -1384,13 +1539,29 @@ export function registerIntegrationRoutes(app: Express): void {
     try {
       const org = (req as any).organization;
       const id = Number(req.params.id);
-      
+
       const existing = await storage.getSavedView(org.id, id);
       if (!existing) {
         return res.status(404).json({ message: "Saved view not found" });
       }
-      
+
       const updated = await storage.updateSavedView(id, req.body);
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          action: "update",
+          entityType: "saved_view",
+          entityId: id,
+          changes: { before: existing, after: req.body, fields: Object.keys(req.body) },
+          ipAddress: req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          metadata: {},
+        });
+      } catch (e) { /* non-fatal */ }
+
       res.json(updated);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -1401,13 +1572,29 @@ export function registerIntegrationRoutes(app: Express): void {
     try {
       const org = (req as any).organization;
       const id = Number(req.params.id);
-      
+
       const existing = await storage.getSavedView(org.id, id);
       if (!existing) {
         return res.status(404).json({ message: "Saved view not found" });
       }
-      
+
       await storage.deleteSavedView(id);
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          action: "delete",
+          entityType: "saved_view",
+          entityId: id,
+          changes: { before: existing, fields: ["deleted"] },
+          ipAddress: req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          metadata: {},
+        });
+      } catch (e) { /* non-fatal */ }
+
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -1418,13 +1605,29 @@ export function registerIntegrationRoutes(app: Express): void {
     try {
       const org = (req as any).organization;
       const id = Number(req.params.id);
-      
+
       const existing = await storage.getSavedView(org.id, id);
       if (!existing) {
         return res.status(404).json({ message: "Saved view not found" });
       }
-      
+
       const updated = await storage.setDefaultView(org.id, existing.entityType, id);
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          action: "update",
+          entityType: "saved_view",
+          entityId: id,
+          changes: { after: { isDefault: true }, fields: ["isDefault"] },
+          ipAddress: req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          metadata: {},
+        });
+      } catch (e) { /* non-fatal */ }
+
       res.json(updated);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
