@@ -34,7 +34,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, MapPin, DollarSign, Calendar, Building, TrendingUp, CheckCircle, X, GripVertical, FileText, Trash2, Loader2, Briefcase, Calculator, ClipboardCheck, Upload, AlertTriangle, CheckSquare, Square, Clock, Download, Package, Play, Eye, FolderPlus, Sparkles, Flame, Snowflake, Minus, LayoutGrid, List, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, MapPin, DollarSign, Calendar, Building, TrendingUp, CheckCircle, X, GripVertical, FileText, Trash2, Loader2, Briefcase, Calculator, ClipboardCheck, Upload, AlertTriangle, AlertCircle, CheckSquare, Square, Clock, Download, Package, Play, Eye, FolderPlus, Sparkles, Flame, Snowflake, Minus, LayoutGrid, List, ChevronLeft, ChevronRight } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { DealsEmptyState } from "@/components/empty-states";
 import { SavedViewsSelector } from "@/components/saved-views-selector";
@@ -73,7 +73,7 @@ const statusColors: Record<string, string> = {
 };
 
 export default function DealsPage() {
-  const { data: deals, isLoading } = useDeals();
+  const { data: deals, isLoading, error, refetch } = useDeals();
   const { data: properties } = useProperties();
   const searchString = useSearch();
   const urlParams = new URLSearchParams(searchString);
@@ -210,6 +210,19 @@ export default function DealsPage() {
       });
     }
   };
+
+  if (error) {
+    return (
+      <PageShell>
+        <div className="flex flex-col items-center justify-center py-16 text-center" data-testid="error-state-deals">
+          <AlertCircle className="w-12 h-12 text-destructive mb-4" />
+          <h3 className="text-lg font-semibold mb-2">Failed to load deals</h3>
+          <p className="text-muted-foreground mb-4">{(error as Error).message || 'Something went wrong'}</p>
+          <Button onClick={() => refetch()} variant="outline">Try again</Button>
+        </div>
+      </PageShell>
+    );
+  }
 
   return (
     <PageShell>

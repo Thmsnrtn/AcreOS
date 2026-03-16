@@ -79,7 +79,7 @@ interface DashboardIntelligence {
 }
 
 export default function Dashboard() {
-  const { data: organization, isLoading: orgLoading } = useOrganization();
+  const { data: organization, isLoading: orgLoading, error: orgError, refetch: refetchOrg } = useOrganization();
   const { data: stats, isLoading: statsLoading } = useDashboardStats();
   const { data: leads = [] } = useLeads();
   const { data: properties = [] } = useProperties();

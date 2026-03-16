@@ -472,14 +472,31 @@ export function registerFinanceRoutes(app: Express): void {
       const org = (req as any).organization;
       const reminderId = Number(req.params.id);
       const { status, content, channel } = req.body;
-      
+
       const updates: any = {};
       if (status) updates.status = status;
       if (content) updates.content = content;
       if (channel) updates.channel = channel;
       if (status === "cancelled") updates.failureReason = req.body.reason || "Manually cancelled";
-      
+
       const updated = await storage.updatePaymentReminder(reminderId, updates);
+
+      try {
+        const user = req.user as any;
+        const userId = user?.claims?.sub || user?.id;
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId: userId?.toString() || null,
+          action: "update",
+          entityType: "payment_reminder",
+          entityId: reminderId,
+          changes: { after: updates, fields: Object.keys(updates) },
+          ipAddress: req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          metadata: {},
+        });
+      } catch (e) { /* non-fatal */ }
+
       res.json(updated);
     } catch (err: any) {
       console.error("Error updating reminder:", err);
@@ -751,6 +768,23 @@ export function registerFinanceRoutes(app: Express): void {
         return res.status(400).json({ message: "Invalid payment data", errors: parsed.error.flatten() });
       }
       const payment = await storage.createPayment(parsed.data);
+
+      try {
+        const user = req.user as any;
+        const userId = user?.claims?.sub || user?.id;
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId: userId?.toString() || null,
+          action: "create",
+          entityType: "payment",
+          entityId: payment.id,
+          changes: { after: parsed.data, fields: Object.keys(parsed.data) },
+          ipAddress: req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          metadata: {},
+        });
+      } catch (e) { /* non-fatal */ }
+
       res.status(201).json(payment);
     } catch (err: any) {
       res.status(500).json({ message: err.message || "Failed to record payment" });
