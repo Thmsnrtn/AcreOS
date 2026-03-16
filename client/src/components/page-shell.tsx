@@ -11,6 +11,8 @@ interface PageShellProps {
   loadingFallback?: React.ReactNode;
   /** Max width of the content area. Defaults to "7xl". */
   maxWidth?: "4xl" | "5xl" | "6xl" | "7xl";
+  /** Accessible label for the main content region */
+  label?: string;
 }
 
 /**
@@ -41,7 +43,7 @@ const MAX_WIDTH_CLASSES = {
   "7xl": "max-w-7xl",
 } as const;
 
-export function PageShell({ children, isLoading, loadingFallback, maxWidth = "7xl" }: PageShellProps) {
+export function PageShell({ children, isLoading, loadingFallback, maxWidth = "7xl", label }: PageShellProps) {
   const { isCollapsed } = useSidebarCollapsed();
   const { isOpen: railOpen } = usePaxRail();
   return (

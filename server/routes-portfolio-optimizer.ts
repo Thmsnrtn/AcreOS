@@ -124,8 +124,8 @@ router.patch('/recommendations/:id', async (req: Request, res: Response) => {
     const org = getOrg(req);
     const { status } = req.body;
     await portfolioOptimizer.updateRecommendationStatus(
-      org.id.toString(),
-      req.params.id,
+      org.id,
+      parseInt(req.params.id),
       status
     );
     res.json({ success: true });

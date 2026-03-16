@@ -122,6 +122,9 @@ import { PropertyAnalysisChat } from "@/components/property-analysis-chat";
 import { GisFilters, type GisFilterState, defaultGisFilters, countActiveGisFilters, applyGisFiltersToProperty } from "@/components/gis-filters";
 import { SavedViewsSelector } from "@/components/saved-views-selector";
 import type { SavedView } from "@shared/schema";
+import { QueryErrorState } from "@/components/query-error-state";
+import { ResearchSummaryPanel } from "@/components/research-summary-panel";
+import { usePersistedGisFilters } from "@/hooks/use-persisted-gis-filters";
 import { Bot } from "lucide-react";
 
 export default function PropertiesPage() {
@@ -157,7 +160,7 @@ export default function PropertiesPage() {
   const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
-  const [gisFilters, setGisFilters] = useState<GisFilterState>(defaultGisFilters);
+  const { filters: gisFilters, setFilters: setGisFilters, resetFilters: resetGisFilters, getShareableUrl } = usePersistedGisFilters();
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [distressFilter, setDistressFilter] = useState<string>("any");
   const { toast } = useToast();
@@ -540,6 +543,8 @@ export default function PropertiesPage() {
                 filters={gisFilters}
                 onChange={setGisFilters}
                 activeFilterCount={countActiveGisFilters(gisFilters)}
+                onShare={getShareableUrl}
+                onReset={resetGisFilters}
               />
               <Select value={distressFilter} onValueChange={setDistressFilter}>
                 <SelectTrigger className="h-8 w-[160px]" data-testid="select-distress-filter">
@@ -589,6 +594,15 @@ export default function PropertiesPage() {
             <div data-testid="skeleton-properties-grid">
               <ListSkeleton count={6} variant="card" />
             </div>
+          ) : error ? (
+            <QueryErrorState
+              error={error}
+              onRetry={() => refetch()}
+              isRetrying={isRefetching}
+              title="Unable to load properties"
+              description="We couldn't fetch your property inventory. This might be a temporary issue."
+              testId="query-error-state-properties"
+            />
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredProperties.map((property) => (
@@ -937,6 +951,19 @@ function PropertyCard({ property, onDelete }: {
             <DollarSign className="w-3.5 h-3.5" />
             <span>${Number(property.marketValue || 0).toLocaleString()}</span>
           </div>
+          {Number(property.marketValue) > 0 && Number(property.sizeAcres) > 0 && (
+            <div className="flex items-center gap-1.5 col-span-2 pt-1 border-t border-border/50">
+              <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
+              <span className="text-emerald-700 dark:text-emerald-400 font-medium">
+                ${Math.round(Number(property.marketValue) / Number(property.sizeAcres)).toLocaleString()}/acre
+              </span>
+              {property.createdAt && (
+                <span className="ml-auto text-muted-foreground/70">
+                  {Math.floor((Date.now() - new Date(property.createdAt).getTime()) / 86400000)}d in portfolio
+                </span>
+              )}
+            </div>
+          )}
         </div>
         {(() => {
           const enrichment = property.enrichmentData as any;
@@ -1306,6 +1333,9 @@ function PropertyDetailDialog({ property, open, onOpenChange }: {
           )}
           
           <TabsContent value="overview" className="space-y-6 mt-4">
+            {/* Research Summary Panel - consolidated view for offer decisions */}
+            <ResearchSummaryPanel property={currentProperty} />
+            
             {hasMapData && (
               <div className="rounded-md overflow-hidden border -mx-4 sm:mx-0">
                 <div className="h-[250px] sm:h-[350px]">

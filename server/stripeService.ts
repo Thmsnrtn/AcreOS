@@ -1,13 +1,22 @@
 import { getUncachableStripeClient } from './stripeClient';
+import crypto from 'crypto';
+import { stripeCircuitBreaker } from './utils/circuitBreaker';
+
+/** Deterministic idempotency key for a given operation + seed. */
+function idempotencyKey(operation: string, ...seeds: (string | number | undefined)[]): string {
+  const data = [operation, ...seeds.map(String)].join(':');
+  return crypto.createHash('sha256').update(data).digest('hex').slice(0, 64);
+}
 
 export class StripeService {
   async createCustomer(email: string, userId: string, name?: string) {
     const stripe = await getUncachableStripeClient();
-    return await stripe.customers.create({
-      email,
-      name,
-      metadata: { userId },
-    });
+    return await stripeCircuitBreaker.call(() =>
+      stripe.customers.create(
+        { email, name, metadata: { userId } },
+        { idempotencyKey: idempotencyKey('create_customer', userId, email) }
+      )
+    );
   }
 
   async createCheckoutSession(
@@ -37,6 +46,7 @@ export class StripeService {
       };
     }
 
+
     // Apply a specific coupon (founder-set flash sale) or allow user-entered promo codes
     if (options?.couponId) {
       sessionConfig.discounts = [{ coupon: options.couponId }];
@@ -44,7 +54,10 @@ export class StripeService {
       sessionConfig.allow_promotion_codes = true;
     }
 
-    return await stripe.checkout.sessions.create(sessionConfig);
+    return await stripe.checkout.sessions.create(
+      sessionConfig,
+      { idempotencyKey: idempotencyKey('checkout_session', customerId, priceId, metadata?.organizationId || '') }
+    );
   }
 
   async createCreditPurchaseCheckout(
@@ -75,7 +88,7 @@ export class StripeService {
       success_url: successUrl,
       cancel_url: cancelUrl,
       metadata,
-    });
+    }, { idempotencyKey: idempotencyKey('credit_checkout', customerId, packId, metadata?.organizationId || '') });
   }
 
   async createCustomerPortalSession(customerId: string, returnUrl: string) {

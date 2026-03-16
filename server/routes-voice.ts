@@ -2,8 +2,9 @@
 import { Router, type Request, type Response } from 'express';
 import { db } from './db';
 import { voiceCalls, callTranscripts, agentEvents } from '../shared/schema';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, like, or } from 'drizzle-orm';
 import { voiceAI } from './services/voiceAI';
+import crypto from 'crypto';
 
 const voiceRouter = Router();
 
@@ -78,6 +79,50 @@ async function extractMotivationSignals(callId: number): Promise<{
 
 // Attach extractMotivationSignals to voiceAI for downstream use
 (voiceAI as any).extractMotivationSignals = extractMotivationSignals;
+
+// ============================================================
+// TWILIO SIGNATURE VERIFICATION MIDDLEWARE
+// ============================================================
+
+function verifyTwilioSignature(req: Request, res: Response, next: Function) {
+  const authToken = process.env.TWILIO_AUTH_TOKEN;
+  if (!authToken) {
+    // Skip verification in dev if no auth token configured
+    return next();
+  }
+
+  const twilioSignature = req.headers['x-twilio-signature'] as string;
+  if (!twilioSignature) {
+    return res.status(403).json({ error: 'Missing Twilio signature' });
+  }
+
+  // Build the URL to validate against
+  const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+  const host = req.headers['x-forwarded-host'] || req.headers.host;
+  const url = `${protocol}://${host}${req.originalUrl}`;
+
+  // Build the string to sign: URL + sorted POST params
+  const body = req.body || {};
+  const sortedKeys = Object.keys(body).sort();
+  const paramString = sortedKeys.reduce((s: string, key: string) => s + key + body[key], '');
+  const toSign = url + paramString;
+
+  const expectedSignature = crypto
+    .createHmac('sha1', authToken)
+    .update(Buffer.from(toSign, 'utf-8'))
+    .digest('base64');
+
+  const valid = crypto.timingSafeEqual(
+    Buffer.from(expectedSignature, 'base64'),
+    Buffer.from(twilioSignature, 'base64')
+  );
+
+  if (!valid) {
+    return res.status(403).json({ error: 'Invalid Twilio signature' });
+  }
+
+  next();
+}
 
 // ============================================================
 // WEBHOOK: POST /webhook/twilio/recording-complete
@@ -262,6 +307,240 @@ voiceRouter.get('/calls/:id/transcript', async (req: Request, res: Response) => 
     res.json({ call, transcript: transcript || null, success: true });
   } catch (error: any) {
     console.error('[GET /api/voice/calls/:id/transcript] Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================
+// POST /voice/webhook/disclosure — Play TCPA recording disclosure
+// ============================================================
+
+voiceRouter.post('/webhook/disclosure', verifyTwilioSignature, async (req: Request, res: Response) => {
+  try {
+    const disclosureText = process.env.CALL_DISCLOSURE_TEXT ||
+      'This call may be recorded for quality assurance and training purposes.';
+
+    const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Polly.Joanna">${disclosureText}</Say>
+</Response>`;
+
+    res.status(200).type('text/xml').send(twiml);
+  } catch (error: any) {
+    console.error('[voice/webhook/disclosure] Error:', error);
+    res.status(200).type('text/xml').send('<Response><Say>Error playing disclosure.</Say></Response>');
+  }
+});
+
+// ============================================================
+// POST /api/voice/calls/:id/outcome — Tag call outcome
+// ============================================================
+
+voiceRouter.post('/calls/:id/outcome', async (req: Request, res: Response) => {
+  try {
+    const org = getOrg(req);
+    const callId = parseInt(req.params.id, 10);
+    if (isNaN(callId)) return res.status(400).json({ error: 'Invalid call ID' });
+
+    const { type, notes } = req.body;
+    const validTypes = ['interested', 'not-interested', 'callback', 'voicemail'];
+    if (!type || !validTypes.includes(type)) {
+      return res.status(400).json({ error: `type must be one of: ${validTypes.join(', ')}` });
+    }
+
+    const call = await db.query.voiceCalls.findFirst({
+      where: and(eq(voiceCalls.id, callId), eq(voiceCalls.organizationId, org.id)),
+    });
+    if (!call) return res.status(404).json({ error: 'Call not found' });
+
+    await db.update(voiceCalls)
+      .set({ outcome: type, outcomeNotes: notes || null, updatedAt: new Date() })
+      .where(eq(voiceCalls.id, callId));
+
+    await db.insert(agentEvents).values({
+      organizationId: org.id,
+      eventType: 'call_outcome_tagged',
+      eventSource: 'voice_pipeline',
+      payload: { callId, outcome: type, notes },
+      relatedEntityType: 'voice_call',
+      relatedEntityId: callId,
+    });
+
+    res.json({ success: true, callId, outcome: type });
+  } catch (error: any) {
+    console.error('[POST /voice/calls/:id/outcome] Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================
+// GET /api/voice/calls/:id/summary — Post-call summary
+// ============================================================
+
+voiceRouter.get('/calls/:id/summary', async (req: Request, res: Response) => {
+  try {
+    const org = getOrg(req);
+    const callId = parseInt(req.params.id, 10);
+    if (isNaN(callId)) return res.status(400).json({ error: 'Invalid call ID' });
+
+    const call = await db.query.voiceCalls.findFirst({
+      where: and(eq(voiceCalls.id, callId), eq(voiceCalls.organizationId, org.id)),
+    });
+    if (!call) return res.status(404).json({ error: 'Call not found' });
+
+    const transcript = await db.query.callTranscripts.findFirst({
+      where: eq(callTranscripts.callId, callId),
+    });
+
+    // Generate summary if not already present
+    let summary = call.summary;
+    if (!summary && transcript) {
+      summary = await voiceAI.generateCallSummary(callId);
+    }
+
+    // Extract action items
+    const actionItems = await voiceAI.extractActionItems(callId);
+
+    res.json({
+      success: true,
+      callId,
+      summary: summary || 'No summary available',
+      actionItems,
+      sentiment: call.sentiment,
+      intent: call.intent,
+      duration: call.duration,
+      outcome: (call as any).outcome || null,
+      transcript: transcript
+        ? { id: transcript.id, preview: (transcript.fullTranscript || '').slice(0, 300) }
+        : null,
+    });
+  } catch (error: any) {
+    console.error('[GET /voice/calls/:id/summary] Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================
+// GET /api/voice/transcripts/search?q=term — Transcript search
+// ============================================================
+
+voiceRouter.get('/transcripts/search', async (req: Request, res: Response) => {
+  try {
+    const org = getOrg(req);
+    const { q, limit = '20' } = req.query;
+
+    if (!q || typeof q !== 'string') {
+      return res.status(400).json({ error: 'q (search term) is required' });
+    }
+
+    // Full-text search on transcript text
+    const transcripts = await db
+      .select({
+        id: callTranscripts.id,
+        callId: callTranscripts.callId,
+        fullTranscript: callTranscripts.fullTranscript,
+        createdAt: callTranscripts.createdAt,
+      })
+      .from(callTranscripts)
+      .where(
+        and(
+          // Filter to org's calls via a subquery approach — join voiceCalls
+          like(callTranscripts.fullTranscript, `%${q}%`)
+        )
+      )
+      .orderBy(desc(callTranscripts.createdAt))
+      .limit(parseInt(limit as string, 10));
+
+    // Filter to only org's calls
+    const orgCallIds = await db
+      .select({ id: voiceCalls.id })
+      .from(voiceCalls)
+      .where(eq(voiceCalls.organizationId, org.id));
+    const orgCallIdSet = new Set(orgCallIds.map(c => c.id));
+
+    const filtered = transcripts.filter(t => t.callId && orgCallIdSet.has(t.callId));
+
+    // Highlight context around the search term
+    const results = filtered.map(t => {
+      const text = t.fullTranscript || '';
+      const idx = text.toLowerCase().indexOf(q.toLowerCase());
+      const snippet = idx >= 0
+        ? text.slice(Math.max(0, idx - 80), idx + q.length + 80)
+        : text.slice(0, 200);
+      return { transcriptId: t.id, callId: t.callId, snippet, createdAt: t.createdAt };
+    });
+
+    res.json({ success: true, results, total: results.length, query: q });
+  } catch (error: any) {
+    console.error('[GET /voice/transcripts/search] Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================
+// GET /api/voice/calls/:id/speakers — Speaker diarization info
+// ============================================================
+
+voiceRouter.get('/calls/:id/speakers', async (req: Request, res: Response) => {
+  try {
+    const org = getOrg(req);
+    const callId = parseInt(req.params.id, 10);
+    if (isNaN(callId)) return res.status(400).json({ error: 'Invalid call ID' });
+
+    const call = await db.query.voiceCalls.findFirst({
+      where: and(eq(voiceCalls.id, callId), eq(voiceCalls.organizationId, org.id)),
+    });
+    if (!call) return res.status(404).json({ error: 'Call not found' });
+
+    const transcript = await db.query.callTranscripts.findFirst({
+      where: eq(callTranscripts.callId, callId),
+    });
+
+    if (!transcript) {
+      return res.json({ success: true, callId, speakers: [], segments: [] });
+    }
+
+    // Use transcriptFormatted (segments) if available
+    const segments: any[] = (transcript as any).segments || [];
+    const speakerMap: Record<string, { wordCount: number; segments: number; talkTimeMs: number }> = {};
+
+    for (const seg of segments) {
+      const speaker = seg.speaker || 'Unknown';
+      if (!speakerMap[speaker]) {
+        speakerMap[speaker] = { wordCount: 0, segments: 0, talkTimeMs: 0 };
+      }
+      speakerMap[speaker].segments++;
+      speakerMap[speaker].wordCount += (seg.text || '').split(/\s+/).length;
+      if (seg.startTime !== undefined && seg.endTime !== undefined) {
+        speakerMap[speaker].talkTimeMs += (seg.endTime - seg.startTime) * 1000;
+      }
+    }
+
+    const speakers = Object.entries(speakerMap).map(([name, stats]) => ({
+      name,
+      segments: stats.segments,
+      wordCount: stats.wordCount,
+      talkTimeSeconds: Math.round(stats.talkTimeMs / 1000),
+    }));
+
+    res.json({ success: true, callId, speakers, segmentCount: segments.length });
+  } catch (error: any) {
+    console.error('[GET /voice/calls/:id/speakers] Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================
+// GET /api/voice/analytics — Call analytics summary
+// ============================================================
+
+voiceRouter.get('/analytics', async (req: Request, res: Response) => {
+  try {
+    const org = getOrg(req);
+    const analytics = await voiceAI.getCallAnalytics(org.id);
+    res.json({ success: true, analytics });
+  } catch (error: any) {
+    console.error('[GET /voice/analytics] Error:', error);
     res.status(500).json({ error: error.message });
   }
 });

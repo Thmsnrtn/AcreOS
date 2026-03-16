@@ -1,6 +1,6 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "AcreOS",
+  "productName": "AcreOS Desktop",
   "version": "1.0.0",
   "identifier": "com.acreos.desktop",
   "build": {
@@ -12,19 +12,65 @@
   "app": {
     "windows": [
       {
-        "title": "AcreOS - Land Investment Platform",
+        "title": "AcreOS Desktop",
+        "label": "main",
         "width": 1280,
         "height": 800,
-        "minWidth": 800,
+        "minWidth": 900,
         "minHeight": 600,
         "resizable": true,
         "fullscreen": false,
         "transparent": false,
-        "decorations": true
+        "decorations": true,
+        "center": true,
+        "visible": true
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; img-src 'self' https: data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https://api.acreos.com https://releases.acreos.com wss:"
+    },
+    "trayIcon": {
+      "id": "main-tray",
+      "iconPath": "icons/32x32.png",
+      "iconAsTemplate": true,
+      "menuOnLeftClick": false,
+      "title": "AcreOS",
+      "tooltip": "AcreOS - Land Investment Platform"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "",
+      "endpoints": [
+        "https://releases.acreos.com/{{target}}/{{arch}}/{{current_version}}"
+      ]
+    },
+    "deep-link": {
+      "desktop": {
+        "schemes": ["acreos"]
+      }
+    },
+    "shell": {
+      "open": true
+    },
+    "notification": {
+      "all": true
+    },
+    "dialog": {
+      "all": true
+    },
+    "fs": {
+      "all": false,
+      "readFile": true,
+      "writeFile": true,
+      "readDir": true,
+      "copyFile": true,
+      "createDir": true,
+      "removeDir": false,
+      "removeFile": false,
+      "renameFile": true,
+      "exists": true,
+      "scope": ["$DOCUMENT/*", "$DOWNLOAD/*", "$DESKTOP/*"]
     }
   },
   "bundle": {
@@ -37,11 +83,53 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "resources": [],
+    "externalBin": [],
+    "copyright": "© 2024 AcreOS Inc.",
+    "category": "Finance",
+    "shortDescription": "Land investment platform for land investors",
+    "longDescription": "AcreOS Desktop is the native desktop application for the AcreOS land investment platform. Manage leads, deals, marketplace listings, and deal rooms from your desktop.",
+    "fileAssociations": [
+      {
+        "ext": ["acreos"],
+        "mimeType": "application/x-acreos",
+        "description": "AcreOS Project File"
+      }
+    ],
     "macOS": {
-      "minimumSystemVersion": "10.15"
+      "minimumSystemVersion": "10.15",
+      "entitlements": "Entitlements.plist",
+      "exceptionDomain": "",
+      "frameworks": [],
+      "providerShortName": null,
+      "signingIdentity": null
     },
     "windows": {
-      "wix": null
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": "http://timestamp.digicert.com",
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      },
+      "wix": {
+        "language": "en-US"
+      },
+      "nsis": {
+        "installMode": "perMachine",
+        "languages": ["EnglishUS"],
+        "displayLanguageSelector": false
+      }
+    },
+    "linux": {
+      "deb": {
+        "depends": []
+      },
+      "rpm": {
+        "depends": []
+      },
+      "appimage": {
+        "bundleMediaFramework": true
+      }
     }
   }
 }

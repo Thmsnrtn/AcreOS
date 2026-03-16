@@ -210,6 +210,7 @@ class HealthCheckService {
   async checkAll(): Promise<HealthCheckResult> {
     const checks = await Promise.all([
       this.checkDatabase(),
+      this.checkRedis(),
       this.checkStripe(),
       this.checkOpenAI(),
       this.checkTwilio(),
@@ -248,6 +249,8 @@ class HealthCheckService {
         return this.checkEmail();
       case 'lob':
         return this.checkLob();
+      case 'redis':
+        return this.checkRedis();
       default:
         return null;
     }

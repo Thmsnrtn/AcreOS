@@ -14,6 +14,15 @@ import { propertyEnrichmentService } from "./services/propertyEnrichment";
 // Partial update schema for PUT endpoints
 const updatePropertySchema = insertPropertySchema.partial().omit({ organizationId: true });
 
+// Task #202: Zod schemas for bulk operations
+const bulkIdsSchema = z.object({
+  ids: z.array(z.number().int().positive()).min(1, "ids must be a non-empty array"),
+});
+const bulkUpdateSchema = z.object({
+  ids: z.array(z.number().int().positive()).min(1, "ids must be a non-empty array"),
+  updates: updatePropertySchema,
+});
+
 // Helper function to calculate distance in miles between two coordinates
 function calculateDistanceMiles(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 3959;
@@ -231,11 +240,11 @@ export function registerPropertyRoutes(app: Express): void {
   api.post("/api/properties/bulk-delete", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = (req as any).organization;
-      const { ids } = req.body;
-      
-      if (!Array.isArray(ids) || ids.length === 0) {
-        return res.status(400).json({ message: "ids must be a non-empty array" });
+      const parsed = bulkIdsSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.errors[0].message });
       }
+      const { ids } = parsed.data;
       
       const deletedCount = await storage.bulkDeleteProperties(org.id, ids);
       
@@ -262,16 +271,12 @@ export function registerPropertyRoutes(app: Express): void {
   api.post("/api/properties/bulk-update", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = (req as any).organization;
-      const { ids, updates } = req.body;
-      
-      if (!Array.isArray(ids) || ids.length === 0) {
-        return res.status(400).json({ message: "ids must be a non-empty array" });
+      const parsed = bulkUpdateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.errors[0].message });
       }
-      
-      if (!updates || typeof updates !== "object") {
-        return res.status(400).json({ message: "updates must be an object" });
-      }
-      
+      const { ids, updates } = parsed.data;
+
       const updatedCount = await storage.bulkUpdateProperties(org.id, ids, updates);
       
       const user = req.user as any;

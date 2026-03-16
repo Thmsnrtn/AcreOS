@@ -53,6 +53,23 @@ interface NextBestAction {
   actionUrl: string;
 }
 
+interface TodayPriority {
+  id: string;
+  type: string;
+  priority: "high" | "medium" | "low";
+  title: string;
+  description: string;
+  actionLabel: string;
+  actionUrl: string;
+  count?: number;
+}
+
+interface TodayPrioritiesData {
+  priorities: TodayPriority[];
+  generatedAt: string;
+  meta: { unscoredLeads: number; staleFollowUps: number; lastCampaignDaysAgo: number };
+}
+
 interface DashboardIntelligence {
   actions: NextBestAction[];
 }
@@ -304,6 +321,139 @@ export default function TodayPage() {
               <ArrowRight className="w-3.5 h-3.5" />
             </div>
           </Link>
+        )}
+      </div>
+
+      {/* Business Pulse — live business momentum snapshot */}
+      <div data-testid="section-business-pulse">
+        <div className={`rounded-xl border bg-gradient-to-br ${pulseBg} p-4`}>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Activity className={`w-4 h-4 ${pulseColor}`} />
+              <span className="font-semibold text-sm">Business Pulse</span>
+              <Badge variant="outline" className={`text-xs ${pulseColor} border-current`}>
+                {pulseLabel}
+              </Badge>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className={`w-2 h-2 rounded-full ${pulseScore >= 55 ? "bg-emerald-500 animate-pulse" : "bg-muted-foreground"}`} />
+              <span className="text-xs text-muted-foreground">{pulseScore}/100</span>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-background/60 rounded-lg p-3 text-center">
+              <div className="flex items-center justify-center gap-1 mb-1">
+                <DollarSign className="w-3.5 h-3.5 text-primary" />
+                <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Pipeline</span>
+              </div>
+              <p className="text-lg font-bold text-foreground">
+                {pipelineValue >= 1_000_000
+                  ? `$${(pipelineValue / 1_000_000).toFixed(1)}M`
+                  : pipelineValue >= 1000
+                  ? `$${(pipelineValue / 1000).toFixed(0)}K`
+                  : pipelineValue > 0 ? `$${pipelineValue}` : "—"}
+              </p>
+              <p className="text-[10px] text-muted-foreground">{activeDeals.length} active deals</p>
+            </div>
+            <div className="bg-background/60 rounded-lg p-3 text-center">
+              <div className="flex items-center justify-center gap-1 mb-1">
+                <Flame className="w-3.5 h-3.5 text-orange-500" />
+                <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Hot Deals</span>
+              </div>
+              <p className="text-lg font-bold text-foreground">{hotDeals}</p>
+              <p className="text-[10px] text-muted-foreground">accepted/in escrow</p>
+            </div>
+            <div className="bg-background/60 rounded-lg p-3 text-center">
+              <div className="flex items-center justify-center gap-1 mb-1">
+                <BarChart3 className="w-3.5 h-3.5 text-violet-500" />
+                <span className="text-[10px] text-muted-foreground uppercase tracking-wide">Avg Win Prob</span>
+              </div>
+              <p className="text-lg font-bold text-foreground">
+                {avgWinProbability > 0 ? `${avgWinProbability}%` : "—"}
+              </p>
+              <p className="text-[10px] text-muted-foreground">across pipeline</p>
+            </div>
+            <div className="bg-background/60 rounded-lg p-3 text-center">
+              <div className="flex items-center justify-center gap-1 mb-1">
+                <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />
+                <span className="text-[10px] text-muted-foreground uppercase tracking-wide">This Month</span>
+              </div>
+              <p className="text-lg font-bold text-foreground">
+                {closedRevenueThisMonth >= 1_000_000
+                  ? `$${(closedRevenueThisMonth / 1_000_000).toFixed(1)}M`
+                  : closedRevenueThisMonth >= 1000
+                  ? `$${(closedRevenueThisMonth / 1000).toFixed(0)}K`
+                  : closedRevenueThisMonth > 0 ? `$${closedRevenueThisMonth}` : "—"}
+              </p>
+              <p className="text-[10px] text-muted-foreground">{closedDealsThisMonth.length} closed</p>
+            </div>
+          </div>
+          {/* Pulse progress bar */}
+          <div className="mt-3">
+            <div className="w-full bg-background/60 rounded-full h-1.5 overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-700 ${
+                  pulseScore >= 80 ? "bg-emerald-500" : pulseScore >= 55 ? "bg-amber-500" : "bg-blue-500"
+                }`}
+                style={{ width: `${pulseScore}%` }}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Epic J: Section 0 — Start Here Today (3 AI-prioritized actions) */}
+      <div data-testid="section-start-here-today">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Zap className="w-4 h-4 text-amber-500" />
+            <h2 className="text-lg font-semibold">Start Here Today</h2>
+            <Badge variant="secondary" className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 text-xs">
+              AI
+            </Badge>
+          </div>
+          <Link href="/night-cap">
+            <Button variant="ghost" size="sm" className="gap-1 text-xs">
+              <Moon className="w-3 h-3" /> Night Cap
+            </Button>
+          </Link>
+        </div>
+
+        {prioritiesLoading ? (
+          <div className="space-y-2">
+            {[1, 2, 3].map(i => <Skeleton key={i} className="h-16 w-full" />)}
+          </div>
+        ) : (todayPriorities?.priorities ?? []).length > 0 ? (
+          <div className="space-y-2">
+            {(todayPriorities?.priorities ?? []).map((priority, idx) => (
+              <Card key={priority.id} className={`hover:shadow-md transition-shadow ${idx === 0 ? "border-amber-200 dark:border-amber-800" : ""}`}>
+                <CardContent className="flex items-center gap-4 p-4">
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${idx === 0 ? "bg-amber-500 text-white" : "bg-muted text-muted-foreground"}`}>
+                    {idx + 1}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className="font-medium text-sm truncate">{priority.title}</span>
+                      <Badge variant="secondary" className={priorityColors[priority.priority]}>
+                        {priority.priority}
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground line-clamp-1">{priority.description}</p>
+                  </div>
+                  <Button asChild size="sm" variant={idx === 0 ? "default" : "outline"} className="shrink-0 text-xs">
+                    <Link href={priority.actionUrl}>{priority.actionLabel}</Link>
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : (
+          <Card>
+            <CardContent className="flex items-center gap-3 py-5 px-4">
+              <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
+              <p className="text-sm text-muted-foreground">All caught up! No priority actions right now.</p>
+            </CardContent>
+          </Card>
         )}
       </div>
 

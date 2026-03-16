@@ -1,0 +1,72 @@
+# AcreOS Assistant Session Log
+Date: 2026-02-16T23:11:40Z
+Focus Area: Mobile/Capacitor
+
+## Task
+Pick one small, high-leverage mobile quick win and implement it end-to-end.
+
+## Pre-existing Issues
+- 21 TypeScript errors in `client/src/hooks/use-infinite-scroll.ts` - file contains JSX but has `.ts` extension instead of `.tsx`
+- No `logs/audit/ux_audit_*.json` files exist in the repository
+
+## Analysis
+Reviewed mobile-related code:
+- `client/src/components/mobile/MobileBottomNav.tsx` - Bottom navigation with safe-area support
+- `client/src/components/mobile/MobileCommandDrawer.tsx` - Command drawer for more actions
+- `client/src/components/offline-indicator.tsx` - Basic offline detection
+- `client/src/hooks/use-mobile.ts` - Mobile detection hook with keyboard state
+- `capacitor.config.ts` - Capacitor configuration with haptics plugin enabled
+
+## Selected Quick Win: Pull-to-Refresh Component
+**Why?** High-leverage improvement for mobile UX:
+1. Addresses latency tolerance - gives users clear way to refresh stale data
+2. Native mobile pattern users expect
+3. Integrates with existing Capacitor haptics plugin
+4. Works with React Query's refetch pattern
+5. Improves perceived performance on slow networks
+
+## Implementation
+
+### Files Created
+1. `client/src/components/mobile/PullToRefresh.tsx`
+   - Pull gesture detection with resistance
+   - Visual indicator (arrow rotates, spinner on refresh)
+   - Haptic feedback at threshold via @capacitor/haptics
+   - Safe-area support for iOS notch
+   - Automatic disable on desktop
+   - Integration with React Query invalidation
+
+### Files Modified
+1. `client/src/components/mobile/index.ts`
+   - Added export for PullToRefresh component
+
+2. `client/src/pages/dashboard.tsx`
+   - Added useQueryClient import
+   - Added handleRefresh callback to invalidate dashboard queries
+   - Wrapped main content with PullToRefresh component
+
+## Testing Instructions
+
+### Manual Testing (Mobile/Simulator)
+1. Open the app on a mobile device or iOS/Android simulator
+2. Navigate to the Dashboard
+3. Scroll to the top of the page
+4. Pull down with finger - you should see:
+   - An arrow indicator that rotates as you pull
+   - Haptic feedback when threshold is reached (native only)
+   - The arrow changes to primary color when ready to release
+   - On release, a spinner shows and data refreshes
+5. Verify that stats update after refresh completes
+6. Test on desktop - pull-to-refresh should be disabled
+
+### Edge Cases to Test
+- Pull when already scrolled down (should not trigger)
+- Pull up (should not trigger)
+- Pull partially and release (should cancel, not refresh)
+- Network offline during refresh (should handle gracefully)
+
+## Notes
+- Component only activates on mobile (uses useIsMobile hook)
+- Threshold of 80px provides good balance of intentional vs accidental triggers
+- 0.5 resistance factor gives natural iOS-like feel
+- Haptics use ImpactStyle.Medium for noticeable but not jarring feedback
