@@ -92,20 +92,20 @@ export function registerIntegrationRoutes(app: Express): void {
       const org = (req as any).organization;
       const { provider } = req.params;
       const { apiKey, settings } = req.body;
-      
+
       if (!apiKey) {
         return res.status(400).json({ message: "API key is required" });
       }
-      
+
       const validProviders = ['sendgrid', 'twilio', 'lob', 'regrid', 'rapidapi'];
       if (!validProviders.includes(provider)) {
         return res.status(400).json({ message: `Invalid provider. Must be one of: ${validProviders.join(', ')}` });
       }
-      
+
       const { encryptJsonCredentials } = await import('./services/encryption');
-      
+
       const encryptedCredentials = encryptJsonCredentials({ apiKey, ...settings }, org.id);
-      
+
       const integration = await storage.upsertOrganizationIntegration({
         organizationId: org.id,
         provider,
@@ -113,9 +113,24 @@ export function registerIntegrationRoutes(app: Express): void {
         credentials: { encrypted: encryptedCredentials },
         settings: settings || {},
       });
-      
+
       await storage.updateIntegrationValidation(org.id, provider, null, null);
-      
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          action: "create",
+          entityType: "integration",
+          entityId: org.id,
+          changes: { after: { provider, isEnabled: true }, fields: ["provider", "apiKey", "settings"] },
+          ipAddress: req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          metadata: { provider },
+        });
+      } catch (e) { /* non-fatal */ }
+
       res.json({
         success: true,
         provider,

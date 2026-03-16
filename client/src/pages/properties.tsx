@@ -125,7 +125,7 @@ import type { SavedView } from "@shared/schema";
 import { Bot } from "lucide-react";
 
 export default function PropertiesPage() {
-  const { data: properties, isLoading } = useProperties();
+  const { data: properties, isLoading, error, refetch } = useProperties();
   const searchString = useSearch();
   const urlParams = new URLSearchParams(searchString);
   const actionFromUrl = urlParams.get("action");
@@ -382,10 +382,22 @@ export default function PropertiesPage() {
     }
   };
 
+  if (error) {
+    return (
+      <PageShell>
+        <div className="flex flex-col items-center justify-center py-16 text-center" data-testid="error-state-properties">
+          <AlertCircle className="w-12 h-12 text-destructive mb-4" />
+          <h3 className="text-lg font-semibold mb-2">Failed to load properties</h3>
+          <p className="text-muted-foreground mb-4">{(error as Error).message || 'Something went wrong'}</p>
+          <Button onClick={() => refetch()} variant="outline">Try again</Button>
+        </div>
+      </PageShell>
+    );
+  }
+
   return (
     <PageShell>
-        
-          
+
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <h1 className="text-3xl font-bold" data-testid="text-page-title">Inventory</h1>

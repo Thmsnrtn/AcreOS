@@ -953,9 +953,22 @@ export default function LeadsPage() {
     }
   };
 
+  if (error) {
+    return (
+      <PageShell>
+        <div className="flex flex-col items-center justify-center py-16 text-center" data-testid="error-state-leads">
+          <AlertCircle className="w-12 h-12 text-destructive mb-4" />
+          <h3 className="text-lg font-semibold mb-2">Failed to load leads</h3>
+          <p className="text-muted-foreground mb-4">{(error as Error).message || 'Something went wrong'}</p>
+          <Button onClick={() => refetch()} variant="outline">Try again</Button>
+        </div>
+      </PageShell>
+    );
+  }
+
   return (
     <PageShell>
-          
+
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <h1 className="text-2xl md:text-3xl font-bold" data-testid="text-page-title">Leads CRM</h1>
