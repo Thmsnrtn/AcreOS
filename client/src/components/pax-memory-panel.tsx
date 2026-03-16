@@ -1,114 +1,313 @@
 // PaxMemoryPanel — view and manage what Pax remembers about your org
+import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Trash2, BrainCircuit } from "lucide-react";
+import { BrainCircuit, X, Trash2, ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatDistanceToNow } from "date-fns";
+import { apiRequest } from "@/lib/queryClient";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface AiMemory {
   id: number;
   memoryType: string;
   content: string;
+  key?: string | null;
   importance: number | null;
   createdAt: string;
-  expiresAt?: string | null;
 }
 
-const TYPE_LABELS: Record<string, { label: string; color: string }> = {
-  preference: { label: "Preference", color: "bg-blue-100 text-blue-700" },
-  insight:    { label: "Insight",    color: "bg-green-100 text-green-700" },
-  fact:       { label: "Fact",       color: "bg-purple-100 text-purple-700" },
-  decision:   { label: "Decision",   color: "bg-orange-100 text-orange-700" },
-  contact:    { label: "Contact",    color: "bg-pink-100 text-pink-700" },
-  correction: { label: "Correction", color: "bg-red-100 text-red-700" },
-  reinforcement: { label: "Positive", color: "bg-emerald-100 text-emerald-700" },
-  procedure:  { label: "Procedure",  color: "bg-yellow-100 text-yellow-700" },
+interface MemoryResponse {
+  memories: AiMemory[];
+}
+
+export interface PaxMemoryPanelProps {
+  /** Primary open-state prop (spec). Also accepts legacy `open` alias. */
+  isOpen?: boolean;
+  /** Legacy alias — accepted for backward compatibility with pax-copilot-rail */
+  open?: boolean;
+  onClose: () => void;
+  orgId?: number;
+}
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+// Canonical grouping: normalize memoryType to display group
+const GROUP_META: Record<string, { label: string; badgeClass: string }> = {
+  preference: {
+    label: "Preferences",
+    badgeClass: "bg-blue-500/10 text-blue-700 border-blue-500/20",
+  },
+  preferences: {
+    label: "Preferences",
+    badgeClass: "bg-blue-500/10 text-blue-700 border-blue-500/20",
+  },
+  fact: {
+    label: "Facts",
+    badgeClass: "bg-purple-500/10 text-purple-700 border-purple-500/20",
+  },
+  facts: {
+    label: "Facts",
+    badgeClass: "bg-purple-500/10 text-purple-700 border-purple-500/20",
+  },
+  insight: {
+    label: "Insights",
+    badgeClass: "bg-green-500/10 text-green-700 border-green-500/20",
+  },
+  insights: {
+    label: "Insights",
+    badgeClass: "bg-green-500/10 text-green-700 border-green-500/20",
+  },
+  procedure: {
+    label: "Procedures",
+    badgeClass: "bg-yellow-500/10 text-yellow-700 border-yellow-500/20",
+  },
+  procedures: {
+    label: "Procedures",
+    badgeClass: "bg-yellow-500/10 text-yellow-700 border-yellow-500/20",
+  },
+  decision: {
+    label: "Decisions",
+    badgeClass: "bg-orange-500/10 text-orange-700 border-orange-500/20",
+  },
+  contact: {
+    label: "Contacts",
+    badgeClass: "bg-pink-500/10 text-pink-700 border-pink-500/20",
+  },
+  correction: {
+    label: "Corrections",
+    badgeClass: "bg-red-500/10 text-red-700 border-red-500/20",
+  },
+  reinforcement: {
+    label: "Positive",
+    badgeClass: "bg-emerald-500/10 text-emerald-700 border-emerald-500/20",
+  },
 };
 
-interface Props {
-  open: boolean;
-  onClose: () => void;
+const GROUP_ORDER = [
+  "preference",
+  "preferences",
+  "fact",
+  "facts",
+  "insight",
+  "insights",
+  "procedure",
+  "procedures",
+  "decision",
+  "contact",
+  "correction",
+  "reinforcement",
+];
+
+function getGroupMeta(type: string): { label: string; badgeClass: string } {
+  return (
+    GROUP_META[type.toLowerCase()] ?? {
+      label: type.charAt(0).toUpperCase() + type.slice(1),
+      badgeClass: "bg-muted text-muted-foreground border-border",
+    }
+  );
 }
 
-export function PaxMemoryPanel({ open, onClose }: Props) {
+// ─── MemoryCard ───────────────────────────────────────────────────────────────
+
+function MemoryCard({
+  memory,
+  onDelete,
+  isDeleting,
+}: {
+  memory: AiMemory;
+  onDelete: (id: number) => void;
+  isDeleting: boolean;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const TRUNCATE_LENGTH = 100;
+  const isTruncatable = memory.content.length > TRUNCATE_LENGTH;
+  const displayContent =
+    isTruncatable && !expanded
+      ? memory.content.slice(0, TRUNCATE_LENGTH) + "…"
+      : memory.content;
+
+  const meta = getGroupMeta(memory.memoryType);
+
+  return (
+    <div className="flex items-start gap-2.5 rounded-md border border-border bg-background px-3 py-2.5 group hover:bg-muted/20 transition-colors">
+      <div className="flex-1 min-w-0 space-y-1">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <Badge variant="outline" className={cn("text-[10px] px-1.5 py-0", meta.badgeClass)}>
+            {meta.label}
+          </Badge>
+          {memory.key && (
+            <span className="text-[10px] font-mono text-muted-foreground truncate max-w-[140px]">
+              {memory.key}
+            </span>
+          )}
+        </div>
+        <p className="text-xs text-foreground leading-snug">{displayContent}</p>
+        {isTruncatable && (
+          <button
+            onClick={() => setExpanded((v) => !v)}
+            className="flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {expanded ? (
+              <>
+                <ChevronUp className="w-3 h-3" /> Show less
+              </>
+            ) : (
+              <>
+                <ChevronDown className="w-3 h-3" /> Show more
+              </>
+            )}
+          </button>
+        )}
+        <p className="text-[10px] text-muted-foreground/60">
+          {formatDistanceToNow(new Date(memory.createdAt), { addSuffix: true })}
+        </p>
+      </div>
+      <button
+        onClick={() => onDelete(memory.id)}
+        disabled={isDeleting}
+        className="text-muted-foreground/30 hover:text-destructive transition-colors opacity-0 group-hover:opacity-100 mt-0.5 flex-shrink-0 disabled:opacity-30"
+        title="Delete memory"
+      >
+        <X className="w-3.5 h-3.5" />
+      </button>
+    </div>
+  );
+}
+
+// ─── PaxMemoryPanel ───────────────────────────────────────────────────────────
+
+export function PaxMemoryPanel({ isOpen, open, onClose, orgId }: PaxMemoryPanelProps) {
+  // Support both `isOpen` (spec) and `open` (legacy alias used by pax-copilot-rail)
+  const panelOpen = isOpen ?? open ?? false;
   const qc = useQueryClient();
 
-  const { data: memories = [], isLoading } = useQuery<AiMemory[]>({
+  const { data, isLoading } = useQuery<MemoryResponse>({
     queryKey: ["/api/ai/memory"],
-    enabled: open,
+    enabled: panelOpen,
     staleTime: 30_000,
   });
 
-  const deleteMut = useMutation({
+  const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
-      await fetch(`/api/ai/memory/${id}`, { method: "DELETE", credentials: "include" });
+      await apiRequest("DELETE", `/api/ai/memory/${id}`);
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/ai/memory"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/ai/memory"] });
+    },
   });
 
-  // Group by type
-  const groups = memories.reduce<Record<string, AiMemory[]>>((acc, m) => {
+  const memories = data?.memories ?? [];
+
+  // Group memories by memoryType
+  const groups: Record<string, AiMemory[]> = {};
+  for (const m of memories) {
     const t = m.memoryType ?? "fact";
-    if (!acc[t]) acc[t] = [];
-    acc[t].push(m);
-    return acc;
-  }, {});
+    if (!groups[t]) groups[t] = [];
+    groups[t].push(m);
+  }
+
+  // Sort groups by canonical order, then alphabetical for unknown types
+  const sortedGroupKeys = Object.keys(groups).sort((a, b) => {
+    const ai = GROUP_ORDER.indexOf(a.toLowerCase());
+    const bi = GROUP_ORDER.indexOf(b.toLowerCase());
+    if (ai === -1 && bi === -1) return a.localeCompare(b);
+    if (ai === -1) return 1;
+    if (bi === -1) return -1;
+    return ai - bi;
+  });
+
+  // Deduplicate adjacent groups that map to same display label
+  const seenLabels = new Set<string>();
+  const dedupedGroups: Array<{ key: string; items: AiMemory[] }> = [];
+  for (const key of sortedGroupKeys) {
+    const label = getGroupMeta(key).label;
+    if (!seenLabels.has(label)) {
+      seenLabels.add(label);
+      // Merge items with same label
+      const allItemsForLabel = sortedGroupKeys
+        .filter((k) => getGroupMeta(k).label === label)
+        .flatMap((k) => groups[k] ?? []);
+      dedupedGroups.push({ key, items: allItemsForLabel });
+    }
+  }
+
+  if (!panelOpen) return null;
 
   return (
-    <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
-      <SheetContent side="right" className="w-full sm:max-w-[400px] p-0 flex flex-col">
-        <SheetHeader className="px-4 py-3 border-b flex-shrink-0">
-          <SheetTitle className="flex items-center gap-2 text-sm">
-            <BrainCircuit className="w-4 h-4 text-primary" />
-            Pax Memory
-          </SheetTitle>
-          <p className="text-xs text-muted-foreground">
-            What Pax remembers about your organization. Delete entries to correct mistakes.
-          </p>
-        </SheetHeader>
+    <div className="fixed inset-y-0 right-0 z-50 flex">
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 bg-black/20"
+        onClick={onClose}
+        aria-hidden="true"
+      />
 
-        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
+      {/* Panel */}
+      <div className="relative ml-auto w-full max-w-sm bg-background border-l border-border shadow-xl flex flex-col h-full">
+        {/* Header */}
+        <div className="flex items-start justify-between px-4 py-3 border-b border-border flex-shrink-0">
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-2">
+              <BrainCircuit className="w-4 h-4 text-violet-500" />
+              <h2 className="text-sm font-semibold text-foreground">Pax Memory</h2>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              What I remember about your organization
+            </p>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 -mt-0.5 -mr-1 text-muted-foreground hover:text-foreground"
+            onClick={onClose}
+          >
+            <X className="w-4 h-4" />
+          </Button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-5">
           {isLoading ? (
             <div className="space-y-2">
-              {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12" />)}
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-14 w-full rounded-md" />
+              ))}
             </div>
           ) : memories.length === 0 ? (
-            <div className="text-center py-10">
-              <BrainCircuit className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
-              <p className="text-xs text-muted-foreground">
-                Pax hasn't stored any memories yet. Ask Pax to remember facts or use the{" "}
-                <code className="text-[10px] bg-muted px-1 rounded">/remember</code> pattern in chat.
+            <div className="flex flex-col items-center justify-center py-12 text-center gap-3">
+              <BrainCircuit className="w-10 h-10 text-muted-foreground/25" />
+              <p className="text-sm text-muted-foreground leading-relaxed max-w-[260px]">
+                No memories stored yet. Pax will learn your preferences as you work together.
               </p>
             </div>
           ) : (
-            Object.entries(groups).map(([type, items]) => {
-              const meta = TYPE_LABELS[type] ?? { label: type, color: "bg-gray-100 text-gray-700" };
+            dedupedGroups.map(({ key, items }) => {
+              const meta = getGroupMeta(key);
               return (
-                <div key={type}>
-                  <div className="flex items-center gap-1.5 mb-1.5">
-                    <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded", meta.color)}>
+                <div key={key} className="space-y-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <Badge
+                      variant="outline"
+                      className={cn("text-[10px] px-1.5 py-0", meta.badgeClass)}
+                    >
                       {meta.label}
+                    </Badge>
+                    <span className="text-[10px] text-muted-foreground">
+                      {items.length}
                     </span>
-                    <span className="text-[10px] text-muted-foreground">{items.length}</span>
                   </div>
-                  <div className="space-y-1">
+                  <div className="space-y-1.5">
                     {items.map((m) => (
-                      <div
+                      <MemoryCard
                         key={m.id}
-                        className="flex items-start gap-2 rounded-md border px-2.5 py-2 hover:bg-muted/30 group"
-                      >
-                        <p className="text-xs flex-1 leading-snug text-foreground">{m.content}</p>
-                        <button
-                          onClick={() => deleteMut.mutate(m.id)}
-                          disabled={deleteMut.isPending}
-                          className="text-muted-foreground/40 hover:text-destructive transition-colors opacity-0 group-hover:opacity-100 mt-0.5 flex-shrink-0"
-                          title="Delete memory"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
-                      </div>
+                        memory={m}
+                        onDelete={(id) => deleteMutation.mutate(id)}
+                        isDeleting={deleteMutation.isPending}
+                      />
                     ))}
                   </div>
                 </div>
@@ -117,12 +316,16 @@ export function PaxMemoryPanel({ open, onClose }: Props) {
           )}
         </div>
 
-        <div className="flex-shrink-0 px-4 py-2 border-t">
-          <p className="text-[10px] text-muted-foreground/60">
-            {memories.length} entr{memories.length === 1 ? "y" : "ies"} · Pax learns from your feedback and conversations
-          </p>
-        </div>
-      </SheetContent>
-    </Sheet>
+        {/* Footer */}
+        {memories.length > 0 && (
+          <div className="flex-shrink-0 px-4 py-2 border-t border-border">
+            <p className="text-[10px] text-muted-foreground/60">
+              {memories.length} entr{memories.length === 1 ? "y" : "ies"} ·
+              Pax learns from your feedback and conversations
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

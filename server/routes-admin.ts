@@ -20,6 +20,11 @@ import {
   auditLog,
   mailingOrderPieces,
   mailingOrders,
+  agentTasks,
+  evolutionHistory,
+  evolutionCircuitBreaker,
+  openrouterModelCatalog,
+  aiTelemetryEvents,
 } from "@shared/schema";
 import crypto from "crypto";
 import { isAuthenticated } from "./auth";
@@ -3831,6 +3836,216 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
         industryBenchmarkMin: 1,
         industryBenchmarkMax: 3,
       });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ============================================
+  // SELF-EVOLUTION ENGINE — Admin Routes
+  // ============================================
+
+  // GET /api/admin/evolution-proposals — list pending self-assessment proposals
+  api.get("/api/admin/evolution-proposals", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const proposals = await db
+        .select()
+        .from(agentTasks)
+        .where(eq(agentTasks.agentType, "self_assessment"))
+        .orderBy(desc(agentTasks.createdAt))
+        .limit(50);
+      res.json({ proposals });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/admin/evolution-history — list all evolution pipeline runs
+  api.get("/api/admin/evolution-history", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { evolutionHistory } = await import("@shared/schema");
+      const history = await db
+        .select()
+        .from(evolutionHistory)
+        .orderBy(desc(evolutionHistory.createdAt))
+        .limit(100);
+      res.json({ history });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/admin/model-catalog — view OpenRouter model catalog with benchmark scores
+  api.get("/api/admin/model-catalog", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { openrouterModelCatalog } = await import("@shared/schema");
+      const catalog = await db
+        .select()
+        .from(openrouterModelCatalog)
+        .where(eq(openrouterModelCatalog.isActive, true))
+        .orderBy(desc(openrouterModelCatalog.benchmarkScoreComplex))
+        .limit(100);
+      res.json({ catalog });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/admin/model-intelligence/sync — manually trigger catalog sync
+  api.post("/api/admin/model-intelligence/sync", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { runModelIntelligence } = await import("./services/modelIntelligence");
+      const result = await runModelIntelligence();
+      res.json({ success: true, ...result });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/admin/telemetry-optimizer/run — manually trigger optimizer
+  api.post("/api/admin/telemetry-optimizer/run", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { runTelemetryOptimizer } = await import("./services/telemetryOptimizer");
+      const result = await runTelemetryOptimizer();
+      res.json({ success: true, ...result });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/admin/telemetry-stats — view per-model telemetry stats for the optimizer
+  api.get("/api/admin/telemetry-stats", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { getTelemetryStats } = await import("./services/telemetryOptimizer");
+      const stats = await getTelemetryStats();
+      res.json({ stats });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/admin/evolution/circuit-breaker — check circuit breaker status
+  api.get("/api/admin/evolution/circuit-breaker", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { evolutionCircuitBreaker } = await import("@shared/schema");
+      const [breaker] = await db.select().from(evolutionCircuitBreaker).limit(1);
+      res.json({ breaker: breaker || { isTripped: false, consecutiveReverts: 0 } });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/admin/evolution/resume — manually resume after circuit breaker trip
+  api.post("/api/admin/evolution/resume", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { evolutionCircuitBreaker } = await import("@shared/schema");
+      const user = req.user as any;
+      await db.update(evolutionCircuitBreaker)
+        .set({ isTripped: false, consecutiveReverts: 0, resumedBy: user?.email || "founder", updatedAt: new Date() })
+        .where(eq(evolutionCircuitBreaker.id, 1));
+      res.json({ success: true, message: "Evolution pipeline resumed" });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/founder/ai/telemetry — live AI telemetry feed for the observatory
+  api.get("/api/founder/ai/telemetry", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { aiTelemetryEvents } = await import("@shared/schema");
+      const limit = Math.min(Number(req.query.limit) || 50, 200);
+      const events = await db
+        .select({
+          id: aiTelemetryEvents.id,
+          orgId: aiTelemetryEvents.organizationId,
+          taskType: aiTelemetryEvents.taskType,
+          provider: aiTelemetryEvents.provider,
+          model: aiTelemetryEvents.model,
+          complexity: aiTelemetryEvents.complexity,
+          totalTokens: aiTelemetryEvents.totalTokens,
+          estimatedCostCents: aiTelemetryEvents.estimatedCostCents,
+          latencyMs: aiTelemetryEvents.latencyMs,
+          success: aiTelemetryEvents.success,
+          createdAt: aiTelemetryEvents.createdAt,
+        })
+        .from(aiTelemetryEvents)
+        .orderBy(desc(aiTelemetryEvents.createdAt))
+        .limit(limit);
+      res.json({ events });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/founder/ai/stats — aggregate AI usage stats for observatory dashboard
+  api.get("/api/founder/ai/stats", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { aiTelemetryEvents } = await import("@shared/schema");
+      const { gte } = await import("drizzle-orm");
+      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const events = await db
+        .select()
+        .from(aiTelemetryEvents)
+        .where(gte(aiTelemetryEvents.createdAt, oneDayAgo));
+
+      const totalCalls = events.length;
+      const totalCostCents = events.reduce((sum, e) => sum + Number(e.estimatedCostCents || 0), 0);
+      const avgLatency = events.length > 0
+        ? Math.round(events.reduce((sum, e) => sum + (e.latencyMs || 0), 0) / events.length)
+        : 0;
+      const cacheHits = events.filter((e: any) => e.cacheHit).length;
+      const cacheHitRate = events.length > 0 ? ((cacheHits / events.length) * 100).toFixed(1) : "0";
+
+      const modelCounts: Record<string, number> = {};
+      const complexityCounts: Record<string, number> = {};
+      for (const e of events) {
+        modelCounts[e.model] = (modelCounts[e.model] || 0) + 1;
+        if (e.complexity) complexityCounts[e.complexity] = (complexityCounts[e.complexity] || 0) + 1;
+      }
+
+      res.json({
+        totalCalls,
+        totalCostDollars: (totalCostCents / 100).toFixed(2),
+        avgLatencyMs: avgLatency,
+        cacheHitRate,
+        modelDistribution: modelCounts,
+        complexityDistribution: complexityCounts,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ============================================
+  // AI MEMORY — User-facing routes
+  // ============================================
+
+  // GET /api/ai/memory — list paxMemory for current org
+  api.get("/api/ai/memory", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).org;
+      const { paxMemory } = await import("@shared/schema");
+      const memories = await db
+        .select()
+        .from(paxMemory)
+        .where(eq(paxMemory.organizationId, org.id))
+        .orderBy(desc(paxMemory.createdAt))
+        .limit(100);
+      res.json({ memories });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // DELETE /api/ai/memory/:id — delete a specific memory entry
+  api.delete("/api/ai/memory/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).org;
+      const memoryId = Number(req.params.id);
+      const { paxMemory } = await import("@shared/schema");
+      await db.delete(paxMemory)
+        .where(and(eq(paxMemory.id, memoryId), eq(paxMemory.organizationId, org.id)));
+      res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

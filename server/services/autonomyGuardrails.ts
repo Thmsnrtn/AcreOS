@@ -1,211 +1,333 @@
 /**
- * Autonomy Guardrails — Pillar 2 of AcreOS Durability Strategy
+ * Autonomy Guardrails — Safety limits for Pax autonomous operation.
  *
- * Enforces safety constraints when Pax operates in supervised or autonomous mode.
- * These guardrails run BEFORE any autonomous action executes to prevent:
- *   - Exceeding daily send rate limits
- *   - Contacting leads without valid TCPA consent
- *   - Acting on leads marked dead/closed/do-not-contact
- *   - Running during off-hours without explicit permission
+ * Enforces rate limits and TCPA compliance before any autonomous send action.
+ * Provides an audit trail of autonomous actions via agentMemory.
  *
- * The autonomy level (assisted | supervised | autonomous) is stored on the
- * organizations table as `paxAutonomyLevel` (added in schema.ts).
+ * Autonomy levels (planned):
+ *   'assisted'   — current default; all sends require human approval
+ *   'supervised' — Pax can send within daily limits with consent checks
+ *   'autonomous' — Pax can send freely within guardrails (future)
  *
- * These guardrails integrate with the APPROVAL_REQUIRED_TOOLS set in tools.ts
- * — when autonomy level allows a tool, this service does the final safety check.
+ * When organizations.paxAutonomyLevel is added to the schema, getOrgAutonomyLevel()
+ * will read from it. Until then it always returns 'assisted'.
  */
 
 import { db } from "../db";
-import { eq, and, gte, sql, count } from "drizzle-orm";
-import { organizations, leads, outcomeTelemetry } from "@shared/schema";
-import { checkTcpaConsentFromLead } from "./tcpaCompliance";
+import { eq, and, gte, sql } from "drizzle-orm";
+import { agentMemory, organizations } from "@shared/schema";
 import { storage } from "../storage";
 
-// ── Constants ─────────────────────────────────────────────────────────────────
+// ── Constants ──────────────────────────────────────────────────────────────────
 
-export const AUTONOMY_LEVELS = ["assisted", "supervised", "autonomous"] as const;
-export type AutonomyLevel = typeof AUTONOMY_LEVELS[number];
+const EMAIL_DAILY_LIMIT = 50;
+const SMS_DAILY_LIMIT   = 20;
 
-// Max autonomous send actions per org per day
-const MAX_DAILY_AUTONOMOUS_SENDS = 20;
+// ── Exported Types ─────────────────────────────────────────────────────────────
 
-// Tools that require at least "supervised" level to auto-execute
-const SUPERVISED_TOOLS = new Set([
-  "send_email",
-  "send_sms",
-]);
+export type AutonomyLevel = "assisted" | "supervised" | "autonomous";
 
-// Tools that require "autonomous" level to auto-execute
-const AUTONOMOUS_ONLY_TOOLS = new Set([
-  "send_gmail",
-  "send_slack_message",
-  "create_stripe_payment_link",
-]);
+// ── Core Guardrail Functions ───────────────────────────────────────────────────
 
-// ── Core API ──────────────────────────────────────────────────────────────────
+/**
+ * Check whether an autonomous send is within the daily rate limit for the
+ * given org and channel.
+ *
+ * Counts sends recorded via recordAutonomousSend() in agentMemory for today.
+ */
+export async function checkSendRateLimit(
+  orgId: number,
+  channelType: "email" | "sms"
+): Promise<{ allowed: boolean; reason?: string }> {
+  try {
+    const todayKey = `autonomous_send_log_${new Date().toISOString().slice(0, 10)}`;
 
-export interface GuardrailCheck {
-  allowed: boolean;
-  reason?: string;
-  requiresApproval: boolean;
+    const rows = await db
+      .select({ value: agentMemory.value })
+      .from(agentMemory)
+      .where(
+        and(
+          eq(agentMemory.organizationId, orgId),
+          eq(agentMemory.agentType, "pax"),
+          eq(agentMemory.memoryType, "fact"),
+          eq(agentMemory.key, todayKey)
+        )
+      )
+      .limit(1);
+
+    const existingSends: Array<Record<string, any>> = Array.isArray(
+      (rows[0]?.value as any)?.sends
+    )
+      ? (rows[0].value as any).sends
+      : [];
+
+    const channelSends = existingSends.filter(
+      (s) => s.channelType === channelType
+    ).length;
+
+    const limit = channelType === "email" ? EMAIL_DAILY_LIMIT : SMS_DAILY_LIMIT;
+
+    if (channelSends >= limit) {
+      return {
+        allowed: false,
+        reason: `Daily autonomous send limit reached (${channelSends}/${limit} ${channelType}s)`,
+      };
+    }
+
+    return { allowed: true };
+  } catch (err: any) {
+    console.error("[autonomyGuardrails] checkSendRateLimit error:", err.message);
+    // Fail safe on error
+    return { allowed: false, reason: "Rate limit check failed — blocking autonomous send" };
+  }
 }
 
 /**
- * The main check function — call this before any autonomous tool execution.
- * Returns whether the action is allowed, and whether it still needs human approval.
+ * Check TCPA compliance for a lead before an autonomous SMS send.
+ * Uses storage.getLead() to retrieve the lead and inspect consent fields.
  */
-export async function checkAutonomousAction(
-  orgId: number,
-  toolName: string,
-  args: Record<string, any>
-): Promise<GuardrailCheck> {
+export async function checkTcpaBeforeSend(
+  leadId: number
+): Promise<{ allowed: boolean; reason?: string }> {
   try {
-    const org = await storage.getOrganization(orgId);
-    if (!org) return { allowed: false, reason: "Organization not found", requiresApproval: true };
+    // getLead requires orgId — we search by leadId across storage
+    // storage.getLead(orgId, id) — we need the lead's org first
+    // Use a raw db query to get the lead without knowing orgId up front
+    const { leads } = await import("@shared/schema");
+    const rows = await db
+      .select({
+        tcpaConsent: leads.tcpaConsent,
+        doNotContact: leads.doNotContact,
+        optOutDate: leads.optOutDate,
+        status: leads.status,
+      })
+      .from(leads)
+      .where(eq(leads.id, leadId))
+      .limit(1);
 
-    const autonomyLevel: AutonomyLevel = ((org as any).paxAutonomyLevel as AutonomyLevel) ?? "assisted";
-
-    // "assisted" mode: all communication tools always require approval
-    if (autonomyLevel === "assisted") {
-      const isCommunicationTool = SUPERVISED_TOOLS.has(toolName) || AUTONOMOUS_ONLY_TOOLS.has(toolName);
-      if (isCommunicationTool) {
-        return { allowed: true, requiresApproval: true, reason: "assisted mode requires approval for all sends" };
-      }
-      return { allowed: true, requiresApproval: false };
+    const lead = rows[0];
+    if (!lead) {
+      return { allowed: false, reason: `Lead ${leadId} not found` };
     }
 
-    // "supervised" mode: can auto-send 1:1 outreach (send_email, send_sms) but not bulk or payment tools
-    if (autonomyLevel === "supervised") {
-      if (AUTONOMOUS_ONLY_TOOLS.has(toolName)) {
-        return { allowed: true, requiresApproval: true, reason: "supervised mode requires approval for payment/external sends" };
-      }
+    // Hard DNC flag
+    if (lead.doNotContact) {
+      return { allowed: false, reason: "Lead is marked do-not-contact" };
     }
 
-    // For communication tools in supervised/autonomous mode: run all safety checks
-    if (SUPERVISED_TOOLS.has(toolName)) {
-      // 1. Rate limit check
-      const rateCheck = await checkDailyRateLimit(orgId);
-      if (!rateCheck.ok) {
-        return { allowed: false, reason: rateCheck.reason, requiresApproval: false };
-      }
+    // Opted out
+    if (lead.optOutDate) {
+      return { allowed: false, reason: "Lead has opted out of communications" };
+    }
 
-      // 2. TCPA / lead safety check
-      if (args.leadId) {
-        const tcpaCheck = await checkLeadSafety(orgId, args.leadId);
-        if (!tcpaCheck.ok) {
-          return { allowed: false, reason: tcpaCheck.reason, requiresApproval: false };
+    // TCPA consent required for SMS
+    if (!lead.tcpaConsent) {
+      return { allowed: false, reason: "No TCPA consent on record for this lead" };
+    }
+
+    // Dead/closed leads — never contact autonomously
+    if (["dead", "closed", "lost"].includes(lead.status ?? "")) {
+      return {
+        allowed: false,
+        reason: `Lead status is "${lead.status}" — Pax will not contact them autonomously`,
+      };
+    }
+
+    return { allowed: true };
+  } catch (err: any) {
+    console.error("[autonomyGuardrails] checkTcpaBeforeSend error:", err.message);
+    return { allowed: false, reason: "TCPA check failed — blocking autonomous send" };
+  }
+}
+
+/**
+ * Records that an autonomous send occurred.
+ * Appends to the daily send log in agentMemory.
+ * This is the source of truth for checkSendRateLimit().
+ */
+export async function recordAutonomousSend(
+  orgId: number,
+  channelType: "email" | "sms",
+  leadId: number,
+  content: string
+): Promise<void> {
+  try {
+    const todayKey = `autonomous_send_log_${new Date().toISOString().slice(0, 10)}`;
+
+    // Fetch existing log for today
+    const rows = await db
+      .select({ value: agentMemory.value })
+      .from(agentMemory)
+      .where(
+        and(
+          eq(agentMemory.organizationId, orgId),
+          eq(agentMemory.agentType, "pax"),
+          eq(agentMemory.memoryType, "fact"),
+          eq(agentMemory.key, todayKey)
+        )
+      )
+      .limit(1);
+
+    const existing = Array.isArray((rows[0]?.value as any)?.sends)
+      ? (rows[0].value as any).sends
+      : [];
+
+    const newEntry = {
+      channelType,
+      leadId,
+      content: content.slice(0, 100),
+      timestamp: new Date().toISOString(),
+    };
+
+    const updatedSends = [...existing, newEntry];
+
+    if (rows.length > 0) {
+      // Update in place
+      await db
+        .delete(agentMemory)
+        .where(
+          and(
+            eq(agentMemory.organizationId, orgId),
+            eq(agentMemory.agentType, "pax"),
+            eq(agentMemory.memoryType, "fact"),
+            eq(agentMemory.key, todayKey)
+          )
+        );
+    }
+
+    await db.insert(agentMemory).values({
+      organizationId: orgId,
+      agentType: "pax",
+      memoryType: "fact",
+      key: todayKey,
+      value: { sends: updatedSends },
+      confidence: "1.0",
+    });
+
+    console.log(
+      `[autonomyGuardrails] Recorded autonomous ${channelType} send for org ${orgId}, lead ${leadId}`
+    );
+  } catch (err: any) {
+    console.error("[autonomyGuardrails] recordAutonomousSend error:", err.message);
+    // Non-blocking — don't throw; the send already happened
+  }
+}
+
+/**
+ * Generates a human-readable markdown summary of all autonomous actions taken
+ * in the last N hours. Used for the daily digest email / Pax morning briefing.
+ */
+export async function generateAutonomousAuditSummary(
+  orgId: number,
+  hours: number = 24
+): Promise<string> {
+  try {
+    const now = new Date();
+    const cutoff = new Date(now.getTime() - hours * 60 * 60 * 1000);
+
+    // Gather all daily log keys within the window
+    // Keys are formatted: autonomous_send_log_YYYY-MM-DD
+    // We need to check today and potentially yesterday
+    const datesToCheck: string[] = [];
+    const cursor = new Date(cutoff);
+    while (cursor <= now) {
+      datesToCheck.push(cursor.toISOString().slice(0, 10));
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    const allSends: Array<{
+      channelType: "email" | "sms";
+      leadId: number;
+      content: string;
+      timestamp: string;
+    }> = [];
+
+    for (const date of datesToCheck) {
+      const key = `autonomous_send_log_${date}`;
+      const rows = await db
+        .select({ value: agentMemory.value })
+        .from(agentMemory)
+        .where(
+          and(
+            eq(agentMemory.organizationId, orgId),
+            eq(agentMemory.agentType, "pax"),
+            eq(agentMemory.memoryType, "fact"),
+            eq(agentMemory.key, key)
+          )
+        )
+        .limit(1);
+
+      if (!rows[0]) continue;
+      const sends = Array.isArray((rows[0].value as any)?.sends)
+        ? (rows[0].value as any).sends
+        : [];
+
+      for (const s of sends) {
+        const ts = new Date(s.timestamp ?? 0);
+        if (ts >= cutoff && ts <= now) {
+          allSends.push(s);
         }
       }
     }
 
-    return { allowed: true, requiresApproval: false };
+    if (allSends.length === 0) {
+      return `**Pax Autonomous Activity (last ${hours}h):** No autonomous actions taken.`;
+    }
+
+    const emails = allSends.filter((s) => s.channelType === "email");
+    const smsList = allSends.filter((s) => s.channelType === "sms");
+    const uniqueLeads = new Set(allSends.map((s) => s.leadId)).size;
+
+    // Simple content classification based on snippet
+    const classify = (content: string): string => {
+      const lower = content.toLowerCase();
+      if (lower.includes("follow") || lower.includes("checking in")) return "follow-up sequences";
+      if (lower.includes("offer") || lower.includes("price"))        return "offer outreach";
+      if (lower.includes("hello") || lower.includes("introduce"))    return "new lead outreach";
+      return "general outreach";
+    };
+
+    const actionCounts: Record<string, number> = {};
+    for (const s of allSends) {
+      const label = classify(s.content ?? "");
+      actionCounts[label] = (actionCounts[label] ?? 0) + 1;
+    }
+
+    const topActions = Object.entries(actionCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([label, n]) => `${label} (${n})`)
+      .join(", ");
+
+    const parts: string[] = [
+      `**Pax Autonomous Activity (last ${hours}h):**`,
+      `Sent ${emails.length} email${emails.length !== 1 ? "s" : ""},`,
+      `${smsList.length} SMS message${smsList.length !== 1 ? "s" : ""}`,
+      `to ${uniqueLeads} lead${uniqueLeads !== 1 ? "s" : ""}.`,
+    ];
+
+    if (topActions) {
+      parts.push(`Top actions: ${topActions}.`);
+    }
+
+    return parts.join(" ");
   } catch (err: any) {
-    console.error(`[AutonomyGuardrails] checkAutonomousAction error:`, err.message);
-    // Fail safe — require approval on error
-    return { allowed: true, requiresApproval: true, reason: "guardrail check failed — defaulting to approval required" };
+    console.error("[autonomyGuardrails] generateAutonomousAuditSummary error:", err.message);
+    return `**Pax Autonomous Activity (last ${hours}h):** Summary unavailable due to an internal error.`;
   }
 }
 
 /**
- * Returns the current autonomy level for an org.
+ * Returns the autonomy level for an org.
+ *
+ * TODO: When organizations.paxAutonomyLevel is added to the schema, replace the
+ * hardcoded return with:
+ *   const org = await storage.getOrganization(orgId);
+ *   return ((org as any).paxAutonomyLevel as AutonomyLevel) ?? "assisted";
  */
-export async function getAutonomyLevel(orgId: number): Promise<AutonomyLevel> {
-  const org = await storage.getOrganization(orgId);
-  return ((org as any)?.paxAutonomyLevel as AutonomyLevel) ?? "assisted";
-}
-
-/**
- * Returns whether a specific tool requires human approval given the org's autonomy level.
- * This replaces the static APPROVAL_REQUIRED_TOOLS set from tools.ts for autonomous operations.
- */
-export async function toolRequiresApproval(orgId: number, toolName: string): Promise<boolean> {
-  const level = await getAutonomyLevel(orgId);
-
-  if (level === "assisted") {
-    return SUPERVISED_TOOLS.has(toolName) || AUTONOMOUS_ONLY_TOOLS.has(toolName);
-  }
-  if (level === "supervised") {
-    return AUTONOMOUS_ONLY_TOOLS.has(toolName); // Only payment/external tools need approval
-  }
-  if (level === "autonomous") {
-    return false; // All tools are pre-approved within guardrail bounds
-  }
-  return true; // Unknown level — fail safe
-}
-
-// ── Safety Checks ─────────────────────────────────────────────────────────────
-
-async function checkDailyRateLimit(orgId: number): Promise<{ ok: boolean; reason?: string }> {
-  try {
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-
-    // Count autonomous send actions today (tracked via outcomeTelemetry)
-    const result = await db
-      .select({ n: count() })
-      .from(outcomeTelemetry)
-      .where(
-        and(
-          eq(outcomeTelemetry.organizationId, orgId),
-          eq(outcomeTelemetry.outcomeType, "autonomous_send"),
-          gte(outcomeTelemetry.createdAt, todayStart)
-        )
-      );
-
-    const todayCount = result[0]?.n ?? 0;
-    if (todayCount >= MAX_DAILY_AUTONOMOUS_SENDS) {
-      return {
-        ok: false,
-        reason: `Daily autonomous send limit reached (${MAX_DAILY_AUTONOMOUS_SENDS}/day). Remaining sends will require manual approval.`,
-      };
-    }
-    return { ok: true };
-  } catch {
-    return { ok: true }; // Fail open on rate limit check errors
-  }
-}
-
-async function checkLeadSafety(orgId: number, leadId: number): Promise<{ ok: boolean; reason?: string }> {
-  try {
-    const lead = await storage.getLead(orgId, leadId);
-    if (!lead) return { ok: false, reason: `Lead ${leadId} not found` };
-
-    // Dead/closed leads — never contact autonomously
-    if (["closed", "dead", "lost", "converted"].includes(lead.status ?? "")) {
-      return { ok: false, reason: `Lead is in "${lead.status}" status — Pax will not contact them autonomously` };
-    }
-
-    // Do-not-contact flag
-    if ((lead as any).doNotContact) {
-      return { ok: false, reason: "Lead is marked do-not-contact" };
-    }
-
-    // TCPA consent check
-    const compliance = checkTcpaConsentFromLead({
-      tcpaConsent: (lead as any).tcpaConsent ?? null,
-      doNotContact: (lead as any).doNotContact ?? null,
-    });
-    if (!compliance.canContact) {
-      return { ok: false, reason: `TCPA compliance block: ${compliance.reason ?? "no consent on record"}` };
-    }
-
-    return { ok: true };
-  } catch (err: any) {
-    console.error(`[AutonomyGuardrails] checkLeadSafety error:`, err.message);
-    return { ok: false, reason: "Lead safety check failed — action blocked" };
-  }
-}
-
-/**
- * Records that an autonomous send action occurred.
- * Called after a successful autonomous send to increment the rate limit counter.
- */
-export async function recordAutonomousSend(orgId: number, toolName: string, leadId?: number): Promise<void> {
-  await db.insert(outcomeTelemetry).values({
-    organizationId: orgId,
-    outcomeType: "autonomous_send",
-    outcome: { success: true, details: { toolName } },
-    contributingFactors: { agentActions: [{ agentType: "pax", action: toolName, timestamp: new Date().toISOString() }] },
-    relatedLeadId: leadId ?? undefined,
-  }).catch(() => {});
+export async function getOrgAutonomyLevel(
+  orgId: number
+): Promise<AutonomyLevel> {
+  // TODO: Read paxAutonomyLevel from organizations table once the column is added.
+  return "assisted";
 }

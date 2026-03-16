@@ -8,29 +8,44 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { 
-  Plus, 
-  Trash2, 
-  ChevronDown, 
-  ChevronUp, 
-  Zap, 
-  Mail, 
-  ListTodo, 
-  Database, 
-  Brain, 
-  Bell, 
+import {
+  Plus,
+  Trash2,
+  ChevronDown,
+  ChevronUp,
+  Zap,
+  Mail,
+  ListTodo,
+  Database,
+  Brain,
+  Bell,
   Clock,
   Loader2,
   ArrowDown,
-  GripVertical
+  GripVertical,
+  AlertCircle,
+  ChevronRight,
+  ChevronLeft,
+  X,
 } from "lucide-react";
-import type { 
-  Workflow, 
-  WorkflowTrigger, 
-  WorkflowAction, 
-  WorkflowTriggerEvent, 
-  WorkflowActionType 
+import { cn } from "@/lib/utils";
+import type {
+  Workflow,
+  WorkflowTrigger,
+  WorkflowAction,
+  WorkflowTriggerEvent,
+  WorkflowActionType
 } from "@shared/schema";
+
+// ─── WorkflowConfig type (spec-compatible) ───────────────────────────────────
+
+export interface WorkflowConfig {
+  name: string;
+  description?: string;
+  trigger: { event: string; filter?: Record<string, any> };
+  actions: Array<{ id: string; type: string; config: Record<string, any> }>;
+  isActive: boolean;
+}
 
 const TRIGGER_OPTIONS: { value: WorkflowTriggerEvent; label: string; description: string }[] = [
   { value: "lead.created", label: "Lead Created", description: "When a new lead is added to the system" },

@@ -10097,3 +10097,80 @@ export const insertOrgApiKeySchema = createInsertSchema(orgApiKeys).omit({
 });
 export type OrgApiKey = typeof orgApiKeys.$inferSelect;
 export type InsertOrgApiKey = z.infer<typeof insertOrgApiKeySchema>;
+
+// ============================================
+// SELF-EVOLUTION ENGINE TABLES
+// ============================================
+
+// Cache of all models available on OpenRouter, refreshed weekly.
+// The model intelligence service benchmarks new models and auto-updates aiModelConfigs.
+export const openrouterModelCatalog = pgTable("openrouter_model_catalog", {
+  id: serial("id").primaryKey(),
+  modelId: text("model_id").notNull().unique(), // e.g. "anthropic/claude-opus-4-6"
+  displayName: text("display_name").notNull(),
+  inputCostPerMillion: numeric("input_cost_per_million", { precision: 12, scale: 6 }),
+  outputCostPerMillion: numeric("output_cost_per_million", { precision: 12, scale: 6 }),
+  contextWindow: integer("context_window"),
+  capabilities: text("capabilities").array().default([]), // ["vision","reasoning","code",...]
+  isNew: boolean("is_new").default(false), // flagged on first discovery for benchmarking
+  lastBenchmarkedAt: timestamp("last_benchmarked_at"),
+  benchmarkScoreSimple: numeric("benchmark_score_simple", { precision: 5, scale: 2 }),
+  benchmarkScoreModerate: numeric("benchmark_score_moderate", { precision: 5, scale: 2 }),
+  benchmarkScoreComplex: numeric("benchmark_score_complex", { precision: 5, scale: 2 }),
+  isActive: boolean("is_active").default(true), // false = removed from OpenRouter
+  discoveredAt: timestamp("discovered_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("openrouter_catalog_active_idx").on(table.isActive),
+  index("openrouter_catalog_new_idx").on(table.isNew),
+]);
+export type OpenrouterModelCatalog = typeof openrouterModelCatalog.$inferSelect;
+
+// Audit log of every autonomous code evolution attempt.
+// Each record covers one proposal from generation through deployment/abandonment.
+export const evolutionHistory = pgTable("evolution_history", {
+  id: serial("id").primaryKey(),
+  proposalId: integer("proposal_id"), // FK → agentTasks.id (the self-assessment proposal)
+  proposalDescription: text("proposal_description").notNull(),
+  targetFile: text("target_file").notNull(), // which file was modified
+  generatedCode: text("generated_code"), // the actual code diff generated
+  // Multi-stage gauntlet tracking
+  stagesCompleted: text("stages_completed").array().default([]),
+  stageFailedAt: text("stage_failed_at"), // stage name where failure occurred, null = success
+  stageFailureReason: text("stage_failure_reason"),
+  reviewModelOutput: text("review_model_output"), // Stage 2 adversarial review JSON
+  intentVerificationOutput: text("intent_verification_output"), // Stage 3 JSON
+  staticAnalysisOutput: text("static_analysis_output"), // Stage 4 compiler/lint/test output
+  // Git tracking
+  branchName: text("branch_name"),
+  commitHash: text("commit_hash"),
+  // Lifecycle
+  status: text("status").notNull().default("proposed"), // proposed|stage1_pass|stage2_pass|stage3_pass|stage4_pass|deployed|reverted|abandoned
+  deployedAt: timestamp("deployed_at"),
+  revertedAt: timestamp("reverted_at"),
+  revertReason: text("revert_reason"),
+  // Metrics
+  errorRateBeforeDeploy: numeric("error_rate_before_deploy", { precision: 8, scale: 4 }),
+  errorRateAfterDeploy: numeric("error_rate_after_deploy", { precision: 8, scale: 4 }),
+  qualityScoreBefore: numeric("quality_score_before", { precision: 5, scale: 2 }),
+  qualityScoreAfter: numeric("quality_score_after", { precision: 5, scale: 2 }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("evolution_history_status_idx").on(table.status),
+  index("evolution_history_created_idx").on(table.createdAt),
+]);
+export type EvolutionHistory = typeof evolutionHistory.$inferSelect;
+
+// Tracks circuit breaker state for the autonomous evolution pipeline.
+// Prevents runaway deployments when consecutive reverts occur.
+export const evolutionCircuitBreaker = pgTable("evolution_circuit_breaker", {
+  id: serial("id").primaryKey(),
+  isTripped: boolean("is_tripped").notNull().default(false),
+  consecutiveReverts: integer("consecutive_reverts").notNull().default(0),
+  trippedAt: timestamp("tripped_at"),
+  resumeAt: timestamp("resume_at"), // auto-resume after 7 days
+  resumedBy: text("resumed_by"), // founder email if manually resumed
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export type EvolutionCircuitBreaker = typeof evolutionCircuitBreaker.$inferSelect;

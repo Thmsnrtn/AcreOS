@@ -2,7 +2,7 @@ import OpenAI from "openai";
 import { db } from "../db";
 import { eq, desc } from "drizzle-orm";
 import { toolDefinitions, executeTool, getOpenAITools, getToolsForRole, APPROVAL_REQUIRED_TOOLS } from "./tools";
-import { aiConversations, aiMessages, type Organization, type AiConversation, type AiMessage } from "@shared/schema";
+import { aiConversations, aiMessages, agentMemory, type Organization, type AiConversation, type AiMessage } from "@shared/schema";
 import {
   selectProviderAndModel,
   classifyFromMessages,
@@ -12,6 +12,86 @@ import {
 import { buildConnectorContextBlock } from "../services/connectors/registry";
 import mammoth from "mammoth";
 import { storage } from "../storage";
+
+// ── Quality Feedback Loop ────────────────────────────────────────────────────
+// Fire-and-forget: scores each Pax response quality via DeepSeek and writes
+// success/failure patterns to agentMemory so future responses improve over time.
+async function scoreAndLearnFromResponse(
+  orgId: number,
+  userMessage: string,
+  assistantResponse: string
+): Promise<void> {
+  try {
+    const openrouterKey = process.env.AI_INTEGRATIONS_OPENROUTER_API_KEY;
+    if (!openrouterKey) return;
+    const scorer = new OpenAI({
+      apiKey: openrouterKey,
+      baseURL: process.env.AI_INTEGRATIONS_OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
+      defaultHeaders: { "HTTP-Referer": "https://acreos.fly.dev", "X-Title": "AcreOS" },
+    });
+    const scoringPrompt = `Rate this AI assistant response for a land investing platform on a scale of 1-10.
+User asked: "${userMessage.slice(0, 300)}"
+Assistant responded: "${assistantResponse.slice(0, 500)}"
+Return ONLY valid JSON: {"score": <number 1-10>, "reasons": ["<reason>"], "improvements": ["<suggestion>"]}`;
+
+    const result = await scorer.chat.completions.create({
+      model: "deepseek/deepseek-chat",
+      messages: [{ role: "user", content: scoringPrompt }],
+      max_tokens: 200,
+      response_format: { type: "json_object" },
+    });
+    const parsed = JSON.parse(result.choices[0].message.content || "{}");
+    const score = Number(parsed.score) || 0;
+    if (score < 1 || score > 10) return;
+
+    const memoryType = score >= 9 ? "success_pattern" : score < 7 ? "failure_pattern" : null;
+    if (!memoryType) return;
+
+    await db.insert(agentMemory).values({
+      organizationId: orgId,
+      agentType: "pax",
+      memoryType,
+      key: "response_quality_pattern",
+      value: {
+        score,
+        queryPattern: userMessage.slice(0, 150),
+        responsePattern: assistantResponse.slice(0, 150),
+        reasons: parsed.reasons || [],
+        improvements: parsed.improvements || [],
+        recordedAt: new Date().toISOString(),
+      },
+      confidence: Math.min(1, score / 10),
+      usageCount: 1,
+    });
+  } catch {
+    // Never block a response over scoring failure
+  }
+}
+
+// ── Calibration Context Loader ───────────────────────────────────────────────
+// Loads outcome calibration data (from outcomeAnalyzer) into the system prompt
+// so Pax knows which score buckets actually convert and which price estimates drift.
+async function loadCalibrationContext(orgId: number): Promise<string> {
+  try {
+    const calibrations = await db
+      .select()
+      .from(agentMemory)
+      .where(eq(agentMemory.organizationId, orgId))
+      .orderBy(desc(agentMemory.updatedAt))
+      .limit(3);
+    const calibration = calibrations.find(m => m.memoryType === "calibration");
+    if (!calibration || !calibration.value) return "";
+    const data = calibration.value as any;
+    if (!data.buckets) return "";
+    const lines = data.buckets
+      .filter((b: any) => b.sampleSize >= 5)
+      .map((b: any) => `Score ${b.range}: actual conversion rate ${(b.actualRate * 100).toFixed(1)}% (expected ${(b.expectedRate * 100).toFixed(1)}%, n=${b.sampleSize})`);
+    if (lines.length === 0) return "";
+    return `\n\n--- LEAD SCORE CALIBRATION (from closed deals) ---\n${lines.join("\n")}\nUse this to calibrate which leads to prioritize.\n--- END CALIBRATION ---`;
+  } catch {
+    return "";
+  }
+}
 
 function getChatProviderAndModel(complexity: TaskComplexity): { client: OpenAI; provider: AIProvider; model: string } {
   try {
@@ -585,7 +665,8 @@ export async function processChat(
     : "";
   const _connectedIds = await storage.getConnectedConnectorIds(org.id);
   const _connectorCtx = buildConnectorContextBlock(_connectedIds);
-  const _systemContent = profile.systemPrompt + (_enrichCtx || "") + (_prefCtx || "") + (_knowledgeCtx || "") + (_projectCtx || "") + (_mentionCtx || "") + (_connectorCtx || "");
+  const _calibrationCtx = await loadCalibrationContext(org.id);
+  const _systemContent = profile.systemPrompt + (_enrichCtx || "") + (_prefCtx || "") + (_calibrationCtx || "") + (_knowledgeCtx || "") + (_projectCtx || "") + (_mentionCtx || "") + (_connectorCtx || "");
 
   const chatMessages: OpenAI.ChatCompletionMessageParam[] = [
     { role: "system", content: _systemContent },
@@ -741,6 +822,11 @@ export async function processChat(
     estimatedCost = (usage.prompt_tokens * costs.input + usage.completion_tokens * costs.output) / 1_000_000;
   }
 
+  // Fire-and-forget quality scoring — never blocks the response
+  process.nextTick(() => {
+    scoreAndLearnFromResponse(org.id, message, finalContent).catch(() => {});
+  });
+
   return {
     response: finalContent,
     toolCalls: toolCallsExecuted.length > 0 ? toolCallsExecuted : undefined,
@@ -838,7 +924,8 @@ export async function* processChatStream(
     : "";
   const _connectedIds = await storage.getConnectedConnectorIds(org.id);
   const _connectorCtx = buildConnectorContextBlock(_connectedIds);
-  const _systemContent = profile.systemPrompt + (_enrichCtx || "") + (_prefCtx || "") + (_knowledgeCtx || "") + (_projectCtx || "") + (_mentionCtx || "") + (_connectorCtx || "");
+  const _calibrationCtx = await loadCalibrationContext(org.id);
+  const _systemContent = profile.systemPrompt + (_enrichCtx || "") + (_prefCtx || "") + (_calibrationCtx || "") + (_knowledgeCtx || "") + (_projectCtx || "") + (_mentionCtx || "") + (_connectorCtx || "");
 
   const chatMessages: OpenAI.ChatCompletionMessageParam[] = [
     { role: "system", content: _systemContent },
