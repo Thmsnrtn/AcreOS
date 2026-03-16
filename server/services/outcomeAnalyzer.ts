@@ -1,319 +1,605 @@
 /**
- * Outcome Analyzer — Pillar 1 of AcreOS Durability Strategy
+ * Outcome Analyzer — Nightly feedback loop between deal outcomes and AI behavior.
  *
- * Closes the feedback loop between deal outcomes and the platform's scoring/pricing models.
- * Runs nightly. Three jobs:
- *   1. Scoring calibration: leadConversions → paxMemory calibration facts
- *   2. Pricing accuracy: priceRecommendations vs actual closed prices
- *   3. Tactic attribution: outcomeTelemetry → paxCrossOrgLearnings patterns
+ * Runs at 2am nightly. Three sub-jobs:
+ *   1. Scoring calibration  — leadConversions → agentMemory calibration facts
+ *   2. Price accuracy       — priceRecommendations vs closed deal actuals → MAPE + nudges
+ *   3. Tactic attribution   — outcomeTelemetry win/loss patterns → agentMemory success/failure patterns
  *
- * Once running, every deal closed generates compounding signal that makes recommendations
- * more accurate for every org on the platform.
+ * Master export: runOutcomeAnalysis() iterates all active orgs and calls all three.
  */
 
 import { db } from "../db";
-import { eq, and, gte, isNotNull, sql } from "drizzle-orm";
+import { eq, and, gte, isNotNull, isNull, sql, desc } from "drizzle-orm";
 import {
   leadConversions,
-  leadScoreHistory,
   priceRecommendations,
   outcomeTelemetry,
-  paxMemory,
-  paxCrossOrgLearnings,
+  agentMemory,
   paxNudges,
   organizations,
+  deals,
+  properties,
 } from "@shared/schema";
+
+// ── Constants ──────────────────────────────────────────────────────────────────
 
 const LOOKBACK_DAYS = 90;
 
-// ─── Job 1: Scoring Calibration ──────────────────────────────────────────────
-//
-// Queries leadConversions for the last 90 days, computes actual conversion rates
-// per score bucket, writes calibration deltas to paxMemory so the executive
-// system prompt can reference empirical close rate data.
+// Expected conversion rates per score bucket (baseline prior).
+// These represent empirical industry baselines for land investing.
+const EXPECTED_RATES: Record<string, number> = {
+  "below_0":   0.02, // <0 score: 2% expected
+  "0_to_100":  0.05, // 0–99
+  "100_to_200": 0.12, // 100–199
+  "200_to_300": 0.22, // 200–299
+  "300_plus":  0.35, // 300+
+};
 
-async function calibrateScoring(orgId: number): Promise<void> {
-  try {
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - LOOKBACK_DAYS);
+// ── Helpers ────────────────────────────────────────────────────────────────────
 
-    // Get all conversions with score data in the window
-    const conversions = await db
-      .select({
-        scoreAtConversion: leadConversions.scoreAtConversion,
-        dealValue: leadConversions.dealValue,
-        touchNumber: leadConversions.touchNumber,
-        campaignType: leadConversions.campaignType,
-      })
-      .from(leadConversions)
-      .where(
-        and(
-          eq(leadConversions.organizationId, orgId),
-          gte(leadConversions.convertedAt, cutoff),
-          isNotNull(leadConversions.scoreAtConversion)
-        )
-      );
-
-    if (conversions.length < 3) return; // Not enough data to calibrate
-
-    // Bucket conversions by score range
-    const buckets: Record<string, { count: number; totalValue: number }> = {
-      "negative": { count: 0, totalValue: 0 },    // < 0
-      "low":      { count: 0, totalValue: 0 },    // 0–99
-      "medium":   { count: 0, totalValue: 0 },    // 100–199
-      "high":     { count: 0, totalValue: 0 },    // 200–299
-      "very_high": { count: 0, totalValue: 0 },   // 300+
-    };
-
-    for (const c of conversions) {
-      const score = c.scoreAtConversion ?? 0;
-      const value = c.dealValue ?? 0;
-      if (score < 0)        { buckets.negative.count++;  buckets.negative.totalValue  += value; }
-      else if (score < 100) { buckets.low.count++;       buckets.low.totalValue       += value; }
-      else if (score < 200) { buckets.medium.count++;    buckets.medium.totalValue    += value; }
-      else if (score < 300) { buckets.high.count++;      buckets.high.totalValue      += value; }
-      else                  { buckets.very_high.count++; buckets.very_high.totalValue += value; }
-    }
-
-    // Find the highest-converting touch/campaign type
-    const touchMap: Record<number, number> = {};
-    const campaignMap: Record<string, number> = {};
-    for (const c of conversions) {
-      if (c.touchNumber) touchMap[c.touchNumber] = (touchMap[c.touchNumber] ?? 0) + 1;
-      if (c.campaignType) campaignMap[c.campaignType] = (campaignMap[c.campaignType] ?? 0) + 1;
-    }
-    const bestTouch = Object.entries(touchMap).sort((a, b) => b[1] - a[1])[0];
-    const bestCampaign = Object.entries(campaignMap).sort((a, b) => b[1] - a[1])[0];
-
-    const summary = [
-      `Scoring calibration (last ${LOOKBACK_DAYS} days, ${conversions.length} closed deals):`,
-      ...Object.entries(buckets)
-        .filter(([, v]) => v.count > 0)
-        .map(([bucket, v]) => `  Score ${bucket}: ${v.count} closed, avg value $${v.count > 0 ? Math.round(v.totalValue / v.count) : 0}`),
-      bestTouch ? `  Most common closing touch: touch #${bestTouch[0]} (${bestTouch[1]} deals)` : "",
-      bestCampaign ? `  Best performing channel: ${bestCampaign[0]} (${bestCampaign[1]} deals)` : "",
-    ].filter(Boolean).join("\n");
-
-    // Write to paxMemory as a calibration fact for the executive system prompt
-    await db
-      .insert(paxMemory)
-      .values({
-        organizationId: orgId,
-        userId: "system",
-        memoryType: "calibration",
-        key: "scoring_calibration",
-        value: {
-          summary,
-          details: { buckets, bestTouch, bestCampaign, sampleSize: conversions.length },
-          timestamp: new Date().toISOString(),
-        },
-        importance: 8,
-      })
-      .onConflictDoUpdate({
-        target: [paxMemory.organizationId, paxMemory.key, paxMemory.userId],
-        set: {
-          value: sql`excluded.value`,
-          updatedAt: new Date(),
-        },
-      } as any)
-      .catch(() => {
-        // If onConflict fails (no unique constraint), just insert fresh
-      });
-
-    // If we can't upsert, try a plain insert (the memory system handles duplicates gracefully)
-    console.log(`[OutcomeAnalyzer] Scoring calibration for org ${orgId}: ${conversions.length} conversions analyzed`);
-  } catch (err: any) {
-    console.error(`[OutcomeAnalyzer] calibrateScoring error for org ${orgId}:`, err.message);
-  }
+function scoreTooBucket(score: number): string {
+  if (score < 0)   return "below_0";
+  if (score < 100) return "0_to_100";
+  if (score < 200) return "100_to_200";
+  if (score < 300) return "200_to_300";
+  return "300_plus";
 }
 
-// ─── Job 2: Pricing Accuracy Tracking ────────────────────────────────────────
-//
-// Joins priceRecommendations to closed deals, computes MAPE by recommendation type,
-// surfaces accuracy as a paxNudge if recommendations have been significantly off.
+function bucketRange(bucket: string): string {
+  const map: Record<string, string> = {
+    below_0:      "< 0",
+    "0_to_100":   "0–100",
+    "100_to_200": "100–200",
+    "200_to_300": "200–300",
+    "300_plus":   "300+",
+  };
+  return map[bucket] ?? bucket;
+}
 
-async function trackPricingAccuracy(orgId: number): Promise<void> {
-  try {
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - LOOKBACK_DAYS);
-
-    // Get recommendations with outcomes recorded
-    const recs = await db
-      .select({
-        recommendationType: priceRecommendations.recommendationType,
-        recommendedPrice: priceRecommendations.recommendedPrice,
-        actualPrice: priceRecommendations.actualPrice,
-        priceAccepted: priceRecommendations.priceAccepted,
-      })
-      .from(priceRecommendations)
-      .where(
-        and(
-          eq(priceRecommendations.organizationId, orgId),
-          isNotNull(priceRecommendations.actualPrice),
-          isNotNull(priceRecommendations.outcomeRecordedAt),
-          gte(priceRecommendations.createdAt, cutoff)
-        )
-      );
-
-    if (recs.length < 2) return;
-
-    // Compute MAPE per recommendation type
-    const typeStats: Record<string, { errors: number[]; accepted: number; total: number }> = {};
-
-    for (const r of recs) {
-      const type = r.recommendationType || "unknown";
-      if (!typeStats[type]) typeStats[type] = { errors: [], accepted: 0, total: 0 };
-
-      typeStats[type].total++;
-      if (r.priceAccepted) typeStats[type].accepted++;
-
-      const rec = parseFloat(String(r.recommendedPrice));
-      const actual = parseFloat(String(r.actualPrice));
-      if (rec > 0 && actual > 0) {
-        const mape = Math.abs(actual - rec) / rec;
-        typeStats[type].errors.push(mape);
-      }
-    }
-
-    const summary = Object.entries(typeStats).map(([type, stats]) => {
-      const avgMape = stats.errors.length > 0
-        ? (stats.errors.reduce((s, e) => s + e, 0) / stats.errors.length * 100).toFixed(1)
-        : "n/a";
-      const acceptRate = stats.total > 0 ? ((stats.accepted / stats.total) * 100).toFixed(0) : "n/a";
-      return `${type}: ${avgMape}% avg error, ${acceptRate}% acceptance rate (${stats.total} deals)`;
-    }).join("; ");
-
-    // If any type has >25% MAPE, surface a Pax nudge
-    const hasHighError = Object.values(typeStats).some(
-      s => s.errors.length >= 2 && (s.errors.reduce((a, b) => a + b, 0) / s.errors.length) > 0.25
+async function upsertAgentMemory(
+  orgId: number,
+  agentType: string,
+  memoryType: string,
+  key: string,
+  value: Record<string, any>,
+  confidence: number
+): Promise<void> {
+  // Try update first, then insert (agentMemory has no unique constraint defined, so we
+  // delete any existing record for this org+agentType+key before inserting fresh).
+  await db
+    .delete(agentMemory)
+    .where(
+      and(
+        eq(agentMemory.organizationId, orgId),
+        eq(agentMemory.agentType, agentType),
+        eq(agentMemory.key, key)
+      )
     );
 
-    if (hasHighError) {
-      await db.insert(paxNudges as any).values({
-        organizationId: orgId,
-        content: `Your price recommendations have drifted from actual outcomes. Review pricing accuracy to recalibrate offers.`,
-        category: "opportunity",
-        priority: 2,
-        actionPrompt: `Analyze my pricing accuracy: ${summary}. What adjustments should I make to my offer strategy?`,
-      }).catch(() => {});
-    }
-
-    console.log(`[OutcomeAnalyzer] Pricing accuracy for org ${orgId}: ${summary}`);
-  } catch (err: any) {
-    console.error(`[OutcomeAnalyzer] trackPricingAccuracy error for org ${orgId}:`, err.message);
-  }
+  await db.insert(agentMemory).values({
+    organizationId: orgId,
+    agentType,
+    memoryType,
+    key,
+    value,
+    confidence: String(confidence),
+  });
 }
 
-// ─── Job 3: Tactic Attribution ────────────────────────────────────────────────
-//
-// Reads outcomeTelemetry.contributingFactors to find which sequences/tactics
-// led to successful deals. Writes patterns to paxCrossOrgLearnings.
+// ── Job 1: Scoring Calibration ─────────────────────────────────────────────────
 
-async function attributeTactics(orgId: number): Promise<void> {
-  try {
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - LOOKBACK_DAYS);
+interface BucketStat {
+  range: string;
+  expectedRate: number;
+  actualRate: number;
+  delta: number;
+  sampleSize: number;
+}
 
-    const outcomes = await db
-      .select({
-        outcomeType: outcomeTelemetry.outcomeType,
-        outcome: outcomeTelemetry.outcome,
-        contributingFactors: outcomeTelemetry.contributingFactors,
-      })
-      .from(outcomeTelemetry)
-      .where(
-        and(
-          eq(outcomeTelemetry.organizationId, orgId),
-          gte(outcomeTelemetry.createdAt, cutoff)
-        )
+export interface ScoringCalibrationResult {
+  orgsCalibrated: number;
+  totalConversions: number;
+  bucketSummary: BucketStat[];
+}
+
+export async function runScoringCalibration(): Promise<ScoringCalibrationResult> {
+  console.log("[outcomeAnalyzer] Starting runScoringCalibration");
+
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - LOOKBACK_DAYS);
+
+  // Get all active orgs
+  const activeOrgs = await db
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(eq(organizations.subscriptionStatus, "active"));
+
+  let orgsCalibrated = 0;
+  let totalConversions = 0;
+  const globalBuckets: Record<string, { converted: number; total: number }> = {};
+
+  for (const org of activeOrgs) {
+    try {
+      // All conversions in the window that have a score
+      const conversions = await db
+        .select({
+          scoreAtConversion: leadConversions.scoreAtConversion,
+          dealValue: leadConversions.dealValue,
+          conversionType: leadConversions.conversionType,
+        })
+        .from(leadConversions)
+        .where(
+          and(
+            eq(leadConversions.organizationId, org.id),
+            gte(leadConversions.convertedAt, cutoff),
+            isNotNull(leadConversions.scoreAtConversion)
+          )
+        );
+
+      if (conversions.length < 5) continue; // Not enough signal for this org
+
+      totalConversions += conversions.length;
+
+      // Bucket counts: total scored leads (all conversions) and "converted" (closed)
+      const bucketData: Record<string, { converted: number; total: number }> = {
+        below_0:      { converted: 0, total: 0 },
+        "0_to_100":   { converted: 0, total: 0 },
+        "100_to_200": { converted: 0, total: 0 },
+        "200_to_300": { converted: 0, total: 0 },
+        "300_plus":   { converted: 0, total: 0 },
+      };
+
+      for (const c of conversions) {
+        const score = c.scoreAtConversion ?? 0;
+        const bucket = scoreTooBucket(score);
+        bucketData[bucket].total++;
+        // A "closed" conversion is the terminal positive outcome
+        if (c.conversionType === "closed" || c.conversionType === "accepted") {
+          bucketData[bucket].converted++;
+        }
+
+        // Accumulate for global summary
+        if (!globalBuckets[bucket]) globalBuckets[bucket] = { converted: 0, total: 0 };
+        globalBuckets[bucket].total++;
+        if (c.conversionType === "closed" || c.conversionType === "accepted") {
+          globalBuckets[bucket].converted++;
+        }
+      }
+
+      // Build calibration payload
+      const buckets: BucketStat[] = Object.entries(bucketData)
+        .filter(([, d]) => d.total > 0)
+        .map(([bucket, d]) => {
+          const actualRate = d.total > 0 ? d.converted / d.total : 0;
+          const expectedRate = EXPECTED_RATES[bucket] ?? 0.05;
+          return {
+            range: bucketRange(bucket),
+            expectedRate,
+            actualRate: parseFloat(actualRate.toFixed(4)),
+            delta: parseFloat((actualRate - expectedRate).toFixed(4)),
+            sampleSize: d.total,
+          };
+        });
+
+      const totalSamples = conversions.length;
+      const confidence = 0.7 + 0.3 * Math.min(totalSamples / 100, 1);
+
+      await upsertAgentMemory(
+        org.id,
+        "pax",
+        "calibration",
+        "lead_score_calibration",
+        {
+          buckets,
+          lastUpdated: new Date().toISOString(),
+        },
+        parseFloat(confidence.toFixed(4))
       );
 
-    const wins = outcomes.filter(o => o.outcome?.success === true);
-    const losses = outcomes.filter(o => o.outcome?.success === false);
-
-    if (wins.length < 2) return;
-
-    // Find which sequences appear most in winning outcomes
-    const sequenceWins: Record<string, number> = {};
-    const sequenceLosses: Record<string, number> = {};
-
-    for (const o of wins) {
-      const seq = (o.contributingFactors as any)?.sequenceUsed;
-      if (seq) sequenceWins[seq] = (sequenceWins[seq] ?? 0) + 1;
+      orgsCalibrated++;
+      console.log(`[outcomeAnalyzer] Scoring calibrated for org ${org.id}: ${totalSamples} samples, confidence=${confidence.toFixed(2)}`);
+    } catch (err: any) {
+      console.error(`[outcomeAnalyzer] runScoringCalibration error for org ${org.id}:`, err.message);
     }
-    for (const o of losses) {
-      const seq = (o.contributingFactors as any)?.sequenceUsed;
-      if (seq) sequenceLosses[seq] = (sequenceLosses[seq] ?? 0) + 1;
-    }
-
-    // For each winning sequence, compute win rate and write to cross-org learnings
-    for (const [seqName, winCount] of Object.entries(sequenceWins)) {
-      const lossCount = sequenceLosses[seqName] ?? 0;
-      const total = winCount + lossCount;
-      if (total < 2) continue;
-
-      const winRate = winCount / total;
-      const pattern = `sequence:${seqName}`;
-
-      await db
-        .insert(paxCrossOrgLearnings)
-        .values({
-          issuePattern: pattern,
-          issueCategory: "acquisition_tactic",
-          resolutionApproach: `Sequence "${seqName}" has a ${(winRate * 100).toFixed(0)}% deal close rate`,
-          lessonLearned: `Platform data: this sequence closed ${winCount}/${total} deals in the last ${LOOKBACK_DAYS} days`,
-          applicableCategories: ["leads", "deals", "sequences"],
-          keywords: [seqName, "sequence", "acquisition"],
-          successCount: winCount,
-          failureCount: lossCount,
-          successRate: String(winRate.toFixed(3)),
-          isAutoFixable: false,
-          contributingOrgIds: [orgId],
-          contributingOrgs: 1,
-        })
-        .onConflictDoUpdate({
-          target: [paxCrossOrgLearnings.issuePattern],
-          set: {
-            successCount: sql`${paxCrossOrgLearnings.successCount} + ${winCount}`,
-            failureCount: sql`${paxCrossOrgLearnings.failureCount} + ${lossCount}`,
-            contributingOrgs: sql`${paxCrossOrgLearnings.contributingOrgs} + 1`,
-            updatedAt: new Date(),
-          },
-        } as any)
-        .catch(() => {
-          // Ignore conflict errors — the pattern may already exist with a different structure
-        });
-    }
-
-    console.log(`[OutcomeAnalyzer] Tactic attribution for org ${orgId}: ${wins.length} wins, ${losses.length} losses analyzed`);
-  } catch (err: any) {
-    console.error(`[OutcomeAnalyzer] attributeTactics error for org ${orgId}:`, err.message);
   }
+
+  // Build global summary
+  const bucketSummary: BucketStat[] = Object.entries(globalBuckets)
+    .filter(([, d]) => d.total > 0)
+    .map(([bucket, d]) => {
+      const actualRate = d.converted / d.total;
+      const expectedRate = EXPECTED_RATES[bucket] ?? 0.05;
+      return {
+        range: bucketRange(bucket),
+        expectedRate,
+        actualRate: parseFloat(actualRate.toFixed(4)),
+        delta: parseFloat((actualRate - expectedRate).toFixed(4)),
+        sampleSize: d.total,
+      };
+    });
+
+  console.log(`[outcomeAnalyzer] runScoringCalibration complete: ${orgsCalibrated} orgs calibrated`);
+  return { orgsCalibrated, totalConversions, bucketSummary };
 }
 
-// ─── Main Export: processOutcomeAnalysis ─────────────────────────────────────
+// ── Job 2: Price Accuracy Tracking ────────────────────────────────────────────
 
-export async function processOutcomeAnalysis(): Promise<void> {
-  try {
-    const activeOrgs = await db
-      .select({ id: organizations.id })
-      .from(organizations)
-      .where(eq(organizations.isActive as any, true))
-      .limit(200);
+export interface CountyAccuracy {
+  county: string;
+  state: string;
+  mape: number;
+  dataPoints: number;
+  nudgeCreated: boolean;
+}
 
-    console.log(`[OutcomeAnalyzer] Processing ${activeOrgs.length} organizations`);
+export interface PriceAccuracyResult {
+  orgsChecked: number;
+  countiesAnalyzed: number;
+  countiesWithHighError: number;
+  details: CountyAccuracy[];
+}
 
-    for (const org of activeOrgs) {
-      await Promise.allSettled([
-        calibrateScoring(org.id),
-        trackPricingAccuracy(org.id),
-        attributeTactics(org.id),
-      ]);
+export async function runPriceAccuracyTracking(): Promise<PriceAccuracyResult> {
+  console.log("[outcomeAnalyzer] Starting runPriceAccuracyTracking");
+
+  const activeOrgs = await db
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(eq(organizations.subscriptionStatus, "active"));
+
+  let orgsChecked = 0;
+  let countiesAnalyzed = 0;
+  let countiesWithHighError = 0;
+  const allDetails: CountyAccuracy[] = [];
+
+  for (const org of activeOrgs) {
+    try {
+      // Join priceRecommendations to closed deals on propertyId
+      // Also join to properties to get county/state
+      const rows = await db
+        .select({
+          recommendedPrice: priceRecommendations.recommendedPrice,
+          county: properties.county,
+          state: properties.state,
+          dealValue: deals.acceptedAmount,
+          closedAt: deals.closingDate,
+        })
+        .from(priceRecommendations)
+        .innerJoin(deals, eq(deals.propertyId, priceRecommendations.propertyId))
+        .innerJoin(properties, eq(properties.id, priceRecommendations.propertyId))
+        .where(
+          and(
+            eq(priceRecommendations.organizationId, org.id),
+            eq(deals.organizationId, org.id),
+            eq(deals.status, "closed"),
+            isNotNull(deals.closingDate),
+            isNotNull(deals.acceptedAmount)
+          )
+        );
+
+      if (rows.length === 0) continue;
+      orgsChecked++;
+
+      // Group by county+state
+      const countyMap: Record<string, { recommended: number; actual: number }[]> = {};
+      for (const row of rows) {
+        const key = `${row.county}||${row.state}`;
+        const recommended = parseFloat(String(row.recommendedPrice));
+        const actual = parseFloat(String(row.dealValue));
+        if (!recommended || !actual || recommended <= 0 || actual <= 0) continue;
+        if (!countyMap[key]) countyMap[key] = [];
+        countyMap[key].push({ recommended, actual });
+      }
+
+      // Per-county MAPE, only if >= 3 data points
+      const countyAccuracyByOrg: Record<string, any> = {};
+
+      for (const [key, points] of Object.entries(countyMap)) {
+        if (points.length < 3) continue;
+        countiesAnalyzed++;
+
+        const [county, state] = key.split("||");
+        const mape =
+          (points.reduce((sum, p) => sum + Math.abs(p.actual - p.recommended) / p.recommended, 0) /
+            points.length) *
+          100;
+
+        const mapeRounded = parseFloat(mape.toFixed(1));
+        const nudgeCreated = mape > 25;
+        countyAccuracyByOrg[key] = { county, state, mape: mapeRounded, dataPoints: points.length };
+
+        allDetails.push({ county, state, mape: mapeRounded, dataPoints: points.length, nudgeCreated });
+
+        if (nudgeCreated) {
+          countiesWithHighError++;
+          await db
+            .insert(paxNudges as any)
+            .values({
+              organizationId: org.id,
+              content: `Price accuracy for ${county}, ${state} is off by ~${mapeRounded}%. Recent closed deals suggest calibration is needed.`,
+              category: "opportunity",
+              priority: 2,
+              actionPrompt: `Review my pricing accuracy for ${county}, ${state}. MAPE is ${mapeRounded}% across ${points.length} closed deals. How should I adjust my offer strategy?`,
+            })
+            .catch(() => {});
+          console.log(`[outcomeAnalyzer] Created price-accuracy nudge for org ${org.id}: ${county}, ${state} MAPE=${mapeRounded}%`);
+        }
+      }
+
+      // Store accuracy snapshot in agentMemory
+      await upsertAgentMemory(
+        org.id,
+        "pax",
+        "calibration",
+        "price_accuracy_by_county",
+        {
+          counties: Object.values(countyAccuracyByOrg),
+          lastUpdated: new Date().toISOString(),
+        },
+        0.8
+      );
+    } catch (err: any) {
+      console.error(`[outcomeAnalyzer] runPriceAccuracyTracking error for org ${org.id}:`, err.message);
     }
-
-    console.log(`[OutcomeAnalyzer] Nightly run complete`);
-  } catch (err: any) {
-    console.error(`[OutcomeAnalyzer] Fatal error:`, err.message);
-    throw err;
   }
+
+  console.log(`[outcomeAnalyzer] runPriceAccuracyTracking complete: ${countiesAnalyzed} counties analyzed, ${countiesWithHighError} high-error counties`);
+  return { orgsChecked, countiesAnalyzed, countiesWithHighError, details: allDetails };
+}
+
+// ── Job 3: Tactic Attribution ──────────────────────────────────────────────────
+
+export interface TacticStat {
+  sequenceUsed: string;
+  wins: number;
+  losses: number;
+  winRate: number;
+  avgTouchToConversion: number;
+}
+
+export interface TacticAttributionResult {
+  orgsAnalyzed: number;
+  totalWins: number;
+  totalLosses: number;
+  topTactics: TacticStat[];
+  topFailures: TacticStat[];
+}
+
+export async function runTacticAttribution(): Promise<TacticAttributionResult> {
+  console.log("[outcomeAnalyzer] Starting runTacticAttribution");
+
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - LOOKBACK_DAYS);
+
+  const activeOrgs = await db
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(eq(organizations.subscriptionStatus, "active"));
+
+  let orgsAnalyzed = 0;
+  let totalWins = 0;
+  let totalLosses = 0;
+
+  // Accumulate across all orgs for global top-3
+  const globalWinMap: Record<string, { wins: number; losses: number; touches: number[] }> = {};
+  const globalLossMap: Record<string, { wins: number; losses: number; touches: number[] }> = {};
+
+  for (const org of activeOrgs) {
+    try {
+      const outcomes = await db
+        .select({
+          outcome: outcomeTelemetry.outcome,
+          contributingFactors: outcomeTelemetry.contributingFactors,
+          sequenceUsed: outcomeTelemetry.sequenceUsed,
+          touchNumber: outcomeTelemetry.touchNumber,
+        })
+        .from(outcomeTelemetry)
+        .where(
+          and(
+            eq(outcomeTelemetry.organizationId, org.id),
+            gte(outcomeTelemetry.createdAt, cutoff)
+          )
+        );
+
+      if (outcomes.length === 0) continue;
+      orgsAnalyzed++;
+
+      const wins = outcomes.filter((o) => (o.outcome as any)?.success === true);
+      const losses = outcomes.filter((o) => (o.outcome as any)?.success === false);
+
+      totalWins += wins.length;
+      totalLosses += losses.length;
+
+      // Aggregate by sequenceUsed
+      const orgWinMap: Record<string, { wins: number; losses: number; touches: number[] }> = {};
+      const orgLossMap: Record<string, { wins: number; losses: number; touches: number[] }> = {};
+
+      for (const o of wins) {
+        const seq =
+          o.sequenceUsed ??
+          (o.contributingFactors as any)?.sequenceUsed ??
+          "unknown";
+        const touch = o.touchNumber ?? (o.contributingFactors as any)?.touchNumber ?? 0;
+        if (!orgWinMap[seq]) orgWinMap[seq] = { wins: 0, losses: 0, touches: [] };
+        orgWinMap[seq].wins++;
+        if (touch) orgWinMap[seq].touches.push(touch);
+
+        if (!globalWinMap[seq]) globalWinMap[seq] = { wins: 0, losses: 0, touches: [] };
+        globalWinMap[seq].wins++;
+        if (touch) globalWinMap[seq].touches.push(touch);
+      }
+
+      for (const o of losses) {
+        const seq =
+          o.sequenceUsed ??
+          (o.contributingFactors as any)?.sequenceUsed ??
+          "unknown";
+        const touch = o.touchNumber ?? (o.contributingFactors as any)?.touchNumber ?? 0;
+        if (!orgLossMap[seq]) orgLossMap[seq] = { wins: 0, losses: 0, touches: [] };
+        orgLossMap[seq].losses++;
+        if (touch) orgLossMap[seq].touches.push(touch);
+
+        if (!globalLossMap[seq]) globalLossMap[seq] = { wins: 0, losses: 0, touches: [] };
+        globalLossMap[seq].losses++;
+        if (touch) globalLossMap[seq].touches.push(touch);
+      }
+
+      // Build org-level top-3 winning and failing tactics
+      const buildStats = (
+        winMap: typeof orgWinMap,
+        lossMap: typeof orgLossMap
+      ): TacticStat[] => {
+        const allSeqs = new Set([...Object.keys(winMap), ...Object.keys(lossMap)]);
+        return Array.from(allSeqs)
+          .map((seq) => {
+            const w = winMap[seq]?.wins ?? 0;
+            const l = lossMap[seq]?.losses ?? 0;
+            const touches = winMap[seq]?.touches ?? [];
+            const avgTouch =
+              touches.length > 0
+                ? touches.reduce((a, b) => a + b, 0) / touches.length
+                : 0;
+            return {
+              sequenceUsed: seq,
+              wins: w,
+              losses: l,
+              winRate: w + l > 0 ? parseFloat((w / (w + l)).toFixed(4)) : 0,
+              avgTouchToConversion: parseFloat(avgTouch.toFixed(1)),
+            };
+          })
+          .filter((s) => s.wins + s.losses >= 2)
+          .sort((a, b) => b.winRate - a.winRate);
+      };
+
+      const topWins = buildStats(orgWinMap, orgLossMap).slice(0, 3);
+      const topLosses = buildStats(orgWinMap, orgLossMap)
+        .sort((a, b) => a.winRate - b.winRate)
+        .slice(0, 3);
+
+      // Write success patterns
+      if (topWins.length > 0) {
+        await upsertAgentMemory(
+          org.id,
+          "pax",
+          "success_pattern",
+          "top_conversion_tactics",
+          {
+            tactics: topWins,
+            period: `last_${LOOKBACK_DAYS}_days`,
+            lastUpdated: new Date().toISOString(),
+          },
+          0.75
+        );
+      }
+
+      // Write failure patterns
+      if (topLosses.length > 0) {
+        await upsertAgentMemory(
+          org.id,
+          "pax",
+          "failure_pattern",
+          "top_failure_tactics",
+          {
+            tactics: topLosses,
+            period: `last_${LOOKBACK_DAYS}_days`,
+            lastUpdated: new Date().toISOString(),
+          },
+          0.75
+        );
+      }
+
+      console.log(`[outcomeAnalyzer] Tactic attribution for org ${org.id}: ${wins.length} wins, ${losses.length} losses`);
+    } catch (err: any) {
+      console.error(`[outcomeAnalyzer] runTacticAttribution error for org ${org.id}:`, err.message);
+    }
+  }
+
+  // Build global summary top-3
+  const buildGlobalStats = (
+    winMap: typeof globalWinMap,
+    lossMap: typeof globalLossMap
+  ): TacticStat[] => {
+    const allSeqs = new Set([...Object.keys(winMap), ...Object.keys(lossMap)]);
+    return Array.from(allSeqs)
+      .map((seq) => {
+        const w = winMap[seq]?.wins ?? 0;
+        const l = lossMap[seq]?.losses ?? 0;
+        const touches = winMap[seq]?.touches ?? [];
+        const avgTouch =
+          touches.length > 0 ? touches.reduce((a, b) => a + b, 0) / touches.length : 0;
+        return {
+          sequenceUsed: seq,
+          wins: w,
+          losses: l,
+          winRate: w + l > 0 ? parseFloat((w / (w + l)).toFixed(4)) : 0,
+          avgTouchToConversion: parseFloat(avgTouch.toFixed(1)),
+        };
+      })
+      .filter((s) => s.wins + s.losses >= 2)
+      .sort((a, b) => b.winRate - a.winRate);
+  };
+
+  const topTactics = buildGlobalStats(globalWinMap, globalLossMap).slice(0, 3);
+  const topFailures = buildGlobalStats(globalWinMap, globalLossMap)
+    .sort((a, b) => a.winRate - b.winRate)
+    .slice(0, 3);
+
+  console.log(`[outcomeAnalyzer] runTacticAttribution complete: ${orgsAnalyzed} orgs analyzed`);
+  return { orgsAnalyzed, totalWins, totalLosses, topTactics, topFailures };
+}
+
+// ── Master Function ────────────────────────────────────────────────────────────
+
+export interface OutcomeAnalysisSummary {
+  scoringCalibrated: number;
+  priceAccuracyChecked: number;
+  tacticsAnalyzed: number;
+  errors: string[];
+}
+
+export async function runOutcomeAnalysis(): Promise<OutcomeAnalysisSummary> {
+  console.log("[outcomeAnalyzer] Starting nightly runOutcomeAnalysis");
+
+  const errors: string[] = [];
+
+  const [calibrationResult, priceResult, tacticResult] = await Promise.allSettled([
+    runScoringCalibration(),
+    runPriceAccuracyTracking(),
+    runTacticAttribution(),
+  ]);
+
+  const scoringCalibrated =
+    calibrationResult.status === "fulfilled" ? calibrationResult.value.orgsCalibrated : 0;
+  if (calibrationResult.status === "rejected") {
+    errors.push(`Scoring calibration failed: ${calibrationResult.reason?.message ?? "unknown"}`);
+    console.error("[outcomeAnalyzer] runScoringCalibration failed:", calibrationResult.reason);
+  }
+
+  const priceAccuracyChecked =
+    priceResult.status === "fulfilled" ? priceResult.value.orgsChecked : 0;
+  if (priceResult.status === "rejected") {
+    errors.push(`Price accuracy failed: ${priceResult.reason?.message ?? "unknown"}`);
+    console.error("[outcomeAnalyzer] runPriceAccuracyTracking failed:", priceResult.reason);
+  }
+
+  const tacticsAnalyzed =
+    tacticResult.status === "fulfilled" ? tacticResult.value.orgsAnalyzed : 0;
+  if (tacticResult.status === "rejected") {
+    errors.push(`Tactic attribution failed: ${tacticResult.reason?.message ?? "unknown"}`);
+    console.error("[outcomeAnalyzer] runTacticAttribution failed:", tacticResult.reason);
+  }
+
+  const summary: OutcomeAnalysisSummary = {
+    scoringCalibrated,
+    priceAccuracyChecked,
+    tacticsAnalyzed,
+    errors,
+  };
+
+  console.log(
+    `[outcomeAnalyzer] Nightly run complete — scoringCalibrated=${scoringCalibrated}, priceAccuracyChecked=${priceAccuracyChecked}, tacticsAnalyzed=${tacticsAnalyzed}`
+  );
+
+  return summary;
 }

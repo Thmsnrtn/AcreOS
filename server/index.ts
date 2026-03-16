@@ -391,6 +391,19 @@ app.use("/api/properties/import", importLimiter);
 
       // Outcome analyzer: close the feedback loop nightly (2am)
       startOutcomeAnalyzerJob();
+
+      // ── Self-Evolution Engine jobs ──────────────────────────────────────
+      // Telemetry optimizer: nightly model routing optimization (3am)
+      startTelemetryOptimizerJob();
+
+      // Model intelligence: weekly OpenRouter catalog sync + benchmarks (Sunday 4am)
+      startModelIntelligenceJob();
+
+      // Self-assessment agent: weekly gap analysis + tech watch (Sunday 3am)
+      startSelfAssessmentJob();
+
+      // Evolution pipeline: process pending proposals (runs every 6 hours, deploys at 3-5am)
+      startEvolutionPipelineJob();
     },
   );
 })();
@@ -1027,8 +1040,8 @@ function startFounderBriefingJob() {
 // ── Outcome Analyzer: nightly feedback loop at 2am ───────────────────────────
 async function processOutcomeAnalyzerJob() {
   try {
-    const { processOutcomeAnalysis } = await import("./services/outcomeAnalyzer");
-    await processOutcomeAnalysis();
+    const { runOutcomeAnalysis } = await import("./services/outcomeAnalyzer");
+    await runOutcomeAnalysis();
     jobSupervisor.notifyResult('outcome_analyzer', 24 * 60 * 60 * 1000, true);
   } catch (err) {
     log(`Outcome analyzer job error: ${err}`, 'outcome-analyzer');
@@ -1048,4 +1061,109 @@ function startOutcomeAnalyzerJob() {
       });
     }
   }, 5 * 60 * 1000);
+}
+
+// ── Telemetry Optimizer: nightly model routing optimization (3am) ─────────────
+async function processTelemetryOptimizerJob() {
+  try {
+    const { runTelemetryOptimizer } = await import("./services/telemetryOptimizer");
+    const result = await runTelemetryOptimizer();
+    log(`Telemetry optimizer: ${result.tiersOptimized} tiers optimized, ${result.changesApplied} changes applied`, 'telemetry-optimizer');
+    jobSupervisor.notifyResult('telemetry_optimizer', 24 * 60 * 60 * 1000, true);
+  } catch (err) {
+    log(`Telemetry optimizer job error: ${err}`, 'telemetry-optimizer');
+    jobSupervisor.notifyResult('telemetry_optimizer', 24 * 60 * 60 * 1000, false, undefined, String(err));
+  }
+}
+
+function startTelemetryOptimizerJob() {
+  log('Starting telemetry optimizer job (nightly at 3am)', 'telemetry-optimizer');
+  setInterval(() => {
+    const now = new Date();
+    if (now.getHours() === 3 && now.getMinutes() < 5) {
+      withJobLock('telemetry_optimizer', 23 * 60 * 60, processTelemetryOptimizerJob).catch(err => {
+        log(`Telemetry optimizer lock error: ${err}`, 'telemetry-optimizer');
+      });
+    }
+  }, 5 * 60 * 1000);
+}
+
+// ── Model Intelligence: weekly OpenRouter catalog sync (Sunday 4am) ───────────
+async function processModelIntelligenceJob() {
+  try {
+    const { runModelIntelligence } = await import("./services/modelIntelligence");
+    const result = await runModelIntelligence();
+    log(`Model intelligence: ${result.discovered} discovered, ${result.benchmarked} benchmarked`, 'model-intelligence');
+    jobSupervisor.notifyResult('model_intelligence', 7 * 24 * 60 * 60 * 1000, true);
+  } catch (err) {
+    log(`Model intelligence job error: ${err}`, 'model-intelligence');
+    jobSupervisor.notifyResult('model_intelligence', 7 * 24 * 60 * 60 * 1000, false, undefined, String(err));
+  }
+}
+
+function startModelIntelligenceJob() {
+  log('Starting model intelligence job (weekly Sunday 4am)', 'model-intelligence');
+  setInterval(() => {
+    const now = new Date();
+    // Sunday = 0, 4am
+    if (now.getDay() === 0 && now.getHours() === 4 && now.getMinutes() < 5) {
+      withJobLock('model_intelligence', 6 * 24 * 60 * 60, processModelIntelligenceJob).catch(err => {
+        log(`Model intelligence lock error: ${err}`, 'model-intelligence');
+      });
+    }
+  }, 5 * 60 * 1000);
+}
+
+// ── Self-Assessment Agent: weekly gap analysis (Sunday 3am) ───────────────────
+async function processSelfAssessmentJob() {
+  try {
+    const { runSelfAssessment } = await import("./services/selfAssessmentAgent");
+    const result = await runSelfAssessment();
+    log(`Self-assessment: ${result.proposalsCreated} proposals, ${result.techOpportunities} tech opportunities found`, 'self-assessment');
+    jobSupervisor.notifyResult('self_assessment', 7 * 24 * 60 * 60 * 1000, true);
+  } catch (err) {
+    log(`Self-assessment job error: ${err}`, 'self-assessment');
+    jobSupervisor.notifyResult('self_assessment', 7 * 24 * 60 * 60 * 1000, false, undefined, String(err));
+  }
+}
+
+function startSelfAssessmentJob() {
+  log('Starting self-assessment agent job (weekly Sunday 3am)', 'self-assessment');
+  setInterval(() => {
+    const now = new Date();
+    // Sunday = 0, 3am
+    if (now.getDay() === 0 && now.getHours() === 3 && now.getMinutes() < 5) {
+      withJobLock('self_assessment', 6 * 24 * 60 * 60, processSelfAssessmentJob).catch(err => {
+        log(`Self-assessment lock error: ${err}`, 'self-assessment');
+      });
+    }
+  }, 5 * 60 * 1000);
+}
+
+// ── Evolution Pipeline: process pending proposals (every 6h, deploys 3-5am) ──
+async function processEvolutionPipelineJob() {
+  try {
+    const now = new Date();
+    // Only deploy during low-traffic window: 3am-5am
+    const isDeployWindow = now.getHours() >= 3 && now.getHours() < 5;
+    if (!isDeployWindow) {
+      log('Evolution pipeline: outside deploy window (3-5am), skipping', 'evolution-pipeline');
+      return;
+    }
+    const { processPendingProposals } = await import("./services/evolutionPipeline");
+    await processPendingProposals();
+    jobSupervisor.notifyResult('evolution_pipeline', 6 * 60 * 60 * 1000, true);
+  } catch (err) {
+    log(`Evolution pipeline job error: ${err}`, 'evolution-pipeline');
+    jobSupervisor.notifyResult('evolution_pipeline', 6 * 60 * 60 * 1000, false, undefined, String(err));
+  }
+}
+
+function startEvolutionPipelineJob() {
+  log('Starting evolution pipeline job (every 6 hours, deploys 3-5am only)', 'evolution-pipeline');
+  setInterval(() => {
+    withJobLock('evolution_pipeline', 5 * 60 * 60, processEvolutionPipelineJob).catch(err => {
+      log(`Evolution pipeline lock error: ${err}`, 'evolution-pipeline');
+    });
+  }, 6 * 60 * 60 * 1000);
 }
