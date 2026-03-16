@@ -5,7 +5,7 @@ import crypto from "crypto";
 import { storage, db } from "./storage";
 
 // Auth imports
-import { setupAuth, registerAuthRoutes, isAuthenticated } from "./auth";
+import { setupAuth, registerAuthRoutes, isAuthenticated, setupGoogleOAuth } from "./auth";
 
 // Feature routes (Router-based)
 import { registerAIOperationsRoutes } from "./routes-ai-operations";
@@ -140,6 +140,7 @@ export async function registerRoutes(
   // Register Auth
   await setupAuth(app);
   registerAuthRoutes(app);
+  setupGoogleOAuth(app);
 
   // ============================================
   // HEALTH CHECK (Public endpoint - no rate limiting)
