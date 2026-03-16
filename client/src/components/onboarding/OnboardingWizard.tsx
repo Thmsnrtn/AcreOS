@@ -310,14 +310,10 @@ export function OnboardingWizard() {
   const progress = ((currentStep + 1) / WIZARD_STEPS.length) * 100;
 
   const canContinue = () => {
-    switch (currentStep) {
-      case 0:
-        return !!businessType && organizationName.trim().length > 0;
-      case 2:
-        return true;
-      default:
-        return true;
+    if (currentStep === 0) {
+      return !!businessType && organizationName.trim().length > 0;
     }
+    return true;
   };
 
   const renderStepContent = () => {
