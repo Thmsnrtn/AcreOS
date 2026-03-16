@@ -5,7 +5,7 @@ import crypto from "crypto";
 import { storage, db } from "./storage";
 
 // Auth imports
-import { setupAuth, registerAuthRoutes, isAuthenticated, setupGoogleOAuth } from "./auth";
+import { clerkMiddleware, isAuthenticated, registerAuthRoutes } from "./auth";
 
 // Feature routes (Router-based)
 import { registerAIOperationsRoutes } from "./routes-ai-operations";
@@ -137,10 +137,11 @@ export async function registerRoutes(
   app.use(whiteLabelDomainMiddleware);
   app.use(correlationIdMiddleware);
 
-  // Register Auth
-  await setupAuth(app);
+  // Apply Clerk middleware globally — parses JWT tokens, makes req.auth available
+  app.use(clerkMiddleware());
+
+  // Register auth routes (/api/auth/user, /api/auth/attribution)
   registerAuthRoutes(app);
-  setupGoogleOAuth(app);
 
   // ============================================
   // HEALTH CHECK (Public endpoint - no rate limiting)
@@ -275,7 +276,6 @@ export async function registerRoutes(
   await registerEliteFeatureRoutes(app);
 
   // ─── Address Verification ──────────────────────────────────────────
-  const { isAuthenticated } = await import("./auth");
   const { verifyAddress } = await import("./services/addressVerification");
   app.post("/api/addresses/verify", isAuthenticated, async (req, res) => {
     try {
