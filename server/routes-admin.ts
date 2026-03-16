@@ -37,6 +37,168 @@ const logger = {
   error: (msg: string, meta?: Record<string, any>) => console.error(JSON.stringify({ level: 'ERROR', timestamp: new Date().toISOString(), message: msg, ...meta })),
 };
 
+// ============================================
+// ZOD VALIDATION SCHEMAS (admin routes)
+// ============================================
+
+const createSupportCaseSchema = z.object({
+  subject: z.string().min(1).max(500),
+  message: z.string().min(1).max(5000),
+});
+
+const supportCaseMessageSchema = z.object({
+  message: z.string().min(1).max(5000),
+});
+
+const supportCaseRatingSchema = z.object({
+  rating: z.coerce.number().int().min(1).max(5),
+});
+
+const adminRespondSchema = z.object({
+  message: z.string().min(1).max(5000),
+  resolve: z.boolean().optional(),
+});
+
+const featureRequestUpdateSchema = z.object({
+  status: z.string().optional(),
+  founderNotes: z.string().optional(),
+  priority: z.string().optional(),
+});
+
+const gisValidateSampleSchema = z.object({
+  sampleSize: z.coerce.number().int().min(1).max(50).optional(),
+});
+
+const gisValidateAllSchema = z.object({
+  stateFilter: z.string().optional(),
+  maxConcurrent: z.coerce.number().int().min(1).max(15).optional(),
+  async: z.boolean().optional(),
+});
+
+const setFounderSchema = z.object({
+  organizationId: z.number().int().positive().optional(),
+  isFounder: z.boolean().optional(),
+});
+
+const dataSourceValidateSchema = z.object({
+  sourceId: z.number().int().positive().optional(),
+  category: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(500).optional(),
+});
+
+const dataSourcePatchSchema = z.object({
+  isEnabled: z.boolean().optional(),
+  priority: z.coerce.number().optional(),
+  notes: z.string().optional(),
+});
+
+const countyGisEndpointCreateSchema = z.object({
+  state: z.string().min(2).max(2),
+  county: z.string().min(1).max(100),
+  baseUrl: z.string().url(),
+  endpointType: z.string().optional(),
+  layerId: z.union([z.string(), z.number()]).optional(),
+  apnField: z.string().optional(),
+  ownerField: z.string().optional(),
+  fieldMappings: z.record(z.string()).optional(),
+  fipsCode: z.string().optional(),
+  sourceUrl: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+const testAllGisEndpointsSchema = z.object({
+  onlyUnverified: z.boolean().optional(),
+});
+
+const bulkAddEndpointsSchema = z.object({
+  endpoints: z.array(z.object({
+    state: z.string().min(2).max(2),
+    county: z.string().min(1).max(100),
+    baseUrl: z.string().url(),
+    endpointType: z.string().optional(),
+    confidenceScore: z.number().optional(),
+    fipsCode: z.string().optional(),
+  })).min(1),
+});
+
+const discoveryScanSchema = z.object({
+  keywords: z.array(z.string()).optional(),
+  maxResults: z.coerce.number().int().min(1).max(1000).optional(),
+  targetStates: z.array(z.string()).optional(),
+});
+
+const dataSourcesBulkImportSchema = z.object({
+  sources: z.array(z.object({
+    key: z.string().min(1).max(100),
+    title: z.string().min(1).max(200),
+    category: z.string().min(1),
+    subcategory: z.string().optional(),
+    description: z.string().optional(),
+    portalUrl: z.string().optional(),
+    apiUrl: z.string().optional(),
+    coverage: z.string().optional(),
+    accessLevel: z.string().optional(),
+    dataTypes: z.array(z.string()).optional(),
+    endpointType: z.string().optional(),
+  })).min(1).max(500),
+});
+
+const propertyEnrichSchema = z.object({
+  propertyId: z.number().int().positive(),
+  forceRefresh: z.boolean().optional(),
+});
+
+const aiModelUpdateSchema = z.object({
+  provider: z.string().optional(),
+  modelId: z.string().optional(),
+  displayName: z.string().optional(),
+  costPerMillionInput: z.coerce.number().optional(),
+  costPerMillionOutput: z.coerce.number().optional(),
+  maxTokens: z.coerce.number().int().optional(),
+  taskTypes: z.array(z.string()).optional(),
+  weight: z.coerce.number().optional(),
+  enabled: z.boolean().optional(),
+});
+
+const aiModelCreateSchema = z.object({
+  provider: z.string().optional(),
+  modelId: z.string().min(1),
+  displayName: z.string().min(1),
+  costPerMillionInput: z.coerce.number().optional(),
+  costPerMillionOutput: z.coerce.number().optional(),
+  maxTokens: z.coerce.number().int().optional(),
+  taskTypes: z.array(z.string()).optional(),
+  weight: z.coerce.number().optional(),
+  enabled: z.boolean().optional(),
+});
+
+const coordinatesEnrichSchema = z.object({
+  latitude: z.coerce.number(),
+  longitude: z.coerce.number(),
+  categories: z.array(z.string()).optional(),
+  state: z.string().optional(),
+  county: z.string().optional(),
+  apn: z.string().optional(),
+  forceRefresh: z.boolean().optional(),
+});
+
+const mapLayerPrefSchema = z.object({
+  enabled: z.boolean().optional(),
+  opacity: z.coerce.number().min(0).max(1).optional(),
+});
+
+const enrichAllPropertiesSchema = z.object({
+  forceRefresh: z.boolean().optional(),
+  orgId: z.number().int().positive().optional(),
+});
+
+const systemApiKeyUpdateSchema = z.object({
+  apiKey: z.string().optional(),
+  isActive: z.boolean().optional(),
+});
+
+// ============================================
+
 export function registerAdminRoutes(app: Express): void {
   const api = app;
 
@@ -49,11 +211,9 @@ export function registerAdminRoutes(app: Express): void {
       const org = (req as any).organization;
       const user = req.user as any;
       const userId = user.claims?.sub || user.id;
-      const { subject, message } = req.body as { subject: string; message: string };
-      
-      if (!subject || !message) {
-        return res.status(400).json({ error: "Subject and message are required" });
-      }
+      const parsed = createSupportCaseSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Invalid input", errors: parsed.error.errors });
+      const { subject, message } = parsed.data;
 
       const { supportBrainService } = await import("./services/supportBrain");
       const { case: supportCase, classification } = await supportBrainService.createCase(
@@ -132,7 +292,9 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const org = (req as any).organization;
       const caseId = parseInt(req.params.id);
-      const { message } = req.body as { message: string };
+      const parsedMsg = supportCaseMessageSchema.safeParse(req.body);
+      if (!parsedMsg.success) return res.status(400).json({ message: "Invalid input", errors: parsedMsg.error.errors });
+      const { message } = parsedMsg.data;
 
       const supportCase = await storage.getSupportCase(caseId);
       if (!supportCase || supportCase.organizationId !== org.id) {
@@ -163,7 +325,9 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const org = (req as any).organization;
       const caseId = parseInt(req.params.id);
-      const { rating } = req.body as { rating: number };
+      const parsedRating = supportCaseRatingSchema.safeParse(req.body);
+      if (!parsedRating.success) return res.status(400).json({ message: "Invalid input", errors: parsedRating.error.errors });
+      const { rating } = parsedRating.data;
 
       const supportCase = await storage.getSupportCase(caseId);
       if (!supportCase || supportCase.organizationId !== org.id) {
@@ -242,7 +406,9 @@ export function registerAdminRoutes(app: Express): void {
       const org = (req as any).organization;
       const user = (req as any).user;
       const caseId = parseInt(req.params.id);
-      const { message, resolve } = req.body as { message: string; resolve?: boolean };
+      const parsedRespond = adminRespondSchema.safeParse(req.body);
+      if (!parsedRespond.success) return res.status(400).json({ message: "Invalid input", errors: parsedRespond.error.errors });
+      const { message, resolve } = parsedRespond.data;
 
       if (org.ownerId !== user.id) {
         return res.status(403).json({ error: "Admin access required" });
@@ -441,11 +607,9 @@ export function registerAdminRoutes(app: Express): void {
         return res.status(403).json({ error: "Founder access required" });
       }
 
-      const { status, founderNotes, priority } = req.body as { 
-        status?: string; 
-        founderNotes?: string;
-        priority?: string;
-      };
+      const parsedFR = featureRequestUpdateSchema.safeParse(req.body);
+      if (!parsedFR.success) return res.status(400).json({ message: "Invalid input", errors: parsedFR.error.errors });
+      const { status, founderNotes, priority } = parsedFR.data;
 
       const updates: Record<string, any> = {};
       if (status !== undefined) updates.status = status;
@@ -733,8 +897,10 @@ export function registerAdminRoutes(app: Express): void {
   // Run sample GIS validation (quick test of 20 random endpoints)
   api.post("/api/founder/gis-validate-sample", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
+      const parsedGisSample = gisValidateSampleSchema.safeParse(req.body);
+      if (!parsedGisSample.success) return res.status(400).json({ message: "Invalid input", errors: parsedGisSample.error.errors });
       const { validateSampleEndpoints } = await import("./services/gisValidation");
-      const sampleSize = Math.min(req.body.sampleSize || 20, 50);
+      const sampleSize = Math.min(parsedGisSample.data.sampleSize ?? 20, 50);
       const result = await validateSampleEndpoints(sampleSize);
       res.json(result);
     } catch (err: any) {
@@ -746,8 +912,10 @@ export function registerAdminRoutes(app: Express): void {
   // Run full GIS validation (test all endpoints - runs as background job for large datasets)
   api.post("/api/founder/gis-validate-all", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
+      const parsedGisAll = gisValidateAllSchema.safeParse(req.body);
+      if (!parsedGisAll.success) return res.status(400).json({ message: "Invalid input", errors: parsedGisAll.error.errors });
       const { validateAllEndpoints, getEndpointStats, startValidationJob } = await import("./services/gisValidation");
-      const { stateFilter, maxConcurrent = 10, async: runAsync = false } = req.body;
+      const { stateFilter, maxConcurrent = 10, async: runAsync = false } = parsedGisAll.data;
       
       const stats = await getEndpointStats();
       const estimatedCount = stateFilter ? Math.ceil(stats.activeEndpoints / stats.statesCovered) : stats.activeEndpoints;
@@ -866,8 +1034,10 @@ export function registerAdminRoutes(app: Express): void {
   // Set founder status for an organization (founder admin only)
   api.post("/api/admin/set-founder", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const { organizationId, isFounder } = req.body;
-      
+      const parsedFounder = setFounderSchema.safeParse(req.body);
+      if (!parsedFounder.success) return res.status(400).json({ message: "Invalid input", errors: parsedFounder.error.errors });
+      const { organizationId, isFounder } = parsedFounder.data;
+
       // If no organizationId provided, use the current user's organization
       const org = (req as any).organization;
       const targetOrgId = organizationId || org?.id;
@@ -947,7 +1117,8 @@ export function registerAdminRoutes(app: Express): void {
   api.get("/api/admin/data-sources", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
       const { category, status, limit = "100", offset = "0" } = req.query;
-      
+
+      // dataSources is a system-level shared table; org isolation is not applicable
       let query = db.select().from(dataSources);
       
       const conditions = [];
@@ -983,7 +1154,9 @@ export function registerAdminRoutes(app: Express): void {
 
   api.post("/api/admin/data-sources/validate", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const { sourceId, category, limit = 50 } = req.body;
+      const parsedDSValidate = dataSourceValidateSchema.safeParse(req.body);
+      if (!parsedDSValidate.success) return res.status(400).json({ message: "Invalid input", errors: parsedDSValidate.error.errors });
+      const { sourceId, category, limit = 50 } = parsedDSValidate.data;
       const { dataSourceValidator } = await import("./services/data-source-validator");
       
       if (sourceId) {
@@ -1026,8 +1199,10 @@ export function registerAdminRoutes(app: Express): void {
   api.patch("/api/admin/data-sources/:id", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
       const sourceId = Number(req.params.id);
-      const { isEnabled, priority, notes } = req.body;
-      
+      const parsedDSPatch = dataSourcePatchSchema.safeParse(req.body);
+      if (!parsedDSPatch.success) return res.status(400).json({ message: "Invalid input", errors: parsedDSPatch.error.errors });
+      const { isEnabled, priority, notes } = parsedDSPatch.data;
+
       const updates: Record<string, any> = { updatedAt: new Date() };
       if (isEnabled !== undefined) updates.isEnabled = isEnabled;
       if (priority !== undefined) updates.priority = priority;
@@ -1051,6 +1226,7 @@ export function registerAdminRoutes(app: Express): void {
 
   api.get("/api/admin/data-sources/categories", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
+      // dataSources is a system-level shared table; org isolation is not applicable
       const categories = await db
         .select({
           category: dataSources.category,
@@ -1085,26 +1261,23 @@ export function registerAdminRoutes(app: Express): void {
 
   api.post("/api/county-gis-endpoints", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const { countyGisEndpoints, insertCountyGisEndpointSchema } = await import('@shared/schema');
-      
-      // Validate required fields
-      const { state, county, baseUrl, endpointType } = req.body;
-      if (!state || !county || !baseUrl) {
-        return res.status(400).json({ message: "state, county, and baseUrl are required" });
-      }
-      
+      const { countyGisEndpoints } = await import('@shared/schema');
+      const parsedGisCreate = countyGisEndpointCreateSchema.safeParse(req.body);
+      if (!parsedGisCreate.success) return res.status(400).json({ message: "Invalid input", errors: parsedGisCreate.error.errors });
+      const { state, county, baseUrl, endpointType, layerId, apnField, ownerField, fieldMappings, fipsCode, sourceUrl, notes } = parsedGisCreate.data;
+
       const endpoint = await db.insert(countyGisEndpoints).values({
         state: state.toUpperCase(),
         county,
         baseUrl,
         endpointType: endpointType || "arcgis_rest",
-        layerId: req.body.layerId,
-        apnField: req.body.apnField || "APN",
-        ownerField: req.body.ownerField || "OWNER",
-        fieldMappings: req.body.fieldMappings,
-        fipsCode: req.body.fipsCode,
-        sourceUrl: req.body.sourceUrl,
-        notes: req.body.notes,
+        layerId,
+        apnField: apnField || "APN",
+        ownerField: ownerField || "OWNER",
+        fieldMappings,
+        fipsCode,
+        sourceUrl,
+        notes,
         isActive: true,
         isVerified: false,
         contributedBy: (req as any).user?.email || "admin",
@@ -1213,9 +1386,11 @@ export function registerAdminRoutes(app: Express): void {
   // Test all GIS endpoints
   api.post("/api/county-gis-endpoints/test-all", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
+      const parsedTestAll = testAllGisEndpointsSchema.safeParse(req.body);
+      if (!parsedTestAll.success) return res.status(400).json({ message: "Invalid input", errors: parsedTestAll.error.errors });
       const { countyGisEndpoints } = await import('@shared/schema');
       const { getCountyGisEndpoints } = await import('./services/parcel');
-      const onlyUnverified = req.body.onlyUnverified === true;
+      const onlyUnverified = parsedTestAll.data.onlyUnverified === true;
 
       let endpoints = await getCountyGisEndpoints();
       if (onlyUnverified) {
@@ -1557,19 +1732,10 @@ export function registerAdminRoutes(app: Express): void {
   // Bulk add discovered endpoints
   api.post("/api/county-gis-endpoints/bulk-add", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const { endpoints } = req.body;
-      
-      if (!endpoints || !Array.isArray(endpoints) || endpoints.length === 0) {
-        return res.status(400).json({ message: "No endpoints provided" });
-      }
-      
-      // Validate each endpoint has required fields
-      for (const ep of endpoints) {
-        if (!ep.state || !ep.county || !ep.baseUrl) {
-          return res.status(400).json({ message: "Each endpoint must have state, county, and baseUrl" });
-        }
-      }
-      
+      const parsedBulkAdd = bulkAddEndpointsSchema.safeParse(req.body);
+      if (!parsedBulkAdd.success) return res.status(400).json({ message: "Invalid input", errors: parsedBulkAdd.error.errors });
+      const { endpoints } = parsedBulkAdd.data;
+
       const result = await storage.bulkCreateCountyGisEndpoints(endpoints);
       
       res.json({ 
@@ -1666,9 +1832,11 @@ export function registerAdminRoutes(app: Express): void {
 
   api.post("/api/discovery/scan-arcgis", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
+      const parsedDiscovery = discoveryScanSchema.safeParse(req.body);
+      if (!parsedDiscovery.success) return res.status(400).json({ message: "Invalid input", errors: parsedDiscovery.error.errors });
+      const { keywords, maxResults, targetStates } = parsedDiscovery.data;
       const { runDiscoveryScan } = await import('./services/arcgis-discovery');
-      const { keywords, maxResults, targetStates } = req.body;
-      
+
       console.log("[Discovery] Starting ArcGIS Online scan...");
       const result = await runDiscoveryScan({
         keywords: keywords || undefined,
@@ -1972,7 +2140,9 @@ export function registerAdminRoutes(app: Express): void {
   // Test all enabled data sources (starts background validation job)
   api.post("/api/data-sources/test-all", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const { category, limit = 50 } = req.body || {};
+      const parsedTestAll = dataSourceValidateSchema.safeParse(req.body || {});
+      if (!parsedTestAll.success) return res.status(400).json({ message: "Invalid input", errors: parsedTestAll.error.errors });
+      const { category, limit = 50 } = parsedTestAll.data;
       const { runValidationJob, getValidationJobStatus, isValidationJobRunning } = await import("./services/dataSourceValidationJob");
       
       if (isValidationJobRunning()) {
@@ -2015,18 +2185,9 @@ export function registerAdminRoutes(app: Express): void {
   // Bulk import data sources from JSON array
   api.post("/api/data-sources/bulk-import", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const { sources } = req.body as { sources: Array<{
-        key: string; title: string; category: string; subcategory?: string;
-        description?: string; portalUrl?: string; apiUrl?: string; coverage?: string;
-        accessLevel?: string; dataTypes?: string[]; endpointType?: string;
-      }> };
-
-      if (!Array.isArray(sources) || sources.length === 0) {
-        return res.status(400).json({ message: "sources must be a non-empty array" });
-      }
-      if (sources.length > 500) {
-        return res.status(400).json({ message: "Cannot import more than 500 sources at once" });
-      }
+      const parsedBulkImport = dataSourcesBulkImportSchema.safeParse(req.body);
+      if (!parsedBulkImport.success) return res.status(400).json({ message: "Invalid input", errors: parsedBulkImport.error.errors });
+      const { sources } = parsedBulkImport.data;
 
       let imported = 0;
       let skipped = 0;
@@ -2105,11 +2266,9 @@ export function registerAdminRoutes(app: Express): void {
   api.post("/api/broker/enrich-property", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = (req as any).organization;
-      const { propertyId, forceRefresh } = req.body;
-
-      if (!propertyId) {
-        return res.status(400).json({ message: "propertyId is required" });
-      }
+      const parsedEnrich = propertyEnrichSchema.safeParse(req.body);
+      if (!parsedEnrich.success) return res.status(400).json({ message: "Invalid input", errors: parsedEnrich.error.errors });
+      const { propertyId, forceRefresh } = parsedEnrich.data;
 
       const { propertyEnrichmentService } = await import('./services/propertyEnrichment');
       const result = await propertyEnrichmentService.enrichProperty(org.id, propertyId, forceRefresh);
@@ -2131,11 +2290,9 @@ export function registerAdminRoutes(app: Express): void {
 
   api.post("/api/enrichment/coordinates", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const { latitude, longitude, categories, state, county, apn, forceRefresh } = req.body;
-
-      if (!latitude || !longitude) {
-        return res.status(400).json({ message: "latitude and longitude are required" });
-      }
+      const parsedCoords = coordinatesEnrichSchema.safeParse(req.body);
+      if (!parsedCoords.success) return res.status(400).json({ message: "Invalid input", errors: parsedCoords.error.errors });
+      const { latitude, longitude, categories, state, county, apn, forceRefresh } = parsedCoords.data;
 
       const { propertyEnrichmentService } = await import('./services/propertyEnrichment');
       const result = await propertyEnrichmentService.enrichByCoordinates(latitude, longitude, {
@@ -2198,7 +2355,9 @@ export function registerAdminRoutes(app: Express): void {
       if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
       const layerId = Number(req.params.layerId);
-      const { enabled, opacity } = req.body as { enabled?: boolean; opacity?: number };
+      const parsedLayerPref = mapLayerPrefSchema.safeParse(req.body);
+      if (!parsedLayerPref.success) return res.status(400).json({ message: "Invalid input", errors: parsedLayerPref.error.errors });
+      const { enabled, opacity } = parsedLayerPref.data;
 
       const { userMapLayerPreferences } = await import("@shared/schema");
 
@@ -2249,7 +2408,9 @@ export function registerAdminRoutes(app: Express): void {
   // Batch enrich all properties that have coordinates but missing enrichment
   api.post("/api/admin/enrich-all-properties", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const { forceRefresh = false, orgId: targetOrgId } = req.body as { forceRefresh?: boolean; orgId?: number };
+      const parsedEnrichAll = enrichAllPropertiesSchema.safeParse(req.body);
+      if (!parsedEnrichAll.success) return res.status(400).json({ message: "Invalid input", errors: parsedEnrichAll.error.errors });
+      const { forceRefresh = false, orgId: targetOrgId } = parsedEnrichAll.data;
       const { propertyEnrichmentService } = await import("./services/propertyEnrichment");
 
       const rows: any[] = await db.execute(sql`
@@ -2328,16 +2489,18 @@ export function registerAdminRoutes(app: Express): void {
 
   api.post("/api/admin/ai-models", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
+      const parsedAiCreate = aiModelCreateSchema.safeParse(req.body);
+      if (!parsedAiCreate.success) return res.status(400).json({ message: "Invalid input", errors: parsedAiCreate.error.errors });
       const [created] = await db.insert(aiModelConfigs).values({
-        provider: req.body.provider || "openrouter",
-        modelId: req.body.modelId,
-        displayName: req.body.displayName,
-        costPerMillionInput: req.body.costPerMillionInput,
-        costPerMillionOutput: req.body.costPerMillionOutput,
-        maxTokens: req.body.maxTokens || 4096,
-        taskTypes: req.body.taskTypes || [],
-        weight: req.body.weight ?? 50,
-        enabled: req.body.enabled ?? true,
+        provider: parsedAiCreate.data.provider || "openrouter",
+        modelId: parsedAiCreate.data.modelId,
+        displayName: parsedAiCreate.data.displayName,
+        costPerMillionInput: parsedAiCreate.data.costPerMillionInput,
+        costPerMillionOutput: parsedAiCreate.data.costPerMillionOutput,
+        maxTokens: parsedAiCreate.data.maxTokens || 4096,
+        taskTypes: parsedAiCreate.data.taskTypes || [],
+        weight: parsedAiCreate.data.weight ?? 50,
+        enabled: parsedAiCreate.data.enabled ?? true,
       }).returning();
       const { invalidateDbModelCache } = await import('./services/aiRouter');
       invalidateDbModelCache();
@@ -2350,8 +2513,10 @@ export function registerAdminRoutes(app: Express): void {
   api.put("/api/admin/ai-models/:id", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
+      const parsedAiModel = aiModelUpdateSchema.safeParse(req.body);
+      if (!parsedAiModel.success) return res.status(400).json({ message: "Invalid input", errors: parsedAiModel.error.errors });
       const [updated] = await db.update(aiModelConfigs)
-        .set({ ...req.body, updatedAt: new Date() })
+        .set({ ...parsedAiModel.data, updatedAt: new Date() })
         .where(eq(aiModelConfigs.id, id))
         .returning();
       const { invalidateDbModelCache } = await import('./services/aiRouter');
@@ -2399,7 +2564,9 @@ export function registerAdminRoutes(app: Express): void {
   api.put("/api/admin/system-api-keys/:provider", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
       const { provider } = req.params;
-      const { apiKey, isActive } = req.body;
+      const parsedApiKey = systemApiKeyUpdateSchema.safeParse(req.body);
+      if (!parsedApiKey.success) return res.status(400).json({ message: "Invalid input", errors: parsedApiKey.error.errors });
+      const { apiKey, isActive } = parsedApiKey.data;
       const [existing] = await db.select().from(systemApiKeys).where(eq(systemApiKeys.provider, provider));
       if (existing) {
         const [updated] = await db.update(systemApiKeys)
