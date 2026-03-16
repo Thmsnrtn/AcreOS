@@ -11,7 +11,6 @@ import { eq, sql } from "drizzle-orm";
 import { organizations } from "@shared/schema";
 import { logger, requestLoggingMiddleware, errorLoggingMiddleware } from "./utils/logger";
 import { securityHeaders, corsMiddleware, requestTimeout, validateContentType, sanitizeQueryParams } from "./middleware/security";
-import { csrfProtection } from "./middleware/csrf";
 import crypto from "crypto";
 import { wsServer } from "./websocket";
 import { realtimeAlertsService } from "./services/realtimeAlerts";
@@ -171,9 +170,6 @@ if (process.env.SENTRY_DSN) {
 app.use(validateContentType);
 app.use(requestLoggingMiddleware);
 
-// CSRF protection for state-changing API requests
-app.use("/api", csrfProtection);
-
 // ── Rate limiting ────────────────────────────────────────────────────────────
 // Auth routes: 20 requests per 15 min per IP
 const authLimiter = rateLimit({
@@ -231,7 +227,7 @@ const apiLimiter = rateLimit({
   max: 300,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => (req as any).session?.id || req.ip || 'unknown',
+  keyGenerator: (req) => (req as any).auth?.userId || req.ip || 'unknown',
   message: { message: "Too many requests. Please slow down and try again shortly." },
 });
 app.use("/api", apiLimiter);

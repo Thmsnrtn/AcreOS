@@ -10,31 +10,14 @@ export function validateEnv(): void {
     errors.push("DATABASE_URL is required (e.g. postgresql://user:pass@host:5432/dbname)");
   }
 
-  const secret = process.env.SESSION_SECRET;
-  if (!secret) {
-    errors.push("SESSION_SECRET is required — generate with: openssl rand -hex 64");
-  } else if (secret.length < 32) {
-    errors.push(`SESSION_SECRET is too short (${secret.length} chars) — must be at least 32 characters`);
+  if (!process.env.CLERK_SECRET_KEY) {
+    errors.push("CLERK_SECRET_KEY is required — get it from clerk.com dashboard");
   }
 
   if (!process.env.ENCRYPTION_KEY) {
     errors.push(
-      "ENCRYPTION_KEY is required — generate with: openssl rand -hex 32  (used for AES-256-GCM credential encryption; must NOT be the same value as SESSION_SECRET)"
+      "ENCRYPTION_KEY is required — generate with: openssl rand -hex 32  (used for AES-256-GCM credential encryption)"
     );
-  }
-
-  if (process.env.NODE_ENV === "production") {
-    if (!process.env.APP_URL) {
-      errors.push(
-        "APP_URL is required in production — it is used in password reset email links (e.g. https://app.yourdomain.com)"
-      );
-    }
-
-    if (!process.env.AWS_SES_FROM_EMAIL) {
-      errors.push(
-        "AWS_SES_FROM_EMAIL is required in production — it is used as the sender address for all transactional emails"
-      );
-    }
   }
 
   if (errors.length > 0) {

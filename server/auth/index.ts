@@ -1,3 +1,2 @@
-export { setupAuth, isAuthenticated, getSession, createUser } from "./localAuth";
-export { registerAuthRoutes, requireFounder } from "./routes";
-export { setupGoogleOAuth } from "./oauthAuth";
+export { clerkMiddleware, isAuthenticated, requireFounder } from "./clerkAuth";
+export { registerAuthRoutes } from "./routes";
