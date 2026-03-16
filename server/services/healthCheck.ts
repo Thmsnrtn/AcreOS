@@ -177,20 +177,27 @@ class HealthCheckService {
   }
 
   /**
-   * Check database connectivity
+   * Check database connectivity and report pool stats
    */
   async checkDatabase(): Promise<ServiceHealth> {
     const name = 'database';
     const start = Date.now();
-    
+
     try {
-      const { db } = await import('../db');
+      const { db, pool } = await import('../db');
       const { sql } = await import('drizzle-orm');
-      
+
       await db.execute(sql`SELECT 1`);
       const latency = Date.now() - start;
-      
-      return this.createHealth(name, 'healthy', latency);
+
+      const poolStats = {
+        total: pool.totalCount,
+        idle: pool.idleCount,
+        waiting: pool.waitingCount,
+      };
+      const message = `pool: ${poolStats.total} total, ${poolStats.idle} idle, ${poolStats.waiting} waiting`;
+
+      return this.createHealth(name, 'healthy', latency, message);
     } catch (error: any) {
       const latency = Date.now() - start;
       return this.createHealth(name, 'unavailable', latency, error.message);

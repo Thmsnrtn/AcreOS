@@ -216,14 +216,38 @@ export class LeadScoringService {
   }
 
   private async geocodeAddress(
-    address: string | null, 
-    city: string | null, 
-    state: string | null, 
+    address: string | null,
+    city: string | null,
+    state: string | null,
     zip: string | null
   ): Promise<{ lat: number; lng: number } | null> {
     if (!address || !state) return null;
-    
-    return null;
+
+    const parts = [address, city, state, zip].filter(Boolean);
+    const query = encodeURIComponent(parts.join(', '));
+
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=1&countrycodes=us`,
+        {
+          headers: {
+            'User-Agent': 'AcreOS/1.0 (land-investing-platform)',
+            'Accept-Language': 'en'
+          }
+        }
+      );
+
+      if (!response.ok) return null;
+
+      const results = await response.json();
+      if (!results || results.length === 0) return null;
+
+      const { lat, lon } = results[0];
+      return { lat: parseFloat(lat), lng: parseFloat(lon) };
+    } catch (error) {
+      console.warn('[LeadScoring] Geocoding failed:', error);
+      return null;
+    }
   }
 
   private async calculateFactors(
