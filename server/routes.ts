@@ -25,6 +25,7 @@ import documentIntelligenceRouter from "./routes-document-intelligence";
 import marketIntelligenceRouter from "./routes-market-intelligence";
 import complianceRouter from "./routes-compliance";
 import taxResearcherRouter from "./routes-tax-researcher";
+import dealUnderwritingRouter from "./routes-deal-underwriting";
 
 // Phase 2-4 new feature routes
 import voiceLearningRouter from "./routes-voice-learning";
@@ -235,6 +236,7 @@ export async function registerRoutes(
   app.use('/api/market-intelligence', isAuthenticated, marketIntelligenceRouter);
   app.use('/api/compliance', isAuthenticated, getOrCreateOrg, complianceRouter);
   app.use('/api/tax-researcher', isAuthenticated, getOrCreateOrg, taxResearcherRouter);
+  app.use('/api/deal-underwriting', isAuthenticated, getOrCreateOrg, dealUnderwritingRouter);
 
   // Phase 2-4: Voice Learning, Context Profile, White-Label, Real-Time
   app.use('/api/intelligence', isAuthenticated, getOrCreateOrg, voiceLearningRouter);

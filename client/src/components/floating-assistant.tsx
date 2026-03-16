@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import DOMPurify from "isomorphic-dompurify";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -915,7 +916,7 @@ export function FloatingAssistant() {
       .replace(/`([^`]+)`/g, '<code class="px-1 py-0.5 bg-muted rounded text-xs font-mono">$1</code>')
       .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-primary underline underline-offset-2 hover:opacity-80 inline-flex items-center gap-0.5">$1<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg></a>');
     
-    return <span dangerouslySetInnerHTML={{ __html: processed }} />;
+    return <span dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(processed) }} />;
   };
 
   const renderMessageAttachments = (messageAttachments: MessageAttachment[]) => {

@@ -1,8 +1,8 @@
 // @ts-nocheck — ORM type refinement deferred; runtime-correct
 import { Router } from "express";
 import { db, storage } from "./storage";
-import { eq, and, desc, lt, gte, lte, gt } from "drizzle-orm";
-import { paxObservations, leads, deals, leadActivities, properties, voiceCalls } from "@shared/schema";
+import { eq, and, desc, lt, gte, lte, gt, sql } from "drizzle-orm";
+import { paxObservations, paxNudges, leads, deals, leadActivities, properties, voiceCalls } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 
@@ -419,6 +419,55 @@ router.get("/pax-suggestions", async (req, res) => {
   } catch (error: any) {
     logger.error("Pax suggestions error", { error: error.message });
     res.status(500).json({ message: "Failed to load Pax suggestions" });
+  }
+});
+
+// PATCH /api/pax/nudges/:nudgeId/snooze
+router.patch("/nudges/:nudgeId/snooze", async (req, res) => {
+  try {
+    const org = (req as any).organization;
+    const nudgeId = parseInt(req.params.nudgeId);
+    const { hours = 24 } = req.body; // default snooze 24 hours
+
+    const snoozedUntil = new Date(Date.now() + hours * 60 * 60 * 1000);
+
+    await db.update(paxNudges)
+      .set({
+        snoozedUntil,
+        snoozeCount: sql`${paxNudges.snoozeCount} + 1`,
+        actionType: "snoozed",
+      } as any)
+      .where(and(
+        eq(paxNudges.id as any, nudgeId),
+        eq(paxNudges.organizationId as any, org.id)
+      ));
+
+    res.json({ success: true, snoozedUntil });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PATCH /api/pax/nudges/:nudgeId/action
+router.patch("/nudges/:nudgeId/action", async (req, res) => {
+  try {
+    const org = (req as any).organization;
+    const nudgeId = parseInt(req.params.nudgeId);
+
+    await db.update(paxNudges)
+      .set({
+        actionedAt: new Date(),
+        actionType: "actioned",
+        dismissedAt: new Date(),
+      } as any)
+      .where(and(
+        eq(paxNudges.id as any, nudgeId),
+        eq(paxNudges.organizationId as any, org.id)
+      ));
+
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
   }
 });
 

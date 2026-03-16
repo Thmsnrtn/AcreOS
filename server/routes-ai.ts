@@ -696,9 +696,15 @@ export function registerAIRoutes(app: Express): void {
       const user = req.user as any;
       const userId = user?.claims?.sub || user?.id;
       const { paxNudges } = await import("@shared/schema");
-      const { eq: _eq, and: _and, isNull } = await import("drizzle-orm");
+      const { eq: _eq, and: _and, isNull, or: _or, lte: _lte, sql: _sql } = await import("drizzle-orm");
+      const now = new Date();
       const nudges = await db.select().from(paxNudges)
-        .where(_and(_eq(paxNudges.organizationId, org.id), isNull(paxNudges.dismissedAt)))
+        .where(_and(
+          _eq(paxNudges.organizationId, org.id),
+          isNull(paxNudges.dismissedAt),
+          // Exclude snoozed nudges (snoozedUntil IS NULL OR snoozedUntil < NOW)
+          _or(isNull(paxNudges.snoozedUntil), _lte(paxNudges.snoozedUntil, now))
+        ))
         .orderBy(paxNudges.priority, paxNudges.createdAt)
         .limit(5);
       res.json(nudges);

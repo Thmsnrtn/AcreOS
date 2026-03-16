@@ -271,7 +271,8 @@ export class LeadScoringService {
     factors.responseRecency = await this.calcResponseRecency(lead, profile.responseRecencyWeight || 25);
     factors.emailEngagement = await this.calcEmailEngagement(lead, profile.emailEngagementWeight || 15);
     factors.campaignTouches = await this.calcCampaignTouches(lead, profile.campaignTouchesWeight || 10);
-    
+    factors.priorResponseHistory = await this.calcPriorResponseHistory(lead, profile);
+
     return factors;
   }
 
@@ -525,6 +526,36 @@ export class LeadScoringService {
       weight,
       explanation: touches > 0 ? `${touches} campaign touches` : "No campaign touches yet",
       rawData: { touches },
+    };
+  }
+
+  private async calcPriorResponseHistory(lead: Lead, profile: LeadScoringProfile): Promise<ScoreFactorResult> {
+    // If lead has been contacted 3+ times without responding, reduce score
+    // If lead has responded previously, boost score significantly
+    const touches = Number(lead.responses || 0);
+    const hasResponse = lead.status === "responding" || lead.status === "hot" || lead.status === "contacted";
+    const isUnresponsive = touches >= 3 && !hasResponse;
+
+    let scoreMultiplier = 0.5; // neutral
+    let explanation = "No prior response history";
+
+    if (hasResponse) {
+      scoreMultiplier = 1.0;
+      explanation = "Lead has previously responded — high likelihood of engagement";
+    } else if (isUnresponsive && touches >= 5) {
+      scoreMultiplier = 0.0;
+      explanation = `Lead has been contacted ${touches}× without response — suppress from campaigns`;
+    } else if (isUnresponsive && touches >= 3) {
+      scoreMultiplier = 0.2;
+      explanation = `Lead contacted ${touches}× without response — low priority`;
+    }
+
+    const weight = 20; // significant weight
+    return {
+      value: hasResponse ? "responded" : `${touches} touches, no response`,
+      score: weight * scoreMultiplier * 4,
+      weight,
+      explanation,
     };
   }
 

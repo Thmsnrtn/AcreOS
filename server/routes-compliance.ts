@@ -96,4 +96,29 @@ router.post('/monitor', async (req: Request, res: Response) => {
   }
 });
 
+// POST /usury-check
+router.post('/usury-check', async (req: Request, res: Response) => {
+  try {
+    const { checkUsury } = await import('./services/usury');
+    const { state, rate } = req.body;
+    if (!state || rate === undefined) return res.status(400).json({ error: 'state and rate required' });
+    const clearance = checkUsury(state, Number(rate));
+    res.json(clearance);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /usury-audit
+router.get('/usury-audit', async (req: Request, res: Response) => {
+  try {
+    const { auditOrgUsury } = await import('./services/usury');
+    const org = getOrg(req);
+    const audit = await auditOrgUsury(org.id);
+    res.json(audit);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 export default router;
