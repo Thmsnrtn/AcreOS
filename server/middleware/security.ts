@@ -1,6 +1,12 @@
 import crypto from "crypto";
 import type { Request, Response, NextFunction } from "express";
 
+// ─── F-A05-1: Per-request CSP nonce ─────────────────────────────────────────
+// In production, generate a unique nonce per response and embed it in the CSP.
+// The nonce must also be injected into the HTML shell (see static.ts / index.html).
+// In development, fall back to 'unsafe-inline'/'unsafe-eval' for HMR compatibility.
+// The nonce is stored in res.locals.cspNonce for use by the static file server.
+
 export function securityHeaders(req: Request, res: Response, next: NextFunction) {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
@@ -42,6 +48,8 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
   // Only upgrade to HTTPS in production
   if (process.env.NODE_ENV === "production") {
     cspDirectives.push("upgrade-insecure-requests");
+    // Task #F-A05-2: CSP violation reporting endpoint
+    cspDirectives.push("report-uri /api/csp-report");
   }
 
   res.setHeader("Content-Security-Policy", cspDirectives.join("; "));

@@ -275,8 +275,14 @@ export interface IStorage {
   updateLead(id: number, updates: Partial<InsertLead>): Promise<Lead>;
   deleteLead(id: number): Promise<void>;
   getLeadCount(orgId: number): Promise<number>;
-  bulkDeleteLeads(orgId: number, ids: number[]): Promise<number>;
+  bulkDeleteLeads(orgId: number, ids: number[], userId?: string): Promise<number>;
   bulkUpdateLeads(orgId: number, ids: number[], updates: Partial<InsertLead>): Promise<number>;
+  
+  // Lead Soft-Delete & Recovery
+  getDeletedLeads(orgId: number): Promise<Lead[]>;
+  restoreLeads(orgId: number, ids: number[]): Promise<number>;
+  permanentlyDeleteLeads(orgId: number, ids: number[]): Promise<number>;
+  getLeadsByIds(orgId: number, ids: number[]): Promise<Lead[]>;
   
   // Lead Duplicate Detection
   findDuplicateLeads(orgId: number, criteria: {
@@ -308,8 +314,9 @@ export interface IStorage {
   // Deals
   getDeals(orgId: number): Promise<Deal[]>;
   getDeal(orgId: number, id: number): Promise<Deal | undefined>;
+  getDealsByIds(orgId: number, ids: number[]): Promise<Deal[]>;
   createDeal(deal: InsertDeal): Promise<Deal>;
-  updateDeal(id: number, updates: Partial<InsertDeal>): Promise<Deal>;
+  updateDeal(id: number, updates: Partial<InsertDeal>, expectedUpdatedAt?: Date): Promise<Deal>;
   bulkDeleteDeals(orgId: number, ids: number[]): Promise<number>;
   bulkUpdateDeals(orgId: number, ids: number[], updates: Partial<InsertDeal>): Promise<number>;
   
@@ -1106,6 +1113,17 @@ export interface IStorage {
   getBorrowerMessages(noteId: number): Promise<BorrowerMessage[]>;
   markBorrowerMessagesRead(noteId: number, senderType: string): Promise<void>;
   countUnreadBorrowerMessages(noteId: number, senderType: string): Promise<number>;
+
+  // Field Scout Visits
+  createFieldScoutVisit(data: InsertFieldScoutVisit): Promise<FieldScoutVisit>;
+  getFieldScoutVisit(id: number): Promise<FieldScoutVisit | undefined>;
+  getFieldScoutVisits(visitorId: string, limit?: number, offset?: number): Promise<FieldScoutVisit[]>;
+  countFieldScoutVisits(visitorId: string): Promise<number>;
+
+  // Field Scout Photos
+  createFieldScoutPhoto(data: InsertFieldScoutPhoto): Promise<FieldScoutPhoto>;
+  getFieldScoutPhotosByVisit(visitId: number): Promise<FieldScoutPhoto[]>;
+  getFieldScoutPhotosByLead(leadId: number): Promise<FieldScoutPhoto[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1252,17 +1270,24 @@ export class DatabaseStorage implements IStorage {
   }
   
   async deleteLead(id: number) {
-    await db.delete(leads).where(eq(leads.id, id));
+    // Task 223: Soft delete — set status='deleted' instead of hard-deleting so the
+    // record is preserved for audit purposes.
+    await db.update(leads)
+      .set({ status: "deleted", updatedAt: new Date() })
+      .where(eq(leads.id, id));
   }
   
   async getLeadCount(orgId: number) {
-    const [result] = await db.select({ count: count() }).from(leads).where(eq(leads.organizationId, orgId));
+    const [result] = await db.select({ count: count() }).from(leads)
+      .where(and(eq(leads.organizationId, orgId), sql`${leads.deletedAt} IS NULL`));
     return result?.count || 0;
   }
   
-  async bulkDeleteLeads(orgId: number, ids: number[]): Promise<number> {
+  async bulkDeleteLeads(orgId: number, ids: number[], userId?: string): Promise<number> {
+    // Task 223: Soft delete — set status='deleted' rather than hard-deleting
     if (ids.length === 0) return 0;
-    const result = await db.delete(leads)
+    await db.update(leads)
+      .set({ status: "deleted", updatedAt: new Date() })
       .where(and(eq(leads.organizationId, orgId), inArray(leads.id, ids)));
     return ids.length;
   }
@@ -1271,8 +1296,60 @@ export class DatabaseStorage implements IStorage {
     if (ids.length === 0) return 0;
     await db.update(leads)
       .set({ ...updates, updatedAt: new Date() })
-      .where(and(eq(leads.organizationId, orgId), inArray(leads.id, ids)));
+      .where(and(
+        eq(leads.organizationId, orgId), 
+        inArray(leads.id, ids),
+        sql`${leads.deletedAt} IS NULL` // Only update active leads
+      ));
     return ids.length;
+  }
+  
+  // Lead Soft-Delete & Recovery methods
+  async getDeletedLeads(orgId: number): Promise<Lead[]> {
+    return await db.select().from(leads)
+      .where(and(
+        eq(leads.organizationId, orgId),
+        sql`${leads.deletedAt} IS NOT NULL`
+      ))
+      .orderBy(desc(leads.deletedAt));
+  }
+  
+  async restoreLeads(orgId: number, ids: number[]): Promise<number> {
+    if (ids.length === 0) return 0;
+    const result = await db.update(leads)
+      .set({ 
+        deletedAt: null,
+        deletedBy: null,
+        updatedAt: new Date()
+      })
+      .where(and(
+        eq(leads.organizationId, orgId), 
+        inArray(leads.id, ids),
+        sql`${leads.deletedAt} IS NOT NULL`
+      ));
+    return ids.length;
+  }
+  
+  async permanentlyDeleteLeads(orgId: number, ids: number[]): Promise<number> {
+    if (ids.length === 0) return 0;
+    // Hard delete - only for already soft-deleted leads
+    await db.delete(leads)
+      .where(and(
+        eq(leads.organizationId, orgId), 
+        inArray(leads.id, ids),
+        sql`${leads.deletedAt} IS NOT NULL`
+      ));
+    return ids.length;
+  }
+  
+  async getLeadsByIds(orgId: number, ids: number[]): Promise<Lead[]> {
+    if (ids.length === 0) return [];
+    return await db.select().from(leads)
+      .where(and(
+        eq(leads.organizationId, orgId),
+        inArray(leads.id, ids),
+        sql`${leads.deletedAt} IS NULL`
+      ));
   }
 
   async findDuplicateLeads(orgId: number, criteria: {
@@ -1422,8 +1499,9 @@ export class DatabaseStorage implements IStorage {
   
   // Properties
   async getProperties(orgId: number) {
+    // Task 223: exclude soft-deleted properties from list queries
     return await db.select().from(properties)
-      .where(eq(properties.organizationId, orgId))
+      .where(and(eq(properties.organizationId, orgId), sql`${properties.status} != 'deleted'`))
       .orderBy(desc(properties.createdAt));
   }
   
@@ -1454,15 +1532,15 @@ export class DatabaseStorage implements IStorage {
   }
   
   async deleteProperty(id: number) {
-    // Delete all related records first to avoid foreign key constraints
-    await db.delete(dueDiligenceDossiers).where(eq(dueDiligenceDossiers.propertyId, id));
-    await db.delete(dueDiligenceChecklists).where(eq(dueDiligenceChecklists.propertyId, id));
-    await db.delete(dueDiligenceItems).where(eq(dueDiligenceItems.propertyId, id));
-    await db.delete(propertyListings).where(eq(propertyListings.propertyId, id));
-    await db.delete(deals).where(eq(deals.propertyId, id));
-    
-    // Now delete the property itself
-    await db.delete(properties).where(eq(properties.id, id));
+    // Task 223: Soft delete — set status='deleted' on the property (and cascade soft-delete
+    // dependent deals) so records are preserved for audit purposes.
+    await db.update(properties)
+      .set({ status: "deleted", updatedAt: new Date() })
+      .where(eq(properties.id, id));
+    // Soft-delete any deals tied to this property so they also disappear from list views
+    await db.update(deals)
+      .set({ status: "deleted", updatedAt: new Date() })
+      .where(eq(deals.propertyId, id));
   }
   
   async getPropertyCount(orgId: number) {
@@ -1496,8 +1574,9 @@ export class DatabaseStorage implements IStorage {
   
   // Deals
   async getDeals(orgId: number) {
+    // Task 223: exclude soft-deleted deals from list queries
     return await db.select().from(deals)
-      .where(eq(deals.organizationId, orgId))
+      .where(and(eq(deals.organizationId, orgId), sql`${deals.status} != 'deleted'`))
       .orderBy(desc(deals.createdAt));
   }
   
@@ -1512,18 +1591,42 @@ export class DatabaseStorage implements IStorage {
     return newDeal;
   }
   
-  async updateDeal(id: number, updates: Partial<InsertDeal>) {
+  async updateDeal(id: number, updates: Partial<InsertDeal>, expectedUpdatedAt?: Date) {
+    // Task 219: Optimistic locking — if the caller provides an expectedUpdatedAt timestamp,
+    // only apply the update when the row still has that timestamp (prevents lost-update
+    // races between concurrent requests).
+    const whereClause = expectedUpdatedAt
+      ? and(eq(deals.id, id), eq(deals.updatedAt, expectedUpdatedAt))
+      : eq(deals.id, id);
+
     const [updated] = await db.update(deals)
       .set({ ...updates, updatedAt: new Date() })
-      .where(eq(deals.id, id))
+      .where(whereClause!)
       .returning();
+
+    if (!updated && expectedUpdatedAt) {
+      // Row existed but timestamp didn't match — concurrent modification detected
+      throw new Error(
+        "Deal was modified by another request. Please reload and retry your changes."
+      );
+    }
+
     return updated;
   }
 
   async bulkDeleteDeals(orgId: number, ids: number[]): Promise<number> {
+    // Task 223: Soft delete — set status='deleted' rather than hard-deleting
     if (ids.length === 0) return 0;
-    await db.delete(deals).where(and(eq(deals.organizationId, orgId), inArray(deals.id, ids)));
+    await db.update(deals)
+      .set({ status: "deleted", updatedAt: new Date() })
+      .where(and(eq(deals.organizationId, orgId), inArray(deals.id, ids)));
     return ids.length;
+  }
+
+  async getDealsByIds(orgId: number, ids: number[]): Promise<Deal[]> {
+    if (ids.length === 0) return [];
+    return await db.select().from(deals)
+      .where(and(eq(deals.organizationId, orgId), inArray(deals.id, ids)));
   }
 
   async bulkUpdateDeals(orgId: number, ids: number[], updates: Partial<InsertDeal>): Promise<number> {
@@ -8022,6 +8125,53 @@ Notary Public</p>
         sql`${borrowerMessages.readAt} IS NULL`
       ));
     return Number(result?.cnt ?? 0);
+  }
+
+  // ─── Field Scout Visits ─────────────────────────────────────────────────────
+
+  async createFieldScoutVisit(data: InsertFieldScoutVisit): Promise<FieldScoutVisit> {
+    const [created] = await db.insert(fieldScoutVisits).values(data).returning();
+    return created;
+  }
+
+  async getFieldScoutVisit(id: number): Promise<FieldScoutVisit | undefined> {
+    const [row] = await db.select().from(fieldScoutVisits).where(eq(fieldScoutVisits.id, id));
+    return row;
+  }
+
+  async getFieldScoutVisits(visitorId: string, limit: number = 50, offset: number = 0): Promise<FieldScoutVisit[]> {
+    return await db.select().from(fieldScoutVisits)
+      .where(eq(fieldScoutVisits.visitorId, visitorId))
+      .orderBy(desc(fieldScoutVisits.createdAt))
+      .limit(limit)
+      .offset(offset);
+  }
+
+  async countFieldScoutVisits(visitorId: string): Promise<number> {
+    const [result] = await db
+      .select({ cnt: count() })
+      .from(fieldScoutVisits)
+      .where(eq(fieldScoutVisits.visitorId, visitorId));
+    return Number(result?.cnt ?? 0);
+  }
+
+  // ─── Field Scout Photos ─────────────────────────────────────────────────────
+
+  async createFieldScoutPhoto(data: InsertFieldScoutPhoto): Promise<FieldScoutPhoto> {
+    const [created] = await db.insert(fieldScoutPhotos).values(data).returning();
+    return created;
+  }
+
+  async getFieldScoutPhotosByVisit(visitId: number): Promise<FieldScoutPhoto[]> {
+    return await db.select().from(fieldScoutPhotos)
+      .where(eq(fieldScoutPhotos.visitId, visitId))
+      .orderBy(desc(fieldScoutPhotos.createdAt));
+  }
+
+  async getFieldScoutPhotosByLead(leadId: number): Promise<FieldScoutPhoto[]> {
+    return await db.select().from(fieldScoutPhotos)
+      .where(eq(fieldScoutPhotos.leadId, leadId))
+      .orderBy(desc(fieldScoutPhotos.createdAt));
   }
 }
 

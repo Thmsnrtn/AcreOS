@@ -100,6 +100,8 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
     logger.info(`Founder organization upgraded to enterprise`, { source: "getOrCreateOrg", metadata: { email: userEmail } });
   }
 
+  // Set both `.org` (used by most route files) and `.organization` (legacy alias in routes.ts)
+  (req as any).org = org;
   (req as any).organization = org;
   next();
 }

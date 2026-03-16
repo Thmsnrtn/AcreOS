@@ -1731,8 +1731,7 @@ export async function executeTool(
         if (!enrichmentData) {
           return {
             success: false,
-            error: "No enrichment data found for this property. Run research_property first to fetch data.",
-            hint: "Use research_property tool to trigger enrichment.",
+            error: "No enrichment data found for this property. Use research_property tool to trigger enrichment.",
           };
         }
 
@@ -2000,7 +1999,7 @@ export async function executeTool(
         const staleLeads = allLeads.filter(lead => {
           if (["closed", "dead"].includes(lead.status)) return false;
           if (!lead.lastContactedAt && !lead.createdAt) return true;
-          const lastContact = lead.lastContactedAt || lead.createdAt;
+          const lastContact = lead.lastContactedAt || lead.createdAt || new Date();
           return new Date(lastContact) < cutoffDate;
         });
 
@@ -2018,7 +2017,7 @@ export async function executeTool(
               lastContactedAt: l.lastContactedAt || null,
               createdAt: l.createdAt,
               daysSinceContact: Math.floor(
-                (Date.now() - new Date(l.lastContactedAt || l.createdAt).getTime()) / (1000 * 60 * 60 * 24)
+                (Date.now() - new Date(l.lastContactedAt || l.createdAt || new Date()).getTime()) / (1000 * 60 * 60 * 24)
               ),
             })).sort((a, b) => b.daysSinceContact - a.daysSinceContact),
             message: staleLeads.length > 0

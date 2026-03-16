@@ -35,8 +35,21 @@ const SEAT_ADDON_PRODUCTS = [
 
 const SUBSCRIPTION_PRODUCTS = [
   {
+    name: 'Sprout',
+    description: 'The most accessible way to start land investing. Up to 50 properties, 250 leads, AI due diligence, tax delinquent import, Night Cap dashboard.',
+    metadata: {
+      tier: 'sprout',
+      propertyLimit: '50',
+      leadLimit: '250',
+      teamMembers: '1',
+      aiCredits: '500',
+    },
+    monthlyPrice: 2000, // $20/month
+    yearlyPrice: 19200, // $192/year (20% discount)
+  },
+  {
     name: 'Starter',
-    description: 'Perfect for solo land investors getting started. Up to 100 properties, 500 leads, basic AI assistance.',
+    description: 'Perfect for solo land investors building momentum. Up to 100 properties, 500 leads, full AI assistant Atlas, seller intent & comps analysis.',
     metadata: {
       tier: 'starter',
       propertyLimit: '100',

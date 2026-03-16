@@ -1,0 +1,47 @@
+# Task #8 (DX section) — CODEOWNERS
+# Routes PRs to the correct reviewers per directory.
+# GitHub/GitLab will automatically request review from these owners.
+# Format: <pattern> <owner> [<owner2> ...]
+
+# ── Global default ──────────────────────────────────────────────────────────
+*                                   @acreos-team
+
+# ── Security-critical files — require security review ───────────────────────
+server/middleware/csrf.ts           @acreos-security
+server/middleware/fieldEncryption.ts @acreos-security
+server/middleware/piiMasking.ts     @acreos-security
+server/middleware/secretsValidation.ts @acreos-security
+server/middleware/require2FA.ts     @acreos-security
+server/auth/                        @acreos-security @acreos-team
+shared/models/auth.ts               @acreos-security
+
+# ── Database schema & migrations ────────────────────────────────────────────
+shared/schema.ts                    @acreos-backend @acreos-team
+migrations/                         @acreos-backend @acreos-team
+drizzle.config.ts                   @acreos-backend
+
+# ── Payments & billing ──────────────────────────────────────────────────────
+server/routes-billing.ts            @acreos-backend @acreos-finance
+server/routes-marketplace.ts        @acreos-backend @acreos-finance
+server/stripeService.ts             @acreos-backend @acreos-finance
+server/webhookHandlers.ts           @acreos-backend @acreos-finance
+
+# ── Infrastructure & deployment ─────────────────────────────────────────────
+Dockerfile                          @acreos-infra @acreos-team
+fly.toml                            @acreos-infra @acreos-team
+.github/                            @acreos-infra
+
+# ── Frontend ─────────────────────────────────────────────────────────────────
+client/                             @acreos-frontend
+
+# ── AI & ML ──────────────────────────────────────────────────────────────────
+server/ai/                          @acreos-ai
+server/ml/                          @acreos-ai
+server/middleware/promptInjection.ts @acreos-ai @acreos-security
+
+# ── Tests ────────────────────────────────────────────────────────────────────
+tests/                              @acreos-team
+
+# ── Documentation ────────────────────────────────────────────────────────────
+docs/                               @acreos-team
+*.md                                @acreos-team

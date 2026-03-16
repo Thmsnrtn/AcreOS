@@ -1,9 +1,16 @@
 User-agent: *
+# Block authenticated / private routes
 Disallow: /api/
 Disallow: /admin/
+Disallow: /settings/
 Disallow: /founder/
 Disallow: /portal/
+
+# Allow public pages
 Allow: /
-Allow: /auth
 Allow: /terms
 Allow: /privacy
+Allow: /auth
+
+# Sitemap
+Sitemap: https://app.acreos.com/sitemap.xml

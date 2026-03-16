@@ -12,6 +12,7 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { usageMeteringService, creditService } from "./services/credits";
 import { exportLeadsToCSV, exportPropertiesToCSV, exportDealsToCSV, exportNotesToCSV, type ExportFilters } from "./services/importExport";
 import { workflowEngine, LAND_INVESTING_WORKFLOW_TEMPLATES } from "./services/workflow-engine";
+import { processMentions } from "./services/mentionService";
 
 export function registerCommunicationRoutes(app: Express): void {
   const api = app;
@@ -92,9 +93,11 @@ export function registerCommunicationRoutes(app: Express): void {
   // GET /api/email-identities/:id - Get single email sender identity
   api.get("/api/email-identities/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const org = (req as any).organization;
       const id = parseInt(req.params.id);
       const identity = await storage.getEmailSenderIdentity(id);
-      if (!identity) {
+      // Task #2: IDOR prevention — verify resource belongs to requesting org
+      if (!identity || identity.organizationId !== org.id) {
         return res.status(404).json({ message: "Email identity not found" });
       }
       res.json(identity);
@@ -109,6 +112,11 @@ export function registerCommunicationRoutes(app: Express): void {
     try {
       const org = (req as any).organization;
       const id = parseInt(req.params.id);
+      // Task #2: IDOR prevention — verify resource belongs to requesting org
+      const existing = await storage.getEmailSenderIdentity(id);
+      if (!existing || existing.organizationId !== org.id) {
+        return res.status(404).json({ message: "Email identity not found" });
+      }
       const { fromName, replyToEmail, replyRoutingMode, isActive } = req.body;
 
       const identity = await storage.updateEmailSenderIdentity(id, {
@@ -174,6 +182,11 @@ export function registerCommunicationRoutes(app: Express): void {
     try {
       const org = (req as any).organization;
       const id = parseInt(req.params.id);
+      // Task #2: IDOR prevention — verify resource belongs to requesting org
+      const existing = await storage.getEmailSenderIdentity(id);
+      if (!existing || existing.organizationId !== org.id) {
+        return res.status(404).json({ message: "Email identity not found" });
+      }
       await storage.deleteEmailSenderIdentity(id);
 
       try {
@@ -249,9 +262,11 @@ export function registerCommunicationRoutes(app: Express): void {
   // GET /api/mail-identities/:id - Get single identity
   api.get("/api/mail-identities/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const org = (req as any).organization;
       const id = parseInt(req.params.id);
       const identity = await storage.getMailSenderIdentity(id);
-      if (!identity) {
+      // Task #2: IDOR prevention — verify resource belongs to requesting org
+      if (!identity || identity.organizationId !== org.id) {
         return res.status(404).json({ message: "Mail identity not found" });
       }
       res.json(identity);
@@ -266,6 +281,11 @@ export function registerCommunicationRoutes(app: Express): void {
     try {
       const org = (req as any).organization;
       const id = parseInt(req.params.id);
+      // Task #2: IDOR prevention — verify resource belongs to requesting org
+      const existing = await storage.getMailSenderIdentity(id);
+      if (!existing || existing.organizationId !== org.id) {
+        return res.status(404).json({ message: "Mail identity not found" });
+      }
       const identity = await storage.updateMailSenderIdentity(id, req.body);
 
       try {
@@ -324,6 +344,11 @@ export function registerCommunicationRoutes(app: Express): void {
     try {
       const org = (req as any).organization;
       const id = parseInt(req.params.id);
+      // Task #2: IDOR prevention — verify resource belongs to requesting org
+      const existing = await storage.getMailSenderIdentity(id);
+      if (!existing || existing.organizationId !== org.id) {
+        return res.status(404).json({ message: "Mail identity not found" });
+      }
       await storage.deleteMailSenderIdentity(id);
 
       try {
@@ -351,9 +376,11 @@ export function registerCommunicationRoutes(app: Express): void {
   // POST /api/mail-identities/:id/verify - Trigger Lob address verification
   api.post("/api/mail-identities/:id/verify", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const org = (req as any).organization;
       const id = parseInt(req.params.id);
       const identity = await storage.getMailSenderIdentity(id);
-      if (!identity) {
+      // Task #2: IDOR prevention — verify resource belongs to requesting org
+      if (!identity || identity.organizationId !== org.id) {
         return res.status(404).json({ message: "Mail identity not found" });
       }
       
@@ -429,9 +456,11 @@ export function registerCommunicationRoutes(app: Express): void {
   // GET /api/mailing-orders/:id - Get single order with pieces
   api.get("/api/mailing-orders/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const org = (req as any).organization;
       const id = parseInt(req.params.id);
       const order = await storage.getMailingOrder(id);
-      if (!order) {
+      // Task #2: IDOR prevention — verify resource belongs to requesting org
+      if (!order || order.organizationId !== org.id) {
         return res.status(404).json({ message: "Mailing order not found" });
       }
       res.json(order);
@@ -478,6 +507,11 @@ export function registerCommunicationRoutes(app: Express): void {
     try {
       const org = (req as any).organization;
       const id = parseInt(req.params.id);
+      // Task #2: IDOR prevention — verify resource belongs to requesting org
+      const existing = await storage.getMailingOrder(id);
+      if (!existing || existing.organizationId !== org.id) {
+        return res.status(404).json({ message: "Mailing order not found" });
+      }
       const order = await storage.updateMailingOrder(id, req.body);
 
       try {
@@ -505,7 +539,13 @@ export function registerCommunicationRoutes(app: Express): void {
   // GET /api/mailing-orders/:id/pieces - Get all pieces for an order
   api.get("/api/mailing-orders/:id/pieces", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const org = (req as any).organization;
       const orderId = parseInt(req.params.id);
+      // Task #2: IDOR prevention — verify order belongs to requesting org
+      const order = await storage.getMailingOrder(orderId);
+      if (!order || order.organizationId !== org.id) {
+        return res.status(404).json({ message: "Mailing order not found" });
+      }
       const pieces = await storage.getMailingOrderPieces(orderId);
       res.json(pieces);
     } catch (error: any) {
@@ -525,7 +565,7 @@ export function registerCommunicationRoutes(app: Express): void {
       const isRead = req.query.isRead !== undefined ? req.query.isRead === 'true' : undefined;
       const isArchived = req.query.isArchived !== undefined ? req.query.isArchived === 'true' : undefined;
       const isStarred = req.query.isStarred !== undefined ? req.query.isStarred === 'true' : undefined;
-      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+      const limit = Math.min(100, req.query.limit ? parseInt(req.query.limit as string) : 50);
       const offset = req.query.offset ? parseInt(req.query.offset as string) : 0;
       
       let messages = await storage.getInboxMessages(org.id, { isRead, isArchived, limit, offset });
@@ -557,9 +597,11 @@ export function registerCommunicationRoutes(app: Express): void {
   // GET /api/inbox/:id - Get single inbox message
   api.get("/api/inbox/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const org = (req as any).organization;
       const id = parseInt(req.params.id);
       const message = await storage.getInboxMessage(id);
-      if (!message) {
+      // Task #2: IDOR prevention — verify resource belongs to requesting org
+      if (!message || message.organizationId !== org.id) {
         return res.status(404).json({ message: "Message not found" });
       }
       res.json(message);
@@ -572,7 +614,12 @@ export function registerCommunicationRoutes(app: Express): void {
   // POST /api/inbox/:id/read - Mark message as read
   api.post("/api/inbox/:id/read", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const org = (req as any).organization;
       const id = parseInt(req.params.id);
+      const existing = await storage.getInboxMessage(id);
+      if (!existing || existing.organizationId !== org.id) {
+        return res.status(404).json({ message: "Message not found" });
+      }
       const user = req.user as any;
       const userId = user.claims?.sub || user.id;
       const message = await storage.markInboxMessageRead(id, userId);
@@ -586,7 +633,12 @@ export function registerCommunicationRoutes(app: Express): void {
   // POST /api/inbox/:id/unread - Mark message as unread
   api.post("/api/inbox/:id/unread", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const org = (req as any).organization;
       const id = parseInt(req.params.id);
+      const existing = await storage.getInboxMessage(id);
+      if (!existing || existing.organizationId !== org.id) {
+        return res.status(404).json({ message: "Message not found" });
+      }
       const message = await storage.markInboxMessageUnread(id);
       res.json(message);
     } catch (error: any) {
@@ -598,9 +650,11 @@ export function registerCommunicationRoutes(app: Express): void {
   // POST /api/inbox/:id/star - Toggle star
   api.post("/api/inbox/:id/star", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const org = (req as any).organization;
       const id = parseInt(req.params.id);
       const currentMessage = await storage.getInboxMessage(id);
-      if (!currentMessage) {
+      // Task #2: IDOR prevention — verify resource belongs to requesting org
+      if (!currentMessage || currentMessage.organizationId !== org.id) {
         return res.status(404).json({ message: "Message not found" });
       }
       const message = await storage.starInboxMessage(id, !currentMessage.isStarred);
@@ -614,7 +668,12 @@ export function registerCommunicationRoutes(app: Express): void {
   // POST /api/inbox/:id/archive - Archive message
   api.post("/api/inbox/:id/archive", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const org = (req as any).organization;
       const id = parseInt(req.params.id);
+      const existing = await storage.getInboxMessage(id);
+      if (!existing || existing.organizationId !== org.id) {
+        return res.status(404).json({ message: "Message not found" });
+      }
       const message = await storage.archiveInboxMessage(id);
       res.json(message);
     } catch (error: any) {
@@ -678,14 +737,61 @@ export function registerCommunicationRoutes(app: Express): void {
     try {
       const org = (req as any).organization;
       const entityType = req.query.entityType as string | undefined;
-      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+      const limit = Math.min(100, req.query.limit ? parseInt(req.query.limit as string) : 50);
       const offset = req.query.offset ? parseInt(req.query.offset as string) : 0;
-      
+
       const activities = await storage.getActivityFeed(org.id, { entityType, limit, offset });
       res.json(activities);
     } catch (error: any) {
       console.error("Get activity feed error:", error);
       res.status(500).json({ message: error.message || "Failed to fetch activity feed" });
+    }
+  });
+
+  // POST /api/activity-feed — Add a note/activity entry with @mention support (T57)
+  api.post("/api/activity-feed", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = req.user as any;
+      const userId = user?.claims?.sub ?? user?.id ?? "";
+      const { entityType, entityId, content, eventType = "note_added" } = req.body;
+
+      if (!entityType || !entityId || !content) {
+        return res.status(400).json({ message: "entityType, entityId, and content are required" });
+      }
+
+      const event = await storage.createActivityEvent({
+        organizationId: org.id,
+        entityType,
+        entityId: parseInt(entityId),
+        eventType,
+        description: content,
+        userId,
+        eventDate: new Date(),
+        metadata: { hasContent: true },
+      });
+
+      // Process @mentions asynchronously (non-blocking)
+      if (content.includes("@")) {
+        const authorName = user?.displayName || user?.email?.split("@")[0] || "A team member";
+        setImmediate(async () => {
+          try {
+            await processMentions(org.id, content, {
+              entityType,
+              entityId: parseInt(entityId),
+              authorName,
+              notePreview: content,
+            });
+          } catch (err) {
+            console.error("[Mention] processMentions failed:", err);
+          }
+        });
+      }
+
+      res.status(201).json(event);
+    } catch (error: any) {
+      console.error("Create activity event error:", error);
+      res.status(500).json({ message: error.message || "Failed to create activity event" });
     }
   });
 
@@ -992,7 +1098,7 @@ export function registerCommunicationRoutes(app: Express): void {
       if (!existing) {
         return res.status(404).json({ message: "Workflow not found" });
       }
-      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+      const limit = Math.min(100, req.query.limit ? parseInt(req.query.limit as string) : 50);
       const runs = await storage.getWorkflowRuns(id, limit);
       res.json(runs);
     } catch (error: any) {
