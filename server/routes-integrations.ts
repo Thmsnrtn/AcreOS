@@ -238,9 +238,24 @@ export function registerIntegrationRoutes(app: Express): void {
     try {
       const org = (req as any).organization;
       const { provider } = req.params;
-      
+
       await storage.deleteOrganizationIntegration(org.id, provider);
-      
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          action: "delete",
+          entityType: "integration",
+          entityId: org.id,
+          changes: { before: { provider }, fields: ["deleted"] },
+          ipAddress: req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          metadata: { provider },
+        });
+      } catch (e) { /* non-fatal */ }
+
       res.json({ success: true, message: `${provider} integration removed` });
     } catch (err: any) {
       console.error("Delete integration error:", err);

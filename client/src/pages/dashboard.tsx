@@ -6,11 +6,12 @@ import { useOrganization, useDashboardStats } from "@/hooks/use-organization";
 import { useLeads, useAgingLeads, type AgingLead } from "@/hooks/use-leads";
 import { useProperties } from "@/hooks/use-properties";
 import { usePlaybooks } from "@/hooks/use-playbooks";
-import { Users, Map, Banknote, TrendingUp, Activity, Building2, Crown, AlertTriangle, Clock, Flame, Sun, Snowflake, Sparkles, BookOpen } from "lucide-react";
+import { Users, Map, Banknote, TrendingUp, Activity, Building2, Crown, AlertTriangle, AlertCircle, Clock, Flame, Sun, Snowflake, Sparkles, BookOpen } from "lucide-react";
 import { motion } from "framer-motion";
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { OnboardingWizard, OnboardingProgress } from "@/components/onboarding";
 import { GettingStartedChecklist } from "@/components/getting-started-checklist";
@@ -448,6 +449,19 @@ export default function Dashboard() {
   const visibleCharts = widgetSettings.order.filter(id => 
     (id === "inventoryChart" || id === "leadPipelineChart") && isWidgetVisible(id)
   );
+
+  if (orgError) {
+    return (
+      <PageShell>
+        <div className="flex flex-col items-center justify-center py-16 text-center" data-testid="error-state-dashboard">
+          <AlertCircle className="w-12 h-12 text-destructive mb-4" />
+          <h3 className="text-lg font-semibold mb-2">Failed to load dashboard</h3>
+          <p className="text-muted-foreground mb-4">{(orgError as Error).message || 'Something went wrong'}</p>
+          <Button onClick={() => refetchOrg()} variant="outline">Try again</Button>
+        </div>
+      </PageShell>
+    );
+  }
 
   return (
     <PageShell>
