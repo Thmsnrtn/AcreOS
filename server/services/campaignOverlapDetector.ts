@@ -64,7 +64,7 @@ export class CampaignOverlapDetector {
       }
     }
 
-    const duplicateLeadIds = [...leadCampaignMap.entries()]
+    const duplicateLeadIds = Array.from(leadCampaignMap.entries())
       .filter(([, campaignSet]) => campaignSet.size >= 2)
       .map(([id]) => id);
 
