@@ -29,3 +29,4 @@ logs/snapshots/
 
 # OS / tooling
 Thumbs.db
+.claude/
