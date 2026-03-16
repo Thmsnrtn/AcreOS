@@ -213,6 +213,19 @@ app.use("/api/import", importLimiter);
 app.use("/api/leads/import", importLimiter);
 app.use("/api/properties/import", importLimiter);
 
+// General authenticated API: 300 requests per minute, keyed by session ID (falls
+// back to IP for unauthenticated requests). Prevents a single user behind a
+// shared NAT/proxy from exhausting the per-IP bucket.
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => (req as any).session?.id || req.ip || 'unknown',
+  message: { message: "Too many requests. Please slow down and try again shortly." },
+});
+app.use("/api", apiLimiter);
+
 (async () => {
   // Run DB migrations on startup (production-safe versioned migrations)
   if (process.env.NODE_ENV === "production") {

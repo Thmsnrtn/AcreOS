@@ -10,6 +10,7 @@ import { propertyEnrichmentService } from "./services/propertyEnrichment";
 import { checkUsageLimit } from "./services/usageLimits";
 import { db } from "./db";
 import { outcomeTelemetry } from "@shared/schema";
+import { checkUsury } from "./services/usury";
 
 // Partial update schema for PUT endpoints
 const updateDealSchema = insertDealSchema.partial().omit({ organizationId: true });
@@ -84,8 +85,27 @@ export function registerDealRoutes(app: Express): void {
     try {
       const org = (req as any).organization;
       const input = insertDealSchema.parse({ ...req.body, organizationId: org.id });
+
+      // Usury hard block: check analysisResults.interestRate against state law before saving
+      const dealInterestRate = input.analysisResults?.interestRate;
+      if (dealInterestRate && input.propertyId) {
+        const property = await storage.getProperty(org.id, input.propertyId);
+        if (property?.state) {
+          const usury = checkUsury(property.state, Number(dealInterestRate));
+          if (usury.warningLevel === 'violation') {
+            return res.status(422).json({
+              message: `Interest rate ${dealInterestRate}% exceeds ${property.state} usury limit of ${usury.maxAllowedRate}%. This transaction cannot be saved.`,
+              code: 'USURY_VIOLATION',
+              limit: usury.maxAllowedRate,
+              rate: dealInterestRate,
+              state: property.state,
+            });
+          }
+        }
+      }
+
       const deal = await storage.createDeal(input);
-      
+
       const user = req.user as any;
       const userId = user?.claims?.sub || user?.id;
       await storage.createAuditLogEntry({
@@ -124,8 +144,28 @@ export function registerDealRoutes(app: Express): void {
       if (!existingDeal) return res.status(404).json({ message: "Deal not found" });
       
       const validated = updateDealSchema.parse(req.body);
+
+      // Usury hard block: check updated analysisResults.interestRate against state law before saving
+      const updatedInterestRate = validated.analysisResults?.interestRate ?? existingDeal.analysisResults?.interestRate;
+      const updatedPropertyId = validated.propertyId ?? existingDeal.propertyId;
+      if (updatedInterestRate && updatedPropertyId) {
+        const property = await storage.getProperty(org.id, updatedPropertyId);
+        if (property?.state) {
+          const usury = checkUsury(property.state, Number(updatedInterestRate));
+          if (usury.warningLevel === 'violation') {
+            return res.status(422).json({
+              message: `Interest rate ${updatedInterestRate}% exceeds ${property.state} usury limit of ${usury.maxAllowedRate}%. This transaction cannot be saved.`,
+              code: 'USURY_VIOLATION',
+              limit: usury.maxAllowedRate,
+              rate: updatedInterestRate,
+              state: property.state,
+            });
+          }
+        }
+      }
+
       const deal = await storage.updateDeal(dealId, validated);
-      
+
       const user = req.user as any;
       const userId = user?.claims?.sub || user?.id;
       await storage.createAuditLogEntry({

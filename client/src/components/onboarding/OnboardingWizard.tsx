@@ -15,14 +15,13 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useOrganization } from "@/hooks/use-organization";
-import { 
-  Sparkles, 
-  ArrowRight, 
+import {
+  Sparkles,
+  ArrowRight,
   ArrowLeft,
   Upload,
-  Home,
-  CreditCard,
-  Bot,
+  Mail,
+  Target,
   PartyPopper,
   Loader2,
   SkipForward,
@@ -33,6 +32,7 @@ import {
   FileText,
   Building2,
   Check,
+  Settings,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -45,52 +45,51 @@ type OnboardingStatus = {
     businessType?: BusinessType;
     organizationName?: string;
     dataImported?: boolean;
-    propertyAdded?: boolean;
-    stripeConnected?: boolean;
-    paxExplored?: boolean;
+    emailConnected?: boolean;
+    campaignCreated?: boolean;
     completedSteps?: number[];
     skippedSteps?: number[];
   };
   totalSteps: number;
 };
 
-const STORAGE_KEY = "acreos_onboarding_v2";
+const STORAGE_KEY = "acreos_onboarding_v3";
 
 const WIZARD_STEPS = [
   {
     id: 0,
     name: "welcome",
     title: "Welcome to AcreOS",
-    description: "Let's get you set up with your organization",
+    description: "The operating system for land investors",
     icon: Sparkles,
   },
   {
     id: 1,
     name: "import_leads",
-    title: "Import Your First Lead",
-    description: "Bring in your existing leads or create one manually",
+    title: "Add Your First Leads",
+    description: "Import from CSV or add a lead manually",
     icon: Upload,
   },
   {
     id: 2,
-    name: "add_property",
-    title: "Add Your First Property",
-    description: "Start building your property portfolio",
-    icon: Home,
+    name: "connect_email",
+    title: "Connect Your Email",
+    description: "Send campaigns directly from your inbox",
+    icon: Mail,
   },
   {
     id: 3,
-    name: "connect_stripe",
-    title: "Connect Stripe",
-    description: "Optional: Enable payments for seller-financed deals",
-    icon: CreditCard,
+    name: "create_campaign",
+    title: "Create Your First Campaign",
+    description: "Start reaching out to motivated sellers",
+    icon: Target,
   },
   {
     id: 4,
-    name: "explore_pax",
-    title: "Explore Pax AI",
-    description: "Meet your AI assistant for land investing",
-    icon: Bot,
+    name: "done",
+    title: "You're All Set!",
+    description: "Your AcreOS workspace is ready to go",
+    icon: PartyPopper,
   },
 ];
 
@@ -121,11 +120,6 @@ export function OnboardingWizard() {
   const [currentStep, setCurrentStep] = useState(0);
   const [businessType, setBusinessType] = useState<BusinessType>("land_flipper");
   const [organizationName, setOrganizationName] = useState("");
-  const [propertyAddress, setPropertyAddress] = useState("");
-  const [propertyAcres, setPropertyAcres] = useState("");
-  const [propertyCounty, setPropertyCounty] = useState("");
-  const [propertyState, setPropertyState] = useState("");
-  const [propertyApn, setPropertyApn] = useState("");
 
   const { data: onboardingStatus, refetch: refetchStatus } = useQuery<OnboardingStatus>({
     queryKey: ["/api/onboarding/status"],
@@ -186,28 +180,6 @@ export function OnboardingWizard() {
         description: `Created ${data.provisioned.campaigns} campaign templates based on your business type.`,
       });
       queryClient.invalidateQueries({ queryKey: ["/api/campaigns"] });
-    },
-  });
-
-  const createPropertyMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/properties", {
-        apn: propertyApn || `APN-${Date.now()}`,
-        address: propertyAddress,
-        sizeAcres: propertyAcres || "1",
-        county: propertyCounty,
-        state: propertyState,
-        status: "prospect",
-      });
-      if (!res.ok) throw new Error("Failed to create property");
-      return res.json();
-    },
-    onSuccess: () => {
-      toast({
-        title: "Property added!",
-        description: "Your first property has been created.",
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/properties"] });
     },
   });
 
@@ -277,20 +249,14 @@ export function OnboardingWizard() {
         if (businessType) {
           await provisionMutation.mutateAsync(businessType);
         }
-        await completeStepMutation.mutateAsync({ 
-          stepId: currentStep, 
-          data: { businessType, organizationName } 
-        });
-      } else if (currentStep === 2 && propertyAddress && propertyCounty && propertyState) {
-        await createPropertyMutation.mutateAsync();
-        await completeStepMutation.mutateAsync({ 
-          stepId: currentStep, 
-          data: { propertyAdded: true } 
+        await completeStepMutation.mutateAsync({
+          stepId: currentStep,
+          data: { businessType, organizationName }
         });
       } else {
         await completeStepMutation.mutateAsync({ stepId: currentStep });
       }
-      
+
       if (currentStep < WIZARD_STEPS.length - 1) {
         setCurrentStep(currentStep + 1);
       } else {
@@ -334,8 +300,8 @@ export function OnboardingWizard() {
     await completeMutation.mutateAsync();
   };
 
-  const isPending = completeStepMutation.isPending || provisionMutation.isPending || 
-    completeMutation.isPending || createPropertyMutation.isPending || updateOrgMutation.isPending ||
+  const isPending = completeStepMutation.isPending || provisionMutation.isPending ||
+    completeMutation.isPending || updateOrgMutation.isPending ||
     loadSampleDataMutation.isPending;
   
   const step = WIZARD_STEPS[currentStep];
@@ -358,7 +324,7 @@ export function OnboardingWizard() {
     switch (currentStep) {
       case 0:
         return (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
@@ -375,7 +341,22 @@ export function OnboardingWizard() {
                 <Sparkles className="w-10 h-10 text-primary" />
               </motion.div>
               <h2 className="text-2xl font-bold mb-2">Welcome to AcreOS</h2>
-              <p className="text-muted-foreground">Let's personalize your experience</p>
+              <p className="text-muted-foreground">The operating system for land investors — track leads, run campaigns, and close more deals.</p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 mb-4">
+              {[
+                { icon: Map, label: "Manage leads & properties in one place" },
+                { icon: Mail, label: "Run direct mail, email & SMS campaigns" },
+                { icon: Target, label: "Close deals faster with AI-powered insights" },
+              ].map(({ icon: Icon, label }) => (
+                <div key={label} className="flex items-center gap-3 p-3 rounded-md bg-muted/50">
+                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                    <Icon className="w-4 h-4 text-primary" />
+                  </div>
+                  <span className="text-sm">{label}</span>
+                </div>
+              ))}
             </div>
             
             <div className="space-y-2">
@@ -548,7 +529,7 @@ export function OnboardingWizard() {
 
       case 2:
         return (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
@@ -562,79 +543,53 @@ export function OnboardingWizard() {
                 transition={{ type: "spring", stiffness: 200, damping: 15 }}
                 className="w-20 h-20 mx-auto rounded-full bg-primary/10 flex items-center justify-center mb-4"
               >
-                <Home className="w-10 h-10 text-primary" />
+                <Mail className="w-10 h-10 text-primary" />
               </motion.div>
-              <h2 className="text-2xl font-bold mb-2">Add Your First Property</h2>
-              <p className="text-muted-foreground">Start building your portfolio</p>
+              <h2 className="text-2xl font-bold mb-2">Connect Your Email</h2>
+              <p className="text-muted-foreground">Send campaigns directly from your own inbox for better deliverability</p>
             </div>
-            
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="property-address">Property Address</Label>
-                <Input
-                  id="property-address"
-                  value={propertyAddress}
-                  onChange={(e) => setPropertyAddress(e.target.value)}
-                  placeholder="123 Main St or Tract 5 FM 2222"
-                  data-testid="input-property-address"
-                />
-              </div>
-              
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label htmlFor="property-county">County</Label>
-                  <Input
-                    id="property-county"
-                    value={propertyCounty}
-                    onChange={(e) => setPropertyCounty(e.target.value)}
-                    placeholder="Travis"
-                    data-testid="input-property-county"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="property-state">State</Label>
-                  <Input
-                    id="property-state"
-                    value={propertyState}
-                    onChange={(e) => setPropertyState(e.target.value.toUpperCase())}
-                    placeholder="TX"
-                    maxLength={2}
-                    data-testid="input-property-state"
-                  />
-                </div>
-              </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label htmlFor="property-apn">APN (optional)</Label>
-                  <Input
-                    id="property-apn"
-                    value={propertyApn}
-                    onChange={(e) => setPropertyApn(e.target.value)}
-                    placeholder="123-456-789"
-                    data-testid="input-property-apn"
-                  />
+            <Card
+              className="cursor-pointer hover-elevate border-2 border-primary/20 bg-primary/5"
+              onClick={() => window.open("/settings?tab=email", "_blank")}
+              data-testid="card-connect-email"
+            >
+              <CardContent className="p-4 flex items-center gap-4">
+                <div className="w-12 h-12 rounded-md bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <Settings className="w-6 h-6 text-primary" />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="property-acres">Acres</Label>
-                  <Input
-                    id="property-acres"
-                    type="number"
-                    step="0.01"
-                    value={propertyAcres}
-                    onChange={(e) => setPropertyAcres(e.target.value)}
-                    placeholder="5.25"
-                    data-testid="input-property-acres"
-                  />
+                <div className="flex-1">
+                  <p className="font-medium">Go to Email Settings</p>
+                  <p className="text-sm text-muted-foreground">
+                    Connect Gmail, Outlook, or custom SMTP
+                  </p>
                 </div>
-              </div>
+                <ExternalLink className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+              </CardContent>
+            </Card>
+
+            <div className="space-y-2">
+              {[
+                { icon: Check, label: "Emails sent from your own address" },
+                { icon: Check, label: "Better inbox placement and open rates" },
+                { icon: Check, label: "Replies land in your inbox automatically" },
+              ].map(({ icon: Icon, label }) => (
+                <div key={label} className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Icon className="w-4 h-4 text-green-500 flex-shrink-0" />
+                  <span>{label}</span>
+                </div>
+              ))}
             </div>
+
+            <p className="text-sm text-center text-muted-foreground">
+              This step is optional — you can set it up later in Settings &rsaquo; Email.
+            </p>
           </motion.div>
         );
 
       case 3:
         return (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
@@ -648,40 +603,53 @@ export function OnboardingWizard() {
                 transition={{ type: "spring", stiffness: 200, damping: 15 }}
                 className="w-20 h-20 mx-auto rounded-full bg-primary/10 flex items-center justify-center mb-4"
               >
-                <CreditCard className="w-10 h-10 text-primary" />
+                <Target className="w-10 h-10 text-primary" />
               </motion.div>
-              <h2 className="text-2xl font-bold mb-2">Connect Stripe</h2>
-              <p className="text-muted-foreground">Enable payments for seller-financed deals</p>
+              <h2 className="text-2xl font-bold mb-2">Create Your First Campaign</h2>
+              <p className="text-muted-foreground">Start reaching out to motivated sellers</p>
             </div>
-            
-            <Card 
-              className="cursor-pointer hover-elevate"
-              onClick={() => window.open("/settings?tab=integrations", "_blank")}
-              data-testid="card-connect-stripe"
+
+            <Card
+              className="cursor-pointer hover-elevate border-2 border-primary/20 bg-primary/5"
+              onClick={() => window.open("/campaigns", "_blank")}
+              data-testid="card-create-campaign"
             >
               <CardContent className="p-4 flex items-center gap-4">
-                <div className="w-12 h-12 rounded-md bg-primary/10 flex items-center justify-center">
-                  <CreditCard className="w-6 h-6 text-primary" />
+                <div className="w-12 h-12 rounded-md bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <Target className="w-6 h-6 text-primary" />
                 </div>
                 <div className="flex-1">
-                  <p className="font-medium">Connect Stripe Account</p>
+                  <p className="font-medium">Go to Marketing Hub</p>
                   <p className="text-sm text-muted-foreground">
-                    Accept payments from borrowers securely
+                    Create a direct mail, email, or SMS campaign
                   </p>
                 </div>
-                <ExternalLink className="w-4 h-4 text-muted-foreground" />
+                <ExternalLink className="w-4 h-4 text-muted-foreground flex-shrink-0" />
               </CardContent>
             </Card>
 
+            <div className="space-y-2">
+              {[
+                { icon: Check, label: "Pre-built templates for land investors" },
+                { icon: Check, label: "Target leads by score, stage, or location" },
+                { icon: Check, label: "Track open rates and responses" },
+              ].map(({ icon: Icon, label }) => (
+                <div key={label} className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Icon className="w-4 h-4 text-green-500 flex-shrink-0" />
+                  <span>{label}</span>
+                </div>
+              ))}
+            </div>
+
             <p className="text-sm text-center text-muted-foreground">
-              This step is optional. You can always connect Stripe later in Settings.
+              You can create your first campaign now or skip and do it later.
             </p>
           </motion.div>
         );
 
       case 4:
         return (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
@@ -697,43 +665,36 @@ export function OnboardingWizard() {
               >
                 <PartyPopper className="w-10 h-10 text-green-500" />
               </motion.div>
-              <h2 className="text-2xl font-bold mb-2">Meet Pax AI</h2>
-              <p className="text-muted-foreground">Your AI assistant for land investing</p>
+              <h2 className="text-2xl font-bold mb-2">You're All Set!</h2>
+              <p className="text-muted-foreground">Your AcreOS workspace is ready. Head to the dashboard to get started.</p>
             </div>
-            
-            <Card className="bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20">
-              <CardContent className="p-6">
-                <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
-                    <Bot className="w-6 h-6 text-primary" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold mb-2">What Pax AI can do:</h3>
-                    <ul className="text-sm text-muted-foreground space-y-2">
-                      <li className="flex items-start gap-2">
-                        <Check className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
-                        <span>Analyze properties and generate due diligence reports</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <Check className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
-                        <span>Score leads and recommend the best opportunities</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <Check className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
-                        <span>Generate offer letters and marketing content</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <Check className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
-                        <span>Answer questions about your business data</span>
-                      </li>
-                    </ul>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
 
-            <p className="text-sm text-center text-muted-foreground">
-              Click the chat bubble in the bottom right corner to start chatting with Pax.
+            <div className="space-y-3">
+              {[
+                { icon: Upload, label: "Import leads", done: true },
+                { icon: Mail, label: "Email connected", done: false, optional: true },
+                { icon: Target, label: "First campaign", done: false, optional: true },
+              ].map(({ icon: Icon, label, done, optional }) => (
+                <div
+                  key={label}
+                  className={`flex items-center gap-3 p-3 rounded-md ${done ? "bg-green-500/10" : "bg-muted/50"}`}
+                >
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${done ? "bg-green-500/20" : "bg-muted"}`}>
+                    {done
+                      ? <Check className="w-4 h-4 text-green-500" />
+                      : <Icon className="w-4 h-4 text-muted-foreground" />
+                    }
+                  </div>
+                  <span className={`text-sm flex-1 ${done ? "font-medium" : "text-muted-foreground"}`}>{label}</span>
+                  {optional && !done && (
+                    <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">optional</span>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <p className="text-sm text-center text-muted-foreground pt-2">
+              You can complete the optional steps any time from the dashboard checklist.
             </p>
           </motion.div>
         );

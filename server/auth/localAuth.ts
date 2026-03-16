@@ -15,6 +15,12 @@ const SALT_ROUNDS = 12;
 // ============================================
 
 export function getSession() {
+  const secret = process.env.SESSION_SECRET || '';
+  if (secret.length < 32) {
+    console.error('FATAL: SESSION_SECRET must be at least 32 characters long');
+    if (process.env.NODE_ENV === 'production') process.exit(1);
+  }
+
   const sessionTtl = 7 * 24 * 60 * 60 * 1000; // 1 week
   const pgStore = connectPg(session);
   const sessionStore = new pgStore({

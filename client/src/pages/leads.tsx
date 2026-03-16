@@ -621,7 +621,7 @@ function TcpaConsentBadge({ lead }: { lead: Lead }) {
 }
 
 export default function LeadsPage() {
-  const { data: leads, isLoading } = useLeads();
+  const { data: leads, isLoading, error, refetch } = useLeads();
   const { data: properties } = useProperties();
   const [, setLocation] = useLocation();
   const searchString = useSearch();
