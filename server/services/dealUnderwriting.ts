@@ -261,9 +261,9 @@ export class DealUnderwritingService {
   async getUnderwritingHistory(orgId: number, dealId?: number): Promise<any[]> {
     const query = db.select({
       id: deals.id,
-      title: deals.title,
       status: deals.status,
-      purchasePrice: deals.purchasePrice,
+      offerAmount: deals.offerAmount,
+      acceptedAmount: deals.acceptedAmount,
       analysisResults: deals.analysisResults,
       createdAt: deals.createdAt,
       updatedAt: deals.updatedAt,
