@@ -21,6 +21,9 @@ export const users = pgTable("users", {
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
   referralCode: varchar("referral_code", { length: 16 }).unique(),
+  // OAuth provider fields (null for email/password accounts)
+  oauthProvider: varchar("oauth_provider", { length: 32 }),
+  oauthProviderId: varchar("oauth_provider_id", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

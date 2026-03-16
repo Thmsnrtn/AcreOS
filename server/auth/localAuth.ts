@@ -25,9 +25,12 @@ export function getSession() {
   const pgStore = connectPg(session);
   const sessionStore = new pgStore({
     conString: process.env.DATABASE_URL,
-    createTableIfMissing: false,
-    ttl: sessionTtl,
+    createTableIfMissing: true,
+    ttl: sessionTtl / 1000, // connect-pg-simple expects seconds
     tableName: "sessions",
+    errorLog: (err: Error) => {
+      console.error("[session-store] PostgreSQL session store error:", err.message);
+    },
   });
 
   const isProduction = process.env.NODE_ENV === "production";
@@ -97,6 +100,9 @@ async function verifyPassword(user: any, password: string): Promise<boolean> {
 // ============================================
 
 export async function setupAuth(app: Express) {
+  // trust proxy must be set before session middleware so that secure cookies
+  // work correctly when behind a reverse proxy (e.g. Fly.io, nginx).
+  // Without this, req.secure is false even on HTTPS and sessions won't persist.
   app.set("trust proxy", 1);
   app.use(getSession());
   app.use(passport.initialize());
