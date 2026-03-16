@@ -27,6 +27,9 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Coverage report
+        run: npm run test:coverage
+
       - name: Build
         run: npm run build
 

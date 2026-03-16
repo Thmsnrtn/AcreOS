@@ -79,14 +79,7 @@ import { registerVAEngineRoutes } from "./routes-va-engine";
 import { registerMiscRoutes } from "./routes-misc";
 import { registerSupportTicketRoutes } from "./routes-support-tickets";
 
-// ============================================
-// STRUCTURED LOGGER
-// ============================================
-const logger = {
-  info: (msg: string, meta?: Record<string, any>) => console.log(JSON.stringify({ level: 'INFO', timestamp: new Date().toISOString(), message: msg, ...meta })),
-  warn: (msg: string, meta?: Record<string, any>) => console.warn(JSON.stringify({ level: 'WARN', timestamp: new Date().toISOString(), message: msg, ...meta })),
-  error: (msg: string, meta?: Record<string, any>) => console.error(JSON.stringify({ level: 'ERROR', timestamp: new Date().toISOString(), message: msg, ...meta })),
-};
+import { logger } from "./utils/logger";
 
 // ============================================
 // JOB LOCKING FOR MULTI-INSTANCE DEPLOYMENT
@@ -200,18 +193,15 @@ export async function registerRoutes(
     (req as any).requestId = requestId;
     logger.info("HTTP Request", {
       requestId,
-      method: req.method,
-      path: req.path,
-      ip: req.ip || req.socket.remoteAddress,
+      source: "http",
+      metadata: { method: req.method, path: req.path, ip: req.ip || req.socket.remoteAddress },
     });
     res.on("finish", () => {
       const duration = Date.now() - startTime;
       logger.info("HTTP Response", {
         requestId,
-        method: req.method,
-        path: req.path,
-        statusCode: res.statusCode,
-        durationMs: duration,
+        source: "http",
+        metadata: { method: req.method, path: req.path, statusCode: res.statusCode, durationMs: duration },
       });
     });
     next();

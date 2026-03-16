@@ -269,7 +269,7 @@ export interface IStorage {
   updateTeamMember(id: number, updates: Partial<InsertTeamMember>): Promise<TeamMember>;
   
   // Leads
-  getLeads(orgId: number): Promise<Lead[]>;
+  getLeads(orgId: number, filters?: { assignedTo?: number | null }): Promise<Lead[]>;
   getLead(orgId: number, id: number): Promise<Lead | undefined>;
   createLead(lead: InsertLead): Promise<Lead>;
   updateLead(id: number, updates: Partial<InsertLead>): Promise<Lead>;
@@ -1213,9 +1213,15 @@ export class DatabaseStorage implements IStorage {
   }
   
   // Leads
-  async getLeads(orgId: number) {
+  async getLeads(orgId: number, filters?: { assignedTo?: number | null }) {
+    const conditions = [eq(leads.organizationId, orgId)];
+    if (filters?.assignedTo === null) {
+      conditions.push(sql`${leads.assignedTo} IS NULL`);
+    } else if (filters?.assignedTo !== undefined) {
+      conditions.push(eq(leads.assignedTo, filters.assignedTo));
+    }
     return await db.select().from(leads)
-      .where(eq(leads.organizationId, orgId))
+      .where(and(...conditions))
       .orderBy(desc(leads.createdAt));
   }
   

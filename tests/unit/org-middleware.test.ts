@@ -32,7 +32,7 @@ describe("getOrCreateOrg middleware", () => {
   });
 
   function mockReqRes(user: any = null) {
-    const req = { user } as unknown as Request;
+    const req = { user, session: {} } as unknown as Request;
     const res = {
       status: vi.fn().mockReturnThis(),
       json: vi.fn().mockReturnThis(),

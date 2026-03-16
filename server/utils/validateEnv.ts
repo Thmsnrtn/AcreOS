@@ -17,6 +17,12 @@ export function validateEnv(): void {
     errors.push(`SESSION_SECRET is too short (${secret.length} chars) — must be at least 32 characters`);
   }
 
+  if (!process.env.ENCRYPTION_KEY) {
+    errors.push(
+      "ENCRYPTION_KEY is required — generate with: openssl rand -hex 32  (used for AES-256-GCM credential encryption; must NOT be the same value as SESSION_SECRET)"
+    );
+  }
+
   if (process.env.NODE_ENV === "production") {
     if (!process.env.APP_URL) {
       errors.push(

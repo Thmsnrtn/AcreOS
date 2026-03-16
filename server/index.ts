@@ -109,6 +109,15 @@ async function initStripe() {
   }
 }
 
+// API versioning: /api/v1/* is transparently rewritten to /api/*
+// Clients can use either prefix; new code should use /api/v1/.
+app.use((req, _res, next) => {
+  if (req.url.startsWith("/api/v1/")) {
+    req.url = "/api/" + req.url.slice("/api/v1/".length);
+  }
+  next();
+});
+
 app.use(securityHeaders);
 app.use(corsMiddleware);
 app.use(requestTimeout);
@@ -144,13 +153,14 @@ app.post(
 
 app.use(
   express.json({
+    limit: "1mb",
     verify: (req, _res, buf) => {
       req.rawBody = buf;
     },
   }),
 );
 
-app.use(express.urlencoded({ extended: false }));
+app.use(express.urlencoded({ extended: false, limit: "1mb" }));
 app.use(cookieParser());
 
 // Sentry request/tracing handler — must come before routes, after bodyParsers
@@ -724,17 +734,19 @@ async function runPaxScheduledTasks() {
 }
 
 function startPaxSchedulerJob() {
+  const ONE_MINUTE_MS = 60 * 1000;
+  const PAX_SCHEDULER_TTL_SECONDS = 55; // Lock TTL slightly less than 1-minute interval
   setTimeout(() => {
-    withJobLock('pax_scheduler', TTL_SECONDS, runPaxScheduledTasks).catch(err => {
+    withJobLock('pax_scheduler', PAX_SCHEDULER_TTL_SECONDS, runPaxScheduledTasks).catch(err => {
       log(`Initial pax scheduler run failed: ${err}`, 'pax-scheduler');
     });
   }, 90000); // 90s after startup
 
   setInterval(() => {
-    withJobLock('pax_scheduler', TTL_SECONDS, runPaxScheduledTasks).catch(err => {
+    withJobLock('pax_scheduler', PAX_SCHEDULER_TTL_SECONDS, runPaxScheduledTasks).catch(err => {
       log(`Pax scheduler run failed: ${err}`, 'pax-scheduler');
     });
-  }, ONE_MINUTE);
+  }, ONE_MINUTE_MS);
 }
 
 // ── Pax Nudges background job (every 6 hours) ─────────────────────────────────
@@ -748,13 +760,19 @@ async function runPaxNudges() {
 }
 
 function startPaxNudgesJob() {
+  const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
+  const PAX_NUDGE_TTL_SECONDS = 5 * 60 * 60; // Lock TTL slightly less than interval
   // Run 5 minutes after startup, then every 6 hours
   setTimeout(() => {
-    withJobLock('pax_nudges', TTL_SECONDS, runPaxNudges).catch(() => {});
+    withJobLock('pax_nudges', PAX_NUDGE_TTL_SECONDS, runPaxNudges).catch((err: unknown) => {
+      log(`Pax nudges job failed: ${err}`, 'pax_nudges');
+    });
   }, 5 * 60 * 1000);
   setInterval(() => {
-    withJobLock('pax_nudges', TTL_SECONDS, runPaxNudges).catch(() => {});
-  }, 6 * 60 * 60 * 1000);
+    withJobLock('pax_nudges', PAX_NUDGE_TTL_SECONDS, runPaxNudges).catch((err: unknown) => {
+      log(`Pax nudges job failed: ${err}`, 'pax_nudges');
+    });
+  }, SIX_HOURS_MS);
 }
 
 // Deal Hunter daily scraping job

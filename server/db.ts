@@ -13,7 +13,7 @@ if (!process.env.DATABASE_URL) {
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   max: 20,
-  idleTimeoutMillis: 30_000,
-  connectionTimeoutMillis: 3_000,
+  idleTimeoutMillis: 60_000,
+  connectionTimeoutMillis: 10_000, // increased from 3s — cloud DBs can be slow to acquire
 });
 export const db = drizzle(pool, { schema });

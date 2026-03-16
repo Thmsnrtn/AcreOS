@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 import { storage, db } from "../storage";
 import { eq } from "drizzle-orm";
 import { organizations } from "@shared/schema";
+import { logger } from "../utils/logger";
 
 /**
  * Founder email — gets enterprise tier and unlimited access.
@@ -36,7 +37,7 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
   const userEmail = user.email;
 
   if (!userId) {
-    console.error("No user ID found in session:", user);
+    logger.warn("No user ID found in session", { source: "getOrCreateOrg" });
     return res.status(401).json({ message: "Invalid user session" });
   }
 
@@ -80,7 +81,7 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
     });
 
     if (isFounder) {
-      console.log(`[Founder] Created founder organization for ${userEmail}`);
+      logger.info(`Founder organization created`, { source: "getOrCreateOrg", metadata: { email: userEmail } });
     }
   } else if (isFounder && !org.isFounder) {
     // Upgrade existing org to founder status
@@ -99,7 +100,7 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
       subscriptionTier: "enterprise",
       subscriptionStatus: "active",
     };
-    console.log(`[Founder] Upgraded existing organization to founder status for ${userEmail}`);
+    logger.info(`Founder organization upgraded to enterprise`, { source: "getOrCreateOrg", metadata: { email: userEmail } });
   }
 
   (req as any).organization = org;

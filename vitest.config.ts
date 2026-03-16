@@ -10,6 +10,15 @@ export default defineConfig({
     setupFiles: ["./tests/setup.ts"],
     testTimeout: 15000,
     pool: "forks",
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "lcov"],
+      include: ["server/**/*.ts", "shared/**/*.ts"],
+      exclude: ["**/*.test.ts", "node_modules", "dist"],
+      thresholds: {
+        lines: 30,
+      },
+    },
   },
   resolve: {
     alias: {
