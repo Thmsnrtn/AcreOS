@@ -84,6 +84,8 @@ const OpsDashboardPage = React.lazy(() => import("@/pages/ops-dashboard"));
 const BetaIntakePage = React.lazy(() => import("@/pages/beta-intake"));
 const CompareLGPassPage = React.lazy(() => import("@/pages/compare-lgpass"));
 const CompareGeekPayPage = React.lazy(() => import("@/pages/compare-geekpay"));
+const DealUnderwritingPage = React.lazy(() => import("@/pages/deal-underwriting"));
+const TeamKPIPage = React.lazy(() => import("@/pages/team-kpi"));
 import { OnboardingWizard } from "@/components/onboarding-wizard";
 import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
 import { ConversationTray } from "@/components/conversation-tray";
@@ -364,6 +366,13 @@ function Router() {
       </Route>
       <Route path="/admin/beta-intake">
         {() => <FounderProtectedRoute component={BetaIntakePage} />}
+      </Route>
+
+      <Route path="/deal-underwriting">
+        {() => <ProtectedRoute component={DealUnderwritingPage} />}
+      </Route>
+      <Route path="/team-kpi">
+        {() => <ProtectedRoute component={TeamKPIPage} />}
       </Route>
 
       <Route component={NotFound} />
