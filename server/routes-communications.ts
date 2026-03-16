@@ -37,9 +37,9 @@ export function registerCommunicationRoutes(app: Express): void {
       const org = (req as any).organization;
       const user = req.user as any;
       const teamMember = await storage.getTeamMember(org.id, user.claims?.sub || user.id);
-      
+
       const { type, fromEmail, fromName, replyToEmail, replyRoutingMode } = req.body;
-      
+
       // For platform_alias type, auto-generate email if not provided
       let finalFromEmail = fromEmail;
       const memberName = teamMember?.displayName || 'User';
@@ -48,7 +48,7 @@ export function registerCommunicationRoutes(app: Express): void {
         const lastName = (memberName.split(' ').slice(1).join('') || '').toLowerCase().replace(/[^a-z]/g, '');
         finalFromEmail = lastName ? `${firstName}.${lastName}@acreage.pro` : `${firstName}@acreage.pro`;
       }
-      
+
       const identity = await storage.createEmailSenderIdentity({
         organizationId: org.id,
         teamMemberId: teamMember?.id,
@@ -61,13 +61,27 @@ export function registerCommunicationRoutes(app: Express): void {
         isDefault: false,
         isActive: true,
       });
-      
+
       // If this is the first identity, make it default
       const allIdentities = await storage.getEmailSenderIdentities(org.id);
       if (allIdentities.length === 1) {
         await storage.setDefaultEmailSenderIdentity(org.id, identity.id);
       }
-      
+
+      try {
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          action: "create",
+          entityType: "email_identity",
+          entityId: identity.id,
+          changes: { after: { type, fromEmail: finalFromEmail, fromName }, fields: ["type", "fromEmail", "fromName", "replyToEmail", "replyRoutingMode"] },
+          ipAddress: req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          metadata: {},
+        });
+      } catch (e) { /* non-fatal */ }
+
       res.status(201).json(identity);
     } catch (error: any) {
       console.error("Create email identity error:", error);
@@ -93,15 +107,32 @@ export function registerCommunicationRoutes(app: Express): void {
   // PATCH /api/email-identities/:id - Update email sender identity
   api.patch("/api/email-identities/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const org = (req as any).organization;
       const id = parseInt(req.params.id);
       const { fromName, replyToEmail, replyRoutingMode, isActive } = req.body;
-      
+
       const identity = await storage.updateEmailSenderIdentity(id, {
         fromName,
         replyToEmail,
         replyRoutingMode,
         isActive,
       });
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          action: "update",
+          entityType: "email_identity",
+          entityId: id,
+          changes: { after: { fromName, replyToEmail, replyRoutingMode, isActive }, fields: Object.keys(req.body) },
+          ipAddress: req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          metadata: {},
+        });
+      } catch (e) { /* non-fatal */ }
+
       res.json(identity);
     } catch (error: any) {
       console.error("Update email identity error:", error);
@@ -115,6 +146,22 @@ export function registerCommunicationRoutes(app: Express): void {
       const org = (req as any).organization;
       const id = parseInt(req.params.id);
       await storage.setDefaultEmailSenderIdentity(org.id, id);
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          action: "update",
+          entityType: "email_identity",
+          entityId: id,
+          changes: { after: { isDefault: true }, fields: ["isDefault"] },
+          ipAddress: req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          metadata: {},
+        });
+      } catch (e) { /* non-fatal */ }
+
       res.json({ success: true });
     } catch (error: any) {
       console.error("Set default email identity error:", error);
@@ -125,8 +172,25 @@ export function registerCommunicationRoutes(app: Express): void {
   // DELETE /api/email-identities/:id - Delete email sender identity
   api.delete("/api/email-identities/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const org = (req as any).organization;
       const id = parseInt(req.params.id);
       await storage.deleteEmailSenderIdentity(id);
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          action: "delete",
+          entityType: "email_identity",
+          entityId: id,
+          changes: { before: { id }, fields: ["deleted"] },
+          ipAddress: req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          metadata: {},
+        });
+      } catch (e) { /* non-fatal */ }
+
       res.json({ success: true });
     } catch (error: any) {
       console.error("Delete email identity error:", error);
@@ -159,6 +223,22 @@ export function registerCommunicationRoutes(app: Express): void {
         organizationId: org.id,
       });
       const identity = await storage.createMailSenderIdentity(parsed);
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          action: "create",
+          entityType: "mail_identity",
+          entityId: identity.id,
+          changes: { after: parsed, fields: Object.keys(parsed) },
+          ipAddress: req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          metadata: {},
+        });
+      } catch (e) { /* non-fatal */ }
+
       res.status(201).json(identity);
     } catch (error: any) {
       console.error("Create mail identity error:", error);
@@ -184,8 +264,25 @@ export function registerCommunicationRoutes(app: Express): void {
   // PATCH /api/mail-identities/:id - Update identity
   api.patch("/api/mail-identities/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const org = (req as any).organization;
       const id = parseInt(req.params.id);
       const identity = await storage.updateMailSenderIdentity(id, req.body);
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          action: "update",
+          entityType: "mail_identity",
+          entityId: id,
+          changes: { after: req.body, fields: Object.keys(req.body) },
+          ipAddress: req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          metadata: {},
+        });
+      } catch (e) { /* non-fatal */ }
+
       res.json(identity);
     } catch (error: any) {
       console.error("Update mail identity error:", error);
@@ -199,6 +296,22 @@ export function registerCommunicationRoutes(app: Express): void {
       const org = (req as any).organization;
       const id = parseInt(req.params.id);
       await storage.setDefaultMailSenderIdentity(org.id, id);
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          action: "update",
+          entityType: "mail_identity",
+          entityId: id,
+          changes: { after: { isDefault: true }, fields: ["isDefault"] },
+          ipAddress: req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          metadata: {},
+        });
+      } catch (e) { /* non-fatal */ }
+
       res.json({ success: true });
     } catch (error: any) {
       console.error("Set default mail identity error:", error);
@@ -209,8 +322,25 @@ export function registerCommunicationRoutes(app: Express): void {
   // DELETE /api/mail-identities/:id - Delete identity
   api.delete("/api/mail-identities/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const org = (req as any).organization;
       const id = parseInt(req.params.id);
       await storage.deleteMailSenderIdentity(id);
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          action: "delete",
+          entityType: "mail_identity",
+          entityId: id,
+          changes: { before: { id }, fields: ["deleted"] },
+          ipAddress: req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          metadata: {},
+        });
+      } catch (e) { /* non-fatal */ }
+
       res.json({ success: true });
     } catch (error: any) {
       console.error("Delete mail identity error:", error);
@@ -320,6 +450,22 @@ export function registerCommunicationRoutes(app: Express): void {
         organizationId: org.id,
       });
       const order = await storage.createMailingOrder(parsed);
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          action: "create",
+          entityType: "mailing_order",
+          entityId: order.id,
+          changes: { after: parsed, fields: Object.keys(parsed) },
+          ipAddress: req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          metadata: {},
+        });
+      } catch (e) { /* non-fatal */ }
+
       res.status(201).json(order);
     } catch (error: any) {
       console.error("Create mailing order error:", error);
@@ -330,8 +476,25 @@ export function registerCommunicationRoutes(app: Express): void {
   // PATCH /api/mailing-orders/:id - Update order
   api.patch("/api/mailing-orders/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
+      const org = (req as any).organization;
       const id = parseInt(req.params.id);
       const order = await storage.updateMailingOrder(id, req.body);
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          action: "update",
+          entityType: "mailing_order",
+          entityId: id,
+          changes: { after: req.body, fields: Object.keys(req.body) },
+          ipAddress: req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          metadata: {},
+        });
+      } catch (e) { /* non-fatal */ }
+
       res.json(order);
     } catch (error: any) {
       console.error("Update mailing order error:", error);
@@ -465,11 +628,11 @@ export function registerCommunicationRoutes(app: Express): void {
     try {
       const org = (req as any).organization;
       const { to, subject, html, text, replyTo, inReplyToMessageId } = req.body;
-      
+
       if (!to || !subject || (!html && !text)) {
         return res.status(400).json({ message: "Missing required fields: to, subject, and html or text" });
       }
-      
+
       const { emailService } = await import("./services/emailService");
       const result = await emailService.sendEmail({
         to,
@@ -479,8 +642,23 @@ export function registerCommunicationRoutes(app: Express): void {
         replyTo,
         organizationId: org.id,
       });
-      
+
       if (result.success) {
+        try {
+          const user = req.user as any;
+          await storage.createAuditLogEntry({
+            organizationId: org.id,
+            userId: (user?.claims?.sub || user?.id)?.toString() || null,
+            action: "create",
+            entityType: "email_send",
+            entityId: org.id,
+            changes: { after: { to, subject, messageId: result.messageId }, fields: ["to", "subject"] },
+            ipAddress: req.ip || null,
+            userAgent: req.headers["user-agent"] || null,
+            metadata: {},
+          });
+        } catch (e) { /* non-fatal */ }
+
         res.json({ success: true, messageId: result.messageId });
       } else {
         res.status(500).json({ success: false, error: result.error });
@@ -682,6 +860,22 @@ export function registerCommunicationRoutes(app: Express): void {
         organizationId: org.id,
       });
       const workflow = await storage.createWorkflow(parsed);
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          action: "create",
+          entityType: "workflow",
+          entityId: workflow.id,
+          changes: { after: parsed, fields: Object.keys(parsed) },
+          ipAddress: req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          metadata: {},
+        });
+      } catch (e) { /* non-fatal */ }
+
       res.status(201).json(workflow);
     } catch (error: any) {
       console.error("Create workflow error:", error);
@@ -699,6 +893,22 @@ export function registerCommunicationRoutes(app: Express): void {
         return res.status(404).json({ message: "Workflow not found" });
       }
       const workflow = await storage.updateWorkflow(id, req.body);
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          action: "update",
+          entityType: "workflow",
+          entityId: id,
+          changes: { before: existing, after: req.body, fields: Object.keys(req.body) },
+          ipAddress: req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          metadata: {},
+        });
+      } catch (e) { /* non-fatal */ }
+
       res.json(workflow);
     } catch (error: any) {
       console.error("Update workflow error:", error);
@@ -716,6 +926,22 @@ export function registerCommunicationRoutes(app: Express): void {
         return res.status(404).json({ message: "Workflow not found" });
       }
       await storage.deleteWorkflow(id);
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          action: "delete",
+          entityType: "workflow",
+          entityId: id,
+          changes: { before: existing, fields: ["deleted"] },
+          ipAddress: req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          metadata: {},
+        });
+      } catch (e) { /* non-fatal */ }
+
       res.status(204).send();
     } catch (error: any) {
       console.error("Delete workflow error:", error);
@@ -734,6 +960,22 @@ export function registerCommunicationRoutes(app: Express): void {
       }
       const isActive = req.body.isActive !== undefined ? req.body.isActive : !existing.isActive;
       const workflow = await storage.toggleWorkflow(org.id, id, isActive);
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          action: "update",
+          entityType: "workflow",
+          entityId: id,
+          changes: { before: { isActive: existing.isActive }, after: { isActive }, fields: ["isActive"] },
+          ipAddress: req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          metadata: {},
+        });
+      } catch (e) { /* non-fatal */ }
+
       res.json(workflow);
     } catch (error: any) {
       console.error("Toggle workflow error:", error);
@@ -799,6 +1041,22 @@ export function registerCommunicationRoutes(app: Express): void {
         actions: template.actions as any,
         isActive: true,
       });
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          action: "create",
+          entityType: "workflow",
+          entityId: workflow.id,
+          changes: { after: { templateId, name: template.name }, fields: ["templateId", "name"] },
+          ipAddress: req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          metadata: { source: "template" },
+        });
+      } catch (e) { /* non-fatal */ }
+
       res.status(201).json(workflow);
     } catch (error: any) {
       console.error("Install workflow template error:", error);
@@ -947,13 +1205,29 @@ export function registerCommunicationRoutes(app: Express): void {
     try {
       const org = (req as any).organization;
       const { taskRunnerService, parseSchedule } = await import("./services/task-runner");
-      
+
       const nextRunAt = req.body.nextRunAt ? new Date(req.body.nextRunAt) : parseSchedule(req.body.schedule);
       const task = await taskRunnerService.scheduleTask({
         ...req.body,
         organizationId: org.id,
         nextRunAt,
       });
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          action: "create",
+          entityType: "scheduled_task",
+          entityId: task.id,
+          changes: { after: req.body, fields: Object.keys(req.body) },
+          ipAddress: req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          metadata: {},
+        });
+      } catch (e) { /* non-fatal */ }
+
       res.status(201).json(task);
     } catch (error: any) {
       console.error("Create scheduled task error:", error);
@@ -970,17 +1244,33 @@ export function registerCommunicationRoutes(app: Express): void {
       if (!existing) {
         return res.status(404).json({ message: "Scheduled task not found" });
       }
-      
+
       const updates = { ...req.body };
       delete updates.organizationId;
       delete updates.id;
-      
+
       if (updates.schedule && updates.schedule !== existing.schedule) {
         const { parseSchedule } = await import("./services/task-runner");
         updates.nextRunAt = parseSchedule(updates.schedule);
       }
-      
+
       const task = await storage.updateScheduledTask(id, updates);
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          action: "update",
+          entityType: "scheduled_task",
+          entityId: id,
+          changes: { before: existing, after: updates, fields: Object.keys(updates) },
+          ipAddress: req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          metadata: {},
+        });
+      } catch (e) { /* non-fatal */ }
+
       res.json(task);
     } catch (error: any) {
       console.error("Update scheduled task error:", error);
@@ -998,6 +1288,22 @@ export function registerCommunicationRoutes(app: Express): void {
         return res.status(404).json({ message: "Scheduled task not found" });
       }
       await storage.deleteScheduledTask(id);
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          action: "delete",
+          entityType: "scheduled_task",
+          entityId: id,
+          changes: { before: existing, fields: ["deleted"] },
+          ipAddress: req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          metadata: {},
+        });
+      } catch (e) { /* non-fatal */ }
+
       res.json({ success: true });
     } catch (error: any) {
       console.error("Delete scheduled task error:", error);

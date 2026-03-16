@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { complianceAI } from './services/complianceAI';
+import { storage } from './storage';
 
 const router = Router();
 
@@ -54,7 +55,25 @@ router.get('/properties/:id/check', async (req: Request, res: Response) => {
 // PATCH /alerts/:id/acknowledge
 router.patch('/alerts/:id/acknowledge', async (req: Request, res: Response) => {
   try {
-    await complianceAI.acknowledgeAlert(parseInt(req.params.id));
+    const org = getOrg(req);
+    const alertId = parseInt(req.params.id);
+    await complianceAI.acknowledgeAlert(alertId);
+
+    try {
+      const user = (req as any).user;
+      await storage.createAuditLogEntry({
+        organizationId: org.id,
+        userId: (user?.claims?.sub || user?.id)?.toString() || null,
+        action: "update",
+        entityType: "compliance_alert",
+        entityId: alertId,
+        changes: { after: { acknowledged: true }, fields: ["acknowledged"] },
+        ipAddress: req.ip || null,
+        userAgent: req.headers["user-agent"] || null,
+        metadata: {},
+      });
+    } catch (e) { /* non-fatal */ }
+
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -64,8 +83,26 @@ router.patch('/alerts/:id/acknowledge', async (req: Request, res: Response) => {
 // PATCH /alerts/:id/resolve
 router.patch('/alerts/:id/resolve', async (req: Request, res: Response) => {
   try {
+    const org = getOrg(req);
+    const alertId = parseInt(req.params.id);
     const { resolution } = req.body;
-    await complianceAI.resolveAlert(parseInt(req.params.id), resolution);
+    await complianceAI.resolveAlert(alertId, resolution);
+
+    try {
+      const user = (req as any).user;
+      await storage.createAuditLogEntry({
+        organizationId: org.id,
+        userId: (user?.claims?.sub || user?.id)?.toString() || null,
+        action: "update",
+        entityType: "compliance_alert",
+        entityId: alertId,
+        changes: { after: { resolved: true, resolution }, fields: ["resolved", "resolution"] },
+        ipAddress: req.ip || null,
+        userAgent: req.headers["user-agent"] || null,
+        metadata: {},
+      });
+    } catch (e) { /* non-fatal */ }
+
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -78,6 +115,22 @@ router.post('/disclosures', async (req: Request, res: Response) => {
     const org = getOrg(req);
     const { propertyId, disclosureType } = req.body;
     const disclosure = await complianceAI.generateDisclosure(org.id, parseInt(propertyId), disclosureType);
+
+    try {
+      const user = (req as any).user;
+      await storage.createAuditLogEntry({
+        organizationId: org.id,
+        userId: (user?.claims?.sub || user?.id)?.toString() || null,
+        action: "create",
+        entityType: "compliance_disclosure",
+        entityId: parseInt(propertyId),
+        changes: { after: { propertyId, disclosureType }, fields: ["propertyId", "disclosureType"] },
+        ipAddress: req.ip || null,
+        userAgent: req.headers["user-agent"] || null,
+        metadata: {},
+      });
+    } catch (e) { /* non-fatal */ }
+
     res.json({ disclosure });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -90,6 +143,22 @@ router.post('/monitor', async (req: Request, res: Response) => {
     const org = getOrg(req);
     const { state, county } = req.body;
     await complianceAI.monitorJurisdiction(org.id, state, county);
+
+    try {
+      const user = (req as any).user;
+      await storage.createAuditLogEntry({
+        organizationId: org.id,
+        userId: (user?.claims?.sub || user?.id)?.toString() || null,
+        action: "create",
+        entityType: "compliance_monitor",
+        entityId: org.id,
+        changes: { after: { state, county }, fields: ["state", "county"] },
+        ipAddress: req.ip || null,
+        userAgent: req.headers["user-agent"] || null,
+        metadata: {},
+      });
+    } catch (e) { /* non-fatal */ }
+
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
