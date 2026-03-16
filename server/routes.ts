@@ -39,6 +39,7 @@ import { createRateLimiter, rateLimiters, RATE_LIMIT_CONFIGS, authLimiter, aiLim
 
 // White-label domain middleware
 import { whiteLabelDomainMiddleware } from "./middleware/white-label-domain";
+import { correlationIdMiddleware } from "./middleware/correlationId";
 
 // MCP handler
 import { mcpHandler } from "./mcp-server";
@@ -140,6 +141,7 @@ export async function registerRoutes(
 
   // White-label domain middleware — runs before auth so custom domains are resolved early
   app.use(whiteLabelDomainMiddleware);
+  app.use(correlationIdMiddleware);
 
   // Register Auth
   await setupAuth(app);

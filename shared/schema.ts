@@ -95,6 +95,8 @@ export const organizations = pgTable("organizations", {
   utmMedium: text("utm_medium"),     // e.g. 'cpc', 'social', 'email'
   utmCampaign: text("utm_campaign"), // e.g. 'land-investors-q1'
   utmContent: text("utm_content"),   // e.g. 'carousel-ad-1'
+  // Timezone for scheduling and date display (IANA timezone name)
+  timezone: text("timezone").default("America/New_York"),
   // Referral program credit balance (in cents)
   referralCredits: integer("referral_credits").notNull().default(0),
   // Churn risk scoring (0-100, 100 = highest risk)
@@ -363,6 +365,9 @@ export const leads = pgTable("leads", {
   index("leads_status_idx").on(table.status),
   index("leads_created_at_idx").on(table.createdAt),
   index("leads_email_idx").on(table.email),
+  index("leads_source_campaign_idx").on(table.sourceCampaignId),
+  index("leads_org_updated_idx").on(table.organizationId, table.updatedAt),
+  index("leads_score_idx").on(table.score),
 ]);
 
 // Lead activity/interactions log
@@ -855,6 +860,7 @@ export const payments = pgTable("payments", {
   index("payments_note_idx").on(table.noteId),
   index("payments_status_idx").on(table.status),
   index("payments_due_date_idx").on(table.dueDate),
+  index("payments_created_at_idx").on(table.createdAt),
 ]);
 
 // Property tax escrow payments — tracks actual county tax payments made from escrow
@@ -4684,7 +4690,10 @@ export const automationRules = pgTable("automation_rules", {
   createdBy: text("created_by"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("automation_rules_org_idx").on(table.organizationId),
+  index("automation_rules_active_idx").on(table.isEnabled),
+]);
 
 export const insertAutomationRuleSchema = createInsertSchema(automationRules).omit({
   id: true,
@@ -5634,7 +5643,11 @@ export const delinquencyEscalations = pgTable("delinquency_escalations", {
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("delinquency_escalations_org_idx").on(table.organizationId),
+  index("delinquency_escalations_status_idx").on(table.status),
+  index("delinquency_escalations_next_action_idx").on(table.nextActionDate),
+]);
 
 export const insertDelinquencyEscalationSchema = createInsertSchema(delinquencyEscalations).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertDelinquencyEscalation = z.infer<typeof insertDelinquencyEscalationSchema>;
@@ -7698,10 +7711,14 @@ export const buyerPropertyMatches = pgTable("buyer_property_matches", {
   status: text("status").notNull().default("pending"), // pending, presented, interested, not_interested, purchased
   presentedAt: timestamp("presented_at"),
   buyerResponse: text("buyer_response"),
-  
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("buyer_property_match_buyer_idx").on(table.buyerProfileId),
+  index("buyer_property_match_prop_idx").on(table.propertyId),
+  index("buyer_property_match_org_idx").on(table.organizationId),
+]);
 
 // Buyer Qualifications - pre-screening results
 export const buyerQualifications = pgTable("buyer_qualifications", {
