@@ -722,4 +722,28 @@ export function registerFinanceRoutes(app: Express): void {
 
   // ============================================
 
+  // GET /api/finance/ltv-report
+  api.get("/api/finance/ltv-report", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { ltvMonitorService } = await import("./services/ltvMonitor");
+      const org = (req as any).organization;
+      const report = await ltvMonitorService.getOrgLTVReport(org.id);
+      res.json(report);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // GET /api/finance/ltv/:noteId
+  api.get("/api/finance/ltv/:noteId", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { ltvMonitorService } = await import("./services/ltvMonitor");
+      const snapshot = await ltvMonitorService.getLTVSnapshot(parseInt(req.params.noteId));
+      if (!snapshot) return res.status(404).json({ error: "Note not found" });
+      res.json(snapshot);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
 }

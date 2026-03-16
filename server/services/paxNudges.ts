@@ -2,7 +2,7 @@
 // Runs as a background job every 6 hours; generates insight cards per org.
 
 import { db } from "../db";
-import { eq, and, lt, isNull, count, desc, gte } from "drizzle-orm";
+import { eq, and, lt, isNull, count, desc, gte, or, lte, sql } from "drizzle-orm";
 import {
   organizations, leads, properties, deals, tasks,
   paxNudges,
@@ -23,7 +23,12 @@ async function generateNudgesForOrg(org: Organization): Promise<void> {
     .where(and(
       eq((paxNudges as any).organizationId, orgId),
       isNull((paxNudges as any).dismissedAt),
-      lt((paxNudges as any).createdAt, cutoff)
+      lt((paxNudges as any).createdAt, cutoff),
+      // Only delete nudges that are not currently snoozed
+      or(
+        isNull((paxNudges as any).snoozedUntil),
+        lte((paxNudges as any).snoozedUntil, now)
+      )
     ) as any);
 
   const nudgesToInsert: any[] = [];

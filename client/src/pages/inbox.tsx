@@ -1,3 +1,4 @@
+import DOMPurify from "isomorphic-dompurify";
 import { Sidebar, useSidebarCollapsed } from "@/components/layout-sidebar";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -434,7 +435,7 @@ function EmailMessageDetail({
             {message.bodyHtml ? (
               <div 
                 className="prose prose-sm dark:prose-invert max-w-none"
-                dangerouslySetInnerHTML={{ __html: message.bodyHtml }}
+                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(message.bodyHtml) }}
               />
             ) : (
               <div className="whitespace-pre-wrap text-sm">

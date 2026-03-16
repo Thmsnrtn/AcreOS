@@ -1658,6 +1658,10 @@ export const paxNudges = pgTable("pax_nudges", {
   priority: integer("priority").notNull().default(5), // 1 (high) – 10 (low)
   actionPrompt: text("action_prompt"), // Auto-send this to Pax when user clicks the nudge
   dismissedAt: timestamp("dismissed_at"),
+  snoozedUntil: timestamp("snoozed_until"),
+  snoozeCount: integer("snooze_count").default(0),
+  actionedAt: timestamp("actioned_at"),    // when user clicked through (for tracking)
+  actionType: text("action_type"),          // "dismissed" | "snoozed" | "actioned"
   createdAt: timestamp("created_at").defaultNow(),
 }, (t) => [
   index("pax_nudges_org_idx").on(t.organizationId),
