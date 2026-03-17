@@ -648,9 +648,9 @@ export function Sidebar() {
                 className={cn(
                   "flex items-center gap-2 px-3 py-2 rounded-lg transition-all duration-150 group cursor-pointer min-h-[40px]",
                   active && !hasChildren
-                    ? "bg-primary text-primary-foreground shadow-sm"
+                    ? "nav-item-active"
                     : active
-                    ? "bg-primary/10 text-primary"
+                    ? "nav-item-active"
                     : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
                 )}
                 onClick={() => {
@@ -671,7 +671,7 @@ export function Sidebar() {
                       className={cn(
                         "w-4 h-4 shrink-0 transition-colors",
                         active
-                          ? "text-primary-foreground"
+                          ? "text-primary"
                           : "text-muted-foreground group-hover:text-sidebar-foreground"
                       )}
                     />
@@ -739,7 +739,7 @@ export function Sidebar() {
                         className={cn(
                           "flex items-center gap-2 px-3 py-1.5 rounded-md transition-all duration-150 group min-h-[34px] text-xs",
                           childActive
-                            ? "bg-primary text-primary-foreground shadow-sm"
+                            ? "nav-item-active"
                             : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
                         )}
                         aria-current={childActive ? "page" : undefined}
@@ -750,7 +750,7 @@ export function Sidebar() {
                           className={cn(
                             "w-3.5 h-3.5 shrink-0",
                             childActive
-                              ? "text-primary-foreground"
+                              ? "text-primary"
                               : "text-muted-foreground group-hover:text-sidebar-foreground"
                           )}
                         />
@@ -899,9 +899,9 @@ export function Sidebar() {
                 className={cn(
                   "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-150 group cursor-pointer min-h-[44px]",
                   active && !hasChildren
-                    ? "bg-primary text-primary-foreground shadow-sm"
+                    ? "nav-item-active"
                     : active
-                    ? "bg-primary/10 text-primary"
+                    ? "nav-item-active"
                     : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
                 )}
                 onClick={() => {
@@ -918,7 +918,7 @@ export function Sidebar() {
                     <module.icon
                       className={cn(
                         "w-5 h-5 shrink-0",
-                        active ? "text-primary-foreground" : "text-muted-foreground"
+                        active ? "text-primary" : "text-muted-foreground"
                       )}
                     />
                     <span className="font-medium text-sm flex-1 truncate">
@@ -975,7 +975,7 @@ export function Sidebar() {
                         className={cn(
                           "flex items-center gap-3 px-3 py-2 rounded-md transition-all duration-150 min-h-[40px]",
                           childActive
-                            ? "bg-primary text-primary-foreground shadow-sm"
+                            ? "nav-item-active"
                             : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
                         )}
                         data-testid={`link-nav-${child.href.replace("/", "")}`}
@@ -984,7 +984,7 @@ export function Sidebar() {
                           className={cn(
                             "w-4 h-4 shrink-0",
                             childActive
-                              ? "text-primary-foreground"
+                              ? "text-primary"
                               : "text-muted-foreground"
                           )}
                         />
@@ -1081,7 +1081,7 @@ function CollapsedModuleItem({
             className={cn(
               "flex items-center justify-center w-full p-2.5 rounded-lg transition-all duration-150 min-h-[40px] relative",
               isActive
-                ? "bg-primary text-primary-foreground shadow-sm"
+                ? "nav-item-active"
                 : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
             )}
             onMouseEnter={() => onPrefetch(module.href)}
@@ -1090,7 +1090,7 @@ function CollapsedModuleItem({
             <module.icon
               className={cn(
                 "w-4 h-4 shrink-0",
-                isActive ? "text-primary-foreground" : "text-muted-foreground"
+                isActive ? "text-primary" : "text-muted-foreground"
               )}
             />
             {showBadge && (
@@ -1117,7 +1117,7 @@ function CollapsedModuleItem({
               className={cn(
                 "flex items-center justify-center w-full p-2.5 rounded-lg transition-all duration-150 min-h-[40px] relative",
                 isActive
-                  ? "bg-primary/10 text-primary"
+                  ? "nav-item-active"
                   : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
               )}
               onMouseEnter={() => onPrefetch(module.href)}
@@ -1152,7 +1152,7 @@ function CollapsedModuleItem({
               className={cn(
                 "flex items-center gap-2 px-2 py-1.5 rounded-md transition-all duration-150 text-sm",
                 childActive
-                  ? "bg-primary text-primary-foreground"
+                  ? "nav-item-active"
                   : "text-foreground hover:bg-accent"
               )}
               onMouseEnter={() => onPrefetch(child.href)}
