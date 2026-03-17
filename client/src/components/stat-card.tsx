@@ -21,12 +21,12 @@ interface StatCardProps {
 
 const COLOR_MAP = {
   default: { card: "", icon: "bg-primary/10 text-primary", spark: "hsl(var(--primary))" },
-  terracotta: { card: "bg-primary/5 dark:bg-primary/10 border-primary/20", icon: "bg-primary/15 text-primary", spark: "hsl(var(--primary))" },
-  sage: { card: "bg-accent/5 dark:bg-accent/10 border-accent/20", icon: "bg-accent/15 text-accent", spark: "hsl(var(--accent))" },
-  sand: { card: "bg-secondary border-border", icon: "bg-muted text-muted-foreground", spark: "hsl(var(--muted-foreground))" },
-  emerald: { card: "bg-accent/5 dark:bg-accent/10 border-accent/20", icon: "bg-accent/15 text-accent", spark: "#22c55e" },
-  blue: { card: "bg-primary/5 dark:bg-primary/10 border-primary/20", icon: "bg-primary/15 text-primary", spark: "#3b82f6" },
-  purple: { card: "bg-primary/5 dark:bg-primary/10 border-primary/20", icon: "bg-primary/15 text-primary", spark: "#8b5cf6" },
+  terracotta: { card: "bg-primary/5 dark:bg-primary/8", icon: "bg-primary/15 text-primary", spark: "hsl(var(--primary))" },
+  sage: { card: "bg-accent/5 dark:bg-accent/8", icon: "bg-accent/15 text-accent", spark: "hsl(var(--accent))" },
+  sand: { card: "bg-secondary/50", icon: "bg-muted text-muted-foreground", spark: "hsl(var(--muted-foreground))" },
+  emerald: { card: "bg-accent/5 dark:bg-accent/8", icon: "bg-accent/15 text-accent", spark: "#22c55e" },
+  blue: { card: "bg-primary/5 dark:bg-primary/8", icon: "bg-primary/15 text-primary", spark: "#3b82f6" },
+  purple: { card: "bg-primary/5 dark:bg-primary/8", icon: "bg-primary/15 text-primary", spark: "#8b5cf6" },
 };
 
 export function StatCard({
@@ -61,7 +61,8 @@ export function StatCard({
 
   return (
     <Card
-      className={cn("floating-window border card-hover", cardStyle, className)}
+      variant="glass"
+      className={cn("liquid-glass-subtle card-glass-hover", cardStyle, className)}
       data-testid={testId}
       role="region"
       aria-label={`${title}: ${value}`}
@@ -70,14 +71,14 @@ export function StatCard({
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium text-muted-foreground mb-1">{title}</p>
-            <p className="text-2xl font-bold tracking-tight text-foreground">{value}</p>
+            <p className="text-2xl font-bold tracking-[-0.025em] text-foreground">{value}</p>
             {trend && (
               <p className={cn("text-xs font-medium mt-1.5", trendColor)}>
                 {trend}
               </p>
             )}
           </div>
-          <div className={cn("p-3 rounded-xl shrink-0", iconStyle)} aria-hidden="true">
+          <div className={cn("p-3 rounded-2xl shrink-0", iconStyle)} aria-hidden="true">
             <Icon className="w-5 h-5" />
           </div>
         </div>
