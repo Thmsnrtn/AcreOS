@@ -101,6 +101,9 @@ import { MobileBottomNav } from "@/components/mobile";
 import { BetaFeedbackWidget } from "@/components/beta-feedback-widget";
 import { BetaActivationDetector } from "@/components/beta-activation-detector";
 import { PaxCopilotRail } from "@/components/pax-copilot-rail";
+import { DynamicIsland } from "@/components/dynamic-island";
+import { DynamicIslandProvider } from "@/contexts/dynamic-island-context";
+import { useCursorGlass } from "@/hooks/use-cursor-glass";
 
 // Eagerly loaded: must be available immediately with no delay
 import AuthPage from "@/pages/auth-page";
@@ -549,6 +552,7 @@ function AppContent() {
   const { user } = useAuth();
   useSwipeNavigation();
   useWhiteLabel();
+  useCursorGlass();
 
   React.useEffect(() => {
     if (user) {
@@ -575,6 +579,7 @@ function AppContent() {
       {user && <BetaFeedbackWidget />}
       {user && <BetaActivationDetector />}
       {user && <PaxCopilotRail />}
+      {user && <DynamicIsland />}
       <PWAInstallPrompt />
     </>
   );
@@ -586,6 +591,7 @@ function App() {
       <ThemeProvider>
         <SidebarProvider>
           <PaxRailProvider>
+          <DynamicIslandProvider>
           <QueryClientProvider client={queryClient}>
             <TooltipProvider>
               <HintsProvider>
@@ -599,6 +605,7 @@ function App() {
               </HintsProvider>
             </TooltipProvider>
           </QueryClientProvider>
+          </DynamicIslandProvider>
           </PaxRailProvider>
         </SidebarProvider>
       </ThemeProvider>

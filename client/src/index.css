@@ -805,6 +805,140 @@ textarea:focus-visible,
   transform: scale(1.1);
 }
 
+/* ═══════════════════════════════════════════════════════════════════
+   PHASE 10: CURSOR-REACTIVE GLASS — Tahoe Liquid Glass specular
+   The ::after pseudo-element tracks --cursor-x / --cursor-y, set by
+   the useCursorGlass() hook, creating a live specular highlight.
+═══════════════════════════════════════════════════════════════════ */
+
+.liquid-glass::after,
+.liquid-glass-sm::after,
+.liquid-glass-subtle::after,
+.glass-panel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    circle 110px at var(--cursor-x, 30%) var(--cursor-y, 20%),
+    rgba(255, 255, 255, 0.22) 0%,
+    rgba(255, 255, 255, 0.05) 45%,
+    transparent 70%
+  );
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.liquid-glass:hover::after,
+.liquid-glass-sm:hover::after,
+.liquid-glass-subtle:hover::after,
+.glass-panel:hover::after {
+  opacity: 1;
+}
+.dark .liquid-glass::after,
+.dark .liquid-glass-sm::after,
+.dark .liquid-glass-subtle::after,
+.dark .glass-panel::after {
+  background: radial-gradient(
+    circle 110px at var(--cursor-x, 30%) var(--cursor-y, 20%),
+    rgba(255, 255, 255, 0.11) 0%,
+    rgba(255, 255, 255, 0.02) 45%,
+    transparent 70%
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   MESH / AURORA GRADIENT — animated depth-bloom background
+═══════════════════════════════════════════════════════════════════ */
+
+@keyframes meshShift1 {
+  0%, 100% { transform: translate(0%,  0%)  scale(1);    }
+  33%       { transform: translate(5%, -8%)  scale(1.08); }
+  66%       { transform: translate(-4%, 6%)  scale(0.94); }
+}
+@keyframes meshShift2 {
+  0%, 100% { transform: translate(0%,  0%)  scale(1);    }
+  40%       { transform: translate(-7%, 5%)  scale(1.10); }
+  80%       { transform: translate(8%, -4%)  scale(0.92); }
+}
+@keyframes meshShift3 {
+  0%, 100% { transform: translate(0%, 0%)  scale(1);    }
+  50%       { transform: translate(4%, 8%)  scale(1.06); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   SCROLL FADE EDGES — content-aware fade on scrollable containers
+═══════════════════════════════════════════════════════════════════ */
+
+.scroll-fade {
+  mask-image: linear-gradient(to bottom, transparent 0%, black 4%, black 96%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 4%, black 96%, transparent 100%);
+}
+.scroll-fade-x {
+  mask-image: linear-gradient(to right, transparent 0%, black 4%, black 96%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, black 4%, black 96%, transparent 100%);
+}
+.scroll-fade-bottom {
+  mask-image: linear-gradient(to bottom, black 70%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black 70%, transparent 100%);
+}
+.scroll-fade-top {
+  mask-image: linear-gradient(to top, black 70%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to top, black 70%, transparent 100%);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   DYNAMIC ISLAND — floating status pill keyframes
+═══════════════════════════════════════════════════════════════════ */
+
+@keyframes islandBounce {
+  0%   { transform: translateX(-50%) scale(1);    }
+  30%  { transform: translateX(-50%) scale(0.96); }
+  70%  { transform: translateX(-50%) scale(1.03); }
+  100% { transform: translateX(-50%) scale(1);    }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   WINDOW TRAFFIC LIGHTS — macOS-style modal chrome
+═══════════════════════════════════════════════════════════════════ */
+
+.traffic-light-close {
+  width: 12px;
+  height: 12px;
+  border-radius: 9999px;
+  background: #FF5F57;
+  border: 0.5px solid rgba(0, 0, 0, 0.18);
+  box-shadow: inset 0 0.5px 0 rgba(255,255,255,0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: filter 0.1s ease, transform 0.1s ease;
+}
+.traffic-light-close:hover {
+  filter: brightness(1.1);
+  transform: scale(1.1);
+}
+.traffic-light-close:active {
+  filter: brightness(0.9);
+  transform: scale(0.94);
+}
+/* The × symbol — hidden until hover of the traffic light group */
+.traffic-light-close .tl-symbol {
+  opacity: 0;
+  font-size: 8px;
+  line-height: 1;
+  font-weight: 700;
+  color: rgba(100, 20, 15, 0.8);
+  transition: opacity 0.1s ease;
+  pointer-events: none;
+  user-select: none;
+}
+.traffic-light-group:hover .tl-symbol {
+  opacity: 1;
+}
+
 /* Reduced motion override */
 @media (prefers-reduced-motion: reduce) {
   .sidebar-spring,
@@ -815,8 +949,13 @@ textarea:focus-visible,
   .sub-items-reveal,
   .command-spring,
   .skeleton-shimmer,
-  .badge-pulse {
+  .badge-pulse,
+  .liquid-glass::after,
+  .liquid-glass-sm::after,
+  .liquid-glass-subtle::after,
+  .glass-panel::after {
     animation: none !important;
     transition: none !important;
+    opacity: 0 !important;
   }
 }
