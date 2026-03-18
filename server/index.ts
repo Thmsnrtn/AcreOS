@@ -526,6 +526,11 @@ app.use("/api/auth", async (req, res, next) => {
       // Start real-time alert sync job (every 5 minutes)
       startRealtimeAlertSyncJob();
 
+      // Sovereign Company Protocol — seed AI agent personas and register briefing jobs
+      seedCompanyAgentsOnStartup();
+      startCompanyBriefingJob();
+      startTrustEvolutionJob();
+
       // Auto-seed county GIS endpoints for free parcel lookups
       seedCountyGisEndpointsOnStartup();
       
@@ -1418,4 +1423,75 @@ function startFounderBriefingJob() {
       processFounderBriefing();
     }
   }, 5 * 60 * 1000);
+}
+
+// ============================================================================
+// Sovereign Company Protocol — Agent Seeding & Background Jobs
+// ============================================================================
+
+/**
+ * Seed the 10 AI agent personas on startup.
+ * Safe to call repeatedly — upserts only.
+ */
+function seedCompanyAgentsOnStartup() {
+  // Delay 5 seconds after startup to let DB be ready
+  setTimeout(() => {
+    import('./services/companyAgents').then(({ companyAgentService }) => {
+      companyAgentService.seedAgents()
+        .then(() => log('Company agents seeded successfully (10 personas)', 'sovereign'))
+        .catch(err => log(`Company agent seeding failed: ${err}`, 'sovereign'));
+    }).catch(err => log(`Company agents import failed: ${err}`, 'sovereign'));
+  }, 5000);
+}
+
+/**
+ * Pre-generate the CEO briefing daily at 6:45am CT (11:45 UTC)
+ * so it's cached and instant when the founder opens the dashboard at 7am.
+ */
+function startCompanyBriefingJob() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  const TTL_SECONDS = 55 * 60;
+
+  log('Registering company briefing pre-generation job (daily 6:45am CT)', 'sovereign');
+
+  setInterval(() => {
+    const now = new Date();
+    const utcHour = now.getUTCHours();
+    const utcMin = now.getUTCMinutes();
+
+    // 11:45 UTC = 6:45 AM CT
+    if (utcHour === 11 && utcMin >= 45 && utcMin < 50) {
+      import('./services/companyBriefingGenerator').then(({ generateCompanyBriefing }) => {
+        withJobLock('company_briefing_generator', TTL_SECONDS, generateCompanyBriefing).catch(err => {
+          log(`Company briefing generation failed: ${err}`, 'sovereign');
+        });
+      }).catch(err => log(`Company briefing import failed: ${err}`, 'sovereign'));
+    }
+  }, 5 * 60 * 1000); // Check every 5 minutes
+}
+
+/**
+ * Trust Evolution — runs weekly on Sunday at midnight UTC.
+ * Recalculates trust scores for all agents based on decision accuracy.
+ */
+function startTrustEvolutionJob() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  const TTL_SECONDS = 30 * 60;
+
+  log('Registering trust evolution job (weekly, Sunday midnight UTC)', 'sovereign');
+
+  setInterval(() => {
+    const now = new Date();
+    const dayOfWeek = now.getUTCDay(); // 0 = Sunday
+    const utcHour = now.getUTCHours();
+
+    // Sunday at 0:00 UTC
+    if (dayOfWeek === 0 && utcHour === 0) {
+      import('./services/trustEvolution').then(({ runTrustEvolution }) => {
+        withJobLock('trust_evolution', TTL_SECONDS, runTrustEvolution).catch(err => {
+          log(`Trust evolution failed: ${err}`, 'sovereign');
+        });
+      }).catch(err => log(`Trust evolution import failed: ${err}`, 'sovereign'));
+    }
+  }, ONE_HOUR);
 }

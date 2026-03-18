@@ -370,6 +370,21 @@ export const churnEngine = {
       summary: `Churn engine scored ${scored} paying orgs — ${alerted} new risk alert(s), ${rescued} rescue email(s) sent`,
       metadata: { scored, alerted, rescued },
     }).catch(() => {});
+
+    // Sovereign Company Protocol — Forge broadcasts churn summary to customer_signals channel
+    if (alerted > 0 || rescued > 0) {
+      try {
+        const { agentCommsService } = await import("./agentComms");
+        await agentCommsService.broadcast({
+          from: "forge_revenue",
+          channel: "customer_signals",
+          priority: alerted > 2 ? "high" : "medium",
+          subject: `Churn scan: ${scored} orgs scored, ${alerted} new risk alerts, ${rescued} rescue emails`,
+          body: `Churn engine completed. ${alerted} organizations flagged as high-risk. ${rescued} rescue emails sent automatically.`,
+          data: { scored, alerted, rescued },
+        });
+      } catch {}
+    }
   },
 
   scoreOrg,
