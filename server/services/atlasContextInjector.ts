@@ -28,7 +28,7 @@ import { db } from "../db";
 import { sql } from "drizzle-orm";
 import {
   leads, properties, deals, notes, tasks, campaigns,
-  sophieMemory, payments,
+  paxMemory, payments,
 } from "@shared/schema";
 import { eq, and, lt, gt, desc, count } from "drizzle-orm";
 
@@ -199,12 +199,12 @@ export async function buildAtlasContextBlock(
     // ── User preferences from Sophie memory ───────────────────────────────────
     if (userId) {
       const memories = await db
-        .select({ key: sophieMemory.key, value: sophieMemory.value })
-        .from(sophieMemory)
+        .select({ key: paxMemory.key, value: paxMemory.value })
+        .from(paxMemory)
         .where(
           and(
-            eq(sophieMemory.organizationId, orgId),
-            sql`${sophieMemory.key} IN ('preferred_counties', 'preferred_deal_size', 'investment_strategy', 'risk_tolerance', 'target_markets')`
+            eq(paxMemory.organizationId, orgId),
+            sql`${paxMemory.key} IN ('preferred_counties', 'preferred_deal_size', 'investment_strategy', 'risk_tolerance', 'target_markets')`
           )
         );
 

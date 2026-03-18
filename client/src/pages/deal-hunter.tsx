@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { RequiredDisclaimer } from "@/components/required-disclaimer";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -884,6 +885,7 @@ export default function DealHunterPage() {
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
+      <RequiredDisclaimer type="ai" />
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>

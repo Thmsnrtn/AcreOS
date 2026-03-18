@@ -407,7 +407,10 @@ export function registerCoreAIRoutes(app: Express): void {
       }
 
       const { negotiationOrchestrator } = await import("./services/negotiationOrchestrator");
+      const orgId = String((req as any).org?.id ?? "");
       const recommendation = await negotiationOrchestrator.generateCounterOffer(
+        orgId,
+        "counter-offer",
         {
           propertyId: String(propertyId),
           askingPrice: Number(askingPrice),
@@ -424,7 +427,8 @@ export function registerCoreAIRoutes(app: Express): void {
           communicationStyle: "analytical",
           priceFlexibility: 20,
           keyPainPoints: [],
-        }
+        },
+        []
       );
 
       res.json(recommendation);
@@ -442,9 +446,11 @@ export function registerCoreAIRoutes(app: Express): void {
       }
 
       const { negotiationOrchestrator } = await import("./services/negotiationOrchestrator");
+      const orgId = String((req as any).org?.id ?? "");
       const profile = await negotiationOrchestrator.analyzeSellerPsychology(
-        messages.join("\n"),
-        propertyId ? String(propertyId) : undefined
+        orgId,
+        propertyId ? String(propertyId) : "unknown",
+        messages
       );
 
       res.json(profile);
@@ -464,8 +470,9 @@ export function registerCoreAIRoutes(app: Express): void {
       const { negotiationOrchestrator } = await import("./services/negotiationOrchestrator");
 
       // Build a seller profile from the provided context
+      const scriptOrgId = String((req as any).org?.id ?? "");
       const sellerProfile = sellerMessages?.length
-        ? await negotiationOrchestrator.analyzeSellerPsychology(sellerMessages.join("\n"))
+        ? await negotiationOrchestrator.analyzeSellerPsychology(scriptOrgId, "active", sellerMessages)
         : {
             motivation: sellerMotivation ?? "motivated",
             urgency: 50,
@@ -476,6 +483,8 @@ export function registerCoreAIRoutes(app: Express): void {
           };
 
       const counterOffer = await negotiationOrchestrator.generateCounterOffer(
+        scriptOrgId,
+        "active",
         {
           propertyId: "active",
           askingPrice: Number(askingPrice),
@@ -485,13 +494,14 @@ export function registerCoreAIRoutes(app: Express): void {
           timeOnMarket: 60,
           competingOffers: 0,
         },
-        sellerProfile
+        sellerProfile as any,
+        []
       );
 
       const script = await negotiationOrchestrator.generateNegotiationScript(
-        String(req.org?.id ?? ""),
+        scriptOrgId,
         "active",
-        sellerProfile,
+        sellerProfile as any,
         counterOffer
       );
 

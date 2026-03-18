@@ -247,12 +247,12 @@ Make each variant distinctly different. These will run as A/B tests so they must
           n: 1,
         });
 
-        if (response.data[0]?.url) {
+        if (response.data?.[0]?.url) {
           results.push({
             style: spec.style,
             styleLabel: spec.styleLabel,
             prompt: spec.prompt,
-            url: response.data[0].url,
+            url: response.data![0].url,
             aspectRatio: spec.aspectRatio,
           });
         }

@@ -39,6 +39,7 @@ COPY --from=build /app /app
 EXPOSE 5000
 
 ENV PUPPETEER_EXECUTABLE_PATH="/usr/bin/chromium"
+ENV NODE_OPTIONS="--max-old-space-size=3584"
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD node -e "fetch('http://localhost:5000/api/health/cached').then(r=>{if(!r.ok)throw 1}).catch(()=>process.exit(1))"

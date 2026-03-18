@@ -347,7 +347,7 @@ export class StripeConnectService {
       case "invoice.payment_failed": {
         const invoice = event.data.object as Stripe.Invoice;
         const customerId = typeof invoice.customer === "string" ? invoice.customer : (invoice.customer as any)?.id;
-        const subscriptionId = typeof invoice.subscription === "string" ? invoice.subscription : (invoice.subscription as any)?.id;
+        const subscriptionId = typeof (invoice as any).subscription === "string" ? (invoice as any).subscription : (invoice as any).subscription?.id;
         if (customerId) {
           try {
             // Find org by Stripe customer ID

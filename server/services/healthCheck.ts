@@ -205,6 +205,37 @@ class HealthCheckService {
   }
 
   /**
+   * Check if Redis is configured and accessible
+   */
+  async checkRedis(): Promise<ServiceHealth> {
+    const name = 'redis';
+    const start = Date.now();
+
+    try {
+      const redisUrl = process.env.REDIS_URL;
+      if (!redisUrl) {
+        return this.createHealth(name, 'unconfigured', undefined, 'REDIS_URL not configured');
+      }
+
+      // @ts-ignore — redis types may not be installed
+      const { createClient } = await import('redis') as any;
+      const client = createClient({ url: redisUrl });
+      await client.connect();
+      await client.ping();
+      const latency = Date.now() - start;
+      await client.disconnect();
+
+      return this.createHealth(name, 'healthy', latency);
+    } catch (error: any) {
+      const latency = Date.now() - start;
+      if (error.code === 'ECONNREFUSED') {
+        return this.createHealth(name, 'unavailable', latency, 'Connection refused');
+      }
+      return this.createHealth(name, 'degraded', latency, error.message);
+    }
+  }
+
+  /**
    * Run all health checks
    */
   async checkAll(): Promise<HealthCheckResult> {
@@ -218,7 +249,7 @@ class HealthCheckService {
       this.checkLob(),
     ]);
 
-    checks.forEach(check => {
+    checks.forEach((check: ServiceHealth) => {
       this.lastResults.set(check.name, check);
     });
 

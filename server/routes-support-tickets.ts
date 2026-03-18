@@ -16,7 +16,7 @@ export function registerSupportTicketRoutes(app: Express): void {
   // Create support ticket
   api.post("/api/support/tickets", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = req.org!;
+      const org = (req as any).org!;
       const user = req.user as any;
       
       const { subject, description, category, priority, pageContext, errorContext } = req.body;
@@ -44,7 +44,7 @@ export function registerSupportTicketRoutes(app: Express): void {
   // Get user's support tickets
   api.get("/api/support/tickets", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = req.org!;
+      const org = (req as any).org!;
       const user = req.user as any;
       const { status } = req.query;
       
@@ -87,7 +87,7 @@ export function registerSupportTicketRoutes(app: Express): void {
   // Send message to support ticket (triggers AI response)
   api.post("/api/support/tickets/:id/messages", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = req.org!;
+      const org = (req as any).org!;
       const user = req.user as any;
       const ticketId = parseInt(req.params.id);
       const { message } = req.body;
@@ -340,7 +340,7 @@ export function registerSupportTicketRoutes(app: Express): void {
   // Get active alerts for the user's organization (for proactive support)
   api.get("/api/support/alerts", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = req.org!;
+      const org = (req as any).org!;
       const { proactiveMonitor } = await import("./services/proactiveMonitor");
       
       const alerts = await proactiveMonitor.getActiveAlerts(org.id);
@@ -364,7 +364,7 @@ export function registerSupportTicketRoutes(app: Express): void {
   // Founder endpoint: Get all support tickets across all orgs
   api.get("/api/founder/support/tickets", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = req.org!;
+      const org = (req as any).org!;
       
       if (!org.isFounder) {
         return res.status(403).json({ message: "Founder access required" });
@@ -385,7 +385,7 @@ export function registerSupportTicketRoutes(app: Express): void {
   // Founder endpoint: Support analytics
   api.get("/api/founder/support/analytics", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = req.org!;
+      const org = (req as any).org!;
       
       if (!org.isFounder) {
         return res.status(403).json({ message: "Founder access required" });
@@ -428,7 +428,7 @@ export function registerSupportTicketRoutes(app: Express): void {
   // Founder endpoint: Get escalated tickets with full context
   api.get("/api/founder/escalations", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = req.org!;
+      const org = (req as any).org!;
       
       if (!org.isFounder) {
         return res.status(403).json({ message: "Founder access required" });
@@ -527,7 +527,7 @@ export function registerSupportTicketRoutes(app: Express): void {
   // Founder endpoint: Generate a prompt for Replit Agent from a single escalation
   api.post("/api/founder/escalations/:id/generate-prompt", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = req.org!;
+      const org = (req as any).org!;
       
       if (!org.isFounder) {
         return res.status(403).json({ message: "Founder access required" });
@@ -675,7 +675,7 @@ This ticket was escalated by Pax (AI Support Agent) because it could not be reso
   // Founder endpoint: Generate batch prompt for multiple escalations
   api.post("/api/founder/escalations/batch-prompt", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = req.org!;
+      const org = (req as any).org!;
       
       if (!org.isFounder) {
         return res.status(403).json({ message: "Founder access required" });
@@ -771,7 +771,7 @@ ${Object.entries(byCategory).map(([cat, tix]) => `- ${cat}: ${tix.length} ticket
   // Founder endpoint: Mark escalation as resolved
   api.post("/api/founder/escalations/:id/resolve", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = req.org!;
+      const org = (req as any).org!;
       
       if (!org.isFounder) {
         return res.status(403).json({ message: "Founder access required" });
@@ -807,7 +807,7 @@ ${Object.entries(byCategory).map(([cat, tix]) => `- ${cat}: ${tix.length} ticket
   // Get Pax's cross-org learnings (what Pax has learned)
   api.get("/api/founder/pax/learnings", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = req.org!;
+      const org = (req as any).org!;
       
       if (!org.isFounder) {
         return res.status(403).json({ message: "Founder access required" });
@@ -830,7 +830,7 @@ ${Object.entries(byCategory).map(([cat, tix]) => `- ${cat}: ${tix.length} ticket
   // Report a bug with full context capture
   api.post("/api/support/report-bug", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = req.org!;
+      const org = (req as any).org!;
       const user = req.user as any;
       
       const {
@@ -852,7 +852,7 @@ ${Object.entries(byCategory).map(([cat, tix]) => `- ${cat}: ${tix.length} ticket
       let orgHealth = null;
       try {
         const { healthCheckService } = await import("./services/healthCheck");
-        orgHealth = await healthCheckService.runHealthCheck(org.id);
+        orgHealth = await (healthCheckService as any).checkAll();
       } catch (err) {
         console.error("[support] Error fetching org health for bug report:", err);
       }
@@ -918,7 +918,7 @@ ${actualBehavior || 'Not provided'}
       };
       
       const [ticket] = await db.insert(supportTickets)
-        .values(bugTicketData)
+        .values(bugTicketData as any)
         .returning();
       
       console.log(`[support] Bug report created: ticket ${ticket.id} for org ${org.id}`);

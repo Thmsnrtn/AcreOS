@@ -391,8 +391,6 @@ export async function runTacticAttribution(): Promise<TacticAttributionResult> {
         .select({
           outcome: outcomeTelemetry.outcome,
           contributingFactors: outcomeTelemetry.contributingFactors,
-          sequenceUsed: outcomeTelemetry.sequenceUsed,
-          touchNumber: outcomeTelemetry.touchNumber,
         })
         .from(outcomeTelemetry)
         .where(
@@ -417,10 +415,9 @@ export async function runTacticAttribution(): Promise<TacticAttributionResult> {
 
       for (const o of wins) {
         const seq =
-          o.sequenceUsed ??
           (o.contributingFactors as any)?.sequenceUsed ??
           "unknown";
-        const touch = o.touchNumber ?? (o.contributingFactors as any)?.touchNumber ?? 0;
+        const touch = (o.contributingFactors as any)?.touchNumber ?? 0;
         if (!orgWinMap[seq]) orgWinMap[seq] = { wins: 0, losses: 0, touches: [] };
         orgWinMap[seq].wins++;
         if (touch) orgWinMap[seq].touches.push(touch);
@@ -432,10 +429,9 @@ export async function runTacticAttribution(): Promise<TacticAttributionResult> {
 
       for (const o of losses) {
         const seq =
-          o.sequenceUsed ??
           (o.contributingFactors as any)?.sequenceUsed ??
           "unknown";
-        const touch = o.touchNumber ?? (o.contributingFactors as any)?.touchNumber ?? 0;
+        const touch = (o.contributingFactors as any)?.touchNumber ?? 0;
         if (!orgLossMap[seq]) orgLossMap[seq] = { wins: 0, losses: 0, touches: [] };
         orgLossMap[seq].losses++;
         if (touch) orgLossMap[seq].touches.push(touch);

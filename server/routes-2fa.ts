@@ -46,8 +46,8 @@ export function register2FARoutes(app: Express): void {
       const qrUrl = twoFactorAuth.getQrUrl(setup.otpauthUrl);
 
       // Temporarily store unconfirmed secret in session
-      (req.session as any).pendingTwoFactorSecret = setup.secret;
-      (req.session as any).pendingBackupCodes = setup.backupCodes;
+      (req as any).session.pendingTwoFactorSecret = setup.secret;
+      (req as any).session.pendingBackupCodes = setup.backupCodes;
 
       res.json({
         qrUrl,
@@ -67,8 +67,8 @@ export function register2FARoutes(app: Express): void {
       const user = req.user as any;
       const userId = user.claims?.sub || user.id;
 
-      const secret = (req.session as any).pendingTwoFactorSecret;
-      const rawCodes: string[] = (req.session as any).pendingBackupCodes || [];
+      const secret = (req as any).session.pendingTwoFactorSecret;
+      const rawCodes: string[] = (req as any).session.pendingBackupCodes || [];
 
       if (!secret) {
         return res.status(400).json({ message: "No pending 2FA setup. Start setup first." });
@@ -92,8 +92,8 @@ export function register2FARoutes(app: Express): void {
         .where(eq(users.id, String(userId)));
 
       // Clean up session
-      delete (req.session as any).pendingTwoFactorSecret;
-      delete (req.session as any).pendingBackupCodes;
+      delete (req as any).session.pendingTwoFactorSecret;
+      delete (req as any).session.pendingBackupCodes;
 
       res.json({ success: true, message: "Two-factor authentication enabled." });
     } catch (err: any) {
@@ -121,7 +121,7 @@ export function register2FARoutes(app: Express): void {
 
       // Try TOTP first
       if (twoFactorAuth.verifyCode(secret, code)) {
-        (req.session as any).twoFactorVerified = true;
+        (req as any).session.twoFactorVerified = true;
         return res.json({ success: true });
       }
 
@@ -134,7 +134,7 @@ export function register2FARoutes(app: Express): void {
           .update(users)
           .set({ twoFactorBackupCodes: updatedCodes } as any)
           .where(eq(users.id, String(userId)));
-        (req.session as any).twoFactorVerified = true;
+        (req as any).session.twoFactorVerified = true;
         return res.json({ success: true, backupCodeUsed: true, codesRemaining: updatedCodes.length });
       }
 

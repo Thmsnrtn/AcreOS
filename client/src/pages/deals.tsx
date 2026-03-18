@@ -1,6 +1,6 @@
 import { PageShell } from "@/components/page-shell";
 import { PaxContextButton } from "@/components/pax-context-button";
-import { useDeals, useCreateDeal, useUpdateDeal, useDeleteDeal, useSaveDealAnalysis } from "@/hooks/use-deals";
+import { useDeals, useCreateDeal, useUpdateDeal, useDeleteDeal, useSaveDealAnalysis, useBulkStageUpdate, useBulkStageUndo, type BulkStageUpdateResult } from "@/hooks/use-deals";
 import { useProperties } from "@/hooks/use-properties";
 import { ListSkeleton } from "@/components/list-skeleton";
 import { telemetry } from "@/lib/telemetry";
@@ -34,7 +34,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, MapPin, DollarSign, Calendar, Building, TrendingUp, CheckCircle, X, GripVertical, FileText, Trash2, Loader2, Briefcase, Calculator, ClipboardCheck, Upload, AlertTriangle, AlertCircle, CheckSquare, Square, Clock, Download, Package, Play, Eye, FolderPlus, Sparkles, Flame, Snowflake, Minus, LayoutGrid, List, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, MapPin, DollarSign, Calendar, Building, TrendingUp, CheckCircle, X, GripVertical, FileText, Trash2, Loader2, Briefcase, Calculator, ClipboardCheck, Upload, AlertTriangle, AlertCircle, CheckSquare, Square, Clock, Download, Package, Play, Eye, FolderPlus, Sparkles, Flame, Snowflake, Minus, LayoutGrid, List, ChevronLeft, ChevronRight, Undo2, Send, Phone, ArrowRight } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { DealsEmptyState } from "@/components/empty-states";
 import { SavedViewsSelector } from "@/components/saved-views-selector";
@@ -50,6 +50,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { ActivityTimeline } from "@/components/activity-timeline";
 import { CustomFieldValuesEditor } from "@/components/custom-fields";
 import { DisclaimerBanner } from "@/components/disclaimer-banner";
+import { getDealNextAction, getDaysInStage, getDealUrgency, type DealNextAction } from "@/lib/deal-utils";
 
 type DealWithProperty = Deal & { property?: Property };
 
@@ -855,7 +856,7 @@ const nextActionIcons: Record<DealNextAction["icon"], React.ReactNode> = {
   alert: <AlertTriangle className="w-3 h-3" />,
 };
 
-function DealCard({ deal, onSelect, isDragging = false }: { deal: DealWithProperty; onSelect: () => void; isDragging?: boolean }) {
+function DealCard({ deal, onSelect, isDragging = false, isSelected, onToggleSelect }: { deal: DealWithProperty; onSelect: () => void; isDragging?: boolean; isSelected?: boolean; onToggleSelect?: (id: number) => void }) {
   const { attributes, listeners, setNodeRef, transform } = useDraggable({ id: deal.id });
   const style = transform ? { transform: CSS.Translate.toString(transform) } : undefined;
   const health = getDealHealth(deal);

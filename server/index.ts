@@ -363,9 +363,10 @@ app.use("/api", apiLimiter);
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
     res.send([
       "Contact: mailto:security@acreos.com",
-      "Expires: 2027-01-01T00:00:00.000Z",
+      "Expires: 2027-03-18T00:00:00.000Z",
       "Preferred-Languages: en",
-      "Policy: https://acreos.com/security-policy",
+      "Canonical: https://acreos.fly.dev/.well-known/security.txt",
+      "Policy: https://acreos.fly.dev/terms",
     ].join("\n") + "\n");
   });
 
@@ -1506,7 +1507,7 @@ async function processModelIntelligenceJob() {
   try {
     const { runModelIntelligence } = await import("./services/modelIntelligence");
     const result = await runModelIntelligence();
-    log(`Model intelligence: ${result.discovered} discovered, ${result.benchmarked} benchmarked`, 'model-intelligence');
+    log(`Model intelligence: ${result.sync.discovered} discovered, ${result.benchmark.modelsCompleted} benchmarked`, 'model-intelligence');
     jobSupervisor.notifyResult('model_intelligence', 7 * 24 * 60 * 60 * 1000, true);
   } catch (err) {
     log(`Model intelligence job error: ${err}`, 'model-intelligence');

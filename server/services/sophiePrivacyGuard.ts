@@ -2,7 +2,7 @@
  * T24 — Sophie Cross-Org Learning Privacy Guard
  *
  * Protects user privacy when Sophie learns patterns across organizations.
- * `sophieCrossOrgLearnings` can accumulate patterns from all orgs — this
+ * `paxCrossOrgLearnings` can accumulate patterns from all orgs — this
  * service ensures:
  *   1. Org must explicitly opt in to cross-org learning (consent required)
  *   2. All shared data is aggregated and anonymized (k-anonymity, k≥3)
@@ -21,11 +21,11 @@
  *
  *   // Before writing a new cross-org learning:
  *   const anonymized = sophiePrivacyGuard.anonymize(learningData);
- *   await db.insert(sophieCrossOrgLearnings).values(anonymized);
+ *   await db.insert(paxCrossOrgLearnings).values(anonymized);
  */
 
 import { db } from "../db";
-import { organizations, sophieCrossOrgLearnings } from "@shared/schema";
+import { organizations, paxCrossOrgLearnings } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
 import crypto from "crypto";
 
