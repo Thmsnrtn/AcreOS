@@ -321,19 +321,19 @@ class MarketIntelligenceService {
     
     // Calculate trends
     const priceHistory = historicalMetrics
-      .filter(m => m.medianPricePerAcre)
-      .map(m => parseFloat(m.medianPricePerAcre as string));
-    
+      .filter((m: any) => m.medianPricePerAcre)
+      .map((m: any) => parseFloat(m.medianPricePerAcre as string));
+
     const domHistory = historicalMetrics
-      .filter(m => m.averageDaysOnMarket)
-      .map(m => parseFloat(m.averageDaysOnMarket as string));
-    
+      .filter((m: any) => m.averageDaysOnMarket)
+      .map((m: any) => parseFloat(m.averageDaysOnMarket as string));
+
     const inventoryHistory = historicalMetrics
-      .filter(m => m.inventoryCount)
-      .map(m => m.inventoryCount!);
-    
+      .filter((m: any) => m.inventoryCount)
+      .map((m: any) => m.inventoryCount!);
+
     const pricePerAcreTrend = calculateTrend(priceHistory);
-    const velocityTrend = calculateTrend(domHistory.map(d => -d)); // Invert: lower DOM = higher velocity
+    const velocityTrend = calculateTrend(domHistory.map((d: number) => -d)); // Invert: lower DOM = higher velocity
     const inventoryTrend = calculateTrend(inventoryHistory);
     
     // Calculate price changes

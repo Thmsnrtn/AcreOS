@@ -16,7 +16,7 @@ export default defineConfig({
       include: ["server/**/*.ts", "shared/**/*.ts"],
       exclude: ["**/*.test.ts", "node_modules", "dist"],
       thresholds: {
-        lines: 30,
+        lines: 50,
       },
     },
   },

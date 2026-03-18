@@ -102,6 +102,9 @@ const authRateLimit = rateLimiters.auth;
 
 // Org middleware
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
+import { requirePermission } from "./utils/permissions";
+import { activityLogger } from "./services/activityLogger";
+import { insertTaskSchema } from "@shared/schema";
 // F-A04-1: Prompt injection guard
 import { promptInjectionMiddleware } from "./middleware/promptInjection";
 // F-A07-1: 2FA enforcement for admin routes
@@ -591,7 +594,7 @@ export async function registerRoutes(
         entityType: "lead",
         entityId: leadId,
         eventType: "contact_recorded",
-        eventData: { method: contactMethod, notes, recordedAt: now.toISOString() },
+        description: `Contact recorded via ${contactMethod}`,
       });
       
       // Audit log
@@ -603,7 +606,7 @@ export async function registerRoutes(
         action: "record_contact",
         entityType: "lead",
         entityId: leadId,
-        changes: { method: contactMethod, timestamp: now.toISOString() },
+        changes: { after: { method: contactMethod, timestamp: now.toISOString() } },
         ipAddress: req.ip || req.socket?.remoteAddress,
         userAgent: req.headers["user-agent"],
       });
@@ -642,16 +645,11 @@ export async function registerRoutes(
         action: "bulk_soft_delete",
         entityType: "lead",
         entityId: 0,
-        changes: { 
-          ids, 
-          count: deletedCount,
-          recoverable: true,
-          leadNames: leadsToDelete.map(l => `${l.firstName} ${l.lastName}`),
-        },
+        changes: { after: { ids, count: deletedCount, recoverable: true, leadNames: leadsToDelete.map(l => `${l.firstName} ${l.lastName}`) } } as any,
         ipAddress: req.ip || req.socket?.remoteAddress,
         userAgent: req.headers["user-agent"],
       });
-      
+
       res.json({ 
         deletedCount,
         recoverable: true,
@@ -696,11 +694,11 @@ export async function registerRoutes(
         action: "bulk_restore",
         entityType: "lead",
         entityId: 0,
-        changes: { ids, count: restoredCount },
+        changes: { after: { ids, count: restoredCount } } as any,
         ipAddress: req.ip || req.socket?.remoteAddress,
         userAgent: req.headers["user-agent"],
       });
-      
+
       res.json({ restoredCount });
     } catch (error: any) {
       console.error("Restore leads error:", error);
@@ -729,7 +727,7 @@ export async function registerRoutes(
         action: "bulk_permanent_delete",
         entityType: "lead",
         entityId: 0,
-        changes: { ids, count: deletedCount, permanent: true },
+        changes: { after: { ids, count: deletedCount, permanent: true } } as any,
         ipAddress: req.ip || req.socket?.remoteAddress,
         userAgent: req.headers["user-agent"],
       });
@@ -910,12 +908,7 @@ export async function registerRoutes(
         action: "bulk_stage_update",
         entityType: "deal",
         entityId: 0,
-        changes: { 
-          ids: idsToUpdate, 
-          newStage, 
-          previousStates,
-          count: updatedCount 
-        },
+        changes: { after: { ids: idsToUpdate, newStage, previousStates, count: updatedCount } } as any,
         ipAddress: req.ip || req.socket?.remoteAddress,
         userAgent: req.headers["user-agent"],
       });
@@ -980,11 +973,7 @@ export async function registerRoutes(
         action: "bulk_stage_undo",
         entityType: "deal",
         entityId: 0,
-        changes: { 
-          previousStates,
-          restoredCount,
-          errors: errors.length > 0 ? errors : undefined,
-        },
+        changes: { after: { previousStates, restoredCount, errors: errors.length > 0 ? errors : undefined } } as any,
         ipAddress: req.ip || req.socket?.remoteAddress,
         userAgent: req.headers["user-agent"],
       });

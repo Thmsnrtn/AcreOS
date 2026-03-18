@@ -1,4 +1,5 @@
 import { PageShell } from "@/components/page-shell";
+import { PaxContextButton } from "@/components/pax-context-button";
 import { useProperties, useCreateProperty, useDeleteProperty, useEnrichProperty } from "@/hooks/use-properties";
 import { queryClient } from "@/lib/queryClient";
 import { telemetry } from "@/lib/telemetry";
@@ -128,7 +129,9 @@ import { usePersistedGisFilters } from "@/hooks/use-persisted-gis-filters";
 import { Bot } from "lucide-react";
 
 export default function PropertiesPage() {
-  const { data: properties, isLoading, error, refetch } = useProperties();
+  const propertiesQuery = useProperties();
+  const { data: properties, isLoading, error, isRefetching } = propertiesQuery;
+  const refetch = propertiesQuery.refetch;
   const searchString = useSearch();
   const urlParams = new URLSearchParams(searchString);
   const actionFromUrl = urlParams.get("action");

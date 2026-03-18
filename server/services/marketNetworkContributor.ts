@@ -313,6 +313,33 @@ export async function getNetworkCompsForCounty(
 }
 
 /**
+ * Wraps getNetworkCompsForCounty with the interface expected by marketIntelligence.ts.
+ * Maps dataPoints → transactionCount and adds dataAvailable flag.
+ */
+export async function getCountyNetworkIntelligence(
+  county: string,
+  state: string
+): Promise<{
+  medianPricePerAcre: number;
+  minPricePerAcre: number;
+  maxPricePerAcre: number;
+  transactionCount: number;
+  dataAvailable: boolean;
+  summary: string;
+} | null> {
+  const comps = await getNetworkCompsForCounty(county, state);
+  if (!comps) return null;
+  return {
+    medianPricePerAcre: comps.medianPricePerAcre,
+    minPricePerAcre: comps.minPricePerAcre,
+    maxPricePerAcre: comps.maxPricePerAcre,
+    transactionCount: comps.dataPoints,
+    dataAvailable: comps.dataPoints >= MIN_COHORT_SIZE,
+    summary: comps.note,
+  };
+}
+
+/**
  * Returns a coverage summary of which counties have network data and how many
  * data points each has. Used for the admin dashboard.
  */

@@ -60,9 +60,8 @@ Return ONLY valid JSON: {"score": <number 1-10>, "reasons": ["<reason>"], "impro
         improvements: parsed.improvements || [],
         recordedAt: new Date().toISOString(),
       },
-      confidence: Math.min(1, score / 10),
-      usageCount: 1,
-    });
+      confidence: String(Math.min(1, score / 10)),
+    } as any);
   } catch {
     // Never block a response over scoring failure
   }
@@ -77,7 +76,7 @@ async function loadCalibrationContext(orgId: number): Promise<string> {
       .select()
       .from(agentMemory)
       .where(eq(agentMemory.organizationId, orgId))
-      .orderBy(desc(agentMemory.updatedAt))
+      .orderBy(desc(agentMemory.createdAt))
       .limit(3);
     const calibration = calibrations.find(m => m.memoryType === "calibration");
     if (!calibration || !calibration.value) return "";
@@ -1243,7 +1242,7 @@ export async function* processChatStream(
           for (const block of msgContent) {
             if (block.type === 'thinking' && block.thinking) {
               // Stream thinking text in chunks for smooth UI
-              const chunks = (block.thinking as string).match(/.{1,60}/gs) || [];
+              const chunks = (block.thinking as string).match(/[\s\S]{1,60}/g) || [];
               for (const chunk of chunks) {
                 thinkingText += chunk;
                 yield { type: "thinking", content: chunk };
@@ -1368,7 +1367,7 @@ export async function* processChatStream(
             try {
               const parsed = typeof result === "string" ? JSON.parse(result) : result;
               const data = parsed?.data ?? parsed;
-              if (data) yield { type: "artifact", artifactType: artifactMeta.type, title: artifactMeta.title, data };
+              if (data) yield { type: "artifact", artifactType: artifactMeta.type, title: artifactMeta.title, data } as any;
             } catch {}
           }
           toolResults.push({ role: "tool", tool_call_id: toolCall.id, content: JSON.stringify(result) });
@@ -1380,7 +1379,7 @@ export async function* processChatStream(
 
           // Pre-approval gate for communication/payment tools
           if (APPROVAL_REQUIRED_TOOLS.has(toolCall.function.name)) {
-            yield { type: "approval_required", toolCallId: toolCall.id, toolName: toolCall.function.name, args };
+            yield { type: "approval_required", toolCallId: toolCall.id, toolName: toolCall.function.name, args } as any;
             const syntheticResult = {
               success: false,
               requiresApproval: true,
@@ -1400,7 +1399,7 @@ export async function* processChatStream(
             try {
               const parsed = typeof result === "string" ? JSON.parse(result) : result;
               const data = parsed?.data ?? parsed;
-              if (data) yield { type: "artifact", artifactType: artifactMeta.type, title: artifactMeta.title, data };
+              if (data) yield { type: "artifact", artifactType: artifactMeta.type, title: artifactMeta.title, data } as any;
             } catch {}
           }
           toolResults.push({ role: "tool", tool_call_id: toolCall.id, content: JSON.stringify(result) });

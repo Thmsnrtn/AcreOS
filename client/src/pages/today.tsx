@@ -28,6 +28,12 @@ import {
   Sparkles,
   TrendingUp,
   AlertCircle,
+  Activity,
+  DollarSign,
+  Flame,
+  BarChart3,
+  Zap,
+  Moon,
 } from "lucide-react";
 import { format, isToday, isBefore, startOfDay, subDays } from "date-fns";
 
@@ -195,7 +201,7 @@ export default function TodayPage() {
       staleTime: 5 * 60 * 1000,
     });
 
-  const { data: paxSuggestionsData, isLoading: paxLoading } =
+  const { data: paxSuggestionsData, isLoading: paxSuggestionsLoading } =
     useQuery<PaxSuggestionsResponse>({
       queryKey: ["/api/pax/pax-suggestions"],
       staleTime: 5 * 60 * 1000,
@@ -268,6 +274,66 @@ export default function TodayPage() {
   const paxItemCount = paxObservations.length + paxStaleLeads.length + paxExpiringOffers.length;
 
   const paxSuggestions = paxSuggestionsData?.suggestions ?? [];
+
+  const { data: todayPriorities, isLoading: prioritiesLoading } =
+    useQuery<TodayPrioritiesData>({
+      queryKey: ["/api/dashboard/today-priorities"],
+      staleTime: 5 * 60 * 1000,
+    });
+
+  // Business Pulse computed values
+  const activeDeals = allDeals.filter(
+    (d) => !["closed", "cancelled"].includes(d.status)
+  );
+  const pipelineValue = activeDeals.reduce(
+    (sum, d: any) => sum + (parseFloat(d.purchasePrice || d.offerAmount || "0")),
+    0
+  );
+  const hotDeals = allDeals.filter(
+    (d) => d.status === "accepted" || d.status === "in_escrow"
+  ).length;
+  const avgWinProbability = activeDeals.length > 0
+    ? Math.round(
+        activeDeals.reduce((sum, d: any) => sum + (d.winProbability ?? 0), 0) /
+          activeDeals.length
+      )
+    : 0;
+  const closedDealsThisMonth = allDeals.filter((d) => {
+    if (d.status !== "closed") return false;
+    if (!d.updatedAt) return false;
+    const date = new Date(d.updatedAt);
+    const now = new Date();
+    return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+  });
+  const closedRevenueThisMonth = closedDealsThisMonth.reduce(
+    (sum, d: any) => sum + (parseFloat(d.purchasePrice || d.offerAmount || "0")),
+    0
+  );
+
+  // Pulse score: simple heuristic based on active deals, hot deals, pipeline
+  const pulseScore = Math.min(
+    100,
+    Math.round(
+      (activeDeals.length > 0 ? 20 : 0) +
+      (hotDeals > 0 ? 25 : 0) +
+      (pipelineValue > 0 ? 20 : 0) +
+      (avgWinProbability > 0 ? avgWinProbability * 0.35 : 0)
+    )
+  );
+  const pulseBg =
+    pulseScore >= 80
+      ? "from-emerald-50 to-emerald-100/50 dark:from-emerald-950/20 dark:to-emerald-900/10"
+      : pulseScore >= 55
+      ? "from-amber-50 to-amber-100/50 dark:from-amber-950/20 dark:to-amber-900/10"
+      : "from-blue-50 to-blue-100/50 dark:from-blue-950/20 dark:to-blue-900/10";
+  const pulseColor =
+    pulseScore >= 80
+      ? "text-emerald-600 dark:text-emerald-400"
+      : pulseScore >= 55
+      ? "text-amber-600 dark:text-amber-400"
+      : "text-blue-600 dark:text-blue-400";
+  const pulseLabel =
+    pulseScore >= 80 ? "Strong" : pulseScore >= 55 ? "Steady" : "Building";
 
   // Cash position calculations
   const cashPosition = (() => {

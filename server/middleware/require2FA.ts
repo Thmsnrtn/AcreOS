@@ -19,12 +19,12 @@ import { eq } from "drizzle-orm";
 
 export const require2FA: RequestHandler = async (req, res, next) => {
   try {
-    if (!req.isAuthenticated() || !req.user) {
+    if (!(req as any).isAuthenticated() || !req.user) {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
     // Already verified in this session — allow through
-    if ((req.session as any).twoFactorVerified === true) {
+    if ((req as any).session?.twoFactorVerified === true) {
       return next();
     }
 

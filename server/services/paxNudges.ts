@@ -36,7 +36,7 @@ async function generateNudgesForOrg(org: Organization): Promise<void> {
   // ── Stale leads (no activity in 14+ days) ────────────────────────────────
   try {
     const staleCutoff = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
-    const staleLeads = await db.select({ id: leads.id, name: leads.name, status: leads.status })
+    const staleLeads = await db.select({ id: leads.id, firstName: leads.firstName, status: leads.status })
       .from(leads)
       .where(and(
         eq(leads.organizationId, orgId),
@@ -59,7 +59,7 @@ async function generateNudgesForOrg(org: Organization): Promise<void> {
   // ── Stuck deals (in same stage for 30+ days) ─────────────────────────────
   try {
     const stuckCutoff = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    const stuckDeals = await db.select({ id: deals.id, name: deals.name, status: deals.status, dealValue: deals.dealValue })
+    const stuckDeals = await db.select({ id: deals.id, status: deals.status, offerAmount: deals.offerAmount })
       .from(deals)
       .where(and(
         eq(deals.organizationId, orgId),
@@ -71,12 +71,12 @@ async function generateNudgesForOrg(org: Organization): Promise<void> {
       const topDeal = activeStuck[0];
       nudgesToInsert.push({
         organizationId: orgId,
-        content: `Deal "${topDeal.name}" has been in "${topDeal.status}" for 30+ days. Deals typically close in 21 days — needs attention.`,
+        content: `Deal #${topDeal.id} has been in "${topDeal.status}" for 30+ days. Deals typically close in 21 days — needs attention.`,
         category: "stuck_deal",
         entityType: "deal",
         entityId: topDeal.id,
         priority: 1,
-        actionPrompt: `Analyze deal "${topDeal.name}" (ID: ${topDeal.id}). What's blocking progress and what should I do next?`,
+        actionPrompt: `Analyze deal #${topDeal.id}. What's blocking progress and what should I do next?`,
       });
     }
   } catch {}
@@ -104,11 +104,11 @@ async function generateNudgesForOrg(org: Organization): Promise<void> {
 
   // ── Pipeline health ───────────────────────────────────────────────────────
   try {
-    const allDeals = await db.select({ id: deals.id, status: deals.status, dealValue: deals.dealValue })
+    const allDeals = await db.select({ id: deals.id, status: deals.status, offerAmount: deals.offerAmount })
       .from(deals)
       .where(eq(deals.organizationId, orgId));
     const activeDeals = allDeals.filter(d => !["closed", "lost", "cancelled"].includes(d.status ?? ""));
-    const totalValue = activeDeals.reduce((s, d) => s + Number(d.dealValue ?? 0), 0);
+    const totalValue = activeDeals.reduce((s, d) => s + Number(d.offerAmount ?? 0), 0);
     if (activeDeals.length > 0 && totalValue > 0) {
       nudgesToInsert.push({
         organizationId: orgId,
@@ -270,7 +270,7 @@ export async function processPaxNudges(): Promise<void> {
   try {
     const allOrgs = await db.select({ id: organizations.id, name: organizations.name })
       .from(organizations)
-      .where(eq(organizations.isActive as any, true))
+      .where(eq(organizations.subscriptionStatus, "active"))
       .limit(100);
 
     for (const org of allOrgs) {

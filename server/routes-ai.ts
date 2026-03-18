@@ -398,6 +398,7 @@ export function registerAIRoutes(app: Express): void {
       const file = await storage.createKnowledgeFile({
         organizationId: org.id,
         name,
+        description: null,
         mimeType,
         sizeBytes: sizeBytes ?? 0,
         extractedContent,
@@ -662,6 +663,7 @@ export function registerAIRoutes(app: Express): void {
       ].join("\n");
 
       if (format === "pdf") {
+        // @ts-ignore - pdfkit has no type declarations
         const PDFDocument = (await import("pdfkit")).default;
         res.setHeader("Content-Type", "application/pdf");
         res.setHeader("Content-Disposition", `attachment; filename="pax-conversation-${convId}.pdf"`);

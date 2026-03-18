@@ -59,12 +59,12 @@ export function registerReferralRoutes(app: Express): void {
    * GET /api/referral/stats
    * Returns the referrer's stats: signups, conversions, credit balance.
    */
-  app.get("/api/referral/stats", isAuthenticated, async (req, res) => {
+  app.get("/api/referral/stats", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const userId = (req.user as any)?.id;
       if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
-      const org = await getOrCreateOrg(req as any);
+      const org = (req as any).org;
 
       const rows = await db
         .select()
@@ -79,7 +79,7 @@ export function registerReferralRoutes(app: Express): void {
         signups,
         conversions,
         creditsEarned,       // cents total ever earned
-        creditBalance: org.referralCredits ?? 0, // cents currently available
+        creditBalance: org?.referralCredits ?? 0, // cents currently available
       });
     } catch (err) {
       console.error("[referral] GET /stats error:", err);

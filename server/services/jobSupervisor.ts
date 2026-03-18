@@ -126,7 +126,7 @@ class JobSupervisor {
         job.status = "degraded";
         const minutesSince = Math.round(msSinceRun / 60_000);
         logActivity({
-          job: name,
+          job: job.name,
           action: "job_stalled",
           summary: `${job.name} appears stalled — last ran ${minutesSince} min ago (expected every ${Math.round(job.intervalMs / 60_000)} min)`,
           metadata: { minutesSince, intervalMs: job.intervalMs },

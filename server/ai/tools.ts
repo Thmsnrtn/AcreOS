@@ -2145,71 +2145,71 @@ export async function executeTool(
 
       case "search_gmail": {
         const { searchGmail } = await import("../services/connectors/executor");
-        return searchGmail(org, args);
+        return searchGmail(org, args as any);
       }
       case "send_gmail": {
         const { sendGmail } = await import("../services/connectors/executor");
-        return sendGmail(org, args);
+        return sendGmail(org, args as any);
       }
       case "send_slack_message": {
         const { sendSlackMessage } = await import("../services/connectors/executor");
-        return sendSlackMessage(org, args);
+        return sendSlackMessage(org, args as any);
       }
       case "get_stripe_customer": {
         const { getStripeCustomer } = await import("../services/connectors/executor");
-        return getStripeCustomer(org, args);
+        return getStripeCustomer(org, args as any);
       }
       case "list_stripe_payments": {
         const { listStripePayments } = await import("../services/connectors/executor");
-        return listStripePayments(org, args);
+        return listStripePayments(org, args as any);
       }
       case "create_stripe_payment_link": {
         const { createStripePaymentLink } = await import("../services/connectors/executor");
-        return createStripePaymentLink(org, args);
+        return createStripePaymentLink(org, args as any);
       }
       case "search_drive": {
         const { searchDrive } = await import("../services/connectors/executor");
-        return searchDrive(org, args);
+        return searchDrive(org, args as any);
       }
       case "get_drive_file": {
         const { getDriveFile } = await import("../services/connectors/executor");
-        return getDriveFile(org, args);
+        return getDriveFile(org, args as any);
       }
       case "list_calendar_events": {
         const { listCalendarEvents } = await import("../services/connectors/executor");
-        return listCalendarEvents(org, args);
+        return listCalendarEvents(org, args as any);
       }
       case "create_calendar_event": {
         const { createCalendarEvent } = await import("../services/connectors/executor");
-        return createCalendarEvent(org, args);
+        return createCalendarEvent(org, args as any);
       }
       case "propstream_lookup": {
         const { propstreamLookup } = await import("../services/connectors/executor");
-        return propstreamLookup(org, args);
+        return propstreamLookup(org, args as any);
       }
       case "propstream_comps": {
         const { propstreamComps } = await import("../services/connectors/executor");
-        return propstreamComps(org, args);
+        return propstreamComps(org, args as any);
       }
       case "batch_leads_skip_trace": {
         const { batchLeadsSkipTrace } = await import("../services/connectors/executor");
-        return batchLeadsSkipTrace(org, args);
+        return batchLeadsSkipTrace(org, args as any);
       }
       case "search_mls_listings": {
         const { searchMlsListings } = await import("../services/connectors/executor");
-        return searchMlsListings(org, args);
+        return searchMlsListings(org, args as any);
       }
       case "get_mls_comps": {
         const { getMlsComps } = await import("../services/connectors/executor");
-        return getMlsComps(org, args);
+        return getMlsComps(org, args as any);
       }
       case "trigger_zapier": {
         const { triggerZapier } = await import("../services/connectors/executor");
-        return triggerZapier(org, args);
+        return triggerZapier(org, args as any);
       }
       case "trigger_make": {
         const { triggerMake } = await import("../services/connectors/executor");
-        return triggerMake(org, args);
+        return triggerMake(org, args as any);
       }
 
       default:

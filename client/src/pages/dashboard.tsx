@@ -7,7 +7,7 @@ import { PullToRefresh } from "@/components/mobile";
 import { useLeads, useAgingLeads, type AgingLead } from "@/hooks/use-leads";
 import { useProperties } from "@/hooks/use-properties";
 import { usePlaybooks } from "@/hooks/use-playbooks";
-import { Users, Map, Banknote, TrendingUp, Activity, Building2, Crown, AlertTriangle, AlertCircle, Clock, Flame, Sun, Snowflake, Sparkles, BookOpen } from "lucide-react";
+import { Users, Map, Banknote, TrendingUp, Activity, Building2, Crown, AlertTriangle, AlertCircle, Clock, Flame, Sun, Snowflake, Sparkles, BookOpen, Target } from "lucide-react";
 import { motion } from "framer-motion";
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, FunnelChart, Funnel, LabelList } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -81,6 +81,7 @@ interface DashboardIntelligence {
 }
 
 export default function Dashboard() {
+  const queryClient = useQueryClient();
   const { data: organization, isLoading: orgLoading, error: orgError, refetch: refetchOrg } = useOrganization();
   const { data: stats, isLoading: statsLoading } = useDashboardStats();
   const { data: leads = [] } = useLeads();
