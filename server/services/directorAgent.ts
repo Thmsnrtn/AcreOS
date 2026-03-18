@@ -172,7 +172,7 @@ export class DirectorAgent {
     const finalSynthesis = await this.synthesize(input.goal, steps);
     totalCostEstimate += 0.01;
 
-    const goalAchieved = steps.some(s => s.goalMet) || steps.length >= maxIter;
+    const goalAchieved = steps.some(s => s.goalMet);
 
     return {
       success: true,

@@ -112,6 +112,7 @@ import { Suspense, lazy } from "react";
 import { MorningBriefing } from "@/components/founder/MorningBriefing";
 import { SwipeDecisionCard } from "@/components/founder/SwipeDecisionCard";
 import { AgentTeamChat } from "@/components/founder/AgentTeamChat";
+import { trustLabel, trustBadgeColor } from "@/lib/trust-language";
 
 interface AdminDashboardData {
   revenue: {
@@ -6682,7 +6683,7 @@ function CompanyBriefingPanel() {
           <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full ${mood.bg} border ${mood.border}`}>
             <div className={`w-2.5 h-2.5 rounded-full ${mood.dot} animate-pulse`} />
             <span className={`text-sm font-bold ${mood.text}`}>
-              Company Health: {briefing.healthScore}/100
+              Company Health: {briefing.healthScore >= 80 ? "Excellent" : briefing.healthScore >= 60 ? "Good" : briefing.healthScore >= 40 ? "Needs attention" : "Critical"}
             </span>
           </div>
           <Button size="sm" variant="ghost" onClick={() => refetch()}>
@@ -6945,7 +6946,7 @@ function AgentTeamPanel() {
                 <div>
                   <div className="flex items-center justify-between text-xs mb-1">
                     <span className="text-muted-foreground">Trust</span>
-                    <span className="font-medium">{trustPct}/100</span>
+                    <span className={`font-medium ${trustBadgeColor(trustPct)} px-1.5 py-0.5 rounded-full text-[10px]`}>{trustLabel(trustPct)}</span>
                   </div>
                   <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                     <div

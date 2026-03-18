@@ -117,8 +117,25 @@ export async function runTrustEvolution(): Promise<{
       }
     }
 
-    // Daily deltas are smaller than weekly — cap at ±2 per day
-    delta = Math.max(-2, Math.min(2, delta));
+    // v4: Increased cap from ±2 to ±5 per day so trust feels responsive.
+    // Agents can now move from 50 to 90 in ~10 strong days instead of 25+.
+    delta = Math.max(-5, Math.min(5, delta));
+
+    // v4: Streak multiplier — 3 consecutive positive days = 1.5x
+    if (delta > 0) {
+      const recentLogs = await db.select({ delta: trustEvolutionLog.delta })
+        .from(trustEvolutionLog)
+        .where(eq(trustEvolutionLog.agentCodename, agent.codename))
+        .orderBy(desc(trustEvolutionLog.createdAt))
+        .limit(3);
+
+      const consecutivePositive = recentLogs.filter(l => l.delta > 0).length;
+      if (consecutivePositive >= 3) {
+        delta = Math.round(delta * 1.5);
+        reasons.push("3-day positive streak (1.5x bonus)");
+      }
+    }
+
     const reason = reasons.join("; ") || "Routine evaluation";
 
     const previousScore = agent.trustScore;

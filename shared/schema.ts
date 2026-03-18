@@ -11109,3 +11109,96 @@ export const agentConversations = pgTable("agent_conversations", {
   index("agent_conv_agent_idx").on(table.agentCodename),
   index("agent_conv_created_idx").on(table.createdAt),
 ]);
+
+// ============================================
+// SOVEREIGN COMPANY PROTOCOL v4
+// ============================================
+
+// Outcome Verification Queue — persistent verification of agent action results
+// Replaces the broken setTimeout-based outcome checks with a proper job queue
+export const outcomeVerificationQueue = pgTable("outcome_verification_queue", {
+  id: serial("id").primaryKey(),
+  actionLogId: integer("action_log_id").references(() => agentActionLog.id),
+  agentCodename: text("agent_codename").notNull(),
+  actionName: text("action_name").notNull(),
+  input: jsonb("input").$type<Record<string, any>>(),
+  scheduledFor: timestamp("scheduled_for").notNull(),
+  status: text("status").notNull().default("pending"), // pending | checked | verified | failed
+  verifiedAt: timestamp("verified_at"),
+  verificationResult: jsonb("verification_result").$type<{
+    success: boolean;
+    detail: string;
+    metrics?: Record<string, any>;
+  }>(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("ovq_status_scheduled_idx").on(table.status, table.scheduledFor),
+  index("ovq_agent_idx").on(table.agentCodename),
+  index("ovq_action_log_idx").on(table.actionLogId),
+]);
+export type OutcomeVerification = typeof outcomeVerificationQueue.$inferSelect;
+
+// Company Priorities — CEO-set strategic priorities all agents follow
+export const companyPriorities = pgTable("company_priorities", {
+  id: serial("id").primaryKey(),
+  priority: text("priority").notNull(),           // "Focus on keeping customers"
+  description: text("description"),               // Longer explanation
+  weight: integer("weight").notNull().default(5), // 1-10, how important
+  setBy: text("set_by").notNull().default("ceo"), // "ceo" or agent codename
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("company_priorities_active_idx").on(table.isActive),
+]);
+export type CompanyPriority = typeof companyPriorities.$inferSelect;
+
+// Quiet Hours Config — when agents should NOT send notifications
+export const quietHoursConfig = pgTable("quiet_hours_config", {
+  id: serial("id").primaryKey(),
+  startHour: integer("start_hour").notNull().default(22), // 10 PM
+  endHour: integer("end_hour").notNull().default(7),       // 7 AM
+  timezone: text("timezone").notNull().default("America/Chicago"),
+  daysOfWeek: jsonb("days_of_week").$type<number[]>().default([0, 1, 2, 3, 4, 5, 6]), // all days
+  emergencyOverride: boolean("emergency_override").notNull().default(true),
+  isActive: boolean("is_active").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+export type QuietHoursConfig = typeof quietHoursConfig.$inferSelect;
+
+// Agent Override Learnings — what agents learned from CEO rejections
+export const agentOverrideLearnings = pgTable("agent_override_learnings", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull(),
+  decisionId: integer("decision_id"),
+  actionName: text("action_name").notNull(),
+  originalRecommendation: text("original_recommendation"),
+  ceoOverrideAction: text("ceo_override_action"),
+  ceoOverrideNotes: text("ceo_override_notes"),
+  learnedPattern: text("learned_pattern").notNull(),    // AI-extracted lesson
+  patternCategory: text("pattern_category").notNull(),   // timing | scope | judgment | risk
+  occurrenceCount: integer("occurrence_count").notNull().default(1),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("aol_agent_idx").on(table.agentCodename),
+  index("aol_action_idx").on(table.actionName),
+]);
+export type AgentOverrideLearning = typeof agentOverrideLearnings.$inferSelect;
+
+// Undo Registry — tracks which agent actions can be reversed
+export const agentActionUndoLog = pgTable("agent_action_undo_log", {
+  id: serial("id").primaryKey(),
+  actionLogId: integer("action_log_id").references(() => agentActionLog.id),
+  agentCodename: text("agent_codename").notNull(),
+  actionName: text("action_name").notNull(),
+  undoAvailable: boolean("undo_available").notNull().default(false),
+  undoExpiry: timestamp("undo_expiry"),               // After this, can't undo
+  undoExecutedAt: timestamp("undo_executed_at"),       // When undo was performed
+  undoResult: jsonb("undo_result").$type<{ success: boolean; detail: string }>(),
+  originalInput: jsonb("original_input").$type<Record<string, any>>(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("aaul_action_log_idx").on(table.actionLogId),
+  index("aaul_undo_avail_idx").on(table.undoAvailable, table.undoExpiry),
+]);

@@ -8,6 +8,7 @@
  * No charts, no tables, no metrics — just your team talking to you.
  */
 
+import { useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card, CardContent } from "@/components/ui/card";
@@ -20,6 +21,7 @@ import {
   AGENT_ROLES,
   AGENT_COLORS,
 } from "@/lib/trust-language";
+import { PullToRefresh } from "@/components/mobile/PullToRefresh";
 
 interface AgentUpdate {
   agent: string;
@@ -116,11 +118,15 @@ function AgentUpdateCard({ update }: { update: AgentUpdate }) {
 }
 
 export function MorningBriefing() {
-  const { data, isLoading } = useQuery<BriefingData>({
+  const { data, isLoading, refetch } = useQuery<BriefingData>({
     queryKey: ["/api/founder/intelligence/morning-briefing"],
     refetchInterval: 60000, // Refresh every minute
     refetchIntervalInBackground: false,
   });
+
+  const handleRefresh = useCallback(async () => {
+    await refetch();
+  }, [refetch]);
 
   if (isLoading) {
     return (
@@ -138,6 +144,7 @@ export function MorningBriefing() {
   if (!data) return null;
 
   return (
+    <PullToRefresh onRefresh={handleRefresh}>
     <motion.div
       variants={staggerContainer}
       initial="hidden"
@@ -213,5 +220,6 @@ export function MorningBriefing() {
         </span>
       </motion.div>
     </motion.div>
+    </PullToRefresh>
   );
 }

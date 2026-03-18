@@ -8,8 +8,8 @@
  * Philosophy: Texting your executive team, not operating a dashboard.
  */
 
-import { useState, useRef, useEffect } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -94,12 +94,67 @@ function AgentSelector({
   );
 }
 
+const CHAT_STORAGE_KEY = "acreos_chat_history";
+const MAX_STORED_MESSAGES = 100;
+
+function loadStoredMessages(): ChatMessage[] {
+  try {
+    const raw = localStorage.getItem(CHAT_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed.slice(-MAX_STORED_MESSAGES);
+    }
+  } catch {}
+  return [];
+}
+
+function saveMessages(messages: ChatMessage[]) {
+  try {
+    localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(messages.slice(-MAX_STORED_MESSAGES)));
+  } catch {}
+}
+
 export function AgentTeamChat() {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>(loadStoredMessages);
   const [input, setInput] = useState("");
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const hasLoadedServer = useRef(false);
+
+  // Try loading chat history from server on first mount
+  useEffect(() => {
+    if (hasLoadedServer.current) return;
+    hasLoadedServer.current = true;
+
+    fetch("/api/founder/intelligence/chat-history")
+      .then((res) => {
+        if (!res.ok) throw new Error("not available");
+        return res.json();
+      })
+      .then((data) => {
+        if (Array.isArray(data?.messages) && data.messages.length > 0) {
+          setMessages((prev) => {
+            // Merge server history with local, deduplicating by id
+            const existingIds = new Set(prev.map((m) => m.id));
+            const newMsgs = data.messages.filter((m: ChatMessage) => !existingIds.has(m.id));
+            const merged = [...newMsgs, ...prev].slice(-MAX_STORED_MESSAGES);
+            saveMessages(merged);
+            return merged;
+          });
+        }
+      })
+      .catch(() => {
+        // Server endpoint not available — local persistence is sufficient
+      });
+  }, []);
+
+  // Persist messages to localStorage whenever they change
+  useEffect(() => {
+    if (messages.length > 0) {
+      saveMessages(messages);
+    }
+  }, [messages]);
 
   const sendMessage = useMutation({
     mutationFn: async (text: string) => {

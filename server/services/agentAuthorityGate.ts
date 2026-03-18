@@ -120,6 +120,26 @@ export async function checkAuthority(codename: string, action: string): Promise<
     requestedLevel = 2;
   }
 
+  // v4: Dynamic trust-based promotion
+  // If an agent's trust score exceeds a higher level's threshold,
+  // promote the action's level (except safety-critical actions in NEVER_PROMOTE)
+  const NEVER_PROMOTE = [
+    "refund_customer", "suspend_account", "process_refund_over_500",
+    "modify_pricing_plans", "infrastructure_scaling", "database_migration",
+    "infrastructure_downgrade", "data_center_migration", "rollback_deployment",
+    "legal_document_change", "regulatory_filing", "major_feature_removal",
+    "pricing_tier_restructure", "change_payment_processor", "disable_feature_in_production",
+  ];
+
+  if (!NEVER_PROMOTE.includes(action) && requestedLevel > 0) {
+    if (requestedLevel === 2 && agent.trustScore >= TRUST_THRESHOLDS[1]) {
+      requestedLevel = 1; // Promote: recommend+wait → autonomous+notify
+    }
+    if (requestedLevel === 1 && agent.trustScore >= TRUST_THRESHOLDS[0]) {
+      requestedLevel = 0; // Promote: autonomous+notify → full autonomy
+    }
+  }
+
   const trustRequired = TRUST_THRESHOLDS[requestedLevel];
   const currentTrust = agent.trustScore;
 
