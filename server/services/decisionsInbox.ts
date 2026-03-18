@@ -6,6 +6,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, isNull, or, lt } from "drizzle-orm";
 import OpenAI from "openai";
+import { executeAction, hasExecutor } from "./agentActionExecutors";
 
 const openai = new OpenAI();
 
@@ -362,11 +363,61 @@ export const decisionsInboxService = {
     });
   },
 
-  /** Approve: mark approved + record resolution. Caller executes actionPayload. */
-  async approve(itemId: number): Promise<void> {
+  /** Approve: mark approved, then EXECUTE the action payload. v3 closes the loop. */
+  async approve(itemId: number): Promise<{ executed: boolean; detail?: string }> {
+    // Mark as approved
     await db.update(decisionsInboxItems)
       .set({ status: "approved", resolvedAt: new Date(), resolvedBy: "founder", updatedAt: new Date() })
       .where(eq(decisionsInboxItems.id, itemId));
+
+    // v3: Execute the approved action
+    const item = await db.query.decisionsInboxItems.findFirst({
+      where: eq(decisionsInboxItems.id, itemId),
+    });
+
+    if (!item?.actionPayload) {
+      return { executed: false, detail: "No action payload to execute" };
+    }
+
+    const payload = item.actionPayload as Record<string, any>;
+    const agentCodename = item.ownerAgentCodename || this.inferAgent(item.itemType);
+    const actionName = payload.action || item.itemType;
+
+    // Map common action payloads to registered executors
+    const executionMap: Record<string, { agent: string; action: string }> = {
+      send_retention_email: { agent: "sophie_csm", action: "send_retention_email" },
+      resolve: { agent: "sophie_csm", action: "resolve_stale_ticket" },
+      acknowledge: { agent: "atlas_cto", action: "acknowledge_incident" },
+      add_to_roadmap: { agent: "compass_pm", action: "flag_anomaly" }, // placeholder
+    };
+
+    const mapping = executionMap[actionName];
+    const finalAgent = mapping?.agent || agentCodename;
+    const finalAction = mapping?.action || actionName;
+
+    if (hasExecutor(finalAgent, finalAction)) {
+      const result = await executeAction({
+        agentCodename: finalAgent,
+        actionName: finalAction,
+        input: payload,
+        triggeredBy: "approval",
+      });
+      return { executed: true, detail: result.detail };
+    }
+
+    return { executed: false, detail: `No executor registered for ${finalAgent}:${finalAction}` };
+  },
+
+  /** Infer agent codename from item type when not explicitly set */
+  inferAgent(itemType: string): string {
+    const typeToAgent: Record<string, string> = {
+      support_escalation: "sophie_csm",
+      churn_risk_intervention: "forge_revenue",
+      dunning_recovery: "forge_revenue",
+      critical_alert: "sentinel_devops",
+      feature_request_flagged: "compass_pm",
+    };
+    return typeToAgent[itemType] || "sophie_csm";
   },
 
   async reject(itemId: number, reason?: string): Promise<void> {

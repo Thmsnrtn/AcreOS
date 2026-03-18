@@ -588,6 +588,44 @@ export function CommandPalette() {
                       ))}
                     </CommandGroup>
 
+                    <CommandSeparator />
+
+                    {/* v3: Ask your AI team — natural language agent routing */}
+                    <CommandGroup heading="Ask Your Team">
+                      <CommandItem
+                        onSelect={() => handleSelect("/founder")}
+                        className="cursor-pointer"
+                      >
+                        <MessageSquare className="mr-2 h-4 w-4 text-emerald-500" />
+                        <span>How's revenue doing?</span>
+                        <span className="ml-auto text-xs text-muted-foreground">Forge</span>
+                      </CommandItem>
+                      <CommandItem
+                        onSelect={() => handleSelect("/founder")}
+                        className="cursor-pointer"
+                      >
+                        <MessageSquare className="mr-2 h-4 w-4 text-amber-500" />
+                        <span>Any support issues?</span>
+                        <span className="ml-auto text-xs text-muted-foreground">Sophie</span>
+                      </CommandItem>
+                      <CommandItem
+                        onSelect={() => handleSelect("/founder")}
+                        className="cursor-pointer"
+                      >
+                        <MessageSquare className="mr-2 h-4 w-4 text-blue-500" />
+                        <span>Is anything broken?</span>
+                        <span className="ml-auto text-xs text-muted-foreground">Sentinel</span>
+                      </CommandItem>
+                      <CommandItem
+                        onSelect={() => handleSelect("/founder")}
+                        className="cursor-pointer"
+                      >
+                        <MessageSquare className="mr-2 h-4 w-4 text-purple-500" />
+                        <span>Morning briefing</span>
+                        <span className="ml-auto text-xs text-muted-foreground">All agents</span>
+                      </CommandItem>
+                    </CommandGroup>
+
                     {recentItems.length > 0 && (
                       <>
                         <CommandSeparator />

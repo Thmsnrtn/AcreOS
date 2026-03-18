@@ -38,6 +38,11 @@ const notificationIcons: Record<string, any> = {
   team_mention: MessageSquare,
   automation_triggered: Workflow,
   system_alert: AlertTriangle,
+  // v3: Agent action notification types
+  agent_action_completed: CheckCircle2,
+  agent_decision_made: Workflow,
+  trust_promotion: CheckCheck,
+  agent_proactive: Workflow,
 };
 
 const notificationColors: Record<string, string> = {
@@ -53,6 +58,11 @@ const notificationColors: Record<string, string> = {
   team_mention: "text-purple-500",
   automation_triggered: "text-amber-500",
   system_alert: "text-red-500",
+  // v3: Agent action colors
+  agent_action_completed: "text-green-500",
+  agent_decision_made: "text-blue-500",
+  trust_promotion: "text-amber-500",
+  agent_proactive: "text-purple-500",
 };
 
 export function NotificationCenter() {

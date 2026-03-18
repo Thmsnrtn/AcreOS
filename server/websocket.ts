@@ -227,6 +227,8 @@ class AcreOSWebSocketServer {
     if (channel.startsWith('listing:')) return true;
     if (channel.startsWith('negotiation:')) return true;
     if (channel.startsWith('market:')) return true;
+    // v3: Allow founder agent activity channel
+    if (channel === 'founder:activity') return true;
     return false;
   }
 

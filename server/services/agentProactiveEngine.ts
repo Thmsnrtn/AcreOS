@@ -16,6 +16,7 @@ import { companyAgentService } from "./companyAgents";
 import { agentCommsService } from "./agentComms";
 import { executeWithAuthority } from "./agentAuthorityGate";
 import { resolveAgentData } from "./agentDataResolvers";
+import { executeAction } from "./agentActionExecutors";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -64,13 +65,28 @@ const BEHAVIORS: ProactiveBehavior[] = [
     },
     act: async (ctx) => {
       const failNames = ctx.failures.map((f: any) => f.jobName).join(", ");
+
+      // v3: Actually restart the failed jobs
+      const results = [];
+      for (const failure of ctx.failures) {
+        const result = await executeAction({
+          agentCodename: "sentinel_devops",
+          actionName: "restart_failed_job",
+          input: { jobName: failure.jobName },
+          triggeredBy: "proactive",
+        });
+        results.push(result);
+      }
+      const restarted = results.filter(r => r.success).length;
+
+      // Then broadcast what happened (not what we intend to do)
       await agentCommsService.broadcast({
         from: "sentinel_devops",
         channel: "incidents",
         priority: ctx.failures.length > 2 ? "high" : "medium",
-        subject: `[Proactive] ${ctx.failures.length} job(s) failed in last hour: ${failNames}`,
-        body: `Sentinel detected job failures. Jobs affected: ${failNames}. Monitoring for recurrence.`,
-        data: { failures: ctx.failures },
+        subject: `[Proactive] ${ctx.failures.length} job(s) failed — ${restarted} restarted`,
+        body: `Sentinel detected ${ctx.failures.length} job failure(s): ${failNames}. Automatically restarted ${restarted}. Monitoring for recurrence.`,
+        data: { failures: ctx.failures, restarted },
       });
     },
   },
@@ -84,16 +100,35 @@ const BEHAVIORS: ProactiveBehavior[] = [
       const stale = await db.select({ count: count() }).from(supportTickets)
         .where(and(eq(supportTickets.status, "open"), sql`${supportTickets.createdAt} < ${oneDayAgo.toISOString()}`));
       const staleCount = Number(stale[0]?.count || 0);
-      return { shouldAct: staleCount > 0, context: { staleCount } };
+      // Also fetch ticket IDs for the executor to act on
+      const staleTickets = staleCount > 0 ? await db.select({ id: supportTickets.id }).from(supportTickets)
+        .where(and(eq(supportTickets.status, "open"), sql`${supportTickets.createdAt} < ${oneDayAgo.toISOString()}`))
+        .limit(5) : [];
+      return { shouldAct: staleCount > 0, context: { staleCount, staleTicketIds: staleTickets.map(t => t.id) } };
     },
     act: async (ctx) => {
+      // v3: Actually follow up on stale tickets
+      let followed = 0;
+      if (ctx.staleTicketIds?.length) {
+        for (const ticketId of ctx.staleTicketIds.slice(0, 5)) { // Cap at 5 per run
+          const result = await executeAction({
+            agentCodename: "sophie_csm",
+            actionName: "resolve_stale_ticket",
+            input: { ticketId },
+            triggeredBy: "proactive",
+          });
+          if (result.success) followed++;
+        }
+      }
+
+      // Then broadcast what happened
       await agentCommsService.broadcast({
         from: "sophie_csm",
         channel: "customer_signals",
         priority: ctx.staleCount > 5 ? "high" : "medium",
-        subject: `[Proactive] ${ctx.staleCount} support ticket(s) unresolved >24h`,
-        body: `Sophie flagged ${ctx.staleCount} open tickets older than 24 hours. Attempting re-resolution or escalation.`,
-        data: { staleCount: ctx.staleCount },
+        subject: `[Proactive] ${ctx.staleCount} stale ticket(s) — ${followed} followed up`,
+        body: `Sophie found ${ctx.staleCount} open tickets older than 24 hours. Sent follow-ups on ${followed}. Monitoring for customer responses.`,
+        data: { staleCount: ctx.staleCount, followed },
       });
     },
   },
@@ -106,16 +141,38 @@ const BEHAVIORS: ProactiveBehavior[] = [
       const critical = await db.select({ count: count() }).from(churnRiskScores)
         .where(sql`${churnRiskScores.riskBand} IN ('red', 'critical')`);
       const critCount = Number(critical[0]?.count || 0);
-      return { shouldAct: critCount > 0, context: { criticalCount: critCount } };
+      // Also fetch the at-risk org IDs for rescue outreach
+      const atRiskOrgs = critCount > 0 ? await db.select({
+        orgId: churnRiskScores.organizationId,
+        riskScore: churnRiskScores.riskScore,
+      }).from(churnRiskScores)
+        .where(sql`${churnRiskScores.riskBand} IN ('red', 'critical')`)
+        .orderBy(desc(churnRiskScores.riskScore))
+        .limit(3) : [];
+      return { shouldAct: critCount > 0, context: { criticalCount: critCount, atRiskOrgs } };
     },
     act: async (ctx) => {
+      // v3: Trigger actual churn rescue for the highest-risk accounts
+      let rescued = 0;
+      if (ctx.atRiskOrgs?.length) {
+        for (const org of ctx.atRiskOrgs.slice(0, 3)) { // Cap at 3 per day
+          const result = await executeAction({
+            agentCodename: "forge_revenue",
+            actionName: "send_churn_rescue",
+            input: { orgId: org.orgId, riskScore: org.riskScore },
+            triggeredBy: "proactive",
+          });
+          if (result.success) rescued++;
+        }
+      }
+
       await agentCommsService.broadcast({
         from: "forge_revenue",
         channel: "revenue_events",
         priority: ctx.criticalCount > 3 ? "high" : "medium",
-        subject: `[Proactive] ${ctx.criticalCount} account(s) in red/critical churn band`,
-        body: `Forge's daily churn check: ${ctx.criticalCount} accounts at high risk. Revenue protection active.`,
-        data: { criticalCount: ctx.criticalCount },
+        subject: `[Proactive] ${ctx.criticalCount} at-risk account(s) — ${rescued} contacted`,
+        body: `Forge's daily churn check: ${ctx.criticalCount} accounts at high risk. Sent rescue outreach to ${rescued}. Revenue protection active.`,
+        data: { criticalCount: ctx.criticalCount, rescued },
       });
     },
   },
