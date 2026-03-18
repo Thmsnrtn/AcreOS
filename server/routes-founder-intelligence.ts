@@ -40,6 +40,7 @@ import { getWeeklyTrends, getMonthlyTrends } from "./services/trendAnalyzer";
 import { getActivePriorities, createPriority, deactivatePriority } from "./services/strategicCompass";
 import { getQuietHoursConfig, setQuietHours } from "./services/quietHours";
 import { learnFromOverride } from "./services/overrideLearner";
+import { generateBriefingUpdates, generateHeadlineInsight } from "./services/aiBriefingWriter";
 
 const router = Router();
 
@@ -114,85 +115,56 @@ router.get("/morning-briefing", requireFounder, async (req: Request, res: Respon
       .orderBy(desc(trustEvolutionLog.createdAt))
       .limit(3);
 
-    // ── Build agent-voiced updates ────────────────────────────────────
-    const agentUpdates = [];
+    // ── Build agent-voiced updates (v5: AI-generated with template fallback) ──
+    const agents = await companyAgentService.getAllIncludingPaused();
+    let agentUpdates: any[];
 
-    // Forge — Revenue
-    const mrrDollars = ((forgeData as any).mrrCents || 0) / 100;
-    const mrrGrowth = (forgeData as any).mrrGrowthPct;
-    const atRisk = (forgeData as any).criticalChurnOrgs || 0;
-    const forgeActions = actionsByAgent["forge_revenue"];
-    // Build Forge's message in steps to avoid complex template literals
-    let forgeMsg = mrrDollars > 0 ? `MRR is $${mrrDollars.toLocaleString()}` : "Revenue data loading";
-    if (mrrGrowth) {
-      const dir = mrrGrowth > 0 ? "up" : "down";
-      forgeMsg += `, ${dir} ${Math.abs(mrrGrowth).toFixed(1)}%`;
+    try {
+      // v5: Use AI to generate agent briefings in their authentic voice
+      const briefingInputs = agents
+        .filter(a => ["forge_revenue", "sentinel_devops", "sophie_csm", "oracle_analytics", "ledger_finance"].includes(a.codename))
+        .map(a => ({
+          codename: a.codename,
+          title: a.title,
+          role: a.title,
+          personalityPrompt: a.personalityPrompt || "",
+          metrics: {
+            forge_revenue: forgeData,
+            sentinel_devops: sentinelData,
+            sophie_csm: sophieData,
+            oracle_analytics: oracleData,
+            ledger_finance: ledgerData,
+          }[a.codename] || {},
+          recentActions: actionsByAgent[a.codename] || { total: 0, succeeded: 0 },
+          trustScore: a.trustScore,
+        }));
+      agentUpdates = await generateBriefingUpdates(briefingInputs);
+    } catch {
+      // Fallback: template strings (v3 style)
+      agentUpdates = [];
+      const mrrDollars = ((forgeData as any).mrrCents || 0) / 100;
+      const mrrGrowth = (forgeData as any).mrrGrowthPct;
+      const atRisk = (forgeData as any).criticalChurnOrgs || 0;
+      const forgeActions = actionsByAgent["forge_revenue"];
+      let forgeMsg = mrrDollars > 0 ? `MRR is $${mrrDollars.toLocaleString()}` : "Revenue data loading";
+      if (mrrGrowth) { forgeMsg += `, ${mrrGrowth > 0 ? "up" : "down"} ${Math.abs(mrrGrowth).toFixed(1)}%`; }
+      forgeMsg += ". ";
+      if (atRisk > 0) { forgeMsg += `${atRisk} account${atRisk > 1 ? "s" : ""} at churn risk.`; }
+      else { forgeMsg += "No accounts at risk."; }
+      agentUpdates.push({ agent: "forge_revenue", role: "Revenue Lead", message: forgeMsg, hasActivity: !!forgeActions?.total });
+
+      const jobsHealthy = (sentinelData as any).healthyJobs || 0;
+      const jobsFailed = (sentinelData as any).failedJobs || 0;
+      agentUpdates.push({ agent: "sentinel_devops", role: "Infrastructure", message: jobsFailed === 0 ? `All ${jobsHealthy} jobs healthy.` : `${jobsFailed} job issues detected.`, hasActivity: !!actionsByAgent["sentinel_devops"]?.total });
+
+      const ticketsOpen = (sophieData as any).openTickets || 0;
+      agentUpdates.push({ agent: "sophie_csm", role: "Customer Success", message: ticketsOpen > 0 ? `${ticketsOpen} open tickets.` : "Support inbox clear.", hasActivity: !!actionsByAgent["sophie_csm"]?.total });
+
+      agentUpdates.push({ agent: "oracle_analytics", role: "Analytics", message: "Metrics trending normally.", hasActivity: false });
+      agentUpdates.push({ agent: "ledger_finance", role: "Finance", message: "Financials on track.", hasActivity: false });
     }
-    forgeMsg += ". ";
-    if (atRisk > 0) {
-      forgeMsg += `${atRisk} account${atRisk > 1 ? "s" : ""} at churn risk`;
-      if (forgeActions?.succeeded) forgeMsg += ` — I've already reached out to ${forgeActions.succeeded}`;
-      forgeMsg += ".";
-    } else {
-      forgeMsg += "No accounts at risk.";
-    }
-    agentUpdates.push({
-      agent: "forge_revenue",
-      role: "Revenue Lead",
-      message: forgeMsg,
-      hasActivity: !!forgeActions?.total,
-    });
-
-    // Sentinel — Infrastructure
-    const jobsHealthy = (sentinelData as any).healthyJobs || 0;
-    const jobsFailed = (sentinelData as any).failedJobs || 0;
-    const sentinelActions = actionsByAgent["sentinel_devops"];
-    agentUpdates.push({
-      agent: "sentinel_devops",
-      role: "Infrastructure",
-      message: jobsFailed === 0
-        ? `All ${jobsHealthy} background jobs healthy. No incidents overnight.`
-        : `${jobsFailed} job${jobsFailed > 1 ? "s" : ""} had issues${sentinelActions?.succeeded ? ` — I restarted ${sentinelActions.succeeded} and they're back to normal` : ""}. ${jobsHealthy} others running fine.`,
-      hasActivity: !!sentinelActions?.total,
-    });
-
-    // Sophie — Customer Success
-    const ticketsResolved = (sophieData as any).autoResolvedToday || 0;
-    const ticketsOpen = (sophieData as any).openTickets || 0;
-    const sophieActions = actionsByAgent["sophie_csm"];
-    agentUpdates.push({
-      agent: "sophie_csm",
-      role: "Customer Success",
-      message: ticketsResolved > 0
-        ? `${ticketsResolved} ticket${ticketsResolved > 1 ? "s" : ""} auto-resolved yesterday.${ticketsOpen > 0 ? ` ${ticketsOpen} still open — I'm on it.` : " Inbox clear."}${sophieActions?.succeeded ? ` Sent ${sophieActions.succeeded} follow-up${sophieActions.succeeded > 1 ? "s" : ""}.` : ""}`
-        : `${ticketsOpen > 0 ? `${ticketsOpen} open ticket${ticketsOpen > 1 ? "s" : ""} — working through them.` : "All quiet on the support front."}`,
-      hasActivity: !!sophieActions?.total,
-    });
-
-    // Oracle — Analytics
-    const signupGrowth = (oracleData as any).signupGrowthWoW;
-    agentUpdates.push({
-      agent: "oracle_analytics",
-      role: "Analytics",
-      message: signupGrowth !== undefined && signupGrowth !== null
-        ? `Signup growth week-over-week: ${signupGrowth > 0 ? "+" : ""}${signupGrowth}%.${Math.abs(signupGrowth) > 30 ? " That's unusual — keeping an eye on it." : ""}`
-        : "Metrics trending normally. No anomalies detected.",
-      hasActivity: false,
-    });
-
-    // Ledger — Finance
-    const aiSpend = (ledgerData as any).aiSpend7dDollars;
-    agentUpdates.push({
-      agent: "ledger_finance",
-      role: "Finance",
-      message: aiSpend !== undefined
-        ? `AI spend this week: $${aiSpend}. ${Number(aiSpend) > 35 ? "Running a bit hot — I'll watch it." : "Within normal range."}`
-        : "Financials on track. Nothing unusual.",
-      hasActivity: false,
-    });
 
     // ── Build trust change messages ───────────────────────────────────
-    const agents = await companyAgentService.getAllIncludingPaused();
     const agentNames = Object.fromEntries(agents.map(a => [a.codename, a.title]));
 
     const trustUpdates = trustChanges.map(tc => {
@@ -203,17 +175,23 @@ router.get("/morning-briefing", requireFounder, async (req: Request, res: Respon
       return { agent: tc.agentCodename, message: `${name} is ready for more responsibility. Promote them?` };
     });
 
-    // ── Determine headline ────────────────────────────────────────────
+    // ── Determine headline (v5: AI-generated with fallback) ─────────
+    const mrrDollars = ((forgeData as any).mrrCents || 0) / 100;
+    const atRisk = (forgeData as any).criticalChurnOrgs || 0;
+    const totalActions = Object.values(actionsByAgent).reduce((sum: number, a: any) => sum + (a.total || 0), 0);
+    let headline: string;
+    try {
+      headline = await generateHeadlineInsight({ mrrDollars, pendingDecisions, totalAgentActions: totalActions, atRiskAccounts: atRisk });
+    } catch {
+      // Fallback
+      const allClear = pendingDecisions === 0;
+      headline = allClear ? "Your company is running smoothly." : `${pendingDecisions} decision${pendingDecisions > 1 ? "s" : ""} need your attention.`;
+    }
+    const jobsFailed = (sentinelData as any).failedJobs || 0;
     const allClear = pendingDecisions === 0 && jobsFailed === 0 && atRisk === 0;
-    const headline = allClear
-      ? "Your company is running smoothly. No fires, no decisions needed."
-      : pendingDecisions > 0
-        ? `${pendingDecisions} decision${pendingDecisions > 1 ? "s" : ""} need${pendingDecisions === 1 ? "s" : ""} your attention.`
-        : jobsFailed > 0
-          ? "Your team handled some issues overnight. Here's the summary."
-          : "A few things to be aware of, but nothing urgent.";
 
     // ── Compute company health score (0-100) ──────────────────────────
+    const ticketsOpen = (sophieData as any).openTickets || 0;
     let healthScore = 100;
     if (jobsFailed > 0) healthScore -= 10 * Math.min(jobsFailed, 3);
     if (atRisk > 0) healthScore -= 5 * Math.min(atRisk, 4);
@@ -2279,6 +2257,138 @@ router.get("/chat-history", requireFounder, async (req: Request, res: Response) 
     }
   } catch (err: any) {
     console.error("[chat-history] Error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/founder/intelligence/command — v5 CEO Natural Language Commands
+// CEO says "pause all marketing" and it actually happens.
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.post("/command", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { input } = req.body;
+    if (!input || typeof input !== "string") {
+      return res.status(400).json({ error: "Missing 'input' string in request body" });
+    }
+
+    const { processCEOCommand } = await import("./services/ceoCommandBridge");
+    const result = await processCEOCommand(input);
+
+    res.json(result);
+  } catch (err: any) {
+    console.error("[command] Error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/founder/intelligence/forecast — v5 MRR Projections & Runway
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get("/forecast", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { projectMRR, calculateRunway, calculateUnitEconomics } = await import("./services/financialForecaster");
+
+    const [mrrProjection, runway, unitEconomics] = await Promise.all([
+      projectMRR(),
+      calculateRunway(),
+      calculateUnitEconomics(),
+    ]);
+
+    res.json({
+      mrr: mrrProjection,
+      runway,
+      unitEconomics,
+    });
+  } catch (err: any) {
+    console.error("[forecast] Error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/founder/intelligence/customer-health — v5 Customer Health Scores
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get("/customer-health", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { getAllCustomerHealth, getHealthSummary } = await import("./services/customerHealthScoring");
+    const limit = parseInt(req.query.limit as string) || 20;
+
+    const [customers, summary] = await Promise.all([
+      getAllCustomerHealth(limit),
+      getHealthSummary(),
+    ]);
+
+    res.json({ customers, summary });
+  } catch (err: any) {
+    console.error("[customer-health] Error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/founder/intelligence/customer-health/:orgId — Single customer health
+router.get("/customer-health/:orgId", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const orgId = parseInt(req.params.orgId);
+    if (isNaN(orgId)) return res.status(400).json({ error: "Invalid org ID" });
+
+    const { getCustomerHealth } = await import("./services/customerHealthScoring");
+    const health = await getCustomerHealth(orgId);
+
+    if (!health) return res.status(404).json({ error: "Customer not found" });
+    res.json(health);
+  } catch (err: any) {
+    console.error("[customer-health] Error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/founder/intelligence/delegations — v5 Active Delegations
+// POST /api/founder/intelligence/delegations — Grant temporary authority
+// DELETE /api/founder/intelligence/delegations/:id — Revoke delegation
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get("/delegations", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { getActiveDelegations } = await import("./services/temporaryDelegation");
+    res.json({ delegations: getActiveDelegations() });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/delegations", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { agentCodename, actions, toLevel, durationHours, reason } = req.body;
+    if (!agentCodename || !durationHours) {
+      return res.status(400).json({ error: "agentCodename and durationHours required" });
+    }
+
+    const { grantTemporaryAuthority } = await import("./services/temporaryDelegation");
+    const delegation = grantTemporaryAuthority({
+      agentCodename,
+      actions,
+      toLevel,
+      durationHours,
+      reason: reason || "CEO delegation",
+    });
+
+    res.json({ delegation });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete("/delegations/:id", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { revokeDelegation } = await import("./services/temporaryDelegation");
+    const success = revokeDelegation(req.params.id);
+    res.json({ success, message: success ? "Delegation revoked" : "Delegation not found" });
+  } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });

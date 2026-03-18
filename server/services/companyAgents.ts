@@ -361,13 +361,19 @@ class CompanyAgentService {
       .join("\n");
 
     try {
+      // v5: Inject strategic priorities and learned patterns into agent prompts
+      const { getPrioritiesForPrompt } = await import("./strategicCompass");
+      const { getLearnedPatternsForPrompt } = await import("./overrideLearner");
+      const strategicContext = await getPrioritiesForPrompt().catch(() => "");
+      const learnedPatterns = await getLearnedPatternsForPrompt(codename).catch(() => "");
+
       const aiResponse = await routeAITask({
         taskType: "agent_report",
         complexity: TaskComplexity.MODERATE,
         messages: [
           {
             role: "system",
-            content: agent.personalityPrompt || `You are ${agent.codename}, the ${agent.title}.`,
+            content: (agent.personalityPrompt || `You are ${agent.codename}, the ${agent.title}.`) + `${strategicContext}${learnedPatterns}`,
           },
           {
             role: "user",

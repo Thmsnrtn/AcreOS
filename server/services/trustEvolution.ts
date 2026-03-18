@@ -117,6 +117,35 @@ export async function runTrustEvolution(): Promise<{
       }
     }
 
+    // ── Dimension 3: Verified outcomes (NEW in v5) ──────────────────────
+    // Real outcome verification: did the action actually HELP?
+    try {
+      const { outcomeVerificationQueue } = await import("@shared/schema");
+      const verifiedResults = await db.select({
+        total: count(),
+        verified: sql<number>`count(*) filter (where status = 'verified')`,
+        failed: sql<number>`count(*) filter (where status = 'failed')`,
+      })
+        .from(outcomeVerificationQueue)
+        .where(and(
+          eq(outcomeVerificationQueue.agentCodename, agent.codename),
+          gte(outcomeVerificationQueue.verifiedAt, oneDayAgo),
+        ));
+
+      const vStats = verifiedResults[0] || { total: 0, verified: 0, failed: 0 };
+      const verifiedCount = Number(vStats.verified);
+      const failedVerified = Number(vStats.failed);
+
+      if (verifiedCount > 0) {
+        delta += Math.min(2, verifiedCount); // +1 per verified positive outcome, max +2
+        reasons.push(`${verifiedCount} action${verifiedCount > 1 ? "s" : ""} verified as successful`);
+      }
+      if (failedVerified > 0) {
+        delta -= failedVerified;
+        reasons.push(`${failedVerified} action${failedVerified > 1 ? "s" : ""} did not achieve desired outcome`);
+      }
+    } catch {}
+
     // v4: Increased cap from ±2 to ±5 per day so trust feels responsive.
     // Agents can now move from 50 to 90 in ~10 strong days instead of 25+.
     delta = Math.max(-5, Math.min(5, delta));
