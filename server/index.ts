@@ -530,6 +530,8 @@ app.use("/api/auth", async (req, res, next) => {
       seedCompanyAgentsOnStartup();
       startCompanyBriefingJob();
       startTrustEvolutionJob();
+      startAgentReactionProcessorJob();
+      startAgentProactiveEngineJob();
 
       // Auto-seed county GIS endpoints for free parcel lookups
       seedCountyGisEndpointsOnStartup();
@@ -1494,4 +1496,49 @@ function startTrustEvolutionJob() {
       }).catch(err => log(`Trust evolution import failed: ${err}`, 'sovereign'));
     }
   }, ONE_HOUR);
+}
+
+/**
+ * Agent Reaction Processor — every 2 minutes.
+ * Checks for unread inter-agent messages and triggers reactions.
+ */
+function startAgentReactionProcessorJob() {
+  const TWO_MINUTES = 2 * 60 * 1000;
+
+  log('Registering agent reaction processor (every 2 minutes)', 'sovereign');
+
+  setInterval(() => {
+    import('./services/agentReactionEngine').then(({ processAgentReactions }) => {
+      processAgentReactions().catch(err => {
+        log(`Agent reaction processor failed: ${err}`, 'sovereign');
+      });
+    }).catch(err => log(`Reaction engine import failed: ${err}`, 'sovereign'));
+  }, TWO_MINUTES);
+}
+
+/**
+ * Agent Proactive Engine — every 5 minutes.
+ * Agents independently check conditions and take initiative.
+ */
+function startAgentProactiveEngineJob() {
+  const FIVE_MINUTES = 5 * 60 * 1000;
+
+  log('Registering agent proactive engine (every 5 minutes)', 'sovereign');
+
+  // Start after 3 minutes to let agents seed first
+  setTimeout(() => {
+    import('./services/agentProactiveEngine').then(({ runProactiveEngine }) => {
+      runProactiveEngine().catch(err => {
+        log(`Proactive engine startup run failed: ${err}`, 'sovereign');
+      });
+    }).catch(err => log(`Proactive engine import failed: ${err}`, 'sovereign'));
+  }, 3 * 60 * 1000);
+
+  setInterval(() => {
+    import('./services/agentProactiveEngine').then(({ runProactiveEngine }) => {
+      runProactiveEngine().catch(err => {
+        log(`Proactive engine run failed: ${err}`, 'sovereign');
+      });
+    }).catch(err => log(`Proactive engine import failed: ${err}`, 'sovereign'));
+  }, FIVE_MINUTES);
 }

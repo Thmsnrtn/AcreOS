@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useLocation } from "wouter";
 import { PageShell } from "@/components/page-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6736,10 +6737,16 @@ function CompanyBriefingPanel() {
 
 function AgentTeamPanel() {
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const [chatOpen, setChatOpen] = useState(false);
   const [chatAgent, setChatAgent] = useState<string | null>(null);
   const [chatMessage, setChatMessage] = useState("");
   const [chatHistory, setChatHistory] = useState<{ role: string; content: string; agent?: string }[]>([]);
+  const [chatConvId, setChatConvId] = useState<string | null>(null);
+  const [goalOpen, setGoalOpen] = useState(false);
+  const [goalAgent, setGoalAgent] = useState<string | null>(null);
+  const [goalText, setGoalText] = useState("");
+  const [goalPriority, setGoalPriority] = useState("medium");
   const [chatPending, setChatPending] = useState(false);
 
   const { data: agents, isLoading, refetch } = useQuery({
@@ -6773,13 +6780,35 @@ function AgentTeamPanel() {
       const res = await apiRequest("POST", "/api/founder/intelligence/agent-chat", {
         message: userMsg,
         targetAgent: chatAgent,
+        conversationId: chatConvId,
       });
       const data = await res.json();
-      setChatHistory(prev => [...prev, { role: "assistant", content: data.response, agent: data.agentTitle }]);
+      if (data.conversationId && !chatConvId) setChatConvId(data.conversationId);
+      setChatHistory(prev => [...prev, {
+        role: "assistant",
+        content: data.response + (data.dataUsed ? "" : ""),
+        agent: data.agentTitle,
+      }]);
     } catch {
       setChatHistory(prev => [...prev, { role: "assistant", content: "Sorry, I couldn't process that request." }]);
     } finally {
       setChatPending(false);
+    }
+  };
+
+  const sendGoal = async () => {
+    if (!goalAgent || !goalText.trim()) return;
+    try {
+      await apiRequest("POST", "/api/founder/intelligence/agent-goals", {
+        assignedAgent: goalAgent,
+        goal: goalText,
+        priority: goalPriority,
+      });
+      toast({ title: "Goal assigned", description: `${goalAgent} has received a new goal.` });
+      setGoalOpen(false);
+      setGoalText("");
+    } catch {
+      toast({ title: "Failed to assign goal", variant: "destructive" });
     }
   };
 
@@ -6826,7 +6855,8 @@ function AgentTeamPanel() {
           const trustPct = agent.trustScore || 50;
 
           return (
-            <Card key={agent.codename} className={`relative overflow-hidden ${isPaused ? "opacity-60" : ""}`}>
+            <Card key={agent.codename} className={`relative overflow-hidden cursor-pointer hover:border-primary/30 transition-colors ${isPaused ? "opacity-60" : ""}`}
+              onClick={() => navigate(`/founder/agents/${agent.codename}`)}>
               <CardContent className="p-4 space-y-3">
                 {/* Header */}
                 <div className="flex items-center justify-between">
@@ -6861,15 +6891,23 @@ function AgentTeamPanel() {
                 </div>
 
                 {/* Actions */}
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                   <Button
                     size="sm"
                     variant="ghost"
                     className="h-7 text-xs flex-1"
-                    onClick={() => { setChatAgent(agent.codename); setChatOpen(true); setChatHistory([]); }}
+                    onClick={() => { setChatAgent(agent.codename); setChatOpen(true); setChatHistory([]); setChatConvId(null); }}
                   >
                     <MessageSquare className="w-3 h-3 mr-1" />
                     Chat
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 text-xs text-blue-600"
+                    onClick={() => { setGoalAgent(agent.codename); setGoalOpen(true); }}
+                  >
+                    <Target className="w-3 h-3" />
                   </Button>
                   <Button
                     size="sm"
@@ -6894,6 +6932,42 @@ function AgentTeamPanel() {
           );
         })}
       </div>
+
+      {/* Goal Delegation Dialog */}
+      <Dialog open={goalOpen} onOpenChange={setGoalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Target className="w-5 h-5" />
+              Assign Goal to {goalAgent?.split("_")[0]}
+            </DialogTitle>
+            <DialogDescription>
+              Describe what you want this agent to accomplish.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Textarea
+              placeholder="e.g. Increase trial-to-paid conversion by 15% this quarter"
+              value={goalText}
+              onChange={(e) => setGoalText(e.target.value)}
+              rows={3}
+            />
+            <Select value={goalPriority} onValueChange={setGoalPriority}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="low">Low Priority</SelectItem>
+                <SelectItem value="medium">Medium Priority</SelectItem>
+                <SelectItem value="high">High Priority</SelectItem>
+                <SelectItem value="critical">Critical Priority</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setGoalOpen(false)}>Cancel</Button>
+            <Button onClick={sendGoal} disabled={!goalText.trim()}>Assign Goal</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Agent Chat Dialog */}
       <Dialog open={chatOpen} onOpenChange={setChatOpen}>

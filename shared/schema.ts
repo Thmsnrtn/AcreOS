@@ -11047,3 +11047,65 @@ export const trustEvolutionLog = pgTable("trust_evolution_log", {
   index("trust_evolution_agent_idx").on(table.agentCodename),
   index("trust_evolution_created_idx").on(table.createdAt),
 ]);
+
+// Agent Action Log — full audit trail of every agent action
+export const agentActionLog = pgTable("agent_action_log", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull(),
+  actionType: text("action_type").notNull(), // skill | goal | reaction | report | chat | decision | proactive
+  actionName: text("action_name").notNull(),
+  input: jsonb("input").$type<Record<string, any>>(),
+  output: jsonb("output").$type<Record<string, any>>(),
+  reasoning: text("reasoning"),
+  confidence: integer("confidence"),
+  costCents: integer("cost_cents").default(0),
+  authorityLevel: integer("authority_level"), // 0-3
+  trustScoreAtTime: integer("trust_score_at_time"),
+  outcome: text("outcome").notNull(), // success | failure | escalated | pending
+  durationMs: integer("duration_ms"),
+  relatedGoalId: integer("related_goal_id"),
+  relatedDecisionId: integer("related_decision_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("agent_action_log_agent_idx").on(table.agentCodename),
+  index("agent_action_log_type_idx").on(table.actionType),
+  index("agent_action_log_outcome_idx").on(table.outcome),
+  index("agent_action_log_created_idx").on(table.createdAt),
+]);
+
+// Agent Goals — CEO-delegated and agent-to-agent task assignments
+export const agentGoals = pgTable("agent_goals", {
+  id: serial("id").primaryKey(),
+  assignedAgent: text("assigned_agent").notNull(), // agent codename
+  assignedBy: text("assigned_by").notNull(), // 'ceo' or agent codename
+  goal: text("goal").notNull(),
+  successCriteria: text("success_criteria"),
+  priority: text("priority").notNull().default("medium"), // low | medium | high | critical
+  deadline: timestamp("deadline"),
+  status: text("status").notNull().default("pending"), // pending | in_progress | completed | failed | cancelled
+  directorTaskId: integer("director_task_id"),
+  progressLog: jsonb("progress_log").$type<Array<{ timestamp: string; update: string; metrics?: Record<string, any> }>>().default([]),
+  result: jsonb("result").$type<Record<string, any>>(),
+  createdAt: timestamp("created_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+}, (table) => [
+  index("agent_goals_agent_idx").on(table.assignedAgent),
+  index("agent_goals_status_idx").on(table.status),
+  index("agent_goals_created_idx").on(table.createdAt),
+]);
+
+// Agent Conversations — persistent chat history with memory
+export const agentConversations = pgTable("agent_conversations", {
+  id: serial("id").primaryKey(),
+  conversationId: text("conversation_id").notNull(), // UUID, groups messages
+  agentCodename: text("agent_codename"),
+  role: text("role").notNull(), // user | assistant
+  content: text("content").notNull(),
+  toolCalls: jsonb("tool_calls").$type<Record<string, any>[]>(),
+  metadata: jsonb("metadata").$type<Record<string, any>>(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("agent_conv_id_idx").on(table.conversationId),
+  index("agent_conv_agent_idx").on(table.agentCodename),
+  index("agent_conv_created_idx").on(table.createdAt),
+]);

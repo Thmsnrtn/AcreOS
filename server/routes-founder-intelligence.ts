@@ -24,6 +24,7 @@ import {
   notes, campaigns, apiUsageLogs,
   decisionsInboxItems, jobHealthLogs, churnRiskScores, revenueProtectionInterventions,
   founderDigestHistory, companyAgents, agentMessages, companyBriefingCache,
+  agentConversations, agentActionLog, agentGoals, trustEvolutionLog,
 } from "@shared/schema";
 import { sql, desc, eq, and, gte, lte, lt, count, sum, avg, ne } from "drizzle-orm";
 import { isFounderEmail } from "./services/founder";
@@ -1428,30 +1429,23 @@ router.patch("/company-agents/:codename/status", requireFounder, async (req: Req
 
 router.post("/agent-chat", requireFounder, async (req: Request, res: Response) => {
   try {
-    const { message, targetAgent } = req.body;
+    const { message, targetAgent, conversationId: clientConvId } = req.body;
 
     if (!message) {
       return res.status(400).json({ error: "Message is required" });
     }
 
     // Parse agent name from message if not explicitly provided
+    const AGENT_NAMES: Record<string, string> = {
+      atlas: "atlas_cto", sophie: "sophie_csm", forge: "forge_revenue",
+      beacon: "beacon_marketing", sentinel: "sentinel_devops", ledger: "ledger_finance",
+      shield: "shield_legal", oracle: "oracle_analytics", compass: "compass_pm", crucible: "crucible_qa",
+    };
+
     let agentCodename = targetAgent;
     if (!agentCodename) {
-      const agentNames: Record<string, string> = {
-        atlas: "atlas_cto",
-        sophie: "sophie_csm",
-        forge: "forge_revenue",
-        beacon: "beacon_marketing",
-        sentinel: "sentinel_devops",
-        ledger: "ledger_finance",
-        shield: "shield_legal",
-        oracle: "oracle_analytics",
-        compass: "compass_pm",
-        crucible: "crucible_qa",
-      };
-
       const lowerMsg = message.toLowerCase();
-      for (const [name, code] of Object.entries(agentNames)) {
+      for (const [name, code] of Object.entries(AGENT_NAMES)) {
         if (lowerMsg.startsWith(name + ",") || lowerMsg.startsWith(name + " ")) {
           agentCodename = code;
           break;
@@ -1459,46 +1453,24 @@ router.post("/agent-chat", requireFounder, async (req: Request, res: Response) =
       }
     }
 
-    // Check for CEO override commands
+    // CEO override commands
     const lowerMsg = message.toLowerCase().trim();
-
-    if (lowerMsg.startsWith("pause ")) {
-      const name = lowerMsg.replace("pause ", "").trim();
-      const agentNames: Record<string, string> = {
-        atlas: "atlas_cto", sophie: "sophie_csm", forge: "forge_revenue",
-        beacon: "beacon_marketing", sentinel: "sentinel_devops", ledger: "ledger_finance",
-        shield: "shield_legal", oracle: "oracle_analytics", compass: "compass_pm", crucible: "crucible_qa",
-      };
-      const code = agentNames[name];
-      if (code) {
-        await companyAgentService.setStatus(code, "paused");
-        return res.json({
-          response: `${name.charAt(0).toUpperCase() + name.slice(1)} has been paused. They will not generate reports or take autonomous actions until resumed.`,
-          agent: code,
-          action: "paused",
-        });
+    for (const cmd of ["pause", "resume"] as const) {
+      if (lowerMsg.startsWith(cmd + " ")) {
+        const name = lowerMsg.replace(cmd + " ", "").trim();
+        const code = AGENT_NAMES[name];
+        if (code) {
+          await companyAgentService.setStatus(code, cmd === "pause" ? "paused" : "active");
+          return res.json({
+            response: `${name.charAt(0).toUpperCase() + name.slice(1)} has been ${cmd === "pause" ? "paused" : "resumed"}.`,
+            agent: code, action: cmd === "pause" ? "paused" : "resumed",
+          });
+        }
       }
     }
 
-    if (lowerMsg.startsWith("resume ")) {
-      const name = lowerMsg.replace("resume ", "").trim();
-      const agentNames: Record<string, string> = {
-        atlas: "atlas_cto", sophie: "sophie_csm", forge: "forge_revenue",
-        beacon: "beacon_marketing", sentinel: "sentinel_devops", ledger: "ledger_finance",
-        shield: "shield_legal", oracle: "oracle_analytics", compass: "compass_pm", crucible: "crucible_qa",
-      };
-      const code = agentNames[name];
-      if (code) {
-        await companyAgentService.setStatus(code, "active");
-        return res.json({
-          response: `${name.charAt(0).toUpperCase() + name.slice(1)} has been resumed and is back on active duty.`,
-          agent: code,
-          action: "resumed",
-        });
-      }
-    }
-
-    // Get the agent's personality for the response
+    // v2: Resolve LIVE data for grounded conversations
+    let liveDataStr = "";
     let systemPrompt = "You are a member of the AcreOS AI executive team. Answer the CEO's question helpfully and in character.";
     let agentTitle = "AI Team";
 
@@ -1507,36 +1479,220 @@ router.post("/agent-chat", requireFounder, async (req: Request, res: Response) =
       if (agent) {
         systemPrompt = agent.personalityPrompt || systemPrompt;
         agentTitle = agent.title;
-
-        // Record activity for the addressed agent
         await companyAgentService.recordActivity(agentCodename);
+
+        // Resolve live data from agent's owned services
+        try {
+          const { resolveAgentData } = await import("./agentDataResolvers");
+          const liveData = await resolveAgentData(agentCodename);
+          liveDataStr = Object.entries(liveData)
+            .map(([k, v]) => `${k}: ${v}`)
+            .join("\n");
+        } catch {}
       }
     }
 
-    // Route through AI with the agent's personality
+    // v2: Load conversation history for persistence
+    const conversationId = clientConvId || `chat_${Date.now()}`;
+    let historyMessages: Array<{ role: string; content: string }> = [];
+    if (clientConvId) {
+      try {
+        const history = await db.select()
+          .from(agentConversations)
+          .where(eq(agentConversations.conversationId, clientConvId))
+          .orderBy(agentConversations.createdAt)
+          .limit(20);
+        historyMessages = history.map((h: any) => ({ role: h.role, content: h.content }));
+      } catch {}
+    }
+
+    // Build the full prompt with live data context
+    const dataSection = liveDataStr ? `\n\nYOUR LIVE METRICS (real-time from your services):\n${liveDataStr}\n` : "";
+
+    const messages = [
+      { role: "system" as const, content: systemPrompt + dataSection },
+      ...historyMessages,
+      {
+        role: "user" as const,
+        content: `The CEO is asking you directly. Respond in character as ${agentTitle}. Use your live metrics to answer with real numbers. Be concise but thorough.\n\nCEO: ${message}`,
+      },
+    ];
+
     const aiResponse = await routeAITask({
       taskType: "agent_chat",
       complexity: TaskComplexity.MODERATE,
-      messages: [
-        { role: "system", content: systemPrompt },
-        {
-          role: "user",
-          content: `The CEO is asking you directly. Respond in character as ${agentTitle}.
-
-CEO's message: ${message}
-
-Respond naturally in your persona's voice. Be concise but thorough. If you need data you don't have, say so — don't fabricate numbers.`,
-        },
-      ],
+      messages,
     });
+
+    // v2: Save conversation for persistence
+    try {
+      await db.insert(agentConversations).values([
+        { conversationId, agentCodename, role: "user", content: message },
+        { conversationId, agentCodename, role: "assistant", content: aiResponse.content },
+      ] as any);
+    } catch {}
 
     res.json({
       response: aiResponse.content,
       agent: agentCodename || "team",
       agentTitle,
+      conversationId,
+      dataUsed: !!liveDataStr,
     });
   } catch (err: any) {
     console.error("[agent-chat] Error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/founder/intelligence/agent-messages
+// View inter-agent communication feed
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AGENT GOALS — CEO task delegation
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.post("/agent-goals", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { assignedAgent, goal, successCriteria, priority, deadline } = req.body;
+    if (!assignedAgent || !goal) return res.status(400).json({ error: "assignedAgent and goal required" });
+
+    const { createGoal } = await import("./services/agentGoalManager");
+    const goalId = await createGoal({
+      assignedAgent,
+      assignedBy: "ceo",
+      goal,
+      successCriteria,
+      priority,
+      deadline: deadline ? new Date(deadline) : undefined,
+    });
+    res.json({ success: true, goalId });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/agent-goals", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { agent, status } = req.query;
+    const { getGoals } = await import("./services/agentGoalManager");
+    const goals = await getGoals({
+      agentCodename: agent as string,
+      status: status as string,
+    });
+    res.json(goals);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.patch("/agent-goals/:id", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { action, priority, reason } = req.body;
+
+    if (action === "cancel") {
+      const { cancelGoal } = await import("./services/agentGoalManager");
+      await cancelGoal(id, reason);
+    } else if (action === "reprioritize" && priority) {
+      const { reprioritizeGoal } = await import("./services/agentGoalManager");
+      await reprioritizeGoal(id, priority);
+    } else {
+      return res.status(400).json({ error: "Valid action required: cancel or reprioritize" });
+    }
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AGENT ACTION LOG — audit trail
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get("/agent-actions/:codename", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { codename } = req.params;
+    const limit = parseInt(req.query.limit as string) || 50;
+    const actions = await db.select()
+      .from(agentActionLog)
+      .where(eq(agentActionLog.agentCodename, codename))
+      .orderBy(desc(agentActionLog.createdAt))
+      .limit(limit);
+    res.json(actions);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AGENT TRUST HISTORY — for charts
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get("/agent-trust-history/:codename", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { codename } = req.params;
+    const history = await db.select()
+      .from(trustEvolutionLog)
+      .where(eq(trustEvolutionLog.agentCodename, codename))
+      .orderBy(desc(trustEvolutionLog.createdAt))
+      .limit(52); // 1 year of weekly data
+    res.json(history);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AGENT DETAIL — full agent profile data
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get("/company-agents/:codename/detail", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { codename } = req.params;
+    const agent = await companyAgentService.getByCodename(codename);
+    if (!agent) return res.status(404).json({ error: "Agent not found" });
+
+    // Resolve live data
+    const { resolveAgentData } = await import("./services/agentDataResolvers");
+    const liveData = await resolveAgentData(codename);
+
+    // Get recent actions
+    const recentActions = await db.select()
+      .from(agentActionLog)
+      .where(eq(agentActionLog.agentCodename, codename))
+      .orderBy(desc(agentActionLog.createdAt))
+      .limit(20);
+
+    // Get active goals
+    const { getGoals } = await import("./services/agentGoalManager");
+    const goals = await getGoals({ agentCodename: codename, limit: 10 });
+
+    // Get trust history
+    const trustHistory = await db.select()
+      .from(trustEvolutionLog)
+      .where(eq(trustEvolutionLog.agentCodename, codename))
+      .orderBy(desc(trustEvolutionLog.createdAt))
+      .limit(20);
+
+    // Get attributed decisions
+    const decisions = await db.select()
+      .from(decisionsInboxItems)
+      .where(eq(decisionsInboxItems.ownerAgentCodename, codename))
+      .orderBy(desc(decisionsInboxItems.createdAt))
+      .limit(20);
+
+    res.json({
+      agent,
+      liveData,
+      recentActions,
+      goals,
+      trustHistory,
+      decisions,
+    });
+  } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
