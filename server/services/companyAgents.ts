@@ -10,9 +10,27 @@
  */
 
 import { db } from "../db";
-import { companyAgents, type InsertCompanyAgent, type CompanyAgent } from "@shared/schema";
+import { companyAgents, agentMemory, type InsertCompanyAgent, type CompanyAgent } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { routeAITask, TaskComplexity } from "./aiRouter";
+import { resolveAgentData } from "./agentDataResolvers";
+import { executeWithAuthority, checkAuthority } from "./agentAuthorityGate";
+
+// ─── Core Agent Mapping ─────────────────────────────────────────────────────
+// Maps company agent codenames to the 4 core agent types for skill/goal routing
+
+export const CORE_AGENT_MAP: Record<string, string> = {
+  atlas_cto: "operations",
+  sophie_csm: "communications",
+  forge_revenue: "deals",
+  beacon_marketing: "communications",
+  sentinel_devops: "operations",
+  ledger_finance: "operations",
+  shield_legal: "research",
+  oracle_analytics: "research",
+  compass_pm: "research",
+  crucible_qa: "operations",
+};
 
 // ─── Agent Persona Definitions ──────────────────────────────────────────────
 
@@ -332,10 +350,13 @@ class CompanyAgentService {
     if (!agent) throw new Error(`Agent ${codename} not found`);
 
     const agentMetrics = (agent.metrics as any) || {};
-    const dataContext = contextData || {};
+
+    // v2: Resolve LIVE data from agent's owned services
+    const liveData = await resolveAgentData(codename);
+    const dataContext = { ...agentMetrics, ...liveData, ...(contextData || {}) };
 
     // Build a context-aware prompt for the agent
-    const metricsStr = Object.entries({ ...agentMetrics, ...dataContext })
+    const metricsStr = Object.entries(dataContext)
       .map(([k, v]) => `${k}: ${v}`)
       .join("\n");
 
@@ -421,6 +442,77 @@ Respond in JSON format:
   /** Get the agent roster definitions (for reference/display) */
   getAgentRoster(): AgentPersona[] {
     return AGENT_ROSTER;
+  }
+
+  // ─── ACTION EXECUTION (v2) ──────────────────────────────────────────────
+
+  /**
+   * Execute a skill through the agent's authority gate.
+   * Maps company agent to its core agent type, then invokes the skill registry.
+   */
+  async executeSkill(codename: string, skillName: string, params: Record<string, any>, context: any): Promise<any> {
+    return executeWithAuthority(codename, skillName, async () => {
+      const { SkillRegistry } = await import("./agent-skills");
+      const registry = new SkillRegistry();
+      const coreType = CORE_AGENT_MAP[codename] || "research";
+      return registry.executeSkill(skillName, params, { ...context, agentType: coreType });
+    }, {
+      actionType: "skill",
+      actionName: skillName,
+      input: params,
+    });
+  }
+
+  /**
+   * Queue a goal for the Director Agent on behalf of a company agent.
+   * Authority-gated: requires trust for 'queue_director_goal'.
+   */
+  async queueGoal(codename: string, goal: string, context: any, priority?: number): Promise<any> {
+    return executeWithAuthority(codename, "queue_director_goal", async () => {
+      const { queueDirectorGoal } = await import("./directorAgent");
+      return queueDirectorGoal(
+        context.organizationId || 0,
+        goal,
+        context,
+        priority || 50
+      );
+    }, {
+      actionType: "goal",
+      actionName: "queue_director_goal",
+      input: { goal, priority },
+    });
+  }
+
+  /**
+   * Store a learning in the Atlas Memory system.
+   * No authority gate — memory storage is always allowed.
+   */
+  async storeMemory(codename: string, type: string, content: string, confidence: number): Promise<void> {
+    try {
+      await db.insert(agentMemory).values({
+        agentType: codename,
+        memoryType: type,
+        content,
+        confidence: confidence.toString(),
+        usageCount: 0,
+      } as any);
+      await this.recordActivity(codename);
+    } catch {}
+  }
+
+  /**
+   * Resolve live data for this agent from its owned services.
+   */
+  async getLiveData(codename: string): Promise<Record<string, any>> {
+    return resolveAgentData(codename);
+  }
+
+  /**
+   * Check if an agent can perform an action at its current trust level.
+   */
+  async canPerform(codename: string, action: string): Promise<{ allowed: boolean; level: number; reason: string }> {
+    const auth = await checkAuthority(codename, action);
+    return { allowed: auth.allowed, level: auth.effectiveLevel, reason: auth.reason };
   }
 }
 

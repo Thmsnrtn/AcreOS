@@ -154,6 +154,7 @@ const MatchingEnginePage = React.lazy(() => import("@/pages/matching-engine"));
 // Admin / Founder
 const AdminSupportPage = React.lazy(() => import("@/pages/admin-support"));
 const FounderDashboard = React.lazy(() => import("@/pages/founder-dashboard"));
+const AgentDetailPage = React.lazy(() => import("@/pages/agent-detail"));
 const SafetyGatesPage = React.lazy(() => import("@/pages/safety-gates"));
 const DecisionQueuePage = React.lazy(() => import("@/pages/decision-queue"));
 const OpsDashboardPage = React.lazy(() => import("@/pages/ops-dashboard"));
@@ -399,6 +400,7 @@ function Router() {
 
         {/* Founder / Admin */}
         <Route path="/founder">{() => <FounderProtectedRoute component={FounderDashboard} />}</Route>
+        <Route path="/founder/agents/:codename">{() => <FounderProtectedRoute component={AgentDetailPage} />}</Route>
         <Route path="/admin/beta">{() => <FounderProtectedRoute component={BetaDashboardPage} />}</Route>
         <Route path="/admin/safety-gates">{() => <FounderProtectedRoute component={SafetyGatesPage} />}</Route>
         <Route path="/admin/decisions">{() => <FounderProtectedRoute component={DecisionQueuePage} />}</Route>
