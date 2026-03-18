@@ -8,7 +8,7 @@
  * for a native, Apple-grade interaction feel.
  */
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { motion, useMotionValue, useTransform, AnimatePresence } from "framer-motion";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -22,6 +22,15 @@ import {
   naturalUrgency,
   naturalRisk,
 } from "@/lib/trust-language";
+
+// Haptic feedback helper
+function triggerHaptic(style: 'light' | 'medium' | 'heavy' = 'medium') {
+  try {
+    if ('vibrate' in navigator) {
+      navigator.vibrate(style === 'light' ? 10 : style === 'medium' ? [10, 50, 10] : [30, 30, 30]);
+    }
+  } catch {}
+}
 
 interface DecisionItem {
   id: number;
@@ -57,6 +66,8 @@ const RISK_ACCENT: Record<string, string> = {
 export function SwipeDecisionCard({ item, onAction }: SwipeDecisionCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [dismissed, setDismissed] = useState(false);
+  const [flashState, setFlashState] = useState<'none' | 'approved' | 'rejected'>('none');
+  const hapticFired = useRef(false);
   const qc = useQueryClient();
   const x = useMotionValue(0);
 
@@ -72,12 +83,28 @@ export function SwipeDecisionCard({ item, onAction }: SwipeDecisionCardProps) {
   const mutate = useMutation({
     mutationFn: ({ action, body }: { action: string; body?: any }) =>
       apiRequest("POST", `/api/founder/intelligence/decisions-inbox/${item.id}/${action}`, body ?? {}),
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       qc.invalidateQueries({ queryKey: ["/api/founder/intelligence/decisions-inbox"] });
       qc.invalidateQueries({ queryKey: ["/api/founder/intelligence/morning-briefing"] });
-      setDismissed(true);
-      setTimeout(onAction, 300);
+      triggerHaptic('medium');
+      // Show brief success/reject flash before dismissing
+      setFlashState(variables.action === 'reject' ? 'rejected' : 'approved');
+      setTimeout(() => {
+        setDismissed(true);
+        setTimeout(onAction, 300);
+      }, 500);
     },
+  });
+
+  // Fire haptic when crossing threshold during drag
+  x.on("change", (latest) => {
+    const pastThreshold = Math.abs(latest) > SWIPE_THRESHOLD * 0.6;
+    if (pastThreshold && !hapticFired.current) {
+      triggerHaptic('light');
+      hapticFired.current = true;
+    } else if (!pastThreshold) {
+      hapticFired.current = false;
+    }
   });
 
   const handleDragEnd = (_: any, info: { offset: { x: number }; velocity: { x: number } }) => {
@@ -134,6 +161,32 @@ export function SwipeDecisionCard({ item, onAction }: SwipeDecisionCardProps) {
             <X className="h-6 w-6" />
           </div>
         </motion.div>
+
+        {/* Success/Reject flash overlay */}
+        <AnimatePresence>
+          {flashState !== 'none' && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className={`absolute inset-0 z-10 flex items-center justify-center rounded-xl ${
+                flashState === 'approved'
+                  ? 'bg-green-500/20'
+                  : 'bg-red-500/20'
+              }`}
+            >
+              {flashState === 'approved' ? (
+                <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 400, damping: 15 }}>
+                  <Check className="h-12 w-12 text-green-600" strokeWidth={3} />
+                </motion.div>
+              ) : (
+                <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 400, damping: 15 }}>
+                  <X className="h-12 w-12 text-red-600" strokeWidth={3} />
+                </motion.div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Card content */}
         <div className="p-4 space-y-3">

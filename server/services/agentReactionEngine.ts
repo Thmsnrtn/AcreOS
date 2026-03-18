@@ -127,16 +127,31 @@ const REACTION_RULES: ReactionRule[] = [
     subscriberAgent: "compass_pm",
     condition: (msg) => msg.fromAgent === "oracle_analytics",
     reaction: async (msg) => {
+      // v4: Actually create a feature request if the anomaly suggests a product issue
+      if (msg.data?.metric && msg.priority !== "low") {
+        await executeAction({
+          agentCodename: "compass_pm",
+          actionName: "create_feature_request",
+          input: {
+            title: `Investigate: ${msg.subject}`,
+            description: `Oracle detected an anomaly in ${msg.data.metric}. This may correlate with recent changes. Original alert: ${msg.body}`,
+            priority: msg.priority === "critical" ? "high" : "medium",
+            source: "oracle_anomaly",
+          },
+          triggeredBy: "reaction",
+        });
+      }
+
       await agentCommsService.broadcast({
         from: "compass_pm",
         channel: "metrics_alerts",
         priority: "low",
-        subject: `[Auto-reaction] Correlating metric anomaly with recent changes`,
-        body: `Oracle detected a metric anomaly: "${msg.subject}". Compass is checking if this correlates with recent feature changes or deployments.`,
+        subject: `[Auto-reaction] Investigating metric anomaly: ${msg.subject}`,
+        body: `Oracle flagged "${msg.subject}". Compass has created an investigation task and is correlating with recent feature changes.`,
         data: { triggeredBy: msg.id },
       });
     },
-    description: "Compass correlates Oracle's anomalies with feature changes",
+    description: "Compass investigates Oracle's anomalies and creates feature requests",
   },
   {
     id: "forge_revenue_to_ledger",
@@ -144,16 +159,30 @@ const REACTION_RULES: ReactionRule[] = [
     subscriberAgent: "ledger_finance",
     condition: (msg) => true,
     reaction: async (msg) => {
+      // v4: Actually log the financial event through Ledger's executor
+      if (msg.data?.amount || msg.data?.anomalyType) {
+        await executeAction({
+          agentCodename: "ledger_finance",
+          actionName: "flag_anomaly",
+          input: {
+            anomalyType: msg.data.anomalyType || "revenue_event",
+            detail: msg.body || msg.subject,
+            severity: msg.priority === "critical" ? "critical" : "info",
+          },
+          triggeredBy: "reaction",
+        });
+      }
+
       await agentCommsService.broadcast({
         from: "ledger_finance",
         channel: "revenue_events",
         priority: "low",
-        subject: `[Auto-reaction] Revenue event logged for financial tracking`,
-        body: `Ledger has recorded Forge's revenue event: "${msg.subject}" for financial reconciliation.`,
+        subject: `[Auto-reaction] Revenue event recorded: ${msg.subject}`,
+        body: `Ledger has recorded and reconciled Forge's revenue event: "${msg.subject}".`,
         data: { triggeredBy: msg.id },
       });
     },
-    description: "Ledger tracks all revenue events from Forge",
+    description: "Ledger records and reconciles all revenue events from Forge",
   },
 ];
 

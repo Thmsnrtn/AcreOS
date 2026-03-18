@@ -71,6 +71,30 @@ export async function createGoal(params: {
       await db.update(agentGoals)
         .set({ directorTaskId: result.result, status: "in_progress" })
         .where(eq(agentGoals.id, row.id));
+
+      // v4: Actually complete the goal when director finishes
+      try {
+        const { directorAgent } = await import("./directorAgent");
+        const directorResult = await directorAgent.processGoal({
+          goal: params.goal,
+          context: { organizationId: 0 } as any,
+        });
+
+        if (directorResult.goalAchieved) {
+          await completeGoal(row.id, {
+            synthesis: directorResult.finalSynthesis,
+            steps: directorResult.steps.length,
+            iterationsUsed: directorResult.iterationsUsed,
+          });
+        } else if (directorResult.iterationsUsed >= 8) {
+          await updateGoalProgress(row.id, "Goal stalled after max iterations");
+          await db.update(agentGoals)
+            .set({ status: "failed" })
+            .where(eq(agentGoals.id, row.id));
+        }
+      } catch (dirErr) {
+        await updateGoalProgress(row.id, `Director execution error: ${(dirErr as any).message}`);
+      }
     }
   } catch (err) {
     await updateGoalProgress(row.id, "Director Agent task could not be queued — goal pending manual execution");
@@ -172,4 +196,42 @@ export async function reprioritizeGoal(goalId: number, priority: string): Promis
   await db.update(agentGoals)
     .set({ priority })
     .where(eq(agentGoals.id, goalId));
+}
+
+/**
+ * v4: Check for stale goals and mark them as failed.
+ * Called by a background job to prevent goals from staying "in_progress" forever.
+ */
+export async function checkStaleGoals(): Promise<number> {
+  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+  const staleGoals = await db.select()
+    .from(agentGoals)
+    .where(and(
+      eq(agentGoals.status, "in_progress"),
+      // Goals that haven't been updated in 24+ hours are stale
+    ))
+    .limit(20);
+
+  let failed = 0;
+  for (const goal of staleGoals) {
+    const progressLog = (goal.progressLog as any[]) || [];
+    const lastUpdate = progressLog.length > 0
+      ? new Date(progressLog[progressLog.length - 1].timestamp)
+      : goal.createdAt ? new Date(goal.createdAt) : new Date(0);
+
+    if (lastUpdate < oneDayAgo) {
+      await updateGoalProgress(goal.id, "Goal timed out — no progress in 24 hours");
+      await db.update(agentGoals)
+        .set({ status: "failed" })
+        .where(eq(agentGoals.id, goal.id));
+      failed++;
+    }
+  }
+
+  if (failed > 0) {
+    console.log(`[GoalManager] Marked ${failed} stale goals as failed`);
+  }
+
+  return failed;
 }

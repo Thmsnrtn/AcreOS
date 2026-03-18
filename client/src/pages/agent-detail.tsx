@@ -195,7 +195,7 @@ export default function AgentDetailPage() {
                 const active = trustPct >= req;
                 return (
                   <div key={level} className={`p-3 rounded-lg border ${color} ${!active ? "opacity-40" : ""}`}>
-                    <div className="text-xs font-semibold mb-1">{label} (trust {">"}= {req})</div>
+                    <div className="text-xs font-semibold mb-1">{label}</div>
                     <div className="text-xs text-muted-foreground">
                       {actions.length > 0 ? actions.join(", ") : "None configured"}
                     </div>
@@ -223,8 +223,8 @@ export default function AgentDetailPage() {
                         <div className="text-sm font-medium">{action.actionName}</div>
                         <div className="text-xs text-muted-foreground">{action.reasoning?.slice(0, 120)}</div>
                         <div className="text-xs text-muted-foreground mt-0.5">
-                          Level {action.authorityLevel} | Trust {action.trustScoreAtTime} | {action.durationMs}ms
-                          {action.createdAt && ` | ${formatDistanceToNow(new Date(action.createdAt), { addSuffix: true })}`}
+                          {trustLabel(action.trustScoreAtTime)}
+                          {action.createdAt && ` · ${formatDistanceToNow(new Date(action.createdAt), { addSuffix: true })}`}
                         </div>
                       </div>
                       <Badge variant="outline" className="text-[10px] shrink-0">{action.actionType}</Badge>
