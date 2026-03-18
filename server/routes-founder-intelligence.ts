@@ -33,6 +33,7 @@ import { founderDigestService } from "./services/founderDigest";
 import { companyAgentService } from "./services/companyAgents";
 import { agentCommsService } from "./services/agentComms";
 import { routeAITask, TaskComplexity } from "./services/aiRouter";
+import { resolveAgentData } from "./services/agentDataResolvers";
 
 const router = Router();
 
@@ -45,6 +46,190 @@ function requireFounder(req: any, res: any, next: any) {
   }
   next();
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/founder/intelligence/morning-briefing — v3 Conversational Briefing
+//
+// The CEO's one-screen morning summary. Each agent "speaks" their update
+// in character. Consolidates the 3 competing digest systems into one voice.
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get("/morning-briefing", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const now = new Date();
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const hour = now.getHours();
+
+    // Greeting based on time of day
+    const timeGreeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+
+    // ── Gather data from all agent resolvers in parallel ──────────────
+    const [
+      forgeData,
+      sentinelData,
+      sophieData,
+      oracleData,
+      ledgerData,
+    ] = await Promise.all([
+      resolveAgentData("forge_revenue").catch(() => ({})),
+      resolveAgentData("sentinel_devops").catch(() => ({})),
+      resolveAgentData("sophie_csm").catch(() => ({})),
+      resolveAgentData("oracle_analytics").catch(() => ({})),
+      resolveAgentData("ledger_finance").catch(() => ({})),
+    ]);
+
+    // ── Count pending decisions ────────────────────────────────────────
+    const pendingResult = await db.select({ c: count() })
+      .from(decisionsInboxItems)
+      .where(eq(decisionsInboxItems.status, "pending"));
+    const pendingDecisions = Number(pendingResult[0]?.c || 0);
+
+    // ── Get recent agent actions (last 24h) ───────────────────────────
+    const recentActions = await db.select({
+      agentCodename: agentActionLog.agentCodename,
+      total: count(),
+      succeeded: sql<number>`count(*) filter (where outcome = 'success')`,
+    })
+      .from(agentActionLog)
+      .where(gte(agentActionLog.createdAt, yesterday))
+      .groupBy(agentActionLog.agentCodename);
+
+    const actionsByAgent = Object.fromEntries(
+      recentActions.map(a => [a.agentCodename, { total: Number(a.total), succeeded: Number(a.succeeded) }])
+    );
+
+    // ── Get trust changes ─────────────────────────────────────────────
+    const trustChanges = await db.select()
+      .from(trustEvolutionLog)
+      .where(and(
+        gte(trustEvolutionLog.createdAt, yesterday),
+        sql`${trustEvolutionLog.promotionSuggested} = true`,
+      ))
+      .orderBy(desc(trustEvolutionLog.createdAt))
+      .limit(3);
+
+    // ── Build agent-voiced updates ────────────────────────────────────
+    const agentUpdates = [];
+
+    // Forge — Revenue
+    const mrrDollars = ((forgeData as any).mrrCents || 0) / 100;
+    const mrrGrowth = (forgeData as any).mrrGrowthPct;
+    const atRisk = (forgeData as any).criticalChurnOrgs || 0;
+    const forgeActions = actionsByAgent["forge_revenue"];
+    // Build Forge's message in steps to avoid complex template literals
+    let forgeMsg = mrrDollars > 0 ? `MRR is $${mrrDollars.toLocaleString()}` : "Revenue data loading";
+    if (mrrGrowth) {
+      const dir = mrrGrowth > 0 ? "up" : "down";
+      forgeMsg += `, ${dir} ${Math.abs(mrrGrowth).toFixed(1)}%`;
+    }
+    forgeMsg += ". ";
+    if (atRisk > 0) {
+      forgeMsg += `${atRisk} account${atRisk > 1 ? "s" : ""} at churn risk`;
+      if (forgeActions?.succeeded) forgeMsg += ` — I've already reached out to ${forgeActions.succeeded}`;
+      forgeMsg += ".";
+    } else {
+      forgeMsg += "No accounts at risk.";
+    }
+    agentUpdates.push({
+      agent: "forge_revenue",
+      role: "Revenue Lead",
+      message: forgeMsg,
+      hasActivity: !!forgeActions?.total,
+    });
+
+    // Sentinel — Infrastructure
+    const jobsHealthy = (sentinelData as any).healthyJobs || 0;
+    const jobsFailed = (sentinelData as any).failedJobs || 0;
+    const sentinelActions = actionsByAgent["sentinel_devops"];
+    agentUpdates.push({
+      agent: "sentinel_devops",
+      role: "Infrastructure",
+      message: jobsFailed === 0
+        ? `All ${jobsHealthy} background jobs healthy. No incidents overnight.`
+        : `${jobsFailed} job${jobsFailed > 1 ? "s" : ""} had issues${sentinelActions?.succeeded ? ` — I restarted ${sentinelActions.succeeded} and they're back to normal` : ""}. ${jobsHealthy} others running fine.`,
+      hasActivity: !!sentinelActions?.total,
+    });
+
+    // Sophie — Customer Success
+    const ticketsResolved = (sophieData as any).autoResolvedToday || 0;
+    const ticketsOpen = (sophieData as any).openTickets || 0;
+    const sophieActions = actionsByAgent["sophie_csm"];
+    agentUpdates.push({
+      agent: "sophie_csm",
+      role: "Customer Success",
+      message: ticketsResolved > 0
+        ? `${ticketsResolved} ticket${ticketsResolved > 1 ? "s" : ""} auto-resolved yesterday.${ticketsOpen > 0 ? ` ${ticketsOpen} still open — I'm on it.` : " Inbox clear."}${sophieActions?.succeeded ? ` Sent ${sophieActions.succeeded} follow-up${sophieActions.succeeded > 1 ? "s" : ""}.` : ""}`
+        : `${ticketsOpen > 0 ? `${ticketsOpen} open ticket${ticketsOpen > 1 ? "s" : ""} — working through them.` : "All quiet on the support front."}`,
+      hasActivity: !!sophieActions?.total,
+    });
+
+    // Oracle — Analytics
+    const signupGrowth = (oracleData as any).signupGrowthWoW;
+    agentUpdates.push({
+      agent: "oracle_analytics",
+      role: "Analytics",
+      message: signupGrowth !== undefined && signupGrowth !== null
+        ? `Signup growth week-over-week: ${signupGrowth > 0 ? "+" : ""}${signupGrowth}%.${Math.abs(signupGrowth) > 30 ? " That's unusual — keeping an eye on it." : ""}`
+        : "Metrics trending normally. No anomalies detected.",
+      hasActivity: false,
+    });
+
+    // Ledger — Finance
+    const aiSpend = (ledgerData as any).aiSpend7dDollars;
+    agentUpdates.push({
+      agent: "ledger_finance",
+      role: "Finance",
+      message: aiSpend !== undefined
+        ? `AI spend this week: $${aiSpend}. ${Number(aiSpend) > 35 ? "Running a bit hot — I'll watch it." : "Within normal range."}`
+        : "Financials on track. Nothing unusual.",
+      hasActivity: false,
+    });
+
+    // ── Build trust change messages ───────────────────────────────────
+    const agents = await companyAgentService.getAllIncludingPaused();
+    const agentNames = Object.fromEntries(agents.map(a => [a.codename, a.title]));
+
+    const trustUpdates = trustChanges.map(tc => {
+      const name = agentNames[tc.agentCodename] || tc.agentCodename;
+      if (tc.promotionAction?.includes("Level 0")) {
+        return { agent: tc.agentCodename, message: `${name} has been flawless. Ready to let them handle everything independently?` };
+      }
+      return { agent: tc.agentCodename, message: `${name} is ready for more responsibility. Promote them?` };
+    });
+
+    // ── Determine headline ────────────────────────────────────────────
+    const allClear = pendingDecisions === 0 && jobsFailed === 0 && atRisk === 0;
+    const headline = allClear
+      ? "Your company is running smoothly. No fires, no decisions needed."
+      : pendingDecisions > 0
+        ? `${pendingDecisions} decision${pendingDecisions > 1 ? "s" : ""} need${pendingDecisions === 1 ? "s" : ""} your attention.`
+        : jobsFailed > 0
+          ? "Your team handled some issues overnight. Here's the summary."
+          : "A few things to be aware of, but nothing urgent.";
+
+    // ── Compute company health score (0-100) ──────────────────────────
+    let healthScore = 100;
+    if (jobsFailed > 0) healthScore -= 10 * Math.min(jobsFailed, 3);
+    if (atRisk > 0) healthScore -= 5 * Math.min(atRisk, 4);
+    if (pendingDecisions > 3) healthScore -= 10;
+    if (ticketsOpen > 5) healthScore -= 5;
+    healthScore = Math.max(0, healthScore);
+
+    res.json({
+      greeting: `${timeGreeting}, Thomas.`,
+      headline,
+      healthScore,
+      allClear,
+      agentUpdates,
+      pendingDecisions,
+      trustUpdates,
+      generatedAt: now.toISOString(),
+    });
+  } catch (err: any) {
+    console.error("[MorningBriefing] Error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/founder/intelligence/pulse
@@ -909,8 +1094,8 @@ router.get("/decisions-inbox", requireFounder, async (req: Request, res: Respons
 router.post("/decisions-inbox/:id/approve", requireFounder, async (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id);
-    await decisionsInboxService.approve(id);
-    res.json({ success: true });
+    const result = await decisionsInboxService.approve(id);
+    res.json({ success: true, ...result });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

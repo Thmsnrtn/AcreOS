@@ -108,6 +108,11 @@ import {
 import { FounderSetupWizard, SetupReadinessBanner } from "@/components/founder-setup-wizard";
 import { Suspense, lazy } from "react";
 
+// v3 Sovereign Company Protocol — Apple-grade CEO experience
+import { MorningBriefing } from "@/components/founder/MorningBriefing";
+import { SwipeDecisionCard } from "@/components/founder/SwipeDecisionCard";
+import { AgentTeamChat } from "@/components/founder/AgentTeamChat";
+
 interface AdminDashboardData {
   revenue: {
     mrr: number;
@@ -412,6 +417,38 @@ interface GreetingHeaderProps {
   onShowShortcuts: () => void;
   onOpenSetup: () => void;
   lastRefreshed: Date;
+}
+
+// v3: Swipeable decisions section using the new SwipeDecisionCard
+function SwipeDecisionsSection() {
+  const qc = useQueryClient();
+  const { data } = useQuery<{ items: any[]; totalPending: number }>({
+    queryKey: ["/api/founder/intelligence/decisions-inbox"],
+    refetchInterval: 30000,
+  });
+
+  const items = data?.items ?? [];
+  if (items.length === 0) return null;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-foreground">
+          Decisions ({items.length})
+        </h2>
+        <span className="text-xs text-muted-foreground">Swipe or tap to decide</span>
+      </div>
+      <div className="space-y-3">
+        {items.slice(0, 5).map(item => (
+          <SwipeDecisionCard
+            key={item.id}
+            item={item}
+            onAction={() => qc.invalidateQueries({ queryKey: ["/api/founder/intelligence/decisions-inbox"] })}
+          />
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function GreetingHeader({ onRefresh, onGenerateDigest, digestPending, onShowShortcuts, onOpenSetup, lastRefreshed }: GreetingHeaderProps) {
@@ -1895,10 +1932,40 @@ export default function FounderDashboard() {
             </div>
           )}
 
-          {/* ── ZONE 1: Above fold — primary passive command center ─── */}
+          {/* ── ZONE 1: v3 Conversational CEO Experience ─────────── */}
           <div className="space-y-6">
-            <ThePulse decisionsInboxCount={decisionsInboxData?.totalPending} />
-            <DecisionsInbox />
+            {/* Morning Briefing — one-screen summary, Apple Health style */}
+            <MorningBriefing />
+
+            {/* Swipeable Decisions — Tinder for business decisions */}
+            <Suspense fallback={<div className="animate-pulse h-32 rounded-xl bg-muted" />}>
+              <SwipeDecisionsSection />
+            </Suspense>
+
+            {/* Chat with your team — iMessage style */}
+            <Card className="overflow-hidden">
+              <CardHeader className="pb-2 border-b">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4" />
+                  Talk to Your Team
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0 h-[360px]">
+                <AgentTeamChat />
+              </CardContent>
+            </Card>
+
+            {/* Classic Pulse (collapsed) for deep-dive users */}
+            <details className="group">
+              <summary className="cursor-pointer list-none py-2 flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                <span className="group-open:rotate-90 inline-block transition-transform">▶</span>
+                System Pulse (detailed view)
+              </summary>
+              <div className="mt-3 space-y-4">
+                <ThePulse decisionsInboxCount={decisionsInboxData?.totalPending} />
+                <DecisionsInbox />
+              </div>
+            </details>
           </div>
 
           {/* ── Revenue Trajectory Chart (full-width) ────────────────── */}

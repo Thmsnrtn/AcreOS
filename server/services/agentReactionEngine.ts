@@ -18,6 +18,7 @@ import { eq, and, gte, desc, sql } from "drizzle-orm";
 import { companyAgentService } from "./companyAgents";
 import { agentCommsService, type AgentChannel } from "./agentComms";
 import { executeWithAuthority } from "./agentAuthorityGate";
+import { executeAction } from "./agentActionExecutors";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -42,16 +43,26 @@ const REACTION_RULES: ReactionRule[] = [
     subscriberAgent: "beacon_marketing",
     condition: (msg) => msg.priority === "critical" || msg.priority === "high",
     reaction: async (msg) => {
+      // v3: Actually pause affected campaigns on compliance flags
+      if (msg.data?.campaignId) {
+        await executeAction({
+          agentCodename: "beacon_marketing",
+          actionName: "pause_campaign",
+          input: { campaignId: msg.data.campaignId, reason: `Compliance flag: ${msg.subject}` },
+          triggeredBy: "reaction",
+        });
+      }
+
       await agentCommsService.broadcast({
         from: "beacon_marketing",
         channel: "content_pipeline",
         priority: "high",
-        subject: `[Auto-reaction] Compliance flag detected — reviewing active campaigns`,
-        body: `Shield flagged a compliance issue: "${msg.subject}". Beacon is reviewing affected campaigns for compliance alignment.`,
+        subject: `[Auto-reaction] Compliance flag — campaigns paused for review`,
+        body: `Shield flagged a compliance issue: "${msg.subject}". Beacon has paused affected campaigns and is reviewing for compliance alignment.`,
         data: { triggeredBy: msg.id, originalFrom: msg.fromAgent },
       });
     },
-    description: "Beacon reviews campaigns when Shield flags compliance issues",
+    description: "Beacon pauses and reviews campaigns when Shield flags compliance issues",
   },
   {
     id: "forge_churn_to_sophie",
@@ -59,16 +70,29 @@ const REACTION_RULES: ReactionRule[] = [
     subscriberAgent: "sophie_csm",
     condition: (msg) => msg.data?.alerted > 0 || msg.priority === "high",
     reaction: async (msg) => {
+      // v3: Actually send retention emails to at-risk accounts
+      let sent = 0;
+      const atRiskOrgs = msg.data?.atRiskOrgs || [];
+      for (const org of atRiskOrgs.slice(0, 3)) {
+        const result = await executeAction({
+          agentCodename: "sophie_csm",
+          actionName: "send_retention_email",
+          input: { orgId: org.orgId || org, riskScore: org.riskScore },
+          triggeredBy: "reaction",
+        });
+        if (result.success) sent++;
+      }
+
       await agentCommsService.broadcast({
         from: "sophie_csm",
         channel: "customer_signals",
         priority: "medium",
-        subject: `[Auto-reaction] Preparing retention outreach for at-risk accounts`,
-        body: `Forge flagged ${msg.data?.alerted || "several"} accounts at churn risk. Sophie is queuing personalized check-in messages.`,
-        data: { triggeredBy: msg.id, alerted: msg.data?.alerted },
+        subject: `[Auto-reaction] Retention outreach sent to ${sent} at-risk account(s)`,
+        body: `Forge flagged ${msg.data?.alerted || "several"} accounts at churn risk. Sophie sent personalized check-in messages to ${sent} of them.`,
+        data: { triggeredBy: msg.id, alerted: msg.data?.alerted, emailsSent: sent },
       });
     },
-    description: "Sophie prepares retention outreach when Forge detects churn risk",
+    description: "Sophie sends retention emails when Forge detects churn risk",
   },
   {
     id: "sentinel_incident_to_atlas",
@@ -76,16 +100,26 @@ const REACTION_RULES: ReactionRule[] = [
     subscriberAgent: "atlas_cto",
     condition: (msg) => msg.priority === "critical" && msg.fromAgent === "sentinel_devops",
     reaction: async (msg) => {
+      // v3: Atlas acknowledges the incident and begins assessment
+      if (msg.data?.alertId) {
+        await executeAction({
+          agentCodename: "atlas_cto",
+          actionName: "acknowledge_incident",
+          input: { alertId: msg.data.alertId },
+          triggeredBy: "reaction",
+        });
+      }
+
       await agentCommsService.broadcast({
         from: "atlas_cto",
         channel: "incidents",
         priority: "high",
-        subject: `[Auto-reaction] CTO reviewing critical incident: ${msg.subject}`,
-        body: `Sentinel reported a critical incident. Atlas is assessing system impact and evaluating remediation options.`,
+        subject: `[Auto-reaction] CTO acknowledged critical incident: ${msg.subject}`,
+        body: `Sentinel reported a critical incident. Atlas has acknowledged it and is assessing system impact and remediation options.`,
         data: { triggeredBy: msg.id },
       });
     },
-    description: "Atlas reviews critical incidents reported by Sentinel",
+    description: "Atlas acknowledges and reviews critical incidents from Sentinel",
   },
   {
     id: "oracle_anomaly_to_compass",

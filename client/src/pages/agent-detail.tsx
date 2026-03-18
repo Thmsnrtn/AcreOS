@@ -16,6 +16,7 @@ import {
   MessageSquare, Target, TrendingUp, Activity, Play, Pause,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { describeTrust, trustLabel, trustBadgeColor } from "@/lib/trust-language";
 
 const AGENT_ICONS: Record<string, React.ElementType> = {
   atlas_cto: Cpu, sophie_csm: Heart, forge_revenue: DollarSign,
@@ -129,15 +130,17 @@ export default function AgentDetailPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card>
             <CardContent className="p-4">
-              <div className="text-sm text-muted-foreground">Trust Score</div>
-              <div className="text-3xl font-bold mt-1">{trustPct}/100</div>
-              <div className="h-2 bg-muted rounded-full mt-2 overflow-hidden">
+              <div className="flex items-center justify-between">
+                <div className="text-sm text-muted-foreground">Trust Level</div>
+                <Badge className={`text-xs ${trustBadgeColor(trustPct)}`}>{trustLabel(trustPct)}</Badge>
+              </div>
+              <div className="h-2 bg-muted rounded-full mt-3 overflow-hidden">
                 <div className={`h-full rounded-full ${trustPct >= 75 ? "bg-green-500" : trustPct >= 50 ? "bg-amber-500" : "bg-red-500"}`}
                   style={{ width: `${trustPct}%` }} />
               </div>
-              <div className="text-xs text-muted-foreground mt-1">
-                {trustPct >= 90 ? "Full autonomy" : trustPct >= 70 ? "Autonomous + notify" : trustPct >= 40 ? "Recommend + wait" : "Requires approval"}
-              </div>
+              <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
+                {describeTrust(trustPct, codename)}
+              </p>
             </CardContent>
           </Card>
           <Card>

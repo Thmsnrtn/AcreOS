@@ -5,6 +5,13 @@ import { Button } from "@/components/ui/button";
 import { CheckCircle2, X, Clock, ChevronDown, ChevronUp } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useState } from "react";
+import {
+  AGENT_AVATARS,
+  AGENT_ROLES,
+  naturalItemType,
+  naturalUrgency,
+  naturalRisk,
+} from "@/lib/trust-language";
 
 interface DecisionsInboxItem {
   id: number;
@@ -57,11 +64,12 @@ function ItemCard({ item, onAction }: { item: DecisionsInboxItem; onAction: () =
     <div className="rounded-lg border bg-card p-4 space-y-3">
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-lg">{AGENT_AVATARS[(item as any).ownerAgentCodename || "sophie_csm"]}</span>
           <Badge className={`text-xs border ${RISK_BADGE[item.riskLevel] ?? RISK_BADGE.medium}`}>
-            {item.riskLevel.toUpperCase()}
+            {naturalRisk(item.riskLevel)}
           </Badge>
-          <span className="text-xs text-muted-foreground">{formatItemType(item.itemType)}{impactText}</span>
-          <span className="text-xs text-muted-foreground">Urgency: {item.urgencyScore}/100</span>
+          <span className="text-xs text-muted-foreground">{naturalItemType(item.itemType)}{impactText}</span>
+          <span className="text-xs text-muted-foreground">{naturalUrgency(item.urgencyScore)}</span>
         </div>
         <button
           className="text-muted-foreground hover:text-foreground"
@@ -74,9 +82,7 @@ function ItemCard({ item, onAction }: { item: DecisionsInboxItem; onAction: () =
 
       <p className="text-sm text-foreground leading-snug">{item.sophieAnalysis}</p>
 
-      {item.sophieConfidenceScore !== null && (
-        <p className="text-xs text-muted-foreground">Sophie confidence: {item.sophieConfidenceScore}%</p>
-      )}
+      {/* v3: Removed raw confidence score — CEO doesn't need technical metrics */}
 
       {expanded && item.contextBundle && (
         <pre className="text-xs bg-muted rounded p-2 overflow-auto max-h-32">

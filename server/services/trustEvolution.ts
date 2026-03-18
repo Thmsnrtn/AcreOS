@@ -19,22 +19,23 @@
 
 import { db } from "../db";
 import {
-  companyAgents, decisionsInboxItems, trustEvolutionLog,
+  companyAgents, decisionsInboxItems, trustEvolutionLog, agentActionLog,
 } from "@shared/schema";
 import { eq, and, gte, desc, count, sql } from "drizzle-orm";
 import { companyAgentService } from "./companyAgents";
 import { agentCommsService } from "./agentComms";
 
 /**
- * Run the weekly trust evolution for all agents.
- * Called by a weekly scheduled job (Sunday midnight).
+ * Run trust evolution for all agents.
+ * v3: Changed from weekly to daily. Now scores on REAL ACTION OUTCOMES,
+ * not just decision accuracy. Trust should feel responsive.
  */
 export async function runTrustEvolution(): Promise<{
   updates: { codename: string; previousScore: number; newScore: number; delta: number; reason: string }[];
   promotionSuggestions: { codename: string; title: string; suggestion: string }[];
 }> {
   const now = new Date();
-  const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
   const agents = await companyAgentService.getAllIncludingPaused();
   const updates: any[] = [];
@@ -43,7 +44,7 @@ export async function runTrustEvolution(): Promise<{
   for (const agent of agents) {
     if (agent.status === "disabled") continue;
 
-    // Count decisions attributed to this agent in the last week
+    // ── Dimension 1: Decision accuracy (same as v2, but daily) ──────────
     const decisionResults = await db.select({
       total: count(),
       approved: sql<number>`count(*) filter (where status = 'approved' or status = 'auto_resolved')`,
@@ -53,7 +54,7 @@ export async function runTrustEvolution(): Promise<{
       .from(decisionsInboxItems)
       .where(and(
         eq(decisionsInboxItems.ownerAgentCodename, agent.codename),
-        gte(decisionsInboxItems.createdAt, oneWeekAgo),
+        gte(decisionsInboxItems.createdAt, oneDayAgo),
       ));
 
     const stats = decisionResults[0] || { total: 0, approved: 0, rejected: 0, overridden: 0 };
@@ -61,48 +62,64 @@ export async function runTrustEvolution(): Promise<{
     const approvedDecisions = Number(stats.approved);
     const overriddenDecisions = Number(stats.overridden);
 
-    if (totalDecisions === 0) {
-      // No decisions this week — no change, but record it
-      continue;
-    }
+    // ── Dimension 2: Action outcomes (NEW in v3) ────────────────────────
+    const actionResults = await db.select({
+      total: count(),
+      succeeded: sql<number>`count(*) filter (where outcome = 'success')`,
+      failed: sql<number>`count(*) filter (where outcome = 'failure')`,
+    })
+      .from(agentActionLog)
+      .where(and(
+        eq(agentActionLog.agentCodename, agent.codename),
+        gte(agentActionLog.createdAt, oneDayAgo),
+        sql`${agentActionLog.actionType} != 'outcome_check'`, // Exclude verification checks
+      ));
 
-    // Calculate accuracy rate
-    const accuracyRate = totalDecisions > 0
-      ? (approvedDecisions / totalDecisions) * 100
-      : 100;
+    const actionStats = actionResults[0] || { total: 0, succeeded: 0, failed: 0 };
+    const totalActions = Number(actionStats.total);
+    const succeededActions = Number(actionStats.succeeded);
+    const failedActions = Number(actionStats.failed);
 
-    // Determine trust delta
+    // Skip if no activity at all
+    if (totalDecisions === 0 && totalActions === 0) continue;
+
+    // ── Calculate combined trust delta ──────────────────────────────────
     let delta = 0;
-    let reason = "";
+    let reasons: string[] = [];
 
-    if (accuracyRate >= 90) {
-      delta = 2;
-      reason = `${accuracyRate.toFixed(0)}% accuracy on ${totalDecisions} decisions — excellent performance`;
-    } else if (accuracyRate >= 75) {
-      delta = 1;
-      reason = `${accuracyRate.toFixed(0)}% accuracy on ${totalDecisions} decisions — good performance`;
-    } else if (accuracyRate >= 60) {
-      delta = 0;
-      reason = `${accuracyRate.toFixed(0)}% accuracy on ${totalDecisions} decisions — satisfactory`;
-    } else if (accuracyRate >= 40) {
-      delta = -1;
-      reason = `${accuracyRate.toFixed(0)}% accuracy on ${totalDecisions} decisions — needs improvement`;
-    } else {
-      delta = -3;
-      reason = `${accuracyRate.toFixed(0)}% accuracy on ${totalDecisions} decisions — significant concerns`;
+    // Decision accuracy component
+    if (totalDecisions > 0) {
+      const accuracyRate = (approvedDecisions / totalDecisions) * 100;
+      if (accuracyRate >= 90) {
+        delta += 1;
+        reasons.push(`${accuracyRate.toFixed(0)}% accuracy on ${totalDecisions} decisions`);
+      } else if (accuracyRate < 60) {
+        delta -= 1;
+        reasons.push(`${accuracyRate.toFixed(0)}% accuracy — needs improvement`);
+      }
+      if (overriddenDecisions > 0) {
+        delta -= overriddenDecisions;
+        reasons.push(`${overriddenDecisions} CEO override(s)`);
+      }
     }
 
-    // Bonus for high volume + high accuracy
-    if (totalDecisions >= 10 && accuracyRate >= 90) {
-      delta += 1;
-      reason += ` (bonus: high volume + high accuracy)`;
+    // Action outcome component (NEW in v3)
+    if (totalActions > 0) {
+      const successRate = (succeededActions / totalActions) * 100;
+      if (successRate >= 80 && totalActions >= 2) {
+        delta += 1;
+        reasons.push(`${succeededActions}/${totalActions} actions succeeded`);
+      } else if (failedActions > 2) {
+        delta -= 1;
+        reasons.push(`${failedActions} failed actions — reliability concern`);
+      } else if (totalActions > 0 && succeededActions > 0) {
+        reasons.push(`${succeededActions} successful action(s)`);
+      }
     }
 
-    // Penalty for overrides
-    if (overriddenDecisions > 0) {
-      delta -= overriddenDecisions;
-      reason += ` (${overriddenDecisions} CEO override(s))`;
-    }
+    // Daily deltas are smaller than weekly — cap at ±2 per day
+    delta = Math.max(-2, Math.min(2, delta));
+    const reason = reasons.join("; ") || "Routine evaluation";
 
     const previousScore = agent.trustScore;
     const newScore = Math.max(0, Math.min(100, previousScore + delta));
@@ -127,7 +144,7 @@ export async function runTrustEvolution(): Promise<{
       newScore,
       delta,
       reason,
-      periodStart: oneWeekAgo,
+      periodStart: oneDayAgo,
       periodEnd: now,
       decisionsInPeriod: totalDecisions,
       accuracyRate: accuracyRate.toFixed(2),
@@ -151,7 +168,7 @@ export async function runTrustEvolution(): Promise<{
         newScore,
         delta,
         reason: "Trust threshold crossed: 90 (full trust)",
-        periodStart: oneWeekAgo,
+        periodStart: oneDayAgo,
         periodEnd: now,
         decisionsInPeriod: totalDecisions,
         accuracyRate: accuracyRate.toFixed(2),
@@ -168,7 +185,7 @@ export async function runTrustEvolution(): Promise<{
         newScore,
         delta,
         reason: "Trust threshold crossed: 75 (high trust)",
-        periodStart: oneWeekAgo,
+        periodStart: oneDayAgo,
         periodEnd: now,
         decisionsInPeriod: totalDecisions,
         accuracyRate: accuracyRate.toFixed(2),
@@ -192,7 +209,7 @@ export async function runTrustEvolution(): Promise<{
       from: "trust_evolution",
       channel: "incidents",
       priority: promotionSuggestions.length > 0 ? "high" : "low",
-      subject: `Weekly trust evolution: ${updates.length} agents updated`,
+      subject: `Daily trust evolution: ${updates.length} agents updated`,
       body: updates.map(u => `${u.codename}: ${u.previousScore} → ${u.newScore} (${u.delta > 0 ? "+" : ""}${u.delta})`).join("\n"),
       data: { updates, promotionSuggestions },
     });
