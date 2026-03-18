@@ -1941,6 +1941,16 @@ export default function FounderDashboard() {
           {/* ── Sticky nav ── */}
           <FounderNavBar />
 
+          {/* ── CEO Company Briefing (Sovereign Company Protocol) ── */}
+          <div id="section-company-briefing">
+            <CompanyBriefingPanel />
+          </div>
+
+          {/* ── AI Agent Team ── */}
+          <div id="section-agent-team">
+            <AgentTeamPanel />
+          </div>
+
           {/* ── AI Briefing ── */}
           <div id="section-briefing">
             <TodaysBriefing />
@@ -6162,6 +6172,8 @@ function AutopilotStatusBar() {
 // ─────────────────────────────────────────────────────────────────────
 
 const NAV_ITEMS = [
+  { label: "Company", href: "section-company-briefing", icon: Crown },
+  { label: "Team", href: "section-agent-team", icon: Users2 },
   { label: "Briefing", href: "section-briefing", icon: Sparkles },
   { label: "Actions", href: "section-actions", icon: ListChecks },
   { label: "Observatory", href: "section-observatory", icon: Cpu },
@@ -6470,6 +6482,481 @@ function LaunchReadinessSection() {
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// NEW SUBSCRIBER LIVE FEED
+// Shows recent new_subscriber system alerts prominently in the overview.
+// Usage: <NewSubscriberFeed alerts={alerts} />
+// ─────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────
+// CEO COMPANY BRIEFING — Sovereign Company Protocol
+// "Good morning, Thomas. Here's your company."
+// Synthesized view from all 10 AI agent personas.
+// ─────────────────────────────────────────────────────────────────────
+
+const AGENT_ICONS: Record<string, React.ElementType> = {
+  atlas_cto: Cpu,
+  sophie_csm: Heart,
+  forge_revenue: DollarSign,
+  beacon_marketing: Megaphone,
+  sentinel_devops: Server,
+  ledger_finance: BarChart3,
+  shield_legal: ShieldAlert,
+  oracle_analytics: BrainCircuit,
+  compass_pm: Navigation,
+  crucible_qa: ScrollText,
+};
+
+const AGENT_COLORS: Record<string, string> = {
+  atlas_cto: "text-blue-600",
+  sophie_csm: "text-pink-500",
+  forge_revenue: "text-green-600",
+  beacon_marketing: "text-orange-500",
+  sentinel_devops: "text-slate-600",
+  ledger_finance: "text-emerald-600",
+  shield_legal: "text-red-500",
+  oracle_analytics: "text-purple-600",
+  compass_pm: "text-cyan-600",
+  crucible_qa: "text-amber-600",
+};
+
+const WING_BADGES: Record<string, { label: string; className: string }> = {
+  product: { label: "Product", className: "bg-blue-500/10 text-blue-700 border-blue-500/20" },
+  growth: { label: "Growth", className: "bg-green-500/10 text-green-700 border-green-500/20" },
+  ops: { label: "Ops", className: "bg-slate-500/10 text-slate-700 border-slate-500/20" },
+};
+
+const MOOD_STYLES: Record<string, { bg: string; border: string; text: string; dot: string }> = {
+  green: { bg: "bg-green-500/5", border: "border-green-500/20", text: "text-green-700", dot: "bg-green-500" },
+  yellow: { bg: "bg-amber-500/5", border: "border-amber-500/20", text: "text-amber-700", dot: "bg-amber-500" },
+  red: { bg: "bg-red-500/5", border: "border-red-500/20", text: "text-red-700", dot: "bg-red-500" },
+};
+
+function CompanyBriefingPanel() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const { data: briefing, isLoading, refetch } = useQuery({
+    queryKey: ["/api/founder/intelligence/company-briefing"],
+    queryFn: async () => {
+      const res = await apiRequest("POST", "/api/founder/intelligence/company-briefing", {});
+      return res.json();
+    },
+    staleTime: 30 * 60 * 1000, // 30 minutes
+    refetchInterval: 60 * 60 * 1000, // refresh every hour
+  });
+
+  const approveMutation = useMutation({
+    mutationFn: async (decisionId: number) => {
+      const res = await apiRequest("PATCH", `/api/founder/intelligence/decisions-inbox/${decisionId}`, {
+        action: "approve",
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Decision approved" });
+      refetch();
+    },
+  });
+
+  const rejectMutation = useMutation({
+    mutationFn: async (decisionId: number) => {
+      const res = await apiRequest("PATCH", `/api/founder/intelligence/decisions-inbox/${decisionId}`, {
+        action: "reject",
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Decision rejected" });
+      refetch();
+    },
+  });
+
+  if (isLoading) {
+    return (
+      <Card className="border-2">
+        <CardContent className="p-6 space-y-4">
+          <Skeleton className="h-8 w-3/4" />
+          <Skeleton className="h-4 w-1/2" />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Skeleton key={i} className="h-16" />
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!briefing) return null;
+
+  const mood = MOOD_STYLES[briefing.mood] || MOOD_STYLES.green;
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+
+  return (
+    <div className={`rounded-xl border-2 ${mood.border} ${mood.bg} p-6 space-y-6`}>
+      {/* Header */}
+      <div className="flex items-start justify-between">
+        <div>
+          <h2 className="text-xl font-semibold text-foreground">
+            {greeting}, Thomas. Here's your company.
+          </h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Generated {briefing.generatedAt ? formatDistanceToNow(new Date(briefing.generatedAt), { addSuffix: true }) : "just now"}
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full ${mood.bg} border ${mood.border}`}>
+            <div className={`w-2.5 h-2.5 rounded-full ${mood.dot} animate-pulse`} />
+            <span className={`text-sm font-bold ${mood.text}`}>
+              Company Health: {briefing.healthScore}/100
+            </span>
+          </div>
+          <Button size="sm" variant="ghost" onClick={() => refetch()}>
+            <RefreshCw className="w-4 h-4" />
+          </Button>
+        </div>
+      </div>
+
+      {/* Overnight Activity */}
+      {briefing.agentReports && briefing.agentReports.length > 0 && (
+        <div>
+          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+            Overnight, your team:
+          </h3>
+          <div className="space-y-2">
+            {briefing.agentReports.map((report: any) => {
+              const Icon = AGENT_ICONS[report.codename] || Bot;
+              const color = AGENT_COLORS[report.codename] || "text-gray-500";
+
+              return (
+                <div key={report.codename} className="flex items-start gap-3 p-2 rounded-lg hover:bg-background/50 transition-colors">
+                  <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${color}`} />
+                  <div className="flex-1 min-w-0">
+                    <span className={`font-semibold text-sm ${color}`}>{report.codename.split("_")[0].charAt(0).toUpperCase() + report.codename.split("_")[0].slice(1)}</span>
+                    <span className="text-sm text-foreground ml-1">{report.summary}</span>
+                  </div>
+                  {report.alerts && report.alerts.length > 0 && (
+                    <Badge variant="outline" className="shrink-0 text-xs">
+                      {report.alerts.length} alert{report.alerts.length > 1 ? "s" : ""}
+                    </Badge>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Pending Decisions */}
+      {briefing.decisionsNeeded && briefing.decisionsNeeded.length > 0 && (
+        <div>
+          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+            You have {briefing.decisionsNeeded.length} decision{briefing.decisionsNeeded.length > 1 ? "s" : ""} pending:
+          </h3>
+          <div className="space-y-3">
+            {briefing.decisionsNeeded.map((decision: any, idx: number) => {
+              const urgencyColors: Record<string, string> = {
+                critical: "border-red-500/30 bg-red-500/5",
+                high: "border-amber-500/30 bg-amber-500/5",
+                medium: "border-blue-500/30 bg-blue-500/5",
+                low: "border-green-500/30 bg-green-500/5",
+              };
+
+              const urgencyDot: Record<string, string> = {
+                critical: "bg-red-500",
+                high: "bg-amber-500",
+                medium: "bg-blue-500",
+                low: "bg-green-500",
+              };
+
+              const fromAgent = decision.fromAgent?.split("_")[0] || "unknown";
+              const agentLabel = fromAgent.charAt(0).toUpperCase() + fromAgent.slice(1);
+
+              return (
+                <div key={decision.id} className={`p-4 rounded-lg border ${urgencyColors[decision.urgency] || urgencyColors.medium}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-2 flex-1 min-w-0">
+                      <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${urgencyDot[decision.urgency] || urgencyDot.medium}`} />
+                      <div>
+                        <span className="text-sm">
+                          <span className="font-semibold">{agentLabel}</span>
+                          {" "}{decision.title || decision.context}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs border-green-500/30 text-green-700 hover:bg-green-500/10"
+                        onClick={() => approveMutation.mutate(decision.id)}
+                        disabled={approveMutation.isPending}
+                      >
+                        Approve
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs border-red-500/30 text-red-700 hover:bg-red-500/10"
+                        onClick={() => rejectMutation.mutate(decision.id)}
+                        disabled={rejectMutation.isPending}
+                      >
+                        Reject
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* All Clear */}
+      {(!briefing.decisionsNeeded || briefing.decisionsNeeded.length === 0) && (
+        <div className="flex items-center gap-2 text-sm font-medium text-green-700">
+          <CheckCircle2 className="w-4 h-4" />
+          No escalations. Your company is running.
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// AGENT TEAM PANEL — Sovereign Company Protocol
+// Grid of all 10 AI agents with trust scores, status, and chat.
+// ─────────────────────────────────────────────────────────────────────
+
+function AgentTeamPanel() {
+  const { toast } = useToast();
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatAgent, setChatAgent] = useState<string | null>(null);
+  const [chatMessage, setChatMessage] = useState("");
+  const [chatHistory, setChatHistory] = useState<{ role: string; content: string; agent?: string }[]>([]);
+  const [chatPending, setChatPending] = useState(false);
+
+  const { data: agents, isLoading, refetch } = useQuery({
+    queryKey: ["/api/founder/intelligence/company-agents"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/founder/intelligence/company-agents");
+      return res.json();
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const statusMutation = useMutation({
+    mutationFn: async ({ codename, status }: { codename: string; status: string }) => {
+      const res = await apiRequest("PATCH", `/api/founder/intelligence/company-agents/${codename}/status`, { status });
+      return res.json();
+    },
+    onSuccess: (_, vars) => {
+      toast({ title: `Agent ${vars.status === "paused" ? "paused" : "resumed"}` });
+      refetch();
+    },
+  });
+
+  const sendChat = async () => {
+    if (!chatMessage.trim()) return;
+    const userMsg = chatMessage;
+    setChatMessage("");
+    setChatHistory(prev => [...prev, { role: "user", content: userMsg }]);
+    setChatPending(true);
+
+    try {
+      const res = await apiRequest("POST", "/api/founder/intelligence/agent-chat", {
+        message: userMsg,
+        targetAgent: chatAgent,
+      });
+      const data = await res.json();
+      setChatHistory(prev => [...prev, { role: "assistant", content: data.response, agent: data.agentTitle }]);
+    } catch {
+      setChatHistory(prev => [...prev, { role: "assistant", content: "Sorry, I couldn't process that request." }]);
+    } finally {
+      setChatPending(false);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardContent className="p-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
+            {Array.from({ length: 10 }).map((_, i) => (
+              <Skeleton key={i} className="h-32" />
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const agentList = agents || [];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <Users2 className="w-5 h-5 text-blue-500" />
+            Your AI Team
+          </h2>
+          <p className="text-sm text-muted-foreground">10 agent personas coordinating {">"}166 services</p>
+        </div>
+        <Button size="sm" variant="outline" onClick={() => { setChatAgent(null); setChatOpen(true); setChatHistory([]); }}>
+          <MessageSquare className="w-4 h-4 mr-1.5" />
+          Talk to your company
+        </Button>
+      </div>
+
+      {/* Agent Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
+        {agentList.map((agent: any) => {
+          const Icon = AGENT_ICONS[agent.codename] || Bot;
+          const color = AGENT_COLORS[agent.codename] || "text-gray-500";
+          const wing = WING_BADGES[agent.wing] || WING_BADGES.ops;
+          const isPaused = agent.status === "paused";
+          const metrics = agent.metrics || {};
+          const trustPct = agent.trustScore || 50;
+
+          return (
+            <Card key={agent.codename} className={`relative overflow-hidden ${isPaused ? "opacity-60" : ""}`}>
+              <CardContent className="p-4 space-y-3">
+                {/* Header */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Icon className={`w-5 h-5 ${color}`} />
+                    <div>
+                      <div className="text-sm font-semibold leading-tight">
+                        {agent.codename.split("_")[0].charAt(0).toUpperCase() + agent.codename.split("_")[0].slice(1)}
+                      </div>
+                      <div className="text-xs text-muted-foreground">{agent.title}</div>
+                    </div>
+                  </div>
+                  <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${wing.className}`}>
+                    {wing.label}
+                  </Badge>
+                </div>
+
+                {/* Trust Score */}
+                <div>
+                  <div className="flex items-center justify-between text-xs mb-1">
+                    <span className="text-muted-foreground">Trust</span>
+                    <span className="font-medium">{trustPct}/100</span>
+                  </div>
+                  <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${
+                        trustPct >= 75 ? "bg-green-500" : trustPct >= 50 ? "bg-amber-500" : "bg-red-500"
+                      }`}
+                      style={{ width: `${trustPct}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 text-xs flex-1"
+                    onClick={() => { setChatAgent(agent.codename); setChatOpen(true); setChatHistory([]); }}
+                  >
+                    <MessageSquare className="w-3 h-3 mr-1" />
+                    Chat
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className={`h-7 text-xs ${isPaused ? "text-green-600" : "text-amber-600"}`}
+                    onClick={() => statusMutation.mutate({
+                      codename: agent.codename,
+                      status: isPaused ? "active" : "paused",
+                    })}
+                    disabled={statusMutation.isPending}
+                  >
+                    {isPaused ? <Play className="w-3 h-3" /> : <Pause className="w-3 h-3" />}
+                  </Button>
+                </div>
+
+                {/* Status indicator */}
+                <div className="absolute top-2 right-2">
+                  <div className={`w-2 h-2 rounded-full ${isPaused ? "bg-amber-400" : "bg-green-500 animate-pulse"}`} />
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+
+      {/* Agent Chat Dialog */}
+      <Dialog open={chatOpen} onOpenChange={setChatOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MessageSquare className="w-5 h-5" />
+              {chatAgent
+                ? `Talk to ${chatAgent.split("_")[0].charAt(0).toUpperCase() + chatAgent.split("_")[0].slice(1)}`
+                : "Talk to your company"}
+            </DialogTitle>
+            <DialogDescription>
+              {chatAgent
+                ? "Ask this agent about their domain."
+                : "Address any agent by name, or ask a general question. Try: \"Forge, what's our MRR trend?\""}
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Chat History */}
+          <div className="max-h-[400px] overflow-y-auto space-y-3 p-3 bg-muted/30 rounded-lg">
+            {chatHistory.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-8">
+                Start a conversation with your AI team.
+              </p>
+            )}
+            {chatHistory.map((msg, i) => (
+              <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                <div className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
+                  msg.role === "user"
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-card border"
+                }`}>
+                  {msg.agent && (
+                    <div className="text-xs font-semibold text-muted-foreground mb-1">{msg.agent}</div>
+                  )}
+                  {msg.content}
+                </div>
+              </div>
+            ))}
+            {chatPending && (
+              <div className="flex justify-start">
+                <div className="bg-card border rounded-lg px-3 py-2">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Chat Input */}
+          <div className="flex items-center gap-2">
+            <Input
+              placeholder={chatAgent ? `Ask ${chatAgent.split("_")[0]}...` : "Type your message..."}
+              value={chatMessage}
+              onChange={(e) => setChatMessage(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); } }}
+              disabled={chatPending}
+            />
+            <Button onClick={sendChat} disabled={chatPending || !chatMessage.trim()} size="sm">
+              <Send className="w-4 h-4" />
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

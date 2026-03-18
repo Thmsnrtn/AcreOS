@@ -56,6 +56,7 @@ import { eq, and, desc, isNull, sql, lte } from "drizzle-orm";
 import { routeCriticalTask } from "./aiRouter";
 import { emailService } from "./emailService";
 import { format } from "date-fns";
+import { companyAgentService } from "./companyAgents";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Configuration — all controlled via env vars (founder owns these, system cannot change)
@@ -399,6 +400,16 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
     executedAt: new Date(),
   };
 
+  // ── Agent Attribution (Sovereign Company Protocol) ──
+  const ownerAgent = companyAgentService.getOwnerForDecisionType(item.itemType);
+  if (ownerAgent && !item.ownerAgentCodename) {
+    try {
+      await db.update(decisionsInboxItems)
+        .set({ ownerAgentCodename: ownerAgent })
+        .where(eq(decisionsInboxItems.id, item.id));
+    } catch {}
+  }
+
   // Hard stop check: financial impact above threshold
   const impactCents = item.estimatedImpactCents ?? 0;
   if (impactCents > EXECUTOR_CONFIG.MAX_FINANCIAL_IMPACT_CENTS) {
@@ -570,6 +581,24 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
       .set({ status: "deferred", deferredUntil: new Date(Date.now() + 24 * 60 * 60 * 1000), updatedAt: new Date() })
       .where(eq(decisionsInboxItems.id, item.id));
     result.executedAction = `Deferred by AI: ${aiDecision.reasoning.slice(0, 100)}`;
+  }
+
+  // ── Update owning agent metrics (Sovereign Company Protocol) ──
+  if (ownerAgent) {
+    try {
+      await companyAgentService.recordActivity(ownerAgent);
+      const isCorrect = result.executionSuccess && aiDecision.action !== "defer";
+      if (isCorrect) {
+        const agent = await companyAgentService.getByCodename(ownerAgent);
+        const currentMetrics = (agent?.metrics as any) || { decisionsTotal: 0, decisionsCorrect: 0, escalationsCount: 0, avgConfidence: 0, lastWeekActions: 0 };
+        await companyAgentService.updateMetrics(ownerAgent, {
+          decisionsTotal: (currentMetrics.decisionsTotal || 0) + 1,
+          decisionsCorrect: (currentMetrics.decisionsCorrect || 0) + (result.executionSuccess ? 1 : 0),
+          avgConfidence: Math.round(((currentMetrics.avgConfidence || 0) * (currentMetrics.decisionsTotal || 0) + aiDecision.confidence) / ((currentMetrics.decisionsTotal || 0) + 1)),
+          lastWeekActions: (currentMetrics.lastWeekActions || 0) + 1,
+        });
+      }
+    } catch {}
   }
 
   return result;

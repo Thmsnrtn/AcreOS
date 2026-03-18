@@ -10451,6 +10451,7 @@ export const decisionsInboxItems = pgTable("decisions_inbox_items", {
   resolvedBy: text("resolved_by"),
   founderOverrideAction: text("founder_override_action"),
   contextBundle: jsonb("context_bundle").$type<Record<string, any>>(),
+  ownerAgentCodename: text("owner_agent_codename"), // company agent that owns this decision
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
@@ -10951,3 +10952,98 @@ export const notesReceivable = pgTable("notes_receivable", {
 export const insertNoteReceivableSchema = createInsertSchema(notesReceivable).omit({ id: true, createdAt: true, updatedAt: true });
 export type NoteReceivable = typeof notesReceivable.$inferSelect;
 export type InsertNoteReceivable = z.infer<typeof insertNoteReceivableSchema>;
+
+// ============================================
+// SOVEREIGN COMPANY PROTOCOL — AI TEAM
+// ============================================
+
+// Company Agents — named AI personas that coordinate existing services
+export const companyAgents = pgTable("company_agents", {
+  id: serial("id").primaryKey(),
+  codename: text("codename").notNull().unique(),     // "atlas_cto", "sentinel_devops", etc.
+  title: text("title").notNull(),                     // "Chief Technology Officer"
+  wing: text("wing").notNull(),                       // "product", "growth", "ops"
+  personalityPrompt: text("personality_prompt"),       // How this agent communicates
+  ownedServices: jsonb("owned_services").$type<string[]>(),   // service file names this agent owns
+  ownedJobs: jsonb("owned_jobs").$type<string[]>(),           // background jobs this agent monitors
+  ownedRoutes: jsonb("owned_routes").$type<string[]>(),       // API route prefixes
+  authorityConfig: jsonb("authority_config").$type<{
+    level0Actions: string[];  // full autonomy — execute without notification
+    level1Actions: string[];  // autonomous + notify — execute and inform CEO
+    level2Actions: string[];  // recommend + wait — propose and await approval
+    level3Actions: string[];  // escalate immediately — alert CEO, do not act
+  }>(),
+  trustScore: integer("trust_score").notNull().default(50),  // 0-100, evolves over time
+  status: text("status").notNull().default("active"),        // active | paused | disabled
+  lastActivityAt: timestamp("last_activity_at"),
+  metrics: jsonb("metrics").$type<{
+    decisionsTotal: number;
+    decisionsCorrect: number;
+    escalationsCount: number;
+    avgConfidence: number;
+    lastWeekActions: number;
+  }>(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("company_agents_codename_idx").on(table.codename),
+  index("company_agents_wing_idx").on(table.wing),
+  index("company_agents_status_idx").on(table.status),
+]);
+
+export const insertCompanyAgentSchema = createInsertSchema(companyAgents).omit({ id: true, createdAt: true, updatedAt: true });
+export type CompanyAgent = typeof companyAgents.$inferSelect;
+export type InsertCompanyAgent = z.infer<typeof insertCompanyAgentSchema>;
+
+// Agent Messages — inter-agent communication on typed channels
+export const agentMessages = pgTable("agent_messages", {
+  id: serial("id").primaryKey(),
+  fromAgent: text("from_agent").notNull(),           // agent codename
+  toChannel: text("to_channel").notNull(),           // releases | incidents | customer_signals | metrics_alerts | revenue_events | content_pipeline | compliance_flags
+  priority: text("priority").notNull().default("medium"), // low | medium | high | critical
+  subject: text("subject").notNull(),
+  body: text("body").notNull(),
+  data: jsonb("data").$type<Record<string, any>>(),
+  requiresResponse: boolean("requires_response").default(false),
+  respondBy: timestamp("respond_by"),
+  readByAgents: jsonb("read_by_agents").$type<string[]>().default([]),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("agent_messages_channel_idx").on(table.toChannel),
+  index("agent_messages_from_idx").on(table.fromAgent),
+  index("agent_messages_priority_idx").on(table.priority),
+  index("agent_messages_created_idx").on(table.createdAt),
+]);
+
+export const insertAgentMessageSchema = createInsertSchema(agentMessages).omit({ id: true, createdAt: true });
+export type AgentMessage = typeof agentMessages.$inferSelect;
+export type InsertAgentMessage = z.infer<typeof insertAgentMessageSchema>;
+
+// Company Briefing Cache — pre-generated CEO briefings
+export const companyBriefingCache = pgTable("company_briefing_cache", {
+  id: serial("id").primaryKey(),
+  briefingData: jsonb("briefing_data").notNull(),
+  healthScore: integer("health_score").notNull(),
+  mood: text("mood").notNull(),  // green | yellow | red
+  generatedAt: timestamp("generated_at").defaultNow(),
+});
+
+// Trust Evolution Log — tracks trust score changes over time
+export const trustEvolutionLog = pgTable("trust_evolution_log", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull(),
+  previousScore: integer("previous_score").notNull(),
+  newScore: integer("new_score").notNull(),
+  delta: integer("delta").notNull(),
+  reason: text("reason").notNull(),
+  periodStart: timestamp("period_start").notNull(),
+  periodEnd: timestamp("period_end").notNull(),
+  decisionsInPeriod: integer("decisions_in_period").notNull().default(0),
+  accuracyRate: numeric("accuracy_rate"),
+  promotionSuggested: boolean("promotion_suggested").default(false),
+  promotionAction: text("promotion_action"),  // e.g. "Level 2 → Level 1 for infrastructure scaling"
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("trust_evolution_agent_idx").on(table.agentCodename),
+  index("trust_evolution_created_idx").on(table.createdAt),
+]);

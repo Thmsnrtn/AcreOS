@@ -23,12 +23,15 @@ import {
   supportTickets, subscriptionEvents, systemAlerts, activityLog,
   notes, campaigns, apiUsageLogs,
   decisionsInboxItems, jobHealthLogs, churnRiskScores, revenueProtectionInterventions,
-  founderDigestHistory,
+  founderDigestHistory, companyAgents, agentMessages, companyBriefingCache,
 } from "@shared/schema";
 import { sql, desc, eq, and, gte, lte, lt, count, sum, avg, ne } from "drizzle-orm";
 import { isFounderEmail } from "./services/founder";
 import { decisionsInboxService } from "./services/decisionsInbox";
 import { founderDigestService } from "./services/founderDigest";
+import { companyAgentService } from "./services/companyAgents";
+import { agentCommsService } from "./services/agentComms";
+import { routeAITask, TaskComplexity } from "./services/aiRouter";
 
 const router = Router();
 
@@ -1180,6 +1183,386 @@ router.get("/business-intelligence", requireFounder, async (req: Request, res: R
       // LTV:CAC requires founder-entered CAC — return placeholder
       ltvCac: { ltv: null, cac: null, ratio: null, note: "Enter CAC in org settings to enable LTV:CAC" },
     });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/founder/intelligence/company-briefing
+// The Sovereign Company Protocol — CEO Briefing
+// Aggregates all agent reports into a single synthesized company status
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.post("/company-briefing", requireFounder, async (req: Request, res: Response) => {
+  try {
+    // Check for cached briefing (generated within last 2 hours)
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    const cached = await db.select()
+      .from(companyBriefingCache)
+      .where(gte(companyBriefingCache.generatedAt, twoHoursAgo))
+      .orderBy(desc(companyBriefingCache.generatedAt))
+      .limit(1);
+
+    if (cached.length > 0 && !req.body?.forceRefresh) {
+      return res.json(cached[0].briefingData);
+    }
+
+    const now = new Date();
+    const yesterday = new Date(now.getTime() - 86400000);
+
+    // 1. Fetch all agents
+    const agents = await companyAgentService.getAllIncludingPaused();
+
+    // 2. Gather platform-wide context data in parallel
+    const [
+      orgStats,
+      openTickets,
+      criticalAlerts,
+      pendingDecisions,
+      recentJobHealth,
+      recentMessages,
+    ] = await Promise.allSettled([
+      db.select({
+        total: count(),
+        active: sql<number>`count(*) filter (where subscription_status = 'active')`,
+        paying: sql<number>`count(*) filter (where subscription_tier not in ('free') and subscription_status = 'active')`,
+      }).from(organizations),
+
+      db.select({ count: count() })
+        .from(supportTickets)
+        .where(eq(supportTickets.status, "open")),
+
+      db.select({ count: count() })
+        .from(systemAlerts)
+        .where(and(
+          eq(systemAlerts.severity, "critical"),
+          gte(systemAlerts.createdAt, yesterday),
+        )),
+
+      db.select()
+        .from(decisionsInboxItems)
+        .where(eq(decisionsInboxItems.status, "pending"))
+        .orderBy(desc(decisionsInboxItems.urgencyScore))
+        .limit(10),
+
+      db.select()
+        .from(jobHealthLogs)
+        .where(gte(jobHealthLogs.runStartedAt, yesterday))
+        .orderBy(desc(jobHealthLogs.runStartedAt))
+        .limit(50),
+
+      agentCommsService.getRecentMessages(yesterday, 50),
+    ]);
+
+    const orgData = orgStats.status === "fulfilled" ? orgStats.value[0] : { total: 0, active: 0, paying: 0 };
+    const ticketCount = openTickets.status === "fulfilled" ? openTickets.value[0]?.count || 0 : 0;
+    const alertCount = criticalAlerts.status === "fulfilled" ? criticalAlerts.value[0]?.count || 0 : 0;
+    const decisions = pendingDecisions.status === "fulfilled" ? pendingDecisions.value : [];
+    const jobLogs = recentJobHealth.status === "fulfilled" ? recentJobHealth.value : [];
+    const commsMessages = recentMessages.status === "fulfilled" ? recentMessages.value : [];
+
+    // Count job health
+    const jobsHealthy = jobLogs.filter((j: any) => j.status === "success").length;
+    const jobsFailed = jobLogs.filter((j: any) => j.status === "failed").length;
+
+    // 3. Generate reports for each agent with relevant context
+    const contextByAgent: Record<string, Record<string, any>> = {
+      atlas_cto: { jobsHealthy, jobsFailed, totalJobs: jobLogs.length },
+      sophie_csm: { openTickets: ticketCount, totalOrgs: orgData.total },
+      forge_revenue: { payingOrgs: orgData.paying, activeOrgs: orgData.active, totalOrgs: orgData.total },
+      beacon_marketing: { totalOrgs: orgData.total, activeOrgs: orgData.active },
+      sentinel_devops: { jobsHealthy, jobsFailed, criticalAlerts: alertCount },
+      ledger_finance: { payingOrgs: orgData.paying },
+      shield_legal: {},
+      oracle_analytics: { totalOrgs: orgData.total, payingOrgs: orgData.paying, activeOrgs: orgData.active },
+      compass_pm: {},
+      crucible_qa: { jobsHealthy, jobsFailed },
+    };
+
+    const agentReports = await Promise.allSettled(
+      agents
+        .filter(a => a.status === "active")
+        .map(agent =>
+          companyAgentService.generateReport(
+            agent.codename,
+            contextByAgent[agent.codename] || {}
+          )
+        )
+    );
+
+    const reports = agentReports
+      .filter((r): r is PromiseFulfilledResult<any> => r.status === "fulfilled")
+      .map(r => r.value);
+
+    // 4. Build overnight activity from agent messages
+    const overnightActivity = agents
+      .filter(a => a.status === "active")
+      .map(agent => ({
+        agent: agent.title,
+        codename: agent.codename,
+        actions: commsMessages
+          .filter((m: any) => m.fromAgent === agent.codename)
+          .map((m: any) => ({
+            description: m.subject,
+            autonomous: true,
+            timestamp: m.createdAt?.toISOString() || new Date().toISOString(),
+          })),
+      }))
+      .filter(a => a.actions.length > 0);
+
+    // 5. Format pending decisions with agent attribution
+    const decisionsNeeded = decisions.map((d: any) => ({
+      id: d.id,
+      fromAgent: d.ownerAgentCodename || companyAgentService.getOwnerForDecisionType(d.itemType) || "unknown",
+      title: d.recommendedActionLabel,
+      context: d.sophieAnalysis,
+      recommendation: d.recommendedAction,
+      options: [
+        { label: "Approve", action: "approve", tradeoff: "Execute recommended action" },
+        { label: "Reject", action: "reject", tradeoff: "Dismiss this recommendation" },
+        { label: "Discuss", action: "defer", tradeoff: "Defer for further analysis" },
+      ],
+      urgency: d.riskLevel === "critical" ? "critical" : d.riskLevel === "high" ? "high" : d.urgencyScore > 70 ? "medium" : "low",
+      deadline: d.deferredUntil?.toISOString(),
+    }));
+
+    // 6. Compute composite health score
+    const agentHealthScores = reports.map(r => r.healthScore);
+    const healthScore = agentHealthScores.length > 0
+      ? Math.round(agentHealthScores.reduce((a: number, b: number) => a + b, 0) / agentHealthScores.length)
+      : 80;
+
+    const mood = healthScore >= 80 ? "green" : healthScore >= 60 ? "yellow" : "red";
+
+    // 7. Extract wins and upcoming items
+    const wins = reports
+      .flatMap(r => (r.alerts || []).filter((a: any) => a.level === "info"))
+      .map((a: any) => a.message)
+      .slice(0, 5);
+
+    // 8. Build the full briefing
+    const briefing = {
+      generatedAt: now.toISOString(),
+      healthScore,
+      mood,
+      overnightActivity,
+      agentReports: reports,
+      decisionsNeeded,
+      wins,
+      upcoming: [],
+      agentTeam: agents.map(a => ({
+        codename: a.codename,
+        title: a.title,
+        wing: a.wing,
+        trustScore: a.trustScore,
+        status: a.status,
+        lastActivityAt: a.lastActivityAt?.toISOString(),
+        metrics: a.metrics,
+      })),
+    };
+
+    // 9. Cache the briefing
+    await db.insert(companyBriefingCache).values({
+      briefingData: briefing,
+      healthScore,
+      mood,
+    });
+
+    res.json(briefing);
+  } catch (err: any) {
+    console.error("[company-briefing] Error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/founder/intelligence/company-agents
+// List all company agents with their current state
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get("/company-agents", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const agents = await companyAgentService.getAllIncludingPaused();
+    res.json(agents);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH /api/founder/intelligence/company-agents/:codename/status
+// Pause/resume an agent — CEO override
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.patch("/company-agents/:codename/status", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { codename } = req.params;
+    const { status } = req.body;
+
+    if (!["active", "paused", "disabled"].includes(status)) {
+      return res.status(400).json({ error: "Status must be active, paused, or disabled" });
+    }
+
+    await companyAgentService.setStatus(codename, status);
+
+    // Broadcast the status change
+    await agentCommsService.broadcast({
+      from: "ceo",
+      channel: "incidents",
+      priority: "high",
+      subject: `Agent ${codename} ${status === "paused" ? "paused" : status === "active" ? "resumed" : "disabled"} by CEO`,
+      body: `The CEO has set ${codename} to ${status}.`,
+    });
+
+    res.json({ success: true, codename, status });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/founder/intelligence/agent-chat
+// Talk to your company — direct agent chat
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.post("/agent-chat", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { message, targetAgent } = req.body;
+
+    if (!message) {
+      return res.status(400).json({ error: "Message is required" });
+    }
+
+    // Parse agent name from message if not explicitly provided
+    let agentCodename = targetAgent;
+    if (!agentCodename) {
+      const agentNames: Record<string, string> = {
+        atlas: "atlas_cto",
+        sophie: "sophie_csm",
+        forge: "forge_revenue",
+        beacon: "beacon_marketing",
+        sentinel: "sentinel_devops",
+        ledger: "ledger_finance",
+        shield: "shield_legal",
+        oracle: "oracle_analytics",
+        compass: "compass_pm",
+        crucible: "crucible_qa",
+      };
+
+      const lowerMsg = message.toLowerCase();
+      for (const [name, code] of Object.entries(agentNames)) {
+        if (lowerMsg.startsWith(name + ",") || lowerMsg.startsWith(name + " ")) {
+          agentCodename = code;
+          break;
+        }
+      }
+    }
+
+    // Check for CEO override commands
+    const lowerMsg = message.toLowerCase().trim();
+
+    if (lowerMsg.startsWith("pause ")) {
+      const name = lowerMsg.replace("pause ", "").trim();
+      const agentNames: Record<string, string> = {
+        atlas: "atlas_cto", sophie: "sophie_csm", forge: "forge_revenue",
+        beacon: "beacon_marketing", sentinel: "sentinel_devops", ledger: "ledger_finance",
+        shield: "shield_legal", oracle: "oracle_analytics", compass: "compass_pm", crucible: "crucible_qa",
+      };
+      const code = agentNames[name];
+      if (code) {
+        await companyAgentService.setStatus(code, "paused");
+        return res.json({
+          response: `${name.charAt(0).toUpperCase() + name.slice(1)} has been paused. They will not generate reports or take autonomous actions until resumed.`,
+          agent: code,
+          action: "paused",
+        });
+      }
+    }
+
+    if (lowerMsg.startsWith("resume ")) {
+      const name = lowerMsg.replace("resume ", "").trim();
+      const agentNames: Record<string, string> = {
+        atlas: "atlas_cto", sophie: "sophie_csm", forge: "forge_revenue",
+        beacon: "beacon_marketing", sentinel: "sentinel_devops", ledger: "ledger_finance",
+        shield: "shield_legal", oracle: "oracle_analytics", compass: "compass_pm", crucible: "crucible_qa",
+      };
+      const code = agentNames[name];
+      if (code) {
+        await companyAgentService.setStatus(code, "active");
+        return res.json({
+          response: `${name.charAt(0).toUpperCase() + name.slice(1)} has been resumed and is back on active duty.`,
+          agent: code,
+          action: "resumed",
+        });
+      }
+    }
+
+    // Get the agent's personality for the response
+    let systemPrompt = "You are a member of the AcreOS AI executive team. Answer the CEO's question helpfully and in character.";
+    let agentTitle = "AI Team";
+
+    if (agentCodename) {
+      const agent = await companyAgentService.getByCodename(agentCodename);
+      if (agent) {
+        systemPrompt = agent.personalityPrompt || systemPrompt;
+        agentTitle = agent.title;
+
+        // Record activity for the addressed agent
+        await companyAgentService.recordActivity(agentCodename);
+      }
+    }
+
+    // Route through AI with the agent's personality
+    const aiResponse = await routeAITask({
+      taskType: "agent_chat",
+      complexity: TaskComplexity.MODERATE,
+      messages: [
+        { role: "system", content: systemPrompt },
+        {
+          role: "user",
+          content: `The CEO is asking you directly. Respond in character as ${agentTitle}.
+
+CEO's message: ${message}
+
+Respond naturally in your persona's voice. Be concise but thorough. If you need data you don't have, say so — don't fabricate numbers.`,
+        },
+      ],
+    });
+
+    res.json({
+      response: aiResponse.content,
+      agent: agentCodename || "team",
+      agentTitle,
+    });
+  } catch (err: any) {
+    console.error("[agent-chat] Error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/founder/intelligence/agent-messages
+// View inter-agent communication feed
+// ─────────────────────────────────────────────────────────────────────────────
+
+router.get("/agent-messages", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const hoursBack = parseInt(req.query.hours as string) || 24;
+    const channel = req.query.channel as string;
+
+    const since = new Date(Date.now() - hoursBack * 60 * 60 * 1000);
+
+    let messages;
+    if (channel) {
+      messages = await agentCommsService.getMessages(channel as any, since);
+    } else {
+      messages = await agentCommsService.getRecentMessages(since);
+    }
+
+    const channelActivity = await agentCommsService.getChannelActivity(hoursBack);
+
+    res.json({ messages, channelActivity });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
