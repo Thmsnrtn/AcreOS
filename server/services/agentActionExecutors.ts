@@ -437,6 +437,20 @@ export async function executeAction(ctx: ActionContext): Promise<ActionResult> {
     registerActionUndo(logId, ctx.agentCodename, ctx.actionName, ctx.input).catch(() => {});
   }
 
+  // v5: Share knowledge across agents when actions produce learnings
+  if (result.success && result.metrics) {
+    try {
+      const { shareKnowledge } = await import("./agentKnowledgeGraph");
+      const topic = ctx.actionName.replace(/_/g, " ");
+      await shareKnowledge({
+        fromAgent: ctx.agentCodename,
+        topic,
+        content: result.detail,
+        confidence: 0.7,
+      });
+    } catch {}
+  }
+
   // v4: Proactive push notification for high-priority actions
   if (result.success && logId) {
     try {

@@ -112,6 +112,9 @@ import { Suspense, lazy } from "react";
 import { MorningBriefing } from "@/components/founder/MorningBriefing";
 import { SwipeDecisionCard } from "@/components/founder/SwipeDecisionCard";
 import { AgentTeamChat } from "@/components/founder/AgentTeamChat";
+import ActivityTimeline from "@/components/founder/ActivityTimeline";
+import TrendCards from "@/components/founder/TrendCards";
+import OnboardingWalkthrough from "@/components/founder/OnboardingWalkthrough";
 import { trustLabel, trustBadgeColor } from "@/lib/trust-language";
 
 interface AdminDashboardData {
@@ -1800,6 +1803,9 @@ export default function FounderDashboard() {
 
   return (
     <PageShell>
+          {/* v4: Onboarding walkthrough (modal overlay) */}
+          <OnboardingWalkthrough />
+
           {/* ── Keyboard shortcuts modal ─────────────────────────────── */}
           <Dialog open={showShortcuts} onOpenChange={setShowShortcuts}>
             <DialogContent className="max-w-sm">
@@ -1938,6 +1944,9 @@ export default function FounderDashboard() {
             {/* Morning Briefing — one-screen summary, Apple Health style */}
             <MorningBriefing />
 
+            {/* v4: Trend Cards — CEO trend context before decisions */}
+            <TrendCards />
+
             {/* Swipeable Decisions — Tinder for business decisions */}
             <Suspense fallback={<div className="animate-pulse h-32 rounded-xl bg-muted" />}>
               <SwipeDecisionsSection />
@@ -1953,6 +1962,19 @@ export default function FounderDashboard() {
               </CardHeader>
               <CardContent className="p-0 h-[360px]">
                 <AgentTeamChat />
+              </CardContent>
+            </Card>
+
+            {/* Activity Timeline — what agents did */}
+            <Card className="overflow-hidden">
+              <CardHeader className="pb-2 border-b">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Clock className="h-4 w-4" />
+                  Agent Activity
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0 max-h-[400px] overflow-y-auto">
+                <ActivityTimeline />
               </CardContent>
             </Card>
 

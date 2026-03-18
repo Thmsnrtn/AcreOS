@@ -532,6 +532,7 @@ app.use("/api/auth", async (req, res, next) => {
       startTrustEvolutionJob();
       startAgentReactionProcessorJob();
       startAgentProactiveEngineJob();
+      startV5MaintenanceJob();
 
       // Auto-seed county GIS endpoints for free parcel lookups
       seedCountyGisEndpointsOnStartup();
@@ -1541,4 +1542,22 @@ function startAgentProactiveEngineJob() {
       });
     }).catch(err => log(`Proactive engine import failed: ${err}`, 'sovereign'));
   }, FIVE_MINUTES);
+}
+
+/**
+ * v5 Maintenance Job — every 15 minutes.
+ * Processes the outcome verification queue and checks for stale goals.
+ */
+function startV5MaintenanceJob() {
+  const FIFTEEN_MINUTES = 15 * 60 * 1000;
+
+  log('Registering v5 maintenance job (every 15 minutes)', 'sovereign');
+
+  setInterval(() => {
+    import('./jobs/v5MaintenanceJob').then(({ runV5Maintenance }) => {
+      runV5Maintenance().catch(err => {
+        log(`v5 maintenance run failed: ${err}`, 'sovereign');
+      });
+    }).catch(err => log(`v5 maintenance import failed: ${err}`, 'sovereign'));
+  }, FIFTEEN_MINUTES);
 }

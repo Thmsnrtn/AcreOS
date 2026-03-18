@@ -109,6 +109,24 @@ export async function checkAuthority(codename: string, action: string): Promise<
     };
   }
 
+  // v5: Check for temporary CEO delegation before applying static authority
+  try {
+    const { checkTemporaryDelegation } = await import("./temporaryDelegation");
+    const delegation = checkTemporaryDelegation(codename, action);
+    if (delegation.hasDelegation) {
+      return {
+        allowed: true,
+        effectiveLevel: delegation.toLevel as 0 | 1 | 2 | 3,
+        requestedLevel,
+        action,
+        trustRequired: 0,
+        currentTrust: agent.trustScore,
+        reason: `Temporary delegation active: ${delegation.reason}`,
+        downgraded: false,
+      };
+    }
+  } catch {}
+
   // Determine which level this action is in
   let requestedLevel: 0 | 1 | 2 | 3 = 3;
   if (config.level0Actions?.includes(action)) requestedLevel = 0;
