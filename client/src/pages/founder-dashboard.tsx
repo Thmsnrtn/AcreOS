@@ -126,6 +126,13 @@ import { InitiativeBoard } from "@/components/founder/InitiativeBoard";
 import { PerformanceReviews } from "@/components/founder/PerformanceReviews";
 import { PlaybookManager } from "@/components/founder/PlaybookManager";
 import { AbsenceMode } from "@/components/founder/AbsenceMode";
+// v7: The Learning Company
+import { FocusCard } from "@/components/founder/FocusCard";
+import { DecisionAutopilot } from "@/components/founder/DecisionAutopilot";
+import { ScenarioEngine } from "@/components/founder/ScenarioEngine";
+import { AgentGrowth } from "@/components/founder/AgentGrowth";
+import { FounderTwin } from "@/components/founder/FounderTwin";
+import { InstitutionalMemory } from "@/components/founder/InstitutionalMemory";
 import { trustLabel, trustBadgeColor } from "@/lib/trust-language";
 
 interface AdminDashboardData {
@@ -2050,6 +2057,26 @@ export default function FounderDashboard() {
 
             {/* Performance Reviews — weekly agent evaluations */}
             <PerformanceReviews />
+
+            {/* ─── v7: The Learning Company ──────────────────────────────── */}
+
+            {/* Focus Card — "here's where you matter today" */}
+            <FocusCard />
+
+            {/* Decision Autopilot — learn and automate founder's judgment */}
+            <DecisionAutopilot />
+
+            {/* Scenario Engine — "what if?" multi-agent simulations */}
+            <ScenarioEngine />
+
+            {/* Agent Growth — self-improvement plans + skill requests */}
+            <AgentGrowth />
+
+            {/* Founder Digital Twin — draft comms in your voice */}
+            <FounderTwin />
+
+            {/* Institutional Memory — compound pattern library */}
+            <InstitutionalMemory />
 
             {/* Classic Pulse (collapsed) for deep-dive users */}
             <details className="group">
