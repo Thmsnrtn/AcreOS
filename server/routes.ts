@@ -1077,6 +1077,12 @@ export async function registerRoutes(
     registerFounderV12Routes(app);
   }
 
+  // Sovereign Company Protocol v13 — The Sentient Enterprise
+  {
+    const { registerFounderV13Routes } = await import("./routes-founder-v13");
+    registerFounderV13Routes(app);
+  }
+
   // Epic H: Auto-Delinquent Scraper route
   app.post('/api/import/auto-delinquent', isAuthenticated, getOrCreateOrg, async (req, res) => {
     const { county, state } = req.body as { county: string; state: string };
