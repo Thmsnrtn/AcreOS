@@ -119,6 +119,13 @@ import ForecastPanel from "@/components/founder/ForecastPanel";
 import CustomerHealthPanel from "@/components/founder/CustomerHealthPanel";
 import OutcomeFeedback from "@/components/founder/OutcomeFeedback";
 import DelegationManager from "@/components/founder/DelegationManager";
+// v6: Self-Running Company
+import { WorkflowMonitor } from "@/components/founder/WorkflowMonitor";
+import { WarRoom } from "@/components/founder/WarRoom";
+import { InitiativeBoard } from "@/components/founder/InitiativeBoard";
+import { PerformanceReviews } from "@/components/founder/PerformanceReviews";
+import { PlaybookManager } from "@/components/founder/PlaybookManager";
+import { AbsenceMode } from "@/components/founder/AbsenceMode";
 import { trustLabel, trustBadgeColor } from "@/lib/trust-language";
 
 interface AdminDashboardData {
@@ -2023,6 +2030,26 @@ export default function FounderDashboard() {
 
             {/* Delegation Manager */}
             <DelegationManager />
+
+            {/* ─── v6: Self-Running Company ─────────────────────────────── */}
+
+            {/* Absence Mode — always visible at top of v6 section */}
+            <AbsenceMode />
+
+            {/* War Rooms — auto-convened critical event threads */}
+            <WarRoom />
+
+            {/* Agent Pipelines — multi-step workflow monitoring */}
+            <WorkflowMonitor />
+
+            {/* Initiative Board — agent strategic proposals */}
+            <InitiativeBoard />
+
+            {/* Playbook Manager — approve agent SOPs */}
+            <PlaybookManager />
+
+            {/* Performance Reviews — weekly agent evaluations */}
+            <PerformanceReviews />
 
             {/* Classic Pulse (collapsed) for deep-dive users */}
             <details className="group">

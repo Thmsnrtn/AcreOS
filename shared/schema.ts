@@ -11202,3 +11202,247 @@ export const agentActionUndoLog = pgTable("agent_action_undo_log", {
   index("aaul_action_log_idx").on(table.actionLogId),
   index("aaul_undo_avail_idx").on(table.undoAvailable, table.undoExpiry),
 ]);
+
+// ============================================
+// SOVEREIGN COMPANY PROTOCOL v6 — THE SELF-RUNNING COMPANY
+// ============================================
+
+// --- Agent Workflows (Multi-Agent Pipelines) ---
+// Coordinated multi-step processes: Lead -> Score -> Price -> Outreach -> Nurture
+
+export const agentWorkflows = pgTable("agent_workflows", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  triggerType: text("trigger_type").notNull(), // "manual" | "event" | "schedule" | "threshold"
+  triggerConfig: jsonb("trigger_config").$type<{
+    event?: string;
+    schedule?: string;
+    threshold?: { metric: string; operator: "gt" | "lt" | "eq"; value: number };
+  }>(),
+  steps: jsonb("steps").$type<Array<{
+    order: number;
+    agentCodename: string;
+    action: string;
+    description: string;
+    inputMapping: Record<string, string>;
+    failureStrategy: "abort" | "skip" | "retry" | "fallback";
+    fallbackAgent?: string;
+    timeoutMs?: number;
+    condition?: string;
+  }>>().notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  createdBy: text("created_by").notNull().default("system"),
+  totalRuns: integer("total_runs").notNull().default(0),
+  successRate: numeric("success_rate"),
+  avgDurationMs: integer("avg_duration_ms"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("aw_trigger_type_idx").on(table.triggerType),
+  index("aw_active_idx").on(table.isActive),
+]);
+export type AgentWorkflow = typeof agentWorkflows.$inferSelect;
+
+export const agentWorkflowRuns = pgTable("agent_workflow_runs", {
+  id: serial("id").primaryKey(),
+  workflowId: integer("workflow_id").references(() => agentWorkflows.id).notNull(),
+  status: text("status").notNull().default("running"),
+  triggeredBy: text("triggered_by").notNull(),
+  triggerData: jsonb("trigger_data").$type<Record<string, any>>(),
+  currentStep: integer("current_step").notNull().default(0),
+  stepResults: jsonb("step_results").$type<Array<{
+    step: number;
+    agentCodename: string;
+    action: string;
+    status: "pending" | "running" | "completed" | "failed" | "skipped";
+    output?: any;
+    error?: string;
+    startedAt?: string;
+    completedAt?: string;
+    durationMs?: number;
+  }>>().notNull().default([]),
+  startedAt: timestamp("started_at").notNull().defaultNow(),
+  completedAt: timestamp("completed_at"),
+  durationMs: integer("duration_ms"),
+}, (table) => [
+  index("awr_workflow_idx").on(table.workflowId),
+  index("awr_status_idx").on(table.status),
+  index("awr_started_idx").on(table.startedAt),
+]);
+export type AgentWorkflowRun = typeof agentWorkflowRuns.$inferSelect;
+
+// --- War Rooms (Auto-Convened Collaboration) ---
+
+export const warRooms = pgTable("war_rooms", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  severity: text("severity").notNull(),
+  triggerEvent: text("trigger_event").notNull(),
+  triggerData: jsonb("trigger_data").$type<Record<string, any>>(),
+  participants: jsonb("participants").$type<string[]>().notNull(),
+  leadAgent: text("lead_agent").notNull(),
+  status: text("status").notNull().default("active"),
+  resolution: text("resolution"),
+  resolvedBy: text("resolved_by"),
+  ceoJoined: boolean("ceo_joined").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  resolvedAt: timestamp("resolved_at"),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("wr_status_idx").on(table.status),
+  index("wr_severity_idx").on(table.severity),
+  index("wr_created_idx").on(table.createdAt),
+]);
+export type WarRoom = typeof warRooms.$inferSelect;
+
+export const warRoomMessages = pgTable("war_room_messages", {
+  id: serial("id").primaryKey(),
+  warRoomId: integer("war_room_id").references(() => warRooms.id).notNull(),
+  fromAgent: text("from_agent").notNull(),
+  messageType: text("message_type").notNull(),
+  content: text("content").notNull(),
+  data: jsonb("data").$type<Record<string, any>>(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("wrm_room_idx").on(table.warRoomId),
+  index("wrm_from_idx").on(table.fromAgent),
+]);
+export type WarRoomMessage = typeof warRoomMessages.$inferSelect;
+
+// --- Agent Initiative Proposals ---
+
+export const agentInitiatives = pgTable("agent_initiatives", {
+  id: serial("id").primaryKey(),
+  proposedBy: text("proposed_by").notNull(),
+  title: text("title").notNull(),
+  thesis: text("thesis").notNull(),
+  evidence: jsonb("evidence").$type<Array<{
+    type: "metric" | "pattern" | "customer_signal" | "market_data" | "competitor";
+    description: string;
+    value?: string | number;
+  }>>().notNull(),
+  projectedImpact: jsonb("projected_impact").$type<{
+    metric: string;
+    currentValue: number;
+    projectedValue: number;
+    timeframeWeeks: number;
+    confidence: "low" | "medium" | "high";
+  }>(),
+  requiredAgents: jsonb("required_agents").$type<string[]>(),
+  estimatedEffort: text("estimated_effort"),
+  status: text("status").notNull().default("proposed"),
+  ceoNotes: text("ceo_notes"),
+  votedAt: timestamp("voted_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("ai_init_proposed_by_idx").on(table.proposedBy),
+  index("ai_init_status_idx").on(table.status),
+  index("ai_init_created_idx").on(table.createdAt),
+]);
+export type AgentInitiative = typeof agentInitiatives.$inferSelect;
+
+// --- Agent Performance Reviews ---
+
+export const agentPerformanceReviews = pgTable("agent_performance_reviews", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull(),
+  periodStart: timestamp("period_start").notNull(),
+  periodEnd: timestamp("period_end").notNull(),
+  metrics: jsonb("metrics").$type<{
+    totalActions: number;
+    successRate: number;
+    escalationRate: number;
+    avgConfidence: number;
+    avgResponseTimeMs: number;
+    trustScoreStart: number;
+    trustScoreEnd: number;
+    trustDelta: number;
+    overridesReceived: number;
+    goalsCompleted: number;
+    goalsAssigned: number;
+  }>().notNull(),
+  strengths: jsonb("strengths").$type<string[]>().notNull(),
+  improvements: jsonb("improvements").$type<string[]>().notNull(),
+  learnings: jsonb("learnings").$type<string[]>().notNull(),
+  peerFeedback: jsonb("peer_feedback").$type<Array<{
+    fromAgent: string;
+    feedback: string;
+  }>>(),
+  overallGrade: text("overall_grade").notNull(),
+  summary: text("summary").notNull(),
+  ceoComments: text("ceo_comments"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("apr_agent_idx").on(table.agentCodename),
+  index("apr_period_idx").on(table.periodStart, table.periodEnd),
+]);
+export type AgentPerformanceReview = typeof agentPerformanceReviews.$inferSelect;
+
+// --- Agent Playbooks (Codified SOPs) ---
+
+export const agentPlaybooks = pgTable("agent_playbooks", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  ownerAgent: text("owner_agent").notNull(),
+  triggerCondition: text("trigger_condition").notNull(),
+  triggerConfig: jsonb("trigger_config").$type<{
+    event?: string;
+    metric?: string;
+    operator?: "gt" | "lt" | "eq" | "contains";
+    value?: number | string;
+  }>(),
+  steps: jsonb("steps").$type<Array<{
+    order: number;
+    agentCodename: string;
+    action: string;
+    description: string;
+    delayMs?: number;
+    condition?: string;
+    params?: Record<string, any>;
+  }>>().notNull(),
+  isApproved: boolean("is_approved").notNull().default(false),
+  approvedAt: timestamp("approved_at"),
+  isActive: boolean("is_active").notNull().default(false),
+  totalExecutions: integer("total_executions").notNull().default(0),
+  successRate: numeric("success_rate"),
+  lastExecutedAt: timestamp("last_executed_at"),
+  createdBy: text("created_by").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("ap_owner_idx").on(table.ownerAgent),
+  index("ap_active_idx").on(table.isActive, table.isApproved),
+]);
+export type AgentPlaybook = typeof agentPlaybooks.$inferSelect;
+
+// --- CEO Absence Mode ---
+
+export const ceoAbsenceMode = pgTable("ceo_absence_mode", {
+  id: serial("id").primaryKey(),
+  isActive: boolean("is_active").notNull().default(false),
+  startedAt: timestamp("started_at"),
+  endsAt: timestamp("ends_at"),
+  trustBoost: integer("trust_boost").notNull().default(15),
+  batchedItems: jsonb("batched_items").$type<Array<{
+    type: string;
+    summary: string;
+    agentCodename: string;
+    priority: string;
+    timestamp: string;
+    data?: any;
+  }>>().notNull().default([]),
+  emergencyBreaks: jsonb("emergency_breaks").$type<Array<{
+    agentCodename: string;
+    reason: string;
+    timestamp: string;
+    actionTaken: string;
+  }>>().notNull().default([]),
+  returnBriefing: text("return_briefing"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("cam_active_idx").on(table.isActive),
+]);

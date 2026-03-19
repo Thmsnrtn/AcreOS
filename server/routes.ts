@@ -1035,6 +1035,12 @@ export async function registerRoutes(
     app.use('/api/founder/setup', isAuthenticated, setupRouter);
   }
 
+  // Sovereign Company Protocol v6 — Self-Running Company
+  {
+    const { registerFounderV6Routes } = await import("./routes-founder-v6");
+    registerFounderV6Routes(app);
+  }
+
   // Epic H: Auto-Delinquent Scraper route
   app.post('/api/import/auto-delinquent', isAuthenticated, getOrCreateOrg, async (req, res) => {
     const { county, state } = req.body as { county: string; state: string };
