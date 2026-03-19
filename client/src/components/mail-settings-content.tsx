@@ -339,14 +339,7 @@ export function MailSettingsContent() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "verified":
-return (
-  <>
-    {!mailReady && (
-      <div className="p-3 mb-3 border rounded-md bg-amber-50 text-amber-800 flex items-center gap-2">
-        <AlertCircle className="w-4 h-4" />
-        <span className="text-sm">Mail provider not configured. Configure in Settings → Providers to enable sending.</span>
-      </div>
-    )}
+        return (
           <Badge variant="default" className="bg-green-600" data-testid="badge-status-verified">
             <CheckCircle className="w-3 h-3 mr-1" /> Verified
           </Badge>
