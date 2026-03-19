@@ -80,8 +80,6 @@ function RoutingEditor({
   const [replyToEmail, setReplyToEmail] = useState(identity.replyToEmail || "");
 
 return (
-  <div>
-    {ProviderNotice}
     <div className="space-y-4">
       <RadioGroup
         value={mode}
@@ -144,7 +142,6 @@ return (
 
       <div className="flex justify-end gap-2">
 <Button
-          disabled={!mailReady || activatePlatformMutation.isPending}
           onClick={() => onSave(mode, mode !== "in_app" ? replyToEmail : undefined)}
           disabled={isPending || ((mode === "forward" || mode === "both") && !replyToEmail)}
           data-testid={`button-save-routing-${identity.id}`}

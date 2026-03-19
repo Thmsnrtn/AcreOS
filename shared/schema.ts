@@ -11046,3 +11046,77 @@ export const evolutionCircuitBreaker = pgTable("evolution_circuit_breaker", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 export type EvolutionCircuitBreaker = typeof evolutionCircuitBreaker.$inferSelect;
+
+// ============================================
+// CAMPAIGN LEADS
+// ============================================
+
+export const campaignLeads = pgTable("campaign_leads", {
+  id: serial("id").primaryKey(),
+  campaignId: integer("campaign_id").notNull(),
+  leadId: integer("lead_id").notNull(),
+  organizationId: integer("organization_id").notNull(),
+  status: text("status").notNull().default("pending"),
+  scheduledAt: timestamp("scheduled_at"),
+  touchNumber: integer("touch_number").default(1),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export type CampaignLead = typeof campaignLeads.$inferSelect;
+
+// ============================================
+// COUNTY MARKETS
+// ============================================
+
+export const countyMarkets = pgTable("county_markets", {
+  id: serial("id").primaryKey(),
+  state: text("state").notNull(),
+  county: text("county").notNull(),
+  medianPricePerAcre: text("median_price_per_acre"),
+  recentSalesCount: integer("recent_sales_count"),
+  avgDaysOnMarket: integer("avg_days_on_market"),
+  priceChangePercent: text("price_change_percent"),
+  investorDemandScore: integer("investor_demand_score"),
+  lastUpdated: timestamp("last_updated"),
+});
+export type CountyMarket = typeof countyMarkets.$inferSelect;
+
+// ============================================
+// TERRITORIES
+// ============================================
+
+export const territories = pgTable("territories", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  stateCode: text("state_code").notNull(),
+  counties: jsonb("counties").default([]),
+  assignedUserId: integer("assigned_user_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export type Territory = typeof territories.$inferSelect;
+
+// ============================================
+// SESSIONS
+// ============================================
+
+export const sessions = pgTable("sessions", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export type Session = typeof sessions.$inferSelect;
+
+// ============================================
+// NOTES RECEIVABLE
+// ============================================
+
+export const notesReceivable = pgTable("notes_receivable", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").notNull(),
+  remainingBalance: numeric("remaining_balance").default("0"),
+  status: text("status").notNull().default("active"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export type NoteReceivable = typeof notesReceivable.$inferSelect;
