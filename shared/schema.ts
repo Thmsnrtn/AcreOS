@@ -11665,3 +11665,205 @@ export const signalCorrelations = pgTable("signal_correlations", {
   index("sc_correlation_idx").on(table.correlation),
 ]);
 export type SignalCorrelation = typeof signalCorrelations.$inferSelect;
+
+// ============================================
+// SOVEREIGN COMPANY PROTOCOL v8 — THE LIVING ORGANIZATION
+// ============================================
+
+// --- Strategic Compass: living strategy that every agent reads ---
+
+export const strategicCompass = pgTable("strategic_compass", {
+  id: serial("id").primaryKey(),
+  isActive: boolean("is_active").notNull().default(true),
+  mode: text("mode").notNull().default("growth"),         // "growth" | "efficiency" | "crisis" | "exploration" | "balanced"
+  northStar: text("north_star").notNull(),                 // single sentence: "Revenue over efficiency. Ship fast."
+  priorities: jsonb("priorities").$type<Array<{
+    rank: number;
+    priority: string;
+    weight: number;                                        // 1-10
+  }>>().notNull(),
+  agentDirectives: jsonb("agent_directives").$type<Record<string, {
+    riskTolerance: "low" | "medium" | "high";
+    spendAuthority: "tight" | "normal" | "aggressive";
+    approvalThreshold: "strict" | "normal" | "loose";
+    focusAreas: string[];
+    avoidAreas: string[];
+  }>>().notNull().default({}),
+  metrics: jsonb("metrics").$type<{
+    targetMRR?: number;
+    acceptableChurn?: number;
+    marketingBudgetCeiling?: number;
+    hiringStatus?: "freeze" | "selective" | "aggressive";
+  }>(),
+  lastUpdatedBy: text("last_updated_by").notNull().default("ceo"),
+  changelog: jsonb("changelog").$type<Array<{
+    timestamp: string;
+    changedBy: string;
+    description: string;
+    previousMode?: string;
+    newMode?: string;
+  }>>().notNull().default([]),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("sc_compass_active_idx").on(table.isActive),
+]);
+export type StrategicCompass = typeof strategicCompass.$inferSelect;
+
+// --- Agent Debates: structured disagreement before big decisions ---
+
+export const agentDebates = pgTable("agent_debates", {
+  id: serial("id").primaryKey(),
+  proposition: text("proposition").notNull(),               // "Should we build a mobile app?"
+  status: text("status").notNull().default("in_progress"), // "in_progress" | "awaiting_decision" | "decided" | "cancelled"
+  category: text("category").notNull(),                    // "investment" | "pricing" | "product" | "hiring" | "strategy" | "risk"
+  initiatedBy: text("initiated_by").notNull(),             // "ceo" | agent codename
+  forAgents: jsonb("for_agents").$type<string[]>().notNull().default([]),
+  againstAgents: jsonb("against_agents").$type<string[]>().notNull().default([]),
+  arguments: jsonb("arguments").$type<Array<{
+    agentCodename: string;
+    position: "for" | "against";
+    round: number;                                         // 1 = opening, 2 = rebuttal
+    argument: string;
+    evidence: string[];
+    confidence: number;                                    // 0-100
+  }>>().notNull().default([]),
+  votes: jsonb("votes").$type<Array<{
+    agentCodename: string;
+    vote: "for" | "against" | "abstain";
+    confidence: number;
+    reasoning: string;
+  }>>().notNull().default([]),
+  ceoDecision: text("ceo_decision"),                       // "approved" | "rejected" | "modified" | "deferred"
+  ceoReasoning: text("ceo_reasoning"),
+  outcome: text("outcome"),                                // tracked later: was the decision right?
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  decidedAt: timestamp("decided_at"),
+}, (table) => [
+  index("ad_status_idx").on(table.status),
+  index("ad_category_idx").on(table.category),
+  index("ad_created_idx").on(table.createdAt),
+]);
+export type AgentDebate = typeof agentDebates.$inferSelect;
+
+// --- Founder Wellbeing Monitor ---
+
+export const founderWellbeing = pgTable("founder_wellbeing", {
+  id: serial("id").primaryKey(),
+  date: timestamp("date").notNull(),
+  metrics: jsonb("metrics").$type<{
+    overrideCount: number;
+    overrideAvgWeekly: number;
+    decisionsToday: number;
+    avgDecisionTimeMs: number;
+    timeOnPlatformMinutes: number;
+    daysSinceLastBreak: number;
+    warRoomInterventions: number;
+    agentSuccessRateWithoutCEO: number;
+    winCount: number;
+    stressSignals: string[];
+  }>().notNull(),
+  insights: jsonb("insights").$type<Array<{
+    type: "warning" | "celebration" | "nudge" | "milestone";
+    message: string;
+    severity?: "low" | "medium" | "high";
+  }>>().notNull().default([]),
+  energyScore: integer("energy_score"),                    // 0-100, AI-estimated
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("fw_date_idx").on(table.date),
+]);
+export type FounderWellbeing = typeof founderWellbeing.$inferSelect;
+
+// --- Company Seasons ---
+
+export const companySeasons = pgTable("company_seasons", {
+  id: serial("id").primaryKey(),
+  season: text("season").notNull(),                        // "growth" | "efficiency" | "crisis" | "exploration"
+  isActive: boolean("is_active").notNull().default(false),
+  activatedAt: timestamp("activated_at"),
+  deactivatedAt: timestamp("deactivated_at"),
+  activatedBy: text("activated_by").notNull().default("ceo"),
+  reason: text("reason"),                                  // why this season was activated
+  config: jsonb("config").$type<{
+    trustBoostAll: number;                                 // temporary trust modifier
+    approvalThreshold: "strict" | "normal" | "loose";
+    briefingFrequency: "daily" | "twice_daily" | "hourly";
+    spendMultiplier: number;                               // 0.5 = half budget, 2.0 = double
+    riskTolerance: "low" | "medium" | "high";
+    initiativeEncouragement: "discouraged" | "normal" | "encouraged";
+    failureTolerance: "zero" | "low" | "medium" | "high";
+    autoEscalateThreshold: "low" | "normal" | "high";
+  }>().notNull(),
+  results: jsonb("results").$type<{
+    startMetrics: Record<string, number>;
+    endMetrics?: Record<string, number>;
+    summary?: string;
+  }>(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("cs_active_idx").on(table.isActive),
+  index("cs_season_idx").on(table.season),
+]);
+export type CompanySeason = typeof companySeasons.$inferSelect;
+
+// --- Agent Synergy Map ---
+
+export const agentSynergyMap = pgTable("agent_synergy_map", {
+  id: serial("id").primaryKey(),
+  agentA: text("agent_a").notNull(),
+  agentB: text("agent_b").notNull(),
+  totalCollaborations: integer("total_collaborations").notNull().default(0),
+  successCount: integer("success_count").notNull().default(0),
+  failureCount: integer("failure_count").notNull().default(0),
+  synergyScore: numeric("synergy_score"),                  // 0.0-1.0
+  conflictRate: numeric("conflict_rate"),                   // how often they disagree
+  bestAt: jsonb("best_at").$type<string[]>().notNull().default([]),        // task types they excel at together
+  worstAt: jsonb("worst_at").$type<string[]>().notNull().default([]),      // task types where they struggle
+  recentOutcomes: jsonb("recent_outcomes").$type<Array<{
+    taskType: string;
+    success: boolean;
+    timestamp: string;
+  }>>().notNull().default([]),
+  recommendation: text("recommendation"),                  // AI-generated routing advice
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("asm_pair_idx").on(table.agentA, table.agentB),
+  index("asm_synergy_idx").on(table.synergyScore),
+]);
+export type AgentSynergy = typeof agentSynergyMap.$inferSelect;
+
+// --- Company Chronicle ---
+
+export const companyChronicle = pgTable("company_chronicle", {
+  id: serial("id").primaryKey(),
+  periodType: text("period_type").notNull(),               // "week" | "month" | "quarter" | "milestone"
+  periodLabel: text("period_label").notNull(),             // "March 2026" | "Q1 2026" | "Week of Mar 17"
+  periodStart: timestamp("period_start").notNull(),
+  periodEnd: timestamp("period_end").notNull(),
+  narrative: text("narrative").notNull(),                   // AI-generated story
+  highlights: jsonb("highlights").$type<Array<{
+    type: "win" | "challenge" | "learning" | "milestone" | "decision";
+    description: string;
+    impact?: string;
+    agents?: string[];
+  }>>().notNull(),
+  metrics: jsonb("metrics").$type<{
+    mrrStart?: number;
+    mrrEnd?: number;
+    mrrDelta?: number;
+    deals?: number;
+    warRooms?: number;
+    ceoDecisions?: number;
+    agentActions?: number;
+    topAgent?: string;
+    topAgentGrade?: string;
+  }>(),
+  keyLearnings: jsonb("key_learnings").$type<string[]>().notNull().default([]),
+  searchableText: text("searchable_text"),                 // for full-text search
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("cc_period_type_idx").on(table.periodType),
+  index("cc_period_start_idx").on(table.periodStart),
+]);
+export type CompanyChronicleEntry = typeof companyChronicle.$inferSelect;

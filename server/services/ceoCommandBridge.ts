@@ -57,6 +57,11 @@ type CommandCategory =
   | "show_focus"
   | "discover_patterns"
   | "show_autopilot"
+  // v8: The Living Organization
+  | "switch_mode"
+  | "start_debate"
+  | "check_wellbeing"
+  | "write_chronicle"
   | "unknown";
 
 /**
@@ -143,11 +148,24 @@ export async function processCEOCommand(input: string): Promise<CommandResult> {
     case "show_autopilot":
       return await handleShowAutopilot();
 
+    // v8: The Living Organization commands
+    case "switch_mode":
+      return await handleSwitchMode(classification.params);
+
+    case "start_debate":
+      return await handleStartDebate(classification.params);
+
+    case "check_wellbeing":
+      return await handleCheckWellbeing();
+
+    case "write_chronicle":
+      return await handleWriteChronicle(classification.params);
+
     default:
       return {
         understood: false,
         action: "unknown",
-        result: "I didn't understand that as a command. Try 'pause all marketing', 'what if we raise prices?', 'draft my investor update', 'where should I focus today?', or 'I'm going away for 3 days'.",
+        result: "I didn't understand that as a command. Try 'switch to growth mode', 'debate: should we raise prices?', 'how am I doing?', 'write this week's chronicle', or 'what if we hire 3 engineers?'.",
       };
   }
 }
@@ -187,6 +205,10 @@ Categories:
 - show_focus: CEO asks where to focus, what matters today. Params: {}
 - discover_patterns: CEO wants to analyze/discover operational patterns. Params: {}
 - show_autopilot: CEO asks about decision autopilot status. Params: {}
+- switch_mode: CEO wants to switch company mode/season (growth, efficiency, crisis, exploration). Params: { mode: string, reason?: string }
+- start_debate: CEO wants agents to debate a proposition before deciding. Params: { proposition: string }
+- check_wellbeing: CEO asks about their own wellbeing/energy/stress/how they're doing. Params: {}
+- write_chronicle: CEO wants to generate company chronicle/history. Params: { periodType: "week"|"month"|"quarter" }
 - unknown: Can't classify. Params: {}
 
 Agent codenames: atlas_cto, sophie_csm, forge_revenue, beacon_marketing, sentinel_devops, ledger_finance, shield_legal, oracle_analytics, compass_pm, crucible_qa
@@ -765,5 +787,102 @@ async function handleShowAutopilot(): Promise<CommandResult> {
     action: "show_autopilot",
     result: lines.join("\n"),
     data: { stats, suggestions: suggestions.length },
+  };
+}
+
+// ─── v8: The Living Organization Command Handlers ───────────────────────────
+
+async function handleSwitchMode(params: any): Promise<CommandResult> {
+  const { strategicCompassV8Service } = await import("./strategicCompassV8");
+  const { companySeasonService } = await import("./companySeasons");
+
+  const mode = params.mode || "balanced";
+  const validModes = ["growth", "efficiency", "crisis", "exploration", "balanced"];
+
+  if (!validModes.includes(mode)) {
+    return {
+      understood: true,
+      action: "switch_mode",
+      result: `Available modes: ${validModes.join(", ")}. Which one?`,
+    };
+  }
+
+  await strategicCompassV8Service.switchMode(mode, params.reason);
+  await companySeasonService.activate(mode, params.reason);
+
+  const modeDescriptions: Record<string, string> = {
+    growth: "Revenue over efficiency. Aggressive acquisition. Ship fast.",
+    efficiency: "Margin over growth. Tighten budgets. Retain and expand.",
+    crisis: "Survive. Protect cash. Maximum agent autonomy for speed.",
+    exploration: "Experiment boldly. Failure is data. Find the next big thing.",
+    balanced: "Steady growth. Healthy margins. Sustainable pace.",
+  };
+
+  return {
+    understood: true,
+    action: "switch_mode",
+    result: `Switched to **${mode}** mode. ${modeDescriptions[mode] || ""}\n\nAll agent risk tolerances, spend authorities, approval thresholds, and focus areas have been adjusted. The entire organization is now aligned.`,
+    data: { mode },
+  };
+}
+
+async function handleStartDebate(params: any): Promise<CommandResult> {
+  const { agentDebateService } = await import("./agentDebates");
+
+  if (!params.proposition) {
+    return {
+      understood: true,
+      action: "start_debate",
+      result: "What should your agents debate? Try: 'debate: should we build a mobile app?' or 'debate: should we raise prices?'",
+    };
+  }
+
+  const id = await agentDebateService.initiate(params.proposition);
+
+  return {
+    understood: true,
+    action: "start_debate",
+    result: `Debate initiated: "${params.proposition}"\n\nAgents are preparing opening arguments, rebuttals, and final votes. Check the Debate Panel on the dashboard when they're ready for your decision.`,
+    data: { debateId: id },
+  };
+}
+
+async function handleCheckWellbeing(): Promise<CommandResult> {
+  const { founderWellbeingService } = await import("./founderWellbeing");
+  await founderWellbeingService.assess();
+  const latest = await founderWellbeingService.getLatest();
+
+  if (!latest) {
+    return { understood: true, action: "check_wellbeing", result: "No wellbeing data available yet." };
+  }
+
+  const metrics = latest.metrics as any;
+  const insights = (latest.insights as any[]) || [];
+  const energyScore = latest.energyScore || 50;
+
+  const lines = [`Your energy score: ${energyScore}/100`];
+  for (const insight of insights) {
+    const prefix = insight.type === "celebration" ? "🎉" : insight.type === "warning" ? "⚠️" : insight.type === "milestone" ? "🏆" : "💡";
+    lines.push(`${prefix} ${insight.message}`);
+  }
+
+  return {
+    understood: true,
+    action: "check_wellbeing",
+    result: lines.join("\n\n"),
+    data: { energyScore, insights: insights.length },
+  };
+}
+
+async function handleWriteChronicle(params: any): Promise<CommandResult> {
+  const { companyChronicleService } = await import("./companyChronicle");
+  const periodType = params.periodType || "week";
+  const id = await companyChronicleService.generateEntry(periodType);
+
+  return {
+    understood: true,
+    action: "write_chronicle",
+    result: `Generated ${periodType}ly chronicle entry. It captures the narrative of what happened, key highlights, and lessons learned. Check the Company Chronicle on the dashboard.`,
+    data: { entryId: id },
   };
 }
