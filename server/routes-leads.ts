@@ -16,15 +16,10 @@ import { requirePermission } from "./utils/permissions";
 import { usageMeteringService, creditService } from "./services/credits";
 import multer from "multer";
 import { parseCSV, importLeads, exportLeadsToCSV, getExpectedColumns, type ExportFilters } from "./services/importExport";
+import { logger } from "./utils/logger";
 
 // Partial update schema for PUT endpoints
 const updateLeadSchema = insertLeadSchema.partial().omit({ organizationId: true });
-
-const logger = {
-  info: (msg: string, meta?: Record<string, any>) => console.log(JSON.stringify({ level: 'INFO', timestamp: new Date().toISOString(), message: msg, ...meta })),
-  warn: (msg: string, meta?: Record<string, any>) => console.warn(JSON.stringify({ level: 'WARN', timestamp: new Date().toISOString(), message: msg, ...meta })),
-  error: (msg: string, meta?: Record<string, any>) => console.error(JSON.stringify({ level: 'ERROR', timestamp: new Date().toISOString(), message: msg, ...meta })),
-};
 
 const MAX_CSV_IMPORT_ROWS = 500;
 
@@ -51,22 +46,22 @@ export function registerLeadRoutes(app: Express): void {
     const context = (req as any).permissionContext as UserPermissionContext | undefined;
     const stage = req.query.stage as string | undefined;
     const assignedToFilter = req.query.assignedTo as string | undefined;
-    
-    let allLeads = await storage.getLeads(org.id);
-    
+
+    // Build SQL-level assignedTo filter to avoid full-table scan
+    let sqlAssignedTo: number | null | undefined;
     if (context?.permissions.viewOnlyAssignedLeads) {
-      allLeads = allLeads.filter(lead => lead.assignedTo === context.teamMemberId);
-    }
-    
-    if (assignedToFilter) {
+      sqlAssignedTo = context.teamMemberId ?? null;
+    } else if (assignedToFilter) {
       const assignedToId = Number(assignedToFilter);
       if (!isNaN(assignedToId)) {
-        allLeads = allLeads.filter(lead => lead.assignedTo === assignedToId);
+        sqlAssignedTo = assignedToId;
       } else if (assignedToFilter === "unassigned") {
-        allLeads = allLeads.filter(lead => !lead.assignedTo);
+        sqlAssignedTo = null;
       }
     }
-    
+
+    const allLeads = await storage.getLeads(org.id, sqlAssignedTo !== undefined ? { assignedTo: sqlAssignedTo } : undefined);
+
     const leadsWithScores = allLeads.map(lead => {
       const { score, factors } = leadNurturerService.calculateLeadScore(lead);
       const computedStage = leadNurturerService.segmentLead(score);
@@ -77,12 +72,11 @@ export function registerLeadRoutes(app: Express): void {
         nurturingStage: computedStage,
       };
     });
-    
-    let filteredLeads = leadsWithScores;
-    if (stage && ["hot", "warm", "cold", "dead"].includes(stage)) {
-      filteredLeads = leadsWithScores.filter(l => l.nurturingStage === stage);
-    }
-    
+
+    const filteredLeads = stage && ["hot", "warm", "cold", "dead"].includes(stage)
+      ? leadsWithScores.filter(l => l.nurturingStage === stage)
+      : leadsWithScores;
+
     res.json(filteredLeads);
   });
   
@@ -94,22 +88,22 @@ export function registerLeadRoutes(app: Express): void {
     const assignedToFilter = req.query.assignedTo as string | undefined;
     const limit = Math.min(Number(req.query.limit) || 25, 100);
     const cursor = req.query.cursor as string | undefined;
-    
-    let allLeads = await storage.getLeads(org.id);
-    
+
+    // Build SQL-level assignedTo filter to avoid full-table scan
+    let sqlAssignedTo: number | null | undefined;
     if (context?.permissions.viewOnlyAssignedLeads) {
-      allLeads = allLeads.filter(lead => lead.assignedTo === context.teamMemberId);
-    }
-    
-    if (assignedToFilter) {
+      sqlAssignedTo = context.teamMemberId ?? null;
+    } else if (assignedToFilter) {
       const assignedToId = Number(assignedToFilter);
       if (!isNaN(assignedToId)) {
-        allLeads = allLeads.filter(lead => lead.assignedTo === assignedToId);
+        sqlAssignedTo = assignedToId;
       } else if (assignedToFilter === "unassigned") {
-        allLeads = allLeads.filter(lead => !lead.assignedTo);
+        sqlAssignedTo = null;
       }
     }
-    
+
+    const allLeads = await storage.getLeads(org.id, sqlAssignedTo !== undefined ? { assignedTo: sqlAssignedTo } : undefined);
+
     const leadsWithScores = allLeads.map(lead => {
       const { score, factors } = leadNurturerService.calculateLeadScore(lead);
       const computedStage = leadNurturerService.segmentLead(score);
@@ -120,7 +114,7 @@ export function registerLeadRoutes(app: Express): void {
         nurturingStage: computedStage,
       };
     });
-    
+
     let filteredLeads = leadsWithScores;
     if (stage && ["hot", "warm", "cold", "dead"].includes(stage)) {
       filteredLeads = leadsWithScores.filter(l => l.nurturingStage === stage);

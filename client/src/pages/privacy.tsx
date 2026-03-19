@@ -4,7 +4,7 @@ import { ArrowLeft, Shield } from "lucide-react";
 import { Link } from "wouter";
 
 export default function PrivacyPolicy() {
-  const lastUpdated = "January 6, 2026";
+  const lastUpdated = "March 2026";
 
   return (
     <div className="min-h-screen bg-background">

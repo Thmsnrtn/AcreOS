@@ -1459,5 +1459,16 @@ export function registerCampaignRoutes(app: Express): void {
     }
   });
 
+  // GET /api/campaigns/overlap-report
+  api.get("/api/campaigns/overlap-report", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { campaignOverlapDetector } = await import("./services/campaignOverlapDetector");
+      const org = (req as any).organization;
+      const report = await campaignOverlapDetector.generateOverlapReport(org.id);
+      res.json(report);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
 
 }

@@ -6,10 +6,7 @@ import crypto from "crypto";
 import { storage, db } from "./storage";
 
 // Auth imports
-import { setupAuth, registerAuthRoutes, isAuthenticated } from "./auth";
-import { requirePermission } from "./utils/permissions";
-import { insertTaskSchema } from "@shared/schema";
-import { activityLogger } from "./services/activityLogger";
+import { clerkMiddleware, isAuthenticated, registerAuthRoutes } from "./auth";
 
 // Feature routes (Router-based)
 import { registerAIOperationsRoutes } from "./routes-ai-operations";
@@ -29,12 +26,13 @@ import documentIntelligenceRouter from "./routes-document-intelligence";
 import marketIntelligenceRouter from "./routes-market-intelligence";
 import complianceRouter from "./routes-compliance";
 import taxResearcherRouter from "./routes-tax-researcher";
+import dealUnderwritingRouter from "./routes-deal-underwriting";
 
 // Phase 2-4 new feature routes
 import voiceLearningRouter from "./routes-voice-learning";
 import whiteLabelRouter from "./routes-white-label";
 import realtimeRouter from "./routes-realtime";
-import atlasInsightsRouter from "./routes-atlas-insights";
+import paxInsightsRouter from "./routes-pax-insights";
 import voiceRouter from "./routes-voice";
 import betaRouter from "./routes-beta";
 import regulatoryRouter from "./routes-regulatory";
@@ -94,6 +92,7 @@ import { createRateLimiter, rateLimiters, RATE_LIMIT_CONFIGS, authLimiter, aiLim
 
 // White-label domain middleware
 import { whiteLabelDomainMiddleware } from "./middleware/white-label-domain";
+import { correlationIdMiddleware } from "./middleware/correlationId";
 
 // MCP handler
 import { mcpHandler } from "./mcp-server";
@@ -104,6 +103,9 @@ const authRateLimit = rateLimiters.auth;
 
 // Org middleware
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
+import { requirePermission } from "./utils/permissions";
+import { activityLogger } from "./services/activityLogger";
+import { insertTaskSchema } from "@shared/schema";
 // F-A04-1: Prompt injection guard
 import { promptInjectionMiddleware } from "./middleware/promptInjection";
 // F-A07-1: 2FA enforcement for admin routes
@@ -137,14 +139,7 @@ import { registerVAEngineRoutes } from "./routes-va-engine";
 import { registerMiscRoutes } from "./routes-misc";
 import { registerSupportTicketRoutes } from "./routes-support-tickets";
 
-// ============================================
-// STRUCTURED LOGGER
-// ============================================
-const logger = {
-  info: (msg: string, meta?: Record<string, any>) => console.log(JSON.stringify({ level: 'INFO', timestamp: new Date().toISOString(), message: msg, ...meta })),
-  warn: (msg: string, meta?: Record<string, any>) => console.warn(JSON.stringify({ level: 'WARN', timestamp: new Date().toISOString(), message: msg, ...meta })),
-  error: (msg: string, meta?: Record<string, any>) => console.error(JSON.stringify({ level: 'ERROR', timestamp: new Date().toISOString(), message: msg, ...meta })),
-};
+import { logger } from "./utils/logger";
 
 // ============================================
 // JOB LOCKING FOR MULTI-INSTANCE DEPLOYMENT
@@ -200,9 +195,12 @@ export async function registerRoutes(
 
   // White-label domain middleware — runs before auth so custom domains are resolved early
   app.use(whiteLabelDomainMiddleware);
+  app.use(correlationIdMiddleware);
 
-  // Register Auth
-  await setupAuth(app);
+  // Apply Clerk middleware globally — parses JWT tokens, makes req.auth available
+  app.use(clerkMiddleware());
+
+  // Register auth routes (/api/auth/user, /api/auth/attribution)
   registerAuthRoutes(app);
 
   // T11: Two-Factor Auth routes
@@ -445,18 +443,15 @@ export async function registerRoutes(
     (req as any).requestId = requestId;
     logger.info("HTTP Request", {
       requestId,
-      method: req.method,
-      path: req.path,
-      ip: req.ip || req.socket.remoteAddress,
+      source: "http",
+      metadata: { method: req.method, path: req.path, ip: req.ip || req.socket.remoteAddress },
     });
     res.on("finish", () => {
       const duration = Date.now() - startTime;
       logger.info("HTTP Response", {
         requestId,
-        method: req.method,
-        path: req.path,
-        statusCode: res.statusCode,
-        durationMs: duration,
+        source: "http",
+        metadata: { method: req.method, path: req.path, statusCode: res.statusCode, durationMs: duration },
       });
       // Task #145: Record request metrics for Prometheus scrape endpoint
       recordRequestWithMetrics({
@@ -623,7 +618,7 @@ export async function registerRoutes(
         entityType: "lead",
         entityId: leadId,
         eventType: "contact_recorded",
-        eventData: { method: contactMethod, notes, recordedAt: now.toISOString() },
+        description: `Contact recorded via ${contactMethod}`,
       });
       
       // Audit log
@@ -635,7 +630,7 @@ export async function registerRoutes(
         action: "record_contact",
         entityType: "lead",
         entityId: leadId,
-        changes: { method: contactMethod, timestamp: now.toISOString() },
+        changes: { after: { method: contactMethod, timestamp: now.toISOString() } },
         ipAddress: req.ip || req.socket?.remoteAddress,
         userAgent: req.headers["user-agent"],
       });
@@ -674,16 +669,11 @@ export async function registerRoutes(
         action: "bulk_soft_delete",
         entityType: "lead",
         entityId: 0,
-        changes: { 
-          ids, 
-          count: deletedCount,
-          recoverable: true,
-          leadNames: leadsToDelete.map(l => `${l.firstName} ${l.lastName}`),
-        },
+        changes: { after: { ids, count: deletedCount, recoverable: true, leadNames: leadsToDelete.map(l => `${l.firstName} ${l.lastName}`) } } as any,
         ipAddress: req.ip || req.socket?.remoteAddress,
         userAgent: req.headers["user-agent"],
       });
-      
+
       res.json({ 
         deletedCount,
         recoverable: true,
@@ -728,11 +718,11 @@ export async function registerRoutes(
         action: "bulk_restore",
         entityType: "lead",
         entityId: 0,
-        changes: { ids, count: restoredCount },
+        changes: { after: { ids, count: restoredCount } } as any,
         ipAddress: req.ip || req.socket?.remoteAddress,
         userAgent: req.headers["user-agent"],
       });
-      
+
       res.json({ restoredCount });
     } catch (error: any) {
       console.error("Restore leads error:", error);
@@ -761,7 +751,7 @@ export async function registerRoutes(
         action: "bulk_permanent_delete",
         entityType: "lead",
         entityId: 0,
-        changes: { ids, count: deletedCount, permanent: true },
+        changes: { after: { ids, count: deletedCount, permanent: true } } as any,
         ipAddress: req.ip || req.socket?.remoteAddress,
         userAgent: req.headers["user-agent"],
       });
@@ -793,18 +783,13 @@ export async function registerRoutes(
   app.use('/api/market-intelligence', isAuthenticated, marketIntelligenceRouter);
   app.use('/api/compliance', isAuthenticated, getOrCreateOrg, complianceRouter);
   app.use('/api/tax-researcher', isAuthenticated, getOrCreateOrg, taxResearcherRouter);
+  app.use('/api/deal-underwriting', isAuthenticated, getOrCreateOrg, dealUnderwritingRouter);
 
   // Phase 2-4: Voice Learning, Context Profile, White-Label, Real-Time
   app.use('/api/intelligence', isAuthenticated, getOrCreateOrg, voiceLearningRouter);
   app.use('/api/white-label', isAuthenticated, getOrCreateOrg, whiteLabelRouter);
   app.use('/api/realtime', isAuthenticated, getOrCreateOrg, realtimeRouter);
-  // F-A04-1: Prompt injection guard applied to all AI endpoints
-  app.use("/api/ai", promptInjectionMiddleware);
-  app.use("/api/atlas", promptInjectionMiddleware);
-  app.use("/api/chat", promptInjectionMiddleware);
-  app.use("/api/executive", promptInjectionMiddleware);
-
-  app.use('/api/atlas', aiLimiter, isAuthenticated, getOrCreateOrg, atlasInsightsRouter);
+  app.use('/api/pax', aiLimiter, isAuthenticated, getOrCreateOrg, paxInsightsRouter);
   app.post('/api/mcp/execute', mcpHandler);
 
   // Voice pipeline: webhook (no auth) + authenticated API routes
@@ -947,12 +932,7 @@ export async function registerRoutes(
         action: "bulk_stage_update",
         entityType: "deal",
         entityId: 0,
-        changes: { 
-          ids: idsToUpdate, 
-          newStage, 
-          previousStates,
-          count: updatedCount 
-        },
+        changes: { after: { ids: idsToUpdate, newStage, previousStates, count: updatedCount } } as any,
         ipAddress: req.ip || req.socket?.remoteAddress,
         userAgent: req.headers["user-agent"],
       });
@@ -1017,11 +997,7 @@ export async function registerRoutes(
         action: "bulk_stage_undo",
         entityType: "deal",
         entityId: 0,
-        changes: { 
-          previousStates,
-          restoredCount,
-          errors: errors.length > 0 ? errors : undefined,
-        },
+        changes: { after: { previousStates, restoredCount, errors: errors.length > 0 ? errors : undefined } } as any,
         ipAddress: req.ip || req.socket?.remoteAddress,
         userAgent: req.headers["user-agent"],
       });

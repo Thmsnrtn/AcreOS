@@ -1,8 +1,8 @@
 // @ts-nocheck — ORM type refinement deferred; runtime-correct
 import { Router } from "express";
 import { db, storage } from "./storage";
-import { eq, and, desc, lt, gte, lte, gt } from "drizzle-orm";
-import { sophieObservations, leads, deals, leadActivities, properties, voiceCalls } from "@shared/schema";
+import { eq, and, desc, lt, gte, lte, gt, sql } from "drizzle-orm";
+import { paxObservations, paxNudges, leads, deals, leadActivities, properties, voiceCalls } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 
@@ -13,7 +13,7 @@ const logger = {
 
 const router = Router();
 
-// GET /api/atlas/greeting
+// GET /api/pax/greeting
 // Returns a contextual first-session greeting (fewer than 5 leads = first session).
 router.get("/greeting", async (req, res) => {
   try {
@@ -49,33 +49,33 @@ router.get("/greeting", async (req, res) => {
 
     return res.json({ message, isFirstSession: true });
   } catch (error: any) {
-    logger.error("Atlas greeting error", { error: error.message });
+    logger.error("Pax greeting error", { error: error.message });
     return res.json({ message: null, isFirstSession: false });
   }
 });
 
-// GET /api/atlas/insights
+// GET /api/pax/insights
 router.get("/insights", async (req, res) => {
   try {
     const org = (req as any).organization;
     const now = new Date();
 
-    // ── 1. Sophie observations (status = 'detected', ordered severity desc, createdAt desc, limit 10) ──
+    // ── 1. Pax observations (status = 'detected', ordered severity desc, createdAt desc, limit 10) ──
     const rawObservations = await db
       .select({
-        id: sophieObservations.id,
-        type: sophieObservations.type,
-        severity: sophieObservations.severity,
-        title: sophieObservations.title,
-        description: sophieObservations.description,
-        metadata: sophieObservations.metadata,
-        createdAt: sophieObservations.createdAt,
+        id: paxObservations.id,
+        type: paxObservations.type,
+        severity: paxObservations.severity,
+        title: paxObservations.title,
+        description: paxObservations.description,
+        metadata: paxObservations.metadata,
+        createdAt: paxObservations.createdAt,
       })
-      .from(sophieObservations)
+      .from(paxObservations)
       .where(
         and(
-          eq(sophieObservations.organizationId, org.id),
-          eq(sophieObservations.status, "detected")
+          eq(paxObservations.organizationId, org.id),
+          eq(paxObservations.status, "detected")
         )
       )
       // Order by severity (high > medium > low > info) then by createdAt desc
@@ -84,7 +84,7 @@ router.get("/insights", async (req, res) => {
           // Derive a numeric rank so we can sort by it
           // We use a CASE expression via sql`` but drizzle supports it via sql tag
           // Instead we'll sort client-side after fetch to keep it simple
-          sophieObservations.createdAt
+          paxObservations.createdAt
         )
       )
       .limit(50); // fetch more so we can re-sort by severity client-side
@@ -271,14 +271,14 @@ router.get("/insights", async (req, res) => {
       generatedAt: now.toISOString(),
     });
   } catch (error: any) {
-    logger.error("Atlas insights error", { error: error.message });
-    res.status(500).json({ message: "Failed to load Atlas insights" });
+    logger.error("Pax insights error", { error: error.message });
+    res.status(500).json({ message: "Failed to load Pax insights" });
   }
 });
 
-// GET /api/atlas/sophie-suggestions
-// Returns top 3-5 actionable suggestions from recent high-confidence sophie observations
-router.get("/sophie-suggestions", async (req, res) => {
+// GET /api/pax/pax-suggestions
+// Returns top 3-5 actionable suggestions from recent high-confidence pax observations
+router.get("/pax-suggestions", async (req, res) => {
   try {
     const org = (req as any).organization;
     const now = new Date();
@@ -287,25 +287,25 @@ router.get("/sophie-suggestions", async (req, res) => {
     // Fetch recent observations with confidence > 70 (stored as 0-100 integer)
     const recentObs = await db
       .select({
-        id: sophieObservations.id,
-        type: sophieObservations.type,
-        severity: sophieObservations.severity,
-        title: sophieObservations.title,
-        description: sophieObservations.description,
-        confidenceScore: sophieObservations.confidenceScore,
-        metadata: sophieObservations.metadata,
-        detectedAt: sophieObservations.detectedAt,
+        id: paxObservations.id,
+        type: paxObservations.type,
+        severity: paxObservations.severity,
+        title: paxObservations.title,
+        description: paxObservations.description,
+        confidenceScore: paxObservations.confidenceScore,
+        metadata: paxObservations.metadata,
+        detectedAt: paxObservations.detectedAt,
       })
-      .from(sophieObservations)
+      .from(paxObservations)
       .where(
         and(
-          eq(sophieObservations.organizationId, org.id),
-          eq(sophieObservations.status, "detected"),
-          gte(sophieObservations.detectedAt, seventyTwoHoursAgo),
-          gt(sophieObservations.confidenceScore, 70)
+          eq(paxObservations.organizationId, org.id),
+          eq(paxObservations.status, "detected"),
+          gte(paxObservations.detectedAt, seventyTwoHoursAgo),
+          gt(paxObservations.confidenceScore, 70)
         )
       )
-      .orderBy(desc(sophieObservations.confidenceScore), desc(sophieObservations.detectedAt))
+      .orderBy(desc(paxObservations.confidenceScore), desc(paxObservations.detectedAt))
       .limit(20);
 
     // Also pull stale leads (not contacted in > 21 days) as potential action items
@@ -417,8 +417,57 @@ router.get("/sophie-suggestions", async (req, res) => {
 
     res.json({ suggestions: suggestions.slice(0, 3), generatedAt: now.toISOString() });
   } catch (error: any) {
-    logger.error("Sophie suggestions error", { error: error.message });
-    res.status(500).json({ message: "Failed to load Sophie suggestions" });
+    logger.error("Pax suggestions error", { error: error.message });
+    res.status(500).json({ message: "Failed to load Pax suggestions" });
+  }
+});
+
+// PATCH /api/pax/nudges/:nudgeId/snooze
+router.patch("/nudges/:nudgeId/snooze", async (req, res) => {
+  try {
+    const org = (req as any).organization;
+    const nudgeId = parseInt(req.params.nudgeId);
+    const { hours = 24 } = req.body; // default snooze 24 hours
+
+    const snoozedUntil = new Date(Date.now() + hours * 60 * 60 * 1000);
+
+    await db.update(paxNudges)
+      .set({
+        snoozedUntil,
+        snoozeCount: sql`${paxNudges.snoozeCount} + 1`,
+        actionType: "snoozed",
+      } as any)
+      .where(and(
+        eq(paxNudges.id as any, nudgeId),
+        eq(paxNudges.organizationId as any, org.id)
+      ));
+
+    res.json({ success: true, snoozedUntil });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PATCH /api/pax/nudges/:nudgeId/action
+router.patch("/nudges/:nudgeId/action", async (req, res) => {
+  try {
+    const org = (req as any).organization;
+    const nudgeId = parseInt(req.params.nudgeId);
+
+    await db.update(paxNudges)
+      .set({
+        actionedAt: new Date(),
+        actionType: "actioned",
+        dismissedAt: new Date(),
+      } as any)
+      .where(and(
+        eq(paxNudges.id as any, nudgeId),
+        eq(paxNudges.organizationId as any, org.id)
+      ));
+
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
   }
 });
 

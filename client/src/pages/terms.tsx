@@ -4,7 +4,7 @@ import { ArrowLeft, FileText } from "lucide-react";
 import { Link } from "wouter";
 
 export default function TermsOfService() {
-  const lastUpdated = "January 6, 2026";
+  const lastUpdated = "March 2026";
 
   return (
     <div className="min-h-screen bg-background">

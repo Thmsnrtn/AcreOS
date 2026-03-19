@@ -344,6 +344,23 @@ const OPENROUTER_REASONING_MODEL = MODEL_REASONING;
 const OPENAI_PREMIUM_MODEL       = MODEL_COMPLEX;
 const OPENAI_FAST_MODEL          = MODEL_MODERATE;
 
+// Model presets for in-rail model selector
+export const MODEL_PRESETS = {
+  auto: null, // Use automatic routing
+  fast: "deepseek/deepseek-chat",
+  balanced: "openai/gpt-4o-mini",
+  powerful: "openai/gpt-4o",
+  reasoning: "deepseek/deepseek-reasoner",
+  claude: "anthropic/claude-sonnet-4-6",
+  claude_opus: "anthropic/claude-opus-4-6",
+} as const;
+
+export type ModelPreset = keyof typeof MODEL_PRESETS;
+
+export function isClaudeModel(model: string): boolean {
+  return model.includes('claude') || model.startsWith('anthropic/');
+}
+
 let openrouterClient: OpenAI | null = null;
 let openaiClient: OpenAI | null = null;  // Kept for backward compat but routes to OpenRouter
 

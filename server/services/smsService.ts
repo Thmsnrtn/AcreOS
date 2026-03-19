@@ -1,6 +1,8 @@
 import { db } from "../db";
-import { messages, conversations, leads, organizationIntegrations } from "@shared/schema";
+import { messages, conversations, leads, organizationIntegrations, sequenceEnrollments } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
+
+const SMS_STOP_WORDS = new Set(["stop", "stopall", "unsubscribe", "cancel", "end", "quit"]);
 
 export interface SmsOptions {
   to: string;
@@ -282,12 +284,42 @@ export async function handleIncomingSMS(
 ): Promise<{ success: boolean; conversationId?: number; dbMessageId?: number; leadId?: number; error?: string }> {
   const cleanPhone = fromPhone.replace(/\D/g, "");
   const last10Digits = cleanPhone.slice(-10);
-  
+
+  // ── TCPA opt-out: handle STOP keywords immediately ───────────────────────
+  const normalizedBody = body.trim().toLowerCase();
+  if (SMS_STOP_WORDS.has(normalizedBody)) {
+    // Find all leads in this org with this phone number and opt them out
+    const allLeadsInOrg = await db.select().from(leads).where(eq(leads.organizationId, organizationId));
+    const matchingLeads = allLeadsInOrg.filter(l => {
+      const p = l.phone?.replace(/\D/g, "") || "";
+      return p.length >= 7 && (p.slice(-10) === last10Digits || p.includes(last10Digits));
+    });
+    for (const lead of matchingLeads) {
+      await db.update(leads).set({ tcpaConsent: false, optOutDate: new Date() }).where(eq(leads.id, lead.id));
+      // Cancel all active sequence enrollments for this lead
+      await db.update(sequenceEnrollments)
+        .set({ status: "cancelled", completedAt: new Date() })
+        .where(and(eq(sequenceEnrollments.leadId, lead.id), eq(sequenceEnrollments.status, "active")));
+      // Fire Pax nudge so the owner knows
+      try {
+        const { handleDomainEvent } = await import("./paxNudges");
+        await handleDomainEvent({
+          organizationId,
+          eventType: "lead.opted_out",
+          payload: { leadId: lead.id, leadName: lead.firstName ? `${lead.firstName} ${lead.lastName ?? ""}`.trim() : lead.email ?? fromPhone },
+        });
+      } catch {}
+    }
+    console.log(`[SMS] STOP received from ${fromPhone} — opted out ${matchingLeads.length} lead(s)`);
+    return { success: true, leadId: matchingLeads[0]?.id };
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   const allLeads = await db
     .select()
     .from(leads)
     .where(eq(leads.organizationId, organizationId));
-  
+
   const matchedLead = allLeads.find(l => {
     const leadPhone = l.phone?.replace(/\D/g, "") || "";
     if (leadPhone.length < 7) return false;

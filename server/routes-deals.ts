@@ -8,13 +8,9 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { leadScoringService } from "./services/leadScoring";
 import { propertyEnrichmentService } from "./services/propertyEnrichment";
 import { checkUsageLimit } from "./services/usageLimits";
-import {
-  initiateHandoff,
-  updateHandoffChecklist,
-  completeHandoff,
-  getHandoffsForDeal,
-  getAllHandoffs,
-} from "./services/dealHandoffService";
+import { db } from "./db";
+import { outcomeTelemetry } from "@shared/schema";
+import { checkUsury } from "./services/usury";
 
 // Partial update schema for PUT endpoints
 const updateDealSchema = insertDealSchema.partial().omit({ organizationId: true });
@@ -120,8 +116,27 @@ export function registerDealRoutes(app: Express): void {
       }
 
       const input = insertDealSchema.parse({ ...req.body, organizationId: org.id });
+
+      // Usury hard block: check analysisResults.interestRate against state law before saving
+      const dealInterestRate = input.analysisResults?.interestRate;
+      if (dealInterestRate && input.propertyId) {
+        const property = await storage.getProperty(org.id, input.propertyId);
+        if (property?.state) {
+          const usury = checkUsury(property.state, Number(dealInterestRate));
+          if (usury.warningLevel === 'violation') {
+            return res.status(422).json({
+              message: `Interest rate ${dealInterestRate}% exceeds ${property.state} usury limit of ${usury.maxAllowedRate}%. This transaction cannot be saved.`,
+              code: 'USURY_VIOLATION',
+              limit: usury.maxAllowedRate,
+              rate: dealInterestRate,
+              state: property.state,
+            });
+          }
+        }
+      }
+
       const deal = await storage.createDeal(input);
-      
+
       const user = req.user as any;
       const userId = user?.claims?.sub || user?.id;
       await storage.createAuditLogEntry({
@@ -178,23 +193,27 @@ export function registerDealRoutes(app: Express): void {
 
       const validated = updateDealSchema.parse(req.body);
 
-      // Enforce valid status transitions (Task #210)
-      if (validated.status && validated.status !== existingDeal.status) {
-        const allowed = DEAL_STATUS_TRANSITIONS[existingDeal.status] || [];
-        if (!allowed.includes(validated.status)) {
-          return res.status(400).json({
-            message: `Invalid status transition from '${existingDeal.status}' to '${validated.status}'. Allowed: ${allowed.join(", ") || "none"}`,
-          });
+      // Usury hard block: check updated analysisResults.interestRate against state law before saving
+      const updatedInterestRate = validated.analysisResults?.interestRate ?? existingDeal.analysisResults?.interestRate;
+      const updatedPropertyId = validated.propertyId ?? existingDeal.propertyId;
+      if (updatedInterestRate && updatedPropertyId) {
+        const property = await storage.getProperty(org.id, updatedPropertyId);
+        if (property?.state) {
+          const usury = checkUsury(property.state, Number(updatedInterestRate));
+          if (usury.warningLevel === 'violation') {
+            return res.status(422).json({
+              message: `Interest rate ${updatedInterestRate}% exceeds ${property.state} usury limit of ${usury.maxAllowedRate}%. This transaction cannot be saved.`,
+              code: 'USURY_VIOLATION',
+              limit: usury.maxAllowedRate,
+              rate: updatedInterestRate,
+              state: property.state,
+            });
+          }
         }
       }
 
-      // Task 219: Optimistic concurrency — honour client-supplied expectedUpdatedAt
-      const expectedUpdatedAt = req.body._expectedUpdatedAt
-        ? new Date(req.body._expectedUpdatedAt)
-        : undefined;
+      const deal = await storage.updateDeal(dealId, validated);
 
-      const deal = await storage.updateDeal(dealId, validated, expectedUpdatedAt);
-      
       const user = req.user as any;
       const userId = user?.claims?.sub || user?.id;
       await storage.createAuditLogEntry({
@@ -229,6 +248,29 @@ export function registerDealRoutes(app: Express): void {
         } catch (conversionErr) {
           console.error("Failed to record conversion:", conversionErr);
         }
+
+        // Write outcome telemetry for the feedback loop (non-blocking)
+        db.insert(outcomeTelemetry).values({
+          organizationId: org.id,
+          outcomeType: "deal_won",
+          outcome: {
+            success: true,
+            value: deal.acceptedAmount ? parseFloat(String(deal.acceptedAmount)) : undefined,
+            details: { dealType: deal.dealType, stage: deal.status },
+          },
+          contributingFactors: {
+            offerAmount: deal.offerAmount ? parseFloat(String(deal.offerAmount)) : undefined,
+            sequenceUsed: deal.sequenceId ? String(deal.sequenceId) : undefined,
+            marketConditions: deal.analysisResults ?? undefined,
+          },
+          relatedDealId: deal.id,
+          relatedPropertyId: deal.propertyId ?? undefined,
+        }).catch(() => {});
+
+        // Fire Pillar 3 market signal contribution (non-blocking)
+        import("./services/marketNetworkContributor").then(({ contributeMarketSignal }) => {
+          contributeMarketSignal(org.id, deal).catch(() => {});
+        }).catch(() => {});
       }
 
       // Push notification when deal is accepted (T61)

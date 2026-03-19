@@ -50,7 +50,7 @@ export const ALL_NAV_ITEMS: MasterNavItem[] = [
   { id: "today",         label: "Today",          icon: Home,        href: "/today",          description: "Daily briefing and action queue" },
   { id: "pipeline",      label: "Pipeline",        icon: GitBranch,   href: "/pipeline",       description: "Leads, deals, and properties hub" },
   { id: "money",         label: "Money",           icon: DollarSign,  href: "/money",          description: "Notes, portfolio, and cash flow" },
-  { id: "atlas",         label: "Atlas",           icon: Sparkles,    href: "/atlas",          description: "AI assistant and automation" },
+  { id: "pax",         label: "Pax",           icon: Sparkles,    href: "/pax",          description: "AI assistant and automation" },
   { id: "settings",      label: "Settings",        icon: Settings,    href: "/settings",       description: "Account, billing, and preferences" },
   { id: "leads",         label: "Leads",           icon: Users,       href: "/leads",          description: "Land seller leads CRM" },
   { id: "properties",    label: "Properties",      icon: MapIcon,     href: "/properties",     description: "Property inventory" },
@@ -93,5 +93,5 @@ export const NAV_ITEM_MAP = new Map<string, MasterNavItem>(
   ALL_NAV_ITEMS.map((item) => [item.id, item])
 );
 
-export const DEFAULT_SIDEBAR_ITEMS = ["today", "pipeline", "money", "atlas", "settings"];
-export const DEFAULT_MOBILE_ITEMS  = ["today", "pipeline", "money", "atlas"];
+export const DEFAULT_SIDEBAR_ITEMS = ["today", "pipeline", "money", "pax", "settings"];
+export const DEFAULT_MOBILE_ITEMS  = ["today", "pipeline", "money", "pax"];

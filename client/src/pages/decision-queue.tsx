@@ -31,7 +31,7 @@ interface Deal {
   updatedAt?: string;
 }
 
-interface AtlasPanelState {
+interface PaxPanelState {
   isOpen: boolean;
   contextLabel: string;
   prefillMessage: string;
@@ -53,7 +53,7 @@ function SectionHeader({ title, count, description }: { title: string; count: nu
   );
 }
 
-function AskAtlasButton({ label, message, onAsk }: { label: string; message: string; onAsk: (msg: string, label: string) => void }) {
+function AskPaxButton({ label, message, onAsk }: { label: string; message: string; onAsk: (msg: string, label: string) => void }) {
   return (
     <Button
       size="sm"
@@ -62,7 +62,7 @@ function AskAtlasButton({ label, message, onAsk }: { label: string; message: str
       onClick={() => onAsk(message, label)}
     >
       <Sparkles className="w-3 h-3 mr-1" />
-      Ask Atlas
+      Ask Pax
     </Button>
   );
 }
@@ -71,14 +71,14 @@ export default function DecisionQueuePage() {
   const { toast } = useToast();
   const qc = useQueryClient();
 
-  const [atlas, setAtlas] = useState<AtlasPanelState>({
+  const [pax, setPax] = useState<PaxPanelState>({
     isOpen: false,
     contextLabel: '',
     prefillMessage: '',
     response: null,
     isLoading: false,
   });
-  const [atlasInput, setAtlasInput] = useState('');
+  const [paxInput, setPaxInput] = useState('');
 
   const { data: leads = [], isLoading: leadsLoading } = useQuery<Lead[]>({
     queryKey: ["/api/leads"],
@@ -144,16 +144,16 @@ export default function DecisionQueuePage() {
   const totalItems = stalledLeads.length + waitingCounters.length + stuckDeals.length;
   const isLoading = leadsLoading || dealsLoading;
 
-  function openAtlas(prefillMessage: string, contextLabel: string) {
-    setAtlas({ isOpen: true, contextLabel, prefillMessage, response: null, isLoading: false });
-    setAtlasInput(prefillMessage);
+  function openPax(prefillMessage: string, contextLabel: string) {
+    setPax({ isOpen: true, contextLabel, prefillMessage, response: null, isLoading: false });
+    setPaxInput(prefillMessage);
   }
 
-  async function sendAtlasMessage() {
-    const message = atlasInput.trim();
+  async function sendPaxMessage() {
+    const message = paxInput.trim();
     if (!message) return;
 
-    setAtlas(prev => ({ ...prev, isLoading: true, response: null }));
+    setPax(prev => ({ ...prev, isLoading: true, response: null }));
 
     try {
       const res = await fetch('/api/ai/chat', {
@@ -162,15 +162,15 @@ export default function DecisionQueuePage() {
         body: JSON.stringify({ message }),
       });
 
-      if (!res.ok) throw new Error('Atlas unavailable');
+      if (!res.ok) throw new Error('Pax unavailable');
 
       const data = await res.json();
       const replyText: string =
         data.response ?? data.message ?? data.content ?? data.reply ?? 'No response received.';
 
-      setAtlas(prev => ({ ...prev, response: replyText, isLoading: false }));
+      setPax(prev => ({ ...prev, response: replyText, isLoading: false }));
     } catch (err: any) {
-      setAtlas(prev => ({ ...prev, response: `Error: ${err.message}`, isLoading: false }));
+      setPax(prev => ({ ...prev, response: `Error: ${err.message}`, isLoading: false }));
     }
   }
 
@@ -225,7 +225,7 @@ export default function DecisionQueuePage() {
                 const lastContact = lead.lastContactedAt
                   ? `Last contact ${formatDistanceToNow(new Date(lead.lastContactedAt), { addSuffix: true })}`
                   : "Never contacted";
-                const atlasMsg = `I have a stalled lead named ${name}${lead.propertyAddress ? ` at ${lead.propertyAddress}` : ''}. ${lastContact}. What should I do to re-engage this seller?`;
+                const paxMsg = `I have a stalled lead named ${name}${lead.propertyAddress ? ` at ${lead.propertyAddress}` : ''}. ${lastContact}. What should I do to re-engage this seller?`;
                 return (
                   <Card key={lead.id} className="border-l-4 border-red-400">
                     <CardContent className="py-3 px-4 flex items-center gap-3">
@@ -237,10 +237,10 @@ export default function DecisionQueuePage() {
                         <p className="text-xs text-red-500 mt-0.5">{lastContact}</p>
                       </div>
                       <div className="flex gap-2 shrink-0">
-                        <AskAtlasButton
+                        <AskPaxButton
                           label={`Stalled lead: ${name}`}
-                          message={atlasMsg}
-                          onAsk={openAtlas}
+                          message={paxMsg}
+                          onAsk={openPax}
                         />
                         <Button
                           size="sm"
@@ -282,7 +282,7 @@ export default function DecisionQueuePage() {
                 const sentWhen = deal.offerDate
                   ? formatDistanceToNow(new Date(deal.offerDate), { addSuffix: true })
                   : 'recently';
-                const atlasMsg = `Deal #${deal.id} has had an offer of ${offerAmt} sitting with no response since ${sentWhen}. Should I follow up, revise the offer, or walk away?`;
+                const paxMsg = `Deal #${deal.id} has had an offer of ${offerAmt} sitting with no response since ${sentWhen}. Should I follow up, revise the offer, or walk away?`;
                 return (
                   <Card key={deal.id} className="border-l-4 border-orange-400">
                     <CardContent className="py-3 px-4 flex items-center gap-3">
@@ -298,10 +298,10 @@ export default function DecisionQueuePage() {
                         </p>
                       </div>
                       <div className="flex gap-2 shrink-0 flex-wrap justify-end">
-                        <AskAtlasButton
+                        <AskPaxButton
                           label={`Waiting counter: Deal #${deal.id}`}
-                          message={atlasMsg}
-                          onAsk={openAtlas}
+                          message={paxMsg}
+                          onAsk={openPax}
                         />
                         <Button
                           size="sm"
@@ -352,7 +352,7 @@ export default function DecisionQueuePage() {
                 const stalledWhen = deal.updatedAt
                   ? formatDistanceToNow(new Date(deal.updatedAt), { addSuffix: true })
                   : '';
-                const atlasMsg = `Deal #${deal.id} is stuck in the "${deal.status.replace(/_/g, ' ')}" stage${stalledWhen ? `, last updated ${stalledWhen}` : ''}. What are the best next steps to move this forward?`;
+                const paxMsg = `Deal #${deal.id} is stuck in the "${deal.status.replace(/_/g, ' ')}" stage${stalledWhen ? `, last updated ${stalledWhen}` : ''}. What are the best next steps to move this forward?`;
                 return (
                   <Card key={deal.id} className="border-l-4 border-yellow-400">
                     <CardContent className="py-3 px-4 flex items-center gap-3">
@@ -368,10 +368,10 @@ export default function DecisionQueuePage() {
                         )}
                       </div>
                       <div className="flex gap-2 shrink-0">
-                        <AskAtlasButton
+                        <AskPaxButton
                           label={`Stuck deal: Deal #${deal.id}`}
-                          message={atlasMsg}
-                          onAsk={openAtlas}
+                          message={paxMsg}
+                          onAsk={openPax}
                         />
                         {nextStage && (
                           <Button
@@ -395,33 +395,33 @@ export default function DecisionQueuePage() {
         )}
       </div>
 
-      {/* Atlas Dialog */}
-      <Dialog open={atlas.isOpen} onOpenChange={(open) => setAtlas(prev => ({ ...prev, isOpen: open }))}>
+      {/* Pax Dialog */}
+      <Dialog open={pax.isOpen} onOpenChange={(open) => setPax(prev => ({ ...prev, isOpen: open }))}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <div className="flex items-center gap-2">
               <Sparkles className="w-5 h-5 text-purple-500" />
-              <DialogTitle>Ask Atlas</DialogTitle>
+              <DialogTitle>Ask Pax</DialogTitle>
             </div>
-            {atlas.contextLabel && (
-              <p className="text-xs text-muted-foreground mt-1">{atlas.contextLabel}</p>
+            {pax.contextLabel && (
+              <p className="text-xs text-muted-foreground mt-1">{pax.contextLabel}</p>
             )}
           </DialogHeader>
 
           <div className="space-y-3 mt-2">
             <Textarea
               className="text-sm min-h-[100px]"
-              value={atlasInput}
-              onChange={(e) => setAtlasInput(e.target.value)}
-              placeholder="Ask Atlas about this decision…"
+              value={paxInput}
+              onChange={(e) => setPaxInput(e.target.value)}
+              placeholder="Ask Pax about this decision…"
             />
 
             <Button
               className="w-full"
-              onClick={sendAtlasMessage}
-              disabled={atlas.isLoading || !atlasInput.trim()}
+              onClick={sendPaxMessage}
+              disabled={pax.isLoading || !paxInput.trim()}
             >
-              {atlas.isLoading ? (
+              {pax.isLoading ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                   Thinking…
@@ -429,22 +429,22 @@ export default function DecisionQueuePage() {
               ) : (
                 <>
                   <Send className="w-4 h-4 mr-2" />
-                  Send to Atlas
+                  Send to Pax
                 </>
               )}
             </Button>
 
-            {atlas.response && (
+            {pax.response && (
               <div className="rounded-lg bg-muted p-4 text-sm whitespace-pre-wrap">
-                <p className="font-semibold text-xs text-purple-600 mb-1">Atlas</p>
-                {atlas.response}
+                <p className="font-semibold text-xs text-purple-600 mb-1">Pax</p>
+                {pax.response}
               </div>
             )}
 
             <div className="text-xs text-center text-muted-foreground">
               For a full conversation,{' '}
-              <a href="/atlas" className="text-purple-600 underline hover:no-underline">
-                open Atlas
+              <a href="/pax" className="text-purple-600 underline hover:no-underline">
+                open Pax
               </a>
             </div>
           </div>

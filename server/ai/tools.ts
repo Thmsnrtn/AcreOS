@@ -610,104 +610,297 @@ export const toolDefinitions = {
     }
   },
 
-  // ─── Negotiation Tools ───────────────────────────────────────────────────
-  get_negotiation_threads: {
-    name: "get_negotiation_threads",
-    description: "Get all active negotiation threads for the organization, including seller psychology, offers made, and current status.",
+  // ── Connector tools — only active when the connector is configured ──────
+
+  search_gmail: {
+    name: "search_gmail",
+    description: "Search the user's Gmail inbox. Use to find emails from leads, sellers, or about specific properties.",
     parameters: {
       type: "object",
       properties: {
-        leadId: { type: "number", description: "Filter by specific lead ID (optional)" },
-        status: { type: "string", enum: ["active", "paused", "closed_won", "closed_lost"], description: "Filter by thread status (optional)" }
-      }
-    }
-  },
-  suggest_counter_offer: {
-    name: "suggest_counter_offer",
-    description: "Analyze a negotiation thread and suggest the optimal counter-offer amount, timing, and messaging strategy based on seller psychology and market data.",
-    parameters: {
-      type: "object",
-      properties: {
-        threadId: { type: "number", description: "The negotiation thread ID to analyze" },
-        currentOfferAmount: { type: "number", description: "The seller's current asking price or last counter-offer" }
+        query: { type: "string", description: "Gmail search query (e.g. 'from:seller@email.com', 'subject:offer', 'property address')" },
+        maxResults: { type: "number", description: "Max results to return (default: 10)" },
       },
-      required: ["threadId"]
-    }
-  },
-  analyze_negotiation_psychology: {
-    name: "analyze_negotiation_psychology",
-    description: "Analyze a seller's communication patterns and sentiment to determine their motivation, urgency, and receptiveness to offers.",
-    parameters: {
-      type: "object",
-      properties: {
-        leadId: { type: "number", description: "The lead ID to analyze" },
-        recentMessages: { type: "string", description: "Recent messages from the seller to analyze (optional, uses stored messages if not provided)" }
-      },
-      required: ["leadId"]
-    }
-  },
-  create_negotiation_move: {
-    name: "create_negotiation_move",
-    description: "Record a negotiation move (offer, counter-offer, question, or closing attempt) in the negotiation thread and get AI guidance on the next step.",
-    parameters: {
-      type: "object",
-      properties: {
-        threadId: { type: "number", description: "The negotiation thread ID" },
-        moveType: { type: "string", enum: ["initial_offer", "counter_offer", "question", "information_share", "closing_attempt", "walkaway"], description: "Type of negotiation move" },
-        offerAmount: { type: "number", description: "Offer amount in dollars (for offer/counter-offer moves)" },
-        message: { type: "string", description: "Message or script for this negotiation move" }
-      },
-      required: ["threadId", "moveType"]
-    }
+      required: ["query"],
+    },
   },
 
-  // ─── Goals & OKR Tools ───────────────────────────────────────────────────
-  get_goals: {
-    name: "get_goals",
-    description: "Get all organizational goals and their current progress. Returns goals with target values, current values, and completion percentages.",
+  send_gmail: {
+    name: "send_gmail",
+    description: "Send an email via the user's Gmail account.",
     parameters: {
       type: "object",
       properties: {
-        category: { type: "string", enum: ["revenue", "deals", "leads", "properties", "custom"], description: "Filter by goal category (optional)" }
-      }
-    }
-  },
-  create_goal: {
-    name: "create_goal",
-    description: "Create a new organizational goal with a target value, deadline, and category. Goals track KPIs like revenue targets, deal counts, or lead volumes.",
-    parameters: {
-      type: "object",
-      properties: {
-        name: { type: "string", description: "Goal name (e.g., 'Close 10 deals this quarter')" },
-        category: { type: "string", enum: ["revenue", "deals", "leads", "properties", "custom"], description: "Goal category" },
-        targetValue: { type: "number", description: "Target value to reach" },
-        unit: { type: "string", description: "Unit of measurement (e.g., 'dollars', 'deals', 'leads')" },
-        deadline: { type: "string", description: "Deadline in ISO format (e.g., '2026-06-30')" }
+        to: { type: "string", description: "Recipient email address" },
+        subject: { type: "string", description: "Email subject" },
+        body: { type: "string", description: "Email body (plain text)" },
       },
-      required: ["name", "category", "targetValue"]
-    }
+      required: ["to", "subject", "body"],
+    },
   },
 
-  // ─── Tax Optimization Tools ──────────────────────────────────────────────
-  analyze_tax_position: {
-    name: "analyze_tax_position",
-    description: "Analyze the organization's current year tax position including capital gains, depreciation, 1031 exchange opportunities, and recommended tax strategies.",
+  send_slack_message: {
+    name: "send_slack_message",
+    description: "Send a message to a Slack channel. Use for deal alerts, lead notifications, or team updates.",
     parameters: {
       type: "object",
       properties: {
-        taxYear: { type: "number", description: "Tax year to analyze (defaults to current year)" }
-      }
-    }
+        message: { type: "string", description: "Message text to send" },
+        channel: { type: "string", description: "Slack channel (e.g. #deals). Optional — uses default if not specified." },
+      },
+      required: ["message"],
+    },
   },
-  find_1031_opportunities: {
-    name: "find_1031_opportunities",
-    description: "Find properties in the portfolio that are candidates for 1031 exchange based on gain amounts, holding periods, and available replacement properties.",
+
+  get_stripe_customer: {
+    name: "get_stripe_customer",
+    description: "Look up a customer in Stripe by email or customer ID.",
     parameters: {
       type: "object",
-      properties: {}
-    }
-  }
+      properties: {
+        email: { type: "string", description: "Customer email address" },
+        customerId: { type: "string", description: "Stripe customer ID (cus_...)" },
+      },
+    },
+  },
+
+  list_stripe_payments: {
+    name: "list_stripe_payments",
+    description: "List recent Stripe charges/payments. Can filter by customer.",
+    parameters: {
+      type: "object",
+      properties: {
+        limit: { type: "number", description: "Number of payments to return (default: 10)" },
+        customerId: { type: "string", description: "Filter by Stripe customer ID" },
+      },
+    },
+  },
+
+  create_stripe_payment_link: {
+    name: "create_stripe_payment_link",
+    description: "Create a Stripe payment link for a deal (e.g. earnest money, option fee, down payment).",
+    parameters: {
+      type: "object",
+      properties: {
+        amount: { type: "number", description: "Amount in dollars" },
+        description: { type: "string", description: "Payment description (e.g. 'Earnest money — 123 Oak St')" },
+        currency: { type: "string", description: "Currency code (default: usd)" },
+      },
+      required: ["amount", "description"],
+    },
+  },
+
+  search_drive: {
+    name: "search_drive",
+    description: "Search Google Drive for property documents, contracts, or due diligence files.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Search term (file name or content)" },
+        maxResults: { type: "number", description: "Max results (default: 10)" },
+      },
+      required: ["query"],
+    },
+  },
+
+  get_drive_file: {
+    name: "get_drive_file",
+    description: "Get metadata and view link for a specific Google Drive file.",
+    parameters: {
+      type: "object",
+      properties: {
+        fileId: { type: "string", description: "Google Drive file ID" },
+      },
+      required: ["fileId"],
+    },
+  },
+
+  list_calendar_events: {
+    name: "list_calendar_events",
+    description: "List upcoming Google Calendar events. Use to check schedule before booking showings or closings.",
+    parameters: {
+      type: "object",
+      properties: {
+        days: { type: "number", description: "Number of days ahead to look (default: 7)" },
+      },
+    },
+  },
+
+  create_calendar_event: {
+    name: "create_calendar_event",
+    description: "Create a Google Calendar event (showing, closing, call, follow-up).",
+    parameters: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Event title" },
+        startDateTime: { type: "string", description: "Start date-time in ISO format (e.g. 2025-04-01T10:00:00-05:00)" },
+        endDateTime: { type: "string", description: "End date-time in ISO format" },
+        description: { type: "string", description: "Event description or notes" },
+        location: { type: "string", description: "Location (address or video call link)" },
+        attendees: { type: "array", items: { type: "string" }, description: "List of attendee email addresses" },
+      },
+      required: ["title", "startDateTime", "endDateTime"],
+    },
+  },
+
+  propstream_lookup: {
+    name: "propstream_lookup",
+    description: "Look up owner info, equity, liens, and property history via PropStream.",
+    parameters: {
+      type: "object",
+      properties: {
+        address: { type: "string", description: "Full property address" },
+      },
+      required: ["address"],
+    },
+  },
+
+  propstream_comps: {
+    name: "propstream_comps",
+    description: "Pull comparable sales from PropStream for a given address.",
+    parameters: {
+      type: "object",
+      properties: {
+        address: { type: "string", description: "Subject property address" },
+        radius: { type: "number", description: "Search radius in miles (default: 1)" },
+      },
+      required: ["address"],
+    },
+  },
+
+  batch_leads_skip_trace: {
+    name: "batch_leads_skip_trace",
+    description: "Skip trace a lead via BatchLeads to find phone numbers and contact info.",
+    parameters: {
+      type: "object",
+      properties: {
+        firstName: { type: "string" },
+        lastName: { type: "string" },
+        address: { type: "string", description: "Property address" },
+        phone: { type: "string", description: "Known phone number (optional)" },
+      },
+    },
+  },
+
+  search_mls_listings: {
+    name: "search_mls_listings",
+    description: "Search MLS listings via RESO API. Find active listings or sold comps.",
+    parameters: {
+      type: "object",
+      properties: {
+        city: { type: "string" },
+        state: { type: "string" },
+        minPrice: { type: "number" },
+        maxPrice: { type: "number" },
+        status: { type: "string", enum: ["Active", "Closed", "Pending"], description: "Listing status" },
+        limit: { type: "number", description: "Max results (default: 10)" },
+      },
+    },
+  },
+
+  get_mls_comps: {
+    name: "get_mls_comps",
+    description: "Get comparable sold listings from MLS for a given property address.",
+    parameters: {
+      type: "object",
+      properties: {
+        address: { type: "string", description: "Subject property address" },
+        radius: { type: "number", description: "Search radius in miles" },
+        limit: { type: "number" },
+      },
+      required: ["address"],
+    },
+  },
+
+  trigger_zapier: {
+    name: "trigger_zapier",
+    description: "Trigger a Zapier webhook with structured data. Use to automate follow-up sequences, CRM updates, or any downstream workflow.",
+    parameters: {
+      type: "object",
+      properties: {
+        data: { type: "object", description: "Payload to send to Zapier (any key-value pairs)" },
+      },
+      required: ["data"],
+    },
+  },
+
+  trigger_make: {
+    name: "trigger_make",
+    description: "Trigger a Make (Integromat) webhook scenario with structured data.",
+    parameters: {
+      type: "object",
+      properties: {
+        data: { type: "object", description: "Payload to send to Make" },
+      },
+      required: ["data"],
+    },
+  },
+
+  // ── Memory tools ─────────────────────────────────────────────────────────
+
+  remember_fact: {
+    name: "remember_fact",
+    description: "Permanently remember an important fact, preference, decision, or insight for this organization. Use proactively when the user states preferences, makes key decisions, or shares important context that should persist across conversations.",
+    parameters: {
+      type: "object",
+      properties: {
+        fact: { type: "string", description: "The fact or preference to remember, written as a clear statement" },
+        category: {
+          type: "string",
+          enum: ["preference", "insight", "decision", "contact"],
+          description: "Category of the memory"
+        },
+      },
+      required: ["fact", "category"],
+    },
+  },
+
+  recall_facts: {
+    name: "recall_facts",
+    description: "Recall previously remembered facts and preferences for this organization. Use before answering questions where context from past conversations might be relevant.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Topic or keyword to search remembered facts" },
+        category: {
+          type: "string",
+          enum: ["preference", "insight", "decision", "contact"],
+          description: "Optional category to filter by"
+        },
+        limit: { type: "number", description: "Max facts to return (default 10)" },
+      },
+      required: ["query"],
+    },
+  },
+
+  // ── Sub-agent tool ────────────────────────────────────────────────────────
+
+  spawn_subagent: {
+    name: "spawn_subagent",
+    description: "Spawn a sub-agent to handle an independent subtask and return its result. Use for parallelizable research tasks, e.g. analyzing multiple properties or markets simultaneously. Max depth: 2.",
+    parameters: {
+      type: "object",
+      properties: {
+        prompt: { type: "string", description: "The full task or question for the sub-agent to handle" },
+        role: {
+          type: "string",
+          enum: ["executive", "research", "underwriting", "acquisitions"],
+          description: "Agent role best suited for this subtask (default: research)"
+        },
+      },
+      required: ["prompt"],
+    },
+  },
 };
+
+// Tools that require user approval before execution (communication + payment tools)
+export const APPROVAL_REQUIRED_TOOLS = new Set([
+  "send_email",
+  "send_sms",
+  "send_gmail",
+  "send_slack_message",
+  "create_stripe_payment_link",
+]);
 
 // Tool executor functions
 export async function executeTool(
@@ -762,7 +955,7 @@ export async function executeTool(
         if (leadBeforeUpdate) {
           await storage.logActivity({
             organizationId: org.id,
-            agentType: "atlas",
+            agentType: "pax",
             action: "status_changed",
             entityType: "lead",
             entityId: args.lead_id,
@@ -771,7 +964,7 @@ export async function executeTool(
           });
         }
         invalidateContextCache(org.id);
-        return { success: true, data: { message: `Lead status updated to ${args.status}`, lead: updated } };
+        return { success: true, data: { message: `Lead status updated to ${args.status}`, lead: updated, before: { status: leadBeforeUpdate?.status }, after: { status: args.status } } };
       }
 
       case "create_lead": {
@@ -959,10 +1152,18 @@ export async function executeTool(
         if (args.listPrice !== undefined) updates.listPrice = String(args.listPrice);
         if (args.marketValue !== undefined) updates.marketValue = String(args.marketValue);
         if (args.notes) updates.notes = args.notes;
-        
+
+        const propertyBeforeUpdate = await storage.getProperty(org.id, args.property_id);
+        const before: Record<string, any> = {};
+        const after: Record<string, any> = {};
+        for (const key of Object.keys(updates)) {
+          before[key] = (propertyBeforeUpdate as any)?.[key];
+          after[key] = updates[key];
+        }
+
         const property = await storage.updateProperty(args.property_id, updates);
         invalidateContextCache(org.id);
-        return { success: true, data: { message: "Property updated successfully", property } };
+        return { success: true, data: { message: "Property updated successfully", property, before, after } };
       }
 
       // Deal CRUD
@@ -999,10 +1200,19 @@ export async function executeTool(
         if (args.status) dealUpdates.status = args.status;
         if (args.offerAmount !== undefined) dealUpdates.offerAmount = String(args.offerAmount);
         if (args.notes) dealUpdates.notes = args.notes;
-        
+
+        const dealsForOrg = await storage.getDeals(org.id);
+        const dealBeforeUpdate = dealsForOrg.find((d) => d.id === args.deal_id);
+        const dealBefore: Record<string, any> = {};
+        const dealAfter: Record<string, any> = {};
+        for (const key of Object.keys(dealUpdates)) {
+          dealBefore[key] = (dealBeforeUpdate as any)?.[key];
+          dealAfter[key] = dealUpdates[key];
+        }
+
         const deal = await storage.updateDeal(args.deal_id, dealUpdates);
         invalidateContextCache(org.id);
-        return { success: true, data: { message: "Deal updated successfully", deal } };
+        return { success: true, data: { message: "Deal updated successfully", deal, before: dealBefore, after: dealAfter } };
       }
 
       // Task CRUD
@@ -1635,11 +1845,11 @@ export async function executeTool(
 
         const draftText = aiResponse.choices[0].message.content || "";
 
-        // Store in sophieMemory for reference
+        // Store in paxMemory for reference
         try {
           const { db: dbInstance } = await import("../db");
-          const { sophieMemory } = await import("@shared/schema");
-          await dbInstance.insert(sophieMemory).values({
+          const { paxMemory } = await import("@shared/schema");
+          await dbInstance.insert(paxMemory).values({
             organizationId: org.id,
             userId: "ai-assistant",
             memoryType: "context",
@@ -1884,151 +2094,122 @@ export async function executeTool(
         };
       }
 
-      // ── Negotiation Tools ─────────────────────────────────────────────────
-      case "get_negotiation_threads": {
-        const { db } = await import("../db");
-        const { negotiationThreads, leads } = await import("@shared/schema");
-        const { eq, and } = await import("drizzle-orm");
-        let query = db.select().from(negotiationThreads).where(eq(negotiationThreads.organizationId, org.id));
-        const threads = await query;
-        const filtered = args.leadId
-          ? threads.filter(t => t.leadId === args.leadId)
-          : args.status
-          ? threads.filter(t => t.status === args.status)
-          : threads;
-        return { success: true, data: { threads: filtered.slice(0, 20), count: filtered.length } };
-      }
+      // ── Memory tools ─────────────────────────────────────────────────────────
 
-      case "suggest_counter_offer": {
+      case "remember_fact": {
+        const { paxMemory } = await import("@shared/schema");
         const { db } = await import("../db");
-        const { negotiationThreads, negotiationMoves } = await import("@shared/schema");
-        const { eq, desc } = await import("drizzle-orm");
-        const [thread] = await db.select().from(negotiationThreads).where(eq(negotiationThreads.id, args.threadId));
-        if (!thread) return { success: false, error: "Negotiation thread not found" };
-        const moves = await db.select().from(negotiationMoves).where(eq(negotiationMoves.threadId, args.threadId));
-        const { selectProviderAndModel, TaskComplexity } = await import("../services/aiRouter");
-        const { client, model } = selectProviderAndModel(TaskComplexity.COMPLEX);
-        const completion = await client.chat.completions.create({
-          model,
-          messages: [
-            { role: "system", content: "You are an expert land acquisition negotiator. Analyze the negotiation context and provide specific counter-offer recommendations with reasoning." },
-            { role: "user", content: `Negotiation thread: ${JSON.stringify(thread)}\nMoves history: ${JSON.stringify(moves.slice(-5))}\nCurrent offer: ${args.currentOfferAmount || 'not specified'}\n\nProvide: (1) recommended counter-offer amount, (2) optimal timing, (3) key message points, (4) psychology assessment, (5) success probability.` }
-          ],
-          max_tokens: 600
-        });
-        return {
-          success: true,
-          data: {
-            threadId: args.threadId,
-            analysis: completion.choices[0].message.content,
-            movesCount: moves.length,
-            sellerSentiment: thread.overallSentiment
-          }
-        };
-      }
-
-      case "analyze_negotiation_psychology": {
-        const { db } = await import("../db");
-        const { negotiationThreads } = await import("@shared/schema");
-        const { eq } = await import("drizzle-orm");
-        const lead = await storage.getLead(org.id, args.leadId);
-        if (!lead) return { success: false, error: "Lead not found" };
-        const threads = await db.select().from(negotiationThreads).where(eq(negotiationThreads.leadId, args.leadId));
-        const { selectProviderAndModel, TaskComplexity } = await import("../services/aiRouter");
-        const { client, model } = selectProviderAndModel(TaskComplexity.COMPLEX);
-        const completion = await client.chat.completions.create({
-          model,
-          messages: [
-            { role: "system", content: "You are a behavioral psychologist specializing in real estate negotiations. Analyze seller psychology from available data." },
-            { role: "user", content: `Lead info: ${JSON.stringify({ name: lead.firstName + ' ' + lead.lastName, status: lead.status, notes: lead.notes, source: lead.source })}\nNegotiation history: ${JSON.stringify(threads)}\nMessages: ${args.recentMessages || 'N/A'}\n\nAnalyze: (1) seller motivation level (1-10), (2) urgency signals, (3) price sensitivity, (4) objection patterns, (5) recommended approach, (6) red flags or opportunities.` }
-          ],
-          max_tokens: 500
-        });
-        return {
-          success: true,
-          data: {
-            leadId: args.leadId,
-            leadName: `${lead.firstName || ''} ${lead.lastName || ''}`.trim(),
-            psychologyAnalysis: completion.choices[0].message.content,
-            activeThreads: threads.length
-          }
-        };
-      }
-
-      case "create_negotiation_move": {
-        const { db } = await import("../db");
-        const { negotiationMoves, negotiationThreads } = await import("@shared/schema");
-        const { eq } = await import("drizzle-orm");
-        const [thread] = await db.select().from(negotiationThreads).where(eq(negotiationThreads.id, args.threadId));
-        if (!thread) return { success: false, error: "Negotiation thread not found" };
-        const existingMoves = await db.select().from(negotiationMoves).where(eq(negotiationMoves.threadId, args.threadId));
-        const [move] = await db.insert(negotiationMoves).values({
-          threadId: args.threadId,
-          moveNumber: existingMoves.length + 1,
-          moveType: args.moveType,
-          party: "buyer",
-          offerAmount: args.offerAmount?.toString(),
-          terms: args.message,
-          generatedByAI: false,
-        }).returning();
-        const { selectProviderAndModel, TaskComplexity } = await import("../services/aiRouter");
-        const { client, model } = selectProviderAndModel(TaskComplexity.SIMPLE);
-        const guidance = await client.chat.completions.create({
-          model,
-          messages: [
-            { role: "system", content: "You are a land acquisition coach. Give brief, actionable guidance on the next negotiation step." },
-            { role: "user", content: `Just made a ${args.moveType} move${args.offerAmount ? ` at $${args.offerAmount}` : ''}. Message: "${args.message || 'none'}". Seller context: ${thread.overallSentiment || 'unknown sentiment'}. What's the ideal next step? (2-3 sentences)` }
-          ],
-          max_tokens: 150
-        });
-        return {
-          success: true,
-          data: {
-            moveId: move.id,
-            moveType: args.moveType,
-            nextStepGuidance: guidance.choices[0].message.content,
-            message: `${args.moveType.replace(/_/g, ' ')} recorded in negotiation thread`
-          }
-        };
-      }
-
-      // ── Goals & OKR Tools ─────────────────────────────────────────────────
-      case "get_goals": {
-        const { db } = await import("../db");
-        const { goals } = await import("@shared/schema");
-        const { eq } = await import("drizzle-orm");
-        const allGoals = await db.select().from(goals).where(eq(goals.organizationId, org.id));
-        const filtered = args.category ? allGoals.filter(g => g.goalType === args.category) : allGoals;
-        return { success: true, data: { goals: filtered, count: filtered.length } };
-      }
-
-      case "create_goal": {
-        const { db } = await import("../db");
-        const { goals } = await import("@shared/schema");
-        const now = new Date();
-        const yearEnd = new Date(now.getFullYear(), 11, 31);
-        const [goal] = await db.insert(goals).values({
+        await db.insert(paxMemory).values({
           organizationId: org.id,
-          label: args.name,
-          goalType: args.category || "custom",
-          targetValue: args.targetValue?.toString() || "0",
-          periodStart: now,
-          periodEnd: args.deadline ? new Date(args.deadline) : yearEnd,
-        }).returning();
-        return { success: true, data: { goal, message: `Goal "${args.name}" created with target of ${args.targetValue} ${args.unit || 'units'}` } };
+          userId: "pax",
+          memoryType: args.category || "insight",
+          key: args.fact?.slice(0, 100) || "remembered_fact",
+          value: { content: args.fact },
+          importance: 8,
+          source: "pax_explicit_memory",
+        } as any);
+        return { success: true, data: { remembered: args.fact } };
       }
 
-      // ── Tax Optimization Tools ────────────────────────────────────────────
-      case "analyze_tax_position": {
-        const { taxOptimizerService } = await import("../services/taxOptimizer");
-        const analysis = await taxOptimizerService.analyzeYearEndPosition(org.id, args.taxYear || new Date().getFullYear());
-        return { success: true, data: analysis };
+      case "recall_facts": {
+        const { paxMemory: pm } = await import("@shared/schema");
+        const { db: _db } = await import("../db");
+        const { ilike, and: _and, eq: _eq } = await import("drizzle-orm");
+        const conditions: any[] = [_eq(pm.organizationId, org.id)];
+        if (args.category) conditions.push(_eq(pm.memoryType, args.category));
+        if (args.query) conditions.push(ilike(pm.key, `%${args.query}%`));
+        const facts = await _db.select().from(pm)
+          .where(_and(...conditions))
+          .limit(args.limit || 10)
+          .orderBy(pm.updatedAt);
+        return { success: true, data: { facts: facts.map(f => ({ category: f.memoryType, fact: (f.value as any)?.content || f.key, remembered: f.createdAt })) } };
       }
 
-      case "find_1031_opportunities": {
-        const { taxOptimizerService } = await import("../services/taxOptimizer");
-        const position = await taxOptimizerService.analyzeYearEndPosition(org.id, new Date().getFullYear());
-        return { success: true, data: { opportunities: position.exchange1031Candidates, count: position.exchange1031Candidates.length } };
+      // ── Sub-agent tool ────────────────────────────────────────────────────────
+
+      case "spawn_subagent": {
+        const currentDepth = (org as any).__subAgentDepth ?? 0;
+        if (currentDepth >= 2) {
+          return { success: false, error: "Sub-agent depth limit reached (max 2)" };
+        }
+        const { processChat } = await import("./executive");
+        const subOrg = { ...org, __subAgentDepth: currentDepth + 1 } as any;
+        const subResult = await processChat(args.prompt, subOrg, "pax_subagent", {
+          agentRole: (args.role || "research") as any,
+          subAgentDepth: currentDepth + 1,
+        });
+        return { success: true, data: { response: subResult.response, conversationId: subResult.conversationId } };
+      }
+
+      // ── Connector tools ──────────────────────────────────────────────────────
+
+      case "search_gmail": {
+        const { searchGmail } = await import("../services/connectors/executor");
+        return searchGmail(org, args as any);
+      }
+      case "send_gmail": {
+        const { sendGmail } = await import("../services/connectors/executor");
+        return sendGmail(org, args as any);
+      }
+      case "send_slack_message": {
+        const { sendSlackMessage } = await import("../services/connectors/executor");
+        return sendSlackMessage(org, args as any);
+      }
+      case "get_stripe_customer": {
+        const { getStripeCustomer } = await import("../services/connectors/executor");
+        return getStripeCustomer(org, args as any);
+      }
+      case "list_stripe_payments": {
+        const { listStripePayments } = await import("../services/connectors/executor");
+        return listStripePayments(org, args as any);
+      }
+      case "create_stripe_payment_link": {
+        const { createStripePaymentLink } = await import("../services/connectors/executor");
+        return createStripePaymentLink(org, args as any);
+      }
+      case "search_drive": {
+        const { searchDrive } = await import("../services/connectors/executor");
+        return searchDrive(org, args as any);
+      }
+      case "get_drive_file": {
+        const { getDriveFile } = await import("../services/connectors/executor");
+        return getDriveFile(org, args as any);
+      }
+      case "list_calendar_events": {
+        const { listCalendarEvents } = await import("../services/connectors/executor");
+        return listCalendarEvents(org, args as any);
+      }
+      case "create_calendar_event": {
+        const { createCalendarEvent } = await import("../services/connectors/executor");
+        return createCalendarEvent(org, args as any);
+      }
+      case "propstream_lookup": {
+        const { propstreamLookup } = await import("../services/connectors/executor");
+        return propstreamLookup(org, args as any);
+      }
+      case "propstream_comps": {
+        const { propstreamComps } = await import("../services/connectors/executor");
+        return propstreamComps(org, args as any);
+      }
+      case "batch_leads_skip_trace": {
+        const { batchLeadsSkipTrace } = await import("../services/connectors/executor");
+        return batchLeadsSkipTrace(org, args as any);
+      }
+      case "search_mls_listings": {
+        const { searchMlsListings } = await import("../services/connectors/executor");
+        return searchMlsListings(org, args as any);
+      }
+      case "get_mls_comps": {
+        const { getMlsComps } = await import("../services/connectors/executor");
+        return getMlsComps(org, args as any);
+      }
+      case "trigger_zapier": {
+        const { triggerZapier } = await import("../services/connectors/executor");
+        return triggerZapier(org, args as any);
+      }
+      case "trigger_make": {
+        const { triggerMake } = await import("../services/connectors/executor");
+        return triggerMake(org, args as any);
       }
 
       default:
@@ -2052,12 +2233,13 @@ export function getToolsForRole(role: string) {
   const allTools = Object.keys(toolDefinitions);
   const coreTools = ["get_system_context", "get_dashboard_stats"];
   
+  const memoryTools = ["remember_fact", "recall_facts"];
   const roleToolMap: Record<string, string[]> = {
     executive: allTools,
-    acquisitions: [...coreTools, "get_leads", "get_lead_details", "update_lead_status", "create_lead", "get_properties", "create_property", "get_deals", "create_deal", "get_tasks", "create_task", "get_pipeline_summary", "generate_offer", "generate_offer_letter", "send_email", "send_sms", "run_comps_analysis", "schedule_followup", "draft_offer", "schedule_follow_up", "run_comps", "get_stale_leads", "draft_outreach_message"],
-    underwriting: [...coreTools, "get_properties", "get_property_details", "update_property", "get_notes", "calculate_amortization", "get_cashflow_summary", "get_deals", "update_deal", "run_comps_analysis", "run_comps", "calculate_roi", "calculate_payment_schedule", "research_property", "draft_offer"],
-    marketing: [...coreTools, "get_leads", "get_properties", "get_pipeline_summary", "create_task", "send_email", "send_sms", "get_stale_leads", "draft_outreach_message"],
-    research: [...coreTools, "get_properties", "get_property_details", "get_leads", "create_property", "update_property", "run_comps_analysis", "run_comps", "research_property", "calculate_roi", "browse_web"],
+    acquisitions: [...coreTools, ...memoryTools, "get_leads", "get_lead_details", "update_lead_status", "create_lead", "get_properties", "create_property", "get_deals", "create_deal", "get_tasks", "create_task", "get_pipeline_summary", "generate_offer", "generate_offer_letter", "send_email", "send_sms", "run_comps_analysis", "schedule_followup", "draft_offer", "schedule_follow_up", "run_comps", "get_stale_leads", "draft_outreach_message"],
+    underwriting: [...coreTools, ...memoryTools, "get_properties", "get_property_details", "update_property", "get_notes", "calculate_amortization", "get_cashflow_summary", "get_deals", "update_deal", "run_comps_analysis", "run_comps", "calculate_roi", "calculate_payment_schedule", "research_property", "draft_offer"],
+    marketing: [...coreTools, ...memoryTools, "get_leads", "get_properties", "get_pipeline_summary", "create_task", "send_email", "send_sms", "get_stale_leads", "draft_outreach_message"],
+    research: [...coreTools, ...memoryTools, "get_properties", "get_property_details", "get_leads", "create_property", "update_property", "run_comps_analysis", "run_comps", "research_property", "calculate_roi", "browse_web"],
     documents: [...coreTools, "get_leads", "get_lead_details", "get_properties", "get_property_details", "get_notes", "get_deals", "generate_offer_letter", "draft_offer"],
     assistant: allTools // Full access for the main assistant
   };

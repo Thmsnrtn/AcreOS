@@ -37,7 +37,7 @@ CREATE TABLE "knowledge_base_articles" (
 	CONSTRAINT "knowledge_base_articles_slug_unique" UNIQUE("slug")
 );
 --> statement-breakpoint
-CREATE TABLE "sophie_cross_org_learnings" (
+CREATE TABLE "pax_cross_org_learnings" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"issue_pattern" text NOT NULL,
 	"issue_category" text NOT NULL,
@@ -56,7 +56,7 @@ CREATE TABLE "sophie_cross_org_learnings" (
 	"updated_at" timestamp DEFAULT now()
 );
 --> statement-breakpoint
-CREATE TABLE "sophie_memory" (
+CREATE TABLE "pax_memory" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"organization_id" integer NOT NULL,
 	"user_id" text NOT NULL,
@@ -70,7 +70,7 @@ CREATE TABLE "sophie_memory" (
 	"updated_at" timestamp DEFAULT now()
 );
 --> statement-breakpoint
-CREATE TABLE "sophie_observations" (
+CREATE TABLE "pax_observations" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"organization_id" integer NOT NULL,
 	"user_id" text,
@@ -150,11 +150,11 @@ CREATE TABLE "support_tickets" (
 --> statement-breakpoint
 ALTER TABLE "organizations" ADD COLUMN "proactive_notification_level" varchar(50) DEFAULT 'balanced';--> statement-breakpoint
 ALTER TABLE "fix_attempts" ADD CONSTRAINT "fix_attempts_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "fix_attempts" ADD CONSTRAINT "fix_attempts_source_observation_id_sophie_observations_id_fk" FOREIGN KEY ("source_observation_id") REFERENCES "public"."sophie_observations"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "fix_attempts" ADD CONSTRAINT "fix_attempts_source_observation_id_pax_observations_id_fk" FOREIGN KEY ("source_observation_id") REFERENCES "public"."pax_observations"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "fix_attempts" ADD CONSTRAINT "fix_attempts_source_ticket_id_support_tickets_id_fk" FOREIGN KEY ("source_ticket_id") REFERENCES "public"."support_tickets"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "sophie_memory" ADD CONSTRAINT "sophie_memory_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "sophie_memory" ADD CONSTRAINT "sophie_memory_source_ticket_id_support_tickets_id_fk" FOREIGN KEY ("source_ticket_id") REFERENCES "public"."support_tickets"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "sophie_observations" ADD CONSTRAINT "sophie_observations_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "pax_memory" ADD CONSTRAINT "pax_memory_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "pax_memory" ADD CONSTRAINT "pax_memory_source_ticket_id_support_tickets_id_fk" FOREIGN KEY ("source_ticket_id") REFERENCES "public"."support_tickets"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "pax_observations" ADD CONSTRAINT "pax_observations_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "support_resolution_history" ADD CONSTRAINT "support_resolution_history_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "support_resolution_history" ADD CONSTRAINT "support_resolution_history_ticket_id_support_tickets_id_fk" FOREIGN KEY ("ticket_id") REFERENCES "public"."support_tickets"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "support_ticket_messages" ADD CONSTRAINT "support_ticket_messages_ticket_id_support_tickets_id_fk" FOREIGN KEY ("ticket_id") REFERENCES "public"."support_tickets"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -164,15 +164,15 @@ CREATE INDEX "fix_attempts_pattern_idx" ON "fix_attempts" USING btree ("issue_pa
 CREATE INDEX "fix_attempts_status_idx" ON "fix_attempts" USING btree ("status");--> statement-breakpoint
 CREATE INDEX "kb_articles_category_idx" ON "knowledge_base_articles" USING btree ("category");--> statement-breakpoint
 CREATE INDEX "kb_articles_slug_idx" ON "knowledge_base_articles" USING btree ("slug");--> statement-breakpoint
-CREATE INDEX "cross_org_learnings_category_idx" ON "sophie_cross_org_learnings" USING btree ("issue_category");--> statement-breakpoint
-CREATE INDEX "cross_org_learnings_pattern_idx" ON "sophie_cross_org_learnings" USING btree ("issue_pattern");--> statement-breakpoint
-CREATE INDEX "sophie_memory_org_user_idx" ON "sophie_memory" USING btree ("organization_id","user_id");--> statement-breakpoint
-CREATE INDEX "sophie_memory_type_idx" ON "sophie_memory" USING btree ("memory_type");--> statement-breakpoint
-CREATE INDEX "sophie_memory_key_idx" ON "sophie_memory" USING btree ("key");--> statement-breakpoint
-CREATE INDEX "sophie_obs_org_idx" ON "sophie_observations" USING btree ("organization_id");--> statement-breakpoint
-CREATE INDEX "sophie_obs_status_idx" ON "sophie_observations" USING btree ("status");--> statement-breakpoint
-CREATE INDEX "sophie_obs_type_idx" ON "sophie_observations" USING btree ("type");--> statement-breakpoint
-CREATE INDEX "sophie_obs_detected_at_idx" ON "sophie_observations" USING btree ("detected_at");--> statement-breakpoint
+CREATE INDEX "pax_cross_org_learnings_category_idx" ON "pax_cross_org_learnings" USING btree ("issue_category");--> statement-breakpoint
+CREATE INDEX "pax_cross_org_learnings_pattern_idx" ON "pax_cross_org_learnings" USING btree ("issue_pattern");--> statement-breakpoint
+CREATE INDEX "pax_memory_org_user_idx" ON "pax_memory" USING btree ("organization_id","user_id");--> statement-breakpoint
+CREATE INDEX "pax_memory_type_idx" ON "pax_memory" USING btree ("memory_type");--> statement-breakpoint
+CREATE INDEX "pax_memory_key_idx" ON "pax_memory" USING btree ("key");--> statement-breakpoint
+CREATE INDEX "pax_obs_org_idx" ON "pax_observations" USING btree ("organization_id");--> statement-breakpoint
+CREATE INDEX "pax_obs_status_idx" ON "pax_observations" USING btree ("status");--> statement-breakpoint
+CREATE INDEX "pax_obs_type_idx" ON "pax_observations" USING btree ("type");--> statement-breakpoint
+CREATE INDEX "pax_obs_detected_at_idx" ON "pax_observations" USING btree ("detected_at");--> statement-breakpoint
 CREATE INDEX "resolution_history_issue_type_idx" ON "support_resolution_history" USING btree ("issue_type");--> statement-breakpoint
 CREATE INDEX "support_ticket_messages_ticket_idx" ON "support_ticket_messages" USING btree ("ticket_id");--> statement-breakpoint
 CREATE INDEX "support_tickets_org_idx" ON "support_tickets" USING btree ("organization_id");--> statement-breakpoint

@@ -139,7 +139,7 @@ async function writeBriefingWithAI(
       `In the last 24 hours: ${stats["New Signups"]} new signup(s), ${stats["New Paid"]} new paying org(s). There are now ${stats["Paying Orgs"]} active paying organizations. ${stats["Tasks Run"]} autonomous tasks were completed by the system.`,
       `System health: ${healthy} jobs healthy, ${degraded} degraded, ${failed} failed. ${stats["Alerts"]} unresolved alert(s) on the platform.`,
       stats["At Risk"] as number > 0
-        ? `${stats["At Risk"]} org(s) have elevated churn risk. Sophie has been notified and may have sent re-engagement emails automatically.`
+        ? `${stats["At Risk"]} org(s) have elevated churn risk. Pax has been notified and may have sent re-engagement emails automatically.`
         : `No organizations are currently at high churn risk. The platform is running smoothly.`,
     ];
   }

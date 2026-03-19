@@ -1,39 +1,11 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useUser, useClerk } from "@clerk/react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { User } from "@shared/models/auth";
 
 // Extended user type with founder status (added by server)
 export type AuthUser = User & { isFounder?: boolean };
 
-type LoginInput = { email: string; password: string };
-type RegisterInput = { email: string; password: string; firstName?: string; lastName?: string; agreedToTerms: boolean; referralCode?: string };
-
-function getCsrfToken(): string | null {
-  const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
-  return match ? decodeURIComponent(match[1]) : null;
-}
-
-async function apiRequest<T = unknown>(url: string, body: unknown): Promise<T> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  const csrfToken = getCsrfToken();
-  if (csrfToken) {
-    headers["X-CSRF-Token"] = csrfToken;
-  }
-  const response = await fetch(url, {
-    method: "POST",
-    headers,
-    credentials: "include",
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
-    throw new Error(data.message || `${response.status}: ${response.statusText}`);
-  }
-
-  return response.json();
-}
-
-async function fetchUser(): Promise<AuthUser | null> {
+async function fetchAppUser(): Promise<AuthUser | null> {
   const response = await fetch("/api/auth/user", {
     credentials: "include",
   });
@@ -49,56 +21,29 @@ async function fetchUser(): Promise<AuthUser | null> {
   return response.json();
 }
 
-async function logout(): Promise<void> {
-  await fetch("/api/auth/logout", {
-    method: "POST",
-    credentials: "include",
-  });
-}
-
 export function useAuth() {
+  const { isSignedIn, isLoaded } = useUser();
+  const { signOut } = useClerk();
   const queryClient = useQueryClient();
-  const { data: user, isLoading } = useQuery<AuthUser | null>({
+
+  const { data: user, isLoading: userLoading } = useQuery<AuthUser | null>({
     queryKey: ["/api/auth/user"],
-    queryFn: fetchUser,
-    retry: false,
+    queryFn: fetchAppUser,
+    enabled: isSignedIn === true,
     staleTime: 1000 * 60 * 5, // 5 minutes
+    retry: false,
   });
 
-  const loginMutation = useMutation({
-    mutationFn: (input: LoginInput) => apiRequest<AuthUser>("/api/auth/login", input),
-    onSuccess: (data) => {
-      queryClient.setQueryData(["/api/auth/user"], data);
-    },
-  });
-
-  const registerMutation = useMutation({
-    mutationFn: (input: RegisterInput) => apiRequest<AuthUser>("/api/auth/register", input),
-    onSuccess: (data) => {
-      queryClient.setQueryData(["/api/auth/user"], data);
-    },
-  });
-
-  const logoutMutation = useMutation({
-    mutationFn: logout,
-    onSuccess: () => {
-      queryClient.setQueryData(["/api/auth/user"], null);
-      window.location.href = "/auth";
-    },
-  });
+  const logout = () => {
+    queryClient.setQueryData(["/api/auth/user"], null);
+    signOut({ redirectUrl: "/auth" });
+  };
 
   return {
-    user,
-    isLoading,
-    isAuthenticated: !!user,
+    user: isSignedIn ? (user ?? null) : null,
+    isLoading: !isLoaded || (isSignedIn === true && userLoading),
+    isAuthenticated: isSignedIn === true,
     isFounder: user?.isFounder ?? false,
-    login: loginMutation.mutate,
-    register: registerMutation.mutate,
-    logout: logoutMutation.mutate,
-    loginError: loginMutation.error,
-    registerError: registerMutation.error,
-    isLoggingIn: loginMutation.isPending,
-    isRegistering: registerMutation.isPending,
-    isLoggingOut: logoutMutation.isPending,
+    logout,
   };
 }

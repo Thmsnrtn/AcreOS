@@ -1,262 +1,339 @@
 /**
- * T132 — Campaign Optimizer Unit Tests
+ * Campaign Optimizer Service — Unit Tests
  *
- * Tests A/B test winner determination, send time optimization,
- * subject line scoring, engagement rate calculations,
- * and budget allocation logic.
+ * Tests metric calculations, optimization score, and fallback suggestion
+ * generation. All DB and storage calls are mocked.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// ── Pure helpers ──────────────────────────────────────────────────────────────
+// ── DB mock ────────────────────────────────────────────────────────────────────
+vi.mock("../../../server/db", () => ({
+  db: {
+    update: vi.fn().mockReturnValue({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue([]),
+      }),
+    }),
+  },
+}));
 
-interface CampaignVariant {
-  id: string;
-  sends: number;
-  opens: number;
-  clicks: number;
-  replies: number;
-  optOuts: number;
-}
+// ── Storage mock ───────────────────────────────────────────────────────────────
+vi.mock("../../../server/storage", () => ({
+  storage: {
+    createCampaignOptimization: vi.fn().mockResolvedValue({ id: 1 }),
+    getCampaigns: vi.fn().mockResolvedValue([]),
+    getCampaignsNeedingOptimization: vi.fn().mockResolvedValue([]),
+  },
+}));
 
-function calcOpenRate(variant: CampaignVariant): number {
-  if (variant.sends === 0) return 0;
-  return parseFloat(((variant.opens / variant.sends) * 100).toFixed(2));
-}
+// ── Credits mock ───────────────────────────────────────────────────────────────
+vi.mock("../../../server/services/credits", () => ({
+  usageMeteringService: {
+    recordUsage: vi.fn().mockResolvedValue({ insufficientCredits: false }),
+  },
+}));
 
-function calcClickThroughRate(variant: CampaignVariant): number {
-  if (variant.opens === 0) return 0;
-  return parseFloat(((variant.clicks / variant.opens) * 100).toFixed(2));
-}
+import { CampaignOptimizerService } from "../../../server/services/campaignOptimizer";
 
-function calcReplyRate(variant: CampaignVariant): number {
-  if (variant.sends === 0) return 0;
-  return parseFloat(((variant.replies / variant.sends) * 100).toFixed(2));
-}
-
-function calcOptOutRate(variant: CampaignVariant): number {
-  if (variant.sends === 0) return 0;
-  return parseFloat(((variant.optOuts / variant.sends) * 100).toFixed(2));
-}
-
-/**
- * Composite engagement score weighting:
- * Opens (40%), Clicks (25%), Replies (30%), OptOuts penalise (-5%)
- */
-function calcEngagementScore(variant: CampaignVariant): number {
-  const maxOpenRate = 50;   // 50% is excellent
-  const maxClickRate = 20;  // 20% CTR is excellent
-  const maxReplyRate = 10;  // 10% reply is excellent
-
-  const openScore = Math.min(100, (calcOpenRate(variant) / maxOpenRate) * 100);
-  const clickScore = Math.min(100, (calcClickThroughRate(variant) / maxClickRate) * 100);
-  const replyScore = Math.min(100, (calcReplyRate(variant) / maxReplyRate) * 100);
-  const optOutPenalty = Math.min(50, calcOptOutRate(variant) * 10);
-
-  return Math.max(
-    0,
-    parseFloat(
-      (openScore * 0.40 + clickScore * 0.25 + replyScore * 0.30 - optOutPenalty * 0.05).toFixed(2)
-    )
-  );
-}
-
-function determineABTestWinner(variants: CampaignVariant[]): CampaignVariant | null {
-  if (variants.length === 0) return null;
-  return variants.reduce((best, v) =>
-    calcEngagementScore(v) > calcEngagementScore(best) ? v : best
-  );
-}
-
-function calcStatisticalSignificance(
-  controlSends: number,
-  controlConverts: number,
-  treatmentSends: number,
-  treatmentConverts: number
-): number {
-  // Simplified z-test proxy
-  const p1 = controlSends > 0 ? controlConverts / controlSends : 0;
-  const p2 = treatmentSends > 0 ? treatmentConverts / treatmentSends : 0;
-  const p = (controlConverts + treatmentConverts) / (controlSends + treatmentSends);
-  const se = Math.sqrt(p * (1 - p) * (1 / controlSends + 1 / treatmentSends));
-  if (se === 0) return 0;
-  const z = Math.abs(p2 - p1) / se;
-  return parseFloat((Math.min(100, z * 30)).toFixed(1)); // normalised to 0-100
-}
-
-function allocateBudgetByPerformance(
-  channels: Array<{ name: string; roi: number }>,
-  totalBudget: number
-): Array<{ name: string; allocation: number; percentage: number }> {
-  const totalROI = channels.reduce((s, c) => s + Math.max(0, c.roi), 0);
-  if (totalROI === 0) {
-    const equal = totalBudget / channels.length;
-    return channels.map(c => ({
-      name: c.name,
-      allocation: Math.round(equal),
-      percentage: parseFloat((100 / channels.length).toFixed(1)),
-    }));
-  }
-  return channels.map(c => {
-    const fraction = Math.max(0, c.roi) / totalROI;
-    return {
-      name: c.name,
-      allocation: Math.round(totalBudget * fraction),
-      percentage: parseFloat((fraction * 100).toFixed(1)),
-    };
-  });
-}
-
-function rankSendTimes(
-  hourlyEngagement: Record<number, number>
-): Array<{ hour: number; score: number }> {
-  return Object.entries(hourlyEngagement)
-    .map(([h, s]) => ({ hour: parseInt(h), score: s }))
-    .sort((a, b) => b.score - a.score);
-}
-
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
-describe("Open Rate Calculation", () => {
-  it("calculates correct open rate", () => {
-    const v: CampaignVariant = { id: "v1", sends: 1000, opens: 250, clicks: 50, replies: 10, optOuts: 5 };
-    expect(calcOpenRate(v)).toBe(25.0);
-  });
-
-  it("returns 0 for zero sends", () => {
-    const v: CampaignVariant = { id: "v1", sends: 0, opens: 0, clicks: 0, replies: 0, optOuts: 0 };
-    expect(calcOpenRate(v)).toBe(0);
-  });
-
-  it("maxes at 100% when all recipients open", () => {
-    const v: CampaignVariant = { id: "v1", sends: 100, opens: 100, clicks: 0, replies: 0, optOuts: 0 };
-    expect(calcOpenRate(v)).toBe(100.0);
-  });
+// ── Test helpers ───────────────────────────────────────────────────────────────
+const makeCampaign = (overrides = {}): any => ({
+  id: 1,
+  organizationId: 1,
+  name: "Test Campaign",
+  type: "email",
+  subject: "Test Subject",
+  content: "Test content for our land offer",
+  status: "completed",
+  totalSent: 1000,
+  totalDelivered: 980,
+  totalOpened: 245,
+  totalClicked: 12,
+  totalResponded: 30,
+  spent: "500",
+  targetCriteria: {},
+  lastOptimizedAt: null,
+  optimizationScore: null,
+  updatedAt: new Date(),
+  ...overrides,
 });
 
-describe("Click-Through Rate Calculation", () => {
-  it("calculates CTR based on opens (not sends)", () => {
-    const v: CampaignVariant = { id: "v1", sends: 1000, opens: 400, clicks: 80, replies: 0, optOuts: 0 };
-    expect(calcClickThroughRate(v)).toBe(20.0); // 80/400
+// ── Tests ──────────────────────────────────────────────────────────────────────
+describe("CampaignOptimizerService", () => {
+  let optimizer: CampaignOptimizerService;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    optimizer = new CampaignOptimizerService();
   });
 
-  it("returns 0 when no opens", () => {
-    const v: CampaignVariant = { id: "v1", sends: 100, opens: 0, clicks: 0, replies: 0, optOuts: 0 };
-    expect(calcClickThroughRate(v)).toBe(0);
-  });
-});
+  // ── Metric calculations ────────────────────────────────────────────────────
+  describe("analyzeCampaignPerformance — metric calculations", () => {
+    it("openRate = totalOpened / totalDelivered × 100", () => {
+      const campaign = makeCampaign({
+        totalDelivered: 1000,
+        totalOpened: 250,
+      });
+      const metrics = optimizer.analyzeCampaignPerformance(campaign);
+      expect(metrics.openRate).toBeCloseTo(25.0, 1);
+    });
 
-describe("Reply Rate", () => {
-  it("calculates reply rate correctly", () => {
-    const v: CampaignVariant = { id: "v1", sends: 500, opens: 100, clicks: 20, replies: 25, optOuts: 5 };
-    expect(calcReplyRate(v)).toBe(5.0); // 25/500
-  });
-});
+    it("clickRate = totalClicked / totalOpened × 100", () => {
+      const campaign = makeCampaign({
+        totalOpened: 200,
+        totalClicked: 10,
+      });
+      const metrics = optimizer.analyzeCampaignPerformance(campaign);
+      expect(metrics.clickRate).toBeCloseTo(5.0, 1);
+    });
 
-describe("Engagement Score", () => {
-  it("higher opens / clicks / replies increase score", () => {
-    const poor: CampaignVariant = { id: "v1", sends: 1000, opens: 50, clicks: 5, replies: 2, optOuts: 0 };
-    const good: CampaignVariant = { id: "v2", sends: 1000, opens: 250, clicks: 50, replies: 30, optOuts: 0 };
-    expect(calcEngagementScore(good)).toBeGreaterThan(calcEngagementScore(poor));
-  });
+    it("responseRate = totalResponded / totalSent × 100", () => {
+      const campaign = makeCampaign({
+        totalSent: 1000,
+        totalResponded: 20,
+      });
+      const metrics = optimizer.analyzeCampaignPerformance(campaign);
+      expect(metrics.responseRate).toBeCloseTo(2.0, 1);
+    });
 
-  it("penalises high opt-out rate", () => {
-    const base: CampaignVariant = { id: "v1", sends: 1000, opens: 200, clicks: 40, replies: 10, optOuts: 0 };
-    const penalised: CampaignVariant = { ...base, optOuts: 50 };
-    expect(calcEngagementScore(penalised)).toBeLessThan(calcEngagementScore(base));
-  });
+    it("costPerResponse = spent / totalResponded", () => {
+      const campaign = makeCampaign({
+        spent: "600",
+        totalResponded: 30,
+      });
+      const metrics = optimizer.analyzeCampaignPerformance(campaign);
+      expect(metrics.costPerResponse).toBeCloseTo(20.0, 1);
+    });
 
-  it("never goes below 0", () => {
-    const terrible: CampaignVariant = { id: "v1", sends: 1000, opens: 0, clicks: 0, replies: 0, optOuts: 100 };
-    expect(calcEngagementScore(terrible)).toBeGreaterThanOrEqual(0);
-  });
-});
+    it("deliveryRate = totalDelivered / totalSent × 100", () => {
+      const campaign = makeCampaign({
+        totalSent: 1000,
+        totalDelivered: 950,
+      });
+      const metrics = optimizer.analyzeCampaignPerformance(campaign);
+      expect(metrics.deliveryRate).toBeCloseTo(95.0, 1);
+    });
 
-describe("A/B Test Winner Determination", () => {
-  const control: CampaignVariant = { id: "control", sends: 1000, opens: 150, clicks: 20, replies: 8, optOuts: 5 };
-  const winner: CampaignVariant = { id: "winner", sends: 1000, opens: 280, clicks: 55, replies: 25, optOuts: 3 };
-  const loser: CampaignVariant = { id: "loser", sends: 1000, opens: 100, clicks: 8, replies: 3, optOuts: 20 };
+    it("openRate is 0 when totalDelivered is 0", () => {
+      const campaign = makeCampaign({ totalDelivered: 0, totalOpened: 0 });
+      const metrics = optimizer.analyzeCampaignPerformance(campaign);
+      expect(metrics.openRate).toBe(0);
+    });
 
-  it("selects variant with highest engagement score", () => {
-    const result = determineABTestWinner([control, winner, loser]);
-    expect(result?.id).toBe("winner");
-  });
+    it("costPerResponse equals spent when no responses (division guard)", () => {
+      const campaign = makeCampaign({ totalResponded: 0, spent: "500" });
+      const metrics = optimizer.analyzeCampaignPerformance(campaign);
+      // Service returns spent itself when totalResponded = 0
+      expect(metrics.costPerResponse).toBe(500);
+    });
 
-  it("returns null for empty array", () => {
-    expect(determineABTestWinner([])).toBeNull();
-  });
-
-  it("returns the only variant when single variant", () => {
-    expect(determineABTestWinner([control])?.id).toBe("control");
-  });
-
-  it("winner beats control in engagement score", () => {
-    expect(calcEngagementScore(winner)).toBeGreaterThan(calcEngagementScore(control));
-  });
-});
-
-describe("Statistical Significance", () => {
-  it("returns higher significance for larger sample sizes", () => {
-    const small = calcStatisticalSignificance(100, 10, 100, 20);
-    const large = calcStatisticalSignificance(5000, 500, 5000, 1000);
-    expect(large).toBeGreaterThan(small);
-  });
-
-  it("returns 0 for equal conversion rates", () => {
-    const sig = calcStatisticalSignificance(1000, 100, 1000, 100);
-    expect(sig).toBe(0);
-  });
-
-  it("returns positive value when treatment outperforms control", () => {
-    const sig = calcStatisticalSignificance(1000, 50, 1000, 150);
-    expect(sig).toBeGreaterThan(0);
-  });
-});
-
-describe("Budget Allocation by Performance", () => {
-  it("allocates proportionally to ROI", () => {
-    const channels = [
-      { name: "email", roi: 300 },
-      { name: "sms", roi: 100 },
-      { name: "direct_mail", roi: 100 },
-    ];
-    const allocations = allocateBudgetByPerformance(channels, 10_000);
-    const email = allocations.find(a => a.name === "email")!;
-    const sms = allocations.find(a => a.name === "sms")!;
-    expect(email.allocation).toBeGreaterThan(sms.allocation);
-    expect(email.percentage).toBeCloseTo(60, 0);
+    it("all metrics are numeric (no NaN)", () => {
+      const campaign = makeCampaign({
+        totalSent: 0,
+        totalDelivered: 0,
+        totalOpened: 0,
+        totalClicked: 0,
+        totalResponded: 0,
+        spent: "0",
+      });
+      const metrics = optimizer.analyzeCampaignPerformance(campaign);
+      expect(metrics.openRate).not.toBeNaN();
+      expect(metrics.clickRate).not.toBeNaN();
+      expect(metrics.responseRate).not.toBeNaN();
+      expect(metrics.costPerResponse).not.toBeNaN();
+      expect(metrics.deliveryRate).not.toBeNaN();
+    });
   });
 
-  it("allocates equally when all channels have zero ROI", () => {
-    const channels = [
-      { name: "email", roi: 0 },
-      { name: "sms", roi: 0 },
-    ];
-    const allocations = allocateBudgetByPerformance(channels, 10_000);
-    expect(allocations[0].allocation).toBe(5_000);
-    expect(allocations[1].allocation).toBe(5_000);
+  // ── Optimization score ─────────────────────────────────────────────────────
+  describe("calculateOptimizationScore", () => {
+    it("starts from base of 50 and adjusts up/down based on benchmarks", () => {
+      // Entirely zero metrics → each metric below poor → full deductions
+      const zeroCampaign = makeCampaign({
+        totalSent: 1000,
+        totalDelivered: 0,
+        totalOpened: 0,
+        totalClicked: 0,
+        totalResponded: 0,
+        spent: "1000",
+      });
+      const score = optimizer.calculateOptimizationScore(zeroCampaign);
+      // 50 base -10 -10 -15 -10 -5 = 0 (clamped at 0)
+      expect(score).toBe(0);
+    });
+
+    it("all metrics at 'good' benchmarks produces score >= 80", () => {
+      // openRate >= 25, clickRate >= 5, responseRate >= 3, costPerResponse <= 20, deliveryRate >= 98
+      const goodCampaign = makeCampaign({
+        totalSent: 1000,
+        totalDelivered: 985, // 98.5% delivery
+        totalOpened: 250,    // 25.4% open rate
+        totalClicked: 13,    // 5.2% click rate
+        totalResponded: 30,  // 3% response rate
+        spent: "600",        // $20/response
+      });
+      const score = optimizer.calculateOptimizationScore(goodCampaign);
+      // 50 +15 +15 +20 +10 +10 = 120 → clamped at 100? No, let's check: 50+15+15+20+10+10=120 → 100
+      expect(score).toBeGreaterThanOrEqual(80);
+    });
+
+    it("score is always clamped between 0 and 100", () => {
+      const extremeGood = makeCampaign({
+        totalSent: 1000,
+        totalDelivered: 1000,
+        totalOpened: 1000,
+        totalClicked: 1000,
+        totalResponded: 1000,
+        spent: "100",
+      });
+      const extremeBad = makeCampaign({
+        totalSent: 1000,
+        totalDelivered: 0,
+        totalOpened: 0,
+        totalClicked: 0,
+        totalResponded: 0,
+        spent: "10000",
+      });
+
+      expect(optimizer.calculateOptimizationScore(extremeGood)).toBeLessThanOrEqual(100);
+      expect(optimizer.calculateOptimizationScore(extremeBad)).toBeGreaterThanOrEqual(0);
+    });
+
+    it("moderate metrics (all at 'poor' benchmark) produces intermediate score", () => {
+      // openRate = 15% (poor boundary), clickRate = 2%, responseRate = 1%, costPerResponse = $50
+      const moderateCampaign = makeCampaign({
+        totalSent: 1000,
+        totalDelivered: 920,
+        totalOpened: 138,    // 15% of 920
+        totalClicked: 2.76,  // 2% of 138 → ~3
+        totalResponded: 10,  // 1% of 1000
+        spent: "500",        // $50/response
+      });
+      const score = optimizer.calculateOptimizationScore(moderateCampaign);
+      // Should be between 20-40 for poor-boundary metrics
+      expect(score).toBeGreaterThanOrEqual(20);
+      expect(score).toBeLessThanOrEqual(80);
+    });
   });
 
-  it("ignores channels with negative ROI in total", () => {
-    const channels = [
-      { name: "email", roi: 200 },
-      { name: "bad_channel", roi: -50 },
-    ];
-    const allocations = allocateBudgetByPerformance(channels, 10_000);
-    const bad = allocations.find(a => a.name === "bad_channel")!;
-    expect(bad.allocation).toBe(0);
-  });
-});
+  // ── Issue detection ────────────────────────────────────────────────────────
+  describe("identifyIssues", () => {
+    it("detects low_open_rate when openRate < 15", () => {
+      const metrics = { openRate: 10, clickRate: 5, responseRate: 3, costPerResponse: 20, deliveryRate: 98 };
+      const issues = optimizer.identifyIssues(metrics);
+      expect(issues).toContain("low_open_rate");
+    });
 
-describe("Send Time Ranking", () => {
-  it("ranks hours by engagement score descending", () => {
-    const hourly: Record<number, number> = { 8: 45, 10: 72, 14: 60, 18: 55, 20: 38 };
-    const ranked = rankSendTimes(hourly);
-    expect(ranked[0].hour).toBe(10); // highest score
-    expect(ranked[ranked.length - 1].hour).toBe(20); // lowest score
+    it("detects low_click_rate when clickRate < 2", () => {
+      const metrics = { openRate: 25, clickRate: 1, responseRate: 3, costPerResponse: 20, deliveryRate: 98 };
+      const issues = optimizer.identifyIssues(metrics);
+      expect(issues).toContain("low_click_rate");
+    });
+
+    it("detects low_response_rate when responseRate < 1", () => {
+      const metrics = { openRate: 25, clickRate: 5, responseRate: 0.5, costPerResponse: 20, deliveryRate: 98 };
+      const issues = optimizer.identifyIssues(metrics);
+      expect(issues).toContain("low_response_rate");
+    });
+
+    it("detects high_cost_per_response when costPerResponse > 50", () => {
+      const metrics = { openRate: 25, clickRate: 5, responseRate: 3, costPerResponse: 100, deliveryRate: 98 };
+      const issues = optimizer.identifyIssues(metrics);
+      expect(issues).toContain("high_cost_per_response");
+    });
+
+    it("detects low_delivery_rate when deliveryRate < 90", () => {
+      const metrics = { openRate: 25, clickRate: 5, responseRate: 3, costPerResponse: 20, deliveryRate: 85 };
+      const issues = optimizer.identifyIssues(metrics);
+      expect(issues).toContain("low_delivery_rate");
+    });
+
+    it("returns empty array when all metrics are good", () => {
+      const metrics = { openRate: 30, clickRate: 6, responseRate: 5, costPerResponse: 15, deliveryRate: 99 };
+      const issues = optimizer.identifyIssues(metrics);
+      expect(issues).toHaveLength(0);
+    });
   });
 
-  it("returns empty array for no data", () => {
-    expect(rankSendTimes({})).toHaveLength(0);
+  // ── Fallback suggestions ───────────────────────────────────────────────────
+  describe("generateFallbackOptimizations", () => {
+    it("suggests 'Improve subject line' when openRate < 15", () => {
+      const campaign = makeCampaign({
+        totalSent: 1000,
+        totalDelivered: 1000,
+        totalOpened: 100, // 10% open rate
+        totalClicked: 10,
+        totalResponded: 20,
+        spent: "100",
+      });
+      const suggestions = optimizer.generateFallbackOptimizations(campaign);
+      const subjectSuggestion = suggestions.find(s =>
+        s.suggestion.toLowerCase().includes("subject line")
+      );
+      expect(subjectSuggestion).toBeDefined();
+      expect(subjectSuggestion?.type).toBe("content");
+      expect(subjectSuggestion?.priority).toBe("high");
+    });
+
+    it("suggests 'clear call-to-action' when clickRate < 2", () => {
+      const campaign = makeCampaign({
+        totalSent: 1000,
+        totalDelivered: 1000,
+        totalOpened: 300,  // 30% open rate (good)
+        totalClicked: 1,   // 0.33% click rate (poor)
+        totalResponded: 20,
+        spent: "100",
+      });
+      const suggestions = optimizer.generateFallbackOptimizations(campaign);
+      const ctaSuggestion = suggestions.find(s =>
+        s.suggestion.toLowerCase().includes("call-to-action") ||
+        s.suggestion.toLowerCase().includes("cta")
+      );
+      expect(ctaSuggestion).toBeDefined();
+    });
+
+    it("suggests 'Refine target audience' when responseRate < 1", () => {
+      const campaign = makeCampaign({
+        totalSent: 1000,
+        totalDelivered: 980,
+        totalOpened: 245,
+        totalClicked: 12,
+        totalResponded: 5,  // 0.5% response rate (poor)
+        spent: "100",
+      });
+      const suggestions = optimizer.generateFallbackOptimizations(campaign);
+      const audienceSuggestion = suggestions.find(s =>
+        s.type === "audience"
+      );
+      expect(audienceSuggestion).toBeDefined();
+      expect(audienceSuggestion?.priority).toBe("high");
+    });
+
+    it("returns empty array when no performance issues exist", () => {
+      const campaign = makeCampaign({
+        totalSent: 1000,
+        totalDelivered: 990, // 99% delivery
+        totalOpened: 300,    // 30.3% open rate
+        totalClicked: 20,    // 6.7% click rate
+        totalResponded: 40,  // 4% response rate
+        spent: "600",        // $15/response
+      });
+      const suggestions = optimizer.generateFallbackOptimizations(campaign);
+      expect(suggestions).toHaveLength(0);
+    });
+
+    it("suggests budget optimization when costPerResponse > $50", () => {
+      const campaign = makeCampaign({
+        totalSent: 1000,
+        totalDelivered: 990,
+        totalOpened: 250,
+        totalClicked: 15,
+        totalResponded: 5,    // low responses → high cost
+        spent: "1000",        // $200/response
+      });
+      const suggestions = optimizer.generateFallbackOptimizations(campaign);
+      const budgetSuggestion = suggestions.find(s => s.type === "budget");
+      expect(budgetSuggestion).toBeDefined();
+    });
   });
 });

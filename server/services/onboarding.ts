@@ -12,7 +12,14 @@ function getOpenAIClient(): OpenAI | null {
   return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 }
 
-export type BusinessType = "land_flipper" | "note_investor" | "hybrid";
+export type BusinessType =
+  | "land_flipper"
+  | "note_investor"
+  | "hybrid"
+  | "residential_wholesaler"
+  | "fix_and_flip"
+  | "buy_and_hold"
+  | "commercial";
 
 export type OnboardingData = {
   businessType?: BusinessType;
@@ -87,6 +94,104 @@ const NOTE_INVESTOR_TEMPLATES = {
   noteSettings: {
     defaultInterestRate: 9.5,
     defaultTermMonths: 60,
+    gracePeriodDays: 10,
+    lateFeePercent: 5,
+  },
+};
+
+const RESIDENTIAL_WHOLESALER_TEMPLATES = {
+  campaigns: [
+    {
+      name: "Motivated Seller Outreach",
+      type: "email",
+      status: "draft",
+      subject: "Quick Question About Your Home at {{address}}",
+      content: "Hi {{firstName}},\n\nMy name is [YOUR NAME] and I invest in homes in your area. I noticed your property and wanted to reach out directly — are you open to a fair cash offer?\n\nNo agents, no fees, no repairs needed. We close on your timeline.\n\nReply to this email or call/text me at [PHONE]. Takes 5 minutes to find out what your home is worth to us.\n\nBest,\n[YOUR NAME]",
+      targetCriteria: { leadStatus: ["new"], leadType: ["seller"] },
+    },
+    {
+      name: "Cash Buyer Campaign",
+      type: "email",
+      status: "draft",
+      subject: "New Deal Alert — {{city}} — {{beds}}bd/{{baths}}ba Below Market",
+      content: "Hey {{firstName}},\n\nI have a new deal that might be a fit for you:\n\n📍 [ADDRESS]\n💰 Asking: $[PRICE]\n🏠 [BEDS]bd / [BATHS]ba | [SQFT] sqft\n🔨 Estimated Repairs: $[REPAIR_COST]\n📈 ARV: $[ARV]\n\nThis one moves fast — reply or call [PHONE] if you want first look.\n\n[YOUR NAME]",
+      targetCriteria: { leadStatus: ["new"], leadType: ["buyer"] },
+    },
+  ],
+  defaultTags: ["cash buyer", "motivated seller", "distressed", "vacant", "pre-foreclosure", "probate", "absentee owner"],
+};
+
+const FIX_AND_FLIP_TEMPLATES = {
+  campaigns: [
+    {
+      name: "Distressed Property Outreach",
+      type: "direct_mail",
+      status: "draft",
+      subject: "We Buy Houses in Any Condition — [CITY]",
+      content: "Dear Property Owner,\n\nWe buy houses in any condition — no repairs, no agents, no hassle.\n\nIf your home needs work or you just want a fast, fair cash offer, we'd love to hear from you.\n\nCall or text: [PHONE]\nOr visit: [WEBSITE]\n\n[YOUR NAME]\n[COMPANY NAME]",
+      targetCriteria: { leadStatus: ["new"], leadType: ["seller"] },
+    },
+    {
+      name: "Contractor Follow-Up",
+      type: "email",
+      status: "draft",
+      subject: "Upcoming Rehab Project — Interested in Bidding?",
+      content: "Hi {{firstName}},\n\nWe have a new rehab project coming up and are collecting bids. The scope includes [SCOPE].\n\nProperty address: [ADDRESS]\nExpected start date: [DATE]\n\nIf you're available and interested, please reply with your availability for a walkthrough.\n\nThanks,\n[YOUR NAME]",
+      targetCriteria: { leadStatus: ["new"], leadType: ["seller"] },
+    },
+  ],
+  defaultTags: ["ARV", "cosmetic", "full rehab", "foundation issues", "bank owned", "short sale", "auction"],
+  noteSettings: {
+    defaultInterestRate: 12.0,
+    defaultTermMonths: 12,
+    gracePeriodDays: 5,
+    lateFeePercent: 5,
+  },
+};
+
+const BUY_AND_HOLD_TEMPLATES = {
+  campaigns: [
+    {
+      name: "Off-Market Rental Acquisition",
+      type: "direct_mail",
+      status: "draft",
+      subject: "Interested in a Hassle-Free Sale on Your Rental Property?",
+      content: "Dear Property Owner,\n\nWe're actively looking for rental properties to add to our portfolio. If you're thinking about selling, we offer:\n\n- Fair cash offers\n- No tenant displacement required\n- Quick, flexible closings\n\nGive us a call at [PHONE] or reply to this letter.\n\n[YOUR NAME]\n[COMPANY NAME]",
+      targetCriteria: { leadStatus: ["new"], leadType: ["seller"] },
+    },
+    {
+      name: "Seller Finance Offer",
+      type: "email",
+      status: "draft",
+      subject: "Alternative to a Traditional Sale — Owner Financing",
+      content: "Hi {{firstName}},\n\nHave you considered seller financing your property? Instead of a lump sum, you'd receive monthly payments — often at a higher effective price with tax advantages.\n\nWe're experienced buyer-investors and can structure a deal that works for both of us.\n\nWould you be open to a short call? Reply here or call [PHONE].\n\n[YOUR NAME]",
+      targetCriteria: { leadStatus: ["new"], leadType: ["seller"] },
+    },
+  ],
+  defaultTags: ["SFR", "duplex", "triplex", "multi-family", "STR potential", "cash flow", "value-add"],
+  noteSettings: {
+    defaultInterestRate: 6.5,
+    defaultTermMonths: 360,
+    gracePeriodDays: 15,
+    lateFeePercent: 5,
+  },
+};
+
+const COMMERCIAL_TEMPLATES = {
+  campaigns: [
+    {
+      name: "Off-Market Commercial Outreach",
+      type: "email",
+      status: "draft",
+      subject: "Confidential Inquiry — Your Property at {{address}}",
+      content: "Dear {{firstName}},\n\nI represent a private investment group actively acquiring commercial properties in [MARKET]. We've identified your property as potentially fitting our criteria.\n\nIf you have any interest in a confidential, off-market discussion, I'd welcome a brief call at your convenience.\n\nI can be reached at [PHONE] or simply reply to this email.\n\nBest regards,\n[YOUR NAME]\n[COMPANY NAME]",
+      targetCriteria: { leadStatus: ["new"], leadType: ["seller"] },
+    },
+  ],
+  defaultTags: ["NNN", "mixed-use", "retail strip", "office", "industrial", "value-add", "stabilized"],
+  noteSettings: {
+    defaultInterestRate: 7.0,
+    defaultTermMonths: 120,
     gracePeriodDays: 10,
     lateFeePercent: 5,
   },
@@ -182,13 +287,57 @@ export class OnboardingService {
         campaignsCreated++;
       }
       allTags = [...allTags, ...NOTE_INVESTOR_TEMPLATES.defaultTags];
-      
+
       const settings = (org.settings as any) || {};
       await storage.updateOrganization(orgId, {
         settings: {
           ...settings,
           ...NOTE_INVESTOR_TEMPLATES.noteSettings,
         },
+      });
+    }
+
+    if (businessType === "residential_wholesaler") {
+      for (const campaignTemplate of RESIDENTIAL_WHOLESALER_TEMPLATES.campaigns) {
+        await storage.createCampaign({ organizationId: orgId, ...campaignTemplate });
+        campaignsCreated++;
+      }
+      allTags = [...allTags, ...RESIDENTIAL_WHOLESALER_TEMPLATES.defaultTags];
+    }
+
+    if (businessType === "fix_and_flip") {
+      for (const campaignTemplate of FIX_AND_FLIP_TEMPLATES.campaigns) {
+        await storage.createCampaign({ organizationId: orgId, ...campaignTemplate });
+        campaignsCreated++;
+      }
+      allTags = [...allTags, ...FIX_AND_FLIP_TEMPLATES.defaultTags];
+      const settings = (org.settings as any) || {};
+      await storage.updateOrganization(orgId, {
+        settings: { ...settings, ...FIX_AND_FLIP_TEMPLATES.noteSettings },
+      });
+    }
+
+    if (businessType === "buy_and_hold") {
+      for (const campaignTemplate of BUY_AND_HOLD_TEMPLATES.campaigns) {
+        await storage.createCampaign({ organizationId: orgId, ...campaignTemplate });
+        campaignsCreated++;
+      }
+      allTags = [...allTags, ...BUY_AND_HOLD_TEMPLATES.defaultTags];
+      const settings = (org.settings as any) || {};
+      await storage.updateOrganization(orgId, {
+        settings: { ...settings, ...BUY_AND_HOLD_TEMPLATES.noteSettings },
+      });
+    }
+
+    if (businessType === "commercial") {
+      for (const campaignTemplate of COMMERCIAL_TEMPLATES.campaigns) {
+        await storage.createCampaign({ organizationId: orgId, ...campaignTemplate });
+        campaignsCreated++;
+      }
+      allTags = [...allTags, ...COMMERCIAL_TEMPLATES.defaultTags];
+      const settings = (org.settings as any) || {};
+      await storage.updateOrganization(orgId, {
+        settings: { ...settings, ...COMMERCIAL_TEMPLATES.noteSettings },
       });
     }
 
@@ -223,6 +372,16 @@ export class OnboardingService {
     const onboardingData = (org.onboardingData as OnboardingData) || {};
     const businessType = onboardingData.businessType || "land_flipper";
 
+    const businessTypeLabels: Record<string, string> = {
+      land_flipper: "land flipper",
+      note_investor: "note investor / seller financier",
+      hybrid: "hybrid investor (land flipping + seller financing)",
+      residential_wholesaler: "residential wholesaler",
+      fix_and_flip: "fix and flip investor",
+      buy_and_hold: "buy and hold / rental investor",
+      commercial: "commercial real estate investor",
+    };
+
     const stepInfo = ONBOARDING_STEPS[step];
     if (!stepInfo) {
       return this.getDefaultTips(step);
@@ -234,8 +393,8 @@ export class OnboardingService {
         messages: [
           {
             role: "system",
-            content: `You are an AI assistant helping land investors get started with their business. 
-The user is a ${businessType === "land_flipper" ? "land flipper" : businessType === "note_investor" ? "note investor" : "hybrid land flipper and note investor"}.
+            content: `You are an AI assistant helping real estate investors get started with their business.
+The user is a ${businessTypeLabels[businessType] ?? businessType}.
 Provide 3 brief, actionable tips for the current onboarding step. Keep each tip under 50 words.
 Return only the tips as a JSON array of strings.`,
           },
@@ -369,6 +528,79 @@ Generate 3 helpful tips for this step.`,
           status: "negotiating",
           offerAmount: "45000",
           notes: "Sedona Parcel - Martinez Deal",
+        } as any);
+      } else if (businessType === "residential_wholesaler") {
+        await storage.createLead({
+          organizationId: orgId, type: "seller", firstName: "Mike", lastName: "Torres",
+          email: "m.torres@example.com", phone: "555-0301", address: "1842 Elm St",
+          city: "Houston", state: "TX", zip: "77001", status: "new", source: "direct_mail",
+          tags: ["distressed", "absentee owner"], notes: "Vacant property, taxes behind 2 years",
+        } as any);
+        await storage.createLead({
+          organizationId: orgId, type: "buyer", firstName: "Dana", lastName: "Koch",
+          email: "d.koch@example.com", phone: "555-0302", address: "500 Investor Ave",
+          city: "Houston", state: "TX", zip: "77002", status: "new", source: "referral",
+          tags: ["cash buyer"], notes: "Buys 2-4 SFH per month in Houston metro",
+        } as any);
+        const wsProperty = await storage.createProperty({
+          organizationId: orgId, county: "Harris", state: "TX", address: "1842 Elm St",
+          city: "Houston", zip: "77001", status: "prospect", marketValue: "185000",
+          purchasePrice: null,
+        } as any);
+        await storage.createDeal({
+          organizationId: orgId, propertyId: wsProperty.id, type: "acquisition",
+          status: "negotiating", offerAmount: "140000", notes: "Wholesale — targeting $15k assignment fee",
+        } as any);
+      } else if (businessType === "fix_and_flip") {
+        await storage.createLead({
+          organizationId: orgId, type: "seller", firstName: "Gary", lastName: "Holt",
+          email: "g.holt@example.com", phone: "555-0401", address: "309 Birch Dr",
+          city: "Atlanta", state: "GA", zip: "30301", status: "new", source: "direct_mail",
+          tags: ["distressed", "full rehab"], notes: "Inherited property, needs full renovation",
+        } as any);
+        const ffProperty = await storage.createProperty({
+          organizationId: orgId, county: "Fulton", state: "GA", address: "309 Birch Dr",
+          city: "Atlanta", zip: "30301", status: "prospect", marketValue: "320000",
+          purchasePrice: null,
+        } as any);
+        await storage.createDeal({
+          organizationId: orgId, propertyId: ffProperty.id, type: "acquisition",
+          status: "negotiating", offerAmount: "165000",
+          notes: "Fix & flip — ARV $320k, est. rehab $85k, target profit $45k",
+        } as any);
+      } else if (businessType === "buy_and_hold") {
+        await storage.createLead({
+          organizationId: orgId, type: "seller", firstName: "Pat", lastName: "Sullivan",
+          email: "p.sullivan@example.com", phone: "555-0501", address: "77 Maple Blvd",
+          city: "Columbus", state: "OH", zip: "43201", status: "new", source: "direct_mail",
+          tags: ["SFR", "value-add"], notes: "Landlord tired of managing, ready to sell",
+        } as any);
+        const bhProperty = await storage.createProperty({
+          organizationId: orgId, county: "Franklin", state: "OH", address: "77 Maple Blvd",
+          city: "Columbus", zip: "43201", status: "prospect", marketValue: "145000",
+          purchasePrice: null,
+        } as any);
+        await storage.createDeal({
+          organizationId: orgId, propertyId: bhProperty.id, type: "acquisition",
+          status: "negotiating", offerAmount: "118000",
+          notes: "Buy & hold — current rent $1,100/mo, target cap rate 6.5%",
+        } as any);
+      } else if (businessType === "commercial") {
+        await storage.createLead({
+          organizationId: orgId, type: "seller", firstName: "Lynn", lastName: "Park",
+          email: "l.park@example.com", phone: "555-0601", address: "1200 Commerce Pkwy",
+          city: "Dallas", state: "TX", zip: "75201", status: "new", source: "referral",
+          tags: ["NNN", "retail strip"], notes: "Owner retiring, open to seller financing",
+        } as any);
+        const commProperty = await storage.createProperty({
+          organizationId: orgId, county: "Dallas", state: "TX", address: "1200 Commerce Pkwy",
+          city: "Dallas", zip: "75201", status: "prospect", marketValue: "2100000",
+          purchasePrice: null,
+        } as any);
+        await storage.createDeal({
+          organizationId: orgId, propertyId: commProperty.id, type: "acquisition",
+          status: "negotiating", offerAmount: "1850000",
+          notes: "Commercial NNN — 3 tenants, 8% cap rate target",
         } as any);
       } else if (businessType === "note_investor") {
         // Sample leads for note investor

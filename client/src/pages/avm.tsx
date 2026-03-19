@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { DisclaimerBanner } from '@/components/disclaimer-banner';
+import { RequiredDisclaimer } from '@/components/required-disclaimer';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -338,6 +339,7 @@ export default function AVMPage() {
     <div className="container mx-auto p-6 space-y-6">
       {/* AVM disclaimer — required for legal compliance (Task #253) */}
       <DisclaimerBanner type="avm" />
+      <RequiredDisclaimer type="valuation" />
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>

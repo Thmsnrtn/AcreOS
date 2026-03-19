@@ -216,14 +216,38 @@ export class LeadScoringService {
   }
 
   private async geocodeAddress(
-    address: string | null, 
-    city: string | null, 
-    state: string | null, 
+    address: string | null,
+    city: string | null,
+    state: string | null,
     zip: string | null
   ): Promise<{ lat: number; lng: number } | null> {
     if (!address || !state) return null;
-    
-    return null;
+
+    const parts = [address, city, state, zip].filter(Boolean);
+    const query = encodeURIComponent(parts.join(', '));
+
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=1&countrycodes=us`,
+        {
+          headers: {
+            'User-Agent': 'AcreOS/1.0 (land-investing-platform)',
+            'Accept-Language': 'en'
+          }
+        }
+      );
+
+      if (!response.ok) return null;
+
+      const results = await response.json();
+      if (!results || results.length === 0) return null;
+
+      const { lat, lon } = results[0];
+      return { lat: parseFloat(lat), lng: parseFloat(lon) };
+    } catch (error) {
+      console.warn('[LeadScoring] Geocoding failed:', error);
+      return null;
+    }
   }
 
   private async calculateFactors(
@@ -245,23 +269,7 @@ export class LeadScoringService {
     factors.responseRecency = await this.calcResponseRecency(lead, profile.responseRecencyWeight || 25);
     factors.emailEngagement = await this.calcEmailEngagement(lead, profile.emailEngagementWeight || 15);
     factors.campaignTouches = await this.calcCampaignTouches(lead, profile.campaignTouchesWeight || 10);
-
-    // Epic C: 15 new AcreScore Pro signals
-    factors.distanceOwnerToProperty = await this.calcDistanceOwnerToProperty(lead, enrichment);
-    factors.ownerAgeSignal = await this.calcOwnerAgeSignal(lead, enrichment);
-    factors.blmAdjacency = await this.calcBLMAdjacency(enrichment);
-    factors.wildfireRiskPenalty = await this.calcWildfireRiskPenalty(enrichment);
-    factors.disasterHistoryPenalty = await this.calcDisasterHistoryPenalty(lead, enrichment);
-    factors.endangeredSpeciesPenalty = await this.calcEndangeredSpeciesPenalty(enrichment);
-    factors.multipleLiens = await this.calcMultipleLiens(lead, enrichment);
-    factors.noStructure = await this.calcNoStructure(lead, enrichment);
-    factors.daysOnMarket = await this.calcDaysOnMarket(lead, enrichment);
-    factors.priceReduction = await this.calcPriceReduction(lead, enrichment);
-    factors.countyAbsorption = await this.calcCountyAbsorption(lead, enrichment);
-    factors.outOfStateTaxDelinquent = await this.calcOutOfStateTaxDelinquentCombo(lead, enrichment);
-    factors.forestLandCover = await this.calcForestLandCover(enrichment);
-    factors.lowDevelopmentEncroachment = await this.calcLowDevelopmentEncroachment(enrichment);
-    factors.soilNccpi = await this.calcSoilNccpi(enrichment);
+    factors.priorResponseHistory = await this.calcPriorResponseHistory(lead, profile);
 
     return factors;
   }
@@ -615,6 +623,36 @@ export class LeadScoringService {
       weight,
       explanation: touches > 0 ? `${touches} campaign touches` : "No campaign touches yet",
       rawData: { touches },
+    };
+  }
+
+  private async calcPriorResponseHistory(lead: Lead, profile: LeadScoringProfile): Promise<ScoreFactorResult> {
+    // If lead has been contacted 3+ times without responding, reduce score
+    // If lead has responded previously, boost score significantly
+    const touches = Number(lead.responses || 0);
+    const hasResponse = lead.status === "responding" || lead.status === "hot" || lead.status === "contacted";
+    const isUnresponsive = touches >= 3 && !hasResponse;
+
+    let scoreMultiplier = 0.5; // neutral
+    let explanation = "No prior response history";
+
+    if (hasResponse) {
+      scoreMultiplier = 1.0;
+      explanation = "Lead has previously responded — high likelihood of engagement";
+    } else if (isUnresponsive && touches >= 5) {
+      scoreMultiplier = 0.0;
+      explanation = `Lead has been contacted ${touches}× without response — suppress from campaigns`;
+    } else if (isUnresponsive && touches >= 3) {
+      scoreMultiplier = 0.2;
+      explanation = `Lead contacted ${touches}× without response — low priority`;
+    }
+
+    const weight = 20; // significant weight
+    return {
+      value: hasResponse ? "responded" : `${touches} touches, no response`,
+      score: weight * scoreMultiplier * 4,
+      weight,
+      explanation,
     };
   }
 

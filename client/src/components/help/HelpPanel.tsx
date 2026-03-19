@@ -240,7 +240,7 @@ const helpTopics = [
   {
     category: "AI Assistant",
     items: [
-      { title: "Talking to Atlas", description: "Your AI assistant can help with research, analysis, and tasks" },
+      { title: "Talking to Pax", description: "Your AI assistant can help with research, analysis, and tasks" },
       { title: "Generating offers", description: "Let AI create offer letters based on property data" },
     ]
   },
@@ -291,10 +291,10 @@ const troubleshootingCategories = [
     description: "Records not showing, imports failed, or data disappeared"
   },
   { 
-    id: "ai_atlas", 
-    title: "AI Assistant (Atlas)", 
+    id: "ai_pax", 
+    title: "AI Assistant (Pax)", 
     icon: Zap, 
-    description: "Atlas not responding, errors, or unexpected behavior"
+    description: "Pax not responding, errors, or unexpected behavior"
   },
   { 
     id: "map_gis", 
@@ -329,49 +329,49 @@ const wizardSteps: Record<string, WizardStep[]> = {
     { step: 1, action: "Check your browser", details: "Try clearing your browser cache or using incognito/private mode.", selfCheck: "Did the page reload properly?", fixAction: "Clear cache and try again" },
     { step: 2, action: "Try a different browser", details: "Some extensions can interfere with login. Try Chrome, Firefox, or Safari.", selfCheck: "Can you log in with a different browser?" },
     { step: 3, action: "Check your subscription", details: "Make sure your subscription is active in the billing section.", selfCheck: "Is your subscription active?" },
-    { step: 4, action: "Still having issues?", details: "If none of the above worked, click the button below to get help from Sophie.", fixAction: "Chat with Sophie" },
+    { step: 4, action: "Still having issues?", details: "If none of the above worked, click the button below to get help from Pax.", fixAction: "Chat with Pax" },
   ],
   sync_refresh: [
     { step: 1, action: "Hard refresh the page", details: "Press Ctrl+Shift+R (Windows) or Cmd+Shift+R (Mac) to force a full refresh.", selfCheck: "Did the data update?" },
     { step: 2, action: "Check your internet connection", details: "Make sure you have a stable internet connection.", selfCheck: "Is your connection stable?" },
     { step: 3, action: "Wait a moment", details: "Sometimes data syncs take a few seconds. Wait 30 seconds and refresh.", selfCheck: "Did the data appear after waiting?" },
-    { step: 4, action: "Still having issues?", details: "If data is still not syncing, Sophie can investigate and help.", fixAction: "Chat with Sophie" },
+    { step: 4, action: "Still having issues?", details: "If data is still not syncing, Pax can investigate and help.", fixAction: "Chat with Pax" },
   ],
   billing_payment: [
     { step: 1, action: "Check your payment method", details: "Make sure your card on file is not expired and has available funds.", selfCheck: "Is your payment method valid?" },
     { step: 2, action: "Check for failed payments", details: "Go to Settings > Billing to see if there are any failed payment attempts.", selfCheck: "Were there any failed payments?" },
     { step: 3, action: "Review your subscription", details: "Verify your plan is correct in Settings > Billing.", selfCheck: "Is your plan what you expected?" },
-    { step: 4, action: "Need more help?", details: "For billing questions, Sophie can check your account status.", fixAction: "Chat with Sophie" },
+    { step: 4, action: "Need more help?", details: "For billing questions, Pax can check your account status.", fixAction: "Chat with Pax" },
   ],
   missing_data: [
     { step: 1, action: "Check your filters", details: "Make sure you don't have any filters applied that might be hiding records.", selfCheck: "Are any filters hiding your data?" },
     { step: 2, action: "Try the search function", details: "Use the search bar to look for the specific record by name or ID.", selfCheck: "Did you find the record?" },
     { step: 3, action: "Check recent activity", details: "Look at your recent activity to see if the record was modified or deleted.", selfCheck: "Was the record recently changed?" },
-    { step: 4, action: "Data still missing?", details: "Sophie can run diagnostics on your data and help recover it.", fixAction: "Chat with Sophie" },
+    { step: 4, action: "Data still missing?", details: "Pax can run diagnostics on your data and help recover it.", fixAction: "Chat with Pax" },
   ],
-  ai_atlas: [
+  ai_pax: [
     { step: 1, action: "Check your AI credits", details: "Go to Settings > Billing to verify you have available AI credits.", selfCheck: "Do you have AI credits remaining?" },
     { step: 2, action: "Try a simpler request", details: "Sometimes complex requests can timeout. Try a shorter, simpler question.", selfCheck: "Did a simpler request work?" },
     { step: 3, action: "Refresh and retry", details: "Refresh the page and try your request again.", selfCheck: "Did the request work after refresh?" },
-    { step: 4, action: "Still not working?", details: "Sophie can check the AI service status and help resolve issues.", fixAction: "Chat with Sophie" },
+    { step: 4, action: "Still not working?", details: "Pax can check the AI service status and help resolve issues.", fixAction: "Chat with Pax" },
   ],
   map_gis: [
     { step: 1, action: "Check your browser", details: "Maps require WebGL. Try a modern browser like Chrome or Firefox.", selfCheck: "Does the map load in another browser?" },
     { step: 2, action: "Allow location access", details: "Some map features need location permissions. Check your browser settings.", selfCheck: "Did you enable location access?" },
     { step: 3, action: "Check property address", details: "Make sure the property has a valid address with state and county.", selfCheck: "Does the property have address data?" },
-    { step: 4, action: "Map still not working?", details: "Sophie can check the GIS services and help with parcel data.", fixAction: "Chat with Sophie" },
+    { step: 4, action: "Map still not working?", details: "Pax can check the GIS services and help with parcel data.", fixAction: "Chat with Pax" },
   ],
   slow_performance: [
     { step: 1, action: "Close other tabs", details: "Too many open tabs can slow down your browser. Close unused tabs.", selfCheck: "Did closing tabs help?" },
     { step: 2, action: "Clear browser cache", details: "Old cached data can cause slowness. Clear your browser cache.", selfCheck: "Did clearing cache improve speed?" },
     { step: 3, action: "Check your internet", details: "Run a speed test to ensure your connection is stable.", selfCheck: "Is your internet connection fast enough?" },
-    { step: 4, action: "Still slow?", details: "Sophie can check if there are any system-wide issues.", fixAction: "Chat with Sophie" },
+    { step: 4, action: "Still slow?", details: "Pax can check if there are any system-wide issues.", fixAction: "Chat with Pax" },
   ],
   notifications: [
     { step: 1, action: "Check spam folder", details: "Our emails sometimes get filtered. Check your spam/junk folder.", selfCheck: "Were emails in your spam folder?" },
     { step: 2, action: "Verify your email", details: "Make sure your email address is correct in Settings > Profile.", selfCheck: "Is your email address correct?" },
     { step: 3, action: "Check notification settings", details: "Verify notifications are enabled in Settings > Notifications.", selfCheck: "Are notifications enabled?" },
-    { step: 4, action: "Still not receiving emails?", details: "Sophie can check delivery logs and help troubleshoot.", fixAction: "Chat with Sophie" },
+    { step: 4, action: "Still not receiving emails?", details: "Pax can check delivery logs and help troubleshoot.", fixAction: "Chat with Pax" },
   ],
 };
 
@@ -509,7 +509,7 @@ function TroubleshootingWizard() {
                             </Button>
                           </>
                         )}
-                        {step.fixAction === "Chat with Sophie" && (
+                        {step.fixAction === "Chat with Pax" && (
                           <Button 
                             size="sm"
                             onClick={() => {
@@ -519,7 +519,7 @@ function TroubleshootingWizard() {
                             data-testid={`wizard-step-${index}-chat`}
                           >
                             <MessageCircle className="w-3 h-3 mr-1" />
-                            Chat with Sophie
+                            Chat with Pax
                           </Button>
                         )}
                       </div>
@@ -728,7 +728,7 @@ export function HelpPanel() {
                 <div className="space-y-2" data-testid="proactive-alerts-section">
                   <div className="flex items-center gap-2 text-sm font-medium text-amber-600 dark:text-amber-400">
                     <Bell className="h-4 w-4" />
-                    Sophie noticed some issues
+                    Pax noticed some issues
                   </div>
                   {activeAlerts.slice(0, 3).map((alert) => (
                     <Card 
@@ -770,7 +770,7 @@ export function HelpPanel() {
                           data-testid={`button-ask-about-alert-${alert.id}`}
                         >
                           <Sparkles className="h-3 w-3 mr-1" />
-                          Ask Sophie to help fix this
+                          Ask Pax to help fix this
                         </Button>
                       </CardContent>
                     </Card>
@@ -789,7 +789,7 @@ export function HelpPanel() {
                 data-testid="button-new-support-ticket"
               >
                 <Sparkles className="h-4 w-4" />
-                Chat with Sophie (AI Support)
+                Chat with Pax (AI Support)
               </Button>
 
               {tickets.length > 0 && (
@@ -833,7 +833,7 @@ export function HelpPanel() {
                 <div className="text-center py-6 text-muted-foreground">
                   <MessageCircle className="h-8 w-8 mx-auto mb-2 opacity-50" />
                   <p className="text-sm">No support conversations yet</p>
-                  <p className="text-xs">Sophie can help with technical issues, account questions, and more</p>
+                  <p className="text-xs">Pax can help with technical issues, account questions, and more</p>
                 </div>
               )}
             </div>
@@ -855,7 +855,7 @@ export function HelpPanel() {
               <div className="flex items-center gap-2 p-3 bg-primary/5 rounded-lg mb-4">
                 <Sparkles className="h-5 w-5 text-primary" />
                 <div>
-                  <p className="font-medium text-sm">Chat with Sophie</p>
+                  <p className="font-medium text-sm">Chat with Pax</p>
                   <p className="text-xs text-muted-foreground">AI-powered support assistant</p>
                 </div>
               </div>
@@ -1007,7 +1007,7 @@ export function HelpPanel() {
                       <div className="bg-card border rounded-lg px-3 py-2 text-sm">
                         <div className="flex items-center gap-2 text-muted-foreground">
                           <Loader2 className="h-4 w-4 animate-spin" />
-                          Sophie is thinking...
+                          Pax is thinking...
                         </div>
                       </div>
                     </div>

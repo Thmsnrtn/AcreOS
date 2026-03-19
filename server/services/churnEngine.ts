@@ -2,7 +2,7 @@
  * churnEngine.ts
  *
  * Scores every paying organization on a 0–100 churn risk scale and
- * automatically triggers Sophie re-engagement for high-risk orgs.
+ * automatically triggers Pax re-engagement for high-risk orgs.
  *
  * Scoring signals (weighted):
  *   30pts — Days since last org activity (login / entity creation)
@@ -257,7 +257,7 @@ async function triggerRescue(
     orgId,
     job: "churn_engine",
     action: "rescue_email_sent",
-    summary: `Sophie sent re-engagement email to ${orgName} (churn risk score: ${riskScore})`,
+    summary: `Pax sent re-engagement email to ${orgName} (churn risk score: ${riskScore})`,
     metadata: { riskScore },
   });
 }

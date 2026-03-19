@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { sanitizeHtml } from "@/lib/sanitize";
+import DOMPurify from "isomorphic-dompurify";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -1016,7 +1016,7 @@ export default function DocumentsPage() {
             <div 
               className="prose dark:prose-invert max-w-none p-4 bg-background rounded-lg"
               dangerouslySetInnerHTML={{
-                __html: sanitizeHtml(previewTemplate?.content || previewDocument?.content || "")
+                __html: DOMPurify.sanitize(previewTemplate?.content || previewDocument?.content || "")
               }}
             />
           </ScrollArea>

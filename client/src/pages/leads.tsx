@@ -1,4 +1,5 @@
 import { PageShell } from "@/components/page-shell";
+import { PaxContextButton } from "@/components/pax-context-button";
 import { useLeads, useCreateLead, useUpdateLead, useDeleteLead } from "@/hooks/use-leads";
 import { useProperties } from "@/hooks/use-properties";
 import { useTeamMembers, useUserPermissions, getRoleBadgeStyle, getRoleLabel } from "@/hooks/use-organization";
@@ -635,7 +636,7 @@ function TcpaConsentBadge({ lead }: { lead: Lead }) {
 }
 
 export default function LeadsPage() {
-  const { data: leads, isLoading } = useLeads();
+  const { data: leads, isLoading, error, refetch } = useLeads();
   const { data: properties } = useProperties();
   const [, setLocation] = useLocation();
   const searchString = useSearch();
@@ -954,9 +955,22 @@ export default function LeadsPage() {
     }
   };
 
+  if (error) {
+    return (
+      <PageShell>
+        <div className="flex flex-col items-center justify-center py-16 text-center" data-testid="error-state-leads">
+          <AlertCircle className="w-12 h-12 text-destructive mb-4" />
+          <h3 className="text-lg font-semibold mb-2">Failed to load leads</h3>
+          <p className="text-muted-foreground mb-4">{(error as Error).message || 'Something went wrong'}</p>
+          <Button onClick={() => refetch()} variant="outline">Try again</Button>
+        </div>
+      </PageShell>
+    );
+  }
+
   return (
     <PageShell>
-          
+
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             {leadsError && (
               <InlineError 
@@ -1393,7 +1407,14 @@ export default function LeadsPage() {
                                 />
                               </TableCell>
                               <TableCell className="font-medium">
-                                {lead.firstName} {lead.lastName}
+                                <div className="flex items-center gap-1.5">
+                                  <span>{lead.firstName} {lead.lastName}</span>
+                                  <PaxContextButton
+                                    entityType="lead"
+                                    entityId={lead.id}
+                                    entityName={`${lead.firstName} ${lead.lastName}`}
+                                  />
+                                </div>
                               </TableCell>
                               <TableCell>
                                 <div className="flex items-center gap-2 flex-wrap">

@@ -2190,7 +2190,7 @@ const browserResearchSkill: Skill = {
 };
 
 // ============================================
-// SOPHIE HIGH-VALUE LAND INVESTING SKILLS
+// PAX HIGH-VALUE LAND INVESTING SKILLS
 // ============================================
 
 const scoreLeadInputSchema = z.object({
@@ -2672,7 +2672,7 @@ export class SkillRegistry {
     this.registerSkill(gisEnvironmentalLookupSkill);
     this.registerSkill(gisInfrastructureLookupSkill);
     this.registerSkill(gisHazardsLookupSkill);
-    // Sophie high-value land investing skills
+    // Pax high-value land investing skills
     this.registerSkill(scoreLeadSkill);
     this.registerSkill(draftOfferLetterSkill);
     this.registerSkill(analyzeNoteSkill);

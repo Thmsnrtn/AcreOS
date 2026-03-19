@@ -52,10 +52,10 @@ export function QuickActionsMenu() {
     },
     {
       icon: Sparkles,
-      label: "Ask Atlas",
+      label: "Ask Pax",
       href: "/command-center",
       color: "bg-amber-500 hover:bg-amber-600",
-      testId: "quick-action-atlas",
+      testId: "quick-action-pax",
     },
   ];
 

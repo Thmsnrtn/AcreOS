@@ -1,4 +1,5 @@
 import { PageShell } from "@/components/page-shell";
+import { PaxContextButton } from "@/components/pax-context-button";
 import { useProperties, useCreateProperty, useDeleteProperty, useEnrichProperty } from "@/hooks/use-properties";
 import { queryClient } from "@/lib/queryClient";
 import { telemetry } from "@/lib/telemetry";
@@ -6,7 +7,8 @@ import { ListSkeleton } from "@/components/list-skeleton";
 import { InlineError } from "@/components/inline-error";
 import { useDelayedLoading } from "@/hooks/use-delayed-loading";
 import { useFetchPropertyParcel, useFetchAllParcels } from "@/hooks/use-parcels";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { useOrganization } from "@/hooks/use-organization";
 import { useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
@@ -130,7 +132,9 @@ import { useEffect } from "react";
 import { Bot } from "lucide-react";
 
 export default function PropertiesPage() {
-  const { data: properties, isLoading, isError, error, refetch, isRefetching } = useProperties();
+  const propertiesQuery = useProperties();
+  const { data: properties, isLoading, isError, error, isRefetching } = propertiesQuery;
+  const refetch = propertiesQuery.refetch;
   const delayedLoading = useDelayedLoading(isLoading, 200);
   const searchString = useSearch();
   const urlParams = new URLSearchParams(searchString);
@@ -394,10 +398,22 @@ export default function PropertiesPage() {
     }
   };
 
+  if (error) {
+    return (
+      <PageShell>
+        <div className="flex flex-col items-center justify-center py-16 text-center" data-testid="error-state-properties">
+          <AlertCircle className="w-12 h-12 text-destructive mb-4" />
+          <h3 className="text-lg font-semibold mb-2">Failed to load properties</h3>
+          <p className="text-muted-foreground mb-4">{(error as Error).message || 'Something went wrong'}</p>
+          <Button onClick={() => refetch()} variant="outline">Try again</Button>
+        </div>
+      </PageShell>
+    );
+  }
+
   return (
     <PageShell>
-        
-          
+
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <h1 className="text-3xl font-bold" data-testid="text-page-title">Inventory</h1>
@@ -938,7 +954,14 @@ function PropertyCard({ property, onDelete }: {
       </div>
       <CardContent className="p-4">
         <div className="mb-3">
-          <h3 className="font-bold text-base truncate">{property.county}, {property.state}</h3>
+          <div className="flex items-center gap-1.5">
+            <h3 className="font-bold text-base truncate">{property.county}, {property.state}</h3>
+            <PaxContextButton
+              entityType="property"
+              entityId={property.id}
+              entityName={`${property.county}, ${property.state}`}
+            />
+          </div>
           <p className="text-xs text-muted-foreground font-mono">APN: {property.apn}</p>
         </div>
         
@@ -1033,12 +1056,19 @@ function PropertyCard({ property, onDelete }: {
   );
 }
 
+const LAND_INVESTOR_TYPES = ["land_flipper", "note_investor", "hybrid"];
+
 function PropertyForm({ onSuccess }: { onSuccess: () => void }) {
   const { mutate, isPending } = useCreateProperty();
+  const { data: organization } = useOrganization();
+  const businessType = (organization?.onboardingData as any)?.businessType as string | undefined;
+  const isLandType = !businessType || LAND_INVESTOR_TYPES.includes(businessType);
+  const [showLandDetails, setShowLandDetails] = useState(isLandType);
+
   const form = useForm<z.infer<typeof propertyFormSchema>>({
     resolver: zodResolver(propertyFormSchema),
     defaultValues: {
-      apn: "",
+      apn: isLandType ? "" : "N/A",
       sizeAcres: "",
       county: "",
       state: "",
@@ -1049,7 +1079,18 @@ function PropertyForm({ onSuccess }: { onSuccess: () => void }) {
     }
   });
 
+  // Keep APN default in sync if businessType loads asynchronously
+  useEffect(() => {
+    if (!isLandType && !form.getValues("apn")) {
+      form.setValue("apn", "N/A");
+    }
+  }, [isLandType, form]);
+
   const onSubmit = (data: z.infer<typeof propertyFormSchema>) => {
+    // Ensure APN is never empty for non-land types
+    if (!isLandType && (!data.apn || data.apn.trim() === "")) {
+      data.apn = "N/A";
+    }
     mutate(data, {
       onSuccess: () => {
         telemetry.actionCompleted('property_created', { county: data.county, state: data.state, acres: data.sizeAcres });
@@ -1061,34 +1102,78 @@ function PropertyForm({ onSuccess }: { onSuccess: () => void }) {
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4">
-        <div className="grid grid-cols-2 gap-4">
-          <FormField
-            control={form.control}
-            name="apn"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>APN</FormLabel>
-                <FormControl>
-                  <Input {...field} placeholder="123-456-789" data-testid="input-apn" />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
+        {isLandType && (
+          <div className="grid grid-cols-2 gap-4">
+            <FormField
+              control={form.control}
+              name="apn"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>APN</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder="123-456-789" data-testid="input-apn" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="sizeAcres"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Acres</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder="5.0" data-testid="input-acres" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+        )}
+        {!isLandType && (
+          <div className="border rounded-md">
+            <button
+              type="button"
+              className="w-full flex items-center justify-between px-3 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+              onClick={() => setShowLandDetails((v) => !v)}
+            >
+              <span>Land Details (optional — APN, Acreage)</span>
+              <span className="text-xs">{showLandDetails ? "▲" : "▼"}</span>
+            </button>
+            {showLandDetails && (
+              <div className="grid grid-cols-2 gap-4 px-3 pb-3">
+                <FormField
+                  control={form.control}
+                  name="apn"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>APN</FormLabel>
+                      <FormControl>
+                        <Input {...field} placeholder="123-456-789 or N/A" data-testid="input-apn" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="sizeAcres"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Acres</FormLabel>
+                      <FormControl>
+                        <Input {...field} placeholder="5.0" data-testid="input-acres" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
             )}
-          />
-          <FormField
-            control={form.control}
-            name="sizeAcres"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Acres</FormLabel>
-                <FormControl>
-                  <Input {...field} placeholder="5.0" data-testid="input-acres" />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-4">
           <FormField

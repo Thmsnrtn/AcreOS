@@ -181,14 +181,29 @@ export function registerBillingRoutes(app: Express): void {
       const { usageMeteringService } = await import("./services/credits");
       const org = (req as any).organization;
       const { enabled, thresholdCents, amountCents } = req.body;
-      
+
       await usageMeteringService.updateAutoTopUpSettings(
         org.id,
         enabled === true,
         thresholdCents,
         amountCents
       );
-      
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          action: "update",
+          entityType: "billing_auto_top_up",
+          entityId: org.id,
+          changes: { after: { enabled: enabled === true, thresholdCents, amountCents }, fields: ["enabled", "thresholdCents", "amountCents"] },
+          ipAddress: req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          metadata: {},
+        });
+      } catch (e) { /* non-fatal */ }
+
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -337,28 +352,43 @@ export function registerBillingRoutes(app: Express): void {
       const { stripeConnectService } = await import("./services/stripeConnect");
       const org = (req as any).organization;
       const user = req.user as any;
-      
+
       const email = user?.claims?.email || req.body.email;
       const businessName = org.name || req.body.businessName;
-      
+
       if (!email) {
         return res.status(400).json({ message: "Email is required" });
       }
-      
+
       const existing = await storage.getOrganizationIntegration(org.id, "stripe_connect");
-      
+
       if (existing?.credentials?.stripeConnectAccountId) {
         const accountLink = await stripeConnectService.createOnboardingLink(
           existing.credentials.stripeConnectAccountId
         );
-        return res.json({ 
+        return res.json({
           accountId: existing.credentials.stripeConnectAccountId,
           onboardingUrl: accountLink.url,
-          isExisting: true 
+          isExisting: true
         });
       }
-      
+
       const result = await stripeConnectService.createConnectedAccount(org.id, email, businessName);
+
+      try {
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          action: "create",
+          entityType: "stripe_connect_account",
+          entityId: org.id,
+          changes: { after: { email, businessName }, fields: ["email", "businessName"] },
+          ipAddress: req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          metadata: {},
+        });
+      } catch (e) { /* non-fatal */ }
+
       res.json(result);
     } catch (err: any) {
       console.error("Stripe Connect link error:", err);
@@ -413,8 +443,24 @@ export function registerBillingRoutes(app: Express): void {
     try {
       const { stripeConnectService } = await import("./services/stripeConnect");
       const org = (req as any).organization;
-      
+
       await stripeConnectService.disconnectAccount(org.id);
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          action: "delete",
+          entityType: "stripe_connect_account",
+          entityId: org.id,
+          changes: { before: { organizationId: org.id }, fields: ["disconnected"] },
+          ipAddress: req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          metadata: {},
+        });
+      } catch (e) { /* non-fatal */ }
+
       res.json({ success: true });
     } catch (err: any) {
       console.error("Stripe Connect disconnect error:", err);

@@ -28,6 +28,7 @@ export function serveStatic(app: Express) {
 
   // fall through to index.html — inject CSP nonce into the HTML shell (F-A05-1)
   // Skip API routes — they should have already sent a response
+  const indexPath = path.resolve(distPath, "index.html");
   app.use("*", (req: Request, res: Response) => {
     if (res.headersSent) return;
     // Don't serve index.html for API routes — if we got here, the API route didn't match
@@ -35,22 +36,19 @@ export function serveStatic(app: Express) {
       return res.status(404).json({ message: "Not found" });
     }
 
-    const indexPath = path.resolve(distPath, "index.html");
-    const nonce: string | undefined = res.locals.cspNonce;
-
-    if (nonce && process.env.NODE_ENV === "production") {
-      try {
-        let html = fs.readFileSync(indexPath, "utf-8");
-        // Inject nonce into all inline <script> and <style> tags emitted by the Vite build
-        html = html.replace(/<script(?![^>]*\bnonce=)/g, `<script nonce="${nonce}"`);
-        html = html.replace(/<style(?![^>]*\bnonce=)/g, `<style nonce="${nonce}"`);
-        res.setHeader("Content-Type", "text/html; charset=utf-8");
-        return res.send(html);
-      } catch {
-        // If file read fails, fall back to sendFile
-      }
+    const nonce: string = res.locals.cspNonce || "";
+    if (!nonce) {
+      return res.sendFile(indexPath);
     }
 
-    res.sendFile(indexPath);
+    try {
+      const html = fs.readFileSync(indexPath, "utf-8");
+      const injected = html.replace(/data-csp-nonce/g, `nonce="${nonce}" data-csp-nonce`);
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.send(injected);
+    } catch {
+      // If file read fails, fall back to sendFile
+      res.sendFile(indexPath);
+    }
   });
 }

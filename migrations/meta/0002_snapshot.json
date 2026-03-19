@@ -9808,10 +9808,10 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "fix_attempts_source_observation_id_sophie_observations_id_fk": {
-          "name": "fix_attempts_source_observation_id_sophie_observations_id_fk",
+        "fix_attempts_source_observation_id_pax_observations_id_fk": {
+          "name": "fix_attempts_source_observation_id_pax_observations_id_fk",
           "tableFrom": "fix_attempts",
-          "tableTo": "sophie_observations",
+          "tableTo": "pax_observations",
           "columnsFrom": [
             "source_observation_id"
           ],
@@ -17791,8 +17791,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.sophie_cross_org_learnings": {
-      "name": "sophie_cross_org_learnings",
+    "public.pax_cross_org_learnings": {
+      "name": "pax_cross_org_learnings",
       "schema": "",
       "columns": {
         "id": {
@@ -17903,8 +17903,8 @@
         }
       },
       "indexes": {
-        "cross_org_learnings_category_idx": {
-          "name": "cross_org_learnings_category_idx",
+        "pax_cross_org_learnings_category_idx": {
+          "name": "pax_cross_org_learnings_category_idx",
           "columns": [
             {
               "expression": "issue_category",
@@ -17918,8 +17918,8 @@
           "method": "btree",
           "with": {}
         },
-        "cross_org_learnings_pattern_idx": {
-          "name": "cross_org_learnings_pattern_idx",
+        "pax_cross_org_learnings_pattern_idx": {
+          "name": "pax_cross_org_learnings_pattern_idx",
           "columns": [
             {
               "expression": "issue_pattern",
@@ -17941,8 +17941,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.sophie_memory": {
-      "name": "sophie_memory",
+    "public.pax_memory": {
+      "name": "pax_memory",
       "schema": "",
       "columns": {
         "id": {
@@ -18016,8 +18016,8 @@
         }
       },
       "indexes": {
-        "sophie_memory_org_user_idx": {
-          "name": "sophie_memory_org_user_idx",
+        "pax_memory_org_user_idx": {
+          "name": "pax_memory_org_user_idx",
           "columns": [
             {
               "expression": "organization_id",
@@ -18037,8 +18037,8 @@
           "method": "btree",
           "with": {}
         },
-        "sophie_memory_type_idx": {
-          "name": "sophie_memory_type_idx",
+        "pax_memory_type_idx": {
+          "name": "pax_memory_type_idx",
           "columns": [
             {
               "expression": "memory_type",
@@ -18052,8 +18052,8 @@
           "method": "btree",
           "with": {}
         },
-        "sophie_memory_key_idx": {
-          "name": "sophie_memory_key_idx",
+        "pax_memory_key_idx": {
+          "name": "pax_memory_key_idx",
           "columns": [
             {
               "expression": "key",
@@ -18069,9 +18069,9 @@
         }
       },
       "foreignKeys": {
-        "sophie_memory_organization_id_organizations_id_fk": {
-          "name": "sophie_memory_organization_id_organizations_id_fk",
-          "tableFrom": "sophie_memory",
+        "pax_memory_organization_id_organizations_id_fk": {
+          "name": "pax_memory_organization_id_organizations_id_fk",
+          "tableFrom": "pax_memory",
           "tableTo": "organizations",
           "columnsFrom": [
             "organization_id"
@@ -18082,9 +18082,9 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "sophie_memory_source_ticket_id_support_tickets_id_fk": {
-          "name": "sophie_memory_source_ticket_id_support_tickets_id_fk",
-          "tableFrom": "sophie_memory",
+        "pax_memory_source_ticket_id_support_tickets_id_fk": {
+          "name": "pax_memory_source_ticket_id_support_tickets_id_fk",
+          "tableFrom": "pax_memory",
           "tableTo": "support_tickets",
           "columnsFrom": [
             "source_ticket_id"
@@ -18102,8 +18102,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.sophie_observations": {
-      "name": "sophie_observations",
+    "public.pax_observations": {
+      "name": "pax_observations",
       "schema": "",
       "columns": {
         "id": {
@@ -18243,8 +18243,8 @@
         }
       },
       "indexes": {
-        "sophie_obs_org_idx": {
-          "name": "sophie_obs_org_idx",
+        "pax_obs_org_idx": {
+          "name": "pax_obs_org_idx",
           "columns": [
             {
               "expression": "organization_id",
@@ -18258,8 +18258,8 @@
           "method": "btree",
           "with": {}
         },
-        "sophie_obs_status_idx": {
-          "name": "sophie_obs_status_idx",
+        "pax_obs_status_idx": {
+          "name": "pax_obs_status_idx",
           "columns": [
             {
               "expression": "status",
@@ -18273,8 +18273,8 @@
           "method": "btree",
           "with": {}
         },
-        "sophie_obs_type_idx": {
-          "name": "sophie_obs_type_idx",
+        "pax_obs_type_idx": {
+          "name": "pax_obs_type_idx",
           "columns": [
             {
               "expression": "type",
@@ -18288,8 +18288,8 @@
           "method": "btree",
           "with": {}
         },
-        "sophie_obs_detected_at_idx": {
-          "name": "sophie_obs_detected_at_idx",
+        "pax_obs_detected_at_idx": {
+          "name": "pax_obs_detected_at_idx",
           "columns": [
             {
               "expression": "detected_at",
@@ -18305,9 +18305,9 @@
         }
       },
       "foreignKeys": {
-        "sophie_observations_organization_id_organizations_id_fk": {
-          "name": "sophie_observations_organization_id_organizations_id_fk",
-          "tableFrom": "sophie_observations",
+        "pax_observations_organization_id_organizations_id_fk": {
+          "name": "pax_observations_organization_id_organizations_id_fk",
+          "tableFrom": "pax_observations",
           "tableTo": "organizations",
           "columnsFrom": [
             "organization_id"
