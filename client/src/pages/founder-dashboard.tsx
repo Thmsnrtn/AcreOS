@@ -133,6 +133,12 @@ import { ScenarioEngine } from "@/components/founder/ScenarioEngine";
 import { AgentGrowth } from "@/components/founder/AgentGrowth";
 import { FounderTwin } from "@/components/founder/FounderTwin";
 import { InstitutionalMemory } from "@/components/founder/InstitutionalMemory";
+// v8: The Living Organization
+import { StrategicCompass } from "@/components/founder/StrategicCompass";
+import { AgentDebatePanel } from "@/components/founder/AgentDebatePanel";
+import { FounderWellbeingCard } from "@/components/founder/FounderWellbeingCard";
+import { SynergyMap } from "@/components/founder/SynergyMap";
+import { CompanyChronicle } from "@/components/founder/CompanyChronicle";
 import { trustLabel, trustBadgeColor } from "@/lib/trust-language";
 
 interface AdminDashboardData {
@@ -2077,6 +2083,23 @@ export default function FounderDashboard() {
 
             {/* Institutional Memory — compound pattern library */}
             <InstitutionalMemory />
+
+            {/* ─── v8: The Living Organization ───────────────────────────── */}
+
+            {/* Strategic Compass — living strategy, mode switching */}
+            <StrategicCompass />
+
+            {/* Founder Wellbeing — energy, stress signals, celebrations */}
+            <FounderWellbeingCard />
+
+            {/* Agent Debates — structured disagreement before big decisions */}
+            <AgentDebatePanel />
+
+            {/* Synergy Map — which agent pairs work best */}
+            <SynergyMap />
+
+            {/* Company Chronicle — narrative history */}
+            <CompanyChronicle />
 
             {/* Classic Pulse (collapsed) for deep-dive users */}
             <details className="group">
