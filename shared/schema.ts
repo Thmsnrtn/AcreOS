@@ -11409,6 +11409,9 @@ export const agentPlaybooks = pgTable("agent_playbooks", {
   totalExecutions: integer("total_executions").notNull().default(0),
   successRate: numeric("success_rate"),
   lastExecutedAt: timestamp("last_executed_at"),
+  // v9: Playbook evolution fields
+  generation: integer("generation").notNull().default(1),            // mutation generation counter
+  parentPlaybookId: integer("parent_playbook_id"),                   // what it evolved from
   createdBy: text("created_by").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -11867,3 +11870,269 @@ export const companyChronicle = pgTable("company_chronicle", {
   index("cc_period_start_idx").on(table.periodStart),
 ]);
 export type CompanyChronicleEntry = typeof companyChronicle.$inferSelect;
+
+// ============================================
+// SOVEREIGN COMPANY PROTOCOL v9 — THE SELF-RUNNING COMPANY
+// ============================================
+
+// --- Agent Initiatives: proactive thinking cycles ---
+
+export const agentInitiatives = pgTable("agent_initiatives", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull(),
+  priority: text("priority").notNull(),                    // "all_clear" | "watch" | "needs_ceo"
+  summary: text("summary").notNull(),
+  evidence: jsonb("evidence").$type<string[]>().notNull().default([]),
+  proposedAction: text("proposed_action"),
+  actionApprovalNeeded: boolean("action_approval_needed").notNull().default(false),
+  confidence: integer("confidence").notNull().default(50),
+  status: text("status").notNull().default("noted"),       // "noted" | "pending_approval" | "approved" | "rejected"
+  ceoResponse: text("ceo_response"),
+  resolvedAt: timestamp("resolved_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("ai_agent_idx").on(table.agentCodename),
+  index("ai_priority_idx").on(table.priority),
+  index("ai_status_idx").on(table.status),
+]);
+export type AgentInitiative = typeof agentInitiatives.$inferSelect;
+
+// --- CEO Briefings: unified daily digest ---
+
+export const ceoBriefings = pgTable("ceo_briefings", {
+  id: serial("id").primaryKey(),
+  date: timestamp("date").notNull(),
+  overallStatus: text("overall_status").notNull(),         // "all_clear" | "watch" | "needs_ceo"
+  narrative: text("narrative").notNull(),                   // AI-generated executive summary
+  allClearAgents: jsonb("all_clear_agents").$type<string[]>().notNull().default([]),
+  watchItems: jsonb("watch_items").$type<Array<{
+    agentCodename: string;
+    title: string;
+    summary: string;
+    evidence: string[];
+    proposedAction?: string;
+    confidence: number;
+  }>>().notNull().default([]),
+  needsCeoItems: jsonb("needs_ceo_items").$type<Array<{
+    agentCodename: string;
+    title: string;
+    summary: string;
+    evidence: string[];
+    proposedAction?: string;
+    actionApprovalNeeded: boolean;
+    confidence: number;
+  }>>().notNull().default([]),
+  actionsTaken: jsonb("actions_taken").$type<Array<{
+    action: string;
+    decision: string;
+    timestamp: string;
+  }>>().notNull().default([]),
+  totalAgents: integer("total_agents").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("cb_date_idx").on(table.date),
+  index("cb_status_idx").on(table.overallStatus),
+]);
+export type CEOBriefing = typeof ceoBriefings.$inferSelect;
+
+// --- Playbook Evolutions: mutation tracking and A/B testing ---
+
+export const playbookEvolutions = pgTable("playbook_evolutions", {
+  id: serial("id").primaryKey(),
+  championPlaybookId: integer("champion_playbook_id").notNull().references(() => agentPlaybooks.id),
+  championGeneration: integer("champion_generation").notNull().default(1),
+  mutationType: text("mutation_type").notNull(),           // "step_swap" | "timing_change" | "agent_swap" | "condition_add" | "step_remove" | "step_add"
+  mutationDescription: text("mutation_description").notNull(),
+  analysis: text("analysis"),                              // why the playbook is degrading
+  hypothesis: text("hypothesis"),                          // why this mutation should help
+  mutatedSteps: jsonb("mutated_steps").$type<Array<{
+    order: number;
+    agentCodename: string;
+    action: string;
+    description: string;
+    delayMs?: number;
+  }>>().notNull(),
+  status: text("status").notNull().default("proposed"),    // "proposed" | "testing" | "champion_wins" | "challenger_wins"
+  championSuccessRate: numeric("champion_success_rate"),
+  challengerSuccessRate: numeric("challenger_success_rate"),
+  challengerExecutions: integer("challenger_executions").notNull().default(0),
+  challengerSuccessCount: integer("challenger_success_count").notNull().default(0),
+  requiredTestRuns: integer("required_test_runs").notNull().default(5),
+  testStartedAt: timestamp("test_started_at"),
+  resolvedAt: timestamp("resolved_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("pe_playbook_idx").on(table.championPlaybookId),
+  index("pe_status_idx").on(table.status),
+]);
+export type PlaybookEvolution = typeof playbookEvolutions.$inferSelect;
+
+// --- Compass Recommendations: auto-suggested mode changes ---
+
+export const compassRecommendations = pgTable("compass_recommendations", {
+  id: serial("id").primaryKey(),
+  currentMode: text("current_mode").notNull(),
+  recommendedMode: text("recommended_mode").notNull(),
+  urgency: text("urgency").notNull(),                      // "immediate" | "daily_briefing" | "weekly_review"
+  rationale: text("rationale").notNull(),
+  matchedConditions: jsonb("matched_conditions").$type<Array<{
+    metric: string;
+    description: string;
+    source: string;
+  }>>().notNull().default([]),
+  failedConditions: jsonb("failed_conditions").$type<Array<{
+    metric: string;
+    description: string;
+    source: string;
+  }>>().notNull().default([]),
+  confidence: integer("confidence").notNull().default(50),
+  status: text("status").notNull().default("pending"),     // "pending" | "accepted" | "dismissed"
+  ceoResponse: text("ceo_response"),
+  resolvedAt: timestamp("resolved_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("cr_status_idx").on(table.status),
+  index("cr_urgency_idx").on(table.urgency),
+]);
+export type CompassRecommendation = typeof compassRecommendations.$inferSelect;
+
+// --- Spend Watchers: service cost monitoring ---
+
+export const spendWatchers = pgTable("spend_watchers", {
+  id: serial("id").primaryKey(),
+  serviceName: text("service_name").notNull(),
+  category: text("category").notNull(),                    // "compute" | "ai" | "email" | "sms" | "storage" | "payments" | "other"
+  costAmount: numeric("cost_amount").notNull(),
+  metrics: jsonb("metrics").$type<Record<string, any>>(),
+  trend: text("trend"),                                    // "up" | "down" | "flat"
+  trendPercent: integer("trend_percent"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("sw_service_idx").on(table.serviceName),
+  index("sw_category_idx").on(table.category),
+]);
+export type SpendWatcher = typeof spendWatchers.$inferSelect;
+
+// --- Spend Optimizations: proposed and tracked savings ---
+
+export const spendOptimizations = pgTable("spend_optimizations", {
+  id: serial("id").primaryKey(),
+  serviceName: text("service_name").notNull(),
+  description: text("description").notNull(),
+  estimatedSavings: numeric("estimated_savings").notNull(),
+  actualSavings: numeric("actual_savings"),
+  effort: text("effort").notNull(),                        // "low" | "medium" | "high"
+  autoExecutable: boolean("auto_executable").notNull().default(false),
+  status: text("status").notNull().default("proposed"),    // "proposed" | "approved" | "skipped" | "executed"
+  approvedAt: timestamp("approved_at"),
+  executedAt: timestamp("executed_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("so_status_idx").on(table.status),
+  index("so_service_idx").on(table.serviceName),
+]);
+export type SpendOptimization = typeof spendOptimizations.$inferSelect;
+
+// --- Causal Investigations: root cause analysis ---
+
+export const causalInvestigations = pgTable("causal_investigations", {
+  id: serial("id").primaryKey(),
+  anomalyType: text("anomaly_type").notNull(),             // "metric_drop" | "metric_spike" | "pattern_break"
+  metric: text("metric").notNull(),
+  currentValue: numeric("current_value").notNull(),
+  expectedValue: numeric("expected_value").notNull(),
+  deviationPercent: integer("deviation_percent").notNull(),
+  detectedBy: text("detected_by").notNull(),               // agent codename
+  timeline: jsonb("timeline").$type<Array<{
+    timestamp: string;
+    source: string;
+    eventType: string;
+    description: string;
+  }>>().notNull().default([]),
+  hypotheses: jsonb("hypotheses").$type<Array<{
+    rank: number;
+    cause: string;
+    probability: string;
+    evidence: string[];
+    affectedSegment: string;
+    testProposal: string;
+  }>>().notNull().default([]),
+  primaryCause: text("primary_cause"),
+  primaryCauseProbability: text("primary_cause_probability"),
+  testProposal: text("test_proposal"),
+  affectedSegments: jsonb("affected_segments").$type<string[]>().notNull().default([]),
+  confirmedCause: text("confirmed_cause"),
+  actionTaken: text("action_taken"),
+  status: text("status").notNull().default("open"),        // "open" | "resolved" | "dismissed"
+  resolvedAt: timestamp("resolved_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("ci_status_idx").on(table.status),
+  index("ci_metric_idx").on(table.metric),
+  index("ci_detected_by_idx").on(table.detectedBy),
+]);
+export type CausalInvestigation = typeof causalInvestigations.$inferSelect;
+
+// --- Delegated Goals: agent-to-agent goal cascading ---
+
+export const delegatedGoals = pgTable("delegated_goals", {
+  id: serial("id").primaryKey(),
+  goal: text("goal").notNull(),
+  ownerAgent: text("owner_agent").notNull(),
+  delegatedBy: text("delegated_by").notNull(),             // "ceo" or agent codename
+  parentGoalId: integer("parent_goal_id"),                 // null = top-level CEO goal
+  depth: integer("depth").notNull().default(0),            // 0 = CEO goal, 1 = sub-goal, 2 = sub-sub-goal
+  targetMetric: text("target_metric"),
+  targetValue: numeric("target_value"),
+  deadline: timestamp("deadline"),
+  priority: integer("priority").notNull().default(3),      // 1 = highest
+  status: text("status").notNull().default("active"),      // "active" | "completed" | "blocked" | "cancelled"
+  progress: integer("progress").notNull().default(0),      // 0-100
+  progressLog: jsonb("progress_log").$type<Array<{
+    timestamp: string;
+    progress: number;
+    update: string;
+  }>>().notNull().default([]),
+  breakdown: text("breakdown"),                            // coordinator's analysis
+  subGoalCount: integer("sub_goal_count"),
+  rationale: text("rationale"),                            // why this agent was chosen
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("dg_owner_idx").on(table.ownerAgent),
+  index("dg_parent_idx").on(table.parentGoalId),
+  index("dg_status_idx").on(table.status),
+  index("dg_delegated_by_idx").on(table.delegatedBy),
+]);
+export type DelegatedGoal = typeof delegatedGoals.$inferSelect;
+
+// --- External Intelligence: outside-the-product awareness ---
+
+export const externalIntelligence = pgTable("external_intelligence", {
+  id: serial("id").primaryKey(),
+  sourceName: text("source_name").notNull(),
+  feedType: text("feed_type").notNull(),                   // "competitor" | "platform_risk" | "market_signal"
+  ownerAgent: text("owner_agent").notNull(),
+  severity: text("severity").notNull(),                    // "info" | "watch" | "action_needed"
+  title: text("title").notNull(),
+  summary: text("summary").notNull(),
+  impacts: jsonb("impacts").$type<string[]>().notNull().default([]),
+  recommendedActions: jsonb("recommended_actions").$type<string[]>().notNull().default([]),
+  confidence: integer("confidence").notNull().default(50),
+  status: text("status").notNull().default("noted"),       // "noted" | "pending_review" | "acknowledged" | "acted_upon"
+  actionTaken: text("action_taken"),
+  acknowledgedAt: timestamp("acknowledged_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("ei_feed_type_idx").on(table.feedType),
+  index("ei_severity_idx").on(table.severity),
+  index("ei_status_idx").on(table.status),
+  index("ei_source_idx").on(table.sourceName),
+]);
+export type ExternalIntelligenceEntry = typeof externalIntelligence.$inferSelect;
