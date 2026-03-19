@@ -31,6 +31,7 @@ import { useSwipeNavigation } from "@/hooks/use-swipe-gesture";
 import { MobileBottomNav } from "@/components/mobile";
 import { BetaFeedbackWidget } from "@/components/beta-feedback-widget";
 import { BetaActivationDetector } from "@/components/beta-activation-detector";
+import { OnboardingWizard } from "@/components/onboarding-wizard";
 
 // Eagerly loaded: must be available immediately with no delay
 import AuthPage from "@/pages/auth-page";

@@ -275,7 +275,8 @@ export function registerAuthRoutes(app: Express): void {
         req.login(user, (loginErr) => {
           if (loginErr) {
             console.error("[auth] Session error:", loginErr);
-            return res.status(500).json({ message: "Login failed" });
+            if (!res.headersSent) return res.status(500).json({ message: "Login failed" });
+            return;
           }
           // Task #45: Security audit log for successful login
           const loginIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket.remoteAddress;
@@ -287,11 +288,13 @@ export function registerAuthRoutes(app: Express): void {
             userAgent: req.headers["user-agent"],
             timestamp: new Date().toISOString(),
           }));
-          setCsrfCookie(req, res);
-          const isFounder = isFounderEmail(user.email);
-          return res.json(
-            isFounder ? { ...user, passwordHash: undefined, isFounder: true } : { ...user, passwordHash: undefined }
-          );
+          if (!res.headersSent) {
+            setCsrfCookie(req, res);
+            const isFounder = isFounderEmail(user.email);
+            return res.json(
+              isFounder ? { ...user, passwordHash: undefined, isFounder: true } : { ...user, passwordHash: undefined }
+            );
+          }
         });
       });
     })(req, res, next);
@@ -338,7 +341,9 @@ export function registerAuthRoutes(app: Express): void {
       res.json(isFounder ? { ...safeUser, isFounder: true } : safeUser);
     } catch (error) {
       console.error("[auth] Error fetching user:", error);
-      res.status(500).json({ message: "Failed to fetch user" });
+      if (!res.headersSent) {
+        res.status(500).json({ message: "Failed to fetch user" });
+      }
     }
   });
 
