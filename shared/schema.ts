@@ -11446,3 +11446,222 @@ export const ceoAbsenceMode = pgTable("ceo_absence_mode", {
 }, (table) => [
   index("cam_active_idx").on(table.isActive),
 ]);
+
+// ============================================
+// SOVEREIGN COMPANY PROTOCOL v7 — THE LEARNING COMPANY
+// ============================================
+
+// --- Decision Autopilot: Learn the founder's judgment patterns ---
+
+export const decisionPatterns = pgTable("decision_patterns", {
+  id: serial("id").primaryKey(),
+  patternKey: text("pattern_key").notNull(),              // "forge:pricing_under_5k" | "sophie:churn_response"
+  agentCodename: text("agent_codename").notNull(),
+  decisionCategory: text("decision_category").notNull(),   // "pricing" | "retention" | "hiring" | "spend" | "feature"
+  description: text("description").notNull(),              // human-readable: "Forge pricing suggestions under $5k"
+  totalDecisions: integer("total_decisions").notNull().default(0),
+  approvedCount: integer("approved_count").notNull().default(0),
+  rejectedCount: integer("rejected_count").notNull().default(0),
+  overriddenCount: integer("overridden_count").notNull().default(0),
+  autoApproveRate: numeric("auto_approve_rate"),           // calculated: approved / total
+  predictedAction: text("predicted_action"),               // "approve" | "reject" | "modify" — what the system thinks CEO would do
+  predictionConfidence: numeric("prediction_confidence"),   // 0.0–1.0
+  isAutopilotEligible: boolean("is_autopilot_eligible").notNull().default(false), // confidence > 0.95 and 20+ decisions
+  isAutopilotActive: boolean("is_autopilot_active").notNull().default(false),     // CEO has opted in
+  recentDecisions: jsonb("recent_decisions").$type<Array<{
+    decisionId: number;
+    action: "approved" | "rejected" | "modified" | "shelved";
+    context: Record<string, any>;
+    timestamp: string;
+    wouldHaveAutoed?: string;             // what autopilot would have done
+    autopilotCorrect?: boolean;           // was the prediction right?
+  }>>().notNull().default([]),
+  conditionRules: jsonb("condition_rules").$type<{
+    maxAmount?: number;
+    agentTrustMin?: number;
+    timeOfDay?: string;
+    excludeCategories?: string[];
+  }>(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("dp_pattern_key_idx").on(table.patternKey),
+  index("dp_agent_idx").on(table.agentCodename),
+  index("dp_autopilot_idx").on(table.isAutopilotActive),
+  index("dp_eligible_idx").on(table.isAutopilotEligible),
+]);
+export type DecisionPattern = typeof decisionPatterns.$inferSelect;
+
+// --- Scenario Engine: "What if?" simulations ---
+
+export const scenarioSimulations = pgTable("scenario_simulations", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  hypothesis: text("hypothesis").notNull(),                // "What if we raise prices 20%?"
+  status: text("status").notNull().default("running"),     // "running" | "completed" | "failed"
+  agentAnalyses: jsonb("agent_analyses").$type<Array<{
+    agentCodename: string;
+    perspective: string;                  // "revenue_impact" | "churn_risk" | "operational_load"
+    analysis: string;
+    metrics: Record<string, any>;
+    confidence: "low" | "medium" | "high";
+  }>>().notNull().default([]),
+  scenarios: jsonb("scenarios").$type<{
+    best: { description: string; probability: number; metrics: Record<string, number> };
+    median: { description: string; probability: number; metrics: Record<string, number> };
+    worst: { description: string; probability: number; metrics: Record<string, number> };
+  }>(),
+  recommendation: text("recommendation"),
+  requestedBy: text("requested_by").notNull().default("ceo"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  completedAt: timestamp("completed_at"),
+}, (table) => [
+  index("ss_status_idx").on(table.status),
+  index("ss_created_idx").on(table.createdAt),
+]);
+export type ScenarioSimulation = typeof scenarioSimulations.$inferSelect;
+
+// --- Agent Self-Improvement Plans ---
+
+export const agentImprovementPlans = pgTable("agent_improvement_plans", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull(),
+  reviewId: integer("review_id").references(() => agentPerformanceReviews.id),
+  status: text("status").notNull().default("active"),      // "active" | "completed" | "superseded"
+  goals: jsonb("goals").$type<Array<{
+    description: string;
+    metric: string;
+    baselineValue: number;
+    targetValue: number;
+    currentValue?: number;
+    status: "in_progress" | "achieved" | "missed";
+  }>>().notNull(),
+  skillRequests: jsonb("skill_requests").$type<Array<{
+    skill: string;
+    reason: string;
+    status: "requested" | "approved" | "denied";
+    approvedAt?: string;
+  }>>().notNull().default([]),
+  weeklyProgress: jsonb("weekly_progress").$type<Array<{
+    week: string;
+    notes: string;
+    metricsSnapshot: Record<string, number>;
+  }>>().notNull().default([]),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("aip_agent_idx").on(table.agentCodename),
+  index("aip_status_idx").on(table.status),
+  index("aip_review_idx").on(table.reviewId),
+]);
+export type AgentImprovementPlan = typeof agentImprovementPlans.$inferSelect;
+
+// --- Founder Digital Twin: voice, patterns, preferences ---
+
+export const founderTwinContext = pgTable("founder_twin_context", {
+  id: serial("id").primaryKey(),
+  contextType: text("context_type").notNull(),             // "communication_style" | "decision_pattern" | "priority_signal" | "vocabulary"
+  key: text("key").notNull(),
+  value: jsonb("value").$type<Record<string, any>>().notNull(),
+  confidence: numeric("confidence").notNull().default("0.5"),
+  sourceCount: integer("source_count").notNull().default(1),  // how many observations support this
+  examples: jsonb("examples").$type<string[]>().notNull().default([]),  // actual excerpts
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("ftc_type_idx").on(table.contextType),
+  index("ftc_key_idx").on(table.key),
+]);
+export type FounderTwinContext = typeof founderTwinContext.$inferSelect;
+
+export const founderDrafts = pgTable("founder_drafts", {
+  id: serial("id").primaryKey(),
+  draftType: text("draft_type").notNull(),                 // "investor_update" | "board_report" | "customer_response" | "team_announcement"
+  title: text("title").notNull(),
+  content: text("content").notNull(),
+  dataSources: jsonb("data_sources").$type<string[]>().notNull().default([]),  // which agents contributed
+  status: text("status").notNull().default("draft"),       // "draft" | "approved" | "sent" | "discarded"
+  ceoEdits: text("ceo_edits"),                             // tracked for twin learning
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("fd_type_idx").on(table.draftType),
+  index("fd_status_idx").on(table.status),
+]);
+export type FounderDraft = typeof founderDrafts.$inferSelect;
+
+// --- Attention Optimizer: where the founder's time matters ---
+
+export const attentionInsights = pgTable("attention_insights", {
+  id: serial("id").primaryKey(),
+  periodStart: timestamp("period_start").notNull(),
+  periodEnd: timestamp("period_end").notNull(),
+  timeSpent: jsonb("time_spent").$type<Record<string, number>>().notNull(),  // area → minutes: { "war_rooms": 40, "initiatives": 5 }
+  interventionImpact: jsonb("intervention_impact").$type<Array<{
+    area: string;
+    ceoIntervened: boolean;
+    outcomeWithout: string;              // what would have happened
+    outcomeWith: string;                 // what actually happened
+    impactDelta: number;                 // -1 to +1, how much CEO changed outcome
+  }>>().notNull().default([]),
+  recommendations: jsonb("recommendations").$type<Array<{
+    action: "focus_more" | "delegate" | "skip" | "automate";
+    area: string;
+    reason: string;
+    projectedTimeSaved: number;          // minutes per week
+  }>>().notNull().default([]),
+  focusCard: text("focus_card"),         // "Here's where you matter today" — single-sentence
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("ai_ins_period_idx").on(table.periodStart),
+]);
+export type AttentionInsight = typeof attentionInsights.$inferSelect;
+
+// --- Institutional Memory: compound pattern library ---
+
+export const institutionalPatterns = pgTable("institutional_patterns", {
+  id: serial("id").primaryKey(),
+  patternName: text("pattern_name").notNull(),
+  description: text("description").notNull(),
+  triggerSignals: jsonb("trigger_signals").$type<Array<{
+    agentCodename: string;
+    signal: string;
+    threshold?: number;
+  }>>().notNull(),
+  effectiveResponse: text("effective_response").notNull(),  // what worked
+  ineffectiveResponse: text("ineffective_response"),         // what didn't work
+  contextConditions: jsonb("context_conditions").$type<{
+    customerAge?: string;                // "0-3m" | "3-12m" | "12m+"
+    dealSize?: string;                   // "small" | "medium" | "large"
+    season?: string;                     // "q1" | "q2" | "q3" | "q4"
+    churnRisk?: string;                  // "low" | "medium" | "high"
+  }>(),
+  successRate: numeric("success_rate").notNull(),
+  sampleSize: integer("sample_size").notNull().default(0),
+  lastTriggered: timestamp("last_triggered"),
+  contributingAgents: jsonb("contributing_agents").$type<string[]>().notNull().default([]),
+  linkedPlaybookId: integer("linked_playbook_id").references(() => agentPlaybooks.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("ip_name_idx").on(table.patternName),
+  index("ip_success_idx").on(table.successRate),
+]);
+export type InstitutionalPattern = typeof institutionalPatterns.$inferSelect;
+
+// Cross-agent signal correlation — when A + B happen together, C follows
+export const signalCorrelations = pgTable("signal_correlations", {
+  id: serial("id").primaryKey(),
+  signalA: text("signal_a").notNull(),                     // "oracle:revenue_dip"
+  signalB: text("signal_b").notNull(),                     // "sophie:support_spike"
+  predictedOutcome: text("predicted_outcome").notNull(),    // "churn_wave_14d"
+  correlation: numeric("correlation").notNull(),            // 0.0–1.0
+  observationCount: integer("observation_count").notNull().default(0),
+  lastObserved: timestamp("last_observed"),
+  autoTriggerPlaybookId: integer("auto_trigger_playbook_id").references(() => agentPlaybooks.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("sc_signals_idx").on(table.signalA, table.signalB),
+  index("sc_correlation_idx").on(table.correlation),
+]);
+export type SignalCorrelation = typeof signalCorrelations.$inferSelect;

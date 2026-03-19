@@ -51,6 +51,12 @@ type CommandCategory =
   | "run_workflow"
   | "generate_reviews"
   | "show_initiatives"
+  // v7: The Learning Company
+  | "what_if"
+  | "draft_communication"
+  | "show_focus"
+  | "discover_patterns"
+  | "show_autopilot"
   | "unknown";
 
 /**
@@ -121,11 +127,27 @@ export async function processCEOCommand(input: string): Promise<CommandResult> {
     case "show_initiatives":
       return await handleShowInitiatives();
 
+    // v7: The Learning Company commands
+    case "what_if":
+      return await handleWhatIf(classification.params);
+
+    case "draft_communication":
+      return await handleDraftCommunication(classification.params);
+
+    case "show_focus":
+      return await handleShowFocus();
+
+    case "discover_patterns":
+      return await handleDiscoverPatterns();
+
+    case "show_autopilot":
+      return await handleShowAutopilot();
+
     default:
       return {
         understood: false,
         action: "unknown",
-        result: "I didn't understand that as a command. Try something like 'pause all marketing', 'what did Sophie do this week', 'I'm going away for 3 days', or 'run performance reviews'.",
+        result: "I didn't understand that as a command. Try 'pause all marketing', 'what if we raise prices?', 'draft my investor update', 'where should I focus today?', or 'I'm going away for 3 days'.",
       };
   }
 }
@@ -160,6 +182,11 @@ Categories:
 - run_workflow: CEO wants to trigger a workflow/pipeline. Params: { workflowName: string }
 - generate_reviews: CEO wants to run performance reviews for agents. Params: {}
 - show_initiatives: CEO wants to see agent initiative proposals. Params: {}
+- what_if: CEO asks "what if" scenario question. Params: { hypothesis: string }
+- draft_communication: CEO wants to draft investor update, board report, customer response, team announcement. Params: { draftType: "investor_update"|"board_report"|"customer_response"|"team_announcement", topic?: string }
+- show_focus: CEO asks where to focus, what matters today. Params: {}
+- discover_patterns: CEO wants to analyze/discover operational patterns. Params: {}
+- show_autopilot: CEO asks about decision autopilot status. Params: {}
 - unknown: Can't classify. Params: {}
 
 Agent codenames: atlas_cto, sophie_csm, forge_revenue, beacon_marketing, sentinel_devops, ledger_finance, shield_legal, oracle_analytics, compass_pm, crucible_qa
@@ -638,5 +665,105 @@ async function handleShowInitiatives(): Promise<CommandResult> {
     action: "show_initiatives",
     result: `${pending.length} initiative${pending.length !== 1 ? "s" : ""} waiting for your decision:\n\n${lines.join("\n")}\n\nReview them on the dashboard to approve, reject, or shelve.`,
     data: { count: pending.length, initiatives: pending },
+  };
+}
+
+// ─── v7: The Learning Company Command Handlers ─────────────────────────────
+
+async function handleWhatIf(params: any): Promise<CommandResult> {
+  const { scenarioEngineService } = await import("./scenarioEngine");
+
+  if (!params.hypothesis) {
+    return {
+      understood: true,
+      action: "what_if",
+      result: "What scenario do you want to explore? Try: 'what if we raise prices 20%?' or 'what if we hire 3 engineers?'",
+    };
+  }
+
+  const id = await scenarioEngineService.simulate(params.hypothesis);
+
+  return {
+    understood: true,
+    action: "what_if",
+    result: `Running simulation: "${params.hypothesis}"\n\nYour AI team is analyzing this from every angle — revenue, churn, operations, legal. Check the Scenario Engine on the dashboard for real-time results.`,
+    data: { simulationId: id },
+  };
+}
+
+async function handleDraftCommunication(params: any): Promise<CommandResult> {
+  const { founderTwinService } = await import("./founderTwin");
+
+  const draftType = params.draftType || "investor_update";
+  const id = await founderTwinService.generateDraft({
+    draftType,
+    topic: params.topic,
+  });
+
+  const typeLabels: Record<string, string> = {
+    investor_update: "investor update",
+    board_report: "board report",
+    customer_response: "customer response",
+    team_announcement: "team announcement",
+  };
+
+  return {
+    understood: true,
+    action: "draft_communication",
+    result: `Drafting your ${typeLabels[draftType] || draftType} now. Your Digital Twin is pulling live data from your AI team and writing in your voice. Check the dashboard to review and edit.`,
+    data: { draftId: id },
+  };
+}
+
+async function handleShowFocus(): Promise<CommandResult> {
+  const { attentionOptimizerService } = await import("./attentionOptimizer");
+  const focusCard = await attentionOptimizerService.generateFocusCard();
+
+  return {
+    understood: true,
+    action: "show_focus",
+    result: focusCard,
+  };
+}
+
+async function handleDiscoverPatterns(): Promise<CommandResult> {
+  const { institutionalMemoryService } = await import("./institutionalMemory");
+  const discovered = await institutionalMemoryService.discoverPatterns();
+
+  return {
+    understood: true,
+    action: "discover_patterns",
+    result: discovered > 0
+      ? `Discovered ${discovered} new operational pattern${discovered !== 1 ? "s" : ""}. These will compound over time as agents execute them. Check Institutional Memory on the dashboard.`
+      : "No new patterns discovered this time. The system learns from every agent action — patterns emerge naturally over time.",
+    data: { discovered },
+  };
+}
+
+async function handleShowAutopilot(): Promise<CommandResult> {
+  const { decisionAutopilotService } = await import("./decisionAutopilot");
+  const stats = await decisionAutopilotService.getAccuracyStats();
+  const suggestions = await decisionAutopilotService.getSuggestions();
+
+  const lines = [
+    `Decision Autopilot Status:`,
+    `- ${stats.totalPatterns} decision patterns tracked`,
+    `- ${stats.activeAutopilots} on autopilot`,
+    `- ${stats.overallAccuracy}% shadow prediction accuracy`,
+  ];
+
+  if (suggestions.length > 0) {
+    lines.push(`\n${suggestions.length} pattern${suggestions.length !== 1 ? "s" : ""} ready to go on autopilot:`);
+    for (const s of suggestions.slice(0, 3)) {
+      lines.push(`  - ${s.description} (${Math.round(Number(s.predictionConfidence || 0) * 100)}% confidence)`);
+    }
+    lines.push(`\nEnable them on the dashboard.`);
+  }
+
+  return {
+    understood: true,
+    action: "show_autopilot",
+    result: lines.join("\n"),
+    data: { stats, suggestions: suggestions.length },
   };
 }
