@@ -159,7 +159,7 @@ export function WorkspaceManager() {
           {(presets as WorkspacePreset[]).length > 0 && (
             <>
               <DropdownMenuSeparator />
-              <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+              <div className="px-2 py-[6px] text-xs font-medium text-muted-foreground">
                 Your Presets
               </div>
               {(presets as WorkspacePreset[]).map((preset: WorkspacePreset) => {

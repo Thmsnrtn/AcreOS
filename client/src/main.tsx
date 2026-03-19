@@ -6,7 +6,7 @@ import { initClientSentry } from "./lib/sentry";
 // Initialize Sentry before rendering (no-op if VITE_SENTRY_DSN is unset)
 initClientSentry();
 
-if ('serviceWorker' in navigator) {
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js')
       .then((registration) => {

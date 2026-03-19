@@ -2,9 +2,12 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
+import type { Lead, Property, Deal } from "@shared/schema";
+import { useAuth } from "@/hooks/use-auth";
 import { telemetry } from "@/lib/telemetry";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest, prefetchRoute } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useProviderStatus } from "@/hooks/use-provider-status";
 import {
   Command,
   CommandEmpty,
@@ -13,6 +16,7 @@ import {
   CommandItem,
   CommandList,
   CommandSeparator,
+  CommandShortcut,
 } from "@/components/ui/command";
 import {
   LayoutDashboard,
@@ -160,6 +164,14 @@ export function CommandPalette() {
     queryKey: ["/api/recent-items"],
     enabled: open,
   });
+  const { isFounder } = useAuth();
+  const { isAvailable } = useProviderStatus();
+
+  const [query, setQuery] = useState("");
+
+  const { data: leadsData } = useQuery<Lead[]>({ queryKey: ["/api/leads"], enabled: open });
+  const { data: propertiesData } = useQuery<Property[]>({ queryKey: ["/api/properties"], enabled: open });
+  const { data: dealsData } = useQuery<Deal[]>({ queryKey: ["/api/deals"], enabled: open });
 
   const aiMutation = useMutation({
     mutationFn: async (question: string) => {
@@ -169,18 +181,6 @@ export function CommandPalette() {
     onSuccess: (data) => {
       setAiResponse(data);
     },
-  });
-
-  // Fetch leads for contextual actions (only when searching)
-  const { data: leadsData } = useQuery<Lead[]>({
-    queryKey: ["/api/leads"],
-    enabled: open && search.length > 0,
-  });
-
-  // Fetch deals for contextual actions (only when searching)
-  const { data: dealsData } = useQuery<Deal[]>({
-    queryKey: ["/api/deals"],
-    enabled: open && search.length > 0,
   });
 
   // Mutation for updating lead status
@@ -280,6 +280,14 @@ export function CommandPalette() {
 
   const handleSelect = useCallback(
     (path: string) => {
+      // Prefetch common API for the target route for perceived speed
+      const prefetchMap: Record<string, string[]> = {
+        "/leads": ["/api/leads"],
+        "/properties": ["/api/properties"],
+        "/deals": ["/api/deals"],
+        "/": ["/api/dashboard/stats"],
+      };
+      (prefetchMap[path] || []).forEach(prefetchRoute);
       setOpen(false);
       setAiMode(false);
       setAiResponse(null);
@@ -374,7 +382,7 @@ export function CommandPalette() {
                   ref={inputRef}
                   placeholder={showAIMode ? "Ask me anything about your land business..." : selectedLeadId ? "Choose new status..." : selectedDealId ? "Choose new stage..." : "Search pages, actions, or type a question..."}
                   value={inputValue}
-                  onValueChange={(val) => { setInputValue(val); setSearch(val); }}
+                  onValueChange={(val) => { setInputValue(val); setSearch(val); setQuery(val); }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && showAIMode) {
                       e.preventDefault();
@@ -427,7 +435,7 @@ export function CommandPalette() {
                           onClick={() => handleSelect(aiResponse.actionPath!)}
                           className="ml-6 text-xs text-primary hover:underline flex items-center gap-1"
                         >
-                          <span>→</span>
+                          <span>{"\u2192"}</span>
                           <span>{aiResponse.actionLabel}</span>
                         </button>
                       )}
@@ -439,7 +447,7 @@ export function CommandPalette() {
                 </div>
               )}
 
-              <CommandList className="max-h-[360px]">
+              <CommandList className="max-h-[400px]">
                 {/* Lead Status Sub-menu */}
                 {selectedLead && (
                   <>
@@ -504,6 +512,31 @@ export function CommandPalette() {
                   <>
                     <CommandEmpty>No results found. Start with "?" to ask AI.</CommandEmpty>
 
+                    {/* Search Results (leads, properties, deals) */}
+                    {query.trim().length > 0 && (
+                      <CommandGroup heading="Search Results">
+                        {(() => {
+                          const q = query.trim().toLowerCase();
+                          const leadMatches = (leadsData || []).filter(l =>
+                            (l.firstName + " " + l.lastName).toLowerCase().includes(q) || (l.email||"").toLowerCase().includes(q)
+                          ).slice(0, 5).map(l => ({ name: `Lead: ${l.firstName} ${l.lastName}`, path: `/leads?id=${l.id}` }));
+                          const propertyMatches = (propertiesData || []).filter(p =>
+                            (p.county+" "+p.state).toLowerCase().includes(q) || String(p.apn||'').toLowerCase().includes(q)
+                          ).slice(0, 5).map(p => ({ name: `Property: ${p.county}, ${p.state}`, path: `/properties?id=${p.id}` }));
+                          const dealMatches = (dealsData || []).filter(d =>
+                            String(d.id).includes(q)
+                          ).slice(0, 5).map(d => ({ name: `Deal #${d.id}`, path: `/deals?id=${d.id}` }));
+                          const results = [...leadMatches, ...propertyMatches, ...dealMatches].slice(0, 8);
+                          return results.length ? results.map(r => (
+                            <CommandItem key={r.path} onSelect={() => handleSelect(r.path)} className="cursor-pointer">
+                              <Search className="mr-2 h-4 w-4 text-muted-foreground" />
+                              <span>{r.name}</span>
+                            </CommandItem>
+                          )) : <CommandItem disabled>No matches</CommandItem>;
+                        })()}
+                      </CommandGroup>
+                    )}
+
                     {/* Contextual Lead Actions */}
                     {matchingLeads.length > 0 && (
                       <>
@@ -547,7 +580,7 @@ export function CommandPalette() {
                                   {deal.property?.county ? `${deal.property.county}, ${deal.property.state}` : deal.type}
                                 </span>
                                 <span className="text-xs text-muted-foreground capitalize">
-                                  {deal.type} \u00b7 {deal.status.replace('_', ' ')}
+                                  {deal.type} {"\u00b7"} {deal.status.replace('_', ' ')}
                                 </span>
                               </div>
                               <ArrowRight className="ml-auto h-4 w-4 text-muted-foreground" />
@@ -558,16 +591,52 @@ export function CommandPalette() {
                       </>
                     )}
 
+                    {isFounder && (
+                      <>
+                        <CommandGroup heading="Founder / Admin">
+                          <CommandItem
+                            onSelect={() => handleSelect("/founder")}
+                            data-testid="command-item-founder-dashboard"
+                            className="cursor-pointer"
+                          >
+                            <Sparkles className="mr-2 h-4 w-4 text-amber-500" />
+                            <span>Open Founder Dashboard</span>
+                          </CommandItem>
+                          <CommandItem
+                            onSelect={() => handleSelect("/analytics")}
+                            data-testid="command-item-system-health"
+                            className="cursor-pointer"
+                          >
+                            <Clock className="mr-2 h-4 w-4 text-muted-foreground" />
+                            <span>View System Health</span>
+                          </CommandItem>
+                          <CommandItem
+                            onSelect={() => handleSelect("/finance")}
+                            data-testid="command-item-credits"
+                            className="cursor-pointer"
+                          >
+                            <DollarSign className="mr-2 h-4 w-4 text-green-600" />
+                            <span>Open Credits & Costs</span>
+                          </CommandItem>
+                        </CommandGroup>
+                        <CommandSeparator />
+                      </>
+                    )}
+
                     <CommandGroup heading="Pages">
-                      {pages.map((page) => (
+                      {pages.map((page, idx) => (
                         <CommandItem
                           key={page.path}
                           onSelect={() => handleSelect(page.path)}
+                          onMouseEnter={() => ( {"/": ["/api/dashboard/stats"], "/leads": ["/api/leads"], "/properties": ["/api/properties"], "/deals": ["/api/deals"] }[page.path] || []).forEach(prefetchRoute)}
                           data-testid={`command-item-${page.name.toLowerCase().replace(/\s+/g, "-")}`}
                           className="cursor-pointer"
                         >
                           <page.icon className="mr-2 h-4 w-4 text-muted-foreground" />
                           <span>{page.name}</span>
+                          {idx < 9 && (
+                            <CommandShortcut>{`\u2318${idx + 1}`}</CommandShortcut>
+                          )}
                         </CommandItem>
                       ))}
                     </CommandGroup>
@@ -575,17 +644,23 @@ export function CommandPalette() {
                     <CommandSeparator />
 
                     <CommandGroup heading="Quick Actions">
-                      {quickActions.map((action) => (
-                        <CommandItem
-                          key={action.action}
-                          onSelect={() => handleSelect(action.path)}
-                          data-testid={`command-item-${action.name.toLowerCase().replace(/\s+/g, "-")}`}
-                          className="cursor-pointer"
-                        >
-                          <action.icon className="mr-2 h-4 w-4 text-muted-foreground" />
-                          <span>{action.name}</span>
-                        </CommandItem>
-                      ))}
+                      {quickActions.map((action) => {
+                        const requiresAI = action.action === 'generate-offer';
+                        const disabled = requiresAI && !isAvailable('ai');
+                        return (
+                          <CommandItem
+                            key={action.action}
+                            onSelect={() => !disabled && handleSelect(action.path)}
+                            data-testid={`command-item-${action.name.toLowerCase().replace(/\s+/g, "-")}`}
+                            className="cursor-pointer"
+                            disabled={disabled}
+                          >
+                            <action.icon className="mr-2 h-4 w-4 text-muted-foreground" />
+                            <span>{action.name}{disabled ? ' (AI unavailable)' : ''}</span>
+                            <CommandShortcut>{"\u21b5"}</CommandShortcut>
+                          </CommandItem>
+                        );
+                      })}
                     </CommandGroup>
 
                     {recentItems.length > 0 && (
@@ -617,19 +692,19 @@ export function CommandPalette() {
                 <div className="border-t px-3 py-2 text-xs text-muted-foreground flex items-center justify-between">
                   <span>
                     <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
-                      ↑↓
+                      {"\u2191\u2193"}
                     </kbd>{" "}
                     navigate
                   </span>
                   <span>
                     <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
-                      ↵
+                      {"\u21b5"}
                     </kbd>{" "}
                     {showAIMode ? "ask AI" : "select"}
                   </span>
                   <span>
                     <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
-                      ⌘K
+                      {"\u2318K"}
                     </kbd>{" "}
                     toggle
                   </span>

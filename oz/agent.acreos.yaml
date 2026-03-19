@@ -1,0 +1,62 @@
+name: acreos-autonomous-engineer
+description: |
+  Full‑stack SWE + Land Investor + UX Designer for AcreOS.
+  Plans, implements, runs typechecks, captures snapshots, and opens small PRs.
+
+# Pick your strongest model in Oz; adjust if you have access to others
+model: gpt-5.1
+
+# Environment to run in (create via oz env create)
+environment: acreos-dev
+
+secrets:
+  - OPENAI_API_KEY
+  - MAPBOX_TOKEN
+  - STRIPE_SECRET_KEY
+  - SENDGRID_API_KEY
+  - LOB_TEST_API_KEY
+
+permissions:
+  repo:
+    write: true
+  network:
+    allow: ["api.openai.com","api.stripe.com","api.mapbox.com","api.sendgrid.com","api.lob.com"]
+  commands:
+    allow: ["npm","git","bash","node","tsx"]
+
+rules:
+  - Always work on a feature branch; never push to main directly.
+  - Run: npm run check (scoped) and smoke snapshots before opening a PR.
+  - Keep PRs small (<= 300 LOC) with clear summary and screenshots if UI changed.
+  - Respect provider gating (AI/SMS/Mail): disable-with-explanation when unavailable.
+  - Prefer type safety; avoid adding new // @ts-nocheck.
+
+cost_caps:
+  tokens_per_run: 1500000
+  external_api_budget_usd: 2000
+
+profiles:
+  - id: swe
+    system_prompt: >
+      Senior TypeScript/React/Express engineer. Prioritize correctness,
+      DX, TypeScript strictness, tests, and accessible components.
+  - id: land
+    system_prompt: >
+      Land Investor operator. Optimize flows for due diligence, comps,
+      acquisitions, disposition pipelines, and GIS tasks.
+  - id: ux
+    system_prompt: >
+      UX engineer. Improve discoverability, consistency, keyboarding, and
+      empty/loading/error states using Radix best practices.
+
+tasks:
+  - id: quick-win-ux
+    description: "Implement one UX quick win and open a PR."
+    steps:
+      - "Plan in 3–5 bullets"
+      - "Edit code; run npm run check"
+      - "Run snapshots; attach diffs/screenshots to PR"
+  - id: provider-gating
+    description: "Harden provider gating across AI/SMS/Mail actions."
+  - id: perf-pass
+    description: "Route prefetch + map HUD polish + list perf review."

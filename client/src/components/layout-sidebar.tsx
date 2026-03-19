@@ -414,6 +414,9 @@ const COLLAPSED_STORAGE_KEY = "sidebar-collapsed";
 const EXPANDED_STORAGE_KEY = "sidebar-expanded-modules";
 const HIDDEN_MODULES_KEY = "sidebar-hidden-modules";
 
+import { DevBanner } from "@/components/dev-banner";
+import { ProviderStatusBadges } from "@/components/provider-status";
+
 const routePrefetchMap: Record<string, string> = {
   "/leads": "/api/leads",
   "/properties": "/api/properties",
@@ -422,6 +425,27 @@ const routePrefetchMap: Record<string, string> = {
   "/campaigns": "/api/campaigns",
   "/inbox": "/api/inbox",
 };
+
+const navItems = [
+  { label: "Dashboard", icon: LayoutDashboard, href: "/", description: "Overview of your land investment business", section: "Overview" },
+  { label: "Inbox", icon: Inbox, href: "/inbox", showUnreadBadge: true, description: "Messages and communications", section: "Work" },
+  { label: "Leads (CRM)", icon: Users, href: "/leads", description: "Manage your land seller leads", section: "Work" },
+  { label: "Inventory", icon: Map, href: "/properties", description: "Track properties you own or evaluate", section: "Work" },
+  { label: "Deal Pipeline", icon: GitBranch, href: "/deals", description: "Visualize your deal flow", section: "Work" },
+  { label: "Tasks", icon: ListTodo, href: "/tasks", description: "Your action items and to-do list", section: "Work" },
+  { label: "Automation", icon: Zap, href: "/automation", description: "Set up automated workflows and rules", section: "Automation" },
+  { label: "Workflows", icon: Workflow, href: "/workflows", description: "Design and manage complex workflows", section: "Automation" },
+  { label: "AI", icon: Bot, href: "/command-center", description: "AI assistants and automation", section: "Automation" },
+  { label: "Insights", icon: TrendingUp, href: "/analytics", description: "Analytics and market insights", section: "Insights" },
+  { label: "Finance", icon: Banknote, href: "/finance", description: "Manage seller-financed notes", section: "Insights" },
+  { label: "Portfolio", icon: PieChart, href: "/portfolio", description: "View your investment portfolio", section: "Insights" },
+  { label: "Listings", icon: Store, href: "/listings", description: "Properties available for sale", section: "Sales" },
+  { label: "Documents", icon: FileText, href: "/documents", description: "Store and manage documents", section: "Sales" },
+  { label: "Marketing", icon: Mail, href: "/campaigns", description: "Email, SMS, and direct mail campaigns", section: "Sales" },
+  { label: "Tools", icon: Calculator, href: "/tools", description: "Calculators and utility tools", section: "Operations" },
+  { label: "Help & Support", icon: HelpCircle, href: "/help", description: "Help topics and support resources", section: "Operations" },
+  { label: "Settings", icon: Settings, href: "/settings", description: "Configure your account and preferences", section: "Operations" },
+] as const;
 
 // ─────────────────────────────────────────────────────────────────────
 // Provider — wrap app at root so page-shell can consume
@@ -821,7 +845,9 @@ export function Sidebar() {
   // ─── Mobile nav content ────────────────────────────────────────────
   const MobileNavContent = ({ onNavClick }: { onNavClick?: () => void }) => (
     <div className="flex flex-col h-full vibrancy-sidebar">
-      <div className="p-4 border-b border-sidebar-border">
+      <div className="p-0 md:p-0 border-b border-sidebar-border">
+        <DevBanner />
+        <div className="p-4 md:p-6">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
@@ -839,12 +865,12 @@ export function Sidebar() {
           </div>
           <div className="flex items-center gap-1">
             <SophieNotificationBadge />
+            <ProviderStatusBadges />
             <NotificationCenter />
           </div>
         </div>
-        <p className="text-xs text-muted-foreground mt-1">
-          Land Investment Platform
-        </p>
+        <p className="text-xs text-muted-foreground mt-1">Land Investment Platform</p>
+        </div>
       </div>
 
       <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
@@ -1006,6 +1032,7 @@ export function Sidebar() {
         <Sheet open={isOpen} onOpenChange={setIsOpen}>
           <SheetTrigger asChild>
             <Button
+              aria-label="Open navigation"
               variant="outline"
               size="icon"
               className="shadow-lg glass-panel min-h-[44px] min-w-[44px]"

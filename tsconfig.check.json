@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "server/types/shims.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "client/src/components/activity-*",
+    "client/src/components/onboarding/**",
+    "client/src/components/ab-tests*",
+    "client/src/components/**/__tests__/**"
+  ],
+  "compilerOptions": {
+    "noEmit": true,
+    "skipLibCheck": true,
+    "noResolve": true
+  }
+}

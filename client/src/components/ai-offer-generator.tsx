@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { Property } from "@shared/schema";
+import { useProviderStatus } from "@/hooks/use-provider-status";
 
 interface OfferSuggestion {
   strategyName: string;
@@ -88,6 +89,8 @@ interface AIOfferGeneratorProps {
 export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("suggestions");
+  const { isAvailable } = useProviderStatus();
+  const aiReady = isAvailable('ai');
   const [selectedOffer, setSelectedOffer] = useState<OfferSuggestion | null>(null);
   const [offerData, setOfferData] = useState<GenerateOfferResponse | null>(null);
   
@@ -253,6 +256,22 @@ export function AIOfferGenerator({ property }: AIOfferGeneratorProps) {
             <h3 className="font-medium mb-2">Location Data Required</h3>
             <p className="text-sm text-muted-foreground">
               Please fetch parcel data first to enable AI offer analysis.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!aiReady) {
+    return (
+      <Card data-testid="ai-offer-generator">
+        <CardContent className="py-8">
+          <div className="text-center">
+            <AlertCircle className="w-12 h-12 mx-auto text-amber-500 mb-4" />
+            <h3 className="font-medium mb-2">AI Provider Not Configured</h3>
+            <p className="text-sm text-muted-foreground">
+              Configure an AI provider in Settings → Providers to enable offer analysis.
             </p>
           </div>
         </CardContent>
