@@ -41,6 +41,9 @@ type CommandCategory =
   | "financial_summary"
   | "pause_agent"
   | "resume_agent"
+  | "show_forecast"
+  | "show_customer_health"
+  | "set_reminder"
   | "unknown";
 
 /**
@@ -83,6 +86,15 @@ export async function processCEOCommand(input: string): Promise<CommandResult> {
     case "resume_agent":
       return await handleResumeAgent(classification.params);
 
+    case "show_forecast":
+      return await handleShowForecast();
+
+    case "show_customer_health":
+      return await handleShowCustomerHealth(classification.params);
+
+    case "set_reminder":
+      return await handleSetReminder(classification.params);
+
     default:
       return {
         understood: false,
@@ -113,6 +125,9 @@ Categories:
 - financial_summary: CEO asks about finances/revenue/MRR. Params: {}
 - pause_agent: CEO wants to pause an agent. Params: { agent: codename }
 - resume_agent: CEO wants to resume an agent. Params: { agent: codename }
+- show_forecast: CEO asks about MRR forecast, projections, runway. Params: {}
+- show_customer_health: CEO asks about customer health overview. Params: { customerName?: string }
+- set_reminder: CEO wants to be reminded of something. Params: { message: string, when: string }
 - unknown: Can't classify. Params: {}
 
 Agent codenames: atlas_cto, sophie_csm, forge_revenue, beacon_marketing, sentinel_devops, ledger_finance, shield_legal, oracle_analytics, compass_pm, crucible_qa
@@ -374,5 +389,89 @@ async function handleResumeAgent(params: any): Promise<CommandResult> {
     understood: true,
     action: "resume_agent",
     result: `${name} is back online and ready to work.`,
+  };
+}
+
+async function handleShowForecast(): Promise<CommandResult> {
+  const { projectMRR, calculateRunway, calculateUnitEconomics } = await import("./financialForecaster");
+  const [mrr, runway, unit] = await Promise.all([
+    projectMRR(),
+    calculateRunway(),
+    calculateUnitEconomics(),
+  ]);
+
+  const lines = [
+    `Current MRR: $${mrr.currentMRR.toLocaleString()} (${mrr.growthRatePct > 0 ? "+" : ""}${mrr.growthRatePct}% monthly growth)`,
+    "",
+    "Projections:",
+    ...mrr.projections.slice(0, 3).map(p => `  ${p.month}: $${p.projected.toLocaleString()} ($${p.low.toLocaleString()} - $${p.high.toLocaleString()})`),
+  ];
+
+  if (mrr.milestones.length > 0) {
+    lines.push("", "Milestones:");
+    for (const m of mrr.milestones.slice(0, 3)) {
+      lines.push(`  $${m.target.toLocaleString()}: ${m.estimatedDate || "Not on current trajectory"} (${m.confidence} confidence)`);
+    }
+  }
+
+  lines.push("", runway.recommendation, "", unit.summary);
+
+  return {
+    understood: true,
+    action: "show_forecast",
+    result: lines.join("\n"),
+    data: { mrr, runway, unitEconomics: unit },
+  };
+}
+
+async function handleShowCustomerHealth(params: any): Promise<CommandResult> {
+  if (params.customerName) {
+    // Single customer lookup (reuse handleCustomerStatus logic)
+    return handleCustomerStatus(params);
+  }
+
+  const { getHealthSummary, getAllCustomerHealth } = await import("./customerHealthScoring");
+  const [summary, customers] = await Promise.all([
+    getHealthSummary(),
+    getAllCustomerHealth(10),
+  ]);
+
+  const lines = [summary.summary, ""];
+
+  if (customers.length > 0) {
+    lines.push("Top concerns:");
+    for (const c of customers.slice(0, 5)) {
+      const trendIcon = c.trend === "improving" ? "+" : c.trend === "declining" ? "-" : "=";
+      lines.push(`  ${trendIcon} ${c.orgName}: ${c.healthScore}/100 (${c.trend}) — ${c.details.plan}, last login ${c.details.daysSinceLastLogin}d ago`);
+    }
+  }
+
+  return {
+    understood: true,
+    action: "show_customer_health",
+    result: lines.join("\n"),
+    data: { summary, topCustomers: customers.slice(0, 5) },
+  };
+}
+
+async function handleSetReminder(params: any): Promise<CommandResult> {
+  if (!params.message) {
+    return { understood: true, action: "set_reminder", result: "What should I remind you about? Try: 'remind me to check on Acme Corp Tuesday'" };
+  }
+
+  const { createReminder, parseRelativeDate } = await import("./ceoReminders");
+  const dueDate = parseRelativeDate(params.when || "tomorrow");
+
+  const reminder = await createReminder({
+    message: params.message,
+    dueDate,
+  });
+
+  const dateStr = dueDate.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
+  return {
+    understood: true,
+    action: "set_reminder",
+    result: `Got it. I'll remind you: "${params.message}" on ${dateStr}.`,
+    data: { reminderId: reminder.id, dueDate: dueDate.toISOString() },
   };
 }
