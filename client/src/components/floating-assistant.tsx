@@ -45,6 +45,7 @@ import { sanitizeHtml } from "@/lib/sanitize";
 import { LiveDemoMode } from "@/components/live-demo-mode";
 import { BackgroundMode } from "@/components/background-mode";
 import { Action, ActionResult, ActionExecutor, parseActionsFromText } from "@/lib/action-executor";
+import { useProviderStatus } from "@/hooks/use-provider-status";
 
 interface PageContextInfo {
   name: string;
@@ -185,6 +186,8 @@ export function FloatingAssistant() {
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [executionMode, setExecutionMode] = useState<"live" | "background">("background");
   const [executionSpeed, setExecutionSpeed] = useState<0.5 | 1 | 2>(1);
+  const { isAvailable } = useProviderStatus();
+  const aiReady = isAvailable('ai');
   const [pendingActions, setPendingActions] = useState<Action[]>([]);
   const [isExecutingActions, setIsExecutingActions] = useState(false);
   const [currentTaskName, setCurrentTaskName] = useState("");
@@ -396,6 +399,9 @@ export function FloatingAssistant() {
 
   const handleSendMessage = async () => {
     if ((!inputValue.trim() && attachments.length === 0) || isLoading || isStreaming || isGeneratingImage) return;
+    if (!aiReady) {
+      return;
+    }
     
     if (isImageMode || (attachments.length === 0 && detectImageGenerationIntent(inputValue))) {
       await generateImage(inputValue);
@@ -1362,7 +1368,10 @@ export function FloatingAssistant() {
                       const parsedActions = parseActionsFromText(message.content);
                       if (parsedActions.length === 0) return null;
                       return (
-                        <div className="mt-3">
+            {!aiReady && (
+              <div className="mt-3 text-xs text-amber-600">AI unavailable — configure in Settings → Providers</div>
+            )}
+            <div className="mt-3 flex justify-end">
                           <Button
                             size="sm"
                             variant={executionMode === "live" ? "default" : "secondary"}
@@ -1426,7 +1435,7 @@ export function FloatingAssistant() {
                         />
                       </div>
                     ) : (
-                      <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-border/50 bg-muted text-xs">
+                      <div className="flex items-center gap-1.5 px-2 py-[6px] rounded-lg border border-border/50 bg-muted text-xs">
                         <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
                         <div className="flex flex-col min-w-0">
                           <span className="truncate max-w-[80px]">{att.file.name}</span>

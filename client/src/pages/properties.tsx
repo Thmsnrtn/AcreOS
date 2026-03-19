@@ -3,6 +3,8 @@ import { useProperties, useCreateProperty, useDeleteProperty, useEnrichProperty 
 import { queryClient } from "@/lib/queryClient";
 import { telemetry } from "@/lib/telemetry";
 import { ListSkeleton } from "@/components/list-skeleton";
+import { InlineError } from "@/components/inline-error";
+import { useDelayedLoading } from "@/hooks/use-delayed-loading";
 import { useFetchPropertyParcel, useFetchAllParcels } from "@/hooks/use-parcels";
 import { useState, useMemo } from "react";
 import { useSearch } from "wouter";
@@ -124,10 +126,12 @@ import type { SavedView } from "@shared/schema";
 import { QueryErrorState } from "@/components/query-error-state";
 import { ResearchSummaryPanel } from "@/components/research-summary-panel";
 import { usePersistedGisFilters } from "@/hooks/use-persisted-gis-filters";
+import { useEffect } from "react";
 import { Bot } from "lucide-react";
 
 export default function PropertiesPage() {
-  const { data: properties, isLoading, error, refetch, isRefetching } = useProperties();
+  const { data: properties, isLoading, isError, error, refetch, isRefetching } = useProperties();
+  const delayedLoading = useDelayedLoading(isLoading, 200);
   const searchString = useSearch();
   const urlParams = new URLSearchParams(searchString);
   const actionFromUrl = urlParams.get("action");
@@ -164,6 +168,12 @@ export default function PropertiesPage() {
   const [distressFilter, setDistressFilter] = useState<string>("any");
   const { toast } = useToast();
   const { mutate: fetchAllParcels, isPending: isFetchingAllParcels } = useFetchAllParcels();
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("properties:gisFilters", JSON.stringify(gisFilters));
+    } catch {}
+  }, [gisFilters]);
 
   const filteredProperties = useMemo(() => {
     if (!properties) return [];
@@ -496,7 +506,7 @@ export default function PropertiesPage() {
             </div>
           )}
 
-          {!isLoading && properties && properties.length > 0 && (
+          {!delayedLoading && properties && properties.length > 0 && (
             <div className="space-y-2 md:space-y-0 md:flex md:flex-wrap md:items-center md:gap-3 p-2 bg-muted/30 rounded-md">
               <div className="flex items-center justify-between gap-2 md:justify-start">
                 <div className="flex items-center gap-2 min-h-[44px] md:min-h-0">
@@ -577,7 +587,7 @@ export default function PropertiesPage() {
             </div>
           )}
 
-          {(viewMode === "list" || isLoading) && (isLoading ? (
+          {(viewMode === "list" || isLoading) && (delayedLoading ? (
             <div data-testid="skeleton-properties-grid">
               <ListSkeleton count={6} variant="card" />
             </div>
@@ -591,6 +601,14 @@ export default function PropertiesPage() {
               testId="query-error-state-properties"
             />
           ) : (
+            <>
+              {isError && (
+                <InlineError 
+                  message={(error as Error)?.message || "Failed to load properties."}
+                  onRetry={() => refetch()}
+                  testId="inline-error-properties"
+                />
+              )}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredProperties.map((property) => (
                 <div key={property.id} className="relative">
@@ -622,7 +640,9 @@ export default function PropertiesPage() {
                 </div>
               )}
             </div>
+            </>
           ))}
+
 
       <ConfirmDialog
         open={!!deletingProperty}

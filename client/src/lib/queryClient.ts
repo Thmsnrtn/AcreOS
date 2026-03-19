@@ -1,5 +1,7 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 import { toast } from "@/hooks/use-toast";
+import React from "react";
+import { ToastAction } from "@/components/ui/toast";
 import { getErrorMessage, getErrorTitle, shouldRetry, isAuthError } from "@/lib/error-utils";
 
 async function throwIfResNotOk(res: Response) {
@@ -23,6 +25,17 @@ function handleQueryError(error: unknown): void {
     title,
     description,
     variant: "destructive",
+    action: React.createElement(
+      ToastAction,
+      {
+        altText: "Copy details",
+        onClick: () => {
+          const details = `${title}: ${String((error as Error)?.message || error)}`;
+          navigator.clipboard?.writeText(details).catch(() => {});
+        },
+      },
+      "Copy details"
+    ),
   });
   
   console.error("[Query Error]", err);
@@ -47,6 +60,17 @@ function handleMutationError(error: unknown): void {
     title,
     description,
     variant: "destructive",
+    action: React.createElement(
+      ToastAction,
+      {
+        altText: "Copy details",
+        onClick: () => {
+          const details = `${title}: ${String((error as Error)?.message || error)}`;
+          navigator.clipboard?.writeText(details).catch(() => {});
+        },
+      },
+      "Copy details"
+    ),
   });
   
   console.error("[Mutation Error]", err);

@@ -53,7 +53,15 @@ export function SavedViewsSelector({
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
   const [newViewName, setNewViewName] = useState("");
   const [isShared, setIsShared] = useState(false);
-  const [selectedViewId, setSelectedViewId] = useState<number | null>(null);
+  const storageKey = `savedView:${entityType}`;
+  const [selectedViewId, setSelectedViewId] = useState<number | null>(() => {
+    try {
+      const raw = localStorage.getItem(storageKey);
+      return raw ? Number(raw) : null;
+    } catch {
+      return null;
+    }
+  });
 
   const { data: views = [], isLoading } = useQuery<SavedView[]>({
     queryKey: ["/api/saved-views", entityType],
@@ -127,6 +135,7 @@ export function SavedViewsSelector({
 
   const handleApplyView = (view: SavedView) => {
     setSelectedViewId(view.id);
+    try { localStorage.setItem(storageKey, String(view.id)); } catch {}
     onApplyView(view);
   };
 
@@ -168,6 +177,7 @@ export function SavedViewsSelector({
           <DropdownMenuItem
             onClick={() => {
               setSelectedViewId(null);
+              try { localStorage.removeItem(storageKey); } catch {}
               onApplyView({
                 id: 0,
                 organizationId: 0,

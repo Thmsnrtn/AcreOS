@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import { useProviderStatus } from "@/hooks/use-provider-status";
 import {
   Mail,
   Globe,
@@ -78,7 +79,9 @@ function RoutingEditor({
   const [mode, setMode] = useState<"in_app" | "forward" | "both">(identity.replyRoutingMode);
   const [replyToEmail, setReplyToEmail] = useState(identity.replyToEmail || "");
 
-  return (
+return (
+  <div>
+    {ProviderNotice}
     <div className="space-y-4">
       <RadioGroup
         value={mode}
@@ -140,7 +143,8 @@ function RoutingEditor({
       )}
 
       <div className="flex justify-end gap-2">
-        <Button
+<Button
+          disabled={!mailReady || activatePlatformMutation.isPending}
           onClick={() => onSave(mode, mode !== "in_app" ? replyToEmail : undefined)}
           disabled={isPending || ((mode === "forward" || mode === "both") && !replyToEmail)}
           data-testid={`button-save-routing-${identity.id}`}
@@ -156,6 +160,8 @@ function RoutingEditor({
 }
 
 export function EmailSettingsContent() {
+  const { isAvailable } = useProviderStatus();
+  const mailReady = isAvailable('mail');
   const { user } = useAuth();
   const { toast } = useToast();
   const [isAddDomainDialogOpen, setIsAddDomainDialogOpen] = useState(false);
@@ -178,6 +184,13 @@ export function EmailSettingsContent() {
     : user?.email?.split("@")[0] + "@acreage.pro" || "your.name@acreage.pro";
 
   const existingPlatformIdentity = identities.find((i) => i.type === "platform_alias");
+
+  const ProviderNotice = !mailReady ? (
+    <div className="p-3 mb-3 border rounded-md bg-amber-50 text-amber-800 flex items-center gap-2">
+      <AlertCircle className="w-4 h-4" />
+      <span className="text-sm">Email provider not configured. Configure in Settings → Providers to enable sending.</span>
+    </div>
+  ) : null;
   const customIdentities = identities.filter((i) => i.type === "custom_domain");
 
   const activatePlatformMutation = useMutation({

@@ -1,6 +1,8 @@
 import { useState, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/hooks/use-toast";
+import React from "react";
+import { ToastAction } from "@/components/ui/toast";
 
 interface RetryOptions {
   maxRetries?: number;
@@ -89,6 +91,7 @@ export function useApiRetry<T>(
               title: "Request Failed",
               description: err.message || "Something went wrong. Please try again.",
               variant: "destructive",
+              // Intentionally omit action in dev baseline to avoid strict type coupling
             });
           }
           

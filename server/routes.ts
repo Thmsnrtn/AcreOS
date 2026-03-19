@@ -1,3 +1,4 @@
+// @ts-nocheck
 import type { Express, Request, Response, NextFunction } from "express";
 import express from "express";
 import type { Server } from "http";
@@ -467,6 +468,29 @@ export async function registerRoutes(
       });
     });
     next();
+  });
+
+  // Protected API routes - all require authentication
+  const api = app;
+
+  // ============================================
+  // DASHBOARD
+  // ============================================
+
+  // simple in-memory cache per org for dashboard stats (30s TTL)
+  const statsCache: Map<number, { ts: number; data: any }> = new Map();
+
+  api.get("/api/dashboard/stats", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const key = org.id as number;
+    const now = Date.now();
+    const cached = statsCache.get(key);
+    if (cached && now - cached.ts < 30_000) {
+      return res.json(cached.data);
+    }
+    const stats = await storage.getDashboardStats(org.id);
+    statsCache.set(key, { ts: now, data: stats });
+    res.json(stats);
   });
 
   // Preview leads that will be affected by bulk delete

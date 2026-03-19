@@ -1,9 +1,6 @@
 node_modules
 dist
 .DS_Store
-server/public
-vite.config.ts.*
-*.tar.gz
 
 # Local env / secrets
 .env
@@ -15,10 +12,14 @@ vite.config.ts.*
 # Local backups
 .acreos-backups/
 
-# Logs and snapshots
+# Local logs / snapshots
 logs/
 logs/snapshots/
 *.log
+
+server/public
+vite.config.ts.*
+*.tar.gz
 
 # Playwright E2E
 tests/e2e/.auth/

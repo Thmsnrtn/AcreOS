@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/drawer";
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
+import { useAuth } from "@/hooks/use-auth";
 
 interface MobileCommandDrawerProps {
   open: boolean;
@@ -53,6 +54,7 @@ const moreItems = [
 export function MobileCommandDrawer({ open, onOpenChange }: MobileCommandDrawerProps) {
   const [location] = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
+  const { isFounder } = useAuth();
 
   const handleNavigate = () => {
     onOpenChange(false);
@@ -63,7 +65,11 @@ export function MobileCommandDrawer({ open, onOpenChange }: MobileCommandDrawerP
     item.label.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const filteredMoreItems = moreItems.filter(item =>
+  const dynamicMoreItems = isFounder
+    ? [{ href: "/founder", icon: PieChart, label: "Founder Dashboard" }, ...moreItems]
+    : moreItems;
+
+  const filteredMoreItems = dynamicMoreItems.filter(item =>
     item.label.toLowerCase().includes(searchQuery.toLowerCase())
   );
 

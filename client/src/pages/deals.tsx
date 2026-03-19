@@ -2,6 +2,7 @@ import { PageShell } from "@/components/page-shell";
 import { useDeals, useCreateDeal, useUpdateDeal, useDeleteDeal, useSaveDealAnalysis, useBulkStageUpdate, useBulkStageUndo, type BulkStageUpdateResult } from "@/hooks/use-deals";
 import { useProperties } from "@/hooks/use-properties";
 import { ListSkeleton } from "@/components/list-skeleton";
+import { InlineError } from "@/components/inline-error";
 import { telemetry } from "@/lib/telemetry";
 import { useDealChecklist, useChecklistTemplates, useApplyChecklistTemplate, useUpdateChecklistItem, useStageGate } from "@/hooks/use-checklists";
 import { useState, useMemo } from "react";
@@ -99,7 +100,7 @@ const statusColors: Record<string, string> = {
 };
 
 export default function DealsPage() {
-  const { data: deals, isLoading } = useDeals();
+  const { data: deals, isLoading, isError, error, refetch } = useDeals();
   const { data: properties } = useProperties();
   const searchString = useSearch();
   const urlParams = new URLSearchParams(searchString);
@@ -325,7 +326,14 @@ export default function DealsPage() {
     <PageShell>
         
           
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+<div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            {isError && (
+              <InlineError 
+                message={(error as Error)?.message || "Failed to load deals."}
+                onRetry={() => refetch()}
+                testId="inline-error-deals"
+              />
+            )}
             <div>
               <h1 className="text-3xl font-bold" data-testid="text-page-title">Deal Pipeline</h1>
               <p className="text-muted-foreground">Track acquisitions and dispositions through your pipeline.</p>

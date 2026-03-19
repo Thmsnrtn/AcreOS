@@ -13,6 +13,7 @@ import { telemetry } from "@/lib/telemetry";
 import { ThemeProvider } from "@/contexts/theme-context";
 import { AnimatePresence, motion } from "framer-motion";
 import { pageTransition } from "@/lib/animations";
+import { useToast } from "@/hooks/use-toast";
 
 import { SidebarProvider } from "@/components/layout-sidebar";
 import { HintsProvider } from "@/components/feature-hints";
@@ -28,6 +29,7 @@ import { FloatingActionButton } from "@/components/floating-action-button";
 import { FloatingHelpButton } from "@/components/floating-help-button";
 import { CommandPalette } from "@/components/command-palette";
 import { useSwipeNavigation } from "@/hooks/use-swipe-gesture";
+import { useNextRoutePrefetch } from "@/hooks/use-next-route-prefetch";
 import { MobileBottomNav } from "@/components/mobile";
 import { BetaFeedbackWidget } from "@/components/beta-feedback-widget";
 import { BetaActivationDetector } from "@/components/beta-activation-detector";
@@ -251,6 +253,8 @@ function HomeRoute() {
 
 // ─── Router ─────────────────────────────────────────────────────────────────
 function Router() {
+  const [pathname] = useLocation();
+  useNextRoutePrefetch(pathname);
   return (
     <Suspense fallback={<PageLoader />}>
       <Switch>
@@ -438,6 +442,7 @@ function PageWrapper({ children }: { children: React.ReactNode }) {
 
 function AppContent() {
   const { user } = useAuth();
+  const { toast } = useToast();
   useSwipeNavigation();
   useWhiteLabel();
 
@@ -446,6 +451,17 @@ function AppContent() {
       telemetry.sessionStart();
     }
   }, [user]);
+
+  // One-time hint for command palette
+  if (import.meta.env.DEV && typeof window !== 'undefined') {
+    const seen = localStorage.getItem('hint_cmdk_shown');
+    if (!seen && user) {
+      localStorage.setItem('hint_cmdk_shown', '1');
+      setTimeout(() => {
+        toast({ title: 'Tip', description: 'Press ⌘K (or Ctrl+K) to open the command palette.' });
+      }, 800);
+    }
+  }
 
   return (
     <>
