@@ -12681,3 +12681,271 @@ export const temporalPredictionPatterns = pgTable("temporal_prediction_patterns"
   index("tpp_auto_idx").on(table.autoStageEnabled),
 ]);
 export type TemporalPredictionPattern = typeof temporalPredictionPatterns.$inferSelect;
+
+// ============================================
+// SOVEREIGN COMPANY PROTOCOL v12 — THE REAL RUNTIME
+// ============================================
+
+// --- Agent Runtime State: persistent lifecycle ---
+
+export const agentRuntimeState = pgTable("agent_runtime_state", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull().unique(),
+  lifecycleState: text("lifecycle_state").notNull().default("initializing"),
+  currentTask: text("current_task"),
+  currentTaskStartedAt: timestamp("current_task_started_at"),
+  waitingFor: text("waiting_for"),
+  waitingSince: timestamp("waiting_since"),
+  persistentContext: jsonb("persistent_context").$type<Record<string, any>>().notNull().default({}),
+  memoryBudgetBytes: integer("memory_budget_bytes").notNull().default(1048576),
+  memoryUsedBytes: integer("memory_used_bytes").notNull().default(0),
+  executionTimeLimitMs: integer("execution_time_limit_ms").notNull().default(30000),
+  lastHeartbeatAt: timestamp("last_heartbeat_at").notNull().defaultNow(),
+  heartbeatIntervalMs: integer("heartbeat_interval_ms").notNull().default(30000),
+  consecutiveFailures: integer("consecutive_failures").notNull().default(0),
+  maxConsecutiveFailures: integer("max_consecutive_failures").notNull().default(5),
+  supervisorAgent: text("supervisor_agent"),
+  restartPolicy: text("restart_policy").notNull().default("restart"),
+  restartCount: integer("restart_count").notNull().default(0),
+  lastRestartAt: timestamp("last_restart_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("ars_state_idx").on(table.lifecycleState),
+  index("ars_heartbeat_idx").on(table.lastHeartbeatAt),
+]);
+export type AgentRuntimeStateEntry = typeof agentRuntimeState.$inferSelect;
+
+// --- Event Mesh Events: real pub/sub ---
+
+export const eventMeshEvents = pgTable("event_mesh_events", {
+  id: serial("id").primaryKey(),
+  eventId: text("event_id").notNull().unique(),
+  channel: text("channel").notNull(),
+  eventType: text("event_type").notNull(),
+  priority: integer("priority").notNull().default(5),
+  payload: jsonb("payload").$type<Record<string, any>>().notNull().default({}),
+  publisher: text("publisher").notNull(),
+  orgId: integer("org_id"),
+  requiresAck: boolean("requires_ack").notNull().default(false),
+  ackedBy: jsonb("acked_by").$type<string[]>().notNull().default([]),
+  deadLettered: boolean("dead_lettered").notNull().default(false),
+  deadLetterReason: text("dead_letter_reason"),
+  retryCount: integer("retry_count").notNull().default(0),
+  maxRetries: integer("max_retries").notNull().default(3),
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("eme_channel_idx").on(table.channel),
+  index("eme_type_idx").on(table.eventType),
+  index("eme_priority_idx").on(table.priority),
+  index("eme_org_idx").on(table.orgId),
+  index("eme_dead_idx").on(table.deadLettered),
+  index("eme_created_idx").on(table.createdAt),
+]);
+export type EventMeshEvent = typeof eventMeshEvents.$inferSelect;
+
+// --- Event Mesh Subscriptions ---
+
+export const eventMeshSubscriptions = pgTable("event_mesh_subscriptions", {
+  id: serial("id").primaryKey(),
+  subscriber: text("subscriber").notNull(),
+  channelPattern: text("channel_pattern").notNull(),
+  filterConditions: jsonb("filter_conditions").$type<Record<string, any>>().notNull().default({}),
+  callbackType: text("callback_type").notNull().default("internal"),
+  isActive: boolean("is_active").notNull().default(true),
+  lastEventAt: timestamp("last_event_at"),
+  eventsProcessed: integer("events_processed").notNull().default(0),
+  eventsFailed: integer("events_failed").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("ems_subscriber_idx").on(table.subscriber),
+  index("ems_channel_idx").on(table.channelPattern),
+]);
+export type EventMeshSubscription = typeof eventMeshSubscriptions.$inferSelect;
+
+// --- Outcome Verification Contracts ---
+
+export const outcomeVerificationContracts = pgTable("outcome_verification_contracts", {
+  id: serial("id").primaryKey(),
+  actionId: text("action_id").notNull(),
+  agentCodename: text("agent_codename").notNull(),
+  actionType: text("action_type").notNull(),
+  actionDescription: text("action_description").notNull(),
+  claimedOutcome: text("claimed_outcome").notNull(),
+  claimedSuccess: boolean("claimed_success").notNull().default(true),
+  verificationMethod: text("verification_method").notNull(),
+  verificationConfig: jsonb("verification_config").$type<Record<string, any>>().notNull().default({}),
+  verifyAfterMinutes: integer("verify_after_minutes").notNull().default(60),
+  verifyStages: jsonb("verify_stages").$type<Array<{ stage: string; minutes: number }>>().notNull().default([]),
+  currentStage: text("current_stage").notNull().default("pending"),
+  verifiedOutcome: text("verified_outcome"),
+  verifiedSuccess: boolean("verified_success"),
+  discrepancyDetected: boolean("discrepancy_detected").notNull().default(false),
+  discrepancyDetails: text("discrepancy_details"),
+  orgId: integer("org_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  nextVerificationAt: timestamp("next_verification_at"),
+  completedAt: timestamp("completed_at"),
+}, (table) => [
+  index("ovc_agent_idx").on(table.agentCodename),
+  index("ovc_stage_idx").on(table.currentStage),
+  index("ovc_next_idx").on(table.nextVerificationAt),
+  index("ovc_discrepancy_idx").on(table.discrepancyDetected),
+]);
+export type OutcomeVerificationContract = typeof outcomeVerificationContracts.$inferSelect;
+
+// --- Saga Instances: distributed transactions ---
+
+export const sagaInstances = pgTable("saga_instances", {
+  id: serial("id").primaryKey(),
+  sagaId: text("saga_id").notNull().unique(),
+  sagaName: text("saga_name").notNull(),
+  initiatorAgent: text("initiator_agent").notNull(),
+  status: text("status").notNull().default("running"),
+  steps: jsonb("steps").$type<Array<{
+    order: number;
+    agent: string;
+    action: string;
+    compensatingAction: string;
+    status: string;
+    result?: Record<string, any>;
+    compensationResult?: Record<string, any>;
+  }>>().notNull().default([]),
+  currentStep: integer("current_step").notNull().default(0),
+  totalSteps: integer("total_steps").notNull().default(0),
+  idempotencyKey: text("idempotency_key").notNull(),
+  timeoutMs: integer("timeout_ms").notNull().default(300000),
+  parentSagaId: text("parent_saga_id"),
+  orgId: integer("org_id"),
+  startedAt: timestamp("started_at").notNull().defaultNow(),
+  completedAt: timestamp("completed_at"),
+  compensatedAt: timestamp("compensated_at"),
+  error: text("error"),
+}, (table) => [
+  index("si_status_idx").on(table.status),
+  index("si_initiator_idx").on(table.initiatorAgent),
+  index("si_idempotency_idx").on(table.idempotencyKey),
+  index("si_parent_idx").on(table.parentSagaId),
+]);
+export type SagaInstance = typeof sagaInstances.$inferSelect;
+
+// --- Agent Versions: personality versioning ---
+
+export const agentVersions = pgTable("agent_versions", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull(),
+  versionNumber: integer("version_number").notNull(),
+  personalityPrompt: text("personality_prompt").notNull(),
+  ownedServices: jsonb("owned_services").$type<string[]>().notNull().default([]),
+  behaviorConfig: jsonb("behavior_config").$type<Record<string, any>>().notNull().default({}),
+  changeDescription: text("change_description").notNull(),
+  isActive: boolean("is_active").notNull().default(false),
+  canaryWeight: integer("canary_weight").notNull().default(0),
+  performanceMetrics: jsonb("performance_metrics").$type<Record<string, any>>().notNull().default({}),
+  regressionTestPassed: boolean("regression_test_passed"),
+  regressionTestResults: jsonb("regression_test_results").$type<Record<string, any>>(),
+  deployedAt: timestamp("deployed_at"),
+  rolledBackAt: timestamp("rolled_back_at"),
+  createdBy: text("created_by").notNull().default("system"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("av_agent_idx").on(table.agentCodename),
+  index("av_active_idx").on(table.isActive),
+]);
+export type AgentVersion = typeof agentVersions.$inferSelect;
+
+// --- Trust Enforcement Log ---
+
+export const trustEnforcementLog = pgTable("trust_enforcement_log", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull(),
+  actionType: text("action_type").notNull(),
+  requiredTrust: integer("required_trust").notNull(),
+  actualTrust: integer("actual_trust").notNull(),
+  decision: text("decision").notNull(),
+  approvalRequestedAt: timestamp("approval_requested_at"),
+  approvalResolvedAt: timestamp("approval_resolved_at"),
+  approvedBy: text("approved_by"),
+  actionOutcome: text("action_outcome"),
+  trustDelta: integer("trust_delta"),
+  orgId: integer("org_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("tel_agent_idx").on(table.agentCodename),
+  index("tel_decision_idx").on(table.decision),
+  index("tel_org_idx").on(table.orgId),
+]);
+export type TrustEnforcementLogEntry = typeof trustEnforcementLog.$inferSelect;
+
+// --- Integration Credentials: secure vault ---
+
+export const integrationCredentials = pgTable("integration_credentials", {
+  id: serial("id").primaryKey(),
+  serviceName: text("service_name").notNull(),
+  credentialType: text("credential_type").notNull(),
+  encryptedValue: text("encrypted_value").notNull(),
+  allowedAgents: jsonb("allowed_agents").$type<string[]>().notNull().default([]),
+  rateLimitPerMinute: integer("rate_limit_per_minute").notNull().default(60),
+  rateLimitUsed: integer("rate_limit_used").notNull().default(0),
+  rateLimitResetAt: timestamp("rate_limit_reset_at").notNull().defaultNow(),
+  circuitBreakerFailures: integer("circuit_breaker_failures").notNull().default(0),
+  circuitBreakerThreshold: integer("circuit_breaker_threshold").notNull().default(5),
+  circuitBreakerOpen: boolean("circuit_breaker_open").notNull().default(false),
+  circuitBreakerResetAt: timestamp("circuit_breaker_reset_at"),
+  lastUsedAt: timestamp("last_used_at"),
+  orgId: integer("org_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("ic_service_idx").on(table.serviceName),
+  index("ic_circuit_idx").on(table.circuitBreakerOpen),
+]);
+export type IntegrationCredential = typeof integrationCredentials.$inferSelect;
+
+// --- Integration Execution Log ---
+
+export const integrationExecutionLog = pgTable("integration_execution_log", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull(),
+  serviceName: text("service_name").notNull(),
+  method: text("method").notNull(),
+  endpoint: text("endpoint").notNull(),
+  requestSummary: text("request_summary"),
+  responseStatus: integer("response_status"),
+  responseSummary: text("response_summary"),
+  costCents: integer("cost_cents").notNull().default(0),
+  latencyMs: integer("latency_ms"),
+  success: boolean("success"),
+  error: text("error"),
+  retryCount: integer("retry_count").notNull().default(0),
+  rollbackAction: text("rollback_action"),
+  rollbackExecuted: boolean("rollback_executed").notNull().default(false),
+  orgId: integer("org_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("iel_agent_idx").on(table.agentCodename),
+  index("iel_service_idx").on(table.serviceName),
+  index("iel_success_idx").on(table.success),
+]);
+export type IntegrationExecutionLogEntry = typeof integrationExecutionLog.$inferSelect;
+
+// --- Tenant Agent Config: per-org agent customization ---
+
+export const tenantAgentConfig = pgTable("tenant_agent_config", {
+  id: serial("id").primaryKey(),
+  orgId: integer("org_id").notNull(),
+  agentCodename: text("agent_codename").notNull(),
+  trustScore: integer("trust_score").notNull().default(50),
+  trustFloor: integer("trust_floor").notNull().default(20),
+  trustCeiling: integer("trust_ceiling").notNull().default(100),
+  enabled: boolean("enabled").notNull().default(true),
+  customPersonalityOverride: text("custom_personality_override"),
+  customQuotas: jsonb("custom_quotas").$type<Record<string, any>>().notNull().default({}),
+  customPermissions: jsonb("custom_permissions").$type<string[]>().notNull().default([]),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("tac_org_idx").on(table.orgId),
+  index("tac_agent_idx").on(table.agentCodename),
+]);
+export type TenantAgentConfigEntry = typeof tenantAgentConfig.$inferSelect;

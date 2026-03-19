@@ -106,6 +106,7 @@ const MapsPage = React.lazy(() => import("@/pages/maps"));
 const CommandCenterPage = React.lazy(() => import("@/pages/command-center"));
 const ConsciousOrganizationPage = React.lazy(() => import("@/pages/conscious-organization"));
 const AnticipatoryEnterprisePage = React.lazy(() => import("@/pages/anticipatory-enterprise"));
+const RealRuntimePage = React.lazy(() => import("@/pages/real-runtime"));
 const AutomationPage = React.lazy(() => import("@/pages/automation"));
 const WorkflowsPage = React.lazy(() => import("@/pages/workflows"));
 const ToolsPage = React.lazy(() => import("@/pages/tools"));
@@ -349,6 +350,7 @@ function Router() {
         <Route path="/command-center">{() => <ProtectedRoute component={CommandCenterPage} />}</Route>
         <Route path="/conscious-organization">{() => <ProtectedRoute component={ConsciousOrganizationPage} />}</Route>
         <Route path="/anticipatory-enterprise">{() => <ProtectedRoute component={AnticipatoryEnterprisePage} />}</Route>
+        <Route path="/real-runtime">{() => <ProtectedRoute component={RealRuntimePage} />}</Route>
         <Route path="/agent-command-center">{() => <ProtectedRoute component={AgentCommandCenterPage} />}</Route>
         <Route path="/agents">{() => <Redirect to="/agent-command-center" />}</Route>
         <Route path="/ai-team">{() => <Redirect to="/agent-command-center" />}</Route>
