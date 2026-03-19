@@ -44,6 +44,13 @@ type CommandCategory =
   | "show_forecast"
   | "show_customer_health"
   | "set_reminder"
+  // v6: Self-Running Company
+  | "activate_absence"
+  | "deactivate_absence"
+  | "convene_war_room"
+  | "run_workflow"
+  | "generate_reviews"
+  | "show_initiatives"
   | "unknown";
 
 /**
@@ -95,11 +102,30 @@ export async function processCEOCommand(input: string): Promise<CommandResult> {
     case "set_reminder":
       return await handleSetReminder(classification.params);
 
+    // v6: Self-Running Company commands
+    case "activate_absence":
+      return await handleActivateAbsence(classification.params);
+
+    case "deactivate_absence":
+      return await handleDeactivateAbsence();
+
+    case "convene_war_room":
+      return await handleConveneWarRoom(classification.params);
+
+    case "run_workflow":
+      return await handleRunWorkflow(classification.params);
+
+    case "generate_reviews":
+      return await handleGenerateReviews();
+
+    case "show_initiatives":
+      return await handleShowInitiatives();
+
     default:
       return {
         understood: false,
         action: "unknown",
-        result: "I didn't understand that as a command. Try something like 'pause all marketing', 'what did Sophie do this week', or 'focus on retention'.",
+        result: "I didn't understand that as a command. Try something like 'pause all marketing', 'what did Sophie do this week', 'I'm going away for 3 days', or 'run performance reviews'.",
       };
   }
 }
@@ -128,6 +154,12 @@ Categories:
 - show_forecast: CEO asks about MRR forecast, projections, runway. Params: {}
 - show_customer_health: CEO asks about customer health overview. Params: { customerName?: string }
 - set_reminder: CEO wants to be reminded of something. Params: { message: string, when: string }
+- activate_absence: CEO is going away/offline/vacation. Params: { durationHours: number }
+- deactivate_absence: CEO is back/returned. Params: {}
+- convene_war_room: CEO wants to start a war room for a critical issue. Params: { event: string, description: string }
+- run_workflow: CEO wants to trigger a workflow/pipeline. Params: { workflowName: string }
+- generate_reviews: CEO wants to run performance reviews for agents. Params: {}
+- show_initiatives: CEO wants to see agent initiative proposals. Params: {}
 - unknown: Can't classify. Params: {}
 
 Agent codenames: atlas_cto, sophie_csm, forge_revenue, beacon_marketing, sentinel_devops, ledger_finance, shield_legal, oracle_analytics, compass_pm, crucible_qa
@@ -473,5 +505,138 @@ async function handleSetReminder(params: any): Promise<CommandResult> {
     action: "set_reminder",
     result: `Got it. I'll remind you: "${params.message}" on ${dateStr}.`,
     data: { reminderId: reminder.id, dueDate: dueDate.toISOString() },
+  };
+}
+
+// ─── v6: Self-Running Company Command Handlers ──────────────────────────────
+
+async function handleActivateAbsence(params: any): Promise<CommandResult> {
+  const { ceoAbsenceService } = await import("./ceoAbsenceMode");
+  const hours = params.durationHours || 72;
+
+  const id = await ceoAbsenceService.activate({ durationHours: hours });
+  const days = Math.round(hours / 24);
+
+  return {
+    understood: true,
+    action: "activate_absence",
+    result: `Absence mode activated for ${days} day${days !== 1 ? "s" : ""}. Your AI team is running things autonomously. Trust scores boosted. Only emergencies will break through. Say "I'm back" when you return.`,
+    data: { absenceId: id, durationHours: hours },
+  };
+}
+
+async function handleDeactivateAbsence(): Promise<CommandResult> {
+  const { ceoAbsenceService } = await import("./ceoAbsenceMode");
+  const briefing = await ceoAbsenceService.deactivate();
+
+  return {
+    understood: true,
+    action: "deactivate_absence",
+    result: briefing
+      ? `Welcome back! Here's your return briefing:\n\n${briefing}`
+      : "Welcome back! Absence mode wasn't active, but you're all set.",
+    data: { returnBriefing: briefing },
+  };
+}
+
+async function handleConveneWarRoom(params: any): Promise<CommandResult> {
+  const { warRoomService } = await import("./warRoomService");
+
+  const event = params.event || "ceo_initiated";
+  const roomId = await warRoomService.convene(event, {
+    description: params.description || "CEO-initiated war room",
+    initiatedBy: "ceo",
+  });
+
+  if (!roomId) {
+    // If no matching rule, create a generic critical war room
+    const { db } = await import("../db");
+    const { warRooms } = await import("@shared/schema");
+    const [room] = await db.insert(warRooms).values({
+      title: params.description || "CEO-Initiated War Room",
+      severity: "high",
+      triggerEvent: "ceo_initiated",
+      triggerData: params,
+      participants: ["atlas_cto", "sophie_csm", "forge_revenue", "sentinel_devops"],
+      leadAgent: "atlas_cto",
+      status: "active",
+    }).returning({ id: warRooms.id });
+
+    return {
+      understood: true,
+      action: "convene_war_room",
+      result: `War room opened. Atlas is leading, with Sophie, Forge, and Sentinel joining. Check the dashboard for real-time updates.`,
+      data: { roomId: room.id },
+    };
+  }
+
+  return {
+    understood: true,
+    action: "convene_war_room",
+    result: `War room convened. Agents are gathering and analyzing the situation. Check the dashboard for real-time updates.`,
+    data: { roomId },
+  };
+}
+
+async function handleRunWorkflow(params: any): Promise<CommandResult> {
+  const { workflowEngine } = await import("./agentWorkflowEngine");
+  const workflows = await workflowEngine.getAll();
+
+  if (params.workflowName) {
+    const match = workflows.find(w =>
+      w.name.toLowerCase().includes(params.workflowName.toLowerCase())
+    );
+    if (match) {
+      const runId = await workflowEngine.triggerManual(match.id);
+      return {
+        understood: true,
+        action: "run_workflow",
+        result: `Running "${match.name}" pipeline (${match.steps?.length || 0} steps). Watch progress on the dashboard.`,
+        data: { runId, workflowId: match.id },
+      };
+    }
+  }
+
+  const names = workflows.map(w => w.name).join(", ");
+  return {
+    understood: true,
+    action: "run_workflow",
+    result: `Available pipelines: ${names || "None configured yet"}. Which one should I run?`,
+  };
+}
+
+async function handleGenerateReviews(): Promise<CommandResult> {
+  const { performanceReviewService } = await import("./agentPerformanceReviews");
+  const ids = await performanceReviewService.generateAllReviews();
+
+  return {
+    understood: true,
+    action: "generate_reviews",
+    result: `Generated ${ids.length} performance review${ids.length !== 1 ? "s" : ""}. Check the Performance Reviews section on the dashboard.`,
+    data: { reviewIds: ids },
+  };
+}
+
+async function handleShowInitiatives(): Promise<CommandResult> {
+  const { agentInitiativeService } = await import("./agentInitiatives");
+  const pending = await agentInitiativeService.getPending();
+
+  if (pending.length === 0) {
+    return {
+      understood: true,
+      action: "show_initiatives",
+      result: "No pending initiative proposals from your agents. They'll pitch ideas when they spot opportunities.",
+    };
+  }
+
+  const lines = pending.map((i: any) =>
+    `- ${i.title} (proposed by ${i.proposedBy.split("_")[0]}): ${i.thesis?.slice(0, 100)}...`
+  );
+
+  return {
+    understood: true,
+    action: "show_initiatives",
+    result: `${pending.length} initiative${pending.length !== 1 ? "s" : ""} waiting for your decision:\n\n${lines.join("\n")}\n\nReview them on the dashboard to approve, reject, or shelve.`,
+    data: { count: pending.length, initiatives: pending },
   };
 }
