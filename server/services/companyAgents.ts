@@ -367,13 +367,30 @@ class CompanyAgentService {
       const strategicContext = await getPrioritiesForPrompt().catch(() => "");
       const learnedPatterns = await getLearnedPatternsForPrompt(codename).catch(() => "");
 
+      // v6: Inject recent CEO chat context so agents remember conversations
+      let recentChatContext = "";
+      try {
+        const { agentConversations } = await import("@shared/schema");
+        const { desc: descOrder, eq: eqOp, gte: gteOp } = await import("drizzle-orm");
+        const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+        const recentChats = await db.select()
+          .from(agentConversations)
+          .where(eqOp(agentConversations.agentCodename, codename))
+          .orderBy(descOrder(agentConversations.createdAt))
+          .limit(6);
+        if (recentChats.length > 0) {
+          const chatLines = recentChats.reverse().map((c: any) => `${c.role === "user" ? "CEO" : "You"}: ${c.content.slice(0, 200)}`);
+          recentChatContext = `\n--- RECENT CEO CONVERSATIONS ---\nThe CEO recently discussed this with you:\n${chatLines.join("\n")}\nIncorporate this context into your thinking.\n`;
+        }
+      } catch {}
+
       const aiResponse = await routeAITask({
         taskType: "agent_report",
         complexity: TaskComplexity.MODERATE,
         messages: [
           {
             role: "system",
-            content: (agent.personalityPrompt || `You are ${agent.codename}, the ${agent.title}.`) + `${strategicContext}${learnedPatterns}`,
+            content: (agent.personalityPrompt || `You are ${agent.codename}, the ${agent.title}.`) + `${strategicContext}${learnedPatterns}${recentChatContext}`,
           },
           {
             role: "user",

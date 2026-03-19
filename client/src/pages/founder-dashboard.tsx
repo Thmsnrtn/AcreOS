@@ -115,6 +115,10 @@ import { AgentTeamChat } from "@/components/founder/AgentTeamChat";
 import ActivityTimeline from "@/components/founder/ActivityTimeline";
 import TrendCards from "@/components/founder/TrendCards";
 import OnboardingWalkthrough from "@/components/founder/OnboardingWalkthrough";
+import ForecastPanel from "@/components/founder/ForecastPanel";
+import CustomerHealthPanel from "@/components/founder/CustomerHealthPanel";
+import OutcomeFeedback from "@/components/founder/OutcomeFeedback";
+import DelegationManager from "@/components/founder/DelegationManager";
 import { trustLabel, trustBadgeColor } from "@/lib/trust-language";
 
 interface AdminDashboardData {
@@ -1977,6 +1981,48 @@ export default function FounderDashboard() {
                 <ActivityTimeline />
               </CardContent>
             </Card>
+
+            {/* Financial Forecast */}
+            <Card className="overflow-hidden">
+              <CardHeader className="pb-2 border-b">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4" />
+                  Financial Forecast
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <ForecastPanel />
+              </CardContent>
+            </Card>
+
+            {/* Customer Health */}
+            <Card className="overflow-hidden">
+              <CardHeader className="pb-2 border-b">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Heart className="h-4 w-4" />
+                  Customer Health
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <CustomerHealthPanel />
+              </CardContent>
+            </Card>
+
+            {/* Outcome Feedback */}
+            <Card className="overflow-hidden">
+              <CardHeader className="pb-2 border-b">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <BarChart3 className="h-4 w-4" />
+                  Decision Outcomes
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <OutcomeFeedback />
+              </CardContent>
+            </Card>
+
+            {/* Delegation Manager */}
+            <DelegationManager />
 
             {/* Classic Pulse (collapsed) for deep-dive users */}
             <details className="group">

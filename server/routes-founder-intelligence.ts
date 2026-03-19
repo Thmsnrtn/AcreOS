@@ -1648,6 +1648,38 @@ router.post("/agent-chat", requireFounder, async (req: Request, res: Response) =
       return res.status(400).json({ error: "Message is required" });
     }
 
+    // v6: Route CEO commands through the command bridge FIRST
+    // Commands like "pause marketing", "show forecast", "how is Acme" get executed immediately
+    // Only falls through to agent chat if it's not a recognized command
+    try {
+      const { processCEOCommand } = await import("./services/ceoCommandBridge");
+      const commandResult = await processCEOCommand(message);
+
+      if (commandResult.understood) {
+        // Save command + result to conversation history
+        const conversationId = clientConvId || `cmd_${Date.now()}`;
+        try {
+          await db.insert(agentConversations).values([
+            { conversationId, agentCodename: "system", role: "user", content: message },
+            { conversationId, agentCodename: "system", role: "assistant", content: commandResult.result },
+          ] as any);
+        } catch {}
+
+        return res.json({
+          response: commandResult.result,
+          agent: "system",
+          agentTitle: "Command",
+          conversationId,
+          isCommand: true,
+          commandAction: commandResult.action,
+          commandData: commandResult.data,
+        });
+      }
+    } catch (cmdErr) {
+      // Command bridge failed — fall through to normal agent chat
+      console.warn("[agent-chat] Command bridge error, falling through:", (cmdErr as any).message);
+    }
+
     // Agent lookup table
     const AGENT_NAMES: Record<string, string> = {
       atlas: "atlas_cto", sophie: "sophie_csm", forge: "forge_revenue",
@@ -2388,6 +2420,27 @@ router.delete("/delegations/:id", requireFounder, async (req: Request, res: Resp
     const { revokeDelegation } = await import("./services/temporaryDelegation");
     const success = revokeDelegation(req.params.id);
     res.json({ success, message: success ? "Delegation revoked" : "Delegation not found" });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// v6: CEO Reminders
+router.get("/reminders", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { getPendingReminders, getDueReminders } = await import("./services/ceoReminders");
+    const [pending, due] = await Promise.all([getPendingReminders(), getDueReminders()]);
+    res.json({ pending, due });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete("/reminders/:id", requireFounder, async (req: Request, res: Response) => {
+  try {
+    const { dismissReminder } = await import("./services/ceoReminders");
+    const success = await dismissReminder(req.params.id);
+    res.json({ success });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
