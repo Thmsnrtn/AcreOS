@@ -12,11 +12,6 @@ export function redirectToLogin(toast?: (options: { title: string; description: 
     });
   }
   setTimeout(() => {
-    if (import.meta.env.DEV) {
-      // In local dev, skip Replit login and go to the app shell
-      window.location.href = "/";
-    } else {
-      window.location.href = "/api/login";
-    }
+    window.location.href = "/auth";
   }, 500);
 }

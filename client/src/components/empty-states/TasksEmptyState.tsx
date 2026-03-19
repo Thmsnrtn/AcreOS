@@ -63,7 +63,7 @@ export function TasksEmptyState({ onAddTask }: TasksEmptyStateProps) {
             <div>
               <p className="text-sm font-medium mb-1">Pro tip</p>
               <p className="text-sm text-muted-foreground">
-                Atlas AI can generate suggested follow-up tasks automatically when you close conversations with leads.
+                Pax AI can generate suggested follow-up tasks automatically when you close conversations with leads.
               </p>
             </div>
           </div>

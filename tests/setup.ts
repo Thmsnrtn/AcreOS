@@ -7,6 +7,8 @@
 
 process.env.NODE_ENV = "test";
 process.env.SESSION_SECRET = "test-session-secret";
+process.env.ENCRYPTION_KEY = "test-encryption-key-32-bytes-long!!";
+process.env.FOUNDER_EMAIL = "thmsnrtn@gmail.com";
 process.env.FOUNDER_EMAILS = "founder@test.com";
 // Dummy DATABASE_URL so db.ts module doesn't throw on import.
 // Actual DB calls should be mocked in individual tests.

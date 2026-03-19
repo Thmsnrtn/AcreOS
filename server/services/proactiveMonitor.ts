@@ -1,7 +1,7 @@
 /**
  * Proactive Issue Detection Service
  * 
- * Monitors for system issues and creates automatic alerts for Sophie
+ * Monitors for system issues and creates automatic alerts for Pax
  * (the AI support agent) to help users proactively.
  */
 
@@ -13,7 +13,7 @@ import {
 import { eq, and, lt, desc, isNull, count, ne, gte, sql } from "drizzle-orm";
 import { healthCheckService, ServiceStatus } from "./healthCheck";
 import { getAllUsageLimits, ResourceType } from "./usageLimits";
-import { sophieObserver } from "./sophieObserver";
+import { paxObserver } from "./paxObserver";
 
 export type AlertType = 'api_error' | 'sync_failure' | 'quota_warning' | 'data_issue' | 'service_degraded' | 'activity_drop' | 'error_pattern' | 'anomaly_detected';
 export type AlertSeverity = 'info' | 'warning' | 'critical';
@@ -68,7 +68,7 @@ class ProactiveMonitorService {
         const percentage = usage.percentage;
         
         if (percentage >= 95) {
-          await sophieObserver.recordQuotaWarning(
+          await paxObserver.recordQuotaWarning(
             orgId, 
             resourceType, 
             usage.current, 
@@ -76,7 +76,7 @@ class ProactiveMonitorService {
             percentage
           );
         } else if (percentage >= 80) {
-          await sophieObserver.recordQuotaWarning(
+          await paxObserver.recordQuotaWarning(
             orgId, 
             resourceType, 
             usage.current, 
@@ -134,7 +134,7 @@ class ProactiveMonitorService {
       }
 
       for (const issue of issues) {
-        await sophieObserver.recordDataIssue(
+        await paxObserver.recordDataIssue(
           orgId,
           issue.type,
           issue.table,
@@ -239,7 +239,7 @@ class ProactiveMonitorService {
       }
 
       await this.cleanupOldAlerts();
-      await sophieObserver.cleanupOldObservations();
+      await paxObserver.cleanupOldObservations();
     } catch (error) {
       console.error('[proactiveMonitor] Error running all checks:', error);
     }
@@ -296,7 +296,7 @@ class ProactiveMonitorService {
   }
 
   /**
-   * Auto-resolve an alert (called by Sophie or automatic resolution)
+   * Auto-resolve an alert (called by Pax or automatic resolution)
    */
   async autoResolveAlert(alertId: number, details: string, resolvedBy: string = 'auto'): Promise<boolean> {
     try {
@@ -507,7 +507,7 @@ class ProactiveMonitorService {
       const dropPercentage = ((avgDailyBaseline - recentCount) / avgDailyBaseline) * 100;
       
       if (dropPercentage >= 70) {
-        await sophieObserver.recordActivityDrop(
+        await paxObserver.recordActivityDrop(
           orgId,
           recentCount,
           avgDailyBaseline,
@@ -557,7 +557,7 @@ class ProactiveMonitorService {
       if (highUsageServices.length > 0) {
         const topService = highUsageServices.sort((a, b) => b[1] - a[1])[0];
         
-        await sophieObserver.recordObservation({
+        await paxObserver.recordObservation({
           organizationId: orgId,
           type: 'error_pattern',
           confidenceScore: 75,
@@ -652,7 +652,7 @@ class ProactiveMonitorService {
       if (anomalies.length > 0) {
         const topAnomaly = anomalies.sort((a, b) => b.ratio - a.ratio)[0];
         
-        await sophieObserver.recordObservation({
+        await paxObserver.recordObservation({
           organizationId: orgId,
           type: 'usage_spike',
           confidenceScore: Math.min(90, Math.round(topAnomaly.ratio * 20)),

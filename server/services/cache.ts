@@ -1,210 +1,109 @@
 /**
- * Redis Query Caching Layer — T1
+ * Lightweight Redis cache utility.
  *
- * Wraps hot read paths (leads list, properties, dashboard stats, county GIS)
- * with a Redis-backed cache. Falls back to a simple in-memory Map when Redis
- * is not configured so local dev keeps working without changes.
+ * When REDIS_URL is set, caches values in Redis with a TTL.
+ * Falls back to a no-op (always miss) when Redis is unavailable,
+ * so callers work correctly in local dev without Redis.
  *
  * Usage:
- *   const data = await cache.get("leads:org:42") ?? (await fetchLeads());
- *   await cache.set("leads:org:42", data, { ttlSeconds: 120 });
- *   await cache.invalidate("leads:org:42");
- *   await cache.invalidatePattern("leads:org:42:*");
+ *   const cached = await cache.get<Lead[]>(`leads:${orgId}`);
+ *   if (!cached) {
+ *     const fresh = await expensiveQuery();
+ *     await cache.set(`leads:${orgId}`, fresh, 300); // 5 min TTL
+ *     return fresh;
+ *   }
+ *   return cached;
  */
 
-import { log } from "../index";
-import { redisCircuitBreaker } from "../utils/circuitBreaker";
-
-const REDIS_URL = process.env.REDIS_URL;
-const DEFAULT_TTL = 120; // 2 minutes
-
-// ─── In-memory fallback ──────────────────────────────────────────────────────
-
-interface MemEntry {
-  value: string;
-  expiresAt: number;
+interface CacheClient {
+  get<T>(key: string): Promise<T | null>;
+  set<T>(key: string, value: T, ttlSeconds: number): Promise<void>;
+  del(key: string): Promise<void>;
+  delPattern(pattern: string): Promise<void>;
 }
 
-const memStore = new Map<string, MemEntry>();
+class NoopCache implements CacheClient {
+  async get<T>(_key: string): Promise<T | null> { return null; }
+  async set<T>(_key: string, _value: T, _ttl: number): Promise<void> {}
+  async del(_key: string): Promise<void> {}
+  async delPattern(_pattern: string): Promise<void> {}
+}
 
-function memGet(key: string): string | null {
-  const entry = memStore.get(key);
-  if (!entry) return null;
-  if (Date.now() > entry.expiresAt) {
-    memStore.delete(key);
-    return null;
+class RedisCache implements CacheClient {
+  private client: any;
+  private readonly PREFIX = "acreos:";
+
+  constructor(client: any) {
+    this.client = client;
   }
-  return entry.value;
-}
 
-function memSet(key: string, value: string, ttlSeconds: number): void {
-  memStore.set(key, { value, expiresAt: Date.now() + ttlSeconds * 1000 });
-}
-
-function memDel(key: string): void {
-  memStore.delete(key);
-}
-
-function memDelPattern(pattern: string): void {
-  const regex = new RegExp("^" + pattern.replace(/\*/g, ".*") + "$");
-  for (const key of memStore.keys()) {
-    if (regex.test(key)) memStore.delete(key);
-  }
-}
-
-// ─── Redis client (lazy init) ────────────────────────────────────────────────
-
-let redisClient: any = null;
-
-async function getRedis(): Promise<any> {
-  if (!REDIS_URL) return null;
-  if (redisClient) return redisClient;
-  try {
-    const IORedis = (await import("ioredis")).default;
-    redisClient = new IORedis(REDIS_URL, {
-      maxRetriesPerRequest: 3,
-      enableReadyCheck: false,
-      lazyConnect: true,
-    });
-    redisClient.on("error", (err: Error) => {
-      log(`Redis cache error: ${err.message}`, "cache");
-    });
-    await redisClient.connect().catch(() => {});
-    log("Redis cache connected", "cache");
-    return redisClient;
-  } catch (err: any) {
-    log(`Redis cache init failed: ${err.message} — falling back to in-memory`, "cache");
-    redisClient = null;
-    return null;
-  }
-}
-
-// ─── Cache options ────────────────────────────────────────────────────────────
-
-interface CacheSetOptions {
-  ttlSeconds?: number;
-}
-
-// ─── Public API ──────────────────────────────────────────────────────────────
-
-export const cache = {
-  /**
-   * Get a cached value. Returns null on miss or error.
-   */
-  async get<T = unknown>(key: string): Promise<T | null> {
+  async get<T>(key: string): Promise<T | null> {
     try {
-      const redis = await getRedis();
-      const raw = redis
-        ? await redisCircuitBreaker.call<string | null>(() => redis.get(key))
-        : memGet(key);
-      if (!raw) return null;
+      const raw = await this.client.get(this.PREFIX + key);
+      if (raw === null) return null;
       return JSON.parse(raw) as T;
     } catch {
       return null;
     }
-  },
+  }
 
-  /**
-   * Set a value. TTL defaults to 120s.
-   */
-  async set<T = unknown>(
-    key: string,
-    value: T,
-    options: CacheSetOptions = {}
-  ): Promise<void> {
-    const ttl = options.ttlSeconds ?? DEFAULT_TTL;
+  async set<T>(key: string, value: T, ttlSeconds: number): Promise<void> {
     try {
-      const serialized = JSON.stringify(value);
-      const redis = await getRedis();
-      if (redis) {
-        await redisCircuitBreaker.call(() => redis.setex(key, ttl, serialized));
-      } else {
-        memSet(key, serialized, ttl);
-      }
+      await this.client.set(this.PREFIX + key, JSON.stringify(value), "EX", ttlSeconds);
     } catch {
-      // Cache write errors are non-fatal (incl. circuit open)
+      // Non-fatal — cache miss on next read is acceptable
     }
-  },
+  }
 
-  /**
-   * Invalidate a specific key.
-   */
-  async invalidate(key: string): Promise<void> {
+  async del(key: string): Promise<void> {
     try {
-      const redis = await getRedis();
-      if (redis) {
-        await redisCircuitBreaker.call(() => redis.del(key));
-      } else {
-        memDel(key);
+      await this.client.del(this.PREFIX + key);
+    } catch {}
+  }
+
+  async delPattern(pattern: string): Promise<void> {
+    try {
+      const keys: string[] = await this.client.keys(this.PREFIX + pattern);
+      if (keys.length > 0) {
+        await this.client.del(...keys);
       }
     } catch {}
-  },
+  }
+}
 
-  /**
-   * Invalidate all keys matching a glob pattern (e.g. "leads:org:42:*").
-   * Uses SCAN + DEL on Redis to avoid blocking the server.
-   */
-  async invalidatePattern(pattern: string): Promise<void> {
-    try {
-      const redis = await getRedis();
-      if (redis) {
-        await redisCircuitBreaker.call(async () => {
-          let cursor = "0";
-          do {
-            const [nextCursor, keys] = await redis.scan(
-              cursor,
-              "MATCH",
-              pattern,
-              "COUNT",
-              100
-            );
-            cursor = nextCursor;
-            if (keys.length > 0) {
-              await redis.del(...keys);
-            }
-          } while (cursor !== "0");
-        });
-      } else {
-        memDelPattern(pattern);
-      }
-    } catch {}
-  },
+let _cache: CacheClient | null = null;
 
-  /**
-   * Convenience: get-or-set pattern. Fetches from cache or calls fn, then caches.
-   */
-  async getOrSet<T = unknown>(
-    key: string,
-    fn: () => Promise<T>,
-    options: CacheSetOptions = {}
-  ): Promise<T> {
-    const cached = await cache.get<T>(key);
-    if (cached !== null) return cached;
-    const value = await fn();
-    await cache.set(key, value, options);
-    return value;
-  },
-};
+async function initCache(): Promise<CacheClient> {
+  const redisUrl = process.env.REDIS_URL;
+  if (!redisUrl) {
+    return new NoopCache();
+  }
+  try {
+    const IORedis = (await import("ioredis")).default;
+    const client = new IORedis(redisUrl, {
+      maxRetriesPerRequest: 3,
+      enableOfflineQueue: false,
+      lazyConnect: true,
+    });
+    await client.connect();
+    return new RedisCache(client);
+  } catch (err) {
+    console.warn("[cache] Redis connection failed, falling back to no-op cache:", err);
+    return new NoopCache();
+  }
+}
 
-// ─── Cache key builders ───────────────────────────────────────────────────────
+/** Returns the singleton cache client (initializes lazily on first call). */
+export async function getCache(): Promise<CacheClient> {
+  if (!_cache) {
+    _cache = await initCache();
+  }
+  return _cache;
+}
 
-export const CacheKeys = {
-  leads: (orgId: number, params = "") => `leads:org:${orgId}:${params}`,
-  lead: (orgId: number, id: number) => `lead:org:${orgId}:${id}`,
-  properties: (orgId: number, params = "") => `properties:org:${orgId}:${params}`,
-  property: (orgId: number, id: number) => `property:org:${orgId}:${id}`,
-  deals: (orgId: number, params = "") => `deals:org:${orgId}:${params}`,
-  deal: (orgId: number, id: number) => `deal:org:${orgId}:${id}`,
-  dashboardStats: (orgId: number) => `dashboard:stats:org:${orgId}`,
-  countyGis: (state: string, county: string) => `county:gis:${state}:${county}`,
-  organization: (orgId: number) => `organization:${orgId}`,
-  teamMembers: (orgId: number) => `team:members:org:${orgId}`,
-};
-
-// TTL presets (seconds)
-export const CacheTTL = {
-  short: 60,       // 1 min — frequently changing data
-  standard: 120,   // 2 min — default for most lists
-  long: 300,       // 5 min — slow-changing data (org settings, team)
-  veryLong: 3600,  // 1 hr — near-static data (county GIS endpoints)
-};
+/** TTL constants in seconds */
+export const CACHE_TTL = {
+  LEAD_SCORES: 5 * 60,        // 5 minutes
+  ORG_SETTINGS: 10 * 60,      // 10 minutes
+  CONVERSATIONS: 2 * 60,      // 2 minutes
+} as const;

@@ -1,4 +1,5 @@
 import { PageShell } from "@/components/page-shell";
+import { PaxContextButton } from "@/components/pax-context-button";
 import { useDeals, useCreateDeal, useUpdateDeal, useDeleteDeal, useSaveDealAnalysis, useBulkStageUpdate, useBulkStageUndo, type BulkStageUpdateResult } from "@/hooks/use-deals";
 import { useProperties } from "@/hooks/use-properties";
 import { ListSkeleton } from "@/components/list-skeleton";
@@ -34,8 +35,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, MapPin, DollarSign, Calendar, Building, TrendingUp, CheckCircle, X, GripVertical, FileText, Trash2, Loader2, Briefcase, Calculator, ClipboardCheck, Upload, AlertTriangle, CheckSquare, Square, Clock, Download, Package, Play, Eye, FolderPlus, Sparkles, Flame, Snowflake, Minus, LayoutGrid, List, ChevronLeft, ChevronRight, Undo2, Layers, Send, Phone, ArrowRight } from "lucide-react";
-import { getDealNextAction, getDaysInStage, getDealUrgency, type DealNextAction } from "@/lib/deal-utils";
+import { Plus, MapPin, DollarSign, Calendar, Building, TrendingUp, CheckCircle, X, GripVertical, FileText, Trash2, Loader2, Briefcase, Calculator, ClipboardCheck, Upload, AlertTriangle, AlertCircle, CheckSquare, Square, Clock, Download, Package, Play, Eye, FolderPlus, Sparkles, Flame, Snowflake, Minus, LayoutGrid, List, ChevronLeft, ChevronRight, Undo2, Send, Phone, ArrowRight } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { DealsEmptyState } from "@/components/empty-states";
 import { SavedViewsSelector } from "@/components/saved-views-selector";
@@ -51,6 +51,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { ActivityTimeline } from "@/components/activity-timeline";
 import { CustomFieldValuesEditor } from "@/components/custom-fields";
 import { DisclaimerBanner } from "@/components/disclaimer-banner";
+import { getDealNextAction, getDaysInStage, getDealUrgency, type DealNextAction } from "@/lib/deal-utils";
 
 type DealWithProperty = Deal & { property?: Property };
 
@@ -321,6 +322,19 @@ export default function DealsPage() {
       }
     );
   };
+
+  if (error) {
+    return (
+      <PageShell>
+        <div className="flex flex-col items-center justify-center py-16 text-center" data-testid="error-state-deals">
+          <AlertCircle className="w-12 h-12 text-destructive mb-4" />
+          <h3 className="text-lg font-semibold mb-2">Failed to load deals</h3>
+          <p className="text-muted-foreground mb-4">{(error as Error).message || 'Something went wrong'}</p>
+          <Button onClick={() => refetch()} variant="outline">Try again</Button>
+        </div>
+      </PageShell>
+    );
+  }
 
   return (
     <PageShell>
@@ -850,7 +864,7 @@ const nextActionIcons: Record<DealNextAction["icon"], React.ReactNode> = {
   alert: <AlertTriangle className="w-3 h-3" />,
 };
 
-function DealCard({ deal, onSelect, isDragging = false }: { deal: DealWithProperty; onSelect: () => void; isDragging?: boolean }) {
+function DealCard({ deal, onSelect, isDragging = false, isSelected, onToggleSelect }: { deal: DealWithProperty; onSelect: () => void; isDragging?: boolean; isSelected?: boolean; onToggleSelect?: (id: number) => void }) {
   const { attributes, listeners, setNodeRef, transform } = useDraggable({ id: deal.id });
   const style = transform ? { transform: CSS.Translate.toString(transform) } : undefined;
   const health = getDealHealth(deal);
@@ -864,7 +878,7 @@ function DealCard({ deal, onSelect, isDragging = false }: { deal: DealWithProper
     <Card
       ref={setNodeRef}
       style={style}
-      className={`floating-window cursor-pointer hover-elevate active:scale-[0.98] transition-transform touch-manipulation ${isDragging ? "opacity-40" : ""}`}
+      className={`group floating-window cursor-pointer hover-elevate active:scale-[0.98] transition-transform touch-manipulation ${isDragging ? "opacity-40" : ""}`}
       onClick={onSelect}
       data-testid={`card-deal-${deal.id}`}
     >
@@ -877,23 +891,15 @@ function DealCard({ deal, onSelect, isDragging = false }: { deal: DealWithProper
             onClick={(e) => e.stopPropagation()}
           />
           <div className="min-w-0 flex-1">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 flex-wrap">
-                <Badge variant={deal.type === 'acquisition' ? 'default' : 'secondary'} className="text-xs">
-                  {deal.type === 'acquisition' ? 'Buy' : 'Sell'}
-                </Badge>
-                {isActiveStage && daysInStage > 0 && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground" data-testid={`badge-days-in-stage-${deal.id}`}>
-                    {daysInStage}d
-                  </span>
-                )}
-              </div>
-              {!isClosed && (
-                <div className="flex items-center gap-1 shrink-0" title={`${health.status === 'healthy' ? 'Active' : health.status === 'warning' ? 'Getting stale' : 'Stalled'} -- ${health.days}d since update`}>
-                  <span className={`w-2 h-2 rounded-full ${HEALTH_DOT[health.status]} ${health.status !== 'healthy' ? 'animate-pulse' : ''}`} />
-                  <span className="text-[10px] text-muted-foreground">{health.days}d</span>
-                </div>
-              )}
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge variant={deal.type === 'acquisition' ? 'default' : 'secondary'} className="text-xs">
+                {deal.type === 'acquisition' ? 'Buy' : 'Sell'}
+              </Badge>
+              <PaxContextButton
+                entityType="deal"
+                entityId={deal.id}
+                entityName={deal.property ? `${deal.property.county}, ${deal.property.state}` : `Deal #${deal.id}`}
+              />
             </div>
             <div className="mt-2">
               {deal.property ? (

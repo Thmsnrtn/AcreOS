@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 import { storage, db } from "../storage";
 import { eq } from "drizzle-orm";
 import { organizations } from "@shared/schema";
+import { logger } from "../utils/logger";
 
 /**
  * Founder email — gets enterprise tier and unlimited access.
@@ -36,7 +37,7 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
   const userEmail = user.email;
 
   if (!userId) {
-    console.error("No user ID found in session:", user);
+    logger.warn("No user ID found in session", { source: "getOrCreateOrg" });
     return res.status(401).json({ message: "Invalid user session" });
   }
 
@@ -51,9 +52,6 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
     const now = new Date();
     const trialEnds = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-    // Capture UTM attribution stored in session during registration
-    const sessionUtm = (req.session as any).utmAttribution || {};
-
     org = await storage.createOrganization({
       name: `${displayName}'s Organization`,
       slug,
@@ -64,10 +62,10 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
       trialEndsAt: isFounder ? null : trialEnds,
       trialUsed: isFounder ? true : false,
       isFounder,
-      utmSource: sessionUtm.utmSource || null,
-      utmMedium: sessionUtm.utmMedium || null,
-      utmCampaign: sessionUtm.utmCampaign || null,
-      utmContent: sessionUtm.utmContent || null,
+      utmSource: null,
+      utmMedium: null,
+      utmCampaign: null,
+      utmContent: null,
     });
 
     // Add user as owner team member
@@ -80,7 +78,7 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
     });
 
     if (isFounder) {
-      console.log(`[Founder] Created founder organization for ${userEmail}`);
+      logger.info(`Founder organization created`, { source: "getOrCreateOrg", metadata: { email: userEmail } });
     }
   } else if (isFounder && !org.isFounder) {
     // Upgrade existing org to founder status
@@ -99,7 +97,7 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
       subscriptionTier: "enterprise",
       subscriptionStatus: "active",
     };
-    console.log(`[Founder] Upgraded existing organization to founder status for ${userEmail}`);
+    logger.info(`Founder organization upgraded to enterprise`, { source: "getOrCreateOrg", metadata: { email: userEmail } });
   }
 
   // Set both `.org` (used by most route files) and `.organization` (legacy alias in routes.ts)

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { RequiredDisclaimer } from '@/components/required-disclaimer';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -171,6 +172,7 @@ export default function CashFlowPage() {
 
   return (
     <div className="container mx-auto p-6 space-y-6">
+      <RequiredDisclaimer type="financial" />
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>

@@ -136,8 +136,9 @@ export const twoFactorAuth = {
    * Returns the hash string to store in DB.
    */
   async hashBackupCode(code: string): Promise<string> {
-    const bcrypt = await import("bcrypt");
-    return bcrypt.hash(code.toUpperCase(), 10);
+    const salt = crypto.randomBytes(16).toString('hex');
+    const hash = crypto.scryptSync(code.toUpperCase(), salt, 64).toString('hex');
+    return `${salt}:${hash}`;
   },
 
   /**
@@ -145,11 +146,16 @@ export const twoFactorAuth = {
    * Returns the index of the matched hash (to remove it from DB), or -1 if invalid.
    */
   async verifyBackupCode(code: string, hashes: string[]): Promise<number> {
-    const bcrypt = await import("bcrypt");
     const normalized = code.toUpperCase();
     for (let i = 0; i < hashes.length; i++) {
-      const match = await bcrypt.compare(normalized, hashes[i]);
-      if (match) return i;
+      const [salt, hash] = hashes[i].split(':');
+      if (!salt || !hash) continue;
+      const verify = crypto.scryptSync(normalized, salt, 64).toString('hex');
+      try {
+        if (crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(verify, 'hex'))) return i;
+      } catch {
+        continue;
+      }
     }
     return -1;
   },

@@ -169,7 +169,7 @@ export default function CompareLGPassPage() {
               {
                 icon: Bot,
                 title: "AI that actually works",
-                body: "Atlas AI analyzes every deal, scores leads, answers due diligence questions, and tells you the next best action — no prompt engineering required.",
+                body: "Pax AI analyzes every deal, scores leads, answers due diligence questions, and tells you the next best action — no prompt engineering required.",
               },
               {
                 icon: Mail,

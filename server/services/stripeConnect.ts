@@ -343,6 +343,49 @@ export class StripeConnectService {
         break;
       }
 
+      // ── Subscription billing failures → dunning flow ───────────────────
+      case "invoice.payment_failed": {
+        const invoice = event.data.object as Stripe.Invoice;
+        const customerId = typeof invoice.customer === "string" ? invoice.customer : (invoice.customer as any)?.id;
+        const subscriptionId = typeof (invoice as any).subscription === "string" ? (invoice as any).subscription : (invoice as any).subscription?.id;
+        if (customerId) {
+          try {
+            // Find org by Stripe customer ID
+            const org = await storage.getOrganizationByStripeCustomerId(customerId);
+            if (org) {
+              const { dunningService } = await import("./dunning");
+              await dunningService.handlePaymentFailed(
+                org.id,
+                invoice.id,
+                subscriptionId ?? "",
+                invoice.amount_due ?? 0,
+                invoice.attempt_count ?? 1
+              );
+            }
+          } catch (err: any) {
+            console.error(`[StripeWebhook] Dunning error for invoice ${invoice.id}:`, err.message);
+          }
+        }
+        break;
+      }
+
+      case "invoice.paid": {
+        const invoice = event.data.object as Stripe.Invoice;
+        const customerId = typeof invoice.customer === "string" ? invoice.customer : (invoice.customer as any)?.id;
+        if (customerId) {
+          try {
+            const org = await storage.getOrganizationByStripeCustomerId(customerId);
+            if (org) {
+              const { dunningService } = await import("./dunning");
+              await dunningService.handlePaymentRecovered(org.id);
+            }
+          } catch (err: any) {
+            console.error(`[StripeWebhook] Dunning recovery error:`, err.message);
+          }
+        }
+        break;
+      }
+
       default:
         console.log(`Unhandled Stripe webhook event: ${event.type}`);
     }

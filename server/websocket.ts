@@ -14,8 +14,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { IncomingMessage, Server } from 'http';
 import crypto from 'crypto';
 import { db } from './db';
-import { sessions } from '../shared/models/auth';
-import { eq } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 
 /** Inline cookie parser — avoids requiring @types/cookie. */
 function parseCookies(header: string): Record<string, string> {
@@ -51,11 +50,11 @@ async function validateWsSession(
     const sid = unsigned.split('.')[0];
 
     // Look up the session in the DB (connect-pg-simple stores by raw sid)
-    const [row] = await db
-      .select({ sess: sessions.sess, expire: sessions.expire })
-      .from(sessions)
-      .where(eq(sessions.sid, sid))
-      .limit(1);
+    const result = await db.execute<{ sess: Record<string, any>; expire: Date }>(
+      sql`SELECT sess, expire FROM "session" WHERE sid = ${sid} LIMIT 1`
+    );
+    const rows = (result as any)?.rows ?? [];
+    const row = rows[0];
 
     if (!row) return false;
     if (new Date(row.expire) < new Date()) return false;

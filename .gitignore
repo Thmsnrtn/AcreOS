@@ -35,3 +35,4 @@ test-results/
 
 # OS / tooling
 Thumbs.db
+.claude/

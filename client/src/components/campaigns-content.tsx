@@ -18,7 +18,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Mail, MessageSquare, Send, Calendar, BarChart3, Users, Clock, Play, Pause, CheckCircle, FileText, Target, TrendingUp, Eye, TestTube, Zap, AlertTriangle, DollarSign, Loader2, Lightbulb, ChevronDown, ChevronUp, Sparkles } from "lucide-react";
+import { Plus, Mail, MessageSquare, Send, Calendar, BarChart3, Users, Clock, Play, Pause, CheckCircle, FileText, Target, TrendingUp, Eye, TestTube, Zap, AlertTriangle, AlertCircle, DollarSign, Loader2, Lightbulb, ChevronDown, ChevronUp, Sparkles } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { ListSkeleton } from "@/components/list-skeleton";
 import { CampaignsEmptyState } from "@/components/empty-states";
@@ -489,7 +489,7 @@ function MailModeIndicator() {
 }
 
 export function CampaignsContent() {
-  const { data: campaigns, isLoading } = useCampaigns();
+  const { data: campaigns, isLoading, error, refetch } = useCampaigns();
   const { data: leads } = useLeads();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
@@ -498,6 +498,17 @@ export function CampaignsContent() {
   const totalSent = campaigns?.reduce((sum, c) => sum + (c.totalSent || 0), 0) || 0;
   const totalResponded = campaigns?.reduce((sum, c) => sum + (c.totalResponded || 0), 0) || 0;
   const responseRate = totalSent > 0 ? ((totalResponded / totalSent) * 100).toFixed(1) : '0';
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center" data-testid="error-state-campaigns">
+        <AlertCircle className="w-12 h-12 text-destructive mb-4" />
+        <h3 className="text-lg font-semibold mb-2">Failed to load campaigns</h3>
+        <p className="text-muted-foreground mb-4">{(error as Error).message || 'Something went wrong'}</p>
+        <Button onClick={() => refetch()} variant="outline">Try again</Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8" data-testid="campaigns-content">

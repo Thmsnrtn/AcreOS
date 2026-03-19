@@ -7,11 +7,12 @@ import { PullToRefresh } from "@/components/mobile";
 import { useLeads, useAgingLeads, type AgingLead } from "@/hooks/use-leads";
 import { useProperties } from "@/hooks/use-properties";
 import { usePlaybooks } from "@/hooks/use-playbooks";
-import { Users, Map, Banknote, TrendingUp, Activity, Building2, Crown, AlertTriangle, Clock, Flame, Sun, Snowflake, Sparkles, BookOpen, DollarSign, BarChart3, Target, ArrowUpRight, Zap } from "lucide-react";
+import { Users, Map, Banknote, TrendingUp, Activity, Building2, Crown, AlertTriangle, AlertCircle, Clock, Flame, Sun, Snowflake, Sparkles, BookOpen, Target } from "lucide-react";
 import { motion } from "framer-motion";
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, FunnelChart, Funnel, LabelList } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { OnboardingWizard, OnboardingProgress } from "@/components/onboarding";
 import { GettingStartedChecklist } from "@/components/getting-started-checklist";
@@ -81,7 +82,7 @@ interface DashboardIntelligence {
 
 export default function Dashboard() {
   const queryClient = useQueryClient();
-  const { data: organization, isLoading: orgLoading } = useOrganization();
+  const { data: organization, isLoading: orgLoading, error: orgError, refetch: refetchOrg } = useOrganization();
   const { data: stats, isLoading: statsLoading } = useDashboardStats();
   const { data: leads = [] } = useLeads();
   const { data: properties = [] } = useProperties();
@@ -588,6 +589,19 @@ export default function Dashboard() {
     (id === "inventoryChart" || id === "leadPipelineChart") && isWidgetVisible(id)
   );
 
+  if (orgError) {
+    return (
+      <PageShell>
+        <div className="flex flex-col items-center justify-center py-16 text-center" data-testid="error-state-dashboard">
+          <AlertCircle className="w-12 h-12 text-destructive mb-4" />
+          <h3 className="text-lg font-semibold mb-2">Failed to load dashboard</h3>
+          <p className="text-muted-foreground mb-4">{(orgError as Error).message || 'Something went wrong'}</p>
+          <Button onClick={() => refetchOrg()} variant="outline">Try again</Button>
+        </div>
+      </PageShell>
+    );
+  }
+
   return (
     <PageShell>
       <OnboardingWizard />
@@ -599,7 +613,7 @@ export default function Dashboard() {
                 <h1 className="text-3xl font-bold text-foreground" data-testid="text-dashboard-title">
                   Dashboard
                 </h1>
-                <p className="text-muted-foreground mt-2">Overview of your land investment performance.</p>
+                <p className="text-muted-foreground mt-2">Overview of your real estate investment performance.</p>
               </div>
               <div className="flex items-center gap-2">
                 <WorkspaceManager />

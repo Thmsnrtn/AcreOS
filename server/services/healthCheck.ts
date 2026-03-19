@@ -178,7 +178,35 @@ class HealthCheckService {
   }
 
   /**
-   * Check Redis connectivity (task #93 — health must cover all dependencies)
+   * Check database connectivity and report pool stats
+   */
+  async checkDatabase(): Promise<ServiceHealth> {
+    const name = 'database';
+    const start = Date.now();
+
+    try {
+      const { db, pool } = await import('../db');
+      const { sql } = await import('drizzle-orm');
+
+      await db.execute(sql`SELECT 1`);
+      const latency = Date.now() - start;
+
+      const poolStats = {
+        total: pool.totalCount,
+        idle: pool.idleCount,
+        waiting: pool.waitingCount,
+      };
+      const message = `pool: ${poolStats.total} total, ${poolStats.idle} idle, ${poolStats.waiting} waiting`;
+
+      return this.createHealth(name, 'healthy', latency, message);
+    } catch (error: any) {
+      const latency = Date.now() - start;
+      return this.createHealth(name, 'unavailable', latency, error.message);
+    }
+  }
+
+  /**
+   * Check if Redis is configured and accessible
    */
   async checkRedis(): Promise<ServiceHealth> {
     const name = 'redis';
@@ -190,44 +218,21 @@ class HealthCheckService {
         return this.createHealth(name, 'unconfigured', undefined, 'REDIS_URL not configured');
       }
 
-      const IORedis = (await import('ioredis')).default;
-      const client = new IORedis(redisUrl, {
-        maxRetriesPerRequest: 1,
-        enableReadyCheck: false,
-        lazyConnect: true,
-        connectTimeout: 3000,
-      });
-
+      // @ts-ignore — redis types may not be installed
+      const { createClient } = await import('redis') as any;
+      const client = createClient({ url: redisUrl });
       await client.connect();
       await client.ping();
       const latency = Date.now() - start;
-      await client.quit();
+      await client.disconnect();
 
       return this.createHealth(name, 'healthy', latency);
     } catch (error: any) {
       const latency = Date.now() - start;
-      return this.createHealth(name, 'unavailable', latency, error.message);
-    }
-  }
-
-  /**
-   * Check database connectivity
-   */
-  async checkDatabase(): Promise<ServiceHealth> {
-    const name = 'database';
-    const start = Date.now();
-    
-    try {
-      const { db } = await import('../db');
-      const { sql } = await import('drizzle-orm');
-      
-      await db.execute(sql`SELECT 1`);
-      const latency = Date.now() - start;
-      
-      return this.createHealth(name, 'healthy', latency);
-    } catch (error: any) {
-      const latency = Date.now() - start;
-      return this.createHealth(name, 'unavailable', latency, error.message);
+      if (error.code === 'ECONNREFUSED') {
+        return this.createHealth(name, 'unavailable', latency, 'Connection refused');
+      }
+      return this.createHealth(name, 'degraded', latency, error.message);
     }
   }
 
@@ -245,7 +250,7 @@ class HealthCheckService {
       this.checkLob(),
     ]);
 
-    checks.forEach(check => {
+    checks.forEach((check: ServiceHealth) => {
       this.lastResults.set(check.name, check);
     });
 

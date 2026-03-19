@@ -24,56 +24,12 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
-const SLOW_QUERY_THRESHOLD_MS = parseInt(
-  process.env.SLOW_QUERY_THRESHOLD_MS ?? "500",
-  10,
-);
-
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  // Pool sizing — 20 max across all instances on this node
-  max: parseInt(process.env.DB_POOL_MAX ?? "20", 10),
-  // Release connections idle for > 30s back to the pool
-  idleTimeoutMillis: 30_000,
-  // Fail if a connection can't be acquired in 5s
-  connectionTimeoutMillis: 5_000,
-  // Kill any individual statement that runs > 30s at the Postgres level
-  options: "-c statement_timeout=30000",
+  max: 20,
+  idleTimeoutMillis: 60_000,
+  connectionTimeoutMillis: 10_000, // increased from 3s — cloud DBs can be slow to acquire
 });
-
-// Slow query instrumentation — attach to every pooled connection
-pool.on("connect", (client) => {
-  const originalQuery = client.query.bind(client);
-  (client as any).query = function (...args: any[]) {
-    const start = Date.now();
-    const queryText =
-      typeof args[0] === "string" ? args[0] : (args[0]?.text ?? "unknown");
-
-    const result = originalQuery(...args);
-
-    // result may be a Promise or a Query object with a then()
-    if (result && typeof (result as any).then === "function") {
-      (result as Promise<any>)
-        .then(() => {
-          const duration = Date.now() - start;
-          if (duration >= SLOW_QUERY_THRESHOLD_MS) {
-            const truncated = queryText.slice(0, 200);
-            console.warn(
-              `[db:slow] ${duration}ms — ${truncated}${queryText.length > 200 ? "…" : ""}`,
-            );
-          }
-        })
-        .catch(() => {});
-    }
-
-    return result;
-  };
-});
-
-pool.on("error", (err) => {
-  console.error("[db:pool] Unexpected client error:", err.message);
-});
-
 export const db = drizzle(pool, { schema });
 
 // ─── T8: Read Replica Routing ─────────────────────────────────────────────────

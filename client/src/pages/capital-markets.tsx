@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { RequiredDisclaimer } from "@/components/required-disclaimer";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -218,6 +219,7 @@ export default function CapitalMarketsPage() {
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
+      <RequiredDisclaimer type="financial" />
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <TrendingUp className="w-7 h-7 text-primary" /> Capital Markets

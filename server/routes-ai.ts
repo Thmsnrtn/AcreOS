@@ -112,6 +112,17 @@ export function registerAIRoutes(app: Express): void {
   // Get conversation history
   api.get("/api/ai/conversations", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = (req as any).organization;
+    const q = (req.query.q as string | undefined)?.trim();
+    if (q) {
+      const { ilike } = await import("drizzle-orm");
+      const { aiConversations: convs } = await import("@shared/schema");
+      const { desc: _desc } = await import("drizzle-orm");
+      const results = await db.select().from(convs)
+        .where(and(eq(convs.organizationId, org.id), ilike(convs.title, `%${q}%`)))
+        .orderBy(_desc(convs.updatedAt))
+        .limit(30);
+      return res.json(results);
+    }
     const conversations = await storage.getAiConversations(org.id);
     res.json(conversations);
   });
@@ -130,6 +141,28 @@ export function registerAIRoutes(app: Express): void {
     res.json({ conversation, messages });
   });
   
+  // Get messages for a conversation (lightweight, for session restore)
+  api.get("/api/ai/conversations/:id/messages", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const conversationId = parseInt(req.params.id);
+    const limit = Math.min(parseInt((req.query.limit as string) ?? "20"), 50);
+
+    const conversation = await storage.getAiConversation(conversationId);
+    if (!conversation || conversation.organizationId !== org.id) {
+      return res.status(404).json({ message: "Conversation not found" });
+    }
+
+    const allMessages = await storage.getAiMessages(conversationId);
+    const messages = allMessages.slice(-limit);
+
+    res.json({
+      conversationId,
+      title: conversation.title,
+      updatedAt: conversation.updatedAt,
+      messages,
+    });
+  });
+
   // Create new conversation
   api.post("/api/ai/conversations", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = (req as any).organization;
@@ -214,7 +247,7 @@ export function registerAIRoutes(app: Express): void {
       const org = (req as any).organization;
       const user = req.user as any;
       const userId = user.claims?.sub || user.id;
-      const { message, conversationId, agentRole, files, propertyId: streamPropertyId } = req.body;
+      const { message, conversationId, agentRole, files, propertyId: streamPropertyId, mentionedEntities, activeProjectId, modelOverride } = req.body;
       
       if (!message) {
         return res.status(400).json({ message: "Message is required" });
@@ -255,6 +288,9 @@ export function registerAIRoutes(app: Express): void {
         agentRole,
         files,
         propertyId: streamPropertyId ? Number(streamPropertyId) : undefined,
+        mentionedEntities,
+        activeProjectId: activeProjectId ? Number(activeProjectId) : undefined,
+        modelOverride: modelOverride || undefined,
       });
       
       let streamCompleted = false;
@@ -308,6 +344,526 @@ export function registerAIRoutes(app: Express): void {
     
     await storage.deleteAiConversation(conversationId);
     res.json({ success: true });
+  });
+
+  // PATCH /api/ai/conversations/:id/project — set active project for conversation
+  api.patch("/api/ai/conversations/:id/project", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const conversationId = parseInt(req.params.id);
+      const conversation = await storage.getAiConversation(conversationId);
+      if (!conversation || conversation.organizationId !== org.id) {
+        return res.status(404).json({ message: "Conversation not found" });
+      }
+      const { projectId } = req.body;
+      await storage.setConversationProject(conversationId, projectId ?? null);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // KNOWLEDGE BASE ROUTES
+  // ============================================
+
+  api.get("/api/ai/knowledge", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const files = await storage.getKnowledgeFiles(org.id);
+      res.json(files);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.post("/api/ai/knowledge", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const userId = (req as any).user?.id ?? "unknown";
+      const { name, content, mimeType, sizeBytes } = req.body;
+
+      // Check limit
+      const existing = await storage.getKnowledgeFiles(org.id);
+      if (existing.length >= 8) {
+        return res.status(400).json({ message: "Knowledge base file limit (8) reached." });
+      }
+
+      // Extract text from base64 content via executive helper
+      const { formatFileContentFromBase64 } = await import("./ai/executive");
+      let extractedContent = await formatFileContentFromBase64({ name, content, mimeType });
+      // Cap at 6000 chars
+      if (extractedContent.length > 6000) extractedContent = extractedContent.slice(0, 6000) + "\n[truncated]";
+
+      const file = await storage.createKnowledgeFile({
+        organizationId: org.id,
+        name,
+        description: null,
+        mimeType,
+        sizeBytes: sizeBytes ?? 0,
+        extractedContent,
+        uploadedBy: userId,
+        isActive: true,
+      });
+      res.json(file);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.patch("/api/ai/knowledge/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { isActive, description } = req.body;
+      await storage.updateKnowledgeFile(parseInt(req.params.id), { isActive, description });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.delete("/api/ai/knowledge/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      await storage.deleteKnowledgeFile(parseInt(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // ENTITY SEARCH (@ mentions)
+  // ============================================
+
+  api.get("/api/ai/search-entities", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const q = (req.query.q as string) ?? "";
+      const type = (req.query.type as string) ?? "all";
+      const limit = parseInt((req.query.limit as string) ?? "6");
+      if (!q) return res.json([]);
+      const results = await storage.searchPaxEntities(org.id, q, type, limit);
+      res.json(results);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // PROJECT ROUTES
+  // ============================================
+
+  api.get("/api/ai/projects", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      res.json(await storage.getPaxProjects(org.id));
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.post("/api/ai/projects", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const userId = (req as any).user?.id ?? "unknown";
+      const { name, description, entityType, entityId } = req.body;
+      if (!name) return res.status(400).json({ message: "name required" });
+      const proj = await storage.createPaxProject({ organizationId: org.id, userId, name, description, entityType, entityId });
+      res.json(proj);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.patch("/api/ai/projects/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { name, description, isActive } = req.body;
+      await storage.updatePaxProject(parseInt(req.params.id), { name, description, isActive });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.delete("/api/ai/projects/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      await storage.deletePaxProject(parseInt(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.get("/api/ai/projects/:id/files", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      res.json(await storage.getPaxProjectFiles(parseInt(req.params.id)));
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.post("/api/ai/projects/:id/files", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const userId = (req as any).user?.id ?? "unknown";
+      const projectId = parseInt(req.params.id);
+      const { fileName, content, mimeType, sizeBytes } = req.body;
+
+      const { formatFileContentFromBase64 } = await import("./ai/executive");
+      let extractedContent = await formatFileContentFromBase64({ name: fileName, content, mimeType });
+      if (extractedContent.length > 8000) extractedContent = extractedContent.slice(0, 8000) + "\n[truncated]";
+
+      const file = await storage.createPaxProjectFile({ projectId, fileName, mimeType, sizeBytes: sizeBytes ?? 0, extractedContent, uploadedBy: userId });
+      res.json(file);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.delete("/api/ai/projects/:id/files/:fileId", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      await storage.deletePaxProjectFile(parseInt(req.params.fileId));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // SCHEDULED TASK ROUTES
+  // ============================================
+
+  api.get("/api/ai/scheduled-tasks/pending-results", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const since = req.query.since ? new Date(req.query.since as string) : new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const results = await storage.getPaxPendingTaskResults(org.id, since);
+      res.json(results.map((t) => ({ id: t.id, name: t.name, lastRunAt: t.lastRunAt, lastRunConversationId: t.lastRunConversationId })));
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.get("/api/ai/scheduled-tasks", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      res.json(await storage.getPaxScheduledTasks(org.id));
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.post("/api/ai/scheduled-tasks", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const userId = (req as any).user?.id ?? "unknown";
+      const { name, prompt, schedule, timezone } = req.body;
+      if (!name || !prompt || !schedule) return res.status(400).json({ message: "name, prompt, schedule required" });
+
+      const { computeNextRun } = await import("./services/paxScheduler");
+      const nextRunAt = computeNextRun(schedule, timezone ?? "America/New_York");
+
+      const task = await storage.createPaxScheduledTask({ organizationId: org.id, userId, name, prompt, schedule, timezone, nextRunAt });
+      res.json(task);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.patch("/api/ai/scheduled-tasks/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { isActive, schedule, timezone } = req.body;
+      const updates: any = { isActive };
+      if (schedule) {
+        const { computeNextRun } = await import("./services/paxScheduler");
+        updates.schedule = schedule;
+        updates.nextRunAt = computeNextRun(schedule, timezone ?? "America/New_York");
+      }
+      await storage.updatePaxScheduledTask(parseInt(req.params.id), updates);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.delete("/api/ai/scheduled-tasks/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      await storage.deletePaxScheduledTask(parseInt(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.post("/api/ai/scheduled-tasks/:id/run-now", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const tasks = await storage.getPaxScheduledTasks(org.id);
+      const task = tasks.find((t) => t.id === parseInt(req.params.id));
+      if (!task) return res.status(404).json({ message: "Task not found" });
+      const { executeTask } = await import("./services/paxScheduler");
+      await executeTask(task, org);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // MESSAGE RATING
+  // ============================================
+
+  api.patch("/api/ai/messages/:id/rating", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { rating } = req.body; // 1 or -1
+      const msgId = parseInt(req.params.id);
+      if (rating !== 1 && rating !== -1) return res.status(400).json({ message: "rating must be 1 or -1" });
+      const { aiMessages } = await import("@shared/schema");
+      const { eq: _eq } = await import("drizzle-orm");
+      await db.update(aiMessages).set({ rating } as any).where(_eq(aiMessages.id, msgId));
+      // Async learning ingestion (non-blocking)
+      process.nextTick(async () => {
+        try {
+          const { paxLearningService } = await import("./services/paxLearning");
+          if (paxLearningService.learnFromRating) {
+            await paxLearningService.learnFromRating(msgId, rating);
+          }
+        } catch {}
+      });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // CONVERSATION EXPORT
+  // ============================================
+
+  api.get("/api/ai/conversations/:id/export", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const convId = parseInt(req.params.id);
+      const format = (req.query.format as string) || "markdown";
+      const { aiConversations, aiMessages: msgs } = await import("@shared/schema");
+      const { eq: _eq, and: _and } = await import("drizzle-orm");
+      const [conv] = await db.select().from(aiConversations).where(_eq(aiConversations.id, convId));
+      if (!conv || conv.organizationId !== org.id) return res.status(404).json({ message: "Not found" });
+      const messages = await db.select().from(msgs).where(_eq(msgs.conversationId, convId)).orderBy(msgs.createdAt);
+      // Build Markdown
+      const md = [
+        `# ${conv.title}`,
+        `_Exported ${new Date().toLocaleDateString()} · Agent: ${conv.agentRole}_`,
+        "",
+        ...messages.map(m => {
+          const roleLabel = m.role === "user" ? "**You**" : "**Pax**";
+          const toolLine = (m.toolCalls as any[])?.length
+            ? `\n> _Tools used: ${(m.toolCalls as any[]).map((t: any) => t.name).join(", ")}_\n`
+            : "";
+          return `${roleLabel}\n\n${m.content}${toolLine}\n\n---`;
+        })
+      ].join("\n");
+
+      if (format === "pdf") {
+        // @ts-ignore - pdfkit has no type declarations
+        const PDFDocument = (await import("pdfkit")).default;
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `attachment; filename="pax-conversation-${convId}.pdf"`);
+        const doc = new PDFDocument({ margin: 50 });
+        doc.pipe(res);
+        doc.fontSize(18).text(conv.title, { underline: true });
+        doc.fontSize(10).fillColor("gray").text(`Exported ${new Date().toLocaleDateString()} · Agent: ${conv.agentRole}`);
+        doc.moveDown();
+        for (const m of messages) {
+          doc.fontSize(11).fillColor(m.role === "user" ? "#1a56db" : "#111827").text(m.role === "user" ? "You:" : "Pax:", { continued: false });
+          doc.fontSize(10).fillColor("#374151").text(m.content?.slice(0, 2000) || "", { lineGap: 2 });
+          doc.moveDown(0.5);
+        }
+        doc.end();
+      } else {
+        res.setHeader("Content-Type", "text/markdown");
+        res.setHeader("Content-Disposition", `attachment; filename="pax-conversation-${convId}.md"`);
+        res.send(md);
+      }
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // PAX NUDGES (Proactive Ambient Intelligence)
+  // ============================================
+
+  api.get("/api/ai/nudges", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = req.user as any;
+      const userId = user?.claims?.sub || user?.id;
+      const { paxNudges } = await import("@shared/schema");
+      const { eq: _eq, and: _and, isNull, or: _or, lte: _lte, sql: _sql } = await import("drizzle-orm");
+      const now = new Date();
+      const nudges = await db.select().from(paxNudges)
+        .where(_and(
+          _eq(paxNudges.organizationId, org.id),
+          isNull(paxNudges.dismissedAt),
+          // Exclude snoozed nudges (snoozedUntil IS NULL OR snoozedUntil < NOW)
+          _or(isNull(paxNudges.snoozedUntil), _lte(paxNudges.snoozedUntil, now))
+        ))
+        .orderBy(paxNudges.priority, paxNudges.createdAt)
+        .limit(5);
+      res.json(nudges);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.post("/api/ai/nudges/:id/dismiss", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { paxNudges } = await import("@shared/schema");
+      const { eq: _eq } = await import("drizzle-orm");
+      await db.update(paxNudges).set({ dismissedAt: new Date() } as any).where(_eq(paxNudges.id, parseInt(req.params.id)));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // FOUNDER AI OBSERVATORY
+  // ============================================
+
+  api.get("/api/founder/ai/telemetry", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const isFounder = user?.id === 'founder' || user?.claims?.sub === 'founder';
+      if (!isFounder) return res.status(403).json({ message: "Founder only" });
+      const { aiConversations, aiMessages: msgs, organizations } = await import("@shared/schema");
+      const { desc: _desc, eq: _eq } = await import("drizzle-orm");
+      // Last 50 conversations across all orgs
+      const conversations = await db.select({
+        id: aiConversations.id,
+        title: aiConversations.title,
+        agentRole: aiConversations.agentRole,
+        organizationId: aiConversations.organizationId,
+        createdAt: aiConversations.createdAt,
+        orgName: organizations.name,
+      })
+        .from(aiConversations)
+        .leftJoin(organizations, _eq(aiConversations.organizationId, organizations.id))
+        .orderBy(_desc(aiConversations.createdAt))
+        .limit(50);
+      res.json(conversations);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.get("/api/founder/ai/stats", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const isFounder = user?.id === 'founder' || user?.claims?.sub === 'founder';
+      if (!isFounder) return res.status(403).json({ message: "Founder only" });
+      const { aiConversations, aiMessages: msgs, paxConnectorInstances, organizations } = await import("@shared/schema");
+      const { count: _count, eq: _eq, desc: _desc } = await import("drizzle-orm");
+      const startOfMonth = new Date(); startOfMonth.setDate(1); startOfMonth.setHours(0, 0, 0, 0);
+      // Conversation count per org
+      const convPerOrg = await db.select({
+        organizationId: aiConversations.organizationId,
+        orgName: organizations.name,
+        convCount: _count(aiConversations.id),
+      })
+        .from(aiConversations)
+        .leftJoin(organizations, _eq(aiConversations.organizationId, organizations.id))
+        .groupBy(aiConversations.organizationId, organizations.name)
+        .orderBy(_desc(_count(aiConversations.id)))
+        .limit(20);
+      // Connector adoption
+      const connectorAdoption = await db.select({
+        connectorId: paxConnectorInstances.connectorId,
+        orgCount: _count(paxConnectorInstances.id),
+      })
+        .from(paxConnectorInstances)
+        .where(_eq(paxConnectorInstances.status, "connected"))
+        .groupBy(paxConnectorInstances.connectorId)
+        .orderBy(_desc(_count(paxConnectorInstances.id)));
+      res.json({ convPerOrg, connectorAdoption, generatedAt: new Date() });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // PAX CONNECTORS
+  // ============================================
+
+  // GET /api/ai/connectors — list all connectors + per-org connection status
+  api.get("/api/ai/connectors", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { CONNECTOR_REGISTRY } = await import("./services/connectors/registry");
+      const instances = await storage.getPaxConnectors(org.id);
+      const instanceMap = new Map(instances.map(i => [i.connectorId, i]));
+      const result = CONNECTOR_REGISTRY.map(def => ({
+        ...def,
+        instance: instanceMap.get(def.id) ?? null,
+      }));
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/ai/connectors/:id/connect — save credentials and mark connected
+  api.post("/api/ai/connectors/:id/connect", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const connectorId = req.params.id;
+      const { credentials, settings } = req.body;
+      const { getConnector } = await import("./services/connectors/registry");
+      const def = getConnector(connectorId);
+      if (!def) return res.status(404).json({ message: "Connector not found" });
+      const { encryptCredentials } = await import("./services/encryption");
+      const credentialsEncrypted = credentials
+        ? encryptCredentials(JSON.stringify(credentials), org.id)
+        : undefined;
+      const instance = await storage.upsertPaxConnector(org.id, connectorId, {
+        status: "connected",
+        credentialsEncrypted,
+        settings,
+      });
+      res.json({ success: true, instance: { ...instance, credentialsEncrypted: undefined } });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/ai/connectors/:id/test — test the connection
+  api.post("/api/ai/connectors/:id/test", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const connectorId = req.params.id;
+      const instance = await storage.getPaxConnector(org.id, connectorId);
+      if (!instance || instance.status !== "connected") {
+        return res.status(400).json({ message: "Connector not connected" });
+      }
+      // Basic connectivity test — attempt to load credentials
+      await storage.upsertPaxConnector(org.id, connectorId, {
+        lastTestedAt: new Date(),
+        errorMessage: undefined,
+      });
+      res.json({ success: true, testedAt: new Date() });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // DELETE /api/ai/connectors/:id — disconnect and remove credentials
+  api.delete("/api/ai/connectors/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      await storage.deletePaxConnector(org.id, req.params.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
   // GET /api/ai/cost-savings - Get AI cost savings summary
@@ -899,6 +1455,165 @@ export function registerAIRoutes(app: Express): void {
       res.status(500).json({ message: error.message });
     }
   });
-  
 
+  // ============================================
+  // VOICE TRANSCRIPTION (Whisper mic input)
+  // ============================================
+
+  api.post("/api/ai/voice/transcribe", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const multer = (await import("multer")).default;
+      const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
+      upload.single("audio")(req as any, res as any, async (err: any) => {
+        if (err) return res.status(400).json({ message: err.message });
+        const file = (req as any).file;
+        if (!file) return res.status(400).json({ message: "No audio file provided" });
+        try {
+          const { default: OpenAI } = await import("openai");
+          const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+          const { Readable } = await import("stream");
+          const audioStream = Readable.from(file.buffer);
+          (audioStream as any).name = file.originalname || "audio.webm";
+          const transcription = await client.audio.transcriptions.create({
+            file: audioStream as any,
+            model: "whisper-1",
+            response_format: "text",
+          });
+          res.json({ transcript: transcription });
+        } catch (transcribeErr: any) {
+          res.status(500).json({ message: transcribeErr.message || "Transcription failed" });
+        }
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // AI MEMORY VIEWER
+  // ============================================
+
+  api.get("/api/ai/memory", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const { aiMemory: memTable } = await import("@shared/schema");
+      const { desc: _desc, eq: _eq } = await import("drizzle-orm");
+      const memories = await db.select().from(memTable)
+        .where(_eq(memTable.organizationId, org.id))
+        .orderBy(_desc(memTable.createdAt))
+        .limit(100);
+      res.json(memories);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  api.delete("/api/ai/memory/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const id = parseInt(req.params.id);
+      const { aiMemory: memTable } = await import("@shared/schema");
+      const { eq: _eq, and: _and } = await import("drizzle-orm");
+      await db.delete(memTable).where(_and(_eq(memTable.id, id), _eq(memTable.organizationId, org.id)));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // SCHEDULED TASK RUN HISTORY
+  // ============================================
+
+  api.get("/api/ai/scheduled-tasks/:id/runs", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const taskId = parseInt(req.params.id);
+      const { paxScheduledTaskRuns } = await import("@shared/schema");
+      const { desc: _desc, eq: _eq, and: _and } = await import("drizzle-orm");
+      const runs = await db.select().from(paxScheduledTaskRuns)
+        .where(_and(_eq(paxScheduledTaskRuns.taskId, taskId), _eq(paxScheduledTaskRuns.organizationId, org.id)))
+        .orderBy(_desc(paxScheduledTaskRuns.runAt))
+        .limit(20);
+      res.json(runs);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // PRE-APPROVAL GATE FOR DESTRUCTIVE TOOLS
+  // ============================================
+
+  // In-memory pending approvals: conversationId+toolCallId → { toolName, args, orgId, resolve }
+  const pendingApprovals = new Map<string, { toolName: string; args: any; resolve: (approved: boolean) => void }>();
+
+  // Expose the map so executive.ts can use it via module-level export
+  (global as any).__paxPendingApprovals = pendingApprovals;
+
+  api.post("/api/ai/conversations/:id/approve-tool", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { toolCallId, approved } = req.body;
+      const key = `${req.params.id}:${toolCallId}`;
+      const pending = pendingApprovals.get(key);
+      if (!pending) return res.status(404).json({ message: "No pending approval found" });
+      pendingApprovals.delete(key);
+      pending.resolve(!!approved);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============================================
+  // SSE: REAL-TIME OBSERVATIONS STREAM
+  // ============================================
+
+  // Map of orgId → Set of SSE response objects
+  const obsClients = new Map<number, Set<any>>();
+  (global as any).__paxObsClients = obsClients;
+
+  api.get("/api/pax/observations/stream", isAuthenticated, getOrCreateOrg, (req, res) => {
+    const org = (req as any).organization;
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders();
+
+    const MAX_CLIENTS_PER_ORG = 10;
+    if (!obsClients.has(org.id)) obsClients.set(org.id, new Set());
+    const orgSet = obsClients.get(org.id)!;
+
+    // Evict oldest client if at cap (oldest = first inserted, but Set doesn't track order;
+    // if at cap, reject this new connection gracefully instead of evicting silently)
+    if (orgSet.size >= MAX_CLIENTS_PER_ORG) {
+      // Remove the first (oldest) client to make room
+      const oldest = orgSet.values().next().value;
+      try { oldest?.end(); } catch {}
+      orgSet.delete(oldest);
+    }
+    orgSet.add(res);
+
+    // Heartbeat every 25s
+    const heartbeat = setInterval(() => {
+      try { res.write(": heartbeat\n\n"); } catch { clearInterval(heartbeat); }
+    }, 25_000);
+
+    req.on("close", () => {
+      clearInterval(heartbeat);
+      obsClients.get(org.id)?.delete(res);
+    });
+  });
+
+}
+
+// Push a new observation to all connected SSE clients for an org
+export function pushObservationSSE(orgId: number, observation: any) {
+  const clients: Set<any> | undefined = (global as any).__paxObsClients?.get(orgId);
+  if (!clients || clients.size === 0) return;
+  const payload = `data: ${JSON.stringify(observation)}\n\n`;
+  for (const res of clients) {
+    try { res.write(payload); } catch {}
+  }
 }

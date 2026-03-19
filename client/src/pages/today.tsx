@@ -26,14 +26,14 @@ import {
   X,
   Target,
   Sparkles,
-  Moon,
-  Zap,
   TrendingUp,
-  TrendingDown,
+  AlertCircle,
   Activity,
   DollarSign,
   Flame,
   BarChart3,
+  Zap,
+  Moon,
 } from "lucide-react";
 import { format, isToday, isBefore, startOfDay, subDays } from "date-fns";
 
@@ -101,7 +101,7 @@ interface SystemAlert {
   createdAt: string;
 }
 
-interface AtlasObservation {
+interface PaxObservation {
   id: number;
   type: string;
   severity: string; // high | medium | low | info
@@ -111,28 +111,28 @@ interface AtlasObservation {
   createdAt: string | null;
 }
 
-interface AtlasStaleLead {
+interface PaxStaleLead {
   id: number;
   firstName: string;
   lastName: string;
   daysSinceContact: number;
 }
 
-interface AtlasExpiringOffer {
+interface PaxExpiringOffer {
   id: number;
   title: string;
   offerExpiresAt: string | null;
   leadName: string;
 }
 
-interface AtlasInsights {
-  observations: AtlasObservation[];
-  staleLeads: AtlasStaleLead[];
-  expiringOffers: AtlasExpiringOffer[];
+interface PaxInsights {
+  observations: PaxObservation[];
+  staleLeads: PaxStaleLead[];
+  expiringOffers: PaxExpiringOffer[];
   generatedAt: string;
 }
 
-interface SophieSuggestion {
+interface PaxSuggestion {
   id: string;
   suggestion: string;
   rationale: string;
@@ -144,8 +144,8 @@ interface SophieSuggestion {
   confidence: number;
 }
 
-interface SophieSuggestionsResponse {
-  suggestions: SophieSuggestion[];
+interface PaxSuggestionsResponse {
+  suggestions: PaxSuggestion[];
   generatedAt: string;
 }
 
@@ -195,28 +195,30 @@ export default function TodayPage() {
       staleTime: 5 * 60 * 1000,
     });
 
-  const { data: atlasInsights, isLoading: atlasLoading } =
-    useQuery<AtlasInsights>({
-      queryKey: ["/api/atlas/insights"],
+  const { data: paxInsights, isLoading: paxLoading } =
+    useQuery<PaxInsights>({
+      queryKey: ["/api/pax/insights"],
       staleTime: 5 * 60 * 1000,
     });
 
-  // Epic J: "3 Things Today" AI-prioritized actions
-  const { data: todayPriorities, isLoading: prioritiesLoading } =
-    useQuery<TodayPrioritiesData>({
-      queryKey: ["/api/dashboard/today-priorities"],
-      staleTime: 10 * 60 * 1000,
-    });
-
-  const { data: sophieSuggestionsData, isLoading: sophieLoading } =
-    useQuery<SophieSuggestionsResponse>({
-      queryKey: ["/api/atlas/sophie-suggestions"],
+  const { data: paxSuggestionsData, isLoading: paxSuggestionsLoading } =
+    useQuery<PaxSuggestionsResponse>({
+      queryKey: ["/api/pax/pax-suggestions"],
       staleTime: 5 * 60 * 1000,
     });
 
   // Decision queue: derive pending count from leads + deals already fetched
   const { data: allDeals = [] } = useQuery<{ id: number; status: string; offerDate?: string; updatedAt?: string }[]>({
     queryKey: ["/api/deals"],
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Cash position: upcoming note payments in next 30/60/90 days
+  const { data: allNotes = [], isLoading: notesLoading } = useQuery<{
+    id: number; status: string; currentBalance: string; monthlyPayment: string;
+    nextPaymentDate?: string; borrowerName?: string;
+  }[]>({
+    queryKey: ["/api/notes"],
     staleTime: 5 * 60 * 1000,
   });
 
@@ -266,45 +268,102 @@ export default function TodayPage() {
 
   const aiActions = intelligence?.actions?.slice(0, 5) ?? [];
 
-  const atlasObservations = atlasInsights?.observations ?? [];
-  const atlasStaleLeads = atlasInsights?.staleLeads ?? [];
-  const atlasExpiringOffers = atlasInsights?.expiringOffers ?? [];
-  const atlasItemCount = atlasObservations.length + atlasStaleLeads.length + atlasExpiringOffers.length;
+  const paxObservations = paxInsights?.observations ?? [];
+  const paxStaleLeads = paxInsights?.staleLeads ?? [];
+  const paxExpiringOffers = paxInsights?.expiringOffers ?? [];
+  const paxItemCount = paxObservations.length + paxStaleLeads.length + paxExpiringOffers.length;
 
-  // ── Business Pulse derived metrics ──────────────────────────────────────────
-  const activeDeals = allDeals.filter((d) => !["closed", "cancelled", "dead"].includes(d.status));
+  const paxSuggestions = paxSuggestionsData?.suggestions ?? [];
+
+  const { data: todayPriorities, isLoading: prioritiesLoading } =
+    useQuery<TodayPrioritiesData>({
+      queryKey: ["/api/dashboard/today-priorities"],
+      staleTime: 5 * 60 * 1000,
+    });
+
+  // Business Pulse computed values
+  const activeDeals = allDeals.filter(
+    (d) => !["closed", "cancelled"].includes(d.status)
+  );
+  const pipelineValue = activeDeals.reduce(
+    (sum, d: any) => sum + (parseFloat(d.purchasePrice || d.offerAmount || "0")),
+    0
+  );
+  const hotDeals = allDeals.filter(
+    (d) => d.status === "accepted" || d.status === "in_escrow"
+  ).length;
+  const avgWinProbability = activeDeals.length > 0
+    ? Math.round(
+        activeDeals.reduce((sum, d: any) => sum + (d.winProbability ?? 0), 0) /
+          activeDeals.length
+      )
+    : 0;
   const closedDealsThisMonth = allDeals.filter((d) => {
     if (d.status !== "closed") return false;
     if (!d.updatedAt) return false;
-    const updatedAt = new Date(d.updatedAt);
+    const date = new Date(d.updatedAt);
     const now = new Date();
-    return updatedAt.getMonth() === now.getMonth() && updatedAt.getFullYear() === now.getFullYear();
+    return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
   });
-  const pipelineValue = activeDeals.reduce((s: number, d: any) => s + Number(d.acceptedAmount || d.offerAmount || 0), 0);
-  const closedRevenueThisMonth = closedDealsThisMonth.reduce((s: number, d: any) => s + Number(d.acceptedAmount || 0), 0);
-  const avgWinProbability = activeDeals.length > 0
-    ? Math.round(activeDeals.reduce((s: number, d: any) => {
-        const prob = d.status === "accepted" ? 90 : d.status === "negotiating" ? 55 : d.status === "offer_sent" ? 35 : 20;
-        return s + prob;
-      }, 0) / activeDeals.length)
-    : 0;
-  const hotDeals = activeDeals.filter((d: any) => ["accepted", "in_escrow"].includes(d.status)).length;
+  const closedRevenueThisMonth = closedDealsThisMonth.reduce(
+    (sum, d: any) => sum + (parseFloat(d.purchasePrice || d.offerAmount || "0")),
+    0
+  );
 
-  const pulseScore = Math.min(100, Math.round(
-    (activeDeals.length > 0 ? 25 : 0) +
-    (leads.filter((l: any) => !["closed", "dead"].includes(l.status)).length > 0 ? 20 : 0) +
-    (todayActions.length === 0 ? 20 : Math.max(0, 20 - todayActions.length * 4)) +
-    (hotDeals > 0 ? 20 : 0) +
-    (closedRevenueThisMonth > 0 ? 15 : 0)
-  ));
+  // Pulse score: simple heuristic based on active deals, hot deals, pipeline
+  const pulseScore = Math.min(
+    100,
+    Math.round(
+      (activeDeals.length > 0 ? 20 : 0) +
+      (hotDeals > 0 ? 25 : 0) +
+      (pipelineValue > 0 ? 20 : 0) +
+      (avgWinProbability > 0 ? avgWinProbability * 0.35 : 0)
+    )
+  );
+  const pulseBg =
+    pulseScore >= 80
+      ? "from-emerald-50 to-emerald-100/50 dark:from-emerald-950/20 dark:to-emerald-900/10"
+      : pulseScore >= 55
+      ? "from-amber-50 to-amber-100/50 dark:from-amber-950/20 dark:to-amber-900/10"
+      : "from-blue-50 to-blue-100/50 dark:from-blue-950/20 dark:to-blue-900/10";
+  const pulseColor =
+    pulseScore >= 80
+      ? "text-emerald-600 dark:text-emerald-400"
+      : pulseScore >= 55
+      ? "text-amber-600 dark:text-amber-400"
+      : "text-blue-600 dark:text-blue-400";
+  const pulseLabel =
+    pulseScore >= 80 ? "Strong" : pulseScore >= 55 ? "Steady" : "Building";
 
-  const pulseLabel = pulseScore >= 80 ? "Firing" : pulseScore >= 55 ? "Active" : pulseScore >= 30 ? "Building" : "Warming Up";
-  const pulseColor = pulseScore >= 80 ? "text-emerald-600" : pulseScore >= 55 ? "text-amber-500" : pulseScore >= 30 ? "text-blue-500" : "text-muted-foreground";
-  const pulseBg = pulseScore >= 80 ? "from-emerald-50 to-emerald-100/50 border-emerald-200 dark:from-emerald-900/20 dark:to-emerald-900/10 dark:border-emerald-800" :
-                  pulseScore >= 55 ? "from-amber-50 to-amber-100/50 border-amber-200 dark:from-amber-900/20 dark:to-amber-900/10 dark:border-amber-800" :
-                  "from-blue-50 to-blue-100/50 border-blue-200 dark:from-blue-900/20 dark:to-blue-900/10 dark:border-blue-800";
-
-  const sophieSuggestions = sophieSuggestionsData?.suggestions ?? [];
+  // Cash position calculations
+  const cashPosition = (() => {
+    const now = new Date();
+    const activeNotes = allNotes.filter(n => n.status === "active" || n.status === "late" || n.status === "delinquent");
+    const lateCount = allNotes.filter(n => n.status === "late" || n.status === "delinquent").length;
+    const upcoming30 = activeNotes.filter(n => {
+      if (!n.nextPaymentDate) return false;
+      const due = new Date(n.nextPaymentDate);
+      const diff = (due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+      return diff >= 0 && diff <= 30;
+    });
+    const next3 = upcoming30
+      .sort((a, b) => new Date(a.nextPaymentDate!).getTime() - new Date(b.nextPaymentDate!).getTime())
+      .slice(0, 3);
+    const projected30 = upcoming30.reduce((s, n) => s + parseFloat(n.monthlyPayment || "0"), 0);
+    const projected60 = activeNotes.filter(n => {
+      if (!n.nextPaymentDate) return false;
+      const due = new Date(n.nextPaymentDate);
+      const diff = (due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+      return diff >= 0 && diff <= 60;
+    }).reduce((s, n) => s + parseFloat(n.monthlyPayment || "0"), 0);
+    const projected90 = activeNotes.filter(n => {
+      if (!n.nextPaymentDate) return false;
+      const due = new Date(n.nextPaymentDate);
+      const diff = (due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+      return diff >= 0 && diff <= 90;
+    }).reduce((s, n) => s + parseFloat(n.monthlyPayment || "0"), 0);
+    return { next3, lateCount, projected30, projected60, projected90, activeCount: activeNotes.length };
+  })();
 
   return (
     <PageShell>
@@ -578,23 +637,23 @@ export default function TodayPage() {
         </div>
       )}
 
-      {/* Section 2b: Atlas Noticed */}
-      {!atlasLoading && atlasItemCount > 0 && (
-        <div data-testid="section-atlas-noticed">
+      {/* Section 2b: Pax Noticed */}
+      {!paxLoading && paxItemCount > 0 && (
+        <div data-testid="section-pax-noticed">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-violet-500" />
-              <h2 className="text-lg font-semibold">Atlas Noticed</h2>
+              <h2 className="text-lg font-semibold">Pax Noticed</h2>
               <Badge variant="secondary" className="bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300 text-xs">
                 AI
               </Badge>
-              {atlasItemCount > 0 && (
+              {paxItemCount > 0 && (
                 <Badge variant="secondary" className="bg-primary/10 text-primary text-xs">
-                  {atlasItemCount}
+                  {paxItemCount}
                 </Badge>
               )}
             </div>
-            <Link href="/atlas#insights">
+            <Link href="/pax#insights">
               <Button variant="ghost" size="sm" className="gap-1 text-xs">
                 View All <ArrowRight className="w-3 h-3" />
               </Button>
@@ -603,7 +662,7 @@ export default function TodayPage() {
 
           <div className="space-y-2">
             {/* Observation cards */}
-            {atlasObservations.map((obs) => {
+            {paxObservations.map((obs) => {
               const isHigh = obs.severity === "high";
               const isMedium = obs.severity === "medium";
               const isLow = obs.severity === "low";
@@ -638,7 +697,7 @@ export default function TodayPage() {
             })}
 
             {/* Stale lead cards */}
-            {atlasStaleLeads.map((lead) => (
+            {paxStaleLeads.map((lead) => (
               <div key={`stale-${lead.id}`} className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20 p-3">
                 <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-500" />
                 <div className="flex-1 min-w-0">
@@ -656,7 +715,7 @@ export default function TodayPage() {
             ))}
 
             {/* Expiring offer cards */}
-            {atlasExpiringOffers.map((offer) => (
+            {paxExpiringOffers.map((offer) => (
               <div key={`offer-${offer.id}`} className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20 p-3">
                 <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-red-500" />
                 <div className="flex-1 min-w-0">
@@ -674,12 +733,12 @@ export default function TodayPage() {
         </div>
       )}
 
-      {/* Section 2c: Sophie Suggests */}
-      <div data-testid="section-sophie-suggests">
+      {/* Section 2c: Pax Suggests */}
+      <div data-testid="section-pax-suggests">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-emerald-500" />
-            <h2 className="text-lg font-semibold">Sophie Suggests</h2>
+            <h2 className="text-lg font-semibold">Pax Suggests</h2>
             <Badge variant="secondary" className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 text-xs">
               AI
             </Badge>
@@ -691,20 +750,20 @@ export default function TodayPage() {
           </Link>
         </div>
 
-        {sophieLoading ? (
+        {paxLoading ? (
           <div className="space-y-2">
             {[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full" />)}
           </div>
-        ) : sophieSuggestions.length === 0 ? (
+        ) : paxSuggestions.length === 0 ? (
           <Card>
             <CardContent className="flex items-center gap-3 py-5 px-4">
               <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
-              <p className="text-sm text-muted-foreground">No proactive suggestions right now. Sophie is monitoring your pipeline.</p>
+              <p className="text-sm text-muted-foreground">No proactive suggestions right now. Pax is monitoring your pipeline.</p>
             </CardContent>
           </Card>
         ) : (
           <div className="space-y-2">
-            {sophieSuggestions.map((s) => {
+            {paxSuggestions.map((s) => {
               const confidencePct = Math.round(s.confidence * 100);
               const confBadgeClass = confidencePct >= 85
                 ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
@@ -824,6 +883,80 @@ export default function TodayPage() {
           </div>
         )}
       </div>
+
+      {/* Section 3b: Cash Position */}
+      {(cashPosition.activeCount > 0 || notesLoading) && (
+        <div data-testid="section-cash-position">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-emerald-500" />
+              <h2 className="text-lg font-semibold">Cash Position</h2>
+              {cashPosition.lateCount > 0 && (
+                <Badge variant="secondary" className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 text-xs">
+                  {cashPosition.lateCount} late
+                </Badge>
+              )}
+            </div>
+            <Link href="/finance">
+              <Button variant="ghost" size="sm" className="gap-1 text-xs">
+                View Finance <ArrowRight className="w-3 h-3" />
+              </Button>
+            </Link>
+          </div>
+          {notesLoading ? (
+            <Skeleton className="h-28 w-full" />
+          ) : (
+            <div className="space-y-2">
+              {/* 30/60/90 forecast row */}
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { label: "30d", value: cashPosition.projected30 },
+                  { label: "60d", value: cashPosition.projected60 },
+                  { label: "90d", value: cashPosition.projected90 },
+                ].map(({ label, value }) => (
+                  <Card key={label} className="border-emerald-100 dark:border-emerald-900/30">
+                    <CardContent className="py-3 px-3 text-center">
+                      <p className="text-xs text-muted-foreground mb-0.5">{label} projected</p>
+                      <p className="text-base font-semibold text-emerald-700 dark:text-emerald-400">
+                        ${value.toLocaleString("en-US", { maximumFractionDigits: 0 })}
+                      </p>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+              {/* Upcoming payments */}
+              {cashPosition.next3.length > 0 && (
+                <div className="space-y-1.5">
+                  {cashPosition.next3.map((note) => (
+                    <Card key={note.id} className="hover:shadow-sm transition-shadow">
+                      <CardContent className="flex items-center justify-between py-2.5 px-4">
+                        <div className="flex items-center gap-2.5">
+                          {(note.status === "late" || note.status === "delinquent") ? (
+                            <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+                          ) : (
+                            <Banknote className="w-4 h-4 text-emerald-500 shrink-0" />
+                          )}
+                          <div>
+                            <p className="text-sm font-medium leading-tight">
+                              {note.borrowerName ?? `Note #${note.id}`}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              Due {note.nextPaymentDate ? format(new Date(note.nextPaymentDate), "MMM d") : "—"}
+                            </p>
+                          </div>
+                        </div>
+                        <span className={`text-sm font-semibold ${note.status === "late" || note.status === "delinquent" ? "text-red-600 dark:text-red-400" : "text-emerald-700 dark:text-emerald-400"}`}>
+                          ${parseFloat(note.monthlyPayment || "0").toLocaleString("en-US", { maximumFractionDigits: 0 })}
+                        </span>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Section 4: KPI Stats */}
       <div data-testid="section-stats">

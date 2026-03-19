@@ -15,9 +15,6 @@ import { eq, sql, lt } from "drizzle-orm";
 import { organizations, jobHealthLogs, agentEvents } from "@shared/schema";
 import { logger, requestLoggingMiddleware, errorLoggingMiddleware } from "./utils/logger";
 import { securityHeaders, corsMiddleware, requestTimeout, validateContentType, sanitizeQueryParams } from "./middleware/security";
-import { csrfProtection } from "./middleware/csrf";
-import { compressionMiddleware } from "./middleware/compression";
-import { telemetryMiddleware } from "./middleware/telemetry";
 import crypto from "crypto";
 import { wsServer } from "./websocket";
 import { realtimeAlertsService } from "./services/realtimeAlerts";
@@ -165,10 +162,14 @@ async function initStripe() {
   }
 }
 
-// F-A09-2: Install PII masking console interceptor at startup
-import("./middleware/piiMasking").then(({ installConsoleInterceptor }) => {
-  try { installConsoleInterceptor(); } catch (_) { /* non-critical */ }
-}).catch(() => {});
+// API versioning: /api/v1/* is transparently rewritten to /api/*
+// Clients can use either prefix; new code should use /api/v1/.
+app.use((req, _res, next) => {
+  if (req.url.startsWith("/api/v1/")) {
+    req.url = "/api/" + req.url.slice("/api/v1/".length);
+  }
+  next();
+});
 
 // F-A05-3: Remove x-powered-by header
 app.disable("x-powered-by");
@@ -217,14 +218,14 @@ app.post(
 // Task #204: enforce request body size limits to prevent payload-based DoS
 app.use(
   express.json({
-    limit: "10mb",
+    limit: "1mb",
     verify: (req, _res, buf) => {
       req.rawBody = buf;
     },
   }),
 );
 
-app.use(express.urlencoded({ extended: false, limit: "10mb" }));
+app.use(express.urlencoded({ extended: false, limit: "1mb" }));
 app.use(cookieParser());
 
 // Sentry request/tracing handler — must come before routes, after bodyParsers
@@ -234,9 +235,6 @@ if (process.env.SENTRY_DSN) {
 
 app.use(validateContentType);
 app.use(requestLoggingMiddleware);
-
-// CSRF protection for state-changing API requests
-app.use("/api", csrfProtection);
 
 // ── Rate limiting ────────────────────────────────────────────────────────────
 // Auth routes: 20 requests per 15 min per IP
@@ -260,7 +258,7 @@ const aiLimiter = rateLimit({
   message: { message: "AI request limit reached. Please wait a moment." },
 });
 app.use("/api/ai", aiLimiter);
-app.use("/api/atlas", aiLimiter);
+app.use("/api/pax", aiLimiter);
 app.use("/api/chat", aiLimiter);
 app.use("/api/executive", aiLimiter);
 app.use("/api/document-generation", aiLimiter);
@@ -287,51 +285,18 @@ app.use("/api/import", importLimiter);
 app.use("/api/leads/import", importLimiter);
 app.use("/api/properties/import", importLimiter);
 
-// ── Redis-backed cross-instance rate limiting (Tasks #39-42) ─────────────────
-// Applied to all /api routes as a supplementary layer on top of express-rate-limit.
-// Falls back gracefully to allow if Redis is unavailable.
-import { createOrgRateLimit, createIpRateLimit } from "./middleware/redisRateLimit";
-let _redisRateLimitClient: any = null;
-async function getRedisForRateLimit(): Promise<any> {
-  if (_redisRateLimitClient) return _redisRateLimitClient;
-  const redisUrl = process.env.REDIS_URL;
-  if (!redisUrl) return null;
-  try {
-    const IORedis = (await import("ioredis")).default;
-    _redisRateLimitClient = new IORedis(redisUrl, {
-      maxRetriesPerRequest: 2,
-      enableReadyCheck: false,
-      lazyConnect: true,
-    });
-    _redisRateLimitClient.on("error", () => {}); // swallow — fallback handles it
-    await _redisRateLimitClient.connect().catch(() => { _redisRateLimitClient = null; });
-    return _redisRateLimitClient;
-  } catch {
-    return null;
-  }
-}
-
-// Wire Redis org-level rate limiting for authenticated API routes
-app.use("/api", async (req, res, next) => {
-  try {
-    const redis = await getRedisForRateLimit();
-    if (!redis) return next();
-    return createOrgRateLimit(redis)(req, res, next);
-  } catch {
-    next();
-  }
+// General authenticated API: 300 requests per minute, keyed by session ID (falls
+// back to IP for unauthenticated requests). Prevents a single user behind a
+// shared NAT/proxy from exhausting the per-IP bucket.
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => (req as any).auth?.userId || req.ip || 'unknown',
+  message: { message: "Too many requests. Please slow down and try again shortly." },
 });
-
-// Wire Redis IP-level rate limiting as defense-in-depth for unauthenticated paths
-app.use("/api/auth", async (req, res, next) => {
-  try {
-    const redis = await getRedisForRateLimit();
-    if (!redis) return next();
-    return createIpRateLimit(redis, { maxPerMinute: 20, maxPerHour: 100 })(req, res, next);
-  } catch {
-    next();
-  }
-});
+app.use("/api", apiLimiter);
 
 (async () => {
   // Run DB migrations on startup (production-safe versioned migrations)
@@ -414,9 +379,10 @@ app.use("/api/auth", async (req, res, next) => {
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
     res.send([
       "Contact: mailto:security@acreos.com",
-      "Expires: 2027-01-01T00:00:00.000Z",
+      "Expires: 2027-03-18T00:00:00.000Z",
       "Preferred-Languages: en",
-      "Policy: https://acreos.com/security-policy",
+      "Canonical: https://acreos.fly.dev/.well-known/security.txt",
+      "Policy: https://acreos.fly.dev/terms",
     ].join("\n") + "\n");
   });
 
@@ -506,7 +472,13 @@ app.use("/api/auth", async (req, res, next) => {
 
       // Start scheduled task runner background job (every minute)
       startScheduledTaskRunnerJob();
-      
+
+      // Start Pax scheduled tasks (every minute)
+      startPaxSchedulerJob();
+
+      // Start Pax nudges (every 6 hours)
+      startPaxNudgesJob();
+
       // Start job queue worker (every 10 seconds)
       startJobQueueWorker();
       
@@ -640,6 +612,22 @@ app.use("/api/auth", async (req, res, next) => {
 
         // Founder daily briefing email at 7am
         startFounderBriefingJob();
+
+        // Outcome analyzer: close the feedback loop nightly (2am)
+        startOutcomeAnalyzerJob();
+
+        // ── Self-Evolution Engine jobs ──────────────────────────────────────
+        // Telemetry optimizer: nightly model routing optimization (3am)
+        startTelemetryOptimizerJob();
+
+        // Model intelligence: weekly OpenRouter catalog sync + benchmarks (Sunday 4am)
+        startModelIntelligenceJob();
+
+        // Self-assessment agent: weekly gap analysis + tech watch (Sunday 3am)
+        startSelfAssessmentJob();
+
+        // Evolution pipeline: process pending proposals (runs every 6 hours, deploys at 3-5am)
+        startEvolutionPipelineJob();
       }
     },
   );
@@ -948,6 +936,58 @@ function startScheduledTaskRunnerJob() {
       log(`Scheduled task runner run failed: ${err}`, 'task-runner');
     });
   }, ONE_MINUTE);
+}
+
+// ── Pax scheduled tasks background job ───────────────────────────────────────
+async function runPaxScheduledTasks() {
+  try {
+    const { processPaxScheduledTasks } = await import("./services/paxScheduler");
+    await processPaxScheduledTasks();
+  } catch (err: any) {
+    log(`Pax scheduler error: ${err.message}`, 'pax-scheduler');
+  }
+}
+
+function startPaxSchedulerJob() {
+  const ONE_MINUTE_MS = 60 * 1000;
+  const PAX_SCHEDULER_TTL_SECONDS = 55; // Lock TTL slightly less than 1-minute interval
+  setTimeout(() => {
+    withJobLock('pax_scheduler', PAX_SCHEDULER_TTL_SECONDS, runPaxScheduledTasks).catch(err => {
+      log(`Initial pax scheduler run failed: ${err}`, 'pax-scheduler');
+    });
+  }, 90000); // 90s after startup
+
+  setInterval(() => {
+    withJobLock('pax_scheduler', PAX_SCHEDULER_TTL_SECONDS, runPaxScheduledTasks).catch(err => {
+      log(`Pax scheduler run failed: ${err}`, 'pax-scheduler');
+    });
+  }, ONE_MINUTE_MS);
+}
+
+// ── Pax Nudges background job (every 6 hours) ─────────────────────────────────
+async function runPaxNudges() {
+  try {
+    const { processPaxNudges } = await import("./services/paxNudges");
+    await processPaxNudges();
+  } catch (err: any) {
+    log(`Pax nudges error: ${err.message}`, 'pax-nudges');
+  }
+}
+
+function startPaxNudgesJob() {
+  const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
+  const PAX_NUDGE_TTL_SECONDS = 5 * 60 * 60; // Lock TTL slightly less than interval
+  // Run 5 minutes after startup, then every 6 hours
+  setTimeout(() => {
+    withJobLock('pax_nudges', PAX_NUDGE_TTL_SECONDS, runPaxNudges).catch((err: unknown) => {
+      log(`Pax nudges job failed: ${err}`, 'pax_nudges');
+    });
+  }, 5 * 60 * 1000);
+  setInterval(() => {
+    withJobLock('pax_nudges', PAX_NUDGE_TTL_SECONDS, runPaxNudges).catch((err: unknown) => {
+      log(`Pax nudges job failed: ${err}`, 'pax_nudges');
+    });
+  }, SIX_HOURS_MS);
 }
 
 // Deal Hunter daily scraping job
@@ -1434,4 +1474,135 @@ function startFounderBriefingJob() {
       processFounderBriefing();
     }
   }, 5 * 60 * 1000);
+}
+
+// ── Outcome Analyzer: nightly feedback loop at 2am ───────────────────────────
+async function processOutcomeAnalyzerJob() {
+  try {
+    const { runOutcomeAnalysis } = await import("./services/outcomeAnalyzer");
+    await runOutcomeAnalysis();
+    jobSupervisor.notifyResult('outcome_analyzer', 24 * 60 * 60 * 1000, true);
+  } catch (err) {
+    log(`Outcome analyzer job error: ${err}`, 'outcome-analyzer');
+    jobSupervisor.notifyResult('outcome_analyzer', 24 * 60 * 60 * 1000, false, undefined, String(err));
+  }
+}
+
+function startOutcomeAnalyzerJob() {
+  log('Starting outcome analyzer job (nightly at 2am)', 'outcome-analyzer');
+  // Run once 3 minutes after startup (first pass, likely few data points)
+  setTimeout(() => { processOutcomeAnalyzerJob(); }, 3 * 60 * 1000);
+  setInterval(() => {
+    const now = new Date();
+    if (now.getHours() === 2 && now.getMinutes() < 5) {
+      withJobLock('outcome_analyzer', 23 * 60 * 60, processOutcomeAnalyzerJob).catch(err => {
+        log(`Outcome analyzer lock error: ${err}`, 'outcome-analyzer');
+      });
+    }
+  }, 5 * 60 * 1000);
+}
+
+// ── Telemetry Optimizer: nightly model routing optimization (3am) ─────────────
+async function processTelemetryOptimizerJob() {
+  try {
+    const { runTelemetryOptimizer } = await import("./services/telemetryOptimizer");
+    const result = await runTelemetryOptimizer();
+    log(`Telemetry optimizer: ${result.tiersOptimized} tiers optimized, ${result.changesApplied} changes applied`, 'telemetry-optimizer');
+    jobSupervisor.notifyResult('telemetry_optimizer', 24 * 60 * 60 * 1000, true);
+  } catch (err) {
+    log(`Telemetry optimizer job error: ${err}`, 'telemetry-optimizer');
+    jobSupervisor.notifyResult('telemetry_optimizer', 24 * 60 * 60 * 1000, false, undefined, String(err));
+  }
+}
+
+function startTelemetryOptimizerJob() {
+  log('Starting telemetry optimizer job (nightly at 3am)', 'telemetry-optimizer');
+  setInterval(() => {
+    const now = new Date();
+    if (now.getHours() === 3 && now.getMinutes() < 5) {
+      withJobLock('telemetry_optimizer', 23 * 60 * 60, processTelemetryOptimizerJob).catch(err => {
+        log(`Telemetry optimizer lock error: ${err}`, 'telemetry-optimizer');
+      });
+    }
+  }, 5 * 60 * 1000);
+}
+
+// ── Model Intelligence: weekly OpenRouter catalog sync (Sunday 4am) ───────────
+async function processModelIntelligenceJob() {
+  try {
+    const { runModelIntelligence } = await import("./services/modelIntelligence");
+    const result = await runModelIntelligence();
+    log(`Model intelligence: ${result.sync.discovered} discovered, ${result.benchmark.modelsCompleted} benchmarked`, 'model-intelligence');
+    jobSupervisor.notifyResult('model_intelligence', 7 * 24 * 60 * 60 * 1000, true);
+  } catch (err) {
+    log(`Model intelligence job error: ${err}`, 'model-intelligence');
+    jobSupervisor.notifyResult('model_intelligence', 7 * 24 * 60 * 60 * 1000, false, undefined, String(err));
+  }
+}
+
+function startModelIntelligenceJob() {
+  log('Starting model intelligence job (weekly Sunday 4am)', 'model-intelligence');
+  setInterval(() => {
+    const now = new Date();
+    // Sunday = 0, 4am
+    if (now.getDay() === 0 && now.getHours() === 4 && now.getMinutes() < 5) {
+      withJobLock('model_intelligence', 6 * 24 * 60 * 60, processModelIntelligenceJob).catch(err => {
+        log(`Model intelligence lock error: ${err}`, 'model-intelligence');
+      });
+    }
+  }, 5 * 60 * 1000);
+}
+
+// ── Self-Assessment Agent: weekly gap analysis (Sunday 3am) ───────────────────
+async function processSelfAssessmentJob() {
+  try {
+    const { runSelfAssessment } = await import("./services/selfAssessmentAgent");
+    const result = await runSelfAssessment();
+    log(`Self-assessment: ${result.proposalsCreated} proposals, ${result.techOpportunities} tech opportunities found`, 'self-assessment');
+    jobSupervisor.notifyResult('self_assessment', 7 * 24 * 60 * 60 * 1000, true);
+  } catch (err) {
+    log(`Self-assessment job error: ${err}`, 'self-assessment');
+    jobSupervisor.notifyResult('self_assessment', 7 * 24 * 60 * 60 * 1000, false, undefined, String(err));
+  }
+}
+
+function startSelfAssessmentJob() {
+  log('Starting self-assessment agent job (weekly Sunday 3am)', 'self-assessment');
+  setInterval(() => {
+    const now = new Date();
+    // Sunday = 0, 3am
+    if (now.getDay() === 0 && now.getHours() === 3 && now.getMinutes() < 5) {
+      withJobLock('self_assessment', 6 * 24 * 60 * 60, processSelfAssessmentJob).catch(err => {
+        log(`Self-assessment lock error: ${err}`, 'self-assessment');
+      });
+    }
+  }, 5 * 60 * 1000);
+}
+
+// ── Evolution Pipeline: process pending proposals (every 6h, deploys 3-5am) ──
+async function processEvolutionPipelineJob() {
+  try {
+    const now = new Date();
+    // Only deploy during low-traffic window: 3am-5am
+    const isDeployWindow = now.getHours() >= 3 && now.getHours() < 5;
+    if (!isDeployWindow) {
+      log('Evolution pipeline: outside deploy window (3-5am), skipping', 'evolution-pipeline');
+      return;
+    }
+    const { processPendingProposals } = await import("./services/evolutionPipeline");
+    await processPendingProposals();
+    jobSupervisor.notifyResult('evolution_pipeline', 6 * 60 * 60 * 1000, true);
+  } catch (err) {
+    log(`Evolution pipeline job error: ${err}`, 'evolution-pipeline');
+    jobSupervisor.notifyResult('evolution_pipeline', 6 * 60 * 60 * 1000, false, undefined, String(err));
+  }
+}
+
+function startEvolutionPipelineJob() {
+  log('Starting evolution pipeline job (every 6 hours, deploys 3-5am only)', 'evolution-pipeline');
+  setInterval(() => {
+    withJobLock('evolution_pipeline', 5 * 60 * 60, processEvolutionPipelineJob).catch(err => {
+      log(`Evolution pipeline lock error: ${err}`, 'evolution-pipeline');
+    });
+  }, 6 * 60 * 60 * 1000);
 }

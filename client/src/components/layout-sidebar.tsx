@@ -78,15 +78,16 @@ import { prefetchRoute } from "@/lib/queryClient";
 import { NotificationCenter } from "@/components/notification-center";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useFeatureFlags } from "@/hooks/use-feature-flags";
+import { useOrganization } from "@/hooks/use-organization";
 
 // ─────────────────────────────────────────────────────────────────────
-// Sophie proactive notification badge
-// Polls GET /api/sophie/observations?unread=true every 2 min.
-// Shows a Sparkles icon with a red count bubble when Sophie has new
+// Pax proactive notification badge
+// Polls GET /api/pax/observations?unread=true every 2 min.
+// Shows a Sparkles icon with a red count bubble when Pax has new
 // observations for the org.  Clicking opens a popover with the
 // latest insights and quick-dismiss actions.
 // ─────────────────────────────────────────────────────────────────────
-interface SophieObservation {
+interface PaxObservation {
   id: number;
   type: string;
   severity: string;
@@ -97,11 +98,11 @@ interface SophieObservation {
   metadata?: Record<string, any>;
 }
 
-function SophieNotificationBadge() {
+function PaxNotificationBadge() {
   const { data: unreadData } = useQuery<{ count: number }>({
-    queryKey: ["/api/sophie/observations", "unread"],
+    queryKey: ["/api/pax/observations", "unread"],
     queryFn: async () => {
-      const res = await fetch("/api/sophie/observations?unread=true", { credentials: "include" });
+      const res = await fetch("/api/pax/observations?unread=true", { credentials: "include" });
       if (!res.ok) return { count: 0 };
       return res.json();
     },
@@ -109,10 +110,10 @@ function SophieNotificationBadge() {
     staleTime: 60 * 1000,
   });
 
-  const { data: observationsData, refetch: refetchObservations } = useQuery<{ observations: SophieObservation[] }>({
-    queryKey: ["/api/sophie/observations"],
+  const { data: observationsData, refetch: refetchObservations } = useQuery<{ observations: PaxObservation[] }>({
+    queryKey: ["/api/pax/observations"],
     queryFn: async () => {
-      const res = await fetch("/api/sophie/observations?limit=10", { credentials: "include" });
+      const res = await fetch("/api/pax/observations?limit=10", { credentials: "include" });
       if (!res.ok) return { observations: [] };
       return res.json();
     },
@@ -125,7 +126,7 @@ function SophieNotificationBadge() {
 
   const handleDismiss = async (id: number) => {
     try {
-      await fetch(`/api/sophie/observations/${id}/dismiss`, {
+      await fetch(`/api/pax/observations/${id}/dismiss`, {
         method: "POST",
         credentials: "include",
       });
@@ -135,7 +136,7 @@ function SophieNotificationBadge() {
 
   const handleAcknowledge = async (id: number) => {
     try {
-      await fetch(`/api/sophie/observations/${id}/acknowledge`, {
+      await fetch(`/api/pax/observations/${id}/acknowledge`, {
         method: "POST",
         credentials: "include",
       });
@@ -157,8 +158,8 @@ function SophieNotificationBadge() {
           <PopoverTrigger asChild>
             <button
               className="relative p-1.5 rounded-lg text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
-              aria-label="Sophie AI insights"
-              data-testid="button-sophie-notifications"
+              aria-label="Pax AI insights"
+              data-testid="button-pax-notifications"
             >
               <Sparkles className="w-4 h-4" />
               {unreadCount > 0 && (
@@ -170,7 +171,7 @@ function SophieNotificationBadge() {
           </PopoverTrigger>
         </TooltipTrigger>
         <TooltipContent side="right">
-          <p className="font-medium">Sophie AI Insights</p>
+          <p className="font-medium">Pax AI Insights</p>
           {unreadCount > 0 && (
             <p className="text-xs text-muted-foreground">{unreadCount} new observation{unreadCount === 1 ? "" : "s"}</p>
           )}
@@ -181,7 +182,7 @@ function SophieNotificationBadge() {
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <div className="flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-primary" />
-            <span className="font-semibold text-sm">Sophie Insights</span>
+            <span className="font-semibold text-sm">Pax Insights</span>
             {unreadCount > 0 && (
               <Badge variant="secondary" className="text-xs">{unreadCount} new</Badge>
             )}
@@ -192,7 +193,7 @@ function SophieNotificationBadge() {
           {observations.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
               <Sparkles className="w-8 h-8 text-muted-foreground/40 mb-2" />
-              <p className="text-sm text-muted-foreground">Sophie is watching for insights.</p>
+              <p className="text-sm text-muted-foreground">Pax is watching for insights.</p>
               <p className="text-xs text-muted-foreground mt-1">You'll be notified when something needs attention.</p>
             </div>
           ) : (
@@ -281,7 +282,7 @@ const NAV_MODULES: NavModule[] = [
     label: "Dashboard",
     icon: LayoutDashboard,
     href: "/",
-    description: "Overview of your land investment business",
+    description: "Overview of your real estate business",
   },
   {
     id: "inbox",
@@ -296,7 +297,7 @@ const NAV_MODULES: NavModule[] = [
     label: "Leads",
     icon: Users,
     href: "/leads",
-    description: "Manage your land seller leads",
+    description: "Manage your leads and sellers",
     children: [
       { label: "All Leads", icon: Users, href: "/leads", description: "All your leads" },
       { label: "Blind Offer Wizard", icon: Wand2, href: "/blind-offer-wizard", description: "Calculate Podolsky-formula offers step-by-step" },
@@ -475,6 +476,14 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
 
 // ─────────────────────────────────────────────────────────────────────
 // Main Sidebar component
+// Routes hidden for non-land investor types
+const BUSINESS_TYPE_HIDDEN_ROUTES: Record<string, string[]> = {
+  residential_wholesaler: ["/maps", "/land-credit"],
+  fix_and_flip:           ["/maps", "/land-credit"],
+  buy_and_hold:           ["/maps", "/land-credit"],
+  commercial:             ["/maps", "/land-credit"],
+};
+
 // ─────────────────────────────────────────────────────────────────────
 export function Sidebar() {
   const [location] = useLocation();
@@ -482,17 +491,25 @@ export function Sidebar() {
   const [isOpen, setIsOpen] = useState(false);
   const { isCollapsed, setIsCollapsed } = useSidebarCollapsed();
   const { isRouteEnabled, isLoading: flagsLoading } = useFeatureFlags();
+  const { data: organization } = useOrganization();
+
+  const businessType = (organization?.onboardingData as any)?.businessType as string | undefined;
+  const hiddenForType = businessType ? (BUSINESS_TYPE_HIDDEN_ROUTES[businessType] ?? []) : [];
 
   // Filter NAV_MODULES: hide any nav items whose route is feature-flagged off
+  // or hidden for the user's investor type.
   // While flags are loading we show everything (prevents flicker on initial load)
   const visibleModules = flagsLoading
     ? NAV_MODULES
     : NAV_MODULES.map((module) => ({
         ...module,
-        children: module.children?.filter((child) => isRouteEnabled(child.href)),
+        children: module.children?.filter(
+          (child) => isRouteEnabled(child.href) && !hiddenForType.includes(child.href)
+        ),
       })).filter((module) => {
         // If the module itself has a controlled route, check it
         if (!isRouteEnabled(module.href)) return false;
+        if (hiddenForType.includes(module.href)) return false;
         // If all children were filtered out and the module is purely a container, hide it
         if (module.children !== undefined && module.children.length === 0) return false;
         return true;
@@ -591,14 +608,14 @@ export function Sidebar() {
               )}
             </div>
             <div className="flex items-center gap-1">
-              <SophieNotificationBadge />
+              <PaxNotificationBadge />
               <NotificationCenter />
             </div>
           </div>
         )}
         {!isCollapsed && (
           <p className="text-xs text-muted-foreground mt-1">
-            Land Investment Platform
+            Real Estate Investor OS
           </p>
         )}
       </div>
@@ -655,9 +672,9 @@ export function Sidebar() {
                 className={cn(
                   "flex items-center gap-2 px-3 py-2 rounded-lg transition-all duration-150 group cursor-pointer min-h-[40px]",
                   active && !hasChildren
-                    ? "bg-primary text-primary-foreground shadow-sm"
+                    ? "nav-item-active"
                     : active
-                    ? "bg-primary/10 text-primary"
+                    ? "nav-item-active"
                     : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
                 )}
                 onClick={() => {
@@ -678,7 +695,7 @@ export function Sidebar() {
                       className={cn(
                         "w-4 h-4 shrink-0 transition-colors",
                         active
-                          ? "text-primary-foreground"
+                          ? "text-primary"
                           : "text-muted-foreground group-hover:text-sidebar-foreground"
                       )}
                     />
@@ -746,7 +763,7 @@ export function Sidebar() {
                         className={cn(
                           "flex items-center gap-2 px-3 py-1.5 rounded-md transition-all duration-150 group min-h-[34px] text-xs",
                           childActive
-                            ? "bg-primary text-primary-foreground shadow-sm"
+                            ? "nav-item-active"
                             : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
                         )}
                         aria-current={childActive ? "page" : undefined}
@@ -757,7 +774,7 @@ export function Sidebar() {
                           className={cn(
                             "w-3.5 h-3.5 shrink-0",
                             childActive
-                              ? "text-primary-foreground"
+                              ? "text-primary"
                               : "text-muted-foreground group-hover:text-sidebar-foreground"
                           )}
                         />
@@ -866,6 +883,7 @@ export function Sidebar() {
           <div className="flex items-center gap-1">
             <SophieNotificationBadge />
             <ProviderStatusBadges />
+            <PaxNotificationBadge />
             <NotificationCenter />
           </div>
         </div>
@@ -908,9 +926,9 @@ export function Sidebar() {
                 className={cn(
                   "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-150 group cursor-pointer min-h-[44px]",
                   active && !hasChildren
-                    ? "bg-primary text-primary-foreground shadow-sm"
+                    ? "nav-item-active"
                     : active
-                    ? "bg-primary/10 text-primary"
+                    ? "nav-item-active"
                     : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
                 )}
                 onClick={() => {
@@ -927,7 +945,7 @@ export function Sidebar() {
                     <module.icon
                       className={cn(
                         "w-5 h-5 shrink-0",
-                        active ? "text-primary-foreground" : "text-muted-foreground"
+                        active ? "text-primary" : "text-muted-foreground"
                       )}
                     />
                     <span className="font-medium text-sm flex-1 truncate">
@@ -984,7 +1002,7 @@ export function Sidebar() {
                         className={cn(
                           "flex items-center gap-3 px-3 py-2 rounded-md transition-all duration-150 min-h-[40px]",
                           childActive
-                            ? "bg-primary text-primary-foreground shadow-sm"
+                            ? "nav-item-active"
                             : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
                         )}
                         data-testid={`link-nav-${child.href.replace("/", "")}`}
@@ -993,7 +1011,7 @@ export function Sidebar() {
                           className={cn(
                             "w-4 h-4 shrink-0",
                             childActive
-                              ? "text-primary-foreground"
+                              ? "text-primary"
                               : "text-muted-foreground"
                           )}
                         />
@@ -1091,7 +1109,7 @@ function CollapsedModuleItem({
             className={cn(
               "flex items-center justify-center w-full p-2.5 rounded-lg transition-all duration-150 min-h-[40px] relative",
               isActive
-                ? "bg-primary text-primary-foreground shadow-sm"
+                ? "nav-item-active"
                 : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
             )}
             onMouseEnter={() => onPrefetch(module.href)}
@@ -1100,7 +1118,7 @@ function CollapsedModuleItem({
             <module.icon
               className={cn(
                 "w-4 h-4 shrink-0",
-                isActive ? "text-primary-foreground" : "text-muted-foreground"
+                isActive ? "text-primary" : "text-muted-foreground"
               )}
             />
             {showBadge && (
@@ -1127,7 +1145,7 @@ function CollapsedModuleItem({
               className={cn(
                 "flex items-center justify-center w-full p-2.5 rounded-lg transition-all duration-150 min-h-[40px] relative",
                 isActive
-                  ? "bg-primary/10 text-primary"
+                  ? "nav-item-active"
                   : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
               )}
               onMouseEnter={() => onPrefetch(module.href)}
@@ -1162,7 +1180,7 @@ function CollapsedModuleItem({
               className={cn(
                 "flex items-center gap-2 px-2 py-1.5 rounded-md transition-all duration-150 text-sm",
                 childActive
-                  ? "bg-primary text-primary-foreground"
+                  ? "nav-item-active"
                   : "text-foreground hover:bg-accent"
               )}
               onMouseEnter={() => onPrefetch(child.href)}

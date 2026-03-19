@@ -86,13 +86,17 @@ export const organizations = pgTable("organizations", {
   // Trial tokens for sampling premium actions (free tier users)
   trialTokens: integer("trial_tokens").default(5), // Free tokens to try premium actions
   trialTokensGrantedAt: timestamp("trial_tokens_granted_at").defaultNow(), // When tokens were last granted
-  // Sophie proactive notification settings
+  // Pax proactive notification settings
   proactiveNotificationLevel: varchar("proactive_notification_level", { length: 50 }).default("balanced"), // minimal, balanced, proactive, off
+  // Pax autonomy level — controls how much Pax can act without per-action approval
+  paxAutonomyLevel: varchar("pax_autonomy_level", { length: 20 }).default("assisted"), // assisted, supervised, autonomous
   // UTM attribution for customer acquisition tracking
   utmSource: text("utm_source"),     // e.g. 'meta', 'google', 'organic'
   utmMedium: text("utm_medium"),     // e.g. 'cpc', 'social', 'email'
   utmCampaign: text("utm_campaign"), // e.g. 'land-investors-q1'
   utmContent: text("utm_content"),   // e.g. 'carousel-ad-1'
+  // Timezone for scheduling and date display (IANA timezone name)
+  timezone: text("timezone").default("America/New_York"),
   // Referral program credit balance (in cents)
   referralCredits: integer("referral_credits").notNull().default(0),
   // Churn risk scoring (0-100, 100 = highest risk)
@@ -365,7 +369,9 @@ export const leads = pgTable("leads", {
   index("leads_status_idx").on(table.status),
   index("leads_created_at_idx").on(table.createdAt),
   index("leads_email_idx").on(table.email),
-  index("leads_deleted_at_idx").on(table.deletedAt),
+  index("leads_source_campaign_idx").on(table.sourceCampaignId),
+  index("leads_org_updated_idx").on(table.organizationId, table.updatedAt),
+  index("leads_score_idx").on(table.score),
 ]);
 
 // Lead activity/interactions log
@@ -858,6 +864,7 @@ export const payments = pgTable("payments", {
   index("payments_note_idx").on(table.noteId),
   index("payments_status_idx").on(table.status),
   index("payments_due_date_idx").on(table.dueDate),
+  index("payments_created_at_idx").on(table.createdAt),
 ]);
 
 // Property tax escrow payments — tracks actual county tax payments made from escrow
@@ -1528,12 +1535,152 @@ export const aiMemory = pgTable("ai_memory", {
 });
 
 // AI Conversations - chat history with AI agents
+// ============================================
+// PAX CONNECTORS — per-org connector instances
+// ============================================
+
+export const paxConnectorInstances = pgTable("pax_connector_instances", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").notNull(),
+  connectorId: text("connector_id").notNull(), // 'gmail' | 'google_drive' | 'stripe' | etc.
+  status: text("status").notNull().default("disconnected"), // 'disconnected' | 'connected' | 'error'
+  // Encrypted credentials JSON (access_token, refresh_token, api_key, webhook_url, etc.)
+  credentialsEncrypted: text("credentials_encrypted"),
+  settings: jsonb("settings").$type<Record<string, any>>(),
+  lastTestedAt: timestamp("last_tested_at"),
+  lastErrorAt: timestamp("last_error_at"),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (t) => [
+  index("pax_ci_org_idx").on(t.organizationId),
+  index("pax_ci_connector_idx").on(t.organizationId, t.connectorId),
+]);
+export type PaxConnectorInstance = typeof paxConnectorInstances.$inferSelect;
+
+export const paxKnowledgeFiles = pgTable("pax_knowledge_files", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  mimeType: text("mime_type").notNull(),
+  sizeBytes: integer("size_bytes").notNull(),
+  extractedContent: text("extracted_content").notNull(),
+  uploadedBy: text("uploaded_by").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  usageCount: integer("usage_count").notNull().default(0),
+  lastUsedAt: timestamp("last_used_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => [
+  index("pax_kb_org_idx").on(t.organizationId),
+  index("pax_kb_active_idx").on(t.isActive),
+]);
+export type PaxKnowledgeFile = typeof paxKnowledgeFiles.$inferSelect;
+
+export const paxProjects = pgTable("pax_projects", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").notNull(),
+  userId: text("user_id").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  entityType: text("entity_type"),
+  entityId: integer("entity_id"),
+  isActive: boolean("is_active").notNull().default(true),
+  fileCount: integer("file_count").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => [
+  index("pax_proj_org_idx").on(t.organizationId),
+  index("pax_proj_entity_idx").on(t.entityType, t.entityId),
+]);
+export type PaxProject = typeof paxProjects.$inferSelect;
+
+export const paxProjectFiles = pgTable("pax_project_files", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id").notNull(),
+  fileName: text("file_name").notNull(),
+  mimeType: text("mime_type").notNull(),
+  sizeBytes: integer("size_bytes").notNull(),
+  extractedContent: text("extracted_content").notNull(),
+  uploadedBy: text("uploaded_by").notNull(),
+  uploadedAt: timestamp("uploaded_at").defaultNow(),
+}, (t) => [index("pax_pf_proj_idx").on(t.projectId)]);
+export type PaxProjectFile = typeof paxProjectFiles.$inferSelect;
+
+export const paxScheduledTasks = pgTable("pax_scheduled_tasks", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").notNull(),
+  userId: text("user_id").notNull(),
+  name: text("name").notNull(),
+  prompt: text("prompt").notNull(),
+  agentRole: text("agent_role").notNull().default("executive"),
+  schedule: text("schedule").notNull(),
+  timezone: text("timezone").notNull().default("America/New_York"),
+  isActive: boolean("is_active").notNull().default(true),
+  lastRunAt: timestamp("last_run_at"),
+  nextRunAt: timestamp("next_run_at"),
+  lastRunConversationId: integer("last_run_conversation_id"),
+  lastRunStatus: text("last_run_status"),
+  lastRunSummary: text("last_run_summary"),
+  runCount: integer("run_count").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (t) => [
+  index("pax_tasks_org_idx").on(t.organizationId),
+  index("pax_tasks_next_run_idx").on(t.nextRunAt),
+]);
+export type PaxScheduledTask = typeof paxScheduledTasks.$inferSelect;
+
+// ============================================
+// PAX SCHEDULED TASK RUN HISTORY
+// ============================================
+export const paxScheduledTaskRuns = pgTable("pax_scheduled_task_runs", {
+  id: serial("id").primaryKey(),
+  taskId: integer("task_id").notNull(),
+  organizationId: integer("organization_id").notNull(),
+  runAt: timestamp("run_at").defaultNow().notNull(),
+  status: text("status").notNull(), // "success" | "error"
+  summary: text("summary"),
+  conversationId: integer("conversation_id"),
+  durationMs: integer("duration_ms"),
+}, (t) => [
+  index("pax_task_runs_task_idx").on(t.taskId),
+  index("pax_task_runs_org_idx").on(t.organizationId),
+]);
+export type PaxScheduledTaskRun = typeof paxScheduledTaskRuns.$inferSelect;
+
+// ============================================
+// PAX NUDGES — proactive ambient intelligence cards
+// ============================================
+export const paxNudges = pgTable("pax_nudges", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").notNull(),
+  userId: text("user_id"), // null = org-wide nudge
+  content: text("content").notNull(), // Human-readable insight
+  category: text("category").notNull(), // "stale_leads" | "stuck_deal" | "streak" | "task_due" | "opportunity"
+  entityType: text("entity_type"), // "lead" | "property" | "deal" | null
+  entityId: integer("entity_id"),
+  priority: integer("priority").notNull().default(5), // 1 (high) – 10 (low)
+  actionPrompt: text("action_prompt"), // Auto-send this to Pax when user clicks the nudge
+  dismissedAt: timestamp("dismissed_at"),
+  snoozedUntil: timestamp("snoozed_until"),
+  snoozeCount: integer("snooze_count").default(0),
+  actionedAt: timestamp("actioned_at"),    // when user clicked through (for tracking)
+  actionType: text("action_type"),          // "dismissed" | "snoozed" | "actioned"
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => [
+  index("pax_nudges_org_idx").on(t.organizationId),
+  index("pax_nudges_active_idx").on(t.organizationId, t.dismissedAt),
+]);
+export type PaxNudge = typeof paxNudges.$inferSelect;
+
 export const aiConversations = pgTable("ai_conversations", {
   id: serial("id").primaryKey(),
   organizationId: integer("organization_id").notNull(),
   userId: text("user_id").notNull(),
   title: text("title").notNull(),
   agentRole: text("agent_role").notNull().default("executive"),
+  activeProjectId: integer("active_project_id"),
+  contextSummary: text("context_summary"), // Auto-compaction summary of older messages
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -1545,6 +1692,9 @@ export const aiMessages = pgTable("ai_messages", {
   role: text("role").notNull(), // user, assistant, system
   content: text("content").notNull(),
   toolCalls: jsonb("tool_calls").$type<any[]>(),
+  mentionedEntities: jsonb("mentioned_entities").$type<{ type: string; id: number; name: string; preview: string }[]>(),
+  thinkingContent: text("thinking_content"),
+  rating: integer("rating"), // 1 = thumbs up, -1 = thumbs down, null = no rating
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -3280,11 +3430,11 @@ export type InsertSystemAlert = z.infer<typeof insertSystemAlertSchema>;
 export type SystemAlert = typeof systemAlerts.$inferSelect;
 
 // ============================================
-// SOPHIE OBSERVATIONS (Proactive Detection)
+// PAX OBSERVATIONS (Proactive Detection)
 // ============================================
 
-// Sophie proactive observation types
-export const SOPHIE_OBSERVATION_TYPES = [
+// Pax proactive observation types
+export const PAX_OBSERVATION_TYPES = [
   'anomaly',           // Unusual patterns detected
   'performance',       // Performance degradation
   'error_pattern',     // Repeated errors
@@ -3297,14 +3447,14 @@ export const SOPHIE_OBSERVATION_TYPES = [
   'optimization',      // Optimization suggestion
 ] as const;
 
-export type SophieObservationType = typeof SOPHIE_OBSERVATION_TYPES[number];
+export type PaxObservationType = typeof PAX_OBSERVATION_TYPES[number];
 
 // Notification level options for organizations
 export const PROACTIVE_NOTIFICATION_LEVELS = ['minimal', 'balanced', 'proactive', 'off'] as const;
 export type ProactiveNotificationLevel = typeof PROACTIVE_NOTIFICATION_LEVELS[number];
 
-// Sophie observations table - graceful proactive detection
-export const sophieObservations = pgTable("sophie_observations", {
+// Pax observations table - graceful proactive detection
+export const paxObservations = pgTable("pax_observations", {
   id: serial("id").primaryKey(),
   organizationId: integer("organization_id").references(() => organizations.id).notNull(),
   userId: text("user_id"), // Nullable - may be org-wide observation
@@ -3349,20 +3499,20 @@ export const sophieObservations = pgTable("sophie_observations", {
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
-  index("sophie_obs_org_idx").on(table.organizationId),
-  index("sophie_obs_status_idx").on(table.status),
-  index("sophie_obs_type_idx").on(table.type),
-  index("sophie_obs_detected_at_idx").on(table.detectedAt),
+  index("pax_obs_org_idx").on(table.organizationId),
+  index("pax_obs_status_idx").on(table.status),
+  index("pax_obs_type_idx").on(table.type),
+  index("pax_obs_detected_at_idx").on(table.detectedAt),
 ]);
 
-export const insertSophieObservationSchema = createInsertSchema(sophieObservations).omit({ 
+export const insertPaxObservationSchema = createInsertSchema(paxObservations).omit({ 
   id: true, 
   createdAt: true, 
   updatedAt: true,
   detectedAt: true 
 });
-export type InsertSophieObservation = z.infer<typeof insertSophieObservationSchema>;
-export type SophieObservation = typeof sophieObservations.$inferSelect;
+export type InsertPaxObservation = z.infer<typeof insertPaxObservationSchema>;
+export type PaxObservation = typeof paxObservations.$inferSelect;
 
 // ============================================
 // API JOB QUEUE
@@ -4663,7 +4813,10 @@ export const automationRules = pgTable("automation_rules", {
   createdBy: text("created_by"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("automation_rules_org_idx").on(table.organizationId),
+  index("automation_rules_active_idx").on(table.isEnabled),
+]);
 
 export const insertAutomationRuleSchema = createInsertSchema(automationRules).omit({
   id: true,
@@ -5613,7 +5766,11 @@ export const delinquencyEscalations = pgTable("delinquency_escalations", {
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("delinquency_escalations_org_idx").on(table.organizationId),
+  index("delinquency_escalations_status_idx").on(table.status),
+  index("delinquency_escalations_next_action_idx").on(table.nextActionDate),
+]);
 
 export const insertDelinquencyEscalationSchema = createInsertSchema(delinquencyEscalations).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertDelinquencyEscalation = z.infer<typeof insertDelinquencyEscalationSchema>;
@@ -7677,10 +7834,14 @@ export const buyerPropertyMatches = pgTable("buyer_property_matches", {
   status: text("status").notNull().default("pending"), // pending, presented, interested, not_interested, purchased
   presentedAt: timestamp("presented_at"),
   buyerResponse: text("buyer_response"),
-  
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("buyer_property_match_buyer_idx").on(table.buyerProfileId),
+  index("buyer_property_match_prop_idx").on(table.propertyId),
+  index("buyer_property_match_org_idx").on(table.organizationId),
+]);
 
 // Buyer Qualifications - pre-screening results
 export const buyerQualifications = pgTable("buyer_qualifications", {
@@ -7953,7 +8114,7 @@ export const supportTickets = pgTable("support_tickets", {
   status: text("status").notNull().default("open"), // open, in_progress, waiting_on_customer, resolved, closed
   
   // AI handling
-  assignedAgent: text("assigned_agent"), // sophie (Support Agent), atlas, or null for human
+  assignedAgent: text("assigned_agent"), // pax (Support Agent), pax, or null for human
   aiHandled: boolean("ai_handled").default(false),
   aiConfidenceScore: numeric("ai_confidence_score"), // 0-100 confidence in resolution
   aiResolutionAttempts: integer("ai_resolution_attempts").default(0),
@@ -8007,7 +8168,7 @@ export const supportTicketMessages = pgTable("support_ticket_messages", {
   
   role: text("role").notNull(), // user, agent, system
   content: text("content").notNull(),
-  agentName: text("agent_name"), // Sophie, Atlas, or human agent name
+  agentName: text("agent_name"), // Pax, Pax, or human agent name
   
   // For AI messages
   toolsUsed: jsonb("tools_used").$type<string[]>(),
@@ -8118,8 +8279,8 @@ export const insertSupportResolutionHistorySchema = createInsertSchema(supportRe
 export type InsertSupportResolutionHistory = z.infer<typeof insertSupportResolutionHistorySchema>;
 export type SupportResolutionHistory = typeof supportResolutionHistory.$inferSelect;
 
-// Multi-session memory for Sophie - stores context across conversations
-export const sophieMemory = pgTable("sophie_memory", {
+// Multi-session memory for Pax - stores context across conversations
+export const paxMemory = pgTable("pax_memory", {
   id: serial("id").primaryKey(),
   organizationId: integer("organization_id").references(() => organizations.id).notNull(),
   userId: text("user_id").notNull(),
@@ -8149,18 +8310,18 @@ export const sophieMemory = pgTable("sophie_memory", {
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
-  index("sophie_memory_org_user_idx").on(table.organizationId, table.userId),
-  index("sophie_memory_type_idx").on(table.memoryType),
-  index("sophie_memory_key_idx").on(table.key),
+  index("pax_memory_org_user_idx").on(table.organizationId, table.userId),
+  index("pax_memory_type_idx").on(table.memoryType),
+  index("pax_memory_key_idx").on(table.key),
 ]);
 
-export const insertSophieMemorySchema = createInsertSchema(sophieMemory).omit({
+export const insertPaxMemorySchema = createInsertSchema(paxMemory).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
 });
-export type InsertSophieMemory = z.infer<typeof insertSophieMemorySchema>;
-export type SophieMemory = typeof sophieMemory.$inferSelect;
+export type InsertPaxMemory = z.infer<typeof insertPaxMemorySchema>;
+export type PaxMemory = typeof paxMemory.$inferSelect;
 
 // Track self-healing fix attempts with retry logic
 export const fixAttempts = pgTable("fix_attempts", {
@@ -8181,7 +8342,7 @@ export const fixAttempts = pgTable("fix_attempts", {
     retryAfter?: string;
   }>(),
   
-  sourceObservationId: integer("source_observation_id").references(() => sophieObservations.id),
+  sourceObservationId: integer("source_observation_id").references(() => paxObservations.id),
   sourceTicketId: integer("source_ticket_id").references(() => supportTickets.id),
   escalatedAt: timestamp("escalated_at"),
   
@@ -8202,7 +8363,7 @@ export type InsertFixAttempt = z.infer<typeof insertFixAttemptSchema>;
 export type FixAttempt = typeof fixAttempts.$inferSelect;
 
 // Cross-org learning patterns - learnings that apply across all organizations
-export const sophieCrossOrgLearnings = pgTable("sophie_cross_org_learnings", {
+export const paxCrossOrgLearnings = pgTable("pax_cross_org_learnings", {
   id: serial("id").primaryKey(),
   
   issuePattern: text("issue_pattern").notNull(),
@@ -8232,13 +8393,13 @@ export const sophieCrossOrgLearnings = pgTable("sophie_cross_org_learnings", {
   index("cross_org_learnings_pattern_idx").on(table.issuePattern),
 ]);
 
-export const insertSophieCrossOrgLearningSchema = createInsertSchema(sophieCrossOrgLearnings).omit({
+export const insertPaxCrossOrgLearningSchema = createInsertSchema(paxCrossOrgLearnings).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
 });
-export type InsertSophieCrossOrgLearning = z.infer<typeof insertSophieCrossOrgLearningSchema>;
-export type SophieCrossOrgLearning = typeof sophieCrossOrgLearnings.$inferSelect;
+export type InsertPaxCrossOrgLearning = z.infer<typeof insertPaxCrossOrgLearningSchema>;
+export type PaxCrossOrgLearning = typeof paxCrossOrgLearnings.$inferSelect;
 
 // ============================================
 // PHASE 1: INTELLIGENCE AMPLIFICATION
@@ -9313,7 +9474,7 @@ export const voiceCalls = pgTable("voice_calls", {
   callStatus: text("call_status"), // ringing, in-progress, completed, failed
   
   // AI agent
-  agentType: text("agent_type").notNull(), // sophie, atlas, custom
+  agentType: text("agent_type").notNull(), // pax, pax, custom
   agentObjective: text("agent_objective"), // qualify_lead, schedule_showing, answer_questions
   
   // Results
@@ -10727,7 +10888,7 @@ export type AdCreativeBundle = typeof adCreativeBundles.$inferSelect;
 export const systemActivity = pgTable("system_activity", {
   id: serial("id").primaryKey(),
   orgId: integer("org_id").references(() => organizations.id, { onDelete: "set null" }),
-  jobName: text("job_name").notNull(),   // 'finance_agent', 'sophie', 'dunning', etc.
+  jobName: text("job_name").notNull(),   // 'finance_agent', 'pax', 'dunning', etc.
   action: text("action").notNull(),      // 'payment_reminder_sent', 'ticket_resolved', etc.
   summary: text("summary").notNull(),    // human-readable narrative
   entityType: text("entity_type"),       // 'note', 'lead', 'campaign', 'support_case'
@@ -10810,144 +10971,78 @@ export type OrgApiKey = typeof orgApiKeys.$inferSelect;
 export type InsertOrgApiKey = z.infer<typeof insertOrgApiKeySchema>;
 
 // ============================================
-// FIELD SCOUT VISITS
+// SELF-EVOLUTION ENGINE TABLES
 // ============================================
 
-export const fieldScoutVisits = pgTable("field_scout_visits", {
+// Cache of all models available on OpenRouter, refreshed weekly.
+// The model intelligence service benchmarks new models and auto-updates aiModelConfigs.
+export const openrouterModelCatalog = pgTable("openrouter_model_catalog", {
   id: serial("id").primaryKey(),
-  visitorId: text("visitor_id").notNull(), // references users.id (varchar PK)
-  leadId: integer("lead_id").references(() => leads.id).notNull(),
-  propertyId: integer("property_id").references(() => properties.id),
-  latitude: numeric("latitude").notNull(),
-  longitude: numeric("longitude").notNull(),
-  duration: integer("duration"), // minutes
-  notes: text("notes"),
-  checklistResults: jsonb("checklist_results"),
-  createdAt: timestamp("created_at").defaultNow(),
-}, (table) => [
-  index("field_scout_visits_visitor_idx").on(table.visitorId),
-  index("field_scout_visits_lead_idx").on(table.leadId),
-]);
-
-export const insertFieldScoutVisitSchema = createInsertSchema(fieldScoutVisits).omit({ id: true, createdAt: true });
-export type FieldScoutVisit = typeof fieldScoutVisits.$inferSelect;
-export type InsertFieldScoutVisit = z.infer<typeof insertFieldScoutVisitSchema>;
-
-// ============================================
-// FIELD SCOUT PHOTOS
-// ============================================
-
-export const fieldScoutPhotos = pgTable("field_scout_photos", {
-  id: serial("id").primaryKey(),
-  visitId: integer("visit_id").references(() => fieldScoutVisits.id),
-  leadId: integer("lead_id").references(() => leads.id).notNull(),
-  filename: text("filename").notNull(),
-  mimeType: text("mime_type").notNull(),
-  sizeBytes: integer("size_bytes").notNull(),
-  latitude: numeric("latitude"),
-  longitude: numeric("longitude"),
-  capturedAt: timestamp("captured_at"),
-  createdAt: timestamp("created_at").defaultNow(),
-}, (table) => [
-  index("field_scout_photos_visit_idx").on(table.visitId),
-  index("field_scout_photos_lead_idx").on(table.leadId),
-]);
-
-export const insertFieldScoutPhotoSchema = createInsertSchema(fieldScoutPhotos).omit({ id: true, createdAt: true });
-export type FieldScoutPhoto = typeof fieldScoutPhotos.$inferSelect;
-export type InsertFieldScoutPhoto = z.infer<typeof insertFieldScoutPhotoSchema>;
-
-// ============================================
-// CAMPAIGN LEADS (join table)
-// ============================================
-
-export const campaignLeads = pgTable("campaign_leads", {
-  id: serial("id").primaryKey(),
-  campaignId: integer("campaign_id").references(() => campaigns.id).notNull(),
-  leadId: integer("lead_id").references(() => leads.id).notNull(),
-  organizationId: integer("organization_id").references(() => organizations.id),
-  status: text("status").default("pending"),
-  scheduledAt: timestamp("scheduled_at"),
-  sentAt: timestamp("sent_at"),
-  touchNumber: integer("touch_number").default(1),
-  createdAt: timestamp("created_at").defaultNow(),
-}, (table) => [
-  index("campaign_leads_campaign_idx").on(table.campaignId),
-  index("campaign_leads_lead_idx").on(table.leadId),
-]);
-
-export const insertCampaignLeadSchema = createInsertSchema(campaignLeads).omit({ id: true, createdAt: true });
-export type CampaignLead = typeof campaignLeads.$inferSelect;
-export type InsertCampaignLead = z.infer<typeof insertCampaignLeadSchema>;
-
-// ============================================
-// COUNTY MARKETS
-// ============================================
-
-export const countyMarkets = pgTable("county_markets", {
-  id: serial("id").primaryKey(),
-  state: text("state").notNull(),
-  county: text("county").notNull(),
-  medianPricePerAcre: numeric("median_price_per_acre"),
-  recentSalesCount: integer("recent_sales_count").default(0),
-  avgDaysOnMarket: integer("avg_days_on_market"),
-  priceChangePercent: numeric("price_change_percent"),
-  investorDemandScore: integer("investor_demand_score"),
-  lastUpdated: timestamp("last_updated").defaultNow(),
-  createdAt: timestamp("created_at").defaultNow(),
-}, (table) => [
-  index("county_markets_state_county_idx").on(table.state, table.county),
-]);
-
-export const insertCountyMarketSchema = createInsertSchema(countyMarkets).omit({ id: true, createdAt: true });
-export type CountyMarket = typeof countyMarkets.$inferSelect;
-export type InsertCountyMarket = z.infer<typeof insertCountyMarketSchema>;
-
-// ============================================
-// TERRITORIES
-// ============================================
-
-export const territories = pgTable("territories", {
-  id: serial("id").primaryKey(),
-  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
-  name: text("name").notNull(),
-  description: text("description"),
-  states: jsonb("states"), // array of state codes
-  counties: jsonb("counties"), // array of county names / FIPS
-  assignedTo: integer("assigned_to"),
-  isActive: boolean("is_active").default(true),
-  createdAt: timestamp("created_at").defaultNow(),
+  modelId: text("model_id").notNull().unique(), // e.g. "anthropic/claude-opus-4-6"
+  displayName: text("display_name").notNull(),
+  inputCostPerMillion: numeric("input_cost_per_million", { precision: 12, scale: 6 }),
+  outputCostPerMillion: numeric("output_cost_per_million", { precision: 12, scale: 6 }),
+  contextWindow: integer("context_window"),
+  capabilities: text("capabilities").array().default([]), // ["vision","reasoning","code",...]
+  isNew: boolean("is_new").default(false), // flagged on first discovery for benchmarking
+  lastBenchmarkedAt: timestamp("last_benchmarked_at"),
+  benchmarkScoreSimple: numeric("benchmark_score_simple", { precision: 5, scale: 2 }),
+  benchmarkScoreModerate: numeric("benchmark_score_moderate", { precision: 5, scale: 2 }),
+  benchmarkScoreComplex: numeric("benchmark_score_complex", { precision: 5, scale: 2 }),
+  isActive: boolean("is_active").default(true), // false = removed from OpenRouter
+  discoveredAt: timestamp("discovered_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
-  index("territories_org_idx").on(table.organizationId),
+  index("openrouter_catalog_active_idx").on(table.isActive),
+  index("openrouter_catalog_new_idx").on(table.isNew),
 ]);
+export type OpenrouterModelCatalog = typeof openrouterModelCatalog.$inferSelect;
 
-export const insertTerritorySchema = createInsertSchema(territories).omit({ id: true, createdAt: true, updatedAt: true });
-export type Territory = typeof territories.$inferSelect;
-export type InsertTerritory = z.infer<typeof insertTerritorySchema>;
-
-// ============================================
-// NOTES RECEIVABLE
-// ============================================
-
-export const notesReceivable = pgTable("notes_receivable", {
+// Audit log of every autonomous code evolution attempt.
+// Each record covers one proposal from generation through deployment/abandonment.
+export const evolutionHistory = pgTable("evolution_history", {
   id: serial("id").primaryKey(),
-  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
-  dealId: integer("deal_id"),
-  buyerName: text("buyer_name"),
-  originalBalance: numeric("original_balance"),
-  remainingBalance: numeric("remaining_balance"),
-  interestRate: numeric("interest_rate"),
-  monthlyPayment: numeric("monthly_payment"),
-  status: text("status").default("active"), // active, paid_off, defaulted
-  startDate: timestamp("start_date"),
-  maturityDate: timestamp("maturity_date"),
-  createdAt: timestamp("created_at").defaultNow(),
+  proposalId: integer("proposal_id"), // FK → agentTasks.id (the self-assessment proposal)
+  proposalDescription: text("proposal_description").notNull(),
+  targetFile: text("target_file").notNull(), // which file was modified
+  generatedCode: text("generated_code"), // the actual code diff generated
+  // Multi-stage gauntlet tracking
+  stagesCompleted: text("stages_completed").array().default([]),
+  stageFailedAt: text("stage_failed_at"), // stage name where failure occurred, null = success
+  stageFailureReason: text("stage_failure_reason"),
+  reviewModelOutput: text("review_model_output"), // Stage 2 adversarial review JSON
+  intentVerificationOutput: text("intent_verification_output"), // Stage 3 JSON
+  staticAnalysisOutput: text("static_analysis_output"), // Stage 4 compiler/lint/test output
+  // Git tracking
+  branchName: text("branch_name"),
+  commitHash: text("commit_hash"),
+  // Lifecycle
+  status: text("status").notNull().default("proposed"), // proposed|stage1_pass|stage2_pass|stage3_pass|stage4_pass|deployed|reverted|abandoned
+  deployedAt: timestamp("deployed_at"),
+  revertedAt: timestamp("reverted_at"),
+  revertReason: text("revert_reason"),
+  // Metrics
+  errorRateBeforeDeploy: numeric("error_rate_before_deploy", { precision: 8, scale: 4 }),
+  errorRateAfterDeploy: numeric("error_rate_after_deploy", { precision: 8, scale: 4 }),
+  qualityScoreBefore: numeric("quality_score_before", { precision: 5, scale: 2 }),
+  qualityScoreAfter: numeric("quality_score_after", { precision: 5, scale: 2 }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
-  index("notes_receivable_org_idx").on(table.organizationId),
+  index("evolution_history_status_idx").on(table.status),
+  index("evolution_history_created_idx").on(table.createdAt),
 ]);
+export type EvolutionHistory = typeof evolutionHistory.$inferSelect;
 
-export const insertNoteReceivableSchema = createInsertSchema(notesReceivable).omit({ id: true, createdAt: true, updatedAt: true });
-export type NoteReceivable = typeof notesReceivable.$inferSelect;
-export type InsertNoteReceivable = z.infer<typeof insertNoteReceivableSchema>;
+// Tracks circuit breaker state for the autonomous evolution pipeline.
+// Prevents runaway deployments when consecutive reverts occur.
+export const evolutionCircuitBreaker = pgTable("evolution_circuit_breaker", {
+  id: serial("id").primaryKey(),
+  isTripped: boolean("is_tripped").notNull().default(false),
+  consecutiveReverts: integer("consecutive_reverts").notNull().default(0),
+  trippedAt: timestamp("tripped_at"),
+  resumeAt: timestamp("resume_at"), // auto-resume after 7 days
+  resumedBy: text("resumed_by"), // founder email if manually resumed
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export type EvolutionCircuitBreaker = typeof evolutionCircuitBreaker.$inferSelect;

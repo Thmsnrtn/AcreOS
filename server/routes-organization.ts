@@ -332,6 +332,22 @@ export function registerOrganizationRoutes(app: Express): void {
     const org = (req as any).organization;
     const updates = req.body;
     const updated = await storage.updateOrganization(org.id, updates);
+
+    try {
+      const user = req.user as any;
+      await storage.createAuditLogEntry({
+        organizationId: org.id,
+        userId: (user?.claims?.sub || user?.id)?.toString() || null,
+        action: "update",
+        entityType: "organization",
+        entityId: org.id,
+        changes: { before: org, after: updates, fields: Object.keys(updates) },
+        ipAddress: req.ip || null,
+        userAgent: req.headers["user-agent"] || null,
+        metadata: {},
+      });
+    } catch (e) { /* non-fatal */ }
+
     res.json(updated);
   });
   
@@ -340,17 +356,32 @@ export function registerOrganizationRoutes(app: Express): void {
     try {
       const org = (req as any).organization;
       const aiSettings = req.body;
-      
+
       const aiSettingsSchema = z.object({
         responseStyle: z.enum(["concise", "detailed", "balanced"]).optional(),
         defaultAgent: z.string().optional(),
         autoSuggestions: z.boolean().optional(),
         rememberContext: z.boolean().optional(),
       });
-      
+
       const validatedSettings = aiSettingsSchema.parse(aiSettings);
       await storage.updateOrganizationAISettings(org.id, validatedSettings);
-      
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          action: "update",
+          entityType: "organization_ai_settings",
+          entityId: org.id,
+          changes: { after: validatedSettings, fields: Object.keys(validatedSettings) },
+          ipAddress: req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          metadata: {},
+        });
+      } catch (e) { /* non-fatal */ }
+
       res.json({ success: true });
     } catch (error: any) {
       console.error("Update AI settings error:", error);
@@ -692,32 +723,48 @@ export function registerOrganizationRoutes(app: Express): void {
     const memberId = Number(req.params.id);
     const { role } = req.body;
     const context = (req as any).permissionContext as UserPermissionContext;
-    
+
     if (!ROLES.includes(role)) {
       return res.status(400).json({ message: `Invalid role. Must be one of: ${ROLES.join(", ")}` });
     }
-    
+
     const members = await storage.getTeamMembers(org.id);
     const targetMember = members.find(m => m.id === memberId);
-    
+
     if (!targetMember) {
       return res.status(404).json({ message: "Team member not found" });
     }
-    
+
     if (targetMember.role === "owner" && context.role !== "owner") {
       return res.status(403).json({ message: "Only the owner can change the owner's role" });
     }
-    
+
     if (role === "owner" && context.role !== "owner") {
       return res.status(403).json({ message: "Only the owner can assign the owner role" });
     }
-    
+
     const owners = members.filter(m => m.role === "owner");
     if (targetMember.role === "owner" && owners.length === 1 && role !== "owner") {
       return res.status(400).json({ message: "Cannot remove the only owner. Transfer ownership first." });
     }
-    
+
     const updated = await storage.updateTeamMember(memberId, { role });
+
+    try {
+      const user = req.user as any;
+      await storage.createAuditLogEntry({
+        organizationId: org.id,
+        userId: (user?.claims?.sub || user?.id)?.toString() || null,
+        action: "update",
+        entityType: "team_member",
+        entityId: memberId,
+        changes: { before: { role: targetMember.role }, after: { role }, fields: ["role"] },
+        ipAddress: req.ip || null,
+        userAgent: req.headers["user-agent"] || null,
+        metadata: {},
+      });
+    } catch (e) { /* non-fatal */ }
+
     res.json(updated);
   });
   
@@ -912,6 +959,22 @@ export function registerOrganizationRoutes(app: Express): void {
       const current = await storage.getOrganization(org.id);
       const merged = { ...(current?.settings ?? {}), ...parsed.data };
       const updated = await storage.updateOrganization(org.id, { settings: merged } as any);
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId: (user?.claims?.sub || user?.id)?.toString() || null,
+          action: "update",
+          entityType: "organization_settings",
+          entityId: org.id,
+          changes: { after: parsed.data, fields: Object.keys(parsed.data) },
+          ipAddress: req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          metadata: {},
+        });
+      } catch (e) { /* non-fatal */ }
+
       res.json({ settings: updated.settings });
     } catch (err: any) {
       res.status(500).json({ message: err.message || "Failed to update settings" });

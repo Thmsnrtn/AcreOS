@@ -1066,6 +1066,7 @@ export async function importNotesFromCSV(
     totalRows: csvData.length,
     successCount: 0,
     errorCount: 0,
+    duplicatesSkipped: 0,
     errors: [],
   };
 

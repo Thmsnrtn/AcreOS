@@ -156,6 +156,51 @@ export function registerAnalyticsRoutes(app: Express): void {
     }
   });
 
+  // GET /api/analytics/team-kpi - Team performance KPIs
+  api.get("/api/analytics/team-kpi", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const now = new Date();
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(now.getDate() - 30);
+
+      const [deals, leads] = await Promise.all([
+        storage.getDeals(org.id),
+        storage.getLeads(org.id),
+      ]);
+
+      const recentDeals = deals.filter((d: any) => {
+        const closed = d.closedAt || d.updatedAt || d.createdAt;
+        return closed && new Date(closed) >= thirtyDaysAgo && (d.status === "closed" || d.status === "won");
+      });
+
+      const recentLeads = leads.filter((l: any) => {
+        const worked = l.updatedAt || l.createdAt;
+        return worked && new Date(worked) >= thirtyDaysAgo;
+      });
+
+      const totalRevenue = recentDeals.reduce((sum: number, d: any) => sum + (d.purchasePrice || d.salePrice || 0), 0);
+
+      const conversionRate = leads.length > 0
+        ? ((deals.filter((d: any) => d.status === "closed" || d.status === "won").length / leads.length) * 100).toFixed(1)
+        : "0.0";
+
+      const kpis = [
+        { label: "Deals Closed (30d)", value: String(recentDeals.length) },
+        { label: "Avg Deal Cycle Time", value: "—" },
+        { label: "Leads Worked (30d)", value: String(recentLeads.length) },
+        { label: "Revenue Generated", value: new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(totalRevenue) },
+        { label: "Conversion Rate", value: `${conversionRate}%` },
+        { label: "Avg Offer Accepted %", value: "—" },
+      ];
+
+      res.json({ kpis });
+    } catch (error: any) {
+      console.error("Get team KPI error:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch team KPIs" });
+    }
+  });
+
   // ============================================
   // AUTOMATION RULES (Phase 8.1)
   // ============================================

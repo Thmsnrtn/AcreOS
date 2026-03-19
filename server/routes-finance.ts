@@ -9,6 +9,7 @@ import { checkUsageLimit } from "./services/usageLimits";
 import { usageMeteringService, creditService } from "./services/credits";
 import { financeAgentService } from "./services/financeAgent";
 import { exportNotesToCSV, type ExportFilters } from "./services/importExport";
+import { checkUsury } from "./services/usury";
 
 export function registerFinanceRoutes(app: Express): void {
   const api = app;
@@ -44,6 +45,23 @@ export function registerFinanceRoutes(app: Express): void {
         });
       }
       
+      // Usury hard block: check interest rate against state law before saving
+      if (req.body.interestRate && req.body.propertyId) {
+        const property = await storage.getProperty(org.id, Number(req.body.propertyId));
+        if (property?.state) {
+          const usury = checkUsury(property.state, Number(req.body.interestRate));
+          if (usury.warningLevel === 'violation') {
+            return res.status(422).json({
+              message: `Interest rate ${req.body.interestRate}% exceeds ${property.state} usury limit of ${usury.maxAllowedRate}%. This transaction cannot be saved.`,
+              code: 'USURY_VIOLATION',
+              limit: usury.maxAllowedRate,
+              rate: req.body.interestRate,
+              state: property.state,
+            });
+          }
+        }
+      }
+
       // Calculate monthly payment if not provided
       let monthlyPayment = req.body.monthlyPayment;
       if (!monthlyPayment && req.body.originalPrincipal && req.body.interestRate && req.body.termMonths) {
@@ -53,15 +71,15 @@ export function registerFinanceRoutes(app: Express): void {
           Number(req.body.termMonths)
         );
       }
-      
+
       // Convert date strings to Date objects
       const startDate = req.body.startDate ? new Date(req.body.startDate) : new Date();
       const firstPaymentDate = req.body.firstPaymentDate ? new Date(req.body.firstPaymentDate) : new Date();
       const maturityDate = req.body.maturityDate ? new Date(req.body.maturityDate) : undefined;
       const nextPaymentDate = req.body.nextPaymentDate ? new Date(req.body.nextPaymentDate) : firstPaymentDate;
-      
-      const input = insertNoteSchema.parse({ 
-        ...req.body, 
+
+      const input = insertNoteSchema.parse({
+        ...req.body,
         organizationId: org.id,
         monthlyPayment: String(monthlyPayment),
         currentBalance: req.body.originalPrincipal,
@@ -99,7 +117,26 @@ export function registerFinanceRoutes(app: Express): void {
     const noteId = Number(req.params.id);
     const existingNote = await storage.getNote(org.id, noteId);
     if (!existingNote) return res.status(404).json({ message: "Note not found" });
-    
+
+    // Usury hard block: check updated interest rate against state law before saving
+    const rateToCheck = req.body.interestRate ?? existingNote.interestRate;
+    const propertyId = req.body.propertyId ?? existingNote.propertyId;
+    if (rateToCheck && propertyId) {
+      const property = await storage.getProperty(org.id, Number(propertyId));
+      if (property?.state) {
+        const usury = checkUsury(property.state, Number(rateToCheck));
+        if (usury.warningLevel === 'violation') {
+          return res.status(422).json({
+            message: `Interest rate ${rateToCheck}% exceeds ${property.state} usury limit of ${usury.maxAllowedRate}%. This transaction cannot be saved.`,
+            code: 'USURY_VIOLATION',
+            limit: usury.maxAllowedRate,
+            rate: rateToCheck,
+            state: property.state,
+          });
+        }
+      }
+    }
+
     const note = await storage.updateNote(noteId, req.body);
     
     const user = req.user as any;
@@ -450,6 +487,23 @@ export function registerFinanceRoutes(app: Express): void {
       if (status === "cancelled") updates.failureReason = req.body.reason || "Manually cancelled";
 
       const updated = await storage.updatePaymentReminder(reminderId, updates);
+
+      try {
+        const user = req.user as any;
+        const userId = user?.claims?.sub || user?.id;
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId: userId?.toString() || null,
+          action: "update",
+          entityType: "payment_reminder",
+          entityId: reminderId,
+          changes: { after: updates, fields: Object.keys(updates) },
+          ipAddress: req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          metadata: {},
+        });
+      } catch (e) { /* non-fatal */ }
+
       res.json(updated);
     } catch (err: any) {
       console.error("Error updating reminder:", err);
@@ -722,22 +776,21 @@ export function registerFinanceRoutes(app: Express): void {
       }
       const payment = await storage.createPayment(parsed.data);
 
-      // Push notification for payment received (T61)
-      setImmediate(async () => {
-        try {
-          const { notifyPaymentReceived } = await import("./services/pushNotificationService");
-          const user = req.user as any;
-          const userId = user?.claims?.sub ?? user?.id;
-          if (userId && parsed.data.amount) {
-            await notifyPaymentReceived(
-              (req as any).organization.id,
-              userId,
-              parsed.data.noteId,
-              Math.round(Number(parsed.data.amount))
-            );
-          }
-        } catch (_) {}
-      });
+      try {
+        const user = req.user as any;
+        const userId = user?.claims?.sub || user?.id;
+        await storage.createAuditLogEntry({
+          organizationId: org.id,
+          userId: userId?.toString() || null,
+          action: "create",
+          entityType: "payment",
+          entityId: payment.id,
+          changes: { after: parsed.data, fields: Object.keys(parsed.data) },
+          ipAddress: req.ip || null,
+          userAgent: req.headers["user-agent"] || null,
+          metadata: {},
+        });
+      } catch (e) { /* non-fatal */ }
 
       res.status(201).json(payment);
     } catch (err: any) {
@@ -746,5 +799,29 @@ export function registerFinanceRoutes(app: Express): void {
   });
 
   // ============================================
+
+  // GET /api/finance/ltv-report
+  api.get("/api/finance/ltv-report", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { ltvMonitorService } = await import("./services/ltvMonitor");
+      const org = (req as any).organization;
+      const report = await ltvMonitorService.getOrgLTVReport(org.id);
+      res.json(report);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // GET /api/finance/ltv/:noteId
+  api.get("/api/finance/ltv/:noteId", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { ltvMonitorService } = await import("./services/ltvMonitor");
+      const snapshot = await ltvMonitorService.getLTVSnapshot(parseInt(req.params.noteId));
+      if (!snapshot) return res.status(404).json({ error: "Note not found" });
+      res.json(snapshot);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
 
 }

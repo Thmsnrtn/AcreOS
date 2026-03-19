@@ -38,8 +38,8 @@ Preferred communication style: Simple, everyday language.
 - **AI Agents**: Four core agents (Research & Intelligence, Deals & Acquisition, Communications, Operations) using DataSourceBroker and OpenAI (gpt-4o).
 - **AI Section**: Conversational AI interface (`/command-center` or `/ai`) with task management and real-time status.
 - **AI Context Aggregator**: Real-time system snapshot service providing full awareness across all modules (leads, properties, deals, tasks, campaigns) with 60-second caching and automatic invalidation on writes.
-- **Cross-Module AI Operations**: Executive assistant (Atlas) can create/update properties, deals, and tasks from any page, with background job execution support.
-- **AI Tools (Atlas)**: 
+- **Cross-Module AI Operations**: Executive assistant (Pax) can create/update properties, deals, and tasks from any page, with background job execution support.
+- **AI Tools (Pax)**: 
   - **Offer Generation**: `generate_offer` (AI-powered suggestions with market analysis), `generate_offer_letter` (professional, friendly, or urgent tone letters)
   - **Communications**: `send_email` (TCPA-compliant with AWS SES), `send_sms` (TCPA-compliant via Twilio/Telnyx)
   - **Financial Analysis**: `run_comps_analysis` (comparable sales lookup), `calculate_roi` (investment metrics), `calculate_payment_schedule` (amortization)
@@ -60,13 +60,13 @@ Preferred communication style: Simple, everyday language.
 - **Unified Communications**: Twilio SMS integration (BYOK) with a multi-channel inbox UI.
 - **Browser Automation Engine**: Puppeteer-core for backend web automation (county research, document download, property listing screenshots) with job queue and AI integration.
 - **Autonomous AI Operations**: Capabilities across acquisition research, due diligence, negotiation, portfolio management, compliance, and disposition, leveraging multi-agent orchestration and event subscription.
-- **Sophie Support Agent (95-99% Autonomous Resolution Target)**: AI-powered customer support with advanced investigation, self-learning, and self-healing capabilities:
+- **Pax (95-99% Autonomous Resolution Target)**: AI-powered customer support with advanced investigation, self-learning, and self-healing capabilities:
   - **Investigation Tools**: `query_user_data` (database inspection), `search_logs` (error/event search), `get_user_activity` (action history), `estimate_resolution_confidence` (confidence scoring)
   - **Decision Trees**: Structured troubleshooting paths for 10 common issue types (login, sync, billing, data, AI, map, performance, export, notifications, permissions)
   - **Browser Context Capture**: Auto-captures console errors, failed network requests, user actions when help panel opens
   - **Proactive Anomaly Detection**: Activity drop detection (70%+ baseline deviation), error pattern detection, usage spike detection
   - **Automated Fix Actions**: `clear_user_cache`, `reset_user_session`, `retry_failed_jobs`, `refresh_auth_tokens`, `resync_user_data`
-  - **Multi-Session Memory**: sophieMemory table with memory types (issue_history, preference, solution_tried, escalation, context), importance scoring (1-10), expiry support, `recall_user_memory` and `save_user_memory` tools for personalized support
+  - **Multi-Session Memory**: paxMemory table with memory types (issue_history, preference, solution_tried, escalation, context), importance scoring (1-10), expiry support, `recall_user_memory` and `save_user_memory` tools for personalized support
   - **Resolution Tracking**: supportResolutionHistory with variantName, customerEffortScore (1-5), success/failure tracking for continuous improvement
   - **Knowledge Base Search**: `search_past_resolutions` to find matching solutions from previously resolved tickets
   - **A/B Testing for Resolutions**: `get_resolution_ab_recommendations` tracks resolution variants, success rates, customer effort scores, and recommends winning approaches
@@ -89,8 +89,8 @@ Preferred communication style: Simple, everyday language.
   - **Integration Health Monitoring**: `check_integration_health` verifies Stripe, Twilio, Lob, OpenAI connections
   - **Proactive Onboarding Nudges**: `detect_onboarding_stuck` identifies stalled users and suggests next steps
   - **Proactive Self-Healing**: `apply_self_healing_fix` applies known fixes (cache clear, job retry, data resync) based on learned patterns with 70%+ success rate
-- **Interactive Self-Help Wizards**: Guided step-by-step troubleshooting flows with 8 categories, self-check questions, and Sophie escalation path
-- **Sophie Learning Service**: sophieLearning.ts with 9 methods for autonomous learning and healing:
+- **Interactive Self-Help Wizards**: Guided step-by-step troubleshooting flows with 8 categories, self-check questions, and Pax escalation path
+- **Pax Learning Service**: paxLearning.ts with 9 methods for autonomous learning and healing:
   - `learnFromHumanResolution(ticketId)` - Extract patterns from human resolutions
   - `traceRootCause(orgId, issueDescription)` - Multi-layer root cause analysis
   - `detectBulkIssue(issuePattern)` - Detect systemic issues across orgs

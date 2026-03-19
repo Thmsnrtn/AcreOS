@@ -5,7 +5,7 @@ import { supportTickets, supportTicketMessages, activityLog } from "@shared/sche
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { inArray, or } from "drizzle-orm";
-import { knowledgeBaseArticles, sophieMemory, systemAlerts, organizations } from "@shared/schema";
+import { knowledgeBaseArticles, paxMemory, systemAlerts, organizations } from "@shared/schema";
 
 export function registerSupportTicketRoutes(app: Express): void {
   const api = app;
@@ -16,7 +16,7 @@ export function registerSupportTicketRoutes(app: Express): void {
   // Create support ticket
   api.post("/api/support/tickets", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = req.org!;
+      const org = (req as any).org!;
       const user = req.user as any;
       
       const { subject, description, category, priority, pageContext, errorContext } = req.body;
@@ -44,7 +44,7 @@ export function registerSupportTicketRoutes(app: Express): void {
   // Get user's support tickets
   api.get("/api/support/tickets", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = req.org!;
+      const org = (req as any).org!;
       const user = req.user as any;
       const { status } = req.query;
       
@@ -87,7 +87,7 @@ export function registerSupportTicketRoutes(app: Express): void {
   // Send message to support ticket (triggers AI response)
   api.post("/api/support/tickets/:id/messages", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = req.org!;
+      const org = (req as any).org!;
       const user = req.user as any;
       const ticketId = parseInt(req.params.id);
       const { message } = req.body;
@@ -103,7 +103,7 @@ export function registerSupportTicketRoutes(app: Express): void {
         content: message
       });
       
-      // Process with Sophie
+      // Process with Pax
       const { processSupportChat } = await import("./ai/supportAgent");
       const response = await processSupportChat(message, org, user.id, ticketId);
       
@@ -138,7 +138,7 @@ export function registerSupportTicketRoutes(app: Express): void {
     }
   });
   
-  // Human resolve ticket (triggers Sophie learning and knowledge base update)
+  // Human resolve ticket (triggers Pax learning and knowledge base update)
   api.post("/api/support/tickets/:id/resolve-human", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const ticketId = parseInt(req.params.id);
@@ -174,11 +174,11 @@ export function registerSupportTicketRoutes(app: Express): void {
       let learningResult = null;
       let knowledgeBaseArticle = null;
       
-      // Trigger Sophie self-learning from this resolution
+      // Trigger Pax self-learning from this resolution
       try {
-        const { sophieLearningService } = await import("./services/sophieLearning");
-        learningResult = await sophieLearningService.learnFromHumanResolution(ticketId);
-        console.log(`[support] Sophie learned from human resolution: ${JSON.stringify(learningResult)}`);
+        const { paxLearningService } = await import("./services/paxLearning");
+        learningResult = await paxLearningService.learnFromHumanResolution(ticketId);
+        console.log(`[support] Pax learned from human resolution: ${JSON.stringify(learningResult)}`);
         
         // If cross-org learning was created and addToKnowledgeBase is true, create KB article
         if (addToKnowledgeBase && learningResult?.crossOrgLearning) {
@@ -210,9 +210,9 @@ export function registerSupportTicketRoutes(app: Express): void {
           }
         }
         
-        // Store in sophieMemory for future reference
+        // Store in paxMemory for future reference
         try {
-          await db.insert(sophieMemory).values({
+          await db.insert(paxMemory).values({
             organizationId: ticket.organizationId,
             userId: user.id,
             memoryType: "solution_tried",
@@ -234,12 +234,12 @@ export function registerSupportTicketRoutes(app: Express): void {
           console.error("[support] Error saving resolution memory:", memErr);
         }
       } catch (learnErr) {
-        console.error("[support] Error in Sophie learning:", learnErr);
+        console.error("[support] Error in Pax learning:", learnErr);
       }
       
       res.json({ 
         success: true, 
-        message: "Ticket resolved. Sophie has learned from this resolution.",
+        message: "Ticket resolved. Pax has learned from this resolution.",
         learning: learningResult ? {
           learned: learningResult.learned,
           crossOrgLearningId: learningResult.crossOrgLearning?.id
@@ -340,7 +340,7 @@ export function registerSupportTicketRoutes(app: Express): void {
   // Get active alerts for the user's organization (for proactive support)
   api.get("/api/support/alerts", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = req.org!;
+      const org = (req as any).org!;
       const { proactiveMonitor } = await import("./services/proactiveMonitor");
       
       const alerts = await proactiveMonitor.getActiveAlerts(org.id);
@@ -364,7 +364,7 @@ export function registerSupportTicketRoutes(app: Express): void {
   // Founder endpoint: Get all support tickets across all orgs
   api.get("/api/founder/support/tickets", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = req.org!;
+      const org = (req as any).org!;
       
       if (!org.isFounder) {
         return res.status(403).json({ message: "Founder access required" });
@@ -385,7 +385,7 @@ export function registerSupportTicketRoutes(app: Express): void {
   // Founder endpoint: Support analytics
   api.get("/api/founder/support/analytics", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = req.org!;
+      const org = (req as any).org!;
       
       if (!org.isFounder) {
         return res.status(403).json({ message: "Founder access required" });
@@ -428,7 +428,7 @@ export function registerSupportTicketRoutes(app: Express): void {
   // Founder endpoint: Get escalated tickets with full context
   api.get("/api/founder/escalations", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = req.org!;
+      const org = (req as any).org!;
       
       if (!org.isFounder) {
         return res.status(403).json({ message: "Founder access required" });
@@ -457,17 +457,17 @@ export function registerSupportTicketRoutes(app: Express): void {
           .where(eq(supportTicketMessages.ticketId, ticket.id))
           .orderBy(supportTicketMessages.createdAt);
         
-        // Get Sophie's memory for this ticket (root cause analysis, solutions tried)
+        // Get Pax's memory for this ticket (root cause analysis, solutions tried)
         const memories = await db.select()
-          .from(sophieMemory)
+          .from(paxMemory)
           .where(and(
-            eq(sophieMemory.organizationId, ticket.organizationId),
+            eq(paxMemory.organizationId, ticket.organizationId),
             or(
-              eq(sophieMemory.sourceTicketId, ticket.id),
-              eq(sophieMemory.memoryType, "solution_tried")
+              eq(paxMemory.sourceTicketId, ticket.id),
+              eq(paxMemory.memoryType, "solution_tried")
             )
           ))
-          .orderBy(desc(sophieMemory.createdAt))
+          .orderBy(desc(paxMemory.createdAt))
           .limit(10);
         
         // Get related system alerts for this org
@@ -527,7 +527,7 @@ export function registerSupportTicketRoutes(app: Express): void {
   // Founder endpoint: Generate a prompt for Replit Agent from a single escalation
   api.post("/api/founder/escalations/:id/generate-prompt", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = req.org!;
+      const org = (req as any).org!;
       
       if (!org.isFounder) {
         return res.status(403).json({ message: "Founder access required" });
@@ -558,17 +558,17 @@ export function registerSupportTicketRoutes(app: Express): void {
         .where(eq(supportTicketMessages.ticketId, ticket.id))
         .orderBy(supportTicketMessages.createdAt);
       
-      // Get Sophie's memory for this ticket
+      // Get Pax's memory for this ticket
       const memories = await db.select()
-        .from(sophieMemory)
+        .from(paxMemory)
         .where(and(
-          eq(sophieMemory.organizationId, ticket.organizationId),
+          eq(paxMemory.organizationId, ticket.organizationId),
           or(
-            eq(sophieMemory.sourceTicketId, ticket.id),
-            eq(sophieMemory.memoryType, "solution_tried")
+            eq(paxMemory.sourceTicketId, ticket.id),
+            eq(paxMemory.memoryType, "solution_tried")
           )
         ))
-        .orderBy(desc(sophieMemory.createdAt))
+        .orderBy(desc(paxMemory.createdAt))
         .limit(10);
       
       // Extract root cause analysis
@@ -589,8 +589,8 @@ export function registerSupportTicketRoutes(app: Express): void {
       if (category.includes('billing') || category.includes('payment') || category.includes('stripe')) {
         relevantFiles.push('server/stripeService.ts', 'server/webhookHandlers.ts', 'server/services/credits.ts');
       }
-      if (category.includes('ai') || category.includes('sophie') || category.includes('support')) {
-        relevantFiles.push('server/ai/supportAgent.ts', 'server/services/sophieLearning.ts', 'server/services/supportBrain.ts');
+      if (category.includes('ai') || category.includes('pax') || category.includes('support')) {
+        relevantFiles.push('server/ai/supportAgent.ts', 'server/services/paxLearning.ts', 'server/services/supportBrain.ts');
       }
       if (category.includes('lead') || category.includes('campaign') || category.includes('mail')) {
         relevantFiles.push('server/services/leadNurturer.ts', 'server/services/campaignOptimizer.ts', 'server/services/directMailService.ts');
@@ -627,17 +627,17 @@ ${ticket.pageContext ? `## Page Context
 User was on: ${ticket.pageContext}` : ''}
 
 ## Conversation History
-${messages.map(m => `**${m.role === 'agent' ? `Sophie (${m.agentName || 'AI'})` : m.role === 'user' ? 'Customer' : 'System'}:** ${m.content}`).join('\n\n')}
+${messages.map(m => `**${m.role === 'agent' ? `Pax (${m.agentName || 'AI'})` : m.role === 'user' ? 'Customer' : 'System'}:** ${m.content}`).join('\n\n')}
 
-## Root Cause Analysis (Sophie's Assessment)
+## Root Cause Analysis (Pax's Assessment)
 ${rootCauseMemory ? `
 - **Identified Cause:** ${(rootCauseMemory.value as any)?.summary || (rootCauseMemory.value as any)?.rootCause || 'Analysis inconclusive'}
 - **Confidence:** ${(rootCauseMemory.value as any)?.confidence ? `${Math.round((rootCauseMemory.value as any).confidence * 100)}%` : 'Unknown'}
 - **Affected Layers:** ${((rootCauseMemory.value as any)?.affectedLayers || []).join(', ') || 'Unknown'}
 - **Suggested Fix:** ${(rootCauseMemory.value as any)?.suggestedFix || 'Manual investigation required'}
-` : 'Sophie was unable to determine a root cause with sufficient confidence.'}
+` : 'Pax was unable to determine a root cause with sufficient confidence.'}
 
-## What Sophie Already Tried
+## What Pax Already Tried
 ${solutionsTried || '- No automated fixes were attempted'}
 
 ${ticket.escalationBundle ? `## Diagnostic Bundle (Auto-Gathered)
@@ -650,7 +650,7 @@ ${JSON.stringify(ticket.escalationBundle, null, 2)}
 2. Check the relevant files listed below for potential issues
 3. Look for patterns in recent changes that might have caused this
 4. Implement a fix and add tests to prevent regression
-5. Update Sophie's knowledge base if this reveals a new issue pattern
+5. Update Pax's knowledge base if this reveals a new issue pattern
 
 ## Relevant Files to Check
 ${relevantFiles.map(f => `- \`${f}\``).join('\n')}
@@ -659,11 +659,11 @@ ${relevantFiles.map(f => `- \`${f}\``).join('\n')}
 - [ ] The user's reported issue is resolved
 - [ ] Root cause is identified and documented
 - [ ] Fix is tested and doesn't break other functionality
-- [ ] If applicable, Sophie's knowledge is updated to handle similar cases
+- [ ] If applicable, Pax's knowledge is updated to handle similar cases
 - [ ] User is notified of the resolution
 
 ## Notes
-This ticket was escalated by Sophie (AI Support Agent) because it could not be resolved automatically. Please investigate and resolve manually.`;
+This ticket was escalated by Pax (AI Support Agent) because it could not be resolved automatically. Please investigate and resolve manually.`;
 
       res.json({ prompt });
     } catch (error: any) {
@@ -675,7 +675,7 @@ This ticket was escalated by Sophie (AI Support Agent) because it could not be r
   // Founder endpoint: Generate batch prompt for multiple escalations
   api.post("/api/founder/escalations/batch-prompt", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = req.org!;
+      const org = (req as any).org!;
       
       if (!org.isFounder) {
         return res.status(403).json({ message: "Founder access required" });
@@ -715,7 +715,7 @@ This ticket was escalated by Sophie (AI Support Agent) because it could not be r
       let prompt = `# Batch Escalation Review - ${tickets.length} Tickets Need Attention
 
 ## Overview
-This batch contains ${tickets.length} escalated support tickets that Sophie (AI Support Agent) could not resolve automatically.
+This batch contains ${tickets.length} escalated support tickets that Pax (AI Support Agent) could not resolve automatically.
 
 **Tickets by Category:**
 ${Object.entries(byCategory).map(([cat, tix]) => `- ${cat}: ${tix.length} ticket(s)`).join('\n')}
@@ -746,11 +746,11 @@ ${Object.entries(byCategory).map(([cat, tix]) => `- ${cat}: ${tix.length} ticket
 2. Prioritize by severity (urgent tickets first)
 3. Check if multiple tickets point to the same underlying issue
 4. Fix root causes rather than symptoms when possible
-5. Update Sophie's training data to prevent similar escalations
+5. Update Pax's training data to prevent similar escalations
 
 ## Common Files to Check
 - \`server/routes.ts\` - API endpoints
-- \`server/ai/supportAgent.ts\` - Sophie's support logic
+- \`server/ai/supportAgent.ts\` - Pax's support logic
 - \`server/services/\` - Business logic services
 - \`shared/schema.ts\` - Database schema
 
@@ -758,7 +758,7 @@ ${Object.entries(byCategory).map(([cat, tix]) => `- ${cat}: ${tix.length} ticket
 - [ ] All listed tickets are resolved
 - [ ] Root causes are documented
 - [ ] Related tickets are linked if they share a common cause
-- [ ] Sophie's knowledge base is updated as needed
+- [ ] Pax's knowledge base is updated as needed
 `;
 
       res.json({ prompt });
@@ -771,7 +771,7 @@ ${Object.entries(byCategory).map(([cat, tix]) => `- ${cat}: ${tix.length} ticket
   // Founder endpoint: Mark escalation as resolved
   api.post("/api/founder/escalations/:id/resolve", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = req.org!;
+      const org = (req as any).org!;
       
       if (!org.isFounder) {
         return res.status(403).json({ message: "Founder access required" });
@@ -801,24 +801,24 @@ ${Object.entries(byCategory).map(([cat, tix]) => `- ${cat}: ${tix.length} ticket
   });
 
   // ============================================
-  // SOPHIE LEARNINGS ENDPOINTS
+  // PAX LEARNINGS ENDPOINTS
   // ============================================
   
-  // Get Sophie's cross-org learnings (what Sophie has learned)
-  api.get("/api/founder/sophie/learnings", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  // Get Pax's cross-org learnings (what Pax has learned)
+  api.get("/api/founder/pax/learnings", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = req.org!;
+      const org = (req as any).org!;
       
       if (!org.isFounder) {
         return res.status(403).json({ message: "Founder access required" });
       }
       
-      const { sophieLearningService } = await import("./services/sophieLearning");
-      const learnings = await sophieLearningService.getAllLearnings();
+      const { paxLearningService } = await import("./services/paxLearning");
+      const learnings = await paxLearningService.getAllLearnings();
       
       res.json(learnings);
     } catch (error: any) {
-      console.error("[founder] Error fetching Sophie learnings:", error);
+      console.error("[founder] Error fetching Pax learnings:", error);
       res.status(500).json({ message: error.message || "Failed to fetch learnings" });
     }
   });
@@ -830,7 +830,7 @@ ${Object.entries(byCategory).map(([cat, tix]) => `- ${cat}: ${tix.length} ticket
   // Report a bug with full context capture
   api.post("/api/support/report-bug", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = req.org!;
+      const org = (req as any).org!;
       const user = req.user as any;
       
       const {
@@ -852,7 +852,7 @@ ${Object.entries(byCategory).map(([cat, tix]) => `- ${cat}: ${tix.length} ticket
       let orgHealth = null;
       try {
         const { healthCheckService } = await import("./services/healthCheck");
-        orgHealth = await healthCheckService.runHealthCheck(org.id);
+        orgHealth = await (healthCheckService as any).checkAll();
       } catch (err) {
         console.error("[support] Error fetching org health for bug report:", err);
       }
@@ -918,7 +918,7 @@ ${actualBehavior || 'Not provided'}
       };
       
       const [ticket] = await db.insert(supportTickets)
-        .values(bugTicketData)
+        .values(bugTicketData as any)
         .returning();
       
       console.log(`[support] Bug report created: ticket ${ticket.id} for org ${org.id}`);

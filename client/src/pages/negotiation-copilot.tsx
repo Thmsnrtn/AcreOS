@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { RequiredDisclaimer } from '@/components/required-disclaimer';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -507,6 +508,8 @@ export default function NegotiationCopilotPage() {
 
   return (
     <div className="container mx-auto p-6 space-y-6">
+      <RequiredDisclaimer type="ai" />
+      <RequiredDisclaimer type="legal" />
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold flex items-center gap-2">

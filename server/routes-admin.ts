@@ -8,7 +8,7 @@ import {
   SUBSCRIPTION_TIERS, payments, notes, deals, properties, leads, activityLog, organizations,
   offers, organizationIntegrations, dataSources,
   supportTickets, supportTicketMessages, knowledgeBaseArticles,
-  sophieMemory, sophieObservations, sophieCrossOrgLearnings, systemAlerts,
+  paxMemory, paxObservations, paxCrossOrgLearnings, systemAlerts,
   countyGisEndpoints,
   aiModelConfigs,
   systemApiKeys,
@@ -20,6 +20,11 @@ import {
   auditLog,
   mailingOrderPieces,
   mailingOrders,
+  agentTasks,
+  evolutionHistory,
+  evolutionCircuitBreaker,
+  openrouterModelCatalog,
+  aiTelemetryEvents,
 } from "@shared/schema";
 import crypto from "crypto";
 import { isAuthenticated } from "./auth";
@@ -31,6 +36,44 @@ const logger = {
   warn: (msg: string, meta?: Record<string, any>) => console.warn(JSON.stringify({ level: 'WARN', timestamp: new Date().toISOString(), message: msg, ...meta })),
   error: (msg: string, meta?: Record<string, any>) => console.error(JSON.stringify({ level: 'ERROR', timestamp: new Date().toISOString(), message: msg, ...meta })),
 };
+
+// ── Zod validation schemas for admin endpoints ────────────────────────────────
+const createSupportCaseSchema = z.object({
+  subject: z.string().min(1).max(500),
+  message: z.string().min(1).max(5000),
+});
+const supportCaseMessageSchema = z.object({ message: z.string().min(1).max(5000) });
+const supportCaseRatingSchema = z.object({ rating: z.coerce.number().int().min(1).max(5) });
+const adminRespondSchema = z.object({ message: z.string().min(1).max(5000), resolve: z.boolean().optional() });
+const featureRequestUpdateSchema = z.object({ status: z.string().optional(), founderNotes: z.string().optional(), priority: z.string().optional() });
+const gisValidateSampleSchema = z.object({ sampleSize: z.coerce.number().int().min(1).max(50).optional() });
+const gisValidateAllSchema = z.object({ stateFilter: z.string().optional(), maxConcurrent: z.coerce.number().int().min(1).max(15).optional(), async: z.boolean().optional() });
+const setFounderSchema = z.object({ organizationId: z.number().int().positive().optional(), isFounder: z.boolean().optional() });
+const dataSourceValidateSchema = z.object({ sourceId: z.number().int().positive().optional(), category: z.string().optional(), limit: z.coerce.number().int().min(1).max(500).optional() });
+const dataSourcePatchSchema = z.object({ isEnabled: z.boolean().optional(), priority: z.coerce.number().optional(), notes: z.string().optional() });
+const countyGisEndpointCreateSchema = z.object({
+  state: z.string().length(2),
+  county: z.string().min(1).max(100),
+  baseUrl: z.string().url(),
+  endpointType: z.string().min(1),
+  layerId: z.string().optional(),
+  apnField: z.string().optional(),
+  ownerField: z.string().optional(),
+  fieldMappings: z.record(z.string()).optional(),
+  fipsCode: z.string().optional(),
+  sourceUrl: z.string().url().optional(),
+  notes: z.string().optional(),
+});
+const testAllGisEndpointsSchema = z.object({ onlyUnverified: z.boolean().optional() });
+const bulkAddEndpointsSchema = z.object({ endpoints: z.array(z.object({ state: z.string(), county: z.string(), baseUrl: z.string().url(), endpointType: z.string() }).passthrough()) });
+const discoveryScanSchema = z.object({ keywords: z.array(z.string()).optional(), maxResults: z.coerce.number().int().min(1).max(500).optional(), targetStates: z.array(z.string()).optional() });
+const dataSourcesBulkImportSchema = z.object({ sources: z.array(z.object({ category: z.string(), name: z.string(), url: z.string().url().optional(), state: z.string().optional() }).passthrough()) });
+const propertyEnrichSchema = z.object({ propertyId: z.number().int().positive(), forceRefresh: z.boolean().optional() });
+const coordinatesEnrichSchema = z.object({ latitude: z.coerce.number(), longitude: z.coerce.number(), categories: z.array(z.string()).optional(), state: z.string().optional(), county: z.string().optional(), apn: z.string().optional(), forceRefresh: z.boolean().optional() });
+const aiModelCreateSchema = z.object({ provider: z.string().min(1), modelId: z.string().min(1), displayName: z.string().min(1), costPerMillionInput: z.coerce.number().optional(), costPerMillionOutput: z.coerce.number().optional(), maxTokens: z.coerce.number().int().optional() });
+const aiModelUpdateSchema = aiModelCreateSchema.partial();
+const systemApiKeyUpdateSchema = z.object({ apiKey: z.string().min(1), isActive: z.boolean().optional() });
+// ─────────────────────────────────────────────────────────────────────────────
 
 export function registerAdminRoutes(app: Express): void {
   const api = app;
@@ -44,7 +87,9 @@ export function registerAdminRoutes(app: Express): void {
       const org = (req as any).organization;
       const user = req.user as any;
       const userId = user.claims?.sub || user.id;
-      const { subject, message } = req.body as { subject: string; message: string };
+      const parsed = createSupportCaseSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Invalid input", errors: parsed.error.errors });
+      const { subject, message } = parsed.data;
       
       if (!subject || !message) {
         return res.status(400).json({ error: "Subject and message are required" });
@@ -127,7 +172,9 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const org = (req as any).organization;
       const caseId = parseInt(req.params.id);
-      const { message } = req.body as { message: string };
+      const parsed = supportCaseMessageSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Invalid input", errors: parsed.error.errors });
+      const { message } = parsed.data;
 
       const supportCase = await storage.getSupportCase(caseId);
       if (!supportCase || supportCase.organizationId !== org.id) {
@@ -158,7 +205,9 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const org = (req as any).organization;
       const caseId = parseInt(req.params.id);
-      const { rating } = req.body as { rating: number };
+      const parsed = supportCaseRatingSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Invalid input", errors: parsed.error.errors });
+      const { rating } = parsed.data;
 
       const supportCase = await storage.getSupportCase(caseId);
       if (!supportCase || supportCase.organizationId !== org.id) {
@@ -237,7 +286,9 @@ export function registerAdminRoutes(app: Express): void {
       const org = (req as any).organization;
       const user = (req as any).user;
       const caseId = parseInt(req.params.id);
-      const { message, resolve } = req.body as { message: string; resolve?: boolean };
+      const parsed = adminRespondSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Invalid input", errors: parsed.error.errors });
+      const { message, resolve } = parsed.data;
 
       if (org.ownerId !== user.id) {
         return res.status(403).json({ error: "Admin access required" });
@@ -331,7 +382,9 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const org = (req as any).organization;
       const noteId = parseInt(req.params.noteId);
-      const { content } = req.body as { content: string };
+      const parsed = z.object({ content: z.string().min(1).max(10000) }).safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Invalid input", errors: parsed.error.errors });
+      const { content } = parsed.data;
       if (!content || !content.trim()) {
         return res.status(400).json({ error: "Message content is required" });
       }
@@ -436,11 +489,9 @@ export function registerAdminRoutes(app: Express): void {
         return res.status(403).json({ error: "Founder access required" });
       }
 
-      const { status, founderNotes, priority } = req.body as { 
-        status?: string; 
-        founderNotes?: string;
-        priority?: string;
-      };
+      const parsed = featureRequestUpdateSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Invalid input", errors: parsed.error.errors });
+      const { status, founderNotes, priority } = parsed.data;
 
       const updates: Record<string, any> = {};
       if (status !== undefined) updates.status = status;
@@ -755,7 +806,9 @@ export function registerAdminRoutes(app: Express): void {
   api.post("/api/founder/gis-validate-all", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
       const { validateAllEndpoints, getEndpointStats, startValidationJob } = await import("./services/gisValidation");
-      const { stateFilter, maxConcurrent = 10, async: runAsync = false } = req.body;
+      const parsedGisAll = gisValidateAllSchema.safeParse(req.body);
+      if (!parsedGisAll.success) return res.status(400).json({ message: "Invalid input", errors: parsedGisAll.error.errors });
+      const { stateFilter, maxConcurrent = 10, async: runAsync = false } = parsedGisAll.data;
       
       const stats = await getEndpointStats();
       const estimatedCount = stateFilter ? Math.ceil(stats.activeEndpoints / stats.statesCovered) : stats.activeEndpoints;
@@ -874,8 +927,10 @@ export function registerAdminRoutes(app: Express): void {
   // Set founder status for an organization (founder admin only)
   api.post("/api/admin/set-founder", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const { organizationId, isFounder } = req.body;
-      
+      const parsedFounder = setFounderSchema.safeParse(req.body);
+      if (!parsedFounder.success) return res.status(400).json({ message: "Invalid input", errors: parsedFounder.error.errors });
+      const { organizationId, isFounder } = parsedFounder.data;
+
       // If no organizationId provided, use the current user's organization
       const org = (req as any).organization;
       const targetOrgId = organizationId || org?.id;
@@ -956,6 +1011,8 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const { category, status, limit = "100", offset = "0" } = req.query;
       
+      // dataSources is a system-level shared table (GIS endpoints, public data sources);
+      // org isolation is not applicable — all orgs reference the same shared catalogue.
       let query = db.select().from(dataSources);
       
       const conditions = [];
@@ -991,7 +1048,9 @@ export function registerAdminRoutes(app: Express): void {
 
   api.post("/api/admin/data-sources/validate", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const { sourceId, category, limit = 50 } = req.body;
+      const parsedDsv = dataSourceValidateSchema.safeParse(req.body);
+      if (!parsedDsv.success) return res.status(400).json({ message: "Invalid input", errors: parsedDsv.error.errors });
+      const { sourceId, category, limit = 50 } = parsedDsv.data;
       const { dataSourceValidator } = await import("./services/data-source-validator");
       
       if (sourceId) {
@@ -1034,7 +1093,9 @@ export function registerAdminRoutes(app: Express): void {
   api.patch("/api/admin/data-sources/:id", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
       const sourceId = Number(req.params.id);
-      const { isEnabled, priority, notes } = req.body;
+      const parsedDsp = dataSourcePatchSchema.safeParse(req.body);
+      if (!parsedDsp.success) return res.status(400).json({ message: "Invalid input", errors: parsedDsp.error.errors });
+      const { isEnabled, priority, notes } = parsedDsp.data;
       
       const updates: Record<string, any> = { updatedAt: new Date() };
       if (isEnabled !== undefined) updates.isEnabled = isEnabled;
@@ -1095,8 +1156,9 @@ export function registerAdminRoutes(app: Express): void {
     try {
       const { countyGisEndpoints, insertCountyGisEndpointSchema } = await import('@shared/schema');
       
-      // Validate required fields
-      const { state, county, baseUrl, endpointType } = req.body;
+      const parsedGis = countyGisEndpointCreateSchema.safeParse(req.body);
+      if (!parsedGis.success) return res.status(400).json({ message: "Invalid input", errors: parsedGis.error.errors });
+      const { state, county, baseUrl, endpointType } = parsedGis.data;
       if (!state || !county || !baseUrl) {
         return res.status(400).json({ message: "state, county, and baseUrl are required" });
       }
@@ -1565,8 +1627,9 @@ export function registerAdminRoutes(app: Express): void {
   // Bulk add discovered endpoints
   api.post("/api/county-gis-endpoints/bulk-add", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const { endpoints } = req.body;
-      
+      const parsedBulkAdd = bulkAddEndpointsSchema.safeParse(req.body);
+      if (!parsedBulkAdd.success) return res.status(400).json({ message: "Invalid input", errors: parsedBulkAdd.error.errors });
+      const { endpoints } = parsedBulkAdd.data;
       if (!endpoints || !Array.isArray(endpoints) || endpoints.length === 0) {
         return res.status(400).json({ message: "No endpoints provided" });
       }
@@ -1675,7 +1738,9 @@ export function registerAdminRoutes(app: Express): void {
   api.post("/api/discovery/scan-arcgis", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
       const { runDiscoveryScan } = await import('./services/arcgis-discovery');
-      const { keywords, maxResults, targetStates } = req.body;
+      const parsedScan = discoveryScanSchema.safeParse(req.body);
+      if (!parsedScan.success) return res.status(400).json({ message: "Invalid input", errors: parsedScan.error.errors });
+      const { keywords, maxResults, targetStates } = parsedScan.data;
       
       console.log("[Discovery] Starting ArcGIS Online scan...");
       const result = await runDiscoveryScan({
@@ -2023,11 +2088,9 @@ export function registerAdminRoutes(app: Express): void {
   // Bulk import data sources from JSON array
   api.post("/api/data-sources/bulk-import", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const { sources } = req.body as { sources: Array<{
-        key: string; title: string; category: string; subcategory?: string;
-        description?: string; portalUrl?: string; apiUrl?: string; coverage?: string;
-        accessLevel?: string; dataTypes?: string[]; endpointType?: string;
-      }> };
+      const parsedBulk = dataSourcesBulkImportSchema.safeParse(req.body);
+      if (!parsedBulk.success) return res.status(400).json({ message: "Invalid input", errors: parsedBulk.error.errors });
+      const { sources } = parsedBulk.data;
 
       if (!Array.isArray(sources) || sources.length === 0) {
         return res.status(400).json({ message: "sources must be a non-empty array" });
@@ -2113,7 +2176,9 @@ export function registerAdminRoutes(app: Express): void {
   api.post("/api/broker/enrich-property", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = (req as any).organization;
-      const { propertyId, forceRefresh } = req.body;
+      const parsedPe = propertyEnrichSchema.safeParse(req.body);
+      if (!parsedPe.success) return res.status(400).json({ message: "Invalid input", errors: parsedPe.error.errors });
+      const { propertyId, forceRefresh } = parsedPe.data;
 
       if (!propertyId) {
         return res.status(400).json({ message: "propertyId is required" });
@@ -2139,7 +2204,9 @@ export function registerAdminRoutes(app: Express): void {
 
   api.post("/api/enrichment/coordinates", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const { latitude, longitude, categories, state, county, apn, forceRefresh } = req.body;
+      const parsedCoord = coordinatesEnrichSchema.safeParse(req.body);
+      if (!parsedCoord.success) return res.status(400).json({ message: "Invalid input", errors: parsedCoord.error.errors });
+      const { latitude, longitude, categories, state, county, apn, forceRefresh } = parsedCoord.data;
 
       if (!latitude || !longitude) {
         return res.status(400).json({ message: "latitude and longitude are required" });
@@ -2206,7 +2273,9 @@ export function registerAdminRoutes(app: Express): void {
       if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
       const layerId = Number(req.params.layerId);
-      const { enabled, opacity } = req.body as { enabled?: boolean; opacity?: number };
+      const parsedPref = z.object({ enabled: z.boolean().optional(), opacity: z.coerce.number().min(0).max(1).optional() }).safeParse(req.body);
+      if (!parsedPref.success) return res.status(400).json({ message: "Invalid input", errors: parsedPref.error.errors });
+      const { enabled, opacity } = parsedPref.data;
 
       const { userMapLayerPreferences } = await import("@shared/schema");
 
@@ -2257,7 +2326,9 @@ export function registerAdminRoutes(app: Express): void {
   // Batch enrich all properties that have coordinates but missing enrichment
   api.post("/api/admin/enrich-all-properties", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
-      const { forceRefresh = false, orgId: targetOrgId } = req.body as { forceRefresh?: boolean; orgId?: number };
+      const parsedEnrich = z.object({ forceRefresh: z.boolean().optional(), orgId: z.number().int().positive().optional() }).safeParse(req.body);
+      if (!parsedEnrich.success) return res.status(400).json({ message: "Invalid input", errors: parsedEnrich.error.errors });
+      const { forceRefresh = false, orgId: targetOrgId } = parsedEnrich.data;
       const { propertyEnrichmentService } = await import("./services/propertyEnrichment");
 
       const rows: any[] = await db.execute(sql`
@@ -2407,7 +2478,9 @@ export function registerAdminRoutes(app: Express): void {
   api.put("/api/admin/system-api-keys/:provider", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
       const { provider } = req.params;
-      const { apiKey, isActive } = req.body;
+      const parsedApiKey = systemApiKeyUpdateSchema.safeParse(req.body);
+      if (!parsedApiKey.success) return res.status(400).json({ message: "Invalid input", errors: parsedApiKey.error.errors });
+      const { apiKey, isActive } = parsedApiKey.data;
       const [existing] = await db.select().from(systemApiKeys).where(eq(systemApiKeys.provider, provider));
       if (existing) {
         const [updated] = await db.update(systemApiKeys)
@@ -2663,7 +2736,7 @@ export function registerAdminRoutes(app: Express): void {
         {
           key: "openai_configured",
           label: "OpenAI API key",
-          description: "Powers all AI features — lead scoring, Sophie, deal analysis",
+          description: "Powers all AI features — lead scoring, Pax, deal analysis",
           priority: "critical",
           status: hasSystemKey("openai") || hasEnv("AI_INTEGRATIONS_OPENAI_API_KEY") || hasEnv("OPENAI_API_KEY") ? "complete" : "incomplete",
           section: "section-config",
@@ -2804,10 +2877,9 @@ export function registerAdminRoutes(app: Express): void {
   api.put("/api/founder/feature-flags/:key", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
       const { key } = req.params;
-      const { enabled } = req.body as { enabled: boolean };
-      if (typeof enabled !== "boolean") {
-        return res.status(400).json({ message: "enabled must be a boolean" });
-      }
+      const parsedFlag = z.object({ enabled: z.boolean() }).safeParse(req.body);
+      if (!parsedFlag.success) return res.status(400).json({ message: "enabled must be a boolean" });
+      const { enabled } = parsedFlag.data;
       const flag = await storage.updateFeatureFlag(key, enabled);
       if (!flag) return res.status(404).json({ message: "Feature flag not found" });
       res.json(flag);
@@ -2868,14 +2940,9 @@ export function registerAdminRoutes(app: Express): void {
   api.post("/api/founder/pricing/:tier/promo", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
       const { tier } = req.params;
-      const { promoLabel, promoDiscountPercent, promoEndsAt } = req.body as {
-        promoLabel: string;
-        promoDiscountPercent: number;
-        promoEndsAt: string; // ISO date string
-      };
-      if (!promoLabel || !promoDiscountPercent || !promoEndsAt) {
-        return res.status(400).json({ message: "promoLabel, promoDiscountPercent, promoEndsAt required" });
-      }
+      const parsedPromo = z.object({ promoLabel: z.string().min(1), promoDiscountPercent: z.coerce.number().min(1).max(100), promoEndsAt: z.string().datetime() }).safeParse(req.body);
+      if (!parsedPromo.success) return res.status(400).json({ message: "Invalid promo input", errors: parsedPromo.error.errors });
+      const { promoLabel, promoDiscountPercent, promoEndsAt } = parsedPromo.data;
       // Create a Stripe coupon
       const { getUncachableStripeClient } = await import("./stripeClient");
       const stripe = await getUncachableStripeClient();
@@ -3020,7 +3087,9 @@ export function registerAdminRoutes(app: Express): void {
   api.put("/api/founder/growth/campaigns/:id/status", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const { status } = req.body as { status: "active" | "paused" };
+      const parsedStatus = z.object({ status: z.enum(["active", "paused"]) }).safeParse(req.body);
+      if (!parsedStatus.success) return res.status(400).json({ message: "status must be 'active' or 'paused'" });
+      const { status } = parsedStatus.data;
       const campaign = await storage.getGrowthCampaign(id);
       if (!campaign) return res.status(404).json({ message: "Campaign not found" });
 
@@ -3734,35 +3803,35 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
     }
   });
 
-  // GET /api/admin/sophie-observations — Sophie's recent observations
-  api.get("/api/admin/sophie-observations", isAuthenticated, isFounderAdmin, async (req, res) => {
+  // GET /api/admin/pax-observations — Pax's recent observations
+  api.get("/api/admin/pax-observations", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
       const limit = Math.min(Number(req.query.limit) || 30, 100);
 
-      // Use sophieObservations (proactive monitor results) — includes suggestedAction
+      // Use paxObservations (proactive monitor results) — includes suggestedAction
       const observations = await db
         .select({
-          id: sophieObservations.id,
-          orgId: sophieObservations.organizationId,
+          id: paxObservations.id,
+          orgId: paxObservations.organizationId,
           orgName: organizations.name,
-          type: sophieObservations.type,
-          content: sophieObservations.description,
-          confidence: sophieObservations.confidenceScore,
-          severity: sophieObservations.severity,
-          status: sophieObservations.status,
-          suggestedAction: sql<string>`${sophieObservations.metadata}->>'suggestedAction'`,
-          createdAt: sophieObservations.createdAt,
+          type: paxObservations.type,
+          content: paxObservations.description,
+          confidence: paxObservations.confidenceScore,
+          severity: paxObservations.severity,
+          status: paxObservations.status,
+          suggestedAction: sql<string>`${paxObservations.metadata}->>'suggestedAction'`,
+          createdAt: paxObservations.createdAt,
         })
-        .from(sophieObservations)
-        .leftJoin(organizations, eq(sophieObservations.organizationId, organizations.id))
-        .where(sql`${sophieObservations.status} NOT IN ('dismissed','auto_resolved')`)
-        .orderBy(desc(sophieObservations.createdAt))
+        .from(paxObservations)
+        .leftJoin(organizations, eq(paxObservations.organizationId, organizations.id))
+        .where(sql`${paxObservations.status} NOT IN ('dismissed','auto_resolved')`)
+        .orderBy(desc(paxObservations.createdAt))
         .limit(limit);
 
       const learnings = await db
         .select()
-        .from(sophieCrossOrgLearnings)
-        .orderBy(desc(sophieCrossOrgLearnings.createdAt))
+        .from(paxCrossOrgLearnings)
+        .orderBy(desc(paxCrossOrgLearnings.createdAt))
         .limit(10);
 
       res.json({ observations, learnings });
@@ -3771,14 +3840,14 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
     }
   });
 
-  // POST /api/admin/sophie-observations/:id/execute — execute the suggested action for an observation
-  api.post("/api/admin/sophie-observations/:id/execute", isAuthenticated, isFounderAdmin, async (req, res) => {
+  // POST /api/admin/pax-observations/:id/execute — execute the suggested action for an observation
+  api.post("/api/admin/pax-observations/:id/execute", isAuthenticated, isFounderAdmin, async (req, res) => {
     try {
       const obsId = Number(req.params.id);
       const [obs] = await db
-        .select({ orgId: sophieObservations.organizationId, metadata: sophieObservations.metadata })
-        .from(sophieObservations)
-        .where(eq(sophieObservations.id, obsId))
+        .select({ orgId: paxObservations.organizationId, metadata: paxObservations.metadata })
+        .from(paxObservations)
+        .where(eq(paxObservations.id, obsId))
         .limit(1);
 
       if (!obs) return res.status(404).json({ message: "Observation not found" });
@@ -3803,9 +3872,9 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       }
 
       // Mark observation as acknowledged
-      await db.update(sophieObservations)
+      await db.update(paxObservations)
         .set({ status: "acknowledged", acknowledgedAt: new Date() })
-        .where(eq(sophieObservations.id, obsId));
+        .where(eq(paxObservations.id, obsId));
 
       res.json({ message: "Action executed", actionTaken });
     } catch (err: any) {
@@ -3873,11 +3942,9 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
       const org = (req as any).organization;
       const user = req.user as any;
       const userId = user?.claims?.sub || user?.id;
-      const { name, scope = "read", expiresInDays } = req.body as {
-        name: string;
-        scope?: "read" | "write" | "admin";
-        expiresInDays?: number | null;
-      };
+      const parsedKey = z.object({ name: z.string().min(1).max(100), scope: z.enum(["read", "write", "admin"]).optional(), expiresInDays: z.number().int().positive().nullable().optional() }).safeParse(req.body);
+      if (!parsedKey.success) return res.status(400).json({ message: "Invalid input", errors: parsedKey.error.errors });
+      const { name, scope = "read", expiresInDays } = parsedKey.data;
       if (!name || !name.trim()) {
         return res.status(400).json({ error: "Name is required" });
       }
@@ -4018,6 +4085,216 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
         industryBenchmarkMin: 1,
         industryBenchmarkMax: 3,
       });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ============================================
+  // SELF-EVOLUTION ENGINE — Admin Routes
+  // ============================================
+
+  // GET /api/admin/evolution-proposals — list pending self-assessment proposals
+  api.get("/api/admin/evolution-proposals", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const proposals = await db
+        .select()
+        .from(agentTasks)
+        .where(eq(agentTasks.agentType, "self_assessment"))
+        .orderBy(desc(agentTasks.createdAt))
+        .limit(50);
+      res.json({ proposals });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/admin/evolution-history — list all evolution pipeline runs
+  api.get("/api/admin/evolution-history", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { evolutionHistory } = await import("@shared/schema");
+      const history = await db
+        .select()
+        .from(evolutionHistory)
+        .orderBy(desc(evolutionHistory.createdAt))
+        .limit(100);
+      res.json({ history });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/admin/model-catalog — view OpenRouter model catalog with benchmark scores
+  api.get("/api/admin/model-catalog", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { openrouterModelCatalog } = await import("@shared/schema");
+      const catalog = await db
+        .select()
+        .from(openrouterModelCatalog)
+        .where(eq(openrouterModelCatalog.isActive, true))
+        .orderBy(desc(openrouterModelCatalog.benchmarkScoreComplex))
+        .limit(100);
+      res.json({ catalog });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/admin/model-intelligence/sync — manually trigger catalog sync
+  api.post("/api/admin/model-intelligence/sync", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { runModelIntelligence } = await import("./services/modelIntelligence");
+      const result = await runModelIntelligence();
+      res.json({ success: true, ...result });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/admin/telemetry-optimizer/run — manually trigger optimizer
+  api.post("/api/admin/telemetry-optimizer/run", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { runTelemetryOptimizer } = await import("./services/telemetryOptimizer");
+      const result = await runTelemetryOptimizer();
+      res.json({ success: true, ...result });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/admin/telemetry-stats — view per-model telemetry stats for the optimizer
+  api.get("/api/admin/telemetry-stats", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { getTelemetryStats } = await import("./services/telemetryOptimizer");
+      const stats = await getTelemetryStats();
+      res.json({ stats });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/admin/evolution/circuit-breaker — check circuit breaker status
+  api.get("/api/admin/evolution/circuit-breaker", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { evolutionCircuitBreaker } = await import("@shared/schema");
+      const [breaker] = await db.select().from(evolutionCircuitBreaker).limit(1);
+      res.json({ breaker: breaker || { isTripped: false, consecutiveReverts: 0 } });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/admin/evolution/resume — manually resume after circuit breaker trip
+  api.post("/api/admin/evolution/resume", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { evolutionCircuitBreaker } = await import("@shared/schema");
+      const user = req.user as any;
+      await db.update(evolutionCircuitBreaker)
+        .set({ isTripped: false, consecutiveReverts: 0, resumedBy: user?.email || "founder", updatedAt: new Date() })
+        .where(eq(evolutionCircuitBreaker.id, 1));
+      res.json({ success: true, message: "Evolution pipeline resumed" });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/founder/ai/telemetry — live AI telemetry feed for the observatory
+  api.get("/api/founder/ai/telemetry", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { aiTelemetryEvents } = await import("@shared/schema");
+      const limit = Math.min(Number(req.query.limit) || 50, 200);
+      const events = await db
+        .select({
+          id: aiTelemetryEvents.id,
+          orgId: aiTelemetryEvents.organizationId,
+          taskType: aiTelemetryEvents.taskType,
+          provider: aiTelemetryEvents.provider,
+          model: aiTelemetryEvents.model,
+          complexity: aiTelemetryEvents.complexity,
+          totalTokens: aiTelemetryEvents.totalTokens,
+          estimatedCostCents: aiTelemetryEvents.estimatedCostCents,
+          latencyMs: aiTelemetryEvents.latencyMs,
+          success: aiTelemetryEvents.success,
+          createdAt: aiTelemetryEvents.createdAt,
+        })
+        .from(aiTelemetryEvents)
+        .orderBy(desc(aiTelemetryEvents.createdAt))
+        .limit(limit);
+      res.json({ events });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/founder/ai/stats — aggregate AI usage stats for observatory dashboard
+  api.get("/api/founder/ai/stats", isAuthenticated, isFounderAdmin, async (req, res) => {
+    try {
+      const { aiTelemetryEvents } = await import("@shared/schema");
+      const { gte } = await import("drizzle-orm");
+      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const events = await db
+        .select()
+        .from(aiTelemetryEvents)
+        .where(gte(aiTelemetryEvents.createdAt, oneDayAgo));
+
+      const totalCalls = events.length;
+      const totalCostCents = events.reduce((sum, e) => sum + Number(e.estimatedCostCents || 0), 0);
+      const avgLatency = events.length > 0
+        ? Math.round(events.reduce((sum, e) => sum + (e.latencyMs || 0), 0) / events.length)
+        : 0;
+      const cacheHits = events.filter((e: any) => e.cacheHit).length;
+      const cacheHitRate = events.length > 0 ? ((cacheHits / events.length) * 100).toFixed(1) : "0";
+
+      const modelCounts: Record<string, number> = {};
+      const complexityCounts: Record<string, number> = {};
+      for (const e of events) {
+        modelCounts[e.model] = (modelCounts[e.model] || 0) + 1;
+        if (e.complexity) complexityCounts[e.complexity] = (complexityCounts[e.complexity] || 0) + 1;
+      }
+
+      res.json({
+        totalCalls,
+        totalCostDollars: (totalCostCents / 100).toFixed(2),
+        avgLatencyMs: avgLatency,
+        cacheHitRate,
+        modelDistribution: modelCounts,
+        complexityDistribution: complexityCounts,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ============================================
+  // AI MEMORY — User-facing routes
+  // ============================================
+
+  // GET /api/ai/memory — list paxMemory for current org
+  api.get("/api/ai/memory", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).org;
+      const { paxMemory } = await import("@shared/schema");
+      const memories = await db
+        .select()
+        .from(paxMemory)
+        .where(eq(paxMemory.organizationId, org.id))
+        .orderBy(desc(paxMemory.createdAt))
+        .limit(100);
+      res.json({ memories });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // DELETE /api/ai/memory/:id — delete a specific memory entry
+  api.delete("/api/ai/memory/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).org;
+      const memoryId = Number(req.params.id);
+      const { paxMemory } = await import("@shared/schema");
+      await db.delete(paxMemory)
+        .where(and(eq(paxMemory.id, memoryId), eq(paxMemory.organizationId, org.id)));
+      res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
