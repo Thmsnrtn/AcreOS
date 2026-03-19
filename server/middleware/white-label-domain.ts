@@ -86,8 +86,12 @@ export async function whiteLabelDomainMiddleware(
       return next();
     }
 
-    // Cache miss — query DB
-    const config = await whiteLabelService.resolveFromDomain(host);
+    // Cache miss — query DB with a 2s timeout to avoid blocking during startup
+    const timeoutMs = 2000;
+    const config = await Promise.race([
+      whiteLabelService.resolveFromDomain(host),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
+    ]);
 
     if (config && config.status === 'active') {
       const orgInfo: WhiteLabelOrgInfo = {

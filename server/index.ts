@@ -47,6 +47,11 @@ process.on("unhandledRejection", (reason: unknown) => {
 });
 
 process.on("uncaughtException", (err: Error) => {
+  // ERR_HTTP_HEADERS_SENT is non-fatal — log and continue instead of crashing
+  if ((err as any)?.code === "ERR_HTTP_HEADERS_SENT") {
+    console.warn("[process] Non-fatal: ERR_HTTP_HEADERS_SENT (headers already sent, skipping)");
+    return;
+  }
   console.error("[process] Uncaught exception:", err);
   Sentry.captureException(err);
   // Allow Sentry to flush, then exit so the process manager can restart
@@ -172,7 +177,9 @@ app.disable("x-powered-by");
 // actual client IP (for rate limiting and audit logging), not the Fly proxy.
 app.set("trust proxy", 1);
 
-app.use(compressionMiddleware); // Task #201: gzip/brotli response compression
+// compressionMiddleware disabled — custom res.write/end override causes ERR_HTTP_HEADERS_SENT
+// TODO: replace with the standard 'compression' npm package
+// app.use(compressionMiddleware);
 app.use(telemetryMiddleware); // Task #74: OpenTelemetry span recording per request
 app.use(securityHeaders);
 app.use(corsMiddleware);
@@ -465,7 +472,12 @@ app.use("/api/auth", async (req, res, next) => {
     },
     () => {
       log(`serving on port ${port}`);
-      
+
+      // Gate all background jobs behind env flag — they exhaust the DB pool on small instances
+      if (process.env.DISABLE_BACKGROUND_JOBS === "1") {
+        log("Background jobs DISABLED (DISABLE_BACKGROUND_JOBS=1)", "startup");
+      } else {
+
       // Start lead nurturing background job (every 15 minutes)
       startLeadNurturingJob();
       
@@ -587,6 +599,8 @@ app.use("/api/auth", async (req, res, next) => {
       runAgentEventsCleanup();
       setInterval(runAgentEventsCleanup, 24 * 60 * 60 * 1000);
 
+      } // end DISABLE_BACKGROUND_JOBS gate
+
       // Task #201: Graceful shutdown — drain open connections and checkpoint jobs
       // Fly.io sends SIGTERM before replacing an instance. We close the HTTP server
       // so no new connections are accepted, then wait briefly for in-flight requests
@@ -616,15 +630,17 @@ app.use("/api/auth", async (req, res, next) => {
       process.once("SIGTERM", () => gracefulShutdown("SIGTERM"));
       process.once("SIGINT", () => gracefulShutdown("SIGINT"));
 
-      // Job supervisor: check every 2 minutes for stalled jobs
-      setInterval(() => { jobSupervisor.checkHealth(); }, 2 * 60 * 1000);
-      log("Job supervisor health monitoring started (every 2 minutes)", "supervisor");
+      if (process.env.DISABLE_BACKGROUND_JOBS !== "1") {
+        // Job supervisor: check every 2 minutes for stalled jobs
+        setInterval(() => { jobSupervisor.checkHealth(); }, 2 * 60 * 1000);
+        log("Job supervisor health monitoring started (every 2 minutes)", "supervisor");
 
-      // Churn risk engine: score all paying orgs daily at 6am
-      startChurnEngineJob();
+        // Churn risk engine: score all paying orgs daily at 6am
+        startChurnEngineJob();
 
-      // Founder daily briefing email at 7am
-      startFounderBriefingJob();
+        // Founder daily briefing email at 7am
+        startFounderBriefingJob();
+      }
     },
   );
 })().catch((err) => {
