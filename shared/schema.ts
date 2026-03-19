@@ -12136,3 +12136,243 @@ export const externalIntelligence = pgTable("external_intelligence", {
   index("ei_source_idx").on(table.sourceName),
 ]);
 export type ExternalIntelligenceEntry = typeof externalIntelligence.$inferSelect;
+
+// ============================================
+// SOVEREIGN COMPANY PROTOCOL v10 — THE CONSCIOUS ORGANIZATION
+// ============================================
+
+// --- Scenario Simulations: multi-agent "what if?" engine ---
+
+export const scenarioSimulations = pgTable("scenario_simulations", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  scenarioType: text("scenario_type").notNull().default("custom"),
+  hypothesis: text("hypothesis").notNull(),
+  parameters: jsonb("parameters").$type<Record<string, any>>().notNull().default({}),
+  agentProjections: jsonb("agent_projections").$type<Array<{
+    agentCodename: string;
+    domain: string;
+    projection: string;
+    confidence: number;
+    risks: string[];
+    opportunities: string[];
+  }>>().notNull().default([]),
+  consensusSummary: text("consensus_summary"),
+  consensusRecommendation: text("consensus_recommendation"),
+  confidenceInterval: jsonb("confidence_interval").$type<{ low: number; mid: number; high: number }>(),
+  status: text("status").notNull().default("running"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  completedAt: timestamp("completed_at"),
+}, (table) => [
+  index("ss_status_idx").on(table.status),
+  index("ss_type_idx").on(table.scenarioType),
+]);
+export type ScenarioSimulation = typeof scenarioSimulations.$inferSelect;
+
+// --- Scenario Outcome Comparisons: predicted vs actual ---
+
+export const scenarioOutcomeComparisons = pgTable("scenario_outcome_comparisons", {
+  id: serial("id").primaryKey(),
+  scenarioId: integer("scenario_id").notNull().references(() => scenarioSimulations.id),
+  comparisonDate: timestamp("comparison_date").notNull().defaultNow(),
+  predictedOutcome: jsonb("predicted_outcome").$type<Record<string, any>>().notNull(),
+  actualOutcome: jsonb("actual_outcome").$type<Record<string, any>>().notNull(),
+  accuracyScore: integer("accuracy_score").notNull().default(50),
+  lessonsLearned: text("lessons_learned"),
+  agentAccuracy: jsonb("agent_accuracy").$type<Array<{ agentCodename: string; accuracy: number }>>().notNull().default([]),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("soc_scenario_idx").on(table.scenarioId),
+]);
+export type ScenarioOutcomeComparison = typeof scenarioOutcomeComparisons.$inferSelect;
+
+// --- Learning Propagations: cross-agent knowledge transfer ---
+
+export const learningPropagations = pgTable("learning_propagations", {
+  id: serial("id").primaryKey(),
+  sourceAgent: text("source_agent").notNull(),
+  targetAgents: jsonb("target_agents").$type<string[]>().notNull().default([]),
+  learningType: text("learning_type").notNull(),
+  learning: text("learning").notNull(),
+  evidence: jsonb("evidence").$type<string[]>().notNull().default([]),
+  outcomeWindowDays: integer("outcome_window_days").notNull().default(7),
+  originalOutcomeId: text("original_outcome_id"),
+  propagationStatus: text("propagation_status").notNull().default("pending"),
+  acceptanceRate: integer("acceptance_rate"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  propagatedAt: timestamp("propagated_at"),
+}, (table) => [
+  index("lp_source_idx").on(table.sourceAgent),
+  index("lp_status_idx").on(table.propagationStatus),
+  index("lp_type_idx").on(table.learningType),
+]);
+export type LearningPropagation = typeof learningPropagations.$inferSelect;
+
+// --- Outcome Calibrations: prediction accuracy per agent ---
+
+export const outcomeCalibrations = pgTable("outcome_calibrations", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull(),
+  actionType: text("action_type").notNull(),
+  predictedOutcome: text("predicted_outcome").notNull(),
+  predictedConfidence: integer("predicted_confidence").notNull(),
+  actualOutcome: text("actual_outcome"),
+  actualSuccess: boolean("actual_success"),
+  accuracyDelta: integer("accuracy_delta"),
+  outcomeWindowDays: integer("outcome_window_days").notNull().default(7),
+  outcomeMeasuredAt: timestamp("outcome_measured_at"),
+  status: text("status").notNull().default("awaiting_outcome"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("oc_agent_idx").on(table.agentCodename),
+  index("oc_status_idx").on(table.status),
+]);
+export type OutcomeCalibration = typeof outcomeCalibrations.$inferSelect;
+
+// --- Org Heartbeat Snapshots: system vital signs ---
+
+export const orgHeartbeatSnapshots = pgTable("org_heartbeat_snapshots", {
+  id: serial("id").primaryKey(),
+  snapshotType: text("snapshot_type").notNull().default("hourly"),
+  agentLatencies: jsonb("agent_latencies").$type<Record<string, number>>().notNull().default({}),
+  decisionQueueDepth: integer("decision_queue_depth").notNull().default(0),
+  learningVelocity: integer("learning_velocity").notNull().default(0),
+  trustTrajectory: jsonb("trust_trajectory").$type<Record<string, number>>().notNull().default({}),
+  escalationRatio: numeric("escalation_ratio").notNull().default("0"),
+  feedbackClosureRate: numeric("feedback_closure_rate").notNull().default("0"),
+  coherenceScore: integer("coherence_score").notNull().default(100),
+  anomalies: jsonb("anomalies").$type<Array<{
+    type: string;
+    description: string;
+    severity: string;
+    affectedAgent?: string;
+  }>>().notNull().default([]),
+  healthGrade: text("health_grade").notNull().default("A"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("ohs_type_idx").on(table.snapshotType),
+  index("ohs_grade_idx").on(table.healthGrade),
+  index("ohs_created_idx").on(table.createdAt),
+]);
+export type OrgHeartbeatSnapshot = typeof orgHeartbeatSnapshots.$inferSelect;
+
+// --- Agent Calibration History: self-calibration events ---
+
+export const agentCalibrationHistory = pgTable("agent_calibration_history", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull(),
+  calibrationType: text("calibration_type").notNull(),
+  parameterName: text("parameter_name").notNull(),
+  oldValue: text("old_value").notNull(),
+  newValue: text("new_value").notNull(),
+  triggerReason: text("trigger_reason").notNull(),
+  performanceBefore: jsonb("performance_before").$type<Record<string, any>>(),
+  performanceAfter: jsonb("performance_after").$type<Record<string, any>>(),
+  status: text("status").notNull().default("applied"),
+  ceoAction: text("ceo_action"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  measuredAt: timestamp("measured_at"),
+}, (table) => [
+  index("ach_agent_idx").on(table.agentCodename),
+  index("ach_type_idx").on(table.calibrationType),
+  index("ach_status_idx").on(table.status),
+]);
+export type AgentCalibrationHistoryEntry = typeof agentCalibrationHistory.$inferSelect;
+
+// --- CEO Decision Replays: hindsight analysis and bias detection ---
+
+export const ceoDecisionReplays = pgTable("ceo_decision_replays", {
+  id: serial("id").primaryKey(),
+  originalDecisionId: text("original_decision_id").notNull(),
+  decisionType: text("decision_type").notNull(),
+  decisionSummary: text("decision_summary").notNull(),
+  originalContext: jsonb("original_context").$type<Record<string, any>>().notNull().default({}),
+  agentRecommendations: jsonb("agent_recommendations").$type<Array<{
+    agentCodename: string;
+    recommendation: string;
+    confidence: number;
+  }>>().notNull().default([]),
+  ceoChoice: text("ceo_choice").notNull(),
+  outcomeData: jsonb("outcome_data").$type<Record<string, any>>(),
+  hindsightAssessment: text("hindsight_assessment"),
+  wasOptimal: boolean("was_optimal"),
+  qualityScore: integer("quality_score"),
+  biasFlags: jsonb("bias_flags").$type<Array<{
+    biasType: string;
+    description: string;
+    frequency: number;
+    severity: string;
+  }>>().notNull().default([]),
+  replayDate: timestamp("replay_date").notNull().defaultNow(),
+  originalDate: timestamp("original_date").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("cdr_type_idx").on(table.decisionType),
+  index("cdr_quality_idx").on(table.qualityScore),
+  index("cdr_replay_date_idx").on(table.replayDate),
+]);
+export type CEODecisionReplay = typeof ceoDecisionReplays.$inferSelect;
+
+// --- Resilience Tests: chaos testing and SPOF detection ---
+
+export const resilienceTests = pgTable("resilience_tests", {
+  id: serial("id").primaryKey(),
+  testType: text("test_type").notNull(),
+  testDescription: text("test_description").notNull(),
+  simulatedConditions: jsonb("simulated_conditions").$type<Record<string, any>>().notNull().default({}),
+  results: jsonb("results").$type<{
+    impact: string;
+    degradation: string;
+    recoveryTime: string;
+    affectedFunctions: string[];
+  }>().notNull().default({ impact: "", degradation: "", recoveryTime: "", affectedFunctions: [] }),
+  singlePointsOfFailure: jsonb("single_points_of_failure").$type<Array<{
+    component: string;
+    function: string;
+    risk: string;
+    mitigation: string;
+  }>>().notNull().default([]),
+  recommendations: jsonb("recommendations").$type<string[]>().notNull().default([]),
+  resilienceScore: integer("resilience_score").notNull().default(50),
+  status: text("status").notNull().default("completed"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("rt_type_idx").on(table.testType),
+  index("rt_score_idx").on(table.resilienceScore),
+]);
+export type ResilienceTest = typeof resilienceTests.$inferSelect;
+
+// --- Realtime Event Log: nervous system audit trail ---
+
+export const realtimeEventLog = pgTable("realtime_event_log", {
+  id: serial("id").primaryKey(),
+  eventType: text("event_type").notNull(),
+  agentCodename: text("agent_codename"),
+  channel: text("channel").notNull(),
+  payload: jsonb("payload").$type<Record<string, any>>().notNull().default({}),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("rel_event_type_idx").on(table.eventType),
+  index("rel_agent_idx").on(table.agentCodename),
+  index("rel_created_idx").on(table.createdAt),
+]);
+export type RealtimeEvent = typeof realtimeEventLog.$inferSelect;
+
+// --- Dashboard Context States: adaptive CEO surface ---
+
+export const dashboardContextStates = pgTable("dashboard_context_states", {
+  id: serial("id").primaryKey(),
+  contextMode: text("context_mode").notNull(),
+  activeLayers: jsonb("active_layers").$type<string[]>().notNull().default([]),
+  suppressedLayers: jsonb("suppressed_layers").$type<string[]>().notNull().default([]),
+  triggerReason: text("trigger_reason").notNull(),
+  triggerData: jsonb("trigger_data").$type<Record<string, any>>().notNull().default({}),
+  activeFrom: timestamp("active_from").notNull().defaultNow(),
+  activeUntil: timestamp("active_until"),
+  isCurrent: boolean("is_current").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("dcs_mode_idx").on(table.contextMode),
+  index("dcs_current_idx").on(table.isCurrent),
+]);
+export type DashboardContextState = typeof dashboardContextStates.$inferSelect;

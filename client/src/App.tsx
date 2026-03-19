@@ -104,6 +104,7 @@ const MarketplaceAnalyticsPage = React.lazy(() => import("@/pages/marketplace-an
 // Operations
 const MapsPage = React.lazy(() => import("@/pages/maps"));
 const CommandCenterPage = React.lazy(() => import("@/pages/command-center"));
+const ConsciousOrganizationPage = React.lazy(() => import("@/pages/conscious-organization"));
 const AutomationPage = React.lazy(() => import("@/pages/automation"));
 const WorkflowsPage = React.lazy(() => import("@/pages/workflows"));
 const ToolsPage = React.lazy(() => import("@/pages/tools"));
@@ -345,6 +346,7 @@ function Router() {
         <Route path="/document-intelligence">{() => <ProtectedRoute component={DocumentIntelligencePage} />}</Route>
         <Route path="/tax-researcher">{() => <ProtectedRoute component={TaxResearcherPage} />}</Route>
         <Route path="/command-center">{() => <ProtectedRoute component={CommandCenterPage} />}</Route>
+        <Route path="/conscious-organization">{() => <ProtectedRoute component={ConsciousOrganizationPage} />}</Route>
         <Route path="/agent-command-center">{() => <ProtectedRoute component={AgentCommandCenterPage} />}</Route>
         <Route path="/agents">{() => <Redirect to="/agent-command-center" />}</Route>
         <Route path="/ai-team">{() => <Redirect to="/agent-command-center" />}</Route>
