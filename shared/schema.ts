@@ -13467,3 +13467,248 @@ export const founderInteractions = pgTable("founder_interactions", {
   index("fi_feature_idx").on(table.featureUsed),
   index("fi_section_idx").on(table.section),
 ]);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Sovereign Company Protocol v14 — The Self-Running Company
+//
+// V14 is the integration & reflexes layer. V13 built the brain (memory, strategy,
+// collaboration, self-healing, governance, intelligence). V14 wires them together
+// into closed-loop autonomous workflows that run end-to-end without the founder.
+//
+// Five pillars:
+//   1. Reactive Orchestration — Events trigger agent chains automatically
+//   2. Feedback Loop — Founder overrides teach the system
+//   3. Confidence Cascade — Exhaust all system resources before bothering founder
+//   4. Founder Intent — Natural language goals decompose into system configuration
+//   5. Autonomy Score — Track and minimize founder dependency
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── 1. Reactive Orchestration ──────────────────────────────────────────────
+
+/** Defines a reusable event→agent chain template */
+export const reactionChains = pgTable("reaction_chains", {
+  id: serial("id").primaryKey(),
+  chainId: text("chain_id").notNull().unique(),
+  orgId: integer("org_id").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  triggerEventType: text("trigger_event_type").notNull(),
+  triggerConditions: jsonb("trigger_conditions").default({}),
+  steps: jsonb("steps").notNull().default([]),
+  enabled: boolean("enabled").notNull().default(true),
+  priority: integer("priority").notNull().default(50),
+  maxConcurrentRuns: integer("max_concurrent_runs").notNull().default(5),
+  cooldownMs: integer("cooldown_ms").default(0),
+  totalRuns: integer("total_runs").notNull().default(0),
+  successfulRuns: integer("successful_runs").notNull().default(0),
+  avgDurationMs: integer("avg_duration_ms"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("rc_org_idx").on(table.orgId),
+  index("rc_trigger_idx").on(table.triggerEventType),
+  index("rc_enabled_idx").on(table.enabled),
+]);
+
+/** Tracks each execution of a reaction chain */
+export const reactionChainRuns = pgTable("reaction_chain_runs", {
+  id: serial("id").primaryKey(),
+  runId: text("run_id").notNull().unique(),
+  chainId: text("chain_id").notNull(),
+  orgId: integer("org_id").notNull(),
+  triggerEvent: jsonb("trigger_event").notNull(),
+  status: text("status").notNull().default("running"),
+  currentStepIndex: integer("current_step_index").notNull().default(0),
+  stepResults: jsonb("step_results").default([]),
+  haltReason: text("halt_reason"),
+  resumedBy: text("resumed_by"),
+  totalDurationMs: integer("total_duration_ms"),
+  startedAt: timestamp("started_at").notNull().defaultNow(),
+  completedAt: timestamp("completed_at"),
+}, (table) => [
+  index("rr_chain_idx").on(table.chainId),
+  index("rr_org_idx").on(table.orgId),
+  index("rr_status_idx").on(table.status),
+]);
+
+/** Cross-chain dependency definitions */
+export const reactionChainLinks = pgTable("reaction_chain_links", {
+  id: serial("id").primaryKey(),
+  fromChainId: text("from_chain_id").notNull(),
+  toChainId: text("to_chain_id").notNull(),
+  linkType: text("link_type").notNull().default("on_complete"),
+  conditionFilter: jsonb("condition_filter").default({}),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("rcl_from_idx").on(table.fromChainId),
+  index("rcl_to_idx").on(table.toChainId),
+]);
+
+// ─── 2. Feedback Loop ───────────────────────────────────────────────────────
+
+/** Every founder override captured as a learning signal */
+export const founderOverrides = pgTable("founder_overrides", {
+  id: serial("id").primaryKey(),
+  overrideId: text("override_id").notNull().unique(),
+  orgId: integer("org_id").notNull(),
+  originalDecisionId: text("original_decision_id"),
+  originalAction: text("original_action").notNull(),
+  founderAction: text("founder_action").notNull(),
+  founderReason: text("founder_reason"),
+  context: jsonb("context").notNull().default({}),
+  agentCodename: text("agent_codename"),
+  category: text("category").notNull(),
+  learningExtracted: boolean("learning_extracted").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("fo_org_idx").on(table.orgId),
+  index("fo_agent_idx").on(table.agentCodename),
+  index("fo_category_idx").on(table.category),
+  index("fo_learning_idx").on(table.learningExtracted),
+]);
+
+/** Extracted learning rules from override patterns */
+export const feedbackLearnings = pgTable("feedback_learnings", {
+  id: serial("id").primaryKey(),
+  learningId: text("learning_id").notNull().unique(),
+  orgId: integer("org_id").notNull(),
+  rule: text("rule").notNull(),
+  ruleConfig: jsonb("rule_config").notNull().default({}),
+  sourceOverrideIds: jsonb("source_override_ids").notNull().default([]),
+  confidence: real("confidence").notNull().default(0.5),
+  reinforcementCount: integer("reinforcement_count").notNull().default(1),
+  appliedToStrategies: jsonb("applied_to_strategies").default([]),
+  appliedToPolicies: jsonb("applied_to_policies").default([]),
+  appliedToMemory: jsonb("applied_to_memory").default([]),
+  status: text("status").notNull().default("active"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("fl_org_idx").on(table.orgId),
+  index("fl_status_idx").on(table.status),
+  index("fl_confidence_idx").on(table.confidence),
+]);
+
+// ─── 3. Confidence Cascade ──────────────────────────────────────────────────
+
+/** Tracks each resolution attempt through cascade layers */
+export const cascadeResolutions = pgTable("cascade_resolutions", {
+  id: serial("id").primaryKey(),
+  resolutionId: text("resolution_id").notNull().unique(),
+  orgId: integer("org_id").notNull(),
+  triggerType: text("trigger_type").notNull(),
+  triggerContext: jsonb("trigger_context").notNull().default({}),
+  originAgent: text("origin_agent").notNull(),
+  layersAttempted: jsonb("layers_attempted").notNull().default([]),
+  resolvedAtLayer: text("resolved_at_layer"),
+  finalDecision: text("final_decision"),
+  finalConfidence: real("final_confidence"),
+  founderEscalated: boolean("founder_escalated").notNull().default(false),
+  founderResolution: text("founder_resolution"),
+  totalDurationMs: integer("total_duration_ms"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  resolvedAt: timestamp("resolved_at"),
+}, (table) => [
+  index("cr_org_idx").on(table.orgId),
+  index("cr_origin_idx").on(table.originAgent),
+  index("cr_resolved_layer_idx").on(table.resolvedAtLayer),
+  index("cr_escalated_idx").on(table.founderEscalated),
+]);
+
+// ─── 4. Founder Intent ──────────────────────────────────────────────────────
+
+/** High-level goals expressed by founder in natural language */
+export const founderIntents = pgTable("founder_intents", {
+  id: serial("id").primaryKey(),
+  intentId: text("intent_id").notNull().unique(),
+  orgId: integer("org_id").notNull(),
+  rawInput: text("raw_input").notNull(),
+  parsedGoals: jsonb("parsed_goals").notNull().default([]),
+  generatedStrategies: jsonb("generated_strategies").default([]),
+  generatedPolicies: jsonb("generated_policies").default([]),
+  generatedChains: jsonb("generated_chains").default([]),
+  simulationResult: jsonb("simulation_result"),
+  status: text("status").notNull().default("draft"),
+  progressSnapshot: jsonb("progress_snapshot").default({}),
+  founderApproved: boolean("founder_approved").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  completesAt: timestamp("completes_at"),
+}, (table) => [
+  index("fi14_org_idx").on(table.orgId),
+  index("fi14_status_idx").on(table.status),
+]);
+
+/** Progress checkpoints for active intents */
+export const intentProgressLogs = pgTable("intent_progress_logs", {
+  id: serial("id").primaryKey(),
+  intentId: text("intent_id").notNull(),
+  orgId: integer("org_id").notNull(),
+  snapshot: jsonb("snapshot").notNull().default({}),
+  adjustmentsMade: jsonb("adjustments_made").default([]),
+  blockers: jsonb("blockers").default([]),
+  projectedCompletion: timestamp("projected_completion"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("ipl_intent_idx").on(table.intentId),
+  index("ipl_org_idx").on(table.orgId),
+]);
+
+// ─── 5. Autonomy Score ──────────────────────────────────────────────────────
+
+/** Daily autonomy metrics snapshot */
+export const autonomyScoreSnapshots = pgTable("autonomy_score_snapshots", {
+  id: serial("id").primaryKey(),
+  orgId: integer("org_id").notNull(),
+  date: text("date").notNull(),
+  totalDecisions: integer("total_decisions").notNull().default(0),
+  autonomousDecisions: integer("autonomous_decisions").notNull().default(0),
+  cascadeResolved: integer("cascade_resolved").notNull().default(0),
+  founderEscalations: integer("founder_escalations").notNull().default(0),
+  founderOverrideCount: integer("founder_override_count").notNull().default(0),
+  founderTimeSpentMs: integer("founder_time_spent_ms").notNull().default(0),
+  avgDecisionLatencyMs: integer("avg_decision_latency_ms").notNull().default(0),
+  autonomyScore: real("autonomy_score").notNull().default(0),
+  trustScore: real("trust_score").notNull().default(0),
+  founderConfidenceScore: real("founder_confidence_score").notNull().default(0),
+  breakdownByCategory: jsonb("breakdown_by_category").default({}),
+  breakdownByAgent: jsonb("breakdown_by_agent").default({}),
+  weekOverWeekDelta: real("week_over_week_delta"),
+  recommendations: jsonb("recommendations").default([]),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("as_org_date_idx").on(table.orgId, table.date),
+]);
+
+/** Individual founder dependency events */
+export const founderDependencyEvents = pgTable("founder_dependency_events", {
+  id: serial("id").primaryKey(),
+  eventId: text("event_id").notNull().unique(),
+  orgId: integer("org_id").notNull(),
+  eventType: text("event_type").notNull(),
+  agentCodename: text("agent_codename"),
+  category: text("category").notNull(),
+  description: text("description").notNull(),
+  blockedDurationMs: integer("blocked_duration_ms"),
+  wasPreventable: boolean("was_preventable"),
+  preventionSuggestion: text("prevention_suggestion"),
+  resolvedAt: timestamp("resolved_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("fde_org_idx").on(table.orgId),
+  index("fde_type_idx").on(table.eventType),
+  index("fde_agent_idx").on(table.agentCodename),
+]);
+
+// ─── V14 Inferred Types ────────────────────────────────────────────────────
+
+export type ReactionChainEntry = typeof reactionChains.$inferSelect;
+export type ReactionChainRunEntry = typeof reactionChainRuns.$inferSelect;
+export type ReactionChainLinkEntry = typeof reactionChainLinks.$inferSelect;
+export type FounderOverrideEntry = typeof founderOverrides.$inferSelect;
+export type FeedbackLearningEntry = typeof feedbackLearnings.$inferSelect;
+export type CascadeResolutionEntry = typeof cascadeResolutions.$inferSelect;
+export type FounderIntentEntry = typeof founderIntents.$inferSelect;
+export type IntentProgressLogEntry = typeof intentProgressLogs.$inferSelect;
+export type AutonomyScoreSnapshotEntry = typeof autonomyScoreSnapshots.$inferSelect;
+export type FounderDependencyEventEntry = typeof founderDependencyEvents.$inferSelect;
