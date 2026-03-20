@@ -16,7 +16,7 @@
 
 import { db } from "../db";
 import {
-  founderTwinContext, founderDrafts,
+  founderTwinContext, founderDrafts, systemMeta,
   type FounderTwinContext, type FounderDraft,
 } from "@shared/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
@@ -278,6 +278,153 @@ Write the draft now. No preamble, just the content.`,
       orderBy: [desc(founderTwinContext.confidence)],
       limit: 30,
     });
+  }
+
+  // ─── Graduated Autonomy Tiers ───────────────────────────────────────────────
+
+  /** Read the current autonomy tier from systemMeta (default: "shadow") */
+  async getAutonomyTier(): Promise<"shadow" | "suggestion" | "autopilot"> {
+    const row = await db.query.systemMeta.findFirst({
+      where: eq(systemMeta.key, "founder_twin_autonomy_tier"),
+    });
+    const value = row?.value;
+    if (value === "shadow" || value === "suggestion" || value === "autopilot") {
+      return value;
+    }
+    return "shadow";
+  }
+
+  /** Set the autonomy tier in systemMeta */
+  async setAutonomyTier(tier: "shadow" | "suggestion" | "autopilot"): Promise<void> {
+    const existing = await db.query.systemMeta.findFirst({
+      where: eq(systemMeta.key, "founder_twin_autonomy_tier"),
+    });
+    if (existing) {
+      await db.update(systemMeta)
+        .set({ value: tier, updatedAt: new Date() })
+        .where(eq(systemMeta.key, "founder_twin_autonomy_tier"));
+    } else {
+      await db.insert(systemMeta).values({
+        key: "founder_twin_autonomy_tier",
+        value: tier,
+      });
+    }
+  }
+
+  /** Process a draft according to the current autonomy tier */
+  async processDraftAutonomously(draftId: number): Promise<{
+    action: "shadow_logged" | "pending_approval" | "auto_sent";
+    message: string;
+    sent?: boolean;
+  }> {
+    const draft = await db.query.founderDrafts.findFirst({
+      where: eq(founderDrafts.id, draftId),
+    });
+    if (!draft) {
+      throw new Error(`Draft ${draftId} not found`);
+    }
+
+    const tier = await this.getAutonomyTier();
+
+    if (tier === "shadow") {
+      console.log(`[FounderTwin/Shadow] WOULD SEND draft #${draftId}: "${draft.title}" (${draft.draftType})`);
+      console.log(`[FounderTwin/Shadow] Content preview: ${(draft.content || "").slice(0, 200)}...`);
+
+      await db.update(founderDrafts)
+        .set({ status: "shadow_logged", updatedAt: new Date() })
+        .where(eq(founderDrafts.id, draftId));
+
+      return {
+        action: "shadow_logged",
+        message: `Draft #${draftId} shadow-logged. No action taken. Review at your convenience.`,
+      };
+    }
+
+    if (tier === "suggestion") {
+      await db.update(founderDrafts)
+        .set({ status: "pending_approval", updatedAt: new Date() })
+        .where(eq(founderDrafts.id, draftId));
+
+      return {
+        action: "pending_approval",
+        message: `I'd send this draft: "${draft.title}" — approve?`,
+      };
+    }
+
+    // Autopilot: check confidence from style profile strength
+    const styleConfidence = await this.calculateStyleConfidence();
+
+    if (styleConfidence >= 0.8) {
+      await db.update(founderDrafts)
+        .set({ status: "approved", updatedAt: new Date() })
+        .where(eq(founderDrafts.id, draftId));
+
+      return {
+        action: "auto_sent",
+        message: `Draft #${draftId} auto-approved (confidence: ${styleConfidence.toFixed(2)}). Queued for weekly founder review.`,
+        sent: true,
+      };
+    }
+
+    // Below confidence threshold — fall back to suggestion mode
+    await db.update(founderDrafts)
+      .set({ status: "pending_approval", updatedAt: new Date() })
+      .where(eq(founderDrafts.id, draftId));
+
+    return {
+      action: "pending_approval",
+      message: `Confidence too low (${styleConfidence.toFixed(2)}) for auto-send. I'd send this draft: "${draft.title}" — approve?`,
+    };
+  }
+
+  /** Get recently shadow-logged drafts */
+  async getShadowLog(limit = 20): Promise<FounderDraft[]> {
+    return db.query.founderDrafts.findMany({
+      where: eq(founderDrafts.status, "shadow_logged"),
+      orderBy: [desc(founderDrafts.createdAt)],
+      limit,
+    });
+  }
+
+  /** Get autonomy stats for the founder dashboard */
+  async getAutonomyStats(): Promise<{
+    tier: "shadow" | "suggestion" | "autopilot";
+    totalDrafts: number;
+    autoApproved: number;
+    founderEdited: number;
+    styleConfidence: number;
+  }> {
+    const tier = await this.getAutonomyTier();
+
+    const totalResult = await db.select({ count: sql<number>`count(*)` })
+      .from(founderDrafts);
+    const totalDrafts = Number(totalResult[0]?.count ?? 0);
+
+    const approvedResult = await db.select({ count: sql<number>`count(*)` })
+      .from(founderDrafts)
+      .where(eq(founderDrafts.status, "approved"));
+    const autoApproved = Number(approvedResult[0]?.count ?? 0);
+
+    const editedResult = await db.select({ count: sql<number>`count(*)` })
+      .from(founderDrafts)
+      .where(sql`${founderDrafts.ceoEdits} IS NOT NULL`);
+    const founderEdited = Number(editedResult[0]?.count ?? 0);
+
+    const styleConfidence = await this.calculateStyleConfidence();
+
+    return { tier, totalDrafts, autoApproved, founderEdited, styleConfidence };
+  }
+
+  /** Calculate aggregate style confidence from context entries */
+  private async calculateStyleConfidence(): Promise<number> {
+    const contexts = await db.query.founderTwinContext.findMany({
+      orderBy: [desc(founderTwinContext.confidence)],
+      limit: 30,
+    });
+    if (contexts.length === 0) return 0;
+
+    const total = contexts.reduce((sum, c) => sum + Number(c.confidence || 0), 0);
+    return total / contexts.length;
   }
 }
 

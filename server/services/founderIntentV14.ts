@@ -19,7 +19,7 @@ import {
   type FounderIntentEntry,
   type IntentProgressLogEntry,
 } from "@shared/schema";
-import { eq, and, desc, sql, inArray } from "drizzle-orm";
+import { eq, and, desc, sql, inArray, gte, count } from "drizzle-orm";
 import crypto from "crypto";
 
 import { adaptiveStrategyService } from "./adaptiveStrategyV13";
@@ -481,19 +481,18 @@ class FounderIntentService {
     const goals = (intent.parsedGoals || []) as ParsedGoal[];
     const now = new Date();
 
-    const goalProgress = goals.map(goal => {
+    const goalProgress = await Promise.all(goals.map(async (goal) => {
       const timeframeDays = this.timeframeToDays(goal.timeframe || "month");
       const startDate = new Date(intent.createdAt);
       const elapsed = (now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24);
       const pctTimeElapsed = Math.min(1, elapsed / timeframeDays);
 
-      // Simulate current progress (in production, query actual metrics)
-      const expectedProgress = goal.target * pctTimeElapsed;
-      const current = Math.round(expectedProgress * (0.6 + Math.random() * 0.5)); // simulated
+      // Query REAL metrics from the database based on goal type
+      const current = await this.queryActualMetric(goal, intent.orgId, startDate);
       const pctComplete = Math.min(100, Math.round((current / Math.max(goal.target, 1)) * 100));
       const onTrack = pctComplete >= Math.round(pctTimeElapsed * 100) - 10;
 
-      // Project completion date
+      // Project completion date from actual rate
       const rate = elapsed > 0 ? current / elapsed : 0;
       const remaining = goal.target - current;
       const daysToComplete = rate > 0 ? remaining / rate : null;
@@ -509,7 +508,7 @@ class FounderIntentService {
         onTrack,
         projectedCompletion,
       };
-    });
+    }));
 
     const overallProgress = goalProgress.length > 0
       ? Math.round(goalProgress.reduce((s, g) => s + g.pctComplete, 0) / goalProgress.length)
@@ -706,6 +705,129 @@ class FounderIntentService {
   }
 
   // ─── Private Helpers ────────────────────────────────────────────────────────
+
+  /**
+   * Query actual business metrics from the database instead of simulating.
+   * Each metric type maps to a real database query.
+   */
+  private async queryActualMetric(goal: ParsedGoal, orgId: number, since: Date): Promise<number> {
+    try {
+      const { deals, leads, offers, properties, campaigns } = await import("@shared/schema");
+      const conditions: any[] = [gte(deals.createdAt, since)];
+      if (orgId) conditions.push(eq(deals.organizationId, orgId));
+
+      switch (goal.metric) {
+        case "deals_closed": {
+          const stateFilter = goal.filters?.state
+            ? [sql`${deals.propertyState} = ${goal.filters.state}`]
+            : [];
+          const priceFilter = goal.filters?.maxPrice
+            ? [sql`${deals.offerAmountCents} <= ${goal.filters.maxPrice * 100}`]
+            : [];
+          const [result] = await db.select({ c: count() })
+            .from(deals)
+            .where(and(
+              eq(deals.organizationId, orgId),
+              eq(deals.status, "closed"),
+              gte(deals.createdAt, since),
+              ...stateFilter,
+              ...priceFilter,
+            ));
+          return Number(result?.c ?? 0);
+        }
+
+        case "leads_generated": {
+          const [result] = await db.select({ c: count() })
+            .from(leads)
+            .where(and(
+              eq(leads.organizationId, orgId),
+              gte(leads.createdAt, since),
+            ));
+          return Number(result?.c ?? 0);
+        }
+
+        case "offers_sent": {
+          const [result] = await db.select({ c: count() })
+            .from(offers)
+            .where(and(
+              eq(offers.organizationId, orgId),
+              gte(offers.createdAt, since),
+            ));
+          return Number(result?.c ?? 0);
+        }
+
+        case "properties_analyzed": {
+          const [result] = await db.select({ c: count() })
+            .from(properties)
+            .where(and(
+              eq(properties.organizationId, orgId),
+              gte(properties.createdAt, since),
+            ));
+          return Number(result?.c ?? 0);
+        }
+
+        case "campaigns_launched": {
+          const [result] = await db.select({ c: count() })
+            .from(campaigns)
+            .where(and(
+              eq(campaigns.organizationId, orgId),
+              gte(campaigns.createdAt, since),
+            ));
+          return Number(result?.c ?? 0);
+        }
+
+        case "revenue": {
+          const result = await db.select({
+            total: sql<number>`COALESCE(SUM(${deals.offerAmountCents}), 0)`,
+          })
+            .from(deals)
+            .where(and(
+              eq(deals.organizationId, orgId),
+              eq(deals.status, "closed"),
+              gte(deals.createdAt, since),
+            ));
+          return Number(result[0]?.total ?? 0) / 100; // cents to dollars
+        }
+
+        case "outreach_emails":
+        case "contacts_made":
+        case "calls_made":
+        case "meetings_scheduled": {
+          // These metrics come from the agent action log
+          const { agentActionLog } = await import("@shared/schema");
+          const actionMap: Record<string, string> = {
+            outreach_emails: "send_email",
+            contacts_made: "contact_lead",
+            calls_made: "make_call",
+            meetings_scheduled: "schedule_meeting",
+          };
+          const [result] = await db.select({ c: count() })
+            .from(agentActionLog)
+            .where(and(
+              eq(agentActionLog.actionName, actionMap[goal.metric] || goal.metric),
+              eq(agentActionLog.outcome, "success"),
+              gte(agentActionLog.createdAt, since),
+            ));
+          return Number(result?.c ?? 0);
+        }
+
+        default: {
+          // For custom/unknown metrics, check agent action log for related actions
+          const { agentActionLog } = await import("@shared/schema");
+          const [result] = await db.select({ c: count() })
+            .from(agentActionLog)
+            .where(and(
+              eq(agentActionLog.outcome, "success"),
+              gte(agentActionLog.createdAt, since),
+            ));
+          return Number(result?.c ?? 0);
+        }
+      }
+    } catch (err) {
+      console.warn(`[FounderIntent] Failed to query metric ${goal.metric}:`, err);
+      return 0;
+    }
+  }
 
   private getAgentForMetric(metric: string): string {
     const agentMap: Record<string, string> = {

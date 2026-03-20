@@ -22,18 +22,72 @@ import { routeAITask, TaskComplexity } from "./aiRouter";
 
 // ─── Pattern Key Generation ──────────────────────────────────────────────────
 
-function generatePatternKey(agentCodename: string, category: string, context?: Record<string, any>): string {
+function generatePatternKey(agentCodename: string, category: string, context?: Record<string, any>, riskLevel?: string): string {
   // Create a pattern key that groups similar decisions
-  // e.g. "forge:pricing_under_5k" or "sophie:churn_response"
+  // e.g. "forge:pricing_under_5k:medium_risk" or "sophie:churn_response:enterprise"
   let key = `${agentCodename}:${category}`;
   if (context?.amount && context.amount < 5000) key += "_under_5k";
   else if (context?.amount && context.amount >= 5000) key += "_over_5k";
+  if (riskLevel || context?.riskLevel) key += `:${riskLevel || context.riskLevel}`;
+  if (context?.orgPlan) key += `:${context.orgPlan}`;
   return key;
 }
 
 // ─── Service ─────────────────────────────────────────────────────────────────
 
 class DecisionAutopilotService {
+
+  /** Calculate Bayesian confidence using Beta distribution with Laplace smoothing and recency weighting */
+  calculateBayesianConfidence(pattern: {
+    totalDecisions: number | null;
+    approvedCount: number | null;
+    rejectedCount: number | null;
+    recentDecisions: any;
+  }): number {
+    const recentDecisions = (pattern.recentDecisions as any[]) || [];
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+    // Count successes (dominant action matches) with recency weighting
+    // "Success" = the decision matched the dominant action pattern
+    const dominantAction = (pattern.approvedCount || 0) >= (pattern.rejectedCount || 0) ? "approved" : "rejected";
+    let weightedSuccesses = 0;
+    let weightedTotal = 0;
+
+    for (const d of recentDecisions) {
+      const weight = d.timestamp >= sevenDaysAgo ? 2 : 1;
+      weightedTotal += weight;
+      if (d.action === dominantAction) {
+        weightedSuccesses += weight;
+      }
+    }
+
+    // For decisions not in recentDecisions (older ones trimmed), use raw counts
+    const trackedCount = recentDecisions.length;
+    const total = pattern.totalDecisions || 0;
+    const untrackedCount = Math.max(0, total - trackedCount);
+    if (untrackedCount > 0) {
+      const dominantCount = dominantAction === "approved" ? (pattern.approvedCount || 0) : (pattern.rejectedCount || 0);
+      const untrackedSuccesses = Math.max(0, dominantCount - recentDecisions.filter((d: any) => d.action === dominantAction).length);
+      weightedSuccesses += untrackedSuccesses;
+      weightedTotal += untrackedCount;
+    }
+
+    // Beta distribution with Laplace smoothing: (successes + 1) / (total + 2)
+    const confidence = (weightedSuccesses + 1) / (weightedTotal + 2);
+    return Math.min(1, Math.max(0, confidence));
+  }
+
+  /** Get category-specific autopilot thresholds */
+  getAutopilotThreshold(category: string): { confidence: number; minDecisions: number } {
+    const lower = category.toLowerCase();
+    if (lower.includes("pricing") || lower.includes("financial")) {
+      return { confidence: 0.95, minDecisions: 25 };
+    }
+    if (lower.includes("support") || lower.includes("churn")) {
+      return { confidence: 0.90, minDecisions: 15 };
+    }
+    return { confidence: 0.85, minDecisions: 10 };
+  }
 
   /** Record a CEO decision and update patterns */
   async recordDecision(input: {
@@ -43,7 +97,7 @@ class DecisionAutopilotService {
     context: Record<string, any>;
     decisionId?: number;
   }): Promise<void> {
-    const patternKey = generatePatternKey(input.agentCodename, input.decisionCategory, input.context);
+    const patternKey = generatePatternKey(input.agentCodename, input.decisionCategory, input.context, input.context?.riskLevel);
 
     // Find or create pattern
     let pattern = await db.query.decisionPatterns.findFirst({
@@ -90,14 +144,21 @@ class DecisionAutopilotService {
       : (rejectedCount / totalDecisions) > 0.7 ? "reject"
       : "uncertain";
 
-    // Calculate prediction confidence using beta distribution approximation
-    const dominantCount = Math.max(approvedCount, rejectedCount);
+    // Calculate prediction confidence using Bayesian method with recency weighting
     const predictionConfidence = totalDecisions >= 5
-      ? Math.min(0.99, dominantCount / totalDecisions * (1 - 1 / (totalDecisions + 1)))
+      ? this.calculateBayesianConfidence({
+          totalDecisions,
+          approvedCount,
+          rejectedCount,
+          recentDecisions,
+        })
       : 0;
 
-    // Eligible for autopilot: confidence > 0.9 AND 15+ decisions AND one action dominates
-    const isAutopilotEligible = predictionConfidence > 0.9 && totalDecisions >= 15 && predictedAction !== "uncertain";
+    // Use category-specific thresholds for autopilot eligibility
+    const threshold = this.getAutopilotThreshold(input.decisionCategory);
+    const isAutopilotEligible = predictionConfidence > threshold.confidence
+      && totalDecisions >= threshold.minDecisions
+      && predictedAction !== "uncertain";
 
     // Shadow mode: record what autopilot WOULD have done
     if (recentDecisions.length > 0) {
@@ -231,6 +292,154 @@ class DecisionAutopilotService {
       eligibleNotActive: eligible.length,
       overallAccuracy: totalPredictions > 0 ? Math.round((correctPredictions / totalPredictions) * 100) : 0,
     };
+  }
+
+  /** Analyze shadow mode accuracy across all patterns */
+  async analyzeShadowAccuracy(): Promise<{
+    overallAccuracy: number;
+    byCategory: Record<string, { accuracy: number; total: number; readyForAutopilot: boolean }>;
+    recommendations: string[];
+  }> {
+    const all = await this.getPatterns();
+
+    let totalCorrect = 0;
+    let totalPredictions = 0;
+    const categoryStats: Record<string, { correct: number; total: number }> = {};
+
+    for (const pattern of all) {
+      const recent = (pattern.recentDecisions as any[]) || [];
+      const category = pattern.decisionCategory || "unknown";
+      if (!categoryStats[category]) categoryStats[category] = { correct: 0, total: 0 };
+
+      for (const d of recent) {
+        if (d.wouldHaveAutoed !== undefined) {
+          totalPredictions++;
+          categoryStats[category].total++;
+          if (d.autopilotCorrect) {
+            totalCorrect++;
+            categoryStats[category].correct++;
+          }
+        }
+      }
+    }
+
+    const overallAccuracy = totalPredictions > 0 ? totalCorrect / totalPredictions : 0;
+    const byCategory: Record<string, { accuracy: number; total: number; readyForAutopilot: boolean }> = {};
+    const recommendations: string[] = [];
+
+    for (const [category, stats] of Object.entries(categoryStats)) {
+      const accuracy = stats.total > 0 ? stats.correct / stats.total : 0;
+      const threshold = this.getAutopilotThreshold(category);
+      const ready = accuracy >= threshold.confidence && stats.total >= threshold.minDecisions;
+      byCategory[category] = { accuracy, total: stats.total, readyForAutopilot: ready };
+
+      if (ready) {
+        recommendations.push(
+          `${category.charAt(0).toUpperCase() + category.slice(1)} decisions are ${(accuracy * 100).toFixed(0)}% accurate over ${stats.total} predictions — ready for autopilot`
+        );
+      } else if (stats.total >= 5 && accuracy >= 0.8) {
+        const remaining = threshold.minDecisions - stats.total;
+        recommendations.push(
+          `${category.charAt(0).toUpperCase() + category.slice(1)} decisions are ${(accuracy * 100).toFixed(0)}% accurate but need ${remaining > 0 ? `${remaining} more decisions` : "higher accuracy"} for autopilot`
+        );
+      }
+    }
+
+    return { overallAccuracy, byCategory, recommendations };
+  }
+
+  /** Record the real-world outcome of a decision to track not just prediction accuracy but decision quality */
+  async recordOutcome(decisionId: number, outcome: "positive" | "negative" | "neutral"): Promise<void> {
+    const all = await this.getPatterns();
+
+    for (const pattern of all) {
+      const recentDecisions = (pattern.recentDecisions as any[]) || [];
+      let found = false;
+
+      for (const d of recentDecisions) {
+        if (d.decisionId === decisionId) {
+          d.outcome = outcome;
+          d.outcomeRecordedAt = new Date().toISOString();
+          found = true;
+          break;
+        }
+      }
+
+      if (found) {
+        // Calculate outcome success rate for this pattern
+        const withOutcomes = recentDecisions.filter((d: any) => d.outcome !== undefined);
+        const positiveOutcomes = withOutcomes.filter((d: any) => d.outcome === "positive").length;
+        const outcomeSuccessRate = withOutcomes.length > 0 ? positiveOutcomes / withOutcomes.length : 0;
+
+        await db.update(decisionPatterns)
+          .set({
+            recentDecisions,
+            updatedAt: new Date(),
+          })
+          .where(eq(decisionPatterns.id, pattern.id));
+
+        return;
+      }
+    }
+  }
+
+  /** Generate a weekly summary report for the CEO briefing */
+  async generateWeeklyReport(): Promise<string> {
+    const all = await this.getPatterns();
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+    let totalThisWeek = 0;
+    let autopilotSaves = 0;
+    let shadowCorrect = 0;
+    let shadowTotal = 0;
+    const newlyEligible: string[] = [];
+
+    for (const pattern of all) {
+      const recent = (pattern.recentDecisions as any[]) || [];
+      const weekDecisions = recent.filter((d: any) => d.timestamp >= sevenDaysAgo);
+      totalThisWeek += weekDecisions.length;
+
+      if (pattern.isAutopilotActive) {
+        autopilotSaves += weekDecisions.length;
+      }
+
+      for (const d of weekDecisions) {
+        if (d.wouldHaveAutoed !== undefined) {
+          shadowTotal++;
+          if (d.autopilotCorrect) shadowCorrect++;
+        }
+      }
+
+      if (pattern.isAutopilotEligible && !pattern.isAutopilotActive) {
+        newlyEligible.push(pattern.description || pattern.patternKey);
+      }
+    }
+
+    const shadowAccuracy = shadowTotal > 0 ? ((shadowCorrect / shadowTotal) * 100).toFixed(1) : "N/A";
+
+    const lines: string[] = [
+      "=== Decision Autopilot Weekly Report ===",
+      "",
+      `Total decisions this week: ${totalThisWeek}`,
+      `Autopilot saves (handled without founder): ${autopilotSaves}`,
+      `Shadow prediction accuracy: ${shadowAccuracy}${shadowTotal > 0 ? `% (${shadowCorrect}/${shadowTotal})` : ""}`,
+      "",
+    ];
+
+    if (newlyEligible.length > 0) {
+      lines.push(`New patterns eligible for autopilot (${newlyEligible.length}):`);
+      for (const name of newlyEligible) {
+        lines.push(`  - ${name}`);
+      }
+    } else {
+      lines.push("No new patterns eligible for autopilot this week.");
+    }
+
+    lines.push("");
+    lines.push(`Active autopilot patterns: ${all.filter(p => p.isAutopilotActive).length}`);
+    lines.push(`Total tracked patterns: ${all.length}`);
+
+    return lines.join("\n");
   }
 
   /** Generate a human-readable description for a pattern */
