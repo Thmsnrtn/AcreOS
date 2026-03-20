@@ -310,6 +310,23 @@ class AcreOSWebSocketServer {
     this.broadcast(`listing:${listingId}`, type, payload);
   }
 
+  /**
+   * Broadcast a founder notification (briefing, agent event, approval request).
+   * Phase C: Pushes to founder:activity channel for real-time dashboard updates.
+   */
+  broadcastFounderEvent(type: string, payload: Record<string, any>): void {
+    this.broadcast('founder:activity', type, payload);
+  }
+
+  /**
+   * Broadcast an agent collaboration event.
+   * Phase E: Inter-agent messages, delegations, consensus updates.
+   */
+  broadcastAgentEvent(organizationId: number, type: string, payload: Record<string, any>): void {
+    this.broadcast(`org:${organizationId}`, `agent:${type}`, payload);
+    this.broadcast('founder:activity', `agent:${type}`, payload);
+  }
+
   getConnectionCount(): number {
     return this.clients.size;
   }

@@ -31,6 +31,7 @@ import { useSwipeNavigation } from "@/hooks/use-swipe-gesture";
 import { MobileBottomNav } from "@/components/mobile";
 import { BetaFeedbackWidget } from "@/components/beta-feedback-widget";
 import { BetaActivationDetector } from "@/components/beta-activation-detector";
+import { NotificationBanner } from "@/components/notification-banner";
 
 // Eagerly loaded: must be available immediately with no delay
 import AuthPage from "@/pages/auth-page";
@@ -169,6 +170,15 @@ const ProactiveMonitorPage = React.lazy(() => import("@/pages/proactive-monitor"
 const BetaDashboardPage = React.lazy(() => import("@/pages/beta-dashboard"));
 const ResellerDashboardPage = React.lazy(() => import("@/pages/reseller-dashboard"));
 const DataMoatDashboardPage = React.lazy(() => import("@/pages/data-moat-dashboard"));
+
+// Sovereign Protocol — Phase A Visibility Layer
+const SovereignDashboardPage = React.lazy(() => import("@/pages/sovereign-dashboard"));
+const BoardOfDirectorsPage = React.lazy(() => import("@/pages/board-of-directors"));
+const AgentPerformancePage = React.lazy(() => import("@/pages/agent-performance"));
+const MemoryBrowserPage = React.lazy(() => import("@/pages/memory-browser"));
+const EventLogPage = React.lazy(() => import("@/pages/event-log"));
+const JobHealthPage = React.lazy(() => import("@/pages/job-health"));
+const AgentCollaborationPage = React.lazy(() => import("@/pages/agent-collaboration"));
 
 // Misc public
 const BorrowerPortal = React.lazy(() => import("@/pages/borrower-portal"));
@@ -420,6 +430,15 @@ function Router() {
         <Route path="/reseller">{() => <FounderProtectedRoute component={ResellerDashboardPage} />}</Route>
         <Route path="/data-moat">{() => <FounderProtectedRoute component={DataMoatDashboardPage} />}</Route>
 
+        {/* Sovereign Protocol — Phase A Visibility Layer */}
+        <Route path="/sovereign">{() => <FounderProtectedRoute component={SovereignDashboardPage} />}</Route>
+        <Route path="/board-of-directors">{() => <FounderProtectedRoute component={BoardOfDirectorsPage} />}</Route>
+        <Route path="/agent-performance">{() => <FounderProtectedRoute component={AgentPerformancePage} />}</Route>
+        <Route path="/memory-browser">{() => <FounderProtectedRoute component={MemoryBrowserPage} />}</Route>
+        <Route path="/event-log">{() => <FounderProtectedRoute component={EventLogPage} />}</Route>
+        <Route path="/job-health">{() => <FounderProtectedRoute component={JobHealthPage} />}</Route>
+        <Route path="/agent-collaboration">{() => <FounderProtectedRoute component={AgentCollaborationPage} />}</Route>
+
         <Route component={NotFound} />
       </Switch>
     </Suspense>
@@ -474,6 +493,7 @@ function AppContent() {
       {user && <OnboardingWizard />}
       {user && <BetaFeedbackWidget />}
       {user && <BetaActivationDetector />}
+      {user && <NotificationBanner />}
       <PWAInstallPrompt />
     </>
   );
