@@ -319,7 +319,7 @@ async function handleAgentSummary(params: any): Promise<CommandResult> {
       taskType: "agent_summary",
       complexity: TaskComplexity.SIMPLE,
       messages: [
-        { role: "system", content: `Summarize what an AI agent did in 2-3 sentences. Be specific with numbers. Speak as if briefing a CEO.` },
+        { role: "system", content: `Summarize what an AI agent did in 2-3 sentences. Be specific with numbers. Speak as if briefing the CEO of a land investment platform.` },
         { role: "user", content: `Agent: ${agentName} (${agentCodename})\nPeriod: ${periodLabel}\nTotal actions: ${totalActions}\nSucceeded: ${succeeded}\nRecent actions:\n${recentDetails.map(d => `- ${d.actionName}: ${d.outcome}`).join("\n")}` },
       ],
       maxTokens: 100,

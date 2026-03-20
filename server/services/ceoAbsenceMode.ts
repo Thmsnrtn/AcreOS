@@ -13,8 +13,8 @@
  */
 
 import { db } from "../db";
-import { ceoAbsenceMode, companyAgents } from "@shared/schema";
-import { eq, desc } from "drizzle-orm";
+import { ceoAbsenceMode, companyAgents, agentActionLog, decisionsInboxItems, warRooms } from "@shared/schema";
+import { eq, desc, gte, and, sql } from "drizzle-orm";
 import { routeAITask, TaskComplexity } from "./aiRouter";
 import { companyAgentService } from "./companyAgents";
 
@@ -24,6 +24,23 @@ interface AbsenceConfig {
   durationHours: number;
   trustBoost?: number;       // default 15
   emergencyOnly?: boolean;   // only break through for critical
+  smartBoost?: boolean;      // default true — per-agent trust boosting based on performance
+}
+
+interface AbsenceSuggestion {
+  safe: boolean;
+  confidence: number;
+  reason: string;
+  suggestedDuration: number;
+  blockers: string[];
+}
+
+interface SafetyReport {
+  safetyScore: number;
+  emergencies: number;
+  batchedByPriority: Record<string, number>;
+  hoursRemaining: number;
+  recommendation: string;
 }
 
 interface BatchedItem {
@@ -46,6 +63,20 @@ class CEOAbsenceService {
 
     const endsAt = new Date(Date.now() + config.durationHours * 60 * 60 * 1000);
     const trustBoost = config.trustBoost || 15;
+    const useSmartBoost = config.smartBoost !== false;
+
+    let perAgentBoosts: Record<string, number> = {};
+
+    if (useSmartBoost) {
+      // Smart trust boosting — per-agent scoring based on recent performance
+      perAgentBoosts = await this.calculateSmartTrustBoosts(trustBoost);
+    } else {
+      // Uniform trust boost for all agents
+      const agents = await companyAgentService.getAll();
+      for (const agent of agents) {
+        perAgentBoosts[agent.codename] = trustBoost;
+      }
+    }
 
     const [absence] = await db.insert(ceoAbsenceMode).values({
       isActive: true,
@@ -54,12 +85,12 @@ class CEOAbsenceService {
       trustBoost,
       batchedItems: [],
       emergencyBreaks: [],
-    }).returning({ id: ceoAbsenceMode.id });
+      perAgentBoosts,
+    } as any).returning({ id: ceoAbsenceMode.id });
 
-    // Boost all agent trust scores temporarily
-    const agents = await companyAgentService.getAll();
-    for (const agent of agents) {
-      await companyAgentService.updateTrustScore(agent.codename, trustBoost);
+    // Apply per-agent trust boosts
+    for (const [codename, boost] of Object.entries(perAgentBoosts)) {
+      await companyAgentService.updateTrustScore(codename, boost);
     }
 
     return absence.id;
@@ -70,10 +101,17 @@ class CEOAbsenceService {
     const current = await this.getCurrent();
     if (!current) return null;
 
-    // Restore trust scores (remove boost)
-    const agents = await companyAgentService.getAll();
-    for (const agent of agents) {
-      await companyAgentService.updateTrustScore(agent.codename, -(current.trustBoost || 15));
+    // Restore trust scores — reverse per-agent boosts if available, otherwise uniform
+    const perAgentBoosts = (current as any).perAgentBoosts as Record<string, number> | undefined;
+    if (perAgentBoosts && Object.keys(perAgentBoosts).length > 0) {
+      for (const [codename, boost] of Object.entries(perAgentBoosts)) {
+        await companyAgentService.updateTrustScore(codename, -boost);
+      }
+    } else {
+      const agents = await companyAgentService.getAll();
+      for (const agent of agents) {
+        await companyAgentService.updateTrustScore(agent.codename, -(current.trustBoost || 15));
+      }
     }
 
     // Generate return briefing
@@ -152,6 +190,214 @@ class CEOAbsenceService {
   shouldBreakThrough(priority: string, severity: string): boolean {
     // Only critical/emergency items break through
     return priority === "critical" || severity === "critical";
+  }
+
+  /** Calculate smart per-agent trust boosts based on recent performance */
+  async calculateSmartTrustBoosts(configBoost: number = 15): Promise<Record<string, number>> {
+    const agents = await companyAgentService.getAll();
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const boosts: Record<string, number> = {};
+
+    for (const agent of agents) {
+      // Get recent action log entries for this agent
+      const actions = await db.select({
+        outcome: agentActionLog.outcome,
+      })
+        .from(agentActionLog)
+        .where(
+          and(
+            eq(agentActionLog.agentCodename, agent.codename),
+            gte(agentActionLog.createdAt, thirtyDaysAgo),
+          )
+        );
+
+      if (actions.length === 0) {
+        // No data — give the standard boost
+        boosts[agent.codename] = configBoost;
+        continue;
+      }
+
+      const successCount = actions.filter(a => a.outcome === "success").length;
+      const successRate = (successCount / actions.length) * 100;
+
+      if (successRate > 90) {
+        // High performer — extra boost
+        boosts[agent.codename] = configBoost + 10;
+      } else if (successRate >= 70) {
+        // Medium performer — standard boost
+        boosts[agent.codename] = configBoost;
+      } else {
+        // Low performer — reduced boost, minimum 0
+        boosts[agent.codename] = Math.max(0, configBoost - 10);
+      }
+    }
+
+    return boosts;
+  }
+
+  /** Suggest whether it's safe to activate absence mode */
+  async suggestAbsenceWindow(): Promise<AbsenceSuggestion> {
+    const blockers: string[] = [];
+
+    // Check pending critical decisions inbox items
+    const pendingCritical = await db.select({ count: sql<number>`count(*)` })
+      .from(decisionsInboxItems)
+      .where(
+        and(
+          eq(decisionsInboxItems.status, "pending"),
+          eq(decisionsInboxItems.riskLevel, "critical"),
+        )
+      );
+    const criticalCount = Number(pendingCritical[0]?.count ?? 0);
+
+    if (criticalCount > 0) {
+      blockers.push(`${criticalCount} critical decision(s) pending in inbox`);
+    }
+
+    // Check active war rooms
+    const activeWarRooms = await db.select({ count: sql<number>`count(*)` })
+      .from(warRooms)
+      .where(eq(warRooms.status, "active"));
+    const warRoomCount = Number(activeWarRooms[0]?.count ?? 0);
+
+    if (warRoomCount > 0) {
+      blockers.push(`${warRoomCount} active war room(s)`);
+    }
+
+    // Check overall agent success rate (last 30 days)
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const allActions = await db.select({
+      outcome: agentActionLog.outcome,
+    })
+      .from(agentActionLog)
+      .where(gte(agentActionLog.createdAt, thirtyDaysAgo));
+
+    const totalActions = allActions.length;
+    const successActions = allActions.filter(a => a.outcome === "success").length;
+    const successRate = totalActions > 0 ? (successActions / totalActions) * 100 : 0;
+
+    // Decision logic
+    if (criticalCount > 0 || warRoomCount > 0) {
+      return {
+        safe: false,
+        confidence: 0.9,
+        reason: `Cannot recommend absence: ${blockers.join("; ")}`,
+        suggestedDuration: 0,
+        blockers,
+      };
+    }
+
+    if (successRate > 85) {
+      return {
+        safe: true,
+        confidence: Math.min(0.95, successRate / 100),
+        reason: `Agent success rate is strong at ${successRate.toFixed(1)}%. System is running well.`,
+        suggestedDuration: 72,
+        blockers,
+      };
+    }
+
+    if (successRate >= 70) {
+      return {
+        safe: true,
+        confidence: Math.min(0.75, successRate / 100),
+        reason: `Agent success rate is moderate at ${successRate.toFixed(1)}%. Shorter absence recommended.`,
+        suggestedDuration: 48,
+        blockers,
+      };
+    }
+
+    blockers.push(`Low agent success rate: ${successRate.toFixed(1)}%`);
+    return {
+      safe: false,
+      confidence: 0.8,
+      reason: `Agent success rate is too low at ${successRate.toFixed(1)}% for safe absence.`,
+      suggestedDuration: 0,
+      blockers,
+    };
+  }
+
+  /** Generate a safety report during an active absence */
+  async generateSafetyReport(): Promise<SafetyReport> {
+    const current = await this.getCurrent();
+    if (!current) {
+      return {
+        safetyScore: 0,
+        emergencies: 0,
+        batchedByPriority: {},
+        hoursRemaining: 0,
+        recommendation: "No active absence mode.",
+      };
+    }
+
+    const batchedItems = (current.batchedItems as BatchedItem[]) || [];
+    const emergencyBreaks = (current.emergencyBreaks as any[]) || [];
+
+    // Count batched items by priority
+    const batchedByPriority: Record<string, number> = {};
+    for (const item of batchedItems) {
+      const priority = item.priority || "unknown";
+      batchedByPriority[priority] = (batchedByPriority[priority] || 0) + 1;
+    }
+
+    const emergencies = emergencyBreaks.length;
+    const criticalBatched = batchedByPriority["critical"] || 0;
+
+    // Safety score: 100 - 10*emergencies - 5*criticalBatched (clamped to 0-100)
+    const safetyScore = Math.max(0, Math.min(100, 100 - 10 * emergencies - 5 * criticalBatched));
+
+    // Calculate hours remaining
+    const endsAt = current.endsAt ? new Date(current.endsAt).getTime() : Date.now();
+    const hoursRemaining = Math.max(0, Math.round((endsAt - Date.now()) / (1000 * 60 * 60)));
+
+    let recommendation: string;
+    if (safetyScore >= 90) {
+      recommendation = "System running smoothly. No intervention needed.";
+    } else if (safetyScore >= 70) {
+      recommendation = "Minor issues detected. Monitor when convenient.";
+    } else if (safetyScore >= 50) {
+      recommendation = "Several issues accumulating. Consider checking in early.";
+    } else {
+      recommendation = "Significant issues detected. Recommend ending absence early.";
+    }
+
+    return {
+      safetyScore,
+      emergencies,
+      batchedByPriority,
+      hoursRemaining,
+      recommendation,
+    };
+  }
+
+  /** Auto-extend absence if the system is running smoothly */
+  async autoExtend(additionalHours: number): Promise<{ extended: boolean; reason: string; newEndsAt?: Date }> {
+    const current = await this.getCurrent();
+    if (!current) {
+      return { extended: false, reason: "No active absence mode to extend." };
+    }
+
+    const report = await this.generateSafetyReport();
+
+    if (report.safetyScore <= 80) {
+      return {
+        extended: false,
+        reason: `Safety score too low (${report.safetyScore}/100). ${report.recommendation}`,
+      };
+    }
+
+    const currentEndsAt = current.endsAt ? new Date(current.endsAt) : new Date();
+    const newEndsAt = new Date(currentEndsAt.getTime() + additionalHours * 60 * 60 * 1000);
+
+    await db.update(ceoAbsenceMode)
+      .set({ endsAt: newEndsAt, updatedAt: new Date() })
+      .where(eq(ceoAbsenceMode.id, current.id));
+
+    return {
+      extended: true,
+      reason: `Safety score is ${report.safetyScore}/100. Extended absence by ${additionalHours} hours.`,
+      newEndsAt,
+    };
   }
 
   /** Generate the return briefing — everything that happened while CEO was away */

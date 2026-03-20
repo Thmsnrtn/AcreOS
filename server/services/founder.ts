@@ -20,6 +20,20 @@ const FOUNDER_EMAILS = [
 ];
 
 /**
+ * Get all founder emails (for services that need to send to founders)
+ */
+export function getFounderEmails(): string[] {
+  return FOUNDER_EMAILS;
+}
+
+/**
+ * Get primary founder email
+ */
+export function getPrimaryFounderEmail(): string | null {
+  return PRIMARY_FOUNDER_EMAIL || FOUNDER_EMAILS[0] || null;
+}
+
+/**
  * Check if an email belongs to a founder account
  */
 export function isFounderEmail(email: string | undefined | null): boolean {

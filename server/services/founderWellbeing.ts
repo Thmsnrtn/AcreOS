@@ -183,6 +183,204 @@ class FounderWellbeingService {
       limit,
     });
   }
+
+  // ─── Proactive Monitoring ───────────────────────────────────────────────────
+
+  /** Real-time stress detection — designed to be called every hour */
+  async monitorRealTime(): Promise<{
+    alerts: Array<{
+      type: string;
+      message: string;
+      severity: "low" | "medium" | "high" | "critical";
+      suggestedAction?: string;
+    }>;
+  }> {
+    const alerts: Array<{
+      type: string;
+      message: string;
+      severity: "low" | "medium" | "high" | "critical";
+      suggestedAction?: string;
+    }> = [];
+
+    const fourHoursAgo = new Date(Date.now() - 4 * 60 * 60 * 1000);
+
+    // Count overrides in the last 4 hours
+    const [recentOverrideResult] = await db.select({ n: count() })
+      .from(agentActionLog)
+      .where(and(
+        eq(agentActionLog.outcome, "escalated"),
+        gte(agentActionLog.createdAt, fourHoursAgo),
+      ));
+    const recentOverrides = Number(recentOverrideResult?.n || 0);
+
+    // Days since last break
+    const lastAbsence = await ceoAbsenceService.getLatest();
+    const daysSinceLastBreak = lastAbsence?.startedAt
+      ? Math.round((Date.now() - new Date(lastAbsence.startedAt).getTime()) / (1000 * 60 * 60 * 24))
+      : 999;
+
+    if (recentOverrides > 5) {
+      alerts.push({
+        type: "stress_spike",
+        message: `You've overridden ${recentOverrides} decisions in the last 4 hours. This is significantly above normal. Step back and let your agents handle things for a bit.`,
+        severity: "high",
+        suggestedAction: "Take a 30-minute break and review whether these overrides were necessary.",
+      });
+
+      // Compound alert: override spike + no break in 14+ days
+      if (daysSinceLastBreak > 14) {
+        alerts.push({
+          type: "burnout_warning",
+          message: `Override spike detected AND it's been ${daysSinceLastBreak} days since your last break. This combination is a strong burnout signal.`,
+          severity: "critical",
+          suggestedAction: "Activate absence mode for at least 24 hours. Your agents can handle it.",
+        });
+      }
+    }
+
+    return { alerts };
+  }
+
+  /** Suggest absence mode when the system is performing well enough */
+  async suggestAbsenceMode(): Promise<string | null> {
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+    // Agent success rate over last 7 days
+    const [successResult] = await db.select({ n: count() })
+      .from(agentActionLog)
+      .where(and(
+        eq(agentActionLog.outcome, "success"),
+        gte(agentActionLog.createdAt, weekAgo),
+      ));
+    const [totalResult] = await db.select({ n: count() })
+      .from(agentActionLog)
+      .where(gte(agentActionLog.createdAt, weekAgo));
+    const successCount = Number(successResult?.n || 0);
+    const totalCount = Number(totalResult?.n || 0);
+    const successRate = totalCount > 0 ? Math.round((successCount / totalCount) * 100) : 0;
+
+    // Days since last break
+    const lastAbsence = await ceoAbsenceService.getLatest();
+    const daysSinceLastBreak = lastAbsence?.startedAt
+      ? Math.round((Date.now() - new Date(lastAbsence.startedAt).getTime()) / (1000 * 60 * 60 * 24))
+      : 999;
+
+    if (successRate > 85 && daysSinceLastBreak > 21) {
+      return `Your team's success rate is ${successRate}%. You haven't taken a break in ${daysSinceLastBreak} days. Consider activating absence mode for 48 hours.`;
+    }
+
+    return null;
+  }
+
+  /** Predict burnout trajectory from recent energy scores */
+  async predictBurnoutTrajectory(): Promise<{
+    trajectory: "stable" | "improving" | "declining" | "critical";
+    avgEnergy: number;
+    trend: number[];
+    recommendation: string;
+  }> {
+    const assessments = await this.getRecent(7);
+
+    // Extract energy scores in chronological order (oldest first)
+    const trend: number[] = assessments
+      .map((a) => a.energyScore ?? 0)
+      .reverse();
+
+    // Average energy over the period
+    const avgEnergy = trend.length > 0
+      ? Math.round(trend.reduce((sum, v) => sum + v, 0) / trend.length)
+      : 0;
+
+    // Determine trajectory
+    let trajectory: "stable" | "improving" | "declining" | "critical" = "stable";
+    let recommendation = "Your energy levels are steady. Keep up the current pace.";
+
+    // Check for critical average first
+    if (avgEnergy < 50 && trend.length > 0) {
+      trajectory = "critical";
+      recommendation = "Your average energy is critically low. Strongly consider activating absence mode and taking genuine time off. Delegate everything possible.";
+    } else if (trend.length >= 3) {
+      // Check for 3+ consecutive days of decline
+      let consecutiveDeclines = 0;
+      let consecutiveIncreases = 0;
+
+      for (let i = 1; i < trend.length; i++) {
+        if (trend[i] < trend[i - 1]) {
+          consecutiveDeclines++;
+          consecutiveIncreases = 0;
+        } else if (trend[i] > trend[i - 1]) {
+          consecutiveIncreases++;
+          consecutiveDeclines = 0;
+        } else {
+          consecutiveDeclines = 0;
+          consecutiveIncreases = 0;
+        }
+      }
+
+      if (consecutiveDeclines >= 3) {
+        trajectory = "declining";
+        recommendation = "Your energy has been declining for multiple consecutive days. Reduce override activity, trust your agents more, and schedule a break soon.";
+      } else if (consecutiveIncreases >= 3) {
+        trajectory = "improving";
+        recommendation = "Your energy trend is positive. Whatever you changed recently is working — keep it up.";
+      }
+    }
+
+    return { trajectory, avgEnergy, trend, recommendation };
+  }
+
+  /** Analyze decision quality by hour of day to detect fatigue patterns */
+  async getDecisionQualityByHour(): Promise<{
+    hourlyOverrides: Record<number, number>;
+    peakOverrideHour: number;
+    recommendation: string;
+  }> {
+    const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+    // Query overrides grouped by hour of day
+    const rows = await db.select({
+      hour: sql<number>`extract(hour from ${agentActionLog.createdAt})`.as("hour"),
+      n: count(),
+    })
+      .from(agentActionLog)
+      .where(and(
+        eq(agentActionLog.outcome, "escalated"),
+        gte(agentActionLog.createdAt, monthAgo),
+      ))
+      .groupBy(sql`extract(hour from ${agentActionLog.createdAt})`);
+
+    // Build hourly map (0-23)
+    const hourlyOverrides: Record<number, number> = {};
+    for (let h = 0; h < 24; h++) {
+      hourlyOverrides[h] = 0;
+    }
+    let peakOverrideHour = 0;
+    let peakCount = 0;
+
+    for (const row of rows) {
+      const h = Number(row.hour);
+      const c = Number(row.n);
+      hourlyOverrides[h] = c;
+      if (c > peakCount) {
+        peakCount = c;
+        peakOverrideHour = h;
+      }
+    }
+
+    // Generate recommendation based on peak hour
+    let recommendation: string;
+    if (peakCount === 0) {
+      recommendation = "Not enough override data to detect hourly patterns yet.";
+    } else if (peakOverrideHour >= 22 || peakOverrideHour <= 4) {
+      recommendation = `Most overrides happen at ${peakOverrideHour}:00 — late night. This is a strong fatigue signal. Avoid making decisions after 10 PM; let your agents handle overnight operations.`;
+    } else if (peakOverrideHour >= 17 && peakOverrideHour < 22) {
+      recommendation = `Override activity peaks at ${peakOverrideHour}:00 — end of day. Consider wrapping up decision-making earlier and letting agents handle evening tasks.`;
+    } else {
+      recommendation = `Override activity peaks at ${peakOverrideHour}:00. This appears to be during normal working hours — no fatigue concern detected.`;
+    }
+
+    return { hourlyOverrides, peakOverrideHour, recommendation };
+  }
 }
 
 export const founderWellbeingService = new FounderWellbeingService();
