@@ -154,20 +154,32 @@ class AutonomyScoreService {
     // Gather metrics from cascade resolutions, overrides, and chain runs
     const metrics = await this.gatherDailyMetrics(orgId, targetDate);
 
-    // Calculate core autonomy score (0-100)
-    const autonomyScore = metrics.totalDecisions > 0
+    // Calculate core autonomy score with QUALITY weighting (not just volume)
+    // Quality = outcome verification results (positive vs negative)
+    let qualityMultiplier = 1.0;
+    try {
+      const { outcomeVerificationLoop } = await import("./outcomeVerificationLoop");
+      const verification = await outcomeVerificationLoop.verify(orgId);
+      // Quality score is 0-100 centered at 50. Convert to multiplier: 0.5-1.5
+      qualityMultiplier = Math.max(0.5, Math.min(1.5, verification.qualityScore / 100 + 0.5));
+    } catch { /* verification service may not be available yet */ }
+
+    const rawAutonomyScore = metrics.totalDecisions > 0
       ? Math.round((metrics.autonomousDecisions / metrics.totalDecisions) * 100)
-      : 100; // No decisions needed = fully autonomous
+      : 50; // No decisions = neutral (not 100!)
+
+    // Quality-adjusted autonomy score
+    const autonomyScore = Math.round(Math.min(100, rawAutonomyScore * qualityMultiplier));
 
     // Trust score: how often does the system get it right without override?
     const trustScore = metrics.totalDecisions > 0
       ? Math.round(((metrics.totalDecisions - metrics.founderOverrideCount) / metrics.totalDecisions) * 100)
-      : 100;
+      : 50; // No decisions = neutral
 
     // Founder confidence: inverse of escalation rate
     const founderConfidenceScore = metrics.totalDecisions > 0
       ? Math.round(((metrics.totalDecisions - metrics.founderEscalations) / metrics.totalDecisions) * 100)
-      : 100;
+      : 50; // No decisions = neutral
 
     // Get previous week's score for delta
     const weekAgo = new Date(new Date(targetDate).getTime() - 7 * 86400000).toISOString().split("T")[0];

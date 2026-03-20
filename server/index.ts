@@ -590,6 +590,52 @@ app.use("/api/auth", async (req, res, next) => {
         log(`Failed to import event mesh drain: ${err}`, "event-mesh");
       });
 
+      // ─── Autonomy Bootstrap: seed chains, playbooks, modes, memories, strategies ──
+      import("./services/autonomyBootstrap").then(({ bootstrapAutonomy }) => {
+        // Delay bootstrap by 30s to ensure DB migrations are complete
+        setTimeout(() => {
+          bootstrapAutonomy().catch((err: any) => {
+            log(`Autonomy bootstrap failed: ${err}`, "autonomy");
+          });
+        }, 30_000);
+      }).catch(err => {
+        log(`Failed to import autonomy bootstrap: ${err}`, "autonomy");
+      });
+
+      // ─── Agent Initiative Engine (every 30 minutes) ──
+      import("./services/agentInitiativeEngine").then(({ agentInitiativeEngine }) => {
+        log("Agent initiative engine registered (every 30m)", "initiative");
+        // Run after 5-minute startup delay, then every 30 minutes
+        setTimeout(() => {
+          // Get any org for initiative scanning (use org 1 as default)
+          agentInitiativeEngine.runInitiativeCycle(1).catch(() => {});
+          setInterval(() => {
+            agentInitiativeEngine.runInitiativeCycle(1).catch((err: any) => {
+              log(`Initiative cycle failed: ${err}`, "initiative");
+            });
+          }, 30 * 60 * 1000);
+        }, 5 * 60 * 1000);
+      }).catch(err => {
+        log(`Failed to import initiative engine: ${err}`, "initiative");
+      });
+
+      // ─── Outcome Verification Loop (daily at 2 AM UTC) ──
+      import("./services/outcomeVerificationLoop").then(({ outcomeVerificationLoop }) => {
+        log("Outcome verification loop registered (daily 2am UTC)", "outcome-verify");
+        setInterval(() => {
+          const now = new Date();
+          if (now.getUTCHours() === 2 && now.getUTCMinutes() < 5) {
+            withJobLock("outcome_verification", 55 * 60, async () => {
+              return outcomeVerificationLoop.verify(1);
+            }).catch((err: any) => {
+              log(`Outcome verification failed: ${err}`, "outcome-verify");
+            });
+          }
+        }, 5 * 60 * 1000); // Check every 5 minutes
+      }).catch(err => {
+        log(`Failed to import outcome verification: ${err}`, "outcome-verify");
+      });
+
       // Daily job health log cleanup (delete rows older than 30 days)
       const runJobHealthCleanup = async () => {
         try {
