@@ -405,14 +405,63 @@ class ReactiveOrchestrationService {
         continue;
       }
 
-      // Record successful step execution (simulated — record agent+action+input as result)
-      const stepOutput = {
-        agent: step.agentCodename,
-        action: step.action,
-        input: stepInput,
-        executedAt: new Date().toISOString(),
-        simulatedResult: `${step.agentCodename} executed ${step.action} successfully`,
-      };
+      // Execute step through the REAL execution engine (Phase A-E upgrade)
+      let stepOutput: Record<string, any>;
+      try {
+        const { executionEngine } = await import("./executionEngine");
+        const execResult = await executionEngine.execute({
+          orgId,
+          agentCodename: step.agentCodename,
+          action: step.action,
+          input: stepInput,
+          chainRunId: run.id,
+          stepIndex: i,
+        });
+        stepOutput = {
+          agent: step.agentCodename,
+          action: step.action,
+          input: stepInput,
+          executedAt: new Date().toISOString(),
+          ...execResult.output,
+          success: execResult.success,
+          sideEffects: execResult.sideEffects,
+          error: execResult.error,
+        };
+        if (!execResult.success) {
+          stepResults.push({
+            stepIndex: i,
+            agentCodename: step.agentCodename,
+            action: step.action,
+            input: stepInput,
+            status: "failed",
+            output: stepOutput,
+            durationMs: Date.now() - stepStart,
+            executedAt: new Date().toISOString(),
+            error: execResult.error,
+          });
+          break; // Stop chain on failure
+        }
+      } catch (execErr: any) {
+        stepOutput = {
+          agent: step.agentCodename,
+          action: step.action,
+          input: stepInput,
+          executedAt: new Date().toISOString(),
+          error: execErr.message,
+        };
+        stepResults.push({
+          stepIndex: i,
+          agentCodename: step.agentCodename,
+          action: step.action,
+          input: stepInput,
+          status: "failed",
+          output: stepOutput,
+          durationMs: Date.now() - stepStart,
+          executedAt: new Date().toISOString(),
+          error: execErr.message,
+        });
+        break;
+      }
 
       stepResults.push({
         stepIndex: i,

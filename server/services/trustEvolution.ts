@@ -200,6 +200,12 @@ export async function runTrustEvolution(): Promise<{
 
     updates.push({ codename: agent.codename, previousScore, newScore, delta, reason });
 
+    // Trust-Based Authority Escalation: automatically unlock capabilities on threshold crossing
+    try {
+      const { trustAuthorityEscalation } = await import("./trustAuthorityEscalation");
+      await trustAuthorityEscalation.onThresholdCrossed(agent.codename, previousScore, newScore);
+    } catch {}
+
     // Check for promotion thresholds
     const crossedUp = (threshold: number) => previousScore < threshold && newScore >= threshold;
     const crossedDown = (threshold: number) => previousScore >= threshold && newScore < threshold;
