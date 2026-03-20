@@ -296,10 +296,97 @@ async function logAgentAction(ctx: ExecutionContext, eventType: string, payload:
   } catch { /* best effort */ }
 }
 
+// ─── Rate Limiter ────────────────────────────────────────────────────────────
+
+const executionCounts: Map<string, { count: number; resetAt: number }> = new Map();
+const MAX_ACTIONS_PER_HOUR = 100;
+const MAX_ACTIONS_PER_AGENT_PER_HOUR = 30;
+
+function checkRateLimit(agentCodename: string): { allowed: boolean; reason?: string } {
+  const now = Date.now();
+  const hourMs = 60 * 60 * 1000;
+
+  // Global rate limit
+  const globalKey = "__global__";
+  const globalEntry = executionCounts.get(globalKey);
+  if (globalEntry && now < globalEntry.resetAt) {
+    if (globalEntry.count >= MAX_ACTIONS_PER_HOUR) {
+      return { allowed: false, reason: `Global rate limit exceeded (${MAX_ACTIONS_PER_HOUR}/hr)` };
+    }
+  } else {
+    executionCounts.set(globalKey, { count: 0, resetAt: now + hourMs });
+  }
+
+  // Per-agent rate limit
+  const agentEntry = executionCounts.get(agentCodename);
+  if (agentEntry && now < agentEntry.resetAt) {
+    if (agentEntry.count >= MAX_ACTIONS_PER_AGENT_PER_HOUR) {
+      return { allowed: false, reason: `Agent ${agentCodename} rate limit exceeded (${MAX_ACTIONS_PER_AGENT_PER_HOUR}/hr)` };
+    }
+  } else {
+    executionCounts.set(agentCodename, { count: 0, resetAt: now + hourMs });
+  }
+
+  // Increment counters
+  const g = executionCounts.get(globalKey)!;
+  g.count++;
+  const a = executionCounts.get(agentCodename)!;
+  a.count++;
+
+  return { allowed: true };
+}
+
 // ─── Safety Gate Pre-Execution Validation ────────────────────────────────────
 
-async function validateSafetyGates(ctx: ExecutionContext): Promise<{ passed: boolean; violations: string[] }> {
+async function validateSafetyGates(ctx: ExecutionContext): Promise<{ passed: boolean; violations: string[]; suggestedAlternatives?: string[] }> {
   const violations: string[] = [];
+  const suggestedAlternatives: string[] = [];
+
+  // Rate limit check
+  const rateCheck = checkRateLimit(ctx.agentCodename);
+  if (!rateCheck.allowed) {
+    violations.push(rateCheck.reason!);
+    suggestedAlternatives.push("Wait for rate limit reset, or reduce action frequency");
+  }
+
+  // Governance Brain policy enforcement — the critical missing piece
+  const highImpactActions = ["advance_deal_stage", "flag_deal_risk", "send_churn_intervention", "activate_degradation_mode"];
+  if (highImpactActions.includes(ctx.action)) {
+    try {
+      const { governanceBrainService } = await import("./governanceBrainV13");
+      const evaluation = await governanceBrainService.evaluateAction({
+        actionId: `exec_${Date.now()}_${ctx.agentCodename}`,
+        agentCodename: ctx.agentCodename,
+        actionType: ctx.action,
+        actionContext: { ...ctx.input, orgId: ctx.orgId },
+        orgId: ctx.orgId,
+      });
+      if (evaluation.overallResult === "blocked") {
+        violations.push(`Governance policy blocked: ${evaluation.explanation}`);
+        suggestedAlternatives.push(
+          "Escalate to founder for policy exception",
+          "Use escalate_to_founder action instead",
+          "Reduce action scope to comply with policy",
+        );
+      }
+    } catch { /* governance brain may not be available */ }
+  }
+
+  // Trust-based authority check
+  try {
+    const { trustAuthorityEscalation } = await import("./trustAuthorityEscalation");
+    const { companyAgentService } = await import("./companyAgents");
+    const agent = await companyAgentService.getByCodename(ctx.agentCodename);
+    const trustScore = agent?.trustScore ?? 50;
+    if (!trustAuthorityEscalation.isActionAllowed(trustScore, ctx.action)) {
+      violations.push(`Agent ${ctx.agentCodename} (trust: ${trustScore}) not authorized for action ${ctx.action}`);
+      const tier = trustAuthorityEscalation.getTier(trustScore);
+      suggestedAlternatives.push(
+        `Current tier: ${tier.label}. Allowed actions: ${tier.allowedActions.join(", ")}`,
+        `Use escalate_to_founder to request this action be performed`,
+      );
+    }
+  } catch { /* trust service may not be available */ }
 
   // Financial actions require delegation token check
   const financialActions = ["advance_deal_stage", "flag_deal_risk"];
@@ -309,6 +396,7 @@ async function validateSafetyGates(ctx: ExecutionContext): Promise<{ passed: boo
       const check = await delegationTokenService.checkDelegation(ctx.agentCodename, ctx.action);
       if (!check?.allowed) {
         violations.push(`No delegation token for ${ctx.agentCodename} to perform ${ctx.action}`);
+        suggestedAlternatives.push("Request delegation token from founder");
       }
     } catch { /* delegation service may not be available */ }
   }
@@ -321,12 +409,13 @@ async function validateSafetyGates(ctx: ExecutionContext): Promise<{ passed: boo
         const amount = parseFloat(String(deal.offerAmount));
         if (amount > 50000) {
           violations.push(`Deal ${ctx.input.dealId} amount $${amount.toLocaleString()} exceeds $50K auto-approve threshold`);
+          suggestedAlternatives.push("Escalate to founder for high-value deal approval");
         }
       }
     } catch {}
   }
 
-  return { passed: violations.length === 0, violations };
+  return { passed: violations.length === 0, violations, suggestedAlternatives };
 }
 
 // ─── Main Execution Function ─────────────────────────────────────────────────
@@ -350,11 +439,12 @@ class AutonomousExecutionEngine {
         error: `Safety gate violations: ${gates.violations.join("; ")}`,
       };
 
-      // Escalate to founder instead of silently failing
+      // Escalate to founder with suggested alternatives
       wsServer.broadcastFounderEvent("safety_gate_blocked", {
         agent: ctx.agentCodename,
         action: ctx.action,
         violations: gates.violations,
+        suggestedAlternatives: gates.suggestedAlternatives ?? [],
       });
 
       await this.recordOutcome(ctx, result);

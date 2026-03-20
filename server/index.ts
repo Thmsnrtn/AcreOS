@@ -590,6 +590,42 @@ app.use("/api/auth", async (req, res, next) => {
         log(`Failed to import event mesh drain: ${err}`, "event-mesh");
       });
 
+      // ─── Final Mile: Daily Summary, Delegation Check, Retry Queue, Consensus Exec ──
+      import("./services/autonomyFinalMile").then(({
+        generateDailyAutonomousSummary,
+        checkDelegationCompletions,
+        retryFailedActions,
+        executeResolvedConsensus,
+      }) => {
+        // Daily autonomous summary at 7 AM UTC (2 AM CT)
+        setInterval(() => {
+          const now = new Date();
+          if (now.getUTCHours() === 7 && now.getUTCMinutes() < 5) {
+            withJobLock("daily_autonomous_summary", 55 * 60, generateDailyAutonomousSummary)
+              .catch((err: any) => log(`Daily summary failed: ${err}`, "autonomy"));
+          }
+        }, 5 * 60 * 1000);
+
+        // Delegation auto-completion check (every 15 minutes)
+        setInterval(() => {
+          checkDelegationCompletions().catch(() => {});
+        }, 15 * 60 * 1000);
+
+        // Retry failed actions (every 30 minutes)
+        setInterval(() => {
+          retryFailedActions().catch(() => {});
+        }, 30 * 60 * 1000);
+
+        // Consensus auto-execution (every 5 minutes)
+        setInterval(() => {
+          executeResolvedConsensus().catch(() => {});
+        }, 5 * 60 * 1000);
+
+        log("Final mile autonomy jobs registered (summary/delegation/retry/consensus)", "autonomy");
+      }).catch(err => {
+        log(`Failed to import final mile: ${err}`, "autonomy");
+      });
+
       // ─── Autonomy Bootstrap: seed chains, playbooks, modes, memories, strategies ──
       import("./services/autonomyBootstrap").then(({ bootstrapAutonomy }) => {
         // Delay bootstrap by 30s to ensure DB migrations are complete
