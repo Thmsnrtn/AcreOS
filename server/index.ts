@@ -133,6 +133,10 @@ async function withJobLock<T>(
       status: "failed",
       errorMessage: err?.message ?? String(err),
     }).catch(() => {/* best effort */});
+    // Phase B: Publish job failure to event mesh for real-time alerts
+    import("./services/eventMeshPublisher").then(({ eventMeshPublisher }) => {
+      eventMeshPublisher.jobFailed(jobName, err?.message ?? String(err), { durationMs }).catch(() => {});
+    }).catch(() => {});
     throw err;
   } finally {
     await storage.releaseJobLock(jobName, instanceId);
@@ -567,6 +571,23 @@ app.use("/api/auth", async (req, res, next) => {
         log("Founder digest job registered (hourly check, sends at 8 AM CST)", "founder-digest");
       }).catch(err => {
         log(`Failed to start founder digest job: ${err}`, "founder-digest");
+      });
+
+      // ─── Phase B: Event Mesh Drain (every 10 seconds) ──────────────────
+      import("./services/eventMeshDrain").then(({ eventMeshDrain }) => {
+        // Initialize subscribers first, then start drain loop
+        eventMeshDrain.initialize().then(() => {
+          log("Event mesh drain initialized — draining every 10s", "event-mesh");
+          setInterval(() => {
+            eventMeshDrain.drain().catch((err: any) => {
+              log(`Event mesh drain error: ${err}`, "event-mesh");
+            });
+          }, 10_000);
+        }).catch((err: any) => {
+          log(`Event mesh drain init failed: ${err}`, "event-mesh");
+        });
+      }).catch(err => {
+        log(`Failed to import event mesh drain: ${err}`, "event-mesh");
       });
 
       // Daily job health log cleanup (delete rows older than 30 days)
@@ -1465,7 +1486,15 @@ function startCompanyBriefingJob() {
     // 11:45 UTC = 6:45 AM CT
     if (utcHour === 11 && utcMin >= 45 && utcMin < 50) {
       import('./services/companyBriefingGenerator').then(({ generateCompanyBriefing }) => {
-        withJobLock('company_briefing_generator', TTL_SECONDS, generateCompanyBriefing).catch(err => {
+        withJobLock('company_briefing_generator', TTL_SECONDS, async () => {
+          const result = await generateCompanyBriefing();
+          // Phase B+C: Publish briefing event + broadcast via WebSocket
+          import('./services/eventMeshPublisher').then(({ eventMeshPublisher }) => {
+            eventMeshPublisher.briefingReady(0, { type: 'morning', highlights: 'Daily briefing generated' }).catch(() => {});
+          }).catch(() => {});
+          wsServer.broadcast('founder:activity', 'briefing_ready', { type: 'morning', timestamp: new Date().toISOString() });
+          return result;
+        }).catch(err => {
           log(`Company briefing generation failed: ${err}`, 'sovereign');
         });
       }).catch(err => log(`Company briefing import failed: ${err}`, 'sovereign'));

@@ -1089,6 +1089,12 @@ export async function registerRoutes(
     registerFounderV14Routes(app);
   }
 
+  // Sovereign Protocol Integration — Phases A-E (job health, event mesh drain, notifications, collaboration)
+  {
+    const { registerSovereignIntegrationRoutes } = await import("./routes-sovereign-integration");
+    registerSovereignIntegrationRoutes(app);
+  }
+
   // Epic H: Auto-Delinquent Scraper route
   app.post('/api/import/auto-delinquent', isAuthenticated, getOrCreateOrg, async (req, res) => {
     const { county, state } = req.body as { county: string; state: string };
