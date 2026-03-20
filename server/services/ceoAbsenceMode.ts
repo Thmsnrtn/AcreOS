@@ -452,6 +452,71 @@ Write a brief, scannable return briefing. Start with the most important thing. U
       return `Welcome back. You were away for ${hoursAway} hours. ${emergencyBreaks.length} emergencies handled. ${batchedItems.length} items batched for your review.`;
     }
   }
+
+  // ─── Phase 20: Mission Mode Transition ──────────────────────────────────
+
+  /**
+   * Transition from CEO Absence Mode to permanent Mission Mode (Sovereign Mode).
+   * This hands full governance to the AI Board of Directors with the mission
+   * statement as the top-level directive.
+   *
+   * Only things that LEGALLY require a human signature remain founder-dependent:
+   * - Contracts >$50K
+   * - Litigation responses
+   * - Regulatory disputes
+   * - Tax returns requiring personal signature
+   * - Banking relationship changes (KYC)
+   */
+  async transitionToMissionMode(missionStatement: string): Promise<{ success: boolean; message: string }> {
+    try {
+      // 1. Verify board exists and is functional
+      const { aiBoardOfDirectors } = await import("./aiBoardOfDirectors");
+
+      // 2. Seed constitutional principles if not already present
+      await aiBoardOfDirectors.seedConstitutionalPrinciples();
+
+      // 3. Activate mission mode via sovereignty engine
+      const { permanentSovereignty } = await import("./permanentSovereignty");
+      await permanentSovereignty.activateMissionMode(missionStatement);
+
+      // 4. Permanently boost all agent trust to maximum operational levels
+      const agents = await companyAgentService.getAll();
+      for (const agent of agents) {
+        const newTrust = Math.min(100, agent.trustScore + 25);
+        await companyAgentService.updateTrustScore(agent.codename, newTrust - agent.trustScore);
+      }
+
+      // 5. Initialize financial authority budgets
+      try {
+        const { financialAuthorityGate } = await import("./financialAuthorityGate");
+        await financialAuthorityGate.initializeBudgets();
+      } catch {}
+
+      // 6. Seed legal templates
+      try {
+        const { legalAutonomyEngine } = await import("./legalAutonomyEngine");
+        await legalAutonomyEngine.seedDefaultTemplates();
+      } catch {}
+
+      // 7. Seed crisis tradeoffs
+      try {
+        const { crisisLeadershipEngine } = await import("./crisisLeadershipEngine");
+        await crisisLeadershipEngine.seedTradeoffs();
+      } catch {}
+
+      console.log("[CEOAbsence] Transitioned to Mission Mode (Permanent Sovereignty)");
+
+      return {
+        success: true,
+        message: `Mission Mode activated. The AI Board of Directors now governs AcreOS under the mission: "${missionStatement}". Only legally-required human actions remain founder-dependent.`,
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: `Failed to transition to Mission Mode: ${err.message}`,
+      };
+    }
+  }
 }
 
 export const ceoAbsenceService = new CEOAbsenceService();

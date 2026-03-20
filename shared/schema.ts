@@ -13712,3 +13712,414 @@ export type FounderIntentEntry = typeof founderIntents.$inferSelect;
 export type IntentProgressLogEntry = typeof intentProgressLogs.$inferSelect;
 export type AutonomyScoreSnapshotEntry = typeof autonomyScoreSnapshots.$inferSelect;
 export type FounderDependencyEventEntry = typeof founderDependencyEvents.$inferSelect;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Phases 6-20: Sovereign Company Protocol — Full Autonomy Tables
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── Phase 11: Graduated Financial Authority ─────────────────────────────────
+
+export const financialApprovals = pgTable("financial_approvals", {
+  id: serial("id").primaryKey(),
+  requestId: text("request_id").notNull().unique(),
+  requestedBy: text("requested_by").notNull(),
+  amount: integer("amount_cents").notNull(),
+  tier: integer("tier").notNull(),
+  purpose: text("purpose").notNull(),
+  category: text("category").notNull(),
+  approvers: jsonb("approvers").$type<string[]>().default([]),
+  approvalStatus: jsonb("approval_status").$type<Record<string, { approved: boolean; timestamp: string; reasoning: string }>>().default({}),
+  requiredApprovers: integer("required_approvers").notNull(),
+  coolingPeriodEnds: timestamp("cooling_period_ends"),
+  status: text("status").notNull().default("pending"),
+  executedAt: timestamp("executed_at"),
+  reasoning: text("reasoning"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("fa_status_idx").on(table.status),
+  index("fa_requested_by_idx").on(table.requestedBy),
+  index("fa_tier_idx").on(table.tier),
+]);
+
+export const agentBudgetEnvelopes = pgTable("agent_budget_envelopes", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull(),
+  monthKey: text("month_key").notNull(),
+  budgetCents: integer("budget_cents").notNull(),
+  spentCents: integer("spent_cents").notNull().default(0),
+  category: text("category").notNull().default("general"),
+  autoApproveUnderCents: integer("auto_approve_under_cents").default(50000),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("abe_agent_month_idx").on(table.agentCodename, table.monthKey),
+]);
+
+export const spendAnomalies = pgTable("spend_anomalies", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull(),
+  amountCents: integer("amount_cents").notNull(),
+  expectedCents: integer("expected_cents").notNull(),
+  deviationSigma: real("deviation_sigma").notNull(),
+  peerReviewStatus: text("peer_review_status").default("pending"),
+  reviewingAgents: jsonb("reviewing_agents").$type<string[]>().default([]),
+  resolution: text("resolution"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("sa_agent_idx").on(table.agentCodename),
+]);
+
+// ─── Phase 12: Legal Autonomy Engine ─────────────────────────────────────────
+
+export const legalActions = pgTable("legal_actions", {
+  id: serial("id").primaryKey(),
+  actionId: text("action_id").notNull().unique(),
+  actionType: text("action_type").notNull(),
+  category: text("category").notNull(),
+  tier: text("tier").notNull(),
+  riskScore: integer("risk_score").notNull(),
+  templateId: text("template_id"),
+  requestedBy: text("requested_by").notNull(),
+  counterparty: text("counterparty"),
+  valueAtStakeCents: integer("value_at_stake_cents"),
+  status: text("status").notNull().default("pending"),
+  executedAt: timestamp("executed_at"),
+  reviewedBy: jsonb("reviewed_by").$type<string[]>().default([]),
+  outcome: text("outcome"),
+  reasoning: text("reasoning"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("la_status_idx").on(table.status),
+  index("la_tier_idx").on(table.tier),
+]);
+
+export const contractTemplates = pgTable("contract_templates", {
+  id: serial("id").primaryKey(),
+  templateId: text("template_id").notNull().unique(),
+  name: text("name").notNull(),
+  category: text("category").notNull(),
+  content: text("content").notNull(),
+  variables: jsonb("variables").$type<string[]>().default([]),
+  maxValueCents: integer("max_value_cents"),
+  requiresReview: boolean("requires_review").default(false),
+  approvedBy: text("approved_by"),
+  version: integer("version").notNull().default(1),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const regulatoryFilingCalendar = pgTable("regulatory_filing_calendar", {
+  id: serial("id").primaryKey(),
+  filingType: text("filing_type").notNull(),
+  jurisdiction: text("jurisdiction").notNull(),
+  dueDate: timestamp("due_date").notNull(),
+  recurrence: text("recurrence").notNull().default("annual"),
+  templateId: text("template_id"),
+  status: text("status").notNull().default("upcoming"),
+  filedAt: timestamp("filed_at"),
+  filedBy: text("filed_by"),
+  confirmationRef: text("confirmation_ref"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("rfc_due_date_idx").on(table.dueDate),
+  index("rfc_status_idx").on(table.status),
+]);
+
+// ─── Phase 14: AI Board of Directors ─────────────────────────────────────────
+
+export const boardMeetings = pgTable("board_meetings", {
+  id: serial("id").primaryKey(),
+  meetingId: text("meeting_id").notNull().unique(),
+  meetingType: text("meeting_type").notNull().default("weekly"),
+  status: text("status").notNull().default("scheduled"),
+  scheduledAt: timestamp("scheduled_at").notNull(),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  agendaItems: jsonb("agenda_items").$type<Array<{ topic: string; presenter: string; priority: number }>>().default([]),
+  attendees: jsonb("attendees").$type<string[]>().default([]),
+  kpiSnapshot: jsonb("kpi_snapshot").$type<Record<string, any>>().default({}),
+  summary: text("summary"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("bm_status_idx").on(table.status),
+  index("bm_scheduled_idx").on(table.scheduledAt),
+]);
+
+export const boardVotes = pgTable("board_votes", {
+  id: serial("id").primaryKey(),
+  meetingId: text("meeting_id").notNull(),
+  proposalId: text("proposal_id").notNull(),
+  proposal: text("proposal").notNull(),
+  proposalType: text("proposal_type").notNull(),
+  votingAgents: jsonb("voting_agents").$type<string[]>().default([]),
+  votes: jsonb("votes").$type<Array<{ agentCodename: string; vote: "for" | "against" | "abstain"; reasoning: string; weight: number }>>().default([]),
+  requiredMajority: real("required_majority").notNull().default(0.7),
+  result: text("result"),
+  executedAt: timestamp("executed_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("bv_meeting_idx").on(table.meetingId),
+  index("bv_proposal_idx").on(table.proposalId),
+]);
+
+export const boardDecisions = pgTable("board_decisions", {
+  id: serial("id").primaryKey(),
+  decisionId: text("decision_id").notNull().unique(),
+  meetingId: text("meeting_id"),
+  category: text("category").notNull(),
+  description: text("description").notNull(),
+  voteSummary: jsonb("vote_summary").$type<{ for: number; against: number; abstain: number }>().default({ for: 0, against: 0, abstain: 0 }),
+  passed: boolean("passed").notNull(),
+  executionPlan: text("execution_plan"),
+  executedAt: timestamp("executed_at"),
+  executionResult: text("execution_result"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => [
+  index("bd_category_idx").on(table.category),
+]);
+
+export const constitutionalPrinciples = pgTable("constitutional_principles", {
+  id: serial("id").primaryKey(),
+  principleId: text("principle_id").notNull().unique(),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  category: text("category").notNull(),
+  isImmutable: boolean("is_immutable").notNull().default(true),
+  enforcementLevel: text("enforcement_level").notNull().default("block"),
+  violationCount: integer("violation_count").notNull().default(0),
+  lastViolationAt: timestamp("last_violation_at"),
+  amendmentRequires: real("amendment_requires").notNull().default(0.9),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const strategicPlans = pgTable("strategic_plans", {
+  id: serial("id").primaryKey(),
+  planId: text("plan_id").notNull().unique(),
+  title: text("title").notNull(),
+  quarter: text("quarter").notNull(),
+  objectives: jsonb("objectives").$type<Array<{ objective: string; keyResults: string[]; owner: string; status: string }>>().default([]),
+  approvedByBoard: boolean("approved_by_board").default(false),
+  boardMeetingId: text("board_meeting_id"),
+  status: text("status").notNull().default("draft"),
+  progressPercent: integer("progress_percent").default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// ─── Phase 16: Product Evolution Engine ──────────────────────────────────────
+
+export const productSpecifications = pgTable("product_specifications", {
+  id: serial("id").primaryKey(),
+  specId: text("spec_id").notNull().unique(),
+  title: text("title").notNull(),
+  userStories: jsonb("user_stories").$type<Array<{ story: string; acceptanceCriteria: string[] }>>().default([]),
+  technicalRequirements: jsonb("technical_requirements").$type<string[]>().default([]),
+  complianceRequirements: jsonb("compliance_requirements").$type<string[]>().default([]),
+  revenueImpactEstimate: text("revenue_impact_estimate"),
+  effortEstimate: text("effort_estimate"),
+  demandScore: integer("demand_score").default(0),
+  sourceFeatureRequestIds: jsonb("source_feature_request_ids").$type<number[]>().default([]),
+  status: text("status").notNull().default("draft"),
+  approvedByBoard: boolean("approved_by_board").default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const buildBuyDecisions = pgTable("build_buy_decisions", {
+  id: serial("id").primaryKey(),
+  capabilityGap: text("capability_gap").notNull(),
+  buildEstimate: jsonb("build_estimate").$type<{ effortWeeks: number; costCents: number; risk: string }>(),
+  buyOptions: jsonb("buy_options").$type<Array<{ vendor: string; costCents: number; pros: string[]; cons: string[] }>>().default([]),
+  partnerOptions: jsonb("partner_options").$type<Array<{ partner: string; terms: string; pros: string[]; cons: string[] }>>().default([]),
+  recommendation: text("recommendation"),
+  decision: text("decision"),
+  decidedBy: text("decided_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const featureImpactScores = pgTable("feature_impact_scores", {
+  id: serial("id").primaryKey(),
+  featureName: text("feature_name").notNull(),
+  deployedAt: timestamp("deployed_at").notNull(),
+  adoptionRate: real("adoption_rate"),
+  retentionImpact: real("retention_impact"),
+  revenueImpactCents: integer("revenue_impact_cents"),
+  supportImpact: real("support_impact"),
+  overallScore: real("overall_score"),
+  measuredAt: timestamp("measured_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// ─── Phase 18: Agent Evolution & Meta-Learning ───────────────────────────────
+
+export const agentPromptEvolutions = pgTable("agent_prompt_evolutions", {
+  id: serial("id").primaryKey(),
+  agentCodename: text("agent_codename").notNull(),
+  currentPromptHash: text("current_prompt_hash").notNull(),
+  proposedPrompt: text("proposed_prompt").notNull(),
+  proposalReason: text("proposal_reason").notNull(),
+  performanceDataBefore: jsonb("performance_data_before").$type<Record<string, number>>().default({}),
+  performanceDataAfter: jsonb("performance_data_after").$type<Record<string, number>>(),
+  abTestId: text("ab_test_id"),
+  status: text("status").notNull().default("proposed"),
+  approvedByBoard: boolean("approved_by_board").default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const agentSpawnProposals = pgTable("agent_spawn_proposals", {
+  id: serial("id").primaryKey(),
+  proposalId: text("proposal_id").notNull().unique(),
+  proposedBy: text("proposed_by").notNull(),
+  codename: text("codename").notNull(),
+  title: text("title").notNull(),
+  wing: text("wing").notNull(),
+  personalityPrompt: text("personality_prompt").notNull(),
+  ownedServices: jsonb("owned_services").$type<string[]>().default([]),
+  capabilityGap: text("capability_gap").notNull(),
+  justification: text("justification").notNull(),
+  boardVoteId: text("board_vote_id"),
+  status: text("status").notNull().default("proposed"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const metaLearningInsights = pgTable("meta_learning_insights", {
+  id: serial("id").primaryKey(),
+  insightId: text("insight_id").notNull().unique(),
+  pattern: text("pattern").notNull(),
+  correlatedOutcome: text("correlated_outcome").notNull(),
+  confidence: real("confidence").notNull(),
+  sampleSize: integer("sample_size").notNull(),
+  affectedAgents: jsonb("affected_agents").$type<string[]>().default([]),
+  recommendation: text("recommendation"),
+  appliedAt: timestamp("applied_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// ─── Phase 19: Crisis Leadership & Antifragility ─────────────────────────────
+
+export const preAuthorizedTradeoffs = pgTable("pre_authorized_tradeoffs", {
+  id: serial("id").primaryKey(),
+  tradeoffId: text("tradeoff_id").notNull().unique(),
+  condition: text("condition").notNull(),
+  action: text("action").notNull(),
+  severity: text("severity").notNull(),
+  autoExecute: boolean("auto_execute").notNull().default(true),
+  executionCount: integer("execution_count").notNull().default(0),
+  lastExecutedAt: timestamp("last_executed_at"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const crisisPlaybooks = pgTable("crisis_playbooks", {
+  id: serial("id").primaryKey(),
+  playbookId: text("playbook_id").notNull().unique(),
+  crisisType: text("crisis_type").notNull(),
+  steps: jsonb("steps").$type<Array<{ action: string; owner: string; timeframe: string; priority: number }>>().default([]),
+  communicationPlan: jsonb("communication_plan").$type<Array<{ channel: string; audience: string; template: string }>>().default([]),
+  financialProtocol: jsonb("financial_protocol").$type<{ freezeDiscretionary: boolean; activateRetention: boolean; maxEmergencySpendCents: number }>(),
+  lastUsedAt: timestamp("last_used_at"),
+  usageCount: integer("usage_count").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// ─── Phase 20: Permanent Sovereignty ─────────────────────────────────────────
+
+export const missionStatements = pgTable("mission_statements", {
+  id: serial("id").primaryKey(),
+  statement: text("statement").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  adoptedAt: timestamp("adopted_at").notNull().defaultNow(),
+  adoptedByBoard: boolean("adopted_by_board").default(false),
+  boardMeetingId: text("board_meeting_id"),
+  previousStatementId: integer("previous_statement_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const regulatoryFeeds = pgTable("regulatory_feeds", {
+  id: serial("id").primaryKey(),
+  feedId: text("feed_id").notNull().unique(),
+  source: text("source").notNull(),
+  title: text("title").notNull(),
+  summary: text("summary").notNull(),
+  impactAssessment: text("impact_assessment"),
+  urgency: text("urgency").notNull().default("low"),
+  affectedAreas: jsonb("affected_areas").$type<string[]>().default([]),
+  actionRequired: text("action_required"),
+  actionTaken: text("action_taken"),
+  status: text("status").notNull().default("new"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => [
+  index("rf_status_idx").on(table.status),
+  index("rf_urgency_idx").on(table.urgency),
+]);
+
+export const marketAdaptations = pgTable("market_adaptations", {
+  id: serial("id").primaryKey(),
+  adaptationId: text("adaptation_id").notNull().unique(),
+  signalType: text("signal_type").notNull(),
+  signal: text("signal").notNull(),
+  analysis: text("analysis").notNull(),
+  proposedAction: text("proposed_action"),
+  boardDecisionId: text("board_decision_id"),
+  status: text("status").notNull().default("detected"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const selfAuditReports = pgTable("self_audit_reports", {
+  id: serial("id").primaryKey(),
+  reportId: text("report_id").notNull().unique(),
+  auditType: text("audit_type").notNull(),
+  period: text("period").notNull(),
+  findings: jsonb("findings").$type<Array<{ area: string; status: string; details: string; severity: string }>>().default([]),
+  overallScore: integer("overall_score").notNull(),
+  recommendations: jsonb("recommendations").$type<string[]>().default([]),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const perpetualOpsChecks = pgTable("perpetual_ops_checks", {
+  id: serial("id").primaryKey(),
+  checkType: text("check_type").notNull(),
+  status: text("status").notNull(),
+  details: jsonb("details").$type<Record<string, any>>().default({}),
+  nextCheckAt: timestamp("next_check_at"),
+  lastPassedAt: timestamp("last_passed_at"),
+  failureCount: integer("failure_count").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// ─── Phase 6-20 Inferred Types ───────────────────────────────────────────────
+
+export type FinancialApproval = typeof financialApprovals.$inferSelect;
+export type InsertFinancialApproval = typeof financialApprovals.$inferInsert;
+export type AgentBudgetEnvelope = typeof agentBudgetEnvelopes.$inferSelect;
+export type SpendAnomaly = typeof spendAnomalies.$inferSelect;
+export type LegalAction = typeof legalActions.$inferSelect;
+export type ContractTemplate = typeof contractTemplates.$inferSelect;
+export type RegulatoryFilingEntry = typeof regulatoryFilingCalendar.$inferSelect;
+export type BoardMeeting = typeof boardMeetings.$inferSelect;
+export type BoardVote = typeof boardVotes.$inferSelect;
+export type BoardDecision = typeof boardDecisions.$inferSelect;
+export type ConstitutionalPrinciple = typeof constitutionalPrinciples.$inferSelect;
+export type StrategicPlan = typeof strategicPlans.$inferSelect;
+export type ProductSpecification = typeof productSpecifications.$inferSelect;
+export type BuildBuyDecision = typeof buildBuyDecisions.$inferSelect;
+export type FeatureImpactScore = typeof featureImpactScores.$inferSelect;
+export type AgentPromptEvolution = typeof agentPromptEvolutions.$inferSelect;
+export type AgentSpawnProposal = typeof agentSpawnProposals.$inferSelect;
+export type MetaLearningInsight = typeof metaLearningInsights.$inferSelect;
+export type PreAuthorizedTradeoff = typeof preAuthorizedTradeoffs.$inferSelect;
+export type CrisisPlaybook = typeof crisisPlaybooks.$inferSelect;
+export type MissionStatement = typeof missionStatements.$inferSelect;
+export type RegulatoryFeed = typeof regulatoryFeeds.$inferSelect;
+export type MarketAdaptation = typeof marketAdaptations.$inferSelect;
+export type SelfAuditReport = typeof selfAuditReports.$inferSelect;
+export type PerpetualOpsCheck = typeof perpetualOpsChecks.$inferSelect;

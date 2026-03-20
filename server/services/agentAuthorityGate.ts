@@ -44,7 +44,7 @@ export interface AuthorityCheck {
 
 export interface ActionExecution {
   agentCodename: string;
-  actionType: "skill" | "goal" | "reaction" | "report" | "chat" | "decision" | "proactive";
+  actionType: "skill" | "goal" | "reaction" | "report" | "chat" | "decision" | "proactive" | "financial_approval" | "legal_action" | "board_vote" | "crisis_response";
   actionName: string;
   input: Record<string, any>;
   output?: any;
@@ -265,6 +265,27 @@ export async function executeWithAuthority(
     });
 
     return { success: false, escalated: true, logId };
+  }
+
+  // v14: Constitutional compliance check before execution
+  try {
+    const { aiBoardOfDirectors } = await import("./aiBoardOfDirectors");
+    const constitutionalCheck = await aiBoardOfDirectors.checkConstitutionalCompliance(action, {
+      agentCodename: codename,
+      trustScore: auth.currentTrust,
+      ...metadata,
+    });
+    if (constitutionalCheck.violated) {
+      const logId = await logAction({
+        ...baseLog,
+        outcome: "escalated",
+        reasoning: `Constitutional violation: ${constitutionalCheck.principle}. ${constitutionalCheck.reasoning}`,
+        durationMs: Date.now() - startTime,
+      } as ActionExecution);
+      return { success: false, escalated: true, logId };
+    }
+  } catch {
+    // Constitutional check unavailable — proceed with normal execution
   }
 
   // Level 0 or 1 — execute
