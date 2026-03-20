@@ -51,50 +51,81 @@ interface StepExecutionResult {
   error?: string;
 }
 
-// ─── Simulated Step Execution ─────────────────────────────────────────────────
+// ─── Real Step Execution via Execution Engine ────────────────────────────────
 
 async function executeStep(step: SagaStep): Promise<StepExecutionResult> {
-  // Simulated execution: log the action and return success most of the time
   console.log(
     `[saga] Executing step ${step.order}: ${step.agent} → ${step.action}`,
   );
 
-  // ~10% chance of failure for simulation
-  const success = Math.random() > 0.1;
+  try {
+    const { executionEngine } = await import("./executionEngine");
+    const result = await executionEngine.execute({
+      orgId: 0, // Sagas are system-level; orgId resolved from context
+      agentCodename: step.agent,
+      action: step.action,
+      input: (step as any).input ?? {},
+    });
 
-  if (success) {
+    if (result.success) {
+      return {
+        success: true,
+        result: {
+          executedAt: new Date().toISOString(),
+          agent: step.agent,
+          action: step.action,
+          ...result.output,
+          sideEffects: result.sideEffects,
+          durationMs: result.durationMs,
+        },
+      };
+    }
+
     return {
-      success: true,
-      result: {
-        executedAt: new Date().toISOString(),
-        agent: step.agent,
-        action: step.action,
-        simulated: true,
-      },
+      success: false,
+      error: result.error ?? `Failed executing ${step.action} for ${step.agent}`,
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      error: err.message ?? `Exception executing ${step.action}`,
     };
   }
-
-  return {
-    success: false,
-    error: `Simulated failure executing ${step.action} for ${step.agent}`,
-  };
 }
 
 async function executeCompensation(step: SagaStep): Promise<StepExecutionResult> {
-  // Simulated compensation: log the compensating action
   console.log(
     `[saga] Compensating step ${step.order}: ${step.agent} → ${step.compensatingAction}`,
   );
 
-  return {
-    success: true,
-    result: {
-      compensatedAt: new Date().toISOString(),
-      agent: step.agent,
-      compensatingAction: step.compensatingAction,
-      simulated: true,
-    },
-  };
+  if (!step.compensatingAction) {
+    return { success: true, result: { note: "No compensation defined", agent: step.agent } };
+  }
+
+  try {
+    const { executionEngine } = await import("./executionEngine");
+    const result = await executionEngine.execute({
+      orgId: 0,
+      agentCodename: step.agent,
+      action: step.compensatingAction,
+      input: (step as any).compensationInput ?? {},
+    });
+
+    return {
+      success: result.success,
+      result: {
+        compensatedAt: new Date().toISOString(),
+        agent: step.agent,
+        compensatingAction: step.compensatingAction,
+        ...result.output,
+      },
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      error: err.message ?? `Compensation failed: ${step.compensatingAction}`,
+    };
+  }
 }
 
 // ─── Service ──────────────────────────────────────────────────────────────────

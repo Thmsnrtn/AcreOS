@@ -267,12 +267,14 @@ class ConfidenceCascadeService {
       const successRate = relevant.length / episodes.length;
 
       if (relevant.length >= 3 && successRate > 0.7) {
+        // Dynamic boost: scale with signal strength (not hardcoded 20)
+        const dynamicBoost = Math.round(20 * successRate * Math.min(relevant.length / 3, 1.5));
         return this.buildLayerResult("memory_lookup", 0, currentConfidence, start, "resolved", {
           matchingEpisodes: episodes.length,
           successfulEpisodes: relevant.length,
           successRate,
-          boost: 20,
-        }, 20);
+          boost: dynamicBoost,
+        }, Math.min(dynamicBoost, 30));
       }
 
       // Partial signal — some relevant memories but not enough for a strong boost
