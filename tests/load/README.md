@@ -97,3 +97,97 @@ k6 run tests/load/k6-marketplace-bids.js \
 Add a new scenario to `k6-baseline.js` under `options.scenarios` and a corresponding
 `group()` in the default function. Tag AI endpoints with `{ tags: { endpoint: "ai" } }`
 so they get the 2s threshold applied.
+
+---
+
+## 10K+ Scale Test Suite
+
+Tests designed for 10,000+ concurrent users across the entire AcreOS platform.
+Supports distributed k6 (multiple instances) and k6 Cloud.
+
+### Architecture
+
+- **1 founder** (you) — agents run autonomously in the background
+- **10,000+ tenant users** across many organizations hitting leads, deals, properties, dashboard, marketplace, support, WebSocket
+
+### Test Matrix
+
+| Test | What It Tests | VUs | Duration |
+|------|--------------|-----|----------|
+| `k6-agent-pipeline.js` | Agents function under 2K user load | 2000 users + 13 agent VUs | 8 min |
+| `k6-multi-tenant.js` | Org isolation, noisy neighbor protection | 2000 steady + 1500 noisy/quiet | 12 min |
+| `k6-db-stress.js` | DB pool exhaustion, write contention, thundering herd | 300→1000→2000 VUs | 12 min |
+| `k6-websocket-fanout.js` | WS broadcast latency under agent events | 800 WS + 100 HTTP | 5 min |
+| `k6-deal-pipeline.js` | Full deal lifecycle throughput | 1000 pipeline + 2000 background | 10 min |
+| `k6-soak.js` | Memory leaks, degradation over 30 min | 200 VUs | 30 min |
+| `k6-chaos.js` | Rate limits, thundering herd recovery, malformed input | 3000 VUs peak | 8 min |
+
+### Run All Tests
+
+```bash
+./tests/load/run-all.sh \
+  --env BASE_URL=https://staging.yourapp.fly.dev \
+  --env AUTH_COOKIE="connect.sid=s%3A..."
+```
+
+Skip specific tests:
+```bash
+SKIP="soak,chaos" ./tests/load/run-all.sh --env BASE_URL=...
+```
+
+Run only specific tests:
+```bash
+ONLY="db-stress,agent-pipeline" ./tests/load/run-all.sh --env BASE_URL=...
+```
+
+### Distributed Run (4 k6 instances across machines)
+
+```bash
+# On each machine, set instance index:
+K6_INSTANCE_COUNT=4 K6_INSTANCE_INDEX=0 ./tests/load/run-all.sh --env BASE_URL=...
+K6_INSTANCE_COUNT=4 K6_INSTANCE_INDEX=1 ./tests/load/run-all.sh --env BASE_URL=...
+K6_INSTANCE_COUNT=4 K6_INSTANCE_INDEX=2 ./tests/load/run-all.sh --env BASE_URL=...
+K6_INSTANCE_COUNT=4 K6_INSTANCE_INDEX=3 ./tests/load/run-all.sh --env BASE_URL=...
+
+# VU counts automatically divide by K6_INSTANCE_COUNT.
+# 4 instances × 2500 VUs each = 10,000 total VUs.
+```
+
+### k6 Cloud Run (simplest for 10K+)
+
+```bash
+k6 cloud tests/load/k6-agent-pipeline.js \
+  --env BASE_URL=https://staging.yourapp.fly.dev \
+  --env AUTH_COOKIE="connect.sid=s%3A..."
+```
+
+### Multi-Tenant Testing
+
+Pass multiple org session cookies pipe-separated:
+```bash
+k6 run tests/load/k6-multi-tenant.js \
+  --env BASE_URL=https://staging.yourapp.fly.dev \
+  --env ORG_COOKIES="cookie_org1|cookie_org2|cookie_org3|..."
+```
+
+### Results
+
+All results saved to `tests/load/results/` as JSON files.
+Each test also prints a human-readable summary to stdout.
+
+### SLO Reference (10K Scale)
+
+| Metric | SLO | Test |
+|--------|-----|------|
+| User dashboard p95 | < 500ms | agent-pipeline |
+| User leads/deals p95 | < 500ms | agent-pipeline |
+| Cascade under load p95 | < 5000ms | agent-pipeline |
+| Quiet org p95 (noisy neighbor) | < 600ms | multi-tenant |
+| Cross-tenant violations | 0 | multi-tenant |
+| DB read query p95 | < 500ms | db-stress |
+| DB write query p95 | < 1000ms | db-stress |
+| Deal pipeline total p95 | < 10000ms | deal-pipeline |
+| WS broadcast latency p95 | < 500ms | websocket-fanout |
+| Memory growth over 30min | < 100MB | soak |
+| Malformed request 5xx count | 0 | chaos |
+| Recovery after herd p95 | < 600ms | chaos |
