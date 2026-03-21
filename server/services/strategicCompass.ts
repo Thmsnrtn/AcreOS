@@ -88,3 +88,11 @@ export async function getPrioritiesForPrompt(): Promise<string> {
 
   return `\n--- CEO STRATEGIC PRIORITIES ---\nThe CEO has set these company-wide priorities. Factor them into every decision:\n${lines.join("\n")}\nAlways align your recommendations and actions with these priorities.\n`;
 }
+
+export const strategicCompassService = {
+  getActivePriorities,
+  createPriority,
+  deactivatePriority,
+  updatePriorityWeight,
+  getPrioritiesForPrompt,
+};
