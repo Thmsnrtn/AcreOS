@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, numeric, varchar, jsonb, index } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, numeric, varchar, jsonb, index, real } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -11875,27 +11875,7 @@ export type CompanyChronicleEntry = typeof companyChronicle.$inferSelect;
 // SOVEREIGN COMPANY PROTOCOL v9 — THE SELF-RUNNING COMPANY
 // ============================================
 
-// --- Agent Initiatives: proactive thinking cycles ---
-
-export const agentInitiatives = pgTable("agent_initiatives", {
-  id: serial("id").primaryKey(),
-  agentCodename: text("agent_codename").notNull(),
-  priority: text("priority").notNull(),                    // "all_clear" | "watch" | "needs_ceo"
-  summary: text("summary").notNull(),
-  evidence: jsonb("evidence").$type<string[]>().notNull().default([]),
-  proposedAction: text("proposed_action"),
-  actionApprovalNeeded: boolean("action_approval_needed").notNull().default(false),
-  confidence: integer("confidence").notNull().default(50),
-  status: text("status").notNull().default("noted"),       // "noted" | "pending_approval" | "approved" | "rejected"
-  ceoResponse: text("ceo_response"),
-  resolvedAt: timestamp("resolved_at"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-}, (table) => [
-  index("ai_agent_idx").on(table.agentCodename),
-  index("ai_priority_idx").on(table.priority),
-  index("ai_status_idx").on(table.status),
-]);
-export type AgentInitiative = typeof agentInitiatives.$inferSelect;
+// --- Agent Initiatives: (defined above in v8 section) ---
 
 // --- CEO Briefings: unified daily digest ---
 
@@ -12141,33 +12121,7 @@ export type ExternalIntelligenceEntry = typeof externalIntelligence.$inferSelect
 // SOVEREIGN COMPANY PROTOCOL v10 — THE CONSCIOUS ORGANIZATION
 // ============================================
 
-// --- Scenario Simulations: multi-agent "what if?" engine ---
-
-export const scenarioSimulations = pgTable("scenario_simulations", {
-  id: serial("id").primaryKey(),
-  title: text("title").notNull(),
-  scenarioType: text("scenario_type").notNull().default("custom"),
-  hypothesis: text("hypothesis").notNull(),
-  parameters: jsonb("parameters").$type<Record<string, any>>().notNull().default({}),
-  agentProjections: jsonb("agent_projections").$type<Array<{
-    agentCodename: string;
-    domain: string;
-    projection: string;
-    confidence: number;
-    risks: string[];
-    opportunities: string[];
-  }>>().notNull().default([]),
-  consensusSummary: text("consensus_summary"),
-  consensusRecommendation: text("consensus_recommendation"),
-  confidenceInterval: jsonb("confidence_interval").$type<{ low: number; mid: number; high: number }>(),
-  status: text("status").notNull().default("running"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  completedAt: timestamp("completed_at"),
-}, (table) => [
-  index("ss_status_idx").on(table.status),
-  index("ss_type_idx").on(table.scenarioType),
-]);
-export type ScenarioSimulation = typeof scenarioSimulations.$inferSelect;
+// --- Scenario Simulations: (defined above in v9 section) ---
 
 // --- Scenario Outcome Comparisons: predicted vs actual ---
 
@@ -13126,7 +13080,7 @@ export const agentDialogues = pgTable("agent_dialogues", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   resolvedAt: timestamp("resolved_at"),
 }, (table) => [
-  index("ad_status_idx").on(table.status),
+  index("ad_status_v2_idx").on(table.status),
   index("ad_org_idx").on(table.orgId),
 ]);
 export type AgentDialogueEntry = typeof agentDialogues.$inferSelect;
@@ -13767,7 +13721,7 @@ export const spendAnomalies = pgTable("spend_anomalies", {
   resolution: text("resolution"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => [
-  index("sa_agent_idx").on(table.agentCodename),
+  index("sa_agent_v2_idx").on(table.agentCodename),
 ]);
 
 // ─── Phase 12: Legal Autonomy Engine ─────────────────────────────────────────
