@@ -66,28 +66,40 @@ const BEHAVIORS: ProactiveBehavior[] = [
     act: async (ctx) => {
       const failNames = ctx.failures.map((f: any) => f.jobName).join(", ");
 
-      // v3: Actually restart the failed jobs
+      // v4: Restart failed jobs with try-catch and retry
       const results = [];
+      const errors = [];
       for (const failure of ctx.failures) {
-        const result = await executeAction({
-          agentCodename: "sentinel_devops",
-          actionName: "restart_failed_job",
-          input: { jobName: failure.jobName },
-          triggeredBy: "proactive",
-        });
-        results.push(result);
+        let lastErr: string | null = null;
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            const result = await executeAction({
+              agentCodename: "sentinel_devops",
+              actionName: "restart_failed_job",
+              input: { jobName: failure.jobName },
+              triggeredBy: "proactive",
+            });
+            results.push(result);
+            lastErr = null;
+            break;
+          } catch (err: any) {
+            lastErr = err.message ?? "Unknown error";
+          }
+        }
+        if (lastErr) errors.push({ job: failure.jobName, error: lastErr });
       }
       const restarted = results.filter(r => r.success).length;
 
-      // Then broadcast what happened (not what we intend to do)
-      await agentCommsService.broadcast({
-        from: "sentinel_devops",
-        channel: "incidents",
-        priority: ctx.failures.length > 2 ? "high" : "medium",
-        subject: `[Proactive] ${ctx.failures.length} job(s) failed — ${restarted} restarted`,
-        body: `Sentinel detected ${ctx.failures.length} job failure(s): ${failNames}. Automatically restarted ${restarted}. Monitoring for recurrence.`,
-        data: { failures: ctx.failures, restarted },
-      });
+      try {
+        await agentCommsService.broadcast({
+          from: "sentinel_devops",
+          channel: "incidents",
+          priority: ctx.failures.length > 2 ? "high" : "medium",
+          subject: `[Proactive] ${ctx.failures.length} job(s) failed — ${restarted} restarted`,
+          body: `Sentinel detected ${ctx.failures.length} job failure(s): ${failNames}. Automatically restarted ${restarted}.${errors.length > 0 ? ` ${errors.length} restart(s) failed.` : ""} Monitoring for recurrence.`,
+          data: { failures: ctx.failures, restarted, errors },
+        });
+      } catch { /* broadcast failure is non-critical */ }
     },
   },
   {
@@ -107,29 +119,35 @@ const BEHAVIORS: ProactiveBehavior[] = [
       return { shouldAct: staleCount > 0, context: { staleCount, staleTicketIds: staleTickets.map(t => t.id) } };
     },
     act: async (ctx) => {
-      // v3: Actually follow up on stale tickets
+      // v4: Follow up on stale tickets with error handling
       let followed = 0;
+      const errors = [];
       if (ctx.staleTicketIds?.length) {
-        for (const ticketId of ctx.staleTicketIds.slice(0, 5)) { // Cap at 5 per run
-          const result = await executeAction({
-            agentCodename: "sophie_csm",
-            actionName: "resolve_stale_ticket",
-            input: { ticketId },
-            triggeredBy: "proactive",
-          });
-          if (result.success) followed++;
+        for (const ticketId of ctx.staleTicketIds.slice(0, 5)) {
+          try {
+            const result = await executeAction({
+              agentCodename: "sophie_csm",
+              actionName: "resolve_stale_ticket",
+              input: { ticketId },
+              triggeredBy: "proactive",
+            });
+            if (result.success) followed++;
+          } catch (err: any) {
+            errors.push({ ticketId, error: err.message ?? "Unknown error" });
+          }
         }
       }
 
-      // Then broadcast what happened
-      await agentCommsService.broadcast({
-        from: "sophie_csm",
-        channel: "customer_signals",
-        priority: ctx.staleCount > 5 ? "high" : "medium",
-        subject: `[Proactive] ${ctx.staleCount} stale ticket(s) — ${followed} followed up`,
-        body: `Sophie found ${ctx.staleCount} open tickets older than 24 hours. Sent follow-ups on ${followed}. Monitoring for customer responses.`,
-        data: { staleCount: ctx.staleCount, followed },
-      });
+      try {
+        await agentCommsService.broadcast({
+          from: "sophie_csm",
+          channel: "customer_signals",
+          priority: ctx.staleCount > 5 ? "high" : "medium",
+          subject: `[Proactive] ${ctx.staleCount} stale ticket(s) — ${followed} followed up`,
+          body: `Sophie found ${ctx.staleCount} open tickets older than 24 hours. Sent follow-ups on ${followed}.${errors.length > 0 ? ` ${errors.length} failed.` : ""} Monitoring for customer responses.`,
+          data: { staleCount: ctx.staleCount, followed, errors },
+        });
+      } catch { /* broadcast failure is non-critical */ }
     },
   },
   {
@@ -152,28 +170,35 @@ const BEHAVIORS: ProactiveBehavior[] = [
       return { shouldAct: critCount > 0, context: { criticalCount: critCount, atRiskOrgs } };
     },
     act: async (ctx) => {
-      // v3: Trigger actual churn rescue for the highest-risk accounts
+      // v4: Churn rescue with error handling and retry
       let rescued = 0;
+      const errors = [];
       if (ctx.atRiskOrgs?.length) {
-        for (const org of ctx.atRiskOrgs.slice(0, 3)) { // Cap at 3 per day
-          const result = await executeAction({
-            agentCodename: "forge_revenue",
-            actionName: "send_churn_rescue",
-            input: { orgId: org.orgId, riskScore: org.riskScore },
-            triggeredBy: "proactive",
-          });
-          if (result.success) rescued++;
+        for (const org of ctx.atRiskOrgs.slice(0, 3)) {
+          try {
+            const result = await executeAction({
+              agentCodename: "forge_revenue",
+              actionName: "send_churn_rescue",
+              input: { orgId: org.orgId, riskScore: org.riskScore },
+              triggeredBy: "proactive",
+            });
+            if (result.success) rescued++;
+          } catch (err: any) {
+            errors.push({ orgId: org.orgId, error: err.message ?? "Unknown error" });
+          }
         }
       }
 
-      await agentCommsService.broadcast({
-        from: "forge_revenue",
-        channel: "revenue_events",
-        priority: ctx.criticalCount > 3 ? "high" : "medium",
-        subject: `[Proactive] ${ctx.criticalCount} at-risk account(s) — ${rescued} contacted`,
-        body: `Forge's daily churn check: ${ctx.criticalCount} accounts at high risk. Sent rescue outreach to ${rescued}. Revenue protection active.`,
-        data: { criticalCount: ctx.criticalCount, rescued },
-      });
+      try {
+        await agentCommsService.broadcast({
+          from: "forge_revenue",
+          channel: "revenue_events",
+          priority: ctx.criticalCount > 3 ? "high" : "medium",
+          subject: `[Proactive] ${ctx.criticalCount} at-risk account(s) — ${rescued} contacted`,
+          body: `Forge's daily churn check: ${ctx.criticalCount} accounts at high risk. Sent rescue outreach to ${rescued}.${errors.length > 0 ? ` ${errors.length} failed.` : ""} Revenue protection active.`,
+          data: { criticalCount: ctx.criticalCount, rescued, errors },
+        });
+      } catch { /* broadcast failure is non-critical */ }
     },
   },
   {

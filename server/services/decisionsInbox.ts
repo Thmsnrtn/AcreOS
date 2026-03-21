@@ -269,7 +269,7 @@ export const decisionsInboxService = {
       send_retention_email: { agent: "sophie_csm", action: "send_retention_email" },
       resolve: { agent: "sophie_csm", action: "resolve_stale_ticket" },
       acknowledge: { agent: "atlas_cto", action: "acknowledge_incident" },
-      add_to_roadmap: { agent: "compass_pm", action: "flag_anomaly" }, // placeholder
+      add_to_roadmap: { agent: "atlas_research", action: "store_learning" },
     };
 
     const mapping = executionMap[actionName];

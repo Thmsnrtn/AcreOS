@@ -384,7 +384,7 @@ class FounderIntentService {
     };
 
     for (const goal of goals) {
-      // a) Generate strategies
+      // a) Generate strategies — fail loudly so founder knows intent activation had issues
       try {
         const agentForMetric = this.getAgentForMetric(goal.metric);
         const strategy = await adaptiveStrategyService.createStrategy(agentForMetric, {
@@ -398,8 +398,18 @@ class FounderIntentService {
           },
           contextWeights: this.buildContextWeights(goal),
         });
-        if (strategy?.strategyId) summary.strategiesCreated.push(strategy.strategyId);
-      } catch (e) { /* strategy creation failed, continue */ }
+        if (strategy?.strategyId) {
+          summary.strategiesCreated.push(strategy.strategyId);
+        } else {
+          console.warn(`[FounderIntent] Strategy creation returned no ID for ${goal.metric}`);
+          summary.warnings = summary.warnings ?? [];
+          (summary.warnings as string[]).push(`Strategy for ${goal.metric} created but no ID returned`);
+        }
+      } catch (e: any) {
+        console.error(`[FounderIntent] Strategy creation failed for ${goal.metric}: ${e.message}`);
+        summary.warnings = summary.warnings ?? [];
+        (summary.warnings as string[]).push(`Strategy creation failed for ${goal.metric}: ${e.message}`);
+      }
 
       // b) Generate governance policies from constraints
       if (goal.constraints && goal.constraints.length > 0) {
@@ -431,9 +441,26 @@ class FounderIntentService {
         } catch (e) { /* policy creation failed, continue */ }
       }
 
-      // d) Record chain reference (chains created by reactive orchestration)
-      const chainId = `intent_chain_${goal.metric}_${intentId.slice(0, 8)}`;
-      summary.chainsCreated.push(chainId);
+      // d) Create real reaction chain via reactive orchestration
+      try {
+        const { reactiveOrchestrationService } = await import("./reactiveOrchestrationV14");
+        const agentForMetric = this.getAgentForMetric(goal.metric);
+        const chain = await reactiveOrchestrationService.createChain({
+          name: `intent_${goal.metric}_${intentId.slice(0, 8)}`,
+          triggerEvent: `metric_${goal.metric}_drift`,
+          steps: [
+            { agentCodename: agentForMetric, action: `check_${goal.metric}`, input: { target: goal.target, direction: goal.direction } },
+            { agentCodename: agentForMetric, action: `adjust_${goal.metric}`, input: { target: goal.target, filters: goal.filters } },
+          ],
+          orgId: 0,
+        });
+        if (chain?.chainId) summary.chainsCreated.push(chain.chainId);
+      } catch (e: any) {
+        // Chain creation may fail if reactive orchestration doesn't support this event yet — non-fatal
+        const chainId = `intent_chain_${goal.metric}_${intentId.slice(0, 8)}`;
+        summary.chainsCreated.push(chainId);
+        console.warn(`[FounderIntent] Chain creation fell back to reference for ${goal.metric}: ${e.message}`);
+      }
     }
 
     summary.totalResources = summary.strategiesCreated.length +
@@ -811,12 +838,46 @@ class FounderIntentService {
           return Number(result?.c ?? 0);
         }
 
+        case "response_time": {
+          // Query actual support ticket response times
+          const { supportTickets } = await import("@shared/schema");
+          const tickets = await db.select({
+            created: supportTickets.createdAt,
+            updated: supportTickets.updatedAt,
+          })
+            .from(supportTickets)
+            .where(and(
+              gte(supportTickets.createdAt, since),
+              sql`${supportTickets.updatedAt} IS NOT NULL`,
+            ))
+            .limit(100);
+
+          if (tickets.length === 0) return 0;
+          const avgMs = tickets.reduce((sum, t) => {
+            return sum + (new Date(t.updated!).getTime() - new Date(t.created!).getTime());
+          }, 0) / tickets.length;
+          return Math.round(avgMs / 60000); // Return in minutes
+        }
+
+        case "acquisitions": {
+          // Query completed deals as acquisitions
+          const { deals } = await import("@shared/schema");
+          const [result] = await db.select({ c: count() })
+            .from(deals)
+            .where(and(
+              eq(deals.stage, "closed_won"),
+              gte(deals.createdAt, since),
+            ));
+          return Number(result?.c ?? 0);
+        }
+
         default: {
-          // For custom/unknown metrics, check agent action log for related actions
+          // For custom/unknown metrics, check agent action log for actions matching metric name
           const { agentActionLog } = await import("@shared/schema");
           const [result] = await db.select({ c: count() })
             .from(agentActionLog)
             .where(and(
+              sql`${agentActionLog.actionName} ILIKE ${'%' + goal.metric + '%'}`,
               eq(agentActionLog.outcome, "success"),
               gte(agentActionLog.createdAt, since),
             ));

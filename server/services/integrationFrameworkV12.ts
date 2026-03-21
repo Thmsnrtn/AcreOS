@@ -116,26 +116,62 @@ class IntegrationFrameworkService {
       });
     }
 
-    // 5. Simulate execution
-    const simulatedLatency = Math.floor(Math.random() * 200) + 50;
-    const simulatedSuccess = Math.random() > 0.05; // 95% success rate
-    const simulatedStatus = simulatedSuccess ? 200 : 500;
-    const simulatedCost = Math.floor(Math.random() * 10) + 1;
+    // 5. Execute real HTTP request against the configured endpoint
+    const requestStart = Date.now();
+    let responseStatus = 0;
+    let responseBody = "";
+    let execSuccess = false;
+    let execError: string | null = null;
+
+    try {
+      const baseUrl = (cred.config as Record<string, any>)?.baseUrl ?? "";
+      const fullUrl = baseUrl ? `${baseUrl}${endpoint}` : endpoint;
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        ...(cred.apiKey ? { Authorization: `Bearer ${cred.apiKey}` } : {}),
+        ...((cred.config as Record<string, any>)?.headers ?? {}),
+      };
+
+      const fetchOptions: RequestInit = {
+        method: method.toUpperCase(),
+        headers,
+        signal: AbortSignal.timeout(30000), // 30s timeout
+      };
+      if (params?.body && ["POST", "PUT", "PATCH"].includes(method.toUpperCase())) {
+        fetchOptions.body = JSON.stringify(params.body);
+      }
+
+      const response = await fetch(fullUrl, fetchOptions);
+      responseStatus = response.status;
+      responseBody = await response.text().catch(() => "");
+      execSuccess = response.ok;
+
+      if (!execSuccess) {
+        execError = `HTTP ${responseStatus}: ${responseBody.slice(0, 200)}`;
+      }
+    } catch (fetchErr: any) {
+      execError = fetchErr.message ?? "Network error";
+      // If fetch fails entirely (network/timeout), mark as service unavailable
+      responseStatus = 503;
+    }
+
+    const latencyMs = Date.now() - requestStart;
+    const costCents = Math.max(1, Math.round(latencyMs / 100)); // Rough cost estimate based on latency
 
     const entry = await this.logExecution(agentCodename, serviceName, method, endpoint, {
-      success: simulatedSuccess,
-      responseStatus: simulatedStatus,
-      responseSummary: simulatedSuccess ? "OK" : "Internal Server Error (simulated)",
+      success: execSuccess,
+      responseStatus,
+      responseSummary: execSuccess ? responseBody.slice(0, 500) : execError,
       requestSummary: params?.body ? JSON.stringify(params.body).slice(0, 500) : null,
-      latencyMs: simulatedLatency,
-      costCents: simulatedCost,
+      latencyMs,
+      costCents,
       rollbackAction: params?.rollbackAction,
-      error: simulatedSuccess ? null : "Simulated failure",
+      error: execError,
       orgId: params?.orgId,
     });
 
     // 6. Update circuit breaker on failure
-    if (!simulatedSuccess) {
+    if (!execSuccess) {
       await this.incrementCircuitBreaker(cred);
     } else {
       // Reset failure count on success
