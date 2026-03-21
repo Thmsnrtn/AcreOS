@@ -44,80 +44,216 @@ interface VerificationResult {
   details?: string;
 }
 
-// ─── Simulated Verification Methods ───────────────────────────────────────────
+// ─── Real Verification Methods (DB-Backed) ──────────────────────────────────
 
 async function verifyEmailDelivery(config: Record<string, any>): Promise<VerificationResult> {
-  // Simulated: check if email status field updated in the system
   const emailId = config.emailId ?? "unknown";
   const expectedStatus = config.expectedStatus ?? "delivered";
-  // In production, would query email service or webhook data
-  const simulatedStatus = Math.random() > 0.15 ? expectedStatus : "bounced";
-  return {
-    verified: simulatedStatus === expectedStatus,
-    outcome: `Email ${emailId} status: ${simulatedStatus}`,
-    details: simulatedStatus !== expectedStatus
-      ? `Expected ${expectedStatus}, got ${simulatedStatus}`
-      : undefined,
-  };
+
+  try {
+    // Check agent action log for email send outcome
+    const { agentActionLog } = await import("@shared/schema");
+    const [action] = await db.select()
+      .from(agentActionLog)
+      .where(and(
+        sql`${agentActionLog.actionInput}->>'emailId' = ${emailId}`,
+        sql`${agentActionLog.actionName} ILIKE '%email%'`,
+      ))
+      .orderBy(desc(agentActionLog.createdAt))
+      .limit(1);
+
+    if (action) {
+      const outcome = action.outcome ?? "unknown";
+      const actualStatus = outcome === "success" ? "delivered" : "failed";
+      return {
+        verified: actualStatus === expectedStatus,
+        outcome: `Email ${emailId} status: ${actualStatus} (from action log)`,
+        details: actualStatus !== expectedStatus
+          ? `Expected ${expectedStatus}, got ${actualStatus}` : undefined,
+      };
+    }
+
+    // Check agent events for email delivery confirmation
+    const { agentEvents } = await import("@shared/schema");
+    const [event] = await db.select()
+      .from(agentEvents)
+      .where(and(
+        sql`${agentEvents.payload}->>'emailId' = ${emailId}`,
+        eq(agentEvents.eventType, "action_succeeded"),
+      ))
+      .orderBy(desc(agentEvents.createdAt))
+      .limit(1);
+
+    if (event) {
+      return { verified: true, outcome: `Email ${emailId} status: delivered (confirmed via event)` };
+    }
+
+    return { verified: false, outcome: `Email ${emailId} status: unconfirmed — no delivery record found` };
+  } catch {
+    return { verified: false, outcome: `Email ${emailId} verification failed — could not query records` };
+  }
 }
 
 async function verifyCustomerLogin(config: Record<string, any>): Promise<VerificationResult> {
-  // Simulated: check if user logged in since the action was taken
-  const userId = config.userId ?? "unknown";
-  const actionTimestamp = config.actionTimestamp ?? new Date().toISOString();
-  const simulatedLoggedIn = Math.random() > 0.3;
-  return {
-    verified: simulatedLoggedIn,
-    outcome: simulatedLoggedIn
-      ? `User ${userId} logged in after ${actionTimestamp}`
-      : `User ${userId} has not logged in since ${actionTimestamp}`,
-  };
+  const userId = config.userId ?? config.orgId ?? "unknown";
+  const actionTimestamp = config.actionTimestamp ?? new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+  try {
+    // Check if organization had any activity since action timestamp
+    const { organizations } = await import("@shared/schema");
+    if (config.orgId) {
+      const [org] = await db.select({ updatedAt: organizations.updatedAt })
+        .from(organizations)
+        .where(eq(organizations.id, parseInt(String(config.orgId), 10)))
+        .limit(1);
+
+      if (org?.updatedAt && new Date(org.updatedAt) > new Date(actionTimestamp)) {
+        return { verified: true, outcome: `Org ${config.orgId} had activity after ${actionTimestamp}` };
+      }
+    }
+
+    // Check for any agent events tied to this user/org since action
+    const { agentEvents } = await import("@shared/schema");
+    const [event] = await db.select({ count: sql<number>`count(*)::int` })
+      .from(agentEvents)
+      .where(and(
+        sql`${agentEvents.payload}->>'orgId' = ${String(userId)}`,
+        sql`${agentEvents.createdAt} > ${actionTimestamp}`,
+      ));
+
+    const hasActivity = (event?.count ?? 0) > 0;
+    return {
+      verified: hasActivity,
+      outcome: hasActivity
+        ? `User/org ${userId} had ${event?.count} activity events after ${actionTimestamp}`
+        : `User/org ${userId} has not had activity since ${actionTimestamp}`,
+    };
+  } catch {
+    return { verified: false, outcome: `Customer login verification failed for ${userId}` };
+  }
 }
 
 async function verifyPaymentStatus(config: Record<string, any>): Promise<VerificationResult> {
-  // Simulated: check payment records for expected status
-  const paymentId = config.paymentId ?? "unknown";
+  const paymentId = config.paymentId ?? config.dealId ?? "unknown";
   const expectedStatus = config.expectedStatus ?? "completed";
-  const simulatedStatus = Math.random() > 0.1 ? expectedStatus : "failed";
-  return {
-    verified: simulatedStatus === expectedStatus,
-    outcome: `Payment ${paymentId} status: ${simulatedStatus}`,
-    details: simulatedStatus !== expectedStatus
-      ? `Expected ${expectedStatus}, got ${simulatedStatus}`
-      : undefined,
-  };
+
+  try {
+    // Check deals table for payment/deal status
+    const { deals } = await import("@shared/schema");
+    if (config.dealId) {
+      const [deal] = await db.select({ stage: deals.stage, status: deals.status })
+        .from(deals)
+        .where(eq(deals.id, parseInt(String(config.dealId), 10)))
+        .limit(1);
+
+      if (deal) {
+        const actualStatus = deal.status ?? deal.stage ?? "unknown";
+        const isExpected = actualStatus.toLowerCase().includes(expectedStatus.toLowerCase());
+        return {
+          verified: isExpected,
+          outcome: `Deal/payment ${paymentId} status: ${actualStatus}`,
+          details: !isExpected ? `Expected ${expectedStatus}, got ${actualStatus}` : undefined,
+        };
+      }
+    }
+
+    // Check agent action log for payment-related actions
+    const { agentActionLog } = await import("@shared/schema");
+    const [action] = await db.select()
+      .from(agentActionLog)
+      .where(and(
+        sql`${agentActionLog.actionInput}->>'paymentId' = ${String(paymentId)}`,
+        eq(agentActionLog.outcome, "success"),
+      ))
+      .orderBy(desc(agentActionLog.createdAt))
+      .limit(1);
+
+    return {
+      verified: !!action,
+      outcome: action
+        ? `Payment ${paymentId} verified via action log (success)`
+        : `Payment ${paymentId} status unconfirmed — no matching record`,
+    };
+  } catch {
+    return { verified: false, outcome: `Payment verification failed for ${paymentId}` };
+  }
 }
 
 async function verifyMetricChange(config: Record<string, any>): Promise<VerificationResult> {
-  // Simulated: check if a KPI moved in the expected direction
   const metric = config.metric ?? "unknown_metric";
   const expectedDirection = config.expectedDirection ?? "increase";
   const threshold = config.threshold ?? 0;
-  const simulatedChange = (Math.random() - 0.3) * 100; // biased positive
-  const directionMatch =
-    (expectedDirection === "increase" && simulatedChange > threshold) ||
-    (expectedDirection === "decrease" && simulatedChange < -threshold);
-  return {
-    verified: directionMatch,
-    outcome: `Metric ${metric} changed by ${simulatedChange.toFixed(2)} (expected ${expectedDirection})`,
-    details: !directionMatch
-      ? `Change ${simulatedChange.toFixed(2)} did not meet ${expectedDirection} threshold ${threshold}`
-      : undefined,
-  };
+  const baselineValue = config.baselineValue ?? 0;
+  const baselineTimestamp = config.baselineTimestamp ?? new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+  try {
+    // Query actual metric from agent events or action log
+    const { agentEvents } = await import("@shared/schema");
+    const recentCount = await db.select({ count: sql<number>`count(*)::int` })
+      .from(agentEvents)
+      .where(and(
+        eq(agentEvents.eventType, "action_succeeded"),
+        sql`${agentEvents.payload}->>'metric' = ${metric}`,
+        sql`${agentEvents.createdAt} > ${baselineTimestamp}`,
+      ));
+
+    // Also check action log for the metric
+    const { agentActionLog } = await import("@shared/schema");
+    const successCount = await db.select({ count: sql<number>`count(*)::int` })
+      .from(agentActionLog)
+      .where(and(
+        eq(agentActionLog.outcome, "success"),
+        sql`${agentActionLog.actionName} ILIKE ${'%' + metric + '%'}`,
+        gte(agentActionLog.createdAt, new Date(baselineTimestamp)),
+      ));
+
+    const actualChange = (recentCount[0]?.count ?? 0) + (successCount[0]?.count ?? 0) - baselineValue;
+    const directionMatch =
+      (expectedDirection === "increase" && actualChange > threshold) ||
+      (expectedDirection === "decrease" && actualChange < -threshold);
+
+    return {
+      verified: directionMatch,
+      outcome: `Metric ${metric} changed by ${actualChange} (expected ${expectedDirection}, threshold ${threshold})`,
+      details: !directionMatch
+        ? `Change ${actualChange} did not meet ${expectedDirection} threshold ${threshold}` : undefined,
+    };
+  } catch {
+    return { verified: false, outcome: `Metric verification failed for ${metric}` };
+  }
 }
 
 async function verifyApiResponse(config: Record<string, any>): Promise<VerificationResult> {
-  // Simulated: check external API response cache
   const endpoint = config.endpoint ?? "unknown";
   const expectedStatus = config.expectedStatus ?? 200;
-  const simulatedStatus = Math.random() > 0.1 ? expectedStatus : 500;
-  return {
-    verified: simulatedStatus === expectedStatus,
-    outcome: `API ${endpoint} returned ${simulatedStatus}`,
-    details: simulatedStatus !== expectedStatus
-      ? `Expected ${expectedStatus}, got ${simulatedStatus}`
-      : undefined,
-  };
+
+  try {
+    // Check integration execution log for real API response
+    const { integrationExecutionLog } = await import("@shared/schema");
+    const [execution] = await db.select()
+      .from(integrationExecutionLog)
+      .where(sql`${integrationExecutionLog.endpoint} = ${endpoint}`)
+      .orderBy(desc(integrationExecutionLog.executedAt))
+      .limit(1);
+
+    if (execution) {
+      const actualStatus = execution.responseStatus ?? 0;
+      return {
+        verified: actualStatus === expectedStatus,
+        outcome: `API ${endpoint} returned ${actualStatus} (latency: ${execution.latencyMs}ms)`,
+        details: actualStatus !== expectedStatus
+          ? `Expected ${expectedStatus}, got ${actualStatus}` : undefined,
+      };
+    }
+
+    return {
+      verified: false,
+      outcome: `API ${endpoint} — no execution record found`,
+      details: "No recent API call recorded in integration log",
+    };
+  } catch {
+    return { verified: false, outcome: `API verification failed for ${endpoint}` };
+  }
 }
 
 const VERIFICATION_HANDLERS: Record<VerificationMethod, (config: Record<string, any>) => Promise<VerificationResult>> = {

@@ -75,13 +75,46 @@ class OutcomeVerificationLoop {
             break;
           }
           default: {
-            result = {
-              agentCodename: action.agentCodename,
-              action: actionType ?? "unknown",
-              outcome: "neutral",
-              reason: "No verification criteria for this action type",
-              createdAt: action.createdAt,
-            };
+            // For unknown action types, check if the action log recorded success/failure
+            try {
+              const { agentActionLog } = await import("@shared/schema");
+              const [logEntry] = await db.select()
+                .from(agentActionLog)
+                .where(and(
+                  eq(agentActionLog.agentCodename, action.agentCodename),
+                  eq(agentActionLog.actionName, actionType ?? ""),
+                  sql`${agentActionLog.createdAt} >= ${action.createdAt}`,
+                ))
+                .orderBy(desc(agentActionLog.createdAt))
+                .limit(1);
+
+              if (logEntry) {
+                const actionOutcome = logEntry.outcome === "success" ? "positive" : "negative";
+                result = {
+                  agentCodename: action.agentCodename,
+                  action: actionType ?? "unknown",
+                  outcome: actionOutcome,
+                  reason: `Verified via action log: ${logEntry.outcome}`,
+                  createdAt: action.createdAt,
+                };
+              } else {
+                result = {
+                  agentCodename: action.agentCodename,
+                  action: actionType ?? "unknown",
+                  outcome: "neutral",
+                  reason: `No action log entry found for ${actionType} — cannot verify outcome`,
+                  createdAt: action.createdAt,
+                };
+              }
+            } catch {
+              result = {
+                agentCodename: action.agentCodename,
+                action: actionType ?? "unknown",
+                outcome: "neutral",
+                reason: "Verification query failed for this action type",
+                createdAt: action.createdAt,
+              };
+            }
           }
         }
 

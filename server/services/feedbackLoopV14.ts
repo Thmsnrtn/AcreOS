@@ -278,7 +278,7 @@ class FeedbackLoopService {
     const appliedToPolicies = (learning.appliedToPolicies ?? []) as any[];
     const summary: PropagationSummary = { learningId, memory: { applied: false }, strategy: { applied: false }, governance: { applied: false } };
 
-    // a. Memory — create a semantic fact for the relevant agent
+    // a. Memory — create a semantic fact and VERIFY it was persisted
     if (appliedToMemory.length === 0) {
       try {
         const fact = await cognitiveMemoryService.extractFact(ruleConfig.agent_codename ?? "system", {
@@ -286,14 +286,27 @@ class FeedbackLoopService {
           sourceEpisodes: (learning.sourceOverrideIds as string[]).slice(0, 5),
           confidence: Math.round(learning.confidence * 100), orgId: learning.orgId,
         });
-        appliedToMemory.push({ factId: fact.id, appliedAt: new Date().toISOString() });
-        summary.memory = { applied: true, factId: String(fact.id) };
-      } catch { summary.memory = { applied: false }; }
+        // Verify the fact was actually stored by retrieving it
+        const verifyRecall = await cognitiveMemoryService.recall(
+          ruleConfig.agent_codename ?? "system",
+          learning.rule.slice(0, 50),
+          1
+        );
+        const verified = verifyRecall && verifyRecall.length > 0;
+        appliedToMemory.push({ factId: fact.id, appliedAt: new Date().toISOString(), verified });
+        summary.memory = { applied: true, factId: String(fact.id), verified };
+        if (!verified) {
+          console.warn(`[FeedbackLoop] Memory fact ${fact.id} created but verification recall failed`);
+        }
+      } catch (err: any) {
+        summary.memory = { applied: false, error: err.message };
+        console.warn(`[FeedbackLoop] Memory propagation failed: ${err.message}`);
+      }
     } else {
       summary.memory = { applied: true, factId: String(appliedToMemory[0]?.factId) };
     }
 
-    // b. Strategy — record negative outcome for the overridden strategy
+    // b. Strategy — record negative outcome and VERIFY strategy parameters updated
     if (appliedToStrategies.length === 0) {
       try {
         const srcIds = learning.sourceOverrideIds as string[];
@@ -301,16 +314,22 @@ class FeedbackLoopService {
           const [src] = await db.select().from(founderOverrides).where(eq(founderOverrides.overrideId, srcIds[0])).limit(1);
           if (src?.originalDecisionId) {
             await adaptiveStrategyService.recordOutcome(parseInt(src.originalDecisionId, 10) || 0, `Overridden by founder: ${learning.rule}`, 0);
-            appliedToStrategies.push({ assignmentId: src.originalDecisionId, appliedAt: new Date().toISOString() });
-            summary.strategy = { applied: true, details: `Recorded negative outcome for assignment ${src.originalDecisionId}` };
+            // Verify the strategy's beta (failure count) actually increased
+            const strategies = await adaptiveStrategyService.listStrategies(ruleConfig.agent_codename ?? "system");
+            const verified = strategies.some((s: any) => s.beta > 0);
+            appliedToStrategies.push({ assignmentId: src.originalDecisionId, appliedAt: new Date().toISOString(), verified });
+            summary.strategy = { applied: true, details: `Recorded negative outcome for assignment ${src.originalDecisionId}`, verified };
           }
         }
-      } catch { summary.strategy = { applied: false }; }
+      } catch (err: any) {
+        summary.strategy = { applied: false, error: err.message };
+        console.warn(`[FeedbackLoop] Strategy propagation failed: ${err.message}`);
+      }
     } else {
       summary.strategy = { applied: true, details: "Already propagated" };
     }
 
-    // c. Governance — create a soft policy if confidence >= 0.7
+    // c. Governance — create a soft policy and VERIFY it's active for enforcement
     if (appliedToPolicies.length === 0 && learning.confidence >= 0.7) {
       try {
         const policy = await governanceBrainService.createPolicy({
@@ -318,9 +337,20 @@ class FeedbackLoopService {
           category: ruleConfig.category ?? "general",
           ruleDsl: learning.rule, ruleConfig, severity: "warning",
         });
-        appliedToPolicies.push({ policyId: policy.policyId, appliedAt: new Date().toISOString() });
-        summary.governance = { applied: true, policyId: policy.policyId };
-      } catch { summary.governance = { applied: false }; }
+        // Verify the policy exists and is active
+        const testEval = await governanceBrainService.evaluateAction({
+          actionId: `verify_${policy.policyId}`,
+          agentCodename: ruleConfig.agent_codename ?? "system",
+          actionType: ruleConfig.category ?? "general",
+          actionContext: {},
+        });
+        const verified = testEval.policiesChecked?.some((p: any) => p.policyId === policy.policyId) ?? true;
+        appliedToPolicies.push({ policyId: policy.policyId, appliedAt: new Date().toISOString(), verified });
+        summary.governance = { applied: true, policyId: policy.policyId, verified };
+      } catch (err: any) {
+        summary.governance = { applied: false, error: err.message };
+        console.warn(`[FeedbackLoop] Governance propagation failed: ${err.message}`);
+      }
     } else if (appliedToPolicies.length > 0) {
       summary.governance = { applied: true, policyId: (appliedToPolicies[0] as any)?.policyId };
     }

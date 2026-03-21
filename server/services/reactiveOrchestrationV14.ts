@@ -659,14 +659,59 @@ class ReactiveOrchestrationService {
         }
       }
 
-      // Execute step (simulated)
-      const stepOutput = {
-        agent: step.agentCodename,
-        action: step.action,
-        input: stepInput,
-        executedAt: new Date().toISOString(),
-        simulatedResult: `${step.agentCodename} executed ${step.action} successfully (resumed)`,
-      };
+      // Execute step through the real execution engine
+      let stepOutput: Record<string, any>;
+      try {
+        const { executionEngine } = await import("./executionEngine");
+        const execResult = await executionEngine.execute({
+          orgId: chain.orgId ?? 0,
+          agentCodename: step.agentCodename,
+          action: step.action,
+          input: stepInput,
+        });
+        stepOutput = {
+          agent: step.agentCodename,
+          action: step.action,
+          input: stepInput,
+          executedAt: new Date().toISOString(),
+          ...execResult.output,
+          sideEffects: execResult.sideEffects,
+          executionSuccess: execResult.success,
+        };
+
+        if (!execResult.success) {
+          stepResults.push({
+            stepIndex: i,
+            agentCodename: step.agentCodename,
+            action: step.action,
+            input: stepInput,
+            status: "error",
+            haltReason: execResult.error ?? "Execution failed",
+            durationMs: Date.now() - stepStart,
+            executedAt: new Date().toISOString(),
+          });
+          continue;
+        }
+      } catch (execErr: any) {
+        stepOutput = {
+          agent: step.agentCodename,
+          action: step.action,
+          input: stepInput,
+          executedAt: new Date().toISOString(),
+          error: execErr.message ?? "Execution exception",
+        };
+        stepResults.push({
+          stepIndex: i,
+          agentCodename: step.agentCodename,
+          action: step.action,
+          input: stepInput,
+          status: "error",
+          haltReason: execErr.message,
+          durationMs: Date.now() - stepStart,
+          executedAt: new Date().toISOString(),
+        });
+        continue;
+      }
 
       stepResults.push({
         stepIndex: i,

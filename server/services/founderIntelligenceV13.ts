@@ -250,10 +250,16 @@ class FounderIntelligenceService {
         ? recentTrust.filter((t) => t.decision === "auto_execute").length / recentTrust.length : 0;
       const projThroughput = recentTrust.length * (1.0 / Math.max(curAutoRate, 0.01));
 
+      // Data-driven projection: success rate decays proportionally to current oversight gap
+      const oversightGap = 1 - curAutoRate; // How much is currently human-reviewed
+      const projectedSuccessRate = avgRate * (1 - oversightGap * 0.05); // ~5% degradation per unit of oversight removed
+      const projectedThroughputMultiplier = Math.min(curAutoRate > 0 ? 1 / curAutoRate : 10, 10);
+      const realProjThroughput = Math.round(recentTrust.length * projectedThroughputMultiplier);
+
       outcomes = [
         { metric: "auto_execution_rate", current: Math.round(curAutoRate * 100), simulated: 100, delta: Math.round((1 - curAutoRate) * 100) },
-        { metric: "estimated_daily_throughput", current: recentTrust.length, simulated: Math.round(projThroughput), delta: Math.round(projThroughput - recentTrust.length) },
-        { metric: "projected_success_rate", current: Math.round(avgRate * 100), simulated: Math.round(avgRate * 95), delta: Math.round(avgRate * -5) },
+        { metric: "estimated_daily_throughput", current: recentTrust.length, simulated: realProjThroughput, delta: realProjThroughput - recentTrust.length },
+        { metric: "projected_success_rate", current: Math.round(avgRate * 100), simulated: Math.round(projectedSuccessRate * 100), delta: Math.round((projectedSuccessRate - avgRate) * 100) },
       ];
 
       riskFactors = [
