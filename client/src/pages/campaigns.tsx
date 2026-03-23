@@ -4,7 +4,7 @@ import { Link, useLocation } from "wouter";
 import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CampaignsContent } from "@/components/campaigns-content";
-import { ABTestsContent } from "@/components/ab-tests-content";
+import { AbTestsContent } from "@/components/ab-tests-content";
 import { SequencesContent } from "@/components/sequences-content";
 import { LowBalanceAlert } from "@/components/low-balance-alert";
 
@@ -123,7 +123,7 @@ export default function MarketingHub() {
             </TabsContent>
             
             <TabsContent value="ab-tests" className="mt-6" data-testid="tab-content-ab-tests">
-              <ABTestsContent />
+              <AbTestsContent />
             </TabsContent>
             
             <TabsContent value="sequences" className="mt-6" data-testid="tab-content-sequences">

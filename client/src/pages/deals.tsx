@@ -344,7 +344,7 @@ export default function DealsPage() {
             {isError && (
               <InlineError 
                 message={(error as Error)?.message || "Failed to load deals."}
-                onRetry={() => refetch()}
+                onRetry={() => (refetch as () => void)()}
                 testId="inline-error-deals"
               />
             )}
