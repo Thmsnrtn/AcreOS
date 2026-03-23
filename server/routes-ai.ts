@@ -4,6 +4,7 @@ import { insertAgentConfigSchema, insertAgentTaskSchema } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { checkUsageLimit } from "./services/usageLimits";
+import { usageLimitGate } from "./middleware/usageLimitGate";
 import { usageMeteringService, creditService } from "./services/credits";
 import { processChat, processChatStream, agentProfiles, getOrCreateConversation } from "./ai/executive";
 import { storage, db } from "./storage";
@@ -181,7 +182,7 @@ export function registerAIRoutes(app: Express): void {
   });
   
   // Send a message (non-streaming)
-  api.post("/api/ai/chat", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/ai/chat", isAuthenticated, getOrCreateOrg, usageLimitGate("ai_requests"), async (req, res) => {
     try {
       const org = (req as any).organization;
       const user = req.user as any;
@@ -242,7 +243,7 @@ export function registerAIRoutes(app: Express): void {
   });
   
   // Send a message (streaming)
-  api.post("/api/ai/chat/stream", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/ai/chat/stream", isAuthenticated, getOrCreateOrg, usageLimitGate("ai_requests"), async (req, res) => {
     try {
       const org = (req as any).organization;
       const user = req.user as any;

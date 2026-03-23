@@ -94,6 +94,9 @@ import { createRateLimiter, rateLimiters, RATE_LIMIT_CONFIGS, authLimiter, aiLim
 import { whiteLabelDomainMiddleware } from "./middleware/white-label-domain";
 import { correlationIdMiddleware } from "./middleware/correlationId";
 
+// Feature flag gate middleware
+import { featureGate } from "./middleware/featureGate";
+
 // MCP handler
 import { mcpHandler } from "./mcp-server";
 // Named aliases for backwards compatibility
@@ -775,7 +778,7 @@ export async function registerRoutes(
   // ============================================
   // ROUTER-BASED FEATURE ROUTES
   // ============================================
-  app.use('/api/marketplace', isAuthenticated, getOrCreateOrg, marketplaceRouter);
+  app.use('/api/marketplace', isAuthenticated, getOrCreateOrg, featureGate("feature_marketplace"), marketplaceRouter);
   app.use('/api/predictions', isAuthenticated, getOrCreateOrg, predictionsRouter);
   app.use('/api/land-credit', isAuthenticated, getOrCreateOrg, landCreditRouter);
   app.use('/api/radar', isAuthenticated, getOrCreateOrg, acquisitionRadarRouter);
@@ -784,9 +787,9 @@ export async function registerRoutes(
   app.use('/api/negotiation', isAuthenticated, getOrCreateOrg, negotiationRouter);
   app.use('/api/cash-flow', isAuthenticated, getOrCreateOrg, cashFlowRouter);
   app.use('/api/deal-hunter', isAuthenticated, getOrCreateOrg, dealHunterRouter);
-  app.use('/api/academy', isAuthenticated, getOrCreateOrg, academyRouter);
-  app.use('/api/vision-ai', isAuthenticated, getOrCreateOrg, visionAIRouter);
-  app.use('/api/capital-markets', isAuthenticated, getOrCreateOrg, capitalMarketsRouter);
+  app.use('/api/academy', isAuthenticated, getOrCreateOrg, featureGate("feature_academy"), academyRouter);
+  app.use('/api/vision-ai', isAuthenticated, getOrCreateOrg, featureGate("feature_vision_ai"), visionAIRouter);
+  app.use('/api/capital-markets', isAuthenticated, getOrCreateOrg, featureGate("feature_capital_markets"), capitalMarketsRouter);
   app.use('/api/document-intelligence', isAuthenticated, getOrCreateOrg, documentIntelligenceRouter);
   app.use('/api/market-intelligence', isAuthenticated, marketIntelligenceRouter);
   app.use('/api/compliance', isAuthenticated, getOrCreateOrg, complianceRouter);
@@ -795,14 +798,14 @@ export async function registerRoutes(
 
   // Phase 2-4: Voice Learning, Context Profile, White-Label, Real-Time
   app.use('/api/intelligence', isAuthenticated, getOrCreateOrg, voiceLearningRouter);
-  app.use('/api/white-label', isAuthenticated, getOrCreateOrg, whiteLabelRouter);
+  app.use('/api/white-label', isAuthenticated, getOrCreateOrg, featureGate("feature_white_label"), whiteLabelRouter);
   app.use('/api/realtime', isAuthenticated, getOrCreateOrg, realtimeRouter);
   app.use('/api/pax', aiLimiter, isAuthenticated, getOrCreateOrg, paxInsightsRouter);
   app.post('/api/mcp/execute', mcpHandler);
 
   // Voice pipeline: webhook (no auth) + authenticated API routes
   app.use('/', voiceRouter); // handles POST /webhook/twilio/recording-complete
-  app.use('/api/voice', isAuthenticated, getOrCreateOrg, voiceRouter);
+  app.use('/api/voice', isAuthenticated, getOrCreateOrg, featureGate("feature_voice_ai"), voiceRouter);
 
   // Beta program: /api/beta/waitlist is public, /api/beta/admin/* requires founder auth
   app.use('/api/beta', betaRouter);
@@ -822,7 +825,7 @@ export async function registerRoutes(
   app.use('/api/portfolio-sentinel', isAuthenticated, getOrCreateOrg, portfolioSentinelRouter);
   app.use('/api/portfolio-pnl', isAuthenticated, getOrCreateOrg, portfolioPnlRouter);
   app.use('/api/commissions', isAuthenticated, getOrCreateOrg, commissionsRouter);
-  app.use('/api/certification', isAuthenticated, certificationRouter);
+  app.use('/api/certification', isAuthenticated, featureGate("feature_academy"), certificationRouter);
   app.use('/api/buyer-qualification', isAuthenticated, getOrCreateOrg, buyerQualificationRouter);
   app.use('/api/due-diligence', isAuthenticated, getOrCreateOrg, dueDiligenceRouter);
   app.use('/api/deal-patterns', isAuthenticated, getOrCreateOrg, dealPatternsRouter);
@@ -833,7 +836,7 @@ export async function registerRoutes(
   app.use('/api/bulk', isAuthenticated, getOrCreateOrg, bulkRouter);
   app.use('/api/leads', isAuthenticated, getOrCreateOrg, leadEnrichmentRouter);
   app.use('/api/skip-tracing', isAuthenticated, getOrCreateOrg, skipTracingRouter);
-  app.use('/api/territories', isAuthenticated, getOrCreateOrg, territoriesRouter);
+  app.use('/api/territories', isAuthenticated, getOrCreateOrg, featureGate("feature_territories"), territoriesRouter);
   app.use('/api/zoning', isAuthenticated, zoningRouter);
   app.use('/api/title-search', isAuthenticated, getOrCreateOrg, titleSearchRouter);
   app.use('/api/properties', isAuthenticated, getOrCreateOrg, propertyEnrichmentRouter);
@@ -1043,6 +1046,49 @@ export async function registerRoutes(
     app.use('/api/founder/setup', isAuthenticated, setupRouter);
   }
 
+  // ============================================
+  // ADMIN FEATURE FLAGS (founder-only)
+  // ============================================
+  app.get("/api/admin/feature-flags", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).org || (req as any).organization;
+      if (!org?.isFounder) {
+        return res.status(403).json({ message: "Founder access required" });
+      }
+      const { platformFeatureFlags } = await import("@shared/schema");
+      const flags = await db.select().from(platformFeatureFlags);
+      res.json(flags);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to fetch feature flags" });
+    }
+  });
+
+  app.patch("/api/admin/feature-flags/:key", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).org || (req as any).organization;
+      if (!org?.isFounder) {
+        return res.status(403).json({ message: "Founder access required" });
+      }
+      const { platformFeatureFlags } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+      const { enabled } = req.body;
+      if (typeof enabled !== "boolean") {
+        return res.status(400).json({ message: "enabled (boolean) is required" });
+      }
+      const [updated] = await db
+        .update(platformFeatureFlags)
+        .set({ enabled, updatedAt: new Date() })
+        .where(eq(platformFeatureFlags.key, req.params.key))
+        .returning();
+      if (!updated) {
+        return res.status(404).json({ message: "Feature flag not found" });
+      }
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to update feature flag" });
+    }
+  });
+
   // Epic H: Auto-Delinquent Scraper route
   app.post('/api/import/auto-delinquent', isAuthenticated, getOrCreateOrg, async (req, res) => {
     const { county, state } = req.body as { county: string; state: string };
@@ -1079,7 +1125,7 @@ export async function registerRoutes(
   app.use('/api/call-routing', isAuthenticated, getOrCreateOrg, callRoutingRouter);
   app.use('/api/buyer-network', isAuthenticated, getOrCreateOrg, buyerNetworkRouter);
   app.use('/api/tax-optimization', isAuthenticated, getOrCreateOrg, taxOptimizationRouter);
-  app.use('/api/deal-rooms', isAuthenticated, getOrCreateOrg, dealRoomsRouter);
+  app.use('/api/deal-rooms', isAuthenticated, getOrCreateOrg, featureGate("feature_deal_rooms"), dealRoomsRouter);
   app.use('/api/data-api', dataApiRouter); // API key auth handled internally
   app.use('/api/docs', apiDocsRouter); // Swagger UI — no auth required
 

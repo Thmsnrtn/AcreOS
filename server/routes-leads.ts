@@ -7,6 +7,7 @@ import { insertLeadSchema, leads } from "@shared/schema";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { checkUsageLimit } from "./services/usageLimits";
+import { usageLimitGate } from "./middleware/usageLimitGate";
 import { leadNurturerService } from "./services/leadNurturer";
 import { leadScoringService } from "./services/leadScoring";
 import { attachPermissionContext, type UserPermissionContext } from "./utils/permissions";
@@ -262,7 +263,7 @@ export function registerLeadRoutes(app: Express): void {
     }
   });
 
-  api.post("/api/leads", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/leads", isAuthenticated, getOrCreateOrg, usageLimitGate("leads"), async (req, res) => {
     try {
       const org = (req as any).organization;
       

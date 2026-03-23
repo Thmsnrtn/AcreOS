@@ -6,6 +6,7 @@ import { eq, and } from "drizzle-orm";
 import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { checkUsageLimit } from "./services/usageLimits";
+import { usageLimitGate } from "./middleware/usageLimitGate";
 import { usageMeteringService, creditService } from "./services/credits";
 import { financeAgentService } from "./services/financeAgent";
 import { exportNotesToCSV, type ExportFilters } from "./services/importExport";
@@ -30,7 +31,7 @@ export function registerFinanceRoutes(app: Express): void {
     res.json(note);
   });
   
-  api.post("/api/notes", isAuthenticated, getOrCreateOrg, async (req, res) => {
+  api.post("/api/notes", isAuthenticated, getOrCreateOrg, usageLimitGate("notes"), async (req, res) => {
     try {
       const org = (req as any).organization;
       
