@@ -395,22 +395,50 @@ export function registerLeadRoutes(app: Express): void {
       return res.status(404).json({ message: "Lead not found" });
     }
 
-    await storage.deleteLead(leadId);
-
+    // Soft delete: set deletedAt instead of hard deleting
     const user = req.user as any;
     const userId = user?.claims?.sub || user?.id;
+    await db.update(leads).set({
+      deletedAt: new Date(),
+      deletedBy: userId || null,
+    }).where(eq(leads.id, leadId));
+
     await storage.createAuditLogEntry({
       organizationId: org.id,
       userId,
       action: "delete",
       entityType: "lead",
       entityId: leadId,
-      changes: { before: existingLead, fields: ["deleted"] },
+      changes: { before: existingLead, fields: ["soft_deleted"] },
       ipAddress: req.ip || req.socket?.remoteAddress,
       userAgent: req.headers["user-agent"],
     });
 
     res.status(204).send();
+  });
+
+  // Restore a soft-deleted lead
+  api.patch("/api/leads/:id/restore", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    const org = (req as any).organization;
+    const leadId = Number(req.params.id);
+    if (isNaN(leadId)) {
+      return res.status(400).json({ message: "Invalid lead ID" });
+    }
+
+    // Find the lead even if soft-deleted
+    const [lead] = await db.select().from(leads).where(
+      and(eq(leads.id, leadId), eq(leads.organizationId, org.id))
+    ).limit(1);
+    if (!lead) {
+      return res.status(404).json({ message: "Lead not found" });
+    }
+
+    await db.update(leads).set({
+      deletedAt: null,
+      deletedBy: null,
+    }).where(eq(leads.id, leadId));
+
+    res.json({ message: "Lead restored", id: leadId });
   });
   
   api.post("/api/leads/:id/enrich", isAuthenticated, getOrCreateOrg, async (req, res) => {

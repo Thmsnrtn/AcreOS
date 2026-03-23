@@ -1232,7 +1232,7 @@ export class DatabaseStorage implements IStorage {
   
   // Leads
   async getLeads(orgId: number, filters?: { assignedTo?: number | null }) {
-    const conditions = [eq(leads.organizationId, orgId)];
+    const conditions: any[] = [eq(leads.organizationId, orgId), sql`${leads.deletedAt} IS NULL`];
     if (filters?.assignedTo === null) {
       conditions.push(sql`${leads.assignedTo} IS NULL`);
     } else if (filters?.assignedTo !== undefined) {
