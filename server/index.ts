@@ -36,6 +36,10 @@ initSentry();
 import { validateSecrets } from "./middleware/secretsValidation";
 validateSecrets();
 
+// F-A09-2: PII masking console interceptor — masks phone, email, SSN, CC in all log output
+import { installConsoleInterceptor } from "./middleware/piiMasking";
+installConsoleInterceptor();
+
 // Global safety net for unhandled errors — log and report to Sentry
 process.on("unhandledRejection", (reason: unknown) => {
   // Log the full error — reason can be an empty object {}, so serialize it

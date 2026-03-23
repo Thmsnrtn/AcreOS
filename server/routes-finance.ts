@@ -158,25 +158,29 @@ export function registerFinanceRoutes(app: Express): void {
   api.delete("/api/notes/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const org = (req as any).organization;
     const noteId = Number(req.params.id);
-    const existingNote = await storage.getNote(org.id, noteId);
-    
-    await storage.deleteNote(noteId);
-    
-    if (existingNote) {
-      const user = req.user as any;
-      const userId = user?.claims?.sub || user?.id;
-      await storage.createAuditLogEntry({
-        organizationId: org.id,
-        userId,
-        action: "delete",
-        entityType: "note",
-        entityId: noteId,
-        changes: { before: existingNote, fields: ["deleted"] },
-        ipAddress: req.ip || req.socket?.remoteAddress,
-        userAgent: req.headers["user-agent"],
-      });
+    if (isNaN(noteId)) {
+      return res.status(400).json({ message: "Invalid note ID" });
     }
-    
+    const existingNote = await storage.getNote(org.id, noteId);
+    if (!existingNote) {
+      return res.status(404).json({ message: "Note not found" });
+    }
+
+    await storage.deleteNote(noteId);
+
+    const user = req.user as any;
+    const userId = user?.claims?.sub || user?.id;
+    await storage.createAuditLogEntry({
+      organizationId: org.id,
+      userId,
+      action: "delete",
+      entityType: "note",
+      entityId: noteId,
+      changes: { before: existingNote, fields: ["deleted"] },
+      ipAddress: req.ip || req.socket?.remoteAddress,
+      userAgent: req.headers["user-agent"],
+    });
+
     res.status(204).send();
   });
   
