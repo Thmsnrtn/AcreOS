@@ -25,6 +25,7 @@ import {
 } from '@shared/schema';
 import { eq, desc, and, asc } from 'drizzle-orm';
 import crypto from 'crypto';
+import { asyncHandler } from './middleware/asyncHandler';
 
 const router = Router();
 
@@ -69,7 +70,7 @@ function broadcastToDealRoom(req: Request, dealRoomId: number, event: object) {
 
 // ─── GET /deal-rooms/:id ──────────────────────────────────────────────────────
 
-router.get('/:id', async (req: Request, res: Response) => {
+router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
   try {
     const dealRoom = await getDealRoomOrFail(parseInt(req.params.id), res);
     if (!dealRoom) return;
@@ -77,11 +78,11 @@ router.get('/:id', async (req: Request, res: Response) => {
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
 // ─── GET /deal-rooms/:id/messages ─────────────────────────────────────────────
 
-router.get('/:id/messages', async (req: Request, res: Response) => {
+router.get('/:id/messages', asyncHandler(async (req: Request, res: Response) => {
   try {
     const dealRoomId = parseInt(req.params.id);
     const limit = Math.min(100, parseInt(String(req.query.limit ?? '50')));
@@ -99,11 +100,11 @@ router.get('/:id/messages', async (req: Request, res: Response) => {
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
 // ─── POST /deal-rooms/:id/messages ────────────────────────────────────────────
 
-router.post('/:id/messages', async (req: Request, res: Response) => {
+router.post('/:id/messages', asyncHandler(async (req: Request, res: Response) => {
   try {
     const dealRoomId = parseInt(req.params.id);
     const user = getUser(req);
@@ -133,11 +134,11 @@ router.post('/:id/messages', async (req: Request, res: Response) => {
   } catch (error: any) {
     res.status(400).json({ error: error.message });
   }
-});
+}));
 
 // ─── GET /deal-rooms/:id/documents ────────────────────────────────────────────
 
-router.get('/:id/documents', async (req: Request, res: Response) => {
+router.get('/:id/documents', asyncHandler(async (req: Request, res: Response) => {
   try {
     const dealRoomId = parseInt(req.params.id);
 
@@ -165,11 +166,11 @@ router.get('/:id/documents', async (req: Request, res: Response) => {
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
 // ─── POST /deal-rooms/:id/documents ───────────────────────────────────────────
 
-router.post('/:id/documents', async (req: Request, res: Response) => {
+router.post('/:id/documents', asyncHandler(async (req: Request, res: Response) => {
   try {
     const dealRoomId = parseInt(req.params.id);
     const user = getUser(req);
@@ -221,11 +222,11 @@ router.post('/:id/documents', async (req: Request, res: Response) => {
   } catch (error: any) {
     res.status(400).json({ error: error.message });
   }
-});
+}));
 
 // ─── GET /deal-rooms/:id/documents/:docId/download ────────────────────────────
 
-router.get('/:id/documents/:docId/download', async (req: Request, res: Response) => {
+router.get('/:id/documents/:docId/download', asyncHandler(async (req: Request, res: Response) => {
   try {
     const dealRoomId = parseInt(req.params.id);
     const docId = parseInt(req.params.docId);
@@ -256,11 +257,11 @@ router.get('/:id/documents/:docId/download', async (req: Request, res: Response)
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
 // ─── POST /deal-rooms/:id/participants ────────────────────────────────────────
 
-router.post('/:id/participants', async (req: Request, res: Response) => {
+router.post('/:id/participants', asyncHandler(async (req: Request, res: Response) => {
   try {
     const dealRoomId = parseInt(req.params.id);
     const dealRoom = await getDealRoomOrFail(dealRoomId, res);
@@ -320,11 +321,11 @@ router.post('/:id/participants', async (req: Request, res: Response) => {
   } catch (error: any) {
     res.status(400).json({ error: error.message });
   }
-});
+}));
 
 // ─── PATCH /deal-rooms/:id/participants/:userId ───────────────────────────────
 
-router.patch('/:id/participants/:userId', async (req: Request, res: Response) => {
+router.patch('/:id/participants/:userId', asyncHandler(async (req: Request, res: Response) => {
   try {
     const dealRoomId = parseInt(req.params.id);
     const { userId } = req.params;
@@ -349,11 +350,11 @@ router.patch('/:id/participants/:userId', async (req: Request, res: Response) =>
   } catch (error: any) {
     res.status(400).json({ error: error.message });
   }
-});
+}));
 
 // ─── DELETE /deal-rooms/:id/participants/:userId ──────────────────────────────
 
-router.delete('/:id/participants/:userId', async (req: Request, res: Response) => {
+router.delete('/:id/participants/:userId', asyncHandler(async (req: Request, res: Response) => {
   try {
     const dealRoomId = parseInt(req.params.id);
     const { userId } = req.params;
@@ -382,11 +383,11 @@ router.delete('/:id/participants/:userId', async (req: Request, res: Response) =
   } catch (error: any) {
     res.status(400).json({ error: error.message });
   }
-});
+}));
 
 // ─── GET /deal-rooms/:id/activity ─────────────────────────────────────────────
 
-router.get('/:id/activity', async (req: Request, res: Response) => {
+router.get('/:id/activity', asyncHandler(async (req: Request, res: Response) => {
   try {
     const dealRoomId = parseInt(req.params.id);
     const limit = Math.min(100, parseInt(String(req.query.limit ?? '50')));
@@ -432,11 +433,11 @@ router.get('/:id/activity', async (req: Request, res: Response) => {
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
 // ─── POST /deal-rooms/:id/nda ─────────────────────────────────────────────────
 
-router.post('/:id/nda', async (req: Request, res: Response) => {
+router.post('/:id/nda', asyncHandler(async (req: Request, res: Response) => {
   try {
     const dealRoomId = parseInt(req.params.id);
     const user = getUser(req);
@@ -507,11 +508,11 @@ Verification Code: ${crypto.randomBytes(8).toString('hex').toUpperCase()}
   } catch (error: any) {
     res.status(400).json({ error: error.message });
   }
-});
+}));
 
 // ─── POST /deal-rooms/:id/notifications ───────────────────────────────────────
 
-router.post('/:id/notifications', async (req: Request, res: Response) => {
+router.post('/:id/notifications', asyncHandler(async (req: Request, res: Response) => {
   try {
     const dealRoomId = parseInt(req.params.id);
     const user = getUser(req);
@@ -558,6 +559,6 @@ router.post('/:id/notifications', async (req: Request, res: Response) => {
   } catch (error: any) {
     res.status(400).json({ error: error.message });
   }
-});
+}));
 
 export default router;

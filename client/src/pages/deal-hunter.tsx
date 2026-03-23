@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { RequiredDisclaimer } from "@/components/required-disclaimer";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -103,6 +104,7 @@ function AutoBidRulesPanel() {
   const [maxPrice, setMaxPrice] = useState("");
   const [minScore, setMinScore] = useState("60");
   const [counties, setCounties] = useState("");
+  const [deleteRuleId, setDeleteRuleId] = useState<number | null>(null);
 
   const { data: rulesData } = useQuery({
     queryKey: ["/api/deal-hunter/auto-bid-rules"],
@@ -222,7 +224,7 @@ function AutoBidRulesPanel() {
                 variant="ghost"
                 size="sm"
                 className="text-destructive hover:text-destructive h-7 w-7 p-0"
-                onClick={() => deleteRuleMutation.mutate(rule.id)}
+                onClick={() => setDeleteRuleId(rule.id)}
               >
                 <Trash2 className="w-3.5 h-3.5" />
               </Button>
@@ -230,6 +232,17 @@ function AutoBidRulesPanel() {
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        open={deleteRuleId !== null}
+        onOpenChange={(open) => !open && setDeleteRuleId(null)}
+        title="Delete Deal Hunter Rule"
+        description="Are you sure you want to delete this deal hunter rule? This action cannot be undone."
+        confirmLabel="Delete Rule"
+        onConfirm={() => { deleteRuleMutation.mutate(deleteRuleId!); setDeleteRuleId(null); }}
+        isLoading={deleteRuleMutation.isPending}
+        variant="destructive"
+      />
     </div>
   );
 }
