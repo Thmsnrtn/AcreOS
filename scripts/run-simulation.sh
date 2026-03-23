@@ -141,7 +141,17 @@ npx tsx tests/simulation/generate-report.ts || {
   EXIT_CODE=1
 }
 
-# ── Step 7: Docker teardown happens in cleanup trap ──────────────────────
+# ── Step 7: Generate MRR forecast ─────────────────────────────────────
+
+echo ""
+echo "═══ Step 7: Generating MRR forecast ═══"
+FORECAST_OUTPUT=$(npx tsx tests/simulation/forecast-model.ts 2>&1) || {
+  err "Forecast generation failed"
+  EXIT_CODE=1
+}
+echo "$FORECAST_OUTPUT"
+
+# ── Step 8: Docker teardown happens in cleanup trap ──────────────────────
 
 echo ""
 echo "═══════════════════════════════════════════════"
@@ -153,6 +163,17 @@ if [ -f "$REPORT_OUTPUT" ]; then
   log "Report: $REPORT_OUTPUT"
 else
   log "No report generated"
+fi
+
+# Print MRR projections
+M6_MRR=$(echo "$FORECAST_OUTPUT" | grep "Month 6 MRR" | head -1)
+M12_MRR=$(echo "$FORECAST_OUTPUT" | grep "Month 12 MRR" | head -1)
+if [ -n "$M6_MRR" ]; then
+  echo ""
+  echo "═══ MRR Projections ═══"
+  echo "  $M6_MRR"
+  echo "  $M12_MRR"
+  echo ""
 fi
 
 log "Exit code: $EXIT_CODE"
