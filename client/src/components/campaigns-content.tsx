@@ -1,6 +1,8 @@
-import { useCampaigns, useCreateCampaign, useUpdateCampaign, useDirectMailStatus, useUpdateMailMode, useSendDirectMail, useMailEstimate, useCampaignOptimizations, useOptimizeCampaign, useMarkOptimizationImplemented, useCampaignResponseTrend, useMailAttribution } from "@/hooks/use-campaigns";
+import { useCampaigns, useCreateCampaign, useUpdateCampaign, useDirectMailStatus, useUpdateMailMode, useSendDirectMail, useMailEstimate, useCampaignOptimizations, useOptimizeCampaign, useMarkOptimizationImplemented, useCampaignResponseTrend, useMailAttribution, useTestSendCampaign } from "@/hooks/use-campaigns";
 import { useLeads } from "@/hooks/use-leads";
 import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertCampaignSchema, type Campaign, type CampaignOptimization } from "@shared/schema";
@@ -924,18 +926,32 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
   const { data: mailStatus } = useDirectMailStatus();
   const { data: mailAttribution } = useMailAttribution(campaign.id);
   const [showSendDialog, setShowSendDialog] = useState(false);
+  const { toast } = useToast();
+  const testSend = useTestSendCampaign();
 
   const toggleStatus = () => {
     const newStatus = campaign.status === 'active' ? 'paused' : 'active';
     updateCampaign({ id: campaign.id, status: newStatus });
   };
 
+  const handleTestSend = () => {
+    testSend.mutate(campaign.id, {
+      onSuccess: (data) => {
+        toast({ title: "Test email sent", description: `Sent to ${data.to}` });
+      },
+      onError: (err: any) => {
+        toast({ title: "Test send failed", description: err.message, variant: "destructive" });
+      },
+    });
+  };
+
   const isDirectMail = campaign.type === 'direct_mail';
+  const isEmail = campaign.type === 'email';
   const availableLeads = leads?.filter(l => l.address && l.city && l.state && l.zip) || [];
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" onClick={onClose}>
-      <div 
+      <div
         className="fixed right-0 top-0 h-full w-full max-w-xl bg-background shadow-2xl overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
@@ -948,8 +964,22 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
               </Badge>
             </div>
             <div className="flex gap-2 flex-wrap">
+              {isEmail && (
+                <Button
+                  variant="outline"
+                  onClick={handleTestSend}
+                  disabled={testSend.isPending}
+                  data-testid="button-test-send-email"
+                >
+                  {testSend.isPending ? (
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Sending...</>
+                  ) : (
+                    <><TestTube className="w-4 h-4 mr-2" /> Send Test Email</>
+                  )}
+                </Button>
+              )}
               {isDirectMail && mailStatus?.isConfigured && (
-                <Button 
+                <Button
                   onClick={() => setShowSendDialog(true)}
                   data-testid="button-send-mail"
                 >
@@ -1161,10 +1191,28 @@ function CampaignDetailDrawer({ campaign, onClose }: { campaign: Campaign; onClo
   );
 }
 
+interface HealthService {
+  name: string;
+  status: string;
+  message?: string;
+}
+
 function CampaignForm({ onSuccess }: { onSuccess: () => void }) {
   const { mutate, isPending } = useCreateCampaign();
   const [selectedTemplate, setSelectedTemplate] = useState<string>("");
-  
+  const { data: healthData } = useQuery<{ services: HealthService[] }>({
+    queryKey: ['/api/health/cached'],
+  });
+
+  // Determine which channels are configured
+  const emailConfigured = healthData?.services?.find(s => s.name === 'email')?.status !== 'unconfigured';
+  const smsConfigured = healthData?.services?.find(s => s.name === 'twilio')?.status !== 'unconfigured';
+  const channelStatus: Record<string, boolean> = {
+    direct_mail: true, // always available (uses Lob, checked separately)
+    email: emailConfigured !== false,
+    sms: smsConfigured !== false,
+  };
+
   const form = useForm<z.infer<typeof campaignFormSchema>>({
     resolver: zodResolver(campaignFormSchema),
     defaultValues: {
@@ -1203,27 +1251,48 @@ function CampaignForm({ onSuccess }: { onSuccess: () => void }) {
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <label className="text-sm font-medium">Type</label>
-          <Select 
-            value={form.watch("type")} 
-            onValueChange={(val) => {
-              form.setValue("type", val);
-              setSelectedTemplate("");
-            }}
-          >
-            <SelectTrigger data-testid="select-campaign-type">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {campaignTypes.map(type => (
-                <SelectItem key={type.value} value={type.value}>
-                  <div className="flex items-center gap-2">
-                    <type.icon className="w-4 h-4" />
-                    {type.label}
-                  </div>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <TooltipProvider>
+            <Select
+              value={form.watch("type")}
+              onValueChange={(val) => {
+                if (!channelStatus[val]) return;
+                form.setValue("type", val);
+                setSelectedTemplate("");
+              }}
+            >
+              <SelectTrigger data-testid="select-campaign-type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {campaignTypes.map(type => {
+                  const configured = channelStatus[type.value] !== false;
+                  const item = (
+                    <SelectItem
+                      key={type.value}
+                      value={type.value}
+                      disabled={!configured}
+                      className={!configured ? "opacity-50" : ""}
+                    >
+                      <div className="flex items-center gap-2">
+                        <type.icon className="w-4 h-4" />
+                        {type.label}
+                        {!configured && <span className="text-xs text-muted-foreground ml-1">(not configured)</span>}
+                      </div>
+                    </SelectItem>
+                  );
+                  if (!configured) {
+                    return (
+                      <Tooltip key={type.value}>
+                        <TooltipTrigger asChild>{item}</TooltipTrigger>
+                        <TooltipContent>Configure in Settings &rarr; Integrations</TooltipContent>
+                      </Tooltip>
+                    );
+                  }
+                  return item;
+                })}
+              </SelectContent>
+            </Select>
+          </TooltipProvider>
         </div>
 
         <div className="space-y-2">
