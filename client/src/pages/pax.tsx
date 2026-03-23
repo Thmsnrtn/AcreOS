@@ -446,6 +446,66 @@ function AiChatGuard({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+// ─── Suggested Prompts ────────────────────────────────────────────────────────
+
+const SUGGESTED_PROMPTS = [
+  { label: "What's my pipeline worth?", icon: TrendingUp },
+  { label: "Help me analyze a deal", icon: DollarSign },
+  { label: "How's my note portfolio doing?", icon: CheckCircle2 },
+  { label: "What should I work on today?", icon: Flame },
+];
+
+function SuggestedPrompts() {
+  const { data: conversations } = useQuery<{ id: number }[]>({
+    queryKey: ["/api/ai/conversations"],
+  });
+
+  // Only show when user has no conversations yet
+  if (conversations && conversations.length > 0) return null;
+
+  const handleClick = (prompt: string) => {
+    // Find the textarea in the command center and populate it
+    const textarea = document.querySelector<HTMLTextAreaElement>(
+      '[data-testid="chat-input"], textarea[placeholder*="message"], textarea[placeholder*="Ask"]'
+    );
+    if (textarea) {
+      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+        window.HTMLTextAreaElement.prototype,
+        "value",
+      )?.set;
+      nativeInputValueSetter?.call(textarea, prompt);
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      textarea.focus();
+      // Try to submit by finding the send button
+      setTimeout(() => {
+        const sendBtn = textarea
+          .closest("form")
+          ?.querySelector<HTMLButtonElement>('button[type="submit"]');
+        if (sendBtn) sendBtn.click();
+      }, 100);
+    }
+  };
+
+  return (
+    <div className="mb-6">
+      <p className="text-sm text-muted-foreground mb-3">Try asking Pax:</p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {SUGGESTED_PROMPTS.map(({ label, icon: Icon }) => (
+          <Button
+            key={label}
+            variant="outline"
+            className="justify-start gap-2 h-auto py-3 text-left"
+            onClick={() => handleClick(label)}
+          >
+            <Icon className="w-4 h-4 shrink-0 text-primary" />
+            <span className="text-sm">{label}</span>
+          </Button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function PaxPage() {
@@ -510,6 +570,7 @@ export default function PaxPage() {
 
         <TabsContent value="chat" data-testid="tab-content-chat">
           <AiChatGuard>
+            <SuggestedPrompts />
             <CommandCenterPage />
           </AiChatGuard>
         </TabsContent>
