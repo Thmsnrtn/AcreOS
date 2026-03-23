@@ -200,6 +200,47 @@ export class WebhookHandlers {
       });
 
       console.log(`[webhook] Subscription checkout completed: Org ${organizationId}, sub ${subscriptionId}`);
+
+      // Send subscription welcome email
+      try {
+        const { emailService } = await import('./services/emailService');
+        const org = await storage.getOrganization(organizationId);
+        if (org) {
+          const tierName = (org.subscriptionTier || 'starter').charAt(0).toUpperCase() + (org.subscriptionTier || 'starter').slice(1);
+          const tierLimits: Record<string, { leads: string; properties: string; ai: string }> = {
+            sprout: { leads: '50', properties: '10', ai: '25/month' },
+            starter: { leads: '200', properties: '50', ai: '100/month' },
+            pro: { leads: '1,000', properties: '250', ai: '500/month' },
+            scale: { leads: '5,000', properties: '1,000', ai: '2,000/month' },
+            enterprise: { leads: 'Unlimited', properties: 'Unlimited', ai: 'Unlimited' },
+          };
+          const limits = tierLimits[org.subscriptionTier || 'starter'] || tierLimits.starter;
+
+          // Find the user's email from session metadata or org owner
+          const userEmail = session.customer_email || session.metadata?.userEmail;
+          if (userEmail) {
+            await emailService.sendEmail({
+              to: userEmail,
+              subject: `Welcome to AcreOS ${tierName}!`,
+              html: `
+                <h2>Welcome to AcreOS ${tierName}!</h2>
+                <p>Your subscription is now active. Here's what's included in your plan:</p>
+                <ul>
+                  <li><strong>Leads:</strong> ${limits.leads}</li>
+                  <li><strong>Properties:</strong> ${limits.properties}</li>
+                  <li><strong>AI Requests:</strong> ${limits.ai}</li>
+                </ul>
+                <p><a href="${process.env.APP_URL || 'https://app.acreos.com'}">Go to your dashboard</a></p>
+                <p>— The AcreOS Team</p>
+              `,
+              text: `Welcome to AcreOS ${tierName}!\n\nYour plan includes:\n- Leads: ${limits.leads}\n- Properties: ${limits.properties}\n- AI Requests: ${limits.ai}\n\nGo to your dashboard: ${process.env.APP_URL || 'https://app.acreos.com'}`,
+            });
+            console.log(`[webhook] Welcome email sent to ${userEmail} for ${tierName} plan`);
+          }
+        }
+      } catch (emailErr) {
+        console.warn('[webhook] Could not send subscription welcome email (email service may not be configured):', emailErr);
+      }
     } catch (err) {
       console.error('[webhook] Error processing subscription checkout:', err);
     }
