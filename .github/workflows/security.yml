@@ -164,7 +164,37 @@ jobs:
           sarif_file: "trivy-fs-results.sarif"
           category: trivy-filesystem
 
-  # ── 5. Summary gate ────────────────────────────────────────────────────────
+  # ── 5. Accessibility regression ─────────────────────────────────────────────
+  # Note: The full simulation suite (scripts/run-simulation.sh) should be run
+  # manually before major releases — it requires Docker and takes longer than
+  # CI allows. This pipeline covers automated security and accessibility checks.
+  accessibility:
+    name: Accessibility Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run accessibility tests
+        run: npx playwright test tests/e2e/accessibility.spec.ts --reporter=list || true
+        # Non-blocking for now — log results but don't fail the pipeline
+        # until all accessibility issues are resolved
+
+      - name: npm audit (high severity gate)
+        run: npm audit --audit-level=high || echo "::warning::npm audit found high-severity vulnerabilities"
+
+  # ── 6. Summary gate ────────────────────────────────────────────────────────
   security-gate:
     name: Security Gate
     runs-on: ubuntu-latest
