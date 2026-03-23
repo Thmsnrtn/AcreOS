@@ -118,6 +118,31 @@ router.post('/listings/:id/bids', asyncHandler(async (req: Request, res: Respons
       { bidAmount, message, proposedTerms, bidType, partnershipSplit }
     );
 
+    // Notify seller about new bid
+    try {
+      const { emailService } = await import('./services/emailService');
+      const listing = await marketplaceService.getListing(parseInt(req.params.id), org.id);
+      if (listing) {
+        const { storage: storageInst } = await import('./storage');
+        const sellerOrgId = listing.listing?.sellerOrganizationId ?? (listing as any).sellerOrganizationId;
+        if (sellerOrgId) {
+          const sellerOrg = await storageInst.getOrganization(sellerOrgId);
+          if (sellerOrg) {
+            // Try to find the org owner email from the org name or founder email
+            const orgEmail = (sellerOrg as any).email || process.env.FOUNDER_EMAIL;
+            if (orgEmail) {
+              await emailService.sendEmail({
+                to: orgEmail,
+                subject: `New bid on your listing — $${Number(bidAmount).toLocaleString()}`,
+                html: `<p>A new bid of <strong>$${Number(bidAmount).toLocaleString()}</strong> has been placed on your marketplace listing.</p><p><a href="${process.env.APP_URL || ''}/marketplace">View in marketplace</a></p>`,
+                text: `New bid of $${Number(bidAmount).toLocaleString()} on your listing. View at ${process.env.APP_URL || ''}/marketplace`,
+              }).catch(() => {});
+            }
+          }
+        }
+      }
+    } catch { /* email not configured — skip silently */ }
+
     res.json({ bid, success: true });
   } catch (error: any) {
     res.status(400).json({ error: error.message });

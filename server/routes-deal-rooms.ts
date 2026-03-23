@@ -26,6 +26,7 @@ import {
 import { eq, desc, and, asc } from 'drizzle-orm';
 import crypto from 'crypto';
 import { asyncHandler } from './middleware/asyncHandler';
+import { validateUrl } from './middleware/fileUploadSecurity';
 
 const router = Router();
 
@@ -178,6 +179,24 @@ router.post('/:id/documents', asyncHandler(async (req: Request, res: Response) =
 
     if (!fileName || !fileUrl) {
       return res.status(400).json({ error: 'fileName and fileUrl are required' });
+    }
+
+    // Validate file URL to prevent SSRF
+    const urlValidation = validateUrl(fileUrl);
+    if (!urlValidation.safe) {
+      return res.status(400).json({ error: `Invalid file URL: ${urlValidation.reason}` });
+    }
+
+    // Block dangerous file extensions
+    const ext = fileName.split('.').pop()?.toLowerCase();
+    const blocked = ['exe', 'sh', 'bat', 'cmd', 'ps1', 'php', 'py', 'rb', 'pl', 'js', 'ts', 'jar', 'com', 'vbs'];
+    if (ext && blocked.includes(ext)) {
+      return res.status(400).json({ error: `File type .${ext} is not allowed` });
+    }
+
+    // Enforce file size limit (10MB)
+    if (fileSize && Number(fileSize) > 10 * 1024 * 1024) {
+      return res.status(400).json({ error: 'File size exceeds 10MB limit' });
     }
 
     // Determine next version for this fileName
