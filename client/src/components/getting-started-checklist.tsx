@@ -1,6 +1,4 @@
-import { useLeads } from "@/hooks/use-leads";
-import { useProperties } from "@/hooks/use-properties";
-import { useDeals } from "@/hooks/use-deals";
+import { useQuery } from "@tanstack/react-query";
 import { useOrganization, useUpdateOrganization } from "@/hooks/use-organization";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,8 +6,16 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
-import { Users, Map, Handshake, Bell, CheckCircle2, ArrowRight, X, Sparkles } from "lucide-react";
+import { Users, Upload, Megaphone, Handshake, Banknote, CheckCircle2, ArrowRight, X, Sparkles } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+
+interface ChecklistStatus {
+  hasLead: boolean;
+  hasImport: boolean;
+  hasCampaign: boolean;
+  hasDeal: boolean;
+  hasNotePayment: boolean;
+}
 
 interface ChecklistItem {
   id: string;
@@ -17,58 +23,76 @@ interface ChecklistItem {
   description: string;
   icon: typeof Users;
   href: string;
-  isComplete: boolean;
+  statusKey: keyof ChecklistStatus;
 }
+
+const CHECKLIST_ITEMS: Omit<ChecklistItem, "statusKey">[] = [
+  {
+    id: "lead",
+    title: "Add your first lead",
+    description: "Import or manually add a seller or buyer to your CRM",
+    icon: Users,
+    href: "/leads",
+  },
+  {
+    id: "import",
+    title: "Import leads from CSV",
+    description: "Bulk import your existing contacts from a spreadsheet",
+    icon: Upload,
+    href: "/leads",
+  },
+  {
+    id: "campaign",
+    title: "Create a campaign",
+    description: "Set up a mail or outreach campaign to engage leads",
+    icon: Megaphone,
+    href: "/campaigns",
+  },
+  {
+    id: "deal",
+    title: "Track a deal",
+    description: "Start tracking an acquisition or disposition deal",
+    icon: Handshake,
+    href: "/deals",
+  },
+  {
+    id: "notePayment",
+    title: "Record a note payment",
+    description: "Log a payment on a seller-financed note",
+    icon: Banknote,
+    href: "/notes",
+  },
+];
+
+const STATUS_KEYS: Record<string, keyof ChecklistStatus> = {
+  lead: "hasLead",
+  import: "hasImport",
+  campaign: "hasCampaign",
+  deal: "hasDeal",
+  notePayment: "hasNotePayment",
+};
 
 export function GettingStartedChecklist() {
   const { data: organization } = useOrganization();
-  const { data: leads = [] } = useLeads();
-  const { data: properties = [] } = useProperties();
-  const { data: deals = [] } = useDeals();
   const updateOrg = useUpdateOrganization();
 
+  const { data: checklistStatus } = useQuery<ChecklistStatus>({
+    queryKey: ["/api/onboarding/checklist-status"],
+    staleTime: 30_000,
+    refetchInterval: 30_000,
+  });
+
   const settings = organization?.settings as Record<string, unknown> | null;
-  const showTips = settings?.showTips !== false;
   const checklistDismissed = settings?.checklistDismissed === true;
 
-  const checklistItems: ChecklistItem[] = [
-    {
-      id: "lead",
-      title: "Add your first lead",
-      description: "Import or manually add a seller or buyer to your CRM",
-      icon: Users,
-      href: "/leads",
-      isComplete: leads.length > 0,
-    },
-    {
-      id: "property",
-      title: "Create a property listing",
-      description: "Add a property to track through your pipeline",
-      icon: Map,
-      href: "/properties",
-      isComplete: properties.length > 0,
-    },
-    {
-      id: "deal",
-      title: "Set up your first deal",
-      description: "Start tracking an acquisition or disposition",
-      icon: Handshake,
-      href: "/deals",
-      isComplete: deals.length > 0,
-    },
-    {
-      id: "notifications",
-      title: "Configure notifications",
-      description: "Customize how you receive updates and alerts",
-      icon: Bell,
-      href: "/settings",
-      isComplete: settings?.notificationsConfigured === true,
-    },
-  ];
+  const items = CHECKLIST_ITEMS.map((item) => ({
+    ...item,
+    isComplete: checklistStatus ? checklistStatus[STATUS_KEYS[item.id]] : false,
+  }));
 
-  const completedCount = checklistItems.filter((item) => item.isComplete).length;
-  const progress = (completedCount / checklistItems.length) * 100;
-  const allComplete = completedCount === checklistItems.length;
+  const completedCount = items.filter((item) => item.isComplete).length;
+  const progress = (completedCount / items.length) * 100;
+  const allComplete = completedCount === items.length;
 
   const handleDismiss = async () => {
     await updateOrg.mutateAsync({
@@ -79,7 +103,7 @@ export function GettingStartedChecklist() {
     });
   };
 
-  if (!showTips || checklistDismissed || allComplete) {
+  if (checklistDismissed || allComplete || !checklistStatus) {
     return null;
   }
 
@@ -105,7 +129,7 @@ export function GettingStartedChecklist() {
             <Sparkles className="w-5 h-5 text-primary" />
             <CardTitle className="text-lg">Getting Started</CardTitle>
             <Badge variant="secondary" className="ml-auto mr-8">
-              {completedCount}/{checklistItems.length}
+              {completedCount}/{items.length}
             </Badge>
           </div>
           <CardDescription>
@@ -115,7 +139,7 @@ export function GettingStartedChecklist() {
         </CardHeader>
         <CardContent className="space-y-3">
           <AnimatePresence>
-            {checklistItems.map((item, index) => {
+            {items.map((item, index) => {
               const ItemIcon = item.icon;
               return (
                 <motion.div

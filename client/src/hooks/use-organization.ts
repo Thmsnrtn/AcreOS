@@ -75,7 +75,6 @@ export function useDashboardStats() {
     staleTime: 30_000, // match server cache TTL
     refetchInterval: 30_000,
     refetchOnWindowFocus: true,
-    keepPreviousData: true,
   });
 }
 

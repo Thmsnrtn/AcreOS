@@ -19,5 +19,5 @@ declare module "@/components/saved-views-selector" {
 }
 
 declare module "@/hooks/use-unsaved-changes" {
-  export function useUnsavedChanges(): any;
+  export function useUnsavedChanges(isDirty: boolean): void;
 }

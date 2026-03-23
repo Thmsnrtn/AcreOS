@@ -1,3 +1,4 @@
+import React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl, type InsertLead } from "@shared/routes";
 import { STALE_TIMES, CACHE_TIMES } from "@/lib/queryClient";
@@ -53,6 +54,7 @@ export function useCreateLead() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.leads.list.path] });
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/checklist-status"] });
       toast({
         title: "Success",
         description: "Lead created successfully.",
@@ -114,12 +116,23 @@ export function useDeleteLead() {
         credentials: "include",
       });
       if (!res.ok) throw new Error(`${res.status}: Failed to delete lead`);
+      return id;
     },
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
       queryClient.invalidateQueries({ queryKey: [api.leads.list.path] });
       toast({
-        title: "Success",
-        description: "Lead deleted successfully.",
+        title: "Lead deleted",
+        description: "Lead moved to trash.",
+        action: React.createElement("button", {
+          className: "shrink-0 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted",
+          onClick: async () => {
+            try {
+              await fetch(`/api/leads/${id}/restore`, { method: "PATCH", credentials: "include" });
+              queryClient.invalidateQueries({ queryKey: [api.leads.list.path] });
+            } catch { /* ignore */ }
+          },
+        }, "Undo") as any,
+        duration: 10000,
       });
     },
     onError: (error) => {

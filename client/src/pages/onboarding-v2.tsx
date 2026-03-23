@@ -1,9 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Card, CardContent } from "@/components/ui/card";
@@ -24,9 +26,74 @@ import {
   BarChart3,
   Brain,
   Phone,
+  Upload,
+  Link2,
+  Shield,
+  UserPlus,
+  Key,
+  Settings,
+  Workflow,
+  CheckCircle2,
+  FileSpreadsheet,
+  Mail,
+  MessageSquare,
+  CreditCard,
+  Loader2,
+  PartyPopper,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLocation } from "wouter";
+
+// ── Completion celebration animation ─────────────────────────────────────
+// Pure CSS confetti burst that plays for 2s then fades to reveal content.
+
+function CompletionCelebration({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="relative">
+      <style>{`
+        @keyframes acr-confetti-burst {
+          0% { transform: scale(0) rotate(0deg); opacity: 1; }
+          50% { transform: scale(1.2) rotate(180deg); opacity: 0.8; }
+          100% { transform: scale(1) rotate(360deg); opacity: 0; }
+        }
+        @keyframes acr-celebration-glow {
+          0% { transform: scale(0.3); opacity: 0; filter: blur(8px); }
+          40% { transform: scale(1.05); opacity: 1; filter: blur(0px); }
+          100% { transform: scale(1); opacity: 1; filter: blur(0px); }
+        }
+        @keyframes acr-dot {
+          0% { transform: translate(0, 0) scale(1); opacity: 1; }
+          100% { opacity: 0; }
+        }
+        .acr-dot-1 { animation: acr-dot 1.8s ease-out forwards; transform: translate(-60px, -80px) scale(0); }
+        .acr-dot-2 { animation: acr-dot 1.6s ease-out 0.1s forwards; transform: translate(70px, -70px) scale(0); }
+        .acr-dot-3 { animation: acr-dot 1.5s ease-out 0.2s forwards; transform: translate(-40px, -100px) scale(0); }
+        .acr-dot-4 { animation: acr-dot 1.7s ease-out 0.15s forwards; transform: translate(50px, -90px) scale(0); }
+        .acr-dot-5 { animation: acr-dot 1.4s ease-out 0.25s forwards; transform: translate(-80px, -50px) scale(0); }
+        .acr-dot-6 { animation: acr-dot 1.9s ease-out 0.05s forwards; transform: translate(80px, -40px) scale(0); }
+        .acr-dot-7 { animation: acr-dot 1.3s ease-out 0.3s forwards; transform: translate(0px, -110px) scale(0); }
+        .acr-dot-8 { animation: acr-dot 1.6s ease-out 0.12s forwards; transform: translate(-70px, -30px) scale(0); }
+        .acr-celebration-content {
+          animation: acr-celebration-glow 2s ease-out forwards;
+        }
+      `}</style>
+      {/* Confetti dots */}
+      <div className="absolute inset-0 flex items-start justify-center pointer-events-none overflow-hidden">
+        <div className="relative mt-10">
+          <div className="acr-dot-1 absolute w-2 h-2 rounded-full bg-emerald-400" />
+          <div className="acr-dot-2 absolute w-3 h-3 rounded-full bg-yellow-400" />
+          <div className="acr-dot-3 absolute w-2 h-2 rounded-full bg-purple-400" />
+          <div className="acr-dot-4 absolute w-2.5 h-2.5 rounded-full bg-blue-400" />
+          <div className="acr-dot-5 absolute w-2 h-2 rounded-full bg-pink-400" />
+          <div className="acr-dot-6 absolute w-3 h-3 rounded-full bg-orange-400" />
+          <div className="acr-dot-7 absolute w-2 h-2 rounded-full bg-teal-400" />
+          <div className="acr-dot-8 absolute w-2.5 h-2.5 rounded-full bg-red-400" />
+        </div>
+      </div>
+      <div className="acr-celebration-content">{children}</div>
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Onboarding flow — 3 paths, guided by Atlas
@@ -237,6 +304,641 @@ function InstantDealHunt({
       >
         {isLoading ? "Scanning..." : "Continue to Dashboard"}
         <ArrowRight className="w-4 h-4 ml-2" />
+      </Button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Active path: Portfolio Import step
+// ---------------------------------------------------------------------------
+
+function PortfolioImportStep({ onContinue }: { onContinue: (data?: Record<string, any>) => void }) {
+  const { toast } = useToast();
+  const [file, setFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<string[][]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [importComplete, setImportComplete] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileSelect = useCallback((selectedFile: File) => {
+    setFile(selectedFile);
+    // Parse first 5 rows for preview
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result as string;
+      if (!text) return;
+      const lines = text.split("\n").filter(Boolean).slice(0, 6);
+      const rows = lines.map((line) =>
+        line.split(",").map((cell) => cell.replace(/^"|"$/g, "").trim())
+      );
+      setPreview(rows);
+    };
+    reader.readAsText(selectedFile);
+  }, []);
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      const droppedFile = e.dataTransfer.files[0];
+      if (droppedFile && (droppedFile.name.endsWith(".csv") || droppedFile.name.endsWith(".xlsx"))) {
+        handleFileSelect(droppedFile);
+      }
+    },
+    [handleFileSelect]
+  );
+
+  const handleUpload = async () => {
+    if (!file) return;
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/import/leads", {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Import failed");
+      const result = await res.json();
+      setImportComplete(true);
+      toast({
+        title: "Import successful",
+        description: `Imported ${result.imported ?? result.count ?? 0} leads from your file.`,
+      });
+    } catch {
+      toast({
+        title: "Import failed",
+        description: "Check the file format and try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {!file ? (
+        <div
+          onDrop={handleDrop}
+          onDragOver={(e) => e.preventDefault()}
+          onClick={() => fileInputRef.current?.click()}
+          className="border-2 border-dashed border-gray-700 rounded-xl p-10 text-center cursor-pointer hover:border-blue-500 transition-colors"
+        >
+          <Upload className="w-10 h-10 text-gray-500 mx-auto mb-3" />
+          <p className="text-gray-300 font-medium">Drop your CSV or XLSX file here</p>
+          <p className="text-gray-500 text-sm mt-1">or click to browse</p>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv,.xlsx"
+            className="hidden"
+            onChange={(e) => e.target.files?.[0] && handleFileSelect(e.target.files[0])}
+          />
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between p-3 bg-blue-950/30 border border-blue-700/30 rounded-lg">
+            <div className="flex items-center gap-2">
+              <FileSpreadsheet className="w-5 h-5 text-blue-400" />
+              <span className="text-white text-sm font-medium">{file.name}</span>
+            </div>
+            {!importComplete && (
+              <button
+                onClick={() => { setFile(null); setPreview([]); }}
+                className="text-gray-500 hover:text-gray-300 text-xs"
+              >
+                Change file
+              </button>
+            )}
+          </div>
+
+          {preview.length > 0 && !importComplete && (
+            <div className="overflow-x-auto rounded-lg border border-gray-800">
+              <table className="w-full text-xs text-gray-300">
+                <thead>
+                  <tr className="bg-gray-900/80">
+                    {preview[0]?.map((header, i) => (
+                      <th key={i} className="px-3 py-2 text-left font-medium text-gray-400">
+                        {header}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {preview.slice(1, 6).map((row, ri) => (
+                    <tr key={ri} className="border-t border-gray-800/50">
+                      {row.map((cell, ci) => (
+                        <td key={ci} className="px-3 py-1.5 truncate max-w-[120px]">
+                          {cell}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="px-3 py-1.5 text-xs text-gray-600 bg-gray-900/50">
+                Showing first {Math.min(preview.length - 1, 5)} rows
+              </div>
+            </div>
+          )}
+
+          {importComplete && (
+            <div className="p-3 bg-emerald-950/30 border border-emerald-700/30 rounded-lg text-emerald-300 text-sm flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4" />
+              Portfolio imported successfully
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="flex gap-3">
+        {file && !importComplete && (
+          <Button
+            onClick={handleUpload}
+            disabled={isUploading}
+            className="flex-1 bg-blue-600 hover:bg-blue-700 py-3"
+          >
+            {isUploading ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Importing...
+              </>
+            ) : (
+              <>
+                <Upload className="w-4 h-4 mr-2" />
+                Import {preview.length > 1 ? `${preview.length - 1} rows` : "file"}
+              </>
+            )}
+          </Button>
+        )}
+        <Button
+          onClick={() => onContinue({ dataImported: importComplete || !!file })}
+          className={cn(
+            "py-3",
+            file && !importComplete ? "flex-1" : "w-full",
+            "bg-emerald-600 hover:bg-emerald-700"
+          )}
+        >
+          {importComplete ? "Continue" : "Skip for now"} <ArrowRight className="w-4 h-4 ml-2" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Active path: Target Counties step (multi-county)
+// ---------------------------------------------------------------------------
+
+function TargetCountiesStep({
+  formData,
+  setFormData,
+  onContinue,
+}: {
+  formData: Record<string, any>;
+  setFormData: React.Dispatch<React.SetStateAction<Record<string, any>>>;
+  onContinue: (data?: Record<string, any>) => void;
+}) {
+  const [counties, setCounties] = useState<Array<{ state: string; county: string }>>(
+    formData.targetCounties || [{ state: "", county: "" }]
+  );
+
+  const updateCounty = (index: number, field: "state" | "county", value: string) => {
+    setCounties((prev) => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: field === "state" ? value.toUpperCase() : value };
+      return updated;
+    });
+  };
+
+  const addCounty = () => {
+    if (counties.length < 5) {
+      setCounties((prev) => [...prev, { state: "", county: "" }]);
+    }
+  };
+
+  const validCounties = counties.filter((c) => c.state && c.county);
+
+  return (
+    <div className="space-y-4">
+      {counties.map((c, i) => (
+        <div key={i} className="flex gap-3">
+          <div className="w-20">
+            <Input
+              placeholder="ST"
+              maxLength={2}
+              value={c.state}
+              onChange={(e) => updateCounty(i, "state", e.target.value)}
+              className="bg-gray-900 border-gray-700 text-white text-center"
+            />
+          </div>
+          <div className="flex-1">
+            <Input
+              placeholder="County name"
+              value={c.county}
+              onChange={(e) => updateCounty(i, "county", e.target.value)}
+              className="bg-gray-900 border-gray-700 text-white"
+            />
+          </div>
+        </div>
+      ))}
+
+      {counties.length < 5 && (
+        <button
+          onClick={addCounty}
+          className="text-sm text-blue-400 hover:text-blue-300"
+        >
+          + Add another county (up to 5)
+        </button>
+      )}
+
+      <div className="p-3 bg-gray-900 border border-gray-800 rounded-lg">
+        <p className="text-xs text-gray-500 mb-1">Pro tip</p>
+        <p className="text-xs text-gray-400">
+          Running deals in 3-5 counties gives you enough deal flow while keeping focus.
+          The Deal Hunter scans each county every night.
+        </p>
+      </div>
+
+      <Button
+        onClick={() => {
+          const data = {
+            targetCounties: validCounties,
+            targetCounty: validCounties[0]?.county || "",
+            targetState: validCounties[0]?.state || "",
+          };
+          setFormData((prev) => ({ ...prev, ...data }));
+          onContinue(data);
+        }}
+        disabled={validCounties.length === 0}
+        className="w-full bg-emerald-600 hover:bg-emerald-700 py-3"
+      >
+        Set {validCounties.length} {validCounties.length === 1 ? "County" : "Counties"} as Targets
+        <Target className="w-4 h-4 ml-2" />
+      </Button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Active path: Automation step
+// ---------------------------------------------------------------------------
+
+function AutomationStep({ onContinue }: { onContinue: () => void }) {
+  const [settings, setSettings] = useState({
+    dealHunter: true,
+    autoMail: false,
+    morningBriefing: true,
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="p-4 bg-blue-950/20 border border-blue-700/30 rounded-xl">
+        <div className="flex items-center gap-3 mb-3">
+          <Zap className="w-5 h-5 text-blue-400" />
+          <span className="font-medium text-white">Autonomous Deal Machine</span>
+        </div>
+        <p className="text-sm text-gray-400 mb-4">
+          AcreOS runs these processes automatically every night. Toggle what you want active.
+        </p>
+        <div className="space-y-3">
+          {[
+            {
+              key: "dealHunter" as const,
+              icon: Target,
+              label: "Nightly Deal Hunter",
+              desc: "Scans your target counties for new motivated sellers",
+            },
+            {
+              key: "autoMail" as const,
+              icon: Mail,
+              label: "Auto-Send First Touch Mailers",
+              desc: "Automatically sends initial outreach to new high-score leads",
+            },
+            {
+              key: "morningBriefing" as const,
+              icon: Star,
+              label: "Morning Briefing Email",
+              desc: "Daily summary of new opportunities, responses, and action items",
+            },
+          ].map(({ key, icon: Icon, label, desc }) => (
+            <button
+              key={key}
+              onClick={() => setSettings((prev) => ({ ...prev, [key]: !prev[key] }))}
+              className={cn(
+                "w-full text-left p-3 rounded-lg border transition-colors flex items-start gap-3",
+                settings[key]
+                  ? "border-blue-500/50 bg-blue-950/30"
+                  : "border-gray-700 bg-gray-900/50"
+              )}
+            >
+              <Icon className={cn("w-4 h-4 mt-0.5 flex-shrink-0", settings[key] ? "text-blue-400" : "text-gray-500")} />
+              <div className="flex-1">
+                <div className="text-sm font-medium text-white">{label}</div>
+                <div className="text-xs text-gray-500">{desc}</div>
+              </div>
+              <div className={cn(
+                "w-8 h-5 rounded-full transition-colors flex items-center px-0.5 flex-shrink-0 mt-0.5",
+                settings[key] ? "bg-blue-500 justify-end" : "bg-gray-700 justify-start"
+              )}>
+                <div className="w-4 h-4 bg-white rounded-full" />
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <Button onClick={onContinue} className="w-full bg-emerald-600 hover:bg-emerald-700 py-3">
+        Activate Deal Machine <Zap className="w-4 h-4 ml-2" />
+      </Button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Enterprise path: Team Setup step
+// ---------------------------------------------------------------------------
+
+function TeamSetupStep({ onContinue }: { onContinue: (data?: Record<string, any>) => void }) {
+  const { toast } = useToast();
+  const [emails, setEmails] = useState("");
+  const [invitesSent, setInvitesSent] = useState(false);
+
+  const inviteMutation = useMutation({
+    mutationFn: async (emailList: string[]) => {
+      const res = await apiRequest("POST", "/api/team/invite", { emails: emailList });
+      return res.json();
+    },
+    onSuccess: () => {
+      setInvitesSent(true);
+      toast({ title: "Invitations sent", description: "Your team members will receive an email invite." });
+    },
+    onError: () => {
+      toast({ title: "Could not send invites", description: "You can invite team members later in Settings.", variant: "destructive" });
+    },
+  });
+
+  const handleInvite = () => {
+    const emailList = emails
+      .split(/[,\n]/)
+      .map((e) => e.trim())
+      .filter((e) => e.includes("@"));
+    if (emailList.length > 0) {
+      inviteMutation.mutate(emailList);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="p-4 bg-purple-950/20 border border-purple-700/30 rounded-xl">
+        <div className="space-y-3">
+          {[
+            { icon: UserPlus, role: "Deal Analysts", desc: "Find and evaluate acquisition targets" },
+            { icon: Users, role: "Virtual Assistants", desc: "Handle outreach, follow-ups, and data entry" },
+            { icon: Briefcase, role: "Closing Coordinators", desc: "Manage contracts and transactions" },
+          ].map(({ icon: Icon, role, desc }) => (
+            <div key={role} className="flex items-center gap-3 p-2">
+              <div className="w-8 h-8 bg-purple-900/50 rounded-lg flex items-center justify-center flex-shrink-0">
+                <Icon className="w-4 h-4 text-purple-400" />
+              </div>
+              <div>
+                <div className="text-sm font-medium text-white">{role}</div>
+                <div className="text-xs text-gray-500">{desc}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <Label className="text-gray-300 mb-2 block">Invite team members</Label>
+        <Textarea
+          placeholder="Enter email addresses (one per line or comma-separated)"
+          value={emails}
+          onChange={(e) => setEmails(e.target.value)}
+          className="bg-gray-900 border-gray-700 text-white min-h-[80px]"
+          disabled={invitesSent}
+        />
+      </div>
+
+      {invitesSent && (
+        <div className="p-3 bg-emerald-950/30 border border-emerald-700/30 rounded-lg text-emerald-300 text-sm flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4" />
+          Invitations sent successfully
+        </div>
+      )}
+
+      <div className="flex gap-3">
+        {!invitesSent && emails.trim() && (
+          <Button
+            onClick={handleInvite}
+            disabled={inviteMutation.isPending}
+            className="flex-1 bg-purple-600 hover:bg-purple-700 py-3"
+          >
+            {inviteMutation.isPending ? (
+              <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Sending...</>
+            ) : (
+              <><Mail className="w-4 h-4 mr-2" /> Send Invites</>
+            )}
+          </Button>
+        )}
+        <Button
+          onClick={() => onContinue({ teamInvited: invitesSent })}
+          className={cn(
+            "py-3 bg-emerald-600 hover:bg-emerald-700",
+            !invitesSent && emails.trim() ? "flex-1" : "w-full"
+          )}
+        >
+          {invitesSent ? "Continue" : "Skip for now"} <ArrowRight className="w-4 h-4 ml-2" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Enterprise path: Integrations step
+// ---------------------------------------------------------------------------
+
+function IntegrationsStep({ onContinue }: { onContinue: () => void }) {
+  const { data: healthData } = useQuery<Record<string, any>>({
+    queryKey: ["/api/health"],
+    queryFn: async () => {
+      const res = await fetch("/api/health", { credentials: "include" });
+      return res.json();
+    },
+  });
+
+  const { data: stripeData } = useQuery<{ subscription: any } | null>({
+    queryKey: ["/api/stripe/subscription"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/stripe/subscription", { credentials: "include" });
+        if (!res.ok) return null;
+        return res.json();
+      } catch {
+        return null;
+      }
+    },
+  });
+
+  const integrations = [
+    {
+      icon: CreditCard,
+      name: "Stripe Payments",
+      desc: "Collect payments, sell notes, manage subscriptions",
+      status: stripeData?.subscription ? "connected" : "not_configured",
+      configUrl: "/settings#billing",
+    },
+    {
+      icon: Mail,
+      name: "Email (AWS SES)",
+      desc: "Send campaigns, follow-ups, and transactional email",
+      status: healthData?.ses?.configured ? "connected" : "not_configured",
+      configUrl: "/settings/email",
+    },
+    {
+      icon: MessageSquare,
+      name: "SMS (Twilio)",
+      desc: "Text campaigns, two-way messaging, auto-follow-ups",
+      status: healthData?.twilio?.configured ? "connected" : "not_configured",
+      configUrl: "/settings",
+    },
+    {
+      icon: Key,
+      name: "API & Webhooks",
+      desc: "Connect external tools via REST API and webhooks",
+      status: "available",
+      configUrl: "/webhooks",
+    },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div className="space-y-3">
+        {integrations.map(({ icon: Icon, name, desc, status, configUrl }) => (
+          <div
+            key={name}
+            className={cn(
+              "p-4 rounded-xl border flex items-start gap-3",
+              status === "connected"
+                ? "border-emerald-700/40 bg-emerald-950/20"
+                : "border-gray-700 bg-gray-900/50"
+            )}
+          >
+            <div className={cn(
+              "w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0",
+              status === "connected" ? "bg-emerald-900/50" : "bg-gray-800"
+            )}>
+              <Icon className={cn("w-5 h-5", status === "connected" ? "text-emerald-400" : "text-gray-400")} />
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-white text-sm">{name}</span>
+                <Badge
+                  className={cn(
+                    "text-[10px] px-1.5",
+                    status === "connected"
+                      ? "bg-emerald-900/60 text-emerald-300 border-emerald-700/30"
+                      : "bg-gray-800 text-gray-400 border-gray-700"
+                  )}
+                >
+                  {status === "connected" ? "Connected" : "Not configured"}
+                </Badge>
+              </div>
+              <p className="text-xs text-gray-500 mt-0.5">{desc}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <p className="text-xs text-gray-600 text-center">
+        You can configure all integrations later in Settings.
+      </p>
+
+      <Button onClick={onContinue} className="w-full bg-emerald-600 hover:bg-emerald-700 py-3">
+        Continue <ArrowRight className="w-4 h-4 ml-2" />
+      </Button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Enterprise path: Workflows step
+// ---------------------------------------------------------------------------
+
+function WorkflowsStep({ onContinue }: { onContinue: () => void }) {
+  const [selectedWorkflows, setSelectedWorkflows] = useState<string[]>(["standard_pipeline"]);
+
+  const workflows = [
+    {
+      id: "standard_pipeline",
+      icon: Workflow,
+      title: "Standard Deal Pipeline",
+      desc: "Lead → Contact → Negotiate → Contract → Close",
+      stages: 5,
+    },
+    {
+      id: "high_volume",
+      icon: Zap,
+      title: "High-Volume Acquisition",
+      desc: "Auto-score → Auto-offer → Review → Close",
+      stages: 4,
+    },
+    {
+      id: "team_review",
+      icon: Users,
+      title: "Team Review Workflow",
+      desc: "Analyst → Manager Approval → Offer → Contract → Close",
+      stages: 5,
+    },
+  ];
+
+  const toggle = (id: string) => {
+    setSelectedWorkflows((prev) =>
+      prev.includes(id) ? prev.filter((w) => w !== id) : [...prev, id]
+    );
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="space-y-3">
+        {workflows.map(({ id, icon: Icon, title, desc, stages }) => (
+          <button
+            key={id}
+            onClick={() => toggle(id)}
+            className={cn(
+              "w-full text-left p-4 rounded-xl border-2 transition-all",
+              selectedWorkflows.includes(id)
+                ? "border-purple-500 bg-purple-950/20"
+                : "border-gray-700 bg-gray-900 hover:border-gray-600"
+            )}
+          >
+            <div className="flex items-center gap-3">
+              <Icon className={cn("w-5 h-5 flex-shrink-0", selectedWorkflows.includes(id) ? "text-purple-400" : "text-gray-500")} />
+              <div>
+                <div className="font-semibold text-white text-sm">{title}</div>
+                <div className="text-xs text-gray-400">{desc}</div>
+                <div className="text-xs text-gray-600 mt-1">{stages} stages</div>
+              </div>
+            </div>
+          </button>
+        ))}
+      </div>
+
+      <p className="text-xs text-gray-600 text-center">
+        Custom pipeline stages can be added in Settings after setup.
+      </p>
+
+      <Button
+        onClick={onContinue}
+        disabled={selectedWorkflows.length === 0}
+        className="w-full bg-purple-600 hover:bg-purple-700 py-3"
+      >
+        Configure {selectedWorkflows.length} {selectedWorkflows.length === 1 ? "Workflow" : "Workflows"}
+        <Settings className="w-4 h-4 ml-2" />
       </Button>
     </div>
   );
@@ -569,9 +1271,13 @@ export default function OnboardingV2() {
           )}
 
           {currentStep.id === "complete" && (
+            <CompletionCelebration>
             <div className="space-y-6 text-center">
-              <div className="w-20 h-20 bg-emerald-900/50 rounded-full flex items-center justify-center mx-auto">
-                <CheckCircle className="w-10 h-10 text-emerald-400" />
+              <div className="relative w-20 h-20 mx-auto">
+                <div className="absolute inset-0 bg-emerald-500/20 rounded-full animate-ping" />
+                <div className="relative w-20 h-20 bg-emerald-900/50 rounded-full flex items-center justify-center">
+                  <CheckCircle className="w-10 h-10 text-emerald-400" />
+                </div>
               </div>
               <div>
                 <h3 className="text-xl font-bold text-white mb-2">You're all set!</h3>
@@ -584,19 +1290,65 @@ export default function OnboardingV2() {
                 </p>
               </div>
 
-              {/* Preview of what's waiting */}
+              {/* Preview stats */}
               <div className="grid grid-cols-3 gap-3">
-                {[
-                  { label: "Target Counties", value: "1", sub: "configured" },
-                  { label: "Deals Found", value: "3+", sub: "overnight" },
-                  { label: "Deal Machine", value: "Active", sub: "tonight" },
-                ].map(({ label, value, sub }) => (
+                {(selectedPath === "beginner"
+                  ? [
+                      { label: "Target Counties", value: "1", sub: "configured" },
+                      { label: "Deals Found", value: "3+", sub: "overnight" },
+                      { label: "Deal Machine", value: "Active", sub: "tonight" },
+                    ]
+                  : selectedPath === "active"
+                  ? [
+                      { label: "Counties", value: String(formData.targetCounties?.length || 1), sub: "tracked" },
+                      { label: "Automation", value: "On", sub: "nightly scans" },
+                      { label: "Portfolio", value: formData.dataImported ? "Imported" : "Ready", sub: "synced" },
+                    ]
+                  : [
+                      { label: "Team", value: formData.teamInvited ? "Invited" : "Ready", sub: "onboarded" },
+                      { label: "Integrations", value: "Set", sub: "configured" },
+                      { label: "Workflows", value: "Active", sub: "customized" },
+                    ]
+                ).map(({ label, value, sub }) => (
                   <div key={label} className="bg-gray-900 border border-gray-800 rounded-lg p-3 text-center">
                     <div className="text-2xl font-bold text-emerald-400">{value}</div>
                     <div className="text-xs text-white">{label}</div>
                     <div className="text-xs text-gray-600">{sub}</div>
                   </div>
                 ))}
+              </div>
+
+              {/* What to do first */}
+              <div className="p-4 bg-gray-900 border border-gray-800 rounded-xl text-left">
+                <p className="text-xs text-gray-500 mb-3 font-medium uppercase tracking-wide">What to do first</p>
+                <div className="space-y-2">
+                  {(selectedPath === "beginner"
+                    ? [
+                        { label: "Review your deal opportunities", href: "/leads" },
+                        { label: "Send your first mailer campaign", href: "/campaigns" },
+                        { label: "Ask Atlas a question about land investing", href: "/pax" },
+                      ]
+                    : selectedPath === "active"
+                    ? [
+                        { label: "Check tonight's Deal Hunter results", href: "/leads" },
+                        { label: "Review your imported portfolio", href: "/properties" },
+                        { label: "Set up a follow-up campaign", href: "/campaigns" },
+                      ]
+                    : [
+                        { label: "Invite your team and assign roles", href: "/settings" },
+                        { label: "Configure your deal pipeline stages", href: "/pipeline" },
+                        { label: "Set up automated campaigns", href: "/campaigns" },
+                      ]
+                  ).map(({ label, href }) => (
+                    <div
+                      key={label}
+                      className="flex items-center gap-2 text-sm text-gray-300 p-2 rounded hover:bg-gray-800/50"
+                    >
+                      <ArrowRight className="w-3 h-3 text-emerald-400 flex-shrink-0" />
+                      <span>{label}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               <Button
@@ -612,25 +1364,41 @@ export default function OnboardingV2() {
                 AcreOS will run its first deal scan tonight. Check your email at 7 AM for your Morning Briefing.
               </p>
             </div>
+            </CompletionCelebration>
           )}
 
-          {/* Generic continue for enterprise/active steps not fully built */}
-          {!["path", "target_county", "instant_hunt", "strategy", "atlas_tour", "complete"].includes(
-            currentStep.id
-          ) && (
-            <div className="space-y-4">
-              <div className="p-4 bg-gray-900 border border-gray-800 rounded-xl text-gray-400 text-sm">
-                This step configures: <strong className="text-white">{currentStep.title}</strong>
-                <br />
-                Complete setup in Settings after launch to customize further.
-              </div>
-              <Button
-                onClick={() => advance()}
-                className="w-full bg-emerald-600 hover:bg-emerald-700 py-3"
-              >
-                Continue <ArrowRight className="w-4 h-4 ml-2" />
-              </Button>
-            </div>
+          {/* Active path: portfolio_import */}
+          {currentStep.id === "portfolio_import" && (
+            <PortfolioImportStep onContinue={(data) => advance(data)} />
+          )}
+
+          {/* Active path: target_counties */}
+          {currentStep.id === "target_counties" && (
+            <TargetCountiesStep
+              formData={formData}
+              setFormData={setFormData}
+              onContinue={(data) => advance(data)}
+            />
+          )}
+
+          {/* Active path: automation */}
+          {currentStep.id === "automation" && (
+            <AutomationStep onContinue={() => advance()} />
+          )}
+
+          {/* Enterprise path: team */}
+          {currentStep.id === "team" && (
+            <TeamSetupStep onContinue={(data) => advance(data)} />
+          )}
+
+          {/* Enterprise path: integrations */}
+          {currentStep.id === "integrations" && (
+            <IntegrationsStep onContinue={() => advance()} />
+          )}
+
+          {/* Enterprise path: workflows */}
+          {currentStep.id === "workflows" && (
+            <WorkflowsStep onContinue={() => advance()} />
           )}
         </div>
       </div>

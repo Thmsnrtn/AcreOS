@@ -15,6 +15,7 @@ import { eq, sql, lt } from "drizzle-orm";
 import { organizations, jobHealthLogs, agentEvents } from "@shared/schema";
 import { logger, requestLoggingMiddleware, errorLoggingMiddleware } from "./utils/logger";
 import { securityHeaders, corsMiddleware, requestTimeout, validateContentType, sanitizeQueryParams } from "./middleware/security";
+import { telemetryMiddleware } from "./middleware/telemetry";
 import crypto from "crypto";
 import { wsServer } from "./websocket";
 import { realtimeAlertsService } from "./services/realtimeAlerts";
@@ -34,6 +35,10 @@ initSentry();
 // T15: Validate required secrets at startup
 import { validateSecrets } from "./middleware/secretsValidation";
 validateSecrets();
+
+// F-A09-2: PII masking console interceptor — masks phone, email, SSN, CC in all log output
+import { installConsoleInterceptor } from "./middleware/piiMasking";
+installConsoleInterceptor();
 
 // Global safety net for unhandled errors — log and report to Sentry
 process.on("unhandledRejection", (reason: unknown) => {

@@ -881,7 +881,7 @@ export function Sidebar() {
             )}
           </div>
           <div className="flex items-center gap-1">
-            <SophieNotificationBadge />
+            <PaxNotificationBadge />
             <ProviderStatusBadges />
             <PaxNotificationBadge />
             <NotificationCenter />

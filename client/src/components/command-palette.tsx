@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import type { Lead, Property, Deal } from "@shared/schema";
+import type { Lead as SchemaLead, Property, Deal as SchemaDeal } from "@shared/schema";
 import { useAuth } from "@/hooks/use-auth";
 import { telemetry } from "@/lib/telemetry";
 import { queryClient, apiRequest, prefetchRoute } from "@/lib/queryClient";

@@ -1368,6 +1368,7 @@ export function FloatingAssistant() {
                       const parsedActions = parseActionsFromText(message.content);
                       if (parsedActions.length === 0) return null;
                       return (
+                        <>
             {!aiReady && (
               <div className="mt-3 text-xs text-amber-600">AI unavailable — configure in Settings → Providers</div>
             )}
@@ -1388,6 +1389,7 @@ export function FloatingAssistant() {
                             Execute {parsedActions.length} Action{parsedActions.length > 1 ? "s" : ""}
                           </Button>
                         </div>
+                        </>
                       );
                     })()}
                     <div 

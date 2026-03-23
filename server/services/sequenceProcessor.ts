@@ -1,7 +1,9 @@
-import { storage } from "../storage";
+import { storage, db } from "../storage";
 import type { SequenceEnrollment, SequenceStep, CampaignSequence, Lead } from "@shared/schema";
+import { campaignDeliveryEvents } from "@shared/schema";
 import { checkTcpaConsentFromLead, canSendViaChannel } from "./tcpaCompliance";
 import crypto from "crypto";
+import { logger } from '../utils/logger';
 
 type EnrollmentWithDetails = SequenceEnrollment & { sequence: CampaignSequence; lead: Lead };
 
@@ -18,7 +20,7 @@ export class SequenceProcessorService {
   async start() {
     if (this.isRunning) return;
     this.isRunning = true;
-    console.log("[sequence-processor] Starting sequence processor background job");
+    logger.info("[sequence-processor] Starting sequence processor background job");
     this.intervalId = setInterval(() => this.runWithLock(), CHECK_INTERVAL_MS);
     this.runWithLock();
   }
@@ -26,7 +28,7 @@ export class SequenceProcessorService {
   private async runWithLock() {
     const acquired = await storage.acquireJobLock('sequence_processor', instanceId, JOB_LOCK_TTL_SECONDS);
     if (!acquired) {
-      console.log("[sequence-processor] Lock not acquired, skipping execution");
+      logger.debug("[sequence-processor] Lock not acquired, skipping execution");
       return;
     }
     try {
@@ -42,7 +44,7 @@ export class SequenceProcessorService {
       this.intervalId = null;
     }
     this.isRunning = false;
-    console.log("[sequence-processor] Stopped sequence processor");
+    logger.info("[sequence-processor] Stopped sequence processor");
   }
 
   async processEnrollments() {
@@ -63,18 +65,25 @@ export class SequenceProcessorService {
         return;
       }
 
-      console.log(`[sequence-processor] Processing ${unprocessedEnrollments.length} enrollments due (skipped ${enrollmentsDue.length - unprocessedEnrollments.length} already processed)`);
+      logger.info("[sequence-processor] Processing enrollments due", { metadata: { count: unprocessedEnrollments.length, skipped: enrollmentsDue.length - unprocessedEnrollments.length } });
 
       let maxProcessedId = lastProcessedId;
       for (const enrollment of unprocessedEnrollments) {
-        await this.processEnrollment(enrollment);
+        try {
+          await this.processEnrollment(enrollment);
+        } catch (enrollErr) {
+          logger.error("[sequence-processor] Failed to process enrollment, marking as failed and continuing", enrollErr, { metadata: { enrollmentId: enrollment.id } });
+          try {
+            await storage.updateSequenceEnrollment(enrollment.id, { status: "failed" });
+          } catch { /* best effort */ }
+        }
         maxProcessedId = Math.max(maxProcessedId, enrollment.id);
         await storage.updateJobCursor(JOB_TYPE, maxProcessedId, 'running');
       }
       
       await storage.setJobStatus(JOB_TYPE, 'idle');
     } catch (error) {
-      console.error("[sequence-processor] Error processing enrollments:", error);
+      logger.error("[sequence-processor] Error processing enrollments", error);
       await storage.setJobStatus(JOB_TYPE, 'failed');
     }
   }
@@ -84,7 +93,7 @@ export class SequenceProcessorService {
       const tcpaCheck = checkTcpaConsentFromLead(enrollment.lead);
       if (tcpaCheck.blocked) {
         await storage.pauseEnrollment(enrollment.id, `TCPA blocked: ${tcpaCheck.reason}`);
-        console.log(`[sequence-processor] Pausing enrollment ${enrollment.id}: ${tcpaCheck.reason}`);
+        logger.info("[sequence-processor] Pausing enrollment", { metadata: { enrollmentId: enrollment.id, reason: tcpaCheck.reason } });
         return;
       }
 
@@ -94,13 +103,13 @@ export class SequenceProcessorService {
 
       if (!nextStep) {
         await storage.completeEnrollment(enrollment.id);
-        console.log(`[sequence-processor] Enrollment ${enrollment.id} completed (no more steps)`);
+        logger.info("[sequence-processor] Enrollment completed (no more steps)", { metadata: { enrollmentId: enrollment.id } });
         return;
       }
 
       const channelCheck = canSendViaChannel(enrollment.lead, nextStep.channel as 'email' | 'sms' | 'direct_mail');
       if (!channelCheck.allowed) {
-        console.log(`[sequence-processor] Skipping step ${nextStep.stepNumber} for enrollment ${enrollment.id}: ${channelCheck.reason}`);
+        logger.info("[sequence-processor] Skipping step", { metadata: { stepNumber: nextStep.stepNumber, enrollmentId: enrollment.id, reason: channelCheck.reason } });
         
         const furtherStep = steps.find(s => s.stepNumber === nextStepNumber + 1);
         if (furtherStep) {
@@ -134,7 +143,7 @@ export class SequenceProcessorService {
           });
         } else {
           await storage.completeEnrollment(enrollment.id);
-          console.log(`[sequence-processor] Enrollment ${enrollment.id} completed`);
+          logger.info("[sequence-processor] Enrollment completed", { metadata: { enrollmentId: enrollment.id } });
         }
       } else {
         const furtherStep = steps.find(s => s.stepNumber === nextStepNumber + 1);
@@ -151,7 +160,7 @@ export class SequenceProcessorService {
         }
       }
     } catch (error) {
-      console.error(`[sequence-processor] Error processing enrollment ${enrollment.id}:`, error);
+      logger.error("[sequence-processor] Error processing enrollment", error, { metadata: { enrollmentId: enrollment.id } });
     }
   }
 
@@ -201,7 +210,7 @@ export class SequenceProcessorService {
       
       return responseActivities.length > 0;
     } catch (error) {
-      console.error(`[sequence-processor] Error checking lead response:`, error);
+      logger.error("[sequence-processor] Error checking lead response", error);
       return false;
     }
   }
@@ -211,7 +220,7 @@ export class SequenceProcessorService {
     
     const channelCheck = canSendViaChannel(lead, step.channel as 'email' | 'sms' | 'direct_mail');
     if (!channelCheck.allowed) {
-      console.warn(`[sequence-processor] TCPA blocked ${step.channel} to lead ${lead.id}: ${channelCheck.reason}`);
+      logger.warn("[sequence-processor] TCPA blocked channel", { metadata: { channel: step.channel, leadId: lead.id, reason: channelCheck.reason } });
       return;
     }
     
@@ -233,9 +242,27 @@ export class SequenceProcessorService {
           break;
       }
 
-      console.log(`[sequence-processor] Sent ${step.channel} to lead ${lead.id} (enrollment ${enrollment.id}, step ${step.stepNumber})`);
+      logger.info("[sequence-processor] Sent message", { metadata: { channel: step.channel, leadId: lead.id, enrollmentId: enrollment.id, stepNumber: step.stepNumber } });
+
+      // Track delivery event
+      try {
+        const campaignId = lead.sourceCampaignId || lead.campaignId;
+        if (campaignId) {
+          await db.insert(campaignDeliveryEvents).values({
+            campaignId,
+            leadId: lead.id,
+            channel: step.channel,
+            status: "sent",
+            sentAt: new Date(),
+            statusUpdatedAt: new Date(),
+            metadata: { enrollmentId: enrollment.id, stepNumber: step.stepNumber },
+          });
+        }
+      } catch (trackErr) {
+        logger.warn("[sequence-processor] Failed to track delivery event", { metadata: { error: String(trackErr) } });
+      }
     } catch (error) {
-      console.error(`[sequence-processor] Failed to send ${step.channel} for enrollment ${enrollment.id}:`, error);
+      logger.error("[sequence-processor] Failed to send message", error, { metadata: { channel: step.channel, enrollmentId: enrollment.id } });
     }
   }
 
@@ -253,13 +280,13 @@ export class SequenceProcessorService {
 
   async sendEmail(lead: Lead, subject: string, content: string) {
     if (!lead.email) {
-      console.warn(`[sequence-processor] Lead ${lead.id} has no email address`);
+      logger.warn("[sequence-processor] Lead has no email address", { metadata: { leadId: lead.id } });
       return;
     }
 
     const channelCheck = canSendViaChannel(lead, 'email');
     if (!channelCheck.allowed) {
-      console.warn(`[sequence-processor] Email blocked for lead ${lead.id}: ${channelCheck.reason}`);
+      logger.warn("[sequence-processor] Email blocked for lead", { metadata: { leadId: lead.id, reason: channelCheck.reason } });
       return;
     }
 
@@ -274,41 +301,41 @@ export class SequenceProcessorService {
           text: content.replace(/<[^>]*>/g, ""),
         });
       } else {
-        console.log(`[sequence-processor] Email service not available - would send to ${lead.email}`);
+        logger.info("[sequence-processor] Email service not available", { metadata: { wouldSendTo: lead.email } });
       }
     } catch (error) {
-      console.error(`[sequence-processor] Email send failed:`, error);
+      logger.error("[sequence-processor] Email send failed", error);
     }
   }
 
   async sendSms(lead: Lead, content: string) {
     if (!lead.phone) {
-      console.warn(`[sequence-processor] Lead ${lead.id} has no phone number`);
+      logger.warn("[sequence-processor] Lead has no phone number", { metadata: { leadId: lead.id } });
       return;
     }
 
     const channelCheck = canSendViaChannel(lead, 'sms');
     if (!channelCheck.allowed) {
-      console.warn(`[sequence-processor] SMS blocked for lead ${lead.id}: ${channelCheck.reason}`);
+      logger.warn("[sequence-processor] SMS blocked for lead", { metadata: { leadId: lead.id, reason: channelCheck.reason } });
       return;
     }
 
-    console.log(`[sequence-processor] SMS to ${lead.phone}: ${content.substring(0, 50)}...`);
+    logger.info("[sequence-processor] SMS sent", { metadata: { phone: lead.phone, contentPreview: content.substring(0, 50) } });
   }
 
   async sendDirectMail(lead: Lead, subject: string, content: string) {
     if (!lead.address || !lead.city || !lead.state || !lead.zip) {
-      console.warn(`[sequence-processor] Lead ${lead.id} has incomplete address for direct mail`);
+      logger.warn("[sequence-processor] Lead has incomplete address for direct mail", { metadata: { leadId: lead.id } });
       return;
     }
 
     const channelCheck = canSendViaChannel(lead, 'direct_mail');
     if (!channelCheck.allowed) {
-      console.warn(`[sequence-processor] Direct mail blocked for lead ${lead.id}: ${channelCheck.reason}`);
+      logger.warn("[sequence-processor] Direct mail blocked for lead", { metadata: { leadId: lead.id, reason: channelCheck.reason } });
       return;
     }
 
-    console.log(`[sequence-processor] Direct mail to ${lead.firstName} ${lead.lastName} at ${lead.address}`);
+    logger.info("[sequence-processor] Direct mail sent", { metadata: { firstName: lead.firstName, lastName: lead.lastName, address: lead.address } });
   }
 
   async pauseEnrollmentOnResponse(leadId: number) {
@@ -318,10 +345,10 @@ export class SequenceProcessorService {
       
       for (const enrollment of activeEnrollments) {
         await storage.pauseEnrollment(enrollment.id, "Lead responded");
-        console.log(`[sequence-processor] Paused enrollment ${enrollment.id} due to lead response`);
+        logger.info("[sequence-processor] Paused enrollment due to lead response", { metadata: { enrollmentId: enrollment.id } });
       }
     } catch (error) {
-      console.error(`[sequence-processor] Error pausing enrollments for lead ${leadId}:`, error);
+      logger.error("[sequence-processor] Error pausing enrollments for lead", error, { metadata: { leadId } });
     }
   }
 }

@@ -23,7 +23,7 @@ import { usageMeteringService, creditService } from "./services/credits";
 import { createRateLimiter, RATE_LIMIT_CONFIGS } from "./middleware/rateLimit";
 import { storage, db } from "./storage";
 import { eq, sql, and, gte } from "drizzle-orm";
-import { leads, deals, properties, campaignResponses } from "@shared/schema";
+import { leads, deals, properties, campaignResponses, campaignDeliveryEvents } from "@shared/schema";
 
 export function registerCampaignRoutes(app: Express): void {
   const api = app;
@@ -97,7 +97,22 @@ export function registerCampaignRoutes(app: Express): void {
     
     const responsesCount = await storage.getCampaignResponsesCount(campaignId);
     const responses = await storage.getCampaignResponses(org.id, campaignId);
-    
+
+    // Delivery event status breakdown
+    let deliveryBreakdown: Record<string, number> = {};
+    try {
+      const deliveryRows = await db.select({
+        status: campaignDeliveryEvents.status,
+        count: sql<number>`count(*)::int`,
+      })
+        .from(campaignDeliveryEvents)
+        .where(eq(campaignDeliveryEvents.campaignId, campaignId))
+        .groupBy(campaignDeliveryEvents.status);
+      for (const row of deliveryRows) {
+        deliveryBreakdown[row.status] = row.count;
+      }
+    } catch { /* table may not exist yet */ }
+
     const sent = campaign.totalSent || 0;
     const delivered = campaign.totalDelivered || 0;
     const opened = campaign.totalOpened || 0;
@@ -141,6 +156,7 @@ export function registerCampaignRoutes(app: Express): void {
         { stage: 'Deal', count: dealCount },
       ],
       responses,
+      deliveryBreakdown,
     });
   });
 
@@ -1456,6 +1472,42 @@ export function registerCampaignRoutes(app: Express): void {
       });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/campaigns/:id/test-send — send a single test email to the current user
+  api.post("/api/campaigns/:id/test-send", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = req.user as any;
+      const campaign = await storage.getCampaign(org.id, Number(req.params.id));
+      if (!campaign) return res.status(404).json({ message: "Campaign not found" });
+
+      const userEmail = user.email || user.claims?.email;
+      if (!userEmail) {
+        return res.status(400).json({ message: "No email address found for current user" });
+      }
+
+      const { emailService } = await import("./services/emailService");
+
+      const subject = `[TEST] ${campaign.name || "Campaign"}`;
+      const html = (campaign as any).templateContent
+        || (campaign as any).htmlContent
+        || `<h1>${campaign.name}</h1><p>This is a test send.</p>`;
+      const text = (campaign as any).textContent
+        || `Test send for campaign: ${campaign.name}`;
+
+      const result = await emailService.sendEmail({
+        to: userEmail,
+        subject,
+        html,
+        text,
+        organizationId: org.id,
+      });
+
+      res.json({ success: true, to: userEmail, result });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Test send failed" });
     }
   });
 

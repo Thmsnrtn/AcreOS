@@ -29,6 +29,7 @@ export function useCreateDeal() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/deals'] });
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/checklist-status"] });
       toast({
         title: "Success",
         description: "Deal created successfully.",

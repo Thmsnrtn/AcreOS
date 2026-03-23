@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { z } from 'zod';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -594,8 +595,20 @@ export default function MarketplacePage() {
 
   const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!createPropertyId || !createAskingPrice) {
-      toast({ title: 'Missing fields', description: 'Please select a property and enter an asking price.', variant: 'destructive' });
+    // Validate with Zod
+    const listingSchema = z.object({
+      propertyId: z.number().int().positive("Please select a property"),
+      askingPrice: z.string().refine((v) => Number(v) > 0, "Asking price must be greater than $0"),
+      description: z.string().min(1, "Description is required"),
+    });
+    const result = listingSchema.safeParse({
+      propertyId: createPropertyId ? parseInt(createPropertyId) : 0,
+      askingPrice: createAskingPrice,
+      description: createDescription,
+    });
+    if (!result.success) {
+      const firstError = result.error.errors[0];
+      toast({ title: "Validation error", description: firstError.message, variant: "destructive" });
       return;
     }
     createMutation.mutate({

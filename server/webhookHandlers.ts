@@ -138,6 +138,27 @@ export class WebhookHandlers {
       return;
     }
 
+    if (event.type === 'customer.subscription.paused') {
+      const subscription = event.data.object as Stripe.Subscription;
+      await WebhookHandlers.processSubscriptionPaused(subscription);
+      await WebhookHandlers.markProcessed(event.id, event.type);
+      return;
+    }
+
+    if (event.type === 'customer.subscription.resumed') {
+      const subscription = event.data.object as Stripe.Subscription;
+      await WebhookHandlers.processSubscriptionResumed(subscription);
+      await WebhookHandlers.markProcessed(event.id, event.type);
+      return;
+    }
+
+    if (event.type === 'invoice.paid') {
+      const invoice = event.data.object as Stripe.Invoice;
+      await WebhookHandlers.processInvoicePaid(invoice);
+      await WebhookHandlers.markProcessed(event.id, event.type);
+      return;
+    }
+
     if (event.type === 'customer.subscription.trial_will_end') {
       const subscription = event.data.object as Stripe.Subscription;
       await WebhookHandlers.processTrialWillEnd(subscription);
@@ -179,6 +200,47 @@ export class WebhookHandlers {
       });
 
       console.log(`[webhook] Subscription checkout completed: Org ${organizationId}, sub ${subscriptionId}`);
+
+      // Send subscription welcome email
+      try {
+        const { emailService } = await import('./services/emailService');
+        const org = await storage.getOrganization(organizationId);
+        if (org) {
+          const tierName = (org.subscriptionTier || 'starter').charAt(0).toUpperCase() + (org.subscriptionTier || 'starter').slice(1);
+          const tierLimits: Record<string, { leads: string; properties: string; ai: string }> = {
+            sprout: { leads: '50', properties: '10', ai: '25/month' },
+            starter: { leads: '200', properties: '50', ai: '100/month' },
+            pro: { leads: '1,000', properties: '250', ai: '500/month' },
+            scale: { leads: '5,000', properties: '1,000', ai: '2,000/month' },
+            enterprise: { leads: 'Unlimited', properties: 'Unlimited', ai: 'Unlimited' },
+          };
+          const limits = tierLimits[org.subscriptionTier || 'starter'] || tierLimits.starter;
+
+          // Find the user's email from session metadata or org owner
+          const userEmail = session.customer_email || session.metadata?.userEmail;
+          if (userEmail) {
+            await emailService.sendEmail({
+              to: userEmail,
+              subject: `Welcome to AcreOS ${tierName}!`,
+              html: `
+                <h2>Welcome to AcreOS ${tierName}!</h2>
+                <p>Your subscription is now active. Here's what's included in your plan:</p>
+                <ul>
+                  <li><strong>Leads:</strong> ${limits.leads}</li>
+                  <li><strong>Properties:</strong> ${limits.properties}</li>
+                  <li><strong>AI Requests:</strong> ${limits.ai}</li>
+                </ul>
+                <p><a href="${process.env.APP_URL || 'https://app.acreos.com'}">Go to your dashboard</a></p>
+                <p>— The AcreOS Team</p>
+              `,
+              text: `Welcome to AcreOS ${tierName}!\n\nYour plan includes:\n- Leads: ${limits.leads}\n- Properties: ${limits.properties}\n- AI Requests: ${limits.ai}\n\nGo to your dashboard: ${process.env.APP_URL || 'https://app.acreos.com'}`,
+            });
+            console.log(`[webhook] Welcome email sent to ${userEmail} for ${tierName} plan`);
+          }
+        }
+      } catch (emailErr) {
+        console.warn('[webhook] Could not send subscription welcome email (email service may not be configured):', emailErr);
+      }
     } catch (err) {
       console.error('[webhook] Error processing subscription checkout:', err);
     }
@@ -401,6 +463,93 @@ export class WebhookHandlers {
     }
   }
 
+  static async processSubscriptionPaused(subscription: Stripe.Subscription): Promise<void> {
+    try {
+      const customerId = typeof subscription.customer === 'string'
+        ? subscription.customer
+        : subscription.customer?.id;
+
+      if (!customerId) return;
+
+      const org = await storage.getOrganizationByStripeCustomerId(customerId);
+      if (!org) return;
+
+      await storage.updateOrganization(org.id, {
+        subscriptionStatus: 'paused',
+      });
+
+      await storage.logSubscriptionEvent({
+        organizationId: org.id,
+        eventType: 'pause',
+        fromTier: org.subscriptionTier || 'free',
+        toTier: null,
+      });
+
+      console.log(`[webhook] Subscription paused: Org ${org.id}`);
+    } catch (err) {
+      console.error('Error processing subscription paused:', err);
+    }
+  }
+
+  static async processSubscriptionResumed(subscription: Stripe.Subscription): Promise<void> {
+    try {
+      const customerId = typeof subscription.customer === 'string'
+        ? subscription.customer
+        : subscription.customer?.id;
+
+      if (!customerId) return;
+
+      const org = await storage.getOrganizationByStripeCustomerId(customerId);
+      if (!org) return;
+
+      await storage.updateOrganization(org.id, {
+        subscriptionStatus: 'active',
+      });
+
+      await storage.logSubscriptionEvent({
+        organizationId: org.id,
+        eventType: 'resume',
+        fromTier: org.subscriptionTier || 'free',
+        toTier: null,
+      });
+
+      console.log(`[webhook] Subscription resumed: Org ${org.id}`);
+    } catch (err) {
+      console.error('Error processing subscription resumed:', err);
+    }
+  }
+
+  static async processInvoicePaid(invoice: Stripe.Invoice): Promise<void> {
+    try {
+      const customerId = typeof invoice.customer === 'string'
+        ? invoice.customer
+        : invoice.customer?.id;
+
+      if (!customerId) {
+        return;
+      }
+
+      const org = await storage.getOrganizationByStripeCustomerId(customerId);
+      if (!org) {
+        return;
+      }
+
+      // Only process if org was in dunning
+      if (org.dunningStage && org.dunningStage !== 'none') {
+        const { dunningService } = await import('./services/dunning');
+        await dunningService.handlePaymentSucceeded(
+          org.id,
+          invoice.id,
+          invoice.amount_paid
+        );
+
+        console.log(`[webhook] Invoice paid, dunning resolved: Org ${org.id}, Amount: $${invoice.amount_paid / 100}`);
+      }
+    } catch (err) {
+      console.error('Error processing invoice paid:', err);
+    }
+  }
+
   static async processCreditPurchase(session: Stripe.Checkout.Session): Promise<void> {
     try {
       const { organizationId, packId } = session.metadata || {};
@@ -515,6 +664,35 @@ export class WebhookHandlers {
       });
 
       console.log(`Borrower portal payment processed: Note ${note.id}, Amount: $${amount}, New Balance: $${newBalance}`);
+
+      // Send payment receipt email to borrower
+      try {
+        const { emailService } = await import('./services/emailService');
+        const borrower = note.borrowerId ? await storage.getLead(note.organizationId, note.borrowerId) : null;
+        const borrowerEmail = borrower?.email;
+        if (borrowerEmail) {
+          const nextDue = nextPaymentDate.toLocaleDateString();
+          await emailService.sendEmail({
+            to: borrowerEmail,
+            subject: `Payment Receipt — $${amount.toFixed(2)}`,
+            html: `
+              <h2>Payment Receipt</h2>
+              <p>Thank you for your payment.</p>
+              <ul>
+                <li><strong>Amount Paid:</strong> $${amount.toFixed(2)}</li>
+                <li><strong>Payment Date:</strong> ${new Date().toLocaleDateString()}</li>
+                <li><strong>Remaining Balance:</strong> $${newBalance.toFixed(2)}</li>
+                <li><strong>Next Payment Due:</strong> ${newBalance <= 0 ? 'Paid in full!' : nextDue}</li>
+              </ul>
+              <p>If you have questions about your account, please contact your lender.</p>
+            `,
+            text: `Payment Receipt\n\nAmount Paid: $${amount.toFixed(2)}\nPayment Date: ${new Date().toLocaleDateString()}\nRemaining Balance: $${newBalance.toFixed(2)}\nNext Payment Due: ${newBalance <= 0 ? 'Paid in full!' : nextDue}`,
+          });
+          console.log(`[webhook] Payment receipt sent to ${borrowerEmail}`);
+        }
+      } catch (emailErr) {
+        console.warn('[webhook] Could not send payment receipt email:', emailErr);
+      }
     } catch (err) {
       console.error('Error processing borrower portal payment:', err);
       throw err;
