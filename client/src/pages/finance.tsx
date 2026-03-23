@@ -23,6 +23,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Plus, DollarSign, Calendar, TrendingUp, AlertTriangle, CheckCircle, Clock, User, MapPin, FileText, CreditCard, X, Eye, Receipt, Calculator, Trash2, Loader2, Download, RefreshCw, Send, ArrowUpRight, Phone, Mail, Link2, Copy, ExternalLink, Settings } from "lucide-react";
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { EmptyState } from "@/components/empty-state";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format, addMonths } from "date-fns";
@@ -54,6 +55,13 @@ export default function FinancePage() {
   const [isQboSyncing, setIsQboSyncing] = useState(false);
   const { mutate: deleteNote, isPending: isDeleting } = useDeleteNote();
   const { toast } = useToast();
+  const { data: portfolioSummary } = useQuery<{
+    totalNotes: number;
+    activeNotes: number;
+    totalPortfolioValue: number;
+    totalMonthlyPayment: number;
+    monthlyCashFlow: { month: string; amount: number }[];
+  }>({ queryKey: ["/api/finance/portfolio-summary"] });
 
   const handleExport = async () => {
     setIsExporting(true);
@@ -134,6 +142,36 @@ export default function FinancePage() {
   return (
     <PageShell>
           
+          {/* Portfolio Cash Flow Chart */}
+          {portfolioSummary?.monthlyCashFlow && portfolioSummary.monthlyCashFlow.some(m => m.amount > 0) && (
+            <Card className="mb-6">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-primary" />
+                  Monthly Cash Flow (Last 12 Months)
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="h-48">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={portfolioSummary.monthlyCashFlow}>
+                      <defs>
+                        <linearGradient id="cashFlowGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <XAxis dataKey="month" fontSize={10} tickLine={false} axisLine={false} />
+                      <YAxis fontSize={10} tickLine={false} axisLine={false} tickFormatter={(v: number) => `$${v.toLocaleString()}`} />
+                      <Tooltip formatter={(value: number) => [`$${value.toLocaleString()}`, "Cash Flow"]} />
+                      <Area type="monotone" dataKey="amount" stroke="hsl(var(--primary))" fill="url(#cashFlowGrad)" strokeWidth={2} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <h1 className="text-3xl font-bold" data-testid="text-page-title">Finance</h1>

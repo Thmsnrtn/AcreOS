@@ -563,6 +563,21 @@ export function registerFinanceRoutes(app: Express): void {
         { status: 'pending', count: pendingNotes.length, value: pendingNotes.reduce((s, n) => s + Number(n.currentBalance || 0), 0) },
       ];
 
+      // Monthly cash flow for last 12 months
+      const monthlyCashFlow: { month: string; amount: number }[] = [];
+      const now = new Date();
+      for (let i = 11; i >= 0; i--) {
+        const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0, 23, 59, 59);
+        const monthLabel = monthStart.toISOString().slice(0, 7); // YYYY-MM
+        const monthPayments = allPayments.filter(p => {
+          const d = p.paymentDate ? new Date(p.paymentDate) : null;
+          return d && d >= monthStart && d <= monthEnd;
+        });
+        const amount = monthPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+        monthlyCashFlow.push({ month: monthLabel, amount: Math.round(amount * 100) / 100 });
+      }
+
       res.json({
         totalNotes: allNotes.length,
         activeNotes: activeNotes.length,
@@ -571,6 +586,7 @@ export function registerFinanceRoutes(app: Express): void {
         totalOriginalPrincipal,
         averageInterestRate: avgInterestRate,
         statusBreakdown,
+        monthlyCashFlow,
       });
     } catch (err: any) {
       console.error("Error getting portfolio summary:", err);
@@ -814,6 +830,89 @@ export function registerFinanceRoutes(app: Express): void {
       res.json(report);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
+    }
+  });
+
+  // GET /api/notes/:id/schedule/pdf — Amortization schedule PDF download
+  api.get("/api/notes/:id/schedule/pdf", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const noteId = Number(req.params.id);
+      const note = await storage.getNote(org.id, noteId);
+      if (!note) return res.status(404).json({ message: "Note not found" });
+
+      const PDFDocument = (await import("pdfkit")).default;
+      const doc = new PDFDocument({ margin: 50, size: "LETTER" });
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="amortization-schedule-${noteId}.pdf"`);
+      doc.pipe(res);
+
+      // Header
+      doc.fontSize(18).text("Amortization Schedule", { align: "center" });
+      doc.moveDown();
+
+      // Note terms
+      const borrower = note.borrowerId ? await storage.getLead(org.id, note.borrowerId) : null;
+      const borrowerLabel = borrower ? `${borrower.firstName} ${borrower.lastName}` : "N/A";
+      doc.fontSize(10);
+      doc.text(`Note ID: ${noteId}`);
+      doc.text(`Borrower: ${borrowerLabel}`);
+      doc.text(`Principal: $${Number(note.originalPrincipal || 0).toLocaleString()}`);
+      doc.text(`Interest Rate: ${note.interestRate}%`);
+      doc.text(`Term: ${note.termMonths} months`);
+      doc.text(`Monthly Payment: $${Number(note.monthlyPayment || 0).toFixed(2)}`);
+      doc.text(`Current Balance: $${Number(note.currentBalance || 0).toLocaleString()}`);
+      doc.moveDown();
+
+      // Schedule table
+      const schedule = (note.amortizationSchedule as any[]) || [];
+      if (schedule.length === 0) {
+        doc.text("No amortization schedule available.");
+      } else {
+        const colWidths = [40, 80, 70, 70, 70, 80];
+        const headers = ["#", "Date", "Payment", "Principal", "Interest", "Balance"];
+        const startX = 50;
+        let y = doc.y;
+
+        // Table header
+        doc.font("Helvetica-Bold").fontSize(8);
+        headers.forEach((h, i) => {
+          const x = startX + colWidths.slice(0, i).reduce((s, w) => s + w, 0);
+          doc.text(h, x, y, { width: colWidths[i], align: "right" });
+        });
+        y += 15;
+        doc.moveTo(startX, y).lineTo(startX + colWidths.reduce((s, w) => s + w, 0), y).stroke();
+        y += 5;
+
+        doc.font("Helvetica").fontSize(8);
+        for (const row of schedule) {
+          if (y > 700) { doc.addPage(); y = 50; }
+          const values = [
+            String(row.paymentNumber || ""),
+            row.date ? new Date(row.date).toLocaleDateString() : "",
+            `$${Number(row.payment || 0).toFixed(2)}`,
+            `$${Number(row.principal || 0).toFixed(2)}`,
+            `$${Number(row.interest || 0).toFixed(2)}`,
+            `$${Number(row.balance || 0).toFixed(2)}`,
+          ];
+          values.forEach((v, i) => {
+            const x = startX + colWidths.slice(0, i).reduce((s, w) => s + w, 0);
+            doc.text(v, x, y, { width: colWidths[i], align: "right" });
+          });
+          y += 12;
+        }
+      }
+
+      doc.moveDown(2);
+      doc.fontSize(8).fillColor("gray").text(`Generated: ${new Date().toISOString()}`, { align: "center" });
+
+      doc.end();
+    } catch (err: any) {
+      console.error("Error generating schedule PDF:", err);
+      if (!res.headersSent) {
+        res.status(500).json({ message: err.message || "Failed to generate PDF" });
+      }
     }
   });
 

@@ -528,15 +528,16 @@ export function registerBorrowerRoutes(app: Express): void {
       }
       
       // Verify borrower email
+      let borrower: any = null;
       if (note.borrowerId) {
-        const borrower = await storage.getLead(note.organizationId, note.borrowerId);
+        borrower = await storage.getLead(note.organizationId, note.borrowerId);
         if (!borrower || borrower.email?.toLowerCase() !== (email as string).toLowerCase()) {
           return res.status(403).json({ message: "Unauthorized" });
         }
       } else {
         return res.status(403).json({ message: "Unauthorized" });
       }
-      
+
       // Calculate payoff amount
       const currentBalance = Number(note.currentBalance || 0);
       const interestRate = Number(note.interestRate || 0);
@@ -558,6 +559,47 @@ export function registerBorrowerRoutes(app: Express): void {
       const expirationDate = new Date();
       expirationDate.setDate(expirationDate.getDate() + 30);
       
+      // Check if PDF format requested
+      if (req.query.format === "pdf") {
+        const PDFDocument = (await import("pdfkit")).default;
+        const doc = new PDFDocument({ margin: 50 });
+
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `attachment; filename="payoff-quote-${note.id}.pdf"`);
+        doc.pipe(res);
+
+        doc.fontSize(20).text("Payoff Quote", { align: "center" });
+        doc.moveDown();
+
+        doc.fontSize(12);
+        const borrowerLabel = borrower ? `${borrower.firstName} ${borrower.lastName}` : "N/A";
+        doc.text(`Note ID: ${note.id}`);
+        doc.text(`Borrower: ${borrowerLabel}`);
+        doc.text(`Quote Date: ${new Date().toLocaleDateString()}`);
+        doc.text(`Good Through: ${expirationDate.toLocaleDateString()}`);
+        doc.moveDown();
+
+        doc.fontSize(14).text("Payoff Amount Breakdown", { underline: true });
+        doc.moveDown(0.5);
+        doc.fontSize(12);
+        doc.text(`Remaining Principal:   $${currentBalance.toLocaleString()}`);
+        doc.text(`Accrued Interest:      $${accruedInterest.toLocaleString()}`);
+        doc.text(`Processing Fee:        $${payoffFee.toLocaleString()}`);
+        doc.moveDown(0.5);
+        doc.fontSize(16).text(`Total Payoff Amount:   $${totalPayoff.toLocaleString()}`, { bold: true } as any);
+        doc.moveDown();
+
+        doc.fontSize(10).fillColor("gray");
+        doc.text("Payment Instructions:", { underline: true });
+        doc.text("Please contact your lender for wire transfer or payment instructions.");
+        doc.text("This quote is valid for 30 days from the quote date above.");
+        doc.moveDown();
+        doc.text(`Generated: ${new Date().toISOString()}`, { align: "center" });
+
+        doc.end();
+        return;
+      }
+
       res.json({
         principalBalance: currentBalance,
         accruedInterest,
