@@ -21,6 +21,15 @@ import { logger } from "./utils/logger";
 // Partial update schema for PUT endpoints
 const updateLeadSchema = insertLeadSchema.partial().omit({ organizationId: true });
 
+// Task #Phase5: Zod schemas for bulk operations (mirrors bulkIdsSchema in routes-properties.ts)
+const bulkLeadIdsSchema = z.object({
+  ids: z.array(z.number().int().positive()).min(1, "ids must be a non-empty array"),
+});
+const bulkLeadUpdateSchema = z.object({
+  ids: z.array(z.number().int().positive()).min(1, "ids must be a non-empty array"),
+  updates: updateLeadSchema,
+});
+
 const MAX_CSV_IMPORT_ROWS = 500;
 
 const upload = multer({
@@ -377,25 +386,29 @@ export function registerLeadRoutes(app: Express): void {
   api.delete("/api/leads/:id", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteLeads"), async (req, res) => {
     const org = (req as any).organization;
     const leadId = Number(req.params.id);
-    const existingLead = await storage.getLead(org.id, leadId);
-    
-    await storage.deleteLead(leadId);
-    
-    if (existingLead) {
-      const user = req.user as any;
-      const userId = user?.claims?.sub || user?.id;
-      await storage.createAuditLogEntry({
-        organizationId: org.id,
-        userId,
-        action: "delete",
-        entityType: "lead",
-        entityId: leadId,
-        changes: { before: existingLead, fields: ["deleted"] },
-        ipAddress: req.ip || req.socket?.remoteAddress,
-        userAgent: req.headers["user-agent"],
-      });
+    if (isNaN(leadId)) {
+      return res.status(400).json({ message: "Invalid lead ID" });
     }
-    
+    const existingLead = await storage.getLead(org.id, leadId);
+    if (!existingLead) {
+      return res.status(404).json({ message: "Lead not found" });
+    }
+
+    await storage.deleteLead(leadId);
+
+    const user = req.user as any;
+    const userId = user?.claims?.sub || user?.id;
+    await storage.createAuditLogEntry({
+      organizationId: org.id,
+      userId,
+      action: "delete",
+      entityType: "lead",
+      entityId: leadId,
+      changes: { before: existingLead, fields: ["deleted"] },
+      ipAddress: req.ip || req.socket?.remoteAddress,
+      userAgent: req.headers["user-agent"],
+    });
+
     res.status(204).send();
   });
   
@@ -446,12 +459,12 @@ export function registerLeadRoutes(app: Express): void {
   api.post("/api/leads/bulk-delete", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteLeads"), async (req, res) => {
     try {
       const org = (req as any).organization;
-      const { ids } = req.body;
-      
-      if (!Array.isArray(ids) || ids.length === 0) {
-        return res.status(400).json({ message: "ids must be a non-empty array" });
+      const parsed = bulkLeadIdsSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.errors[0].message });
       }
-      
+      const { ids } = parsed.data;
+
       const deletedCount = await storage.bulkDeleteLeads(org.id, ids);
       
       const user = req.user as any;
@@ -477,16 +490,12 @@ export function registerLeadRoutes(app: Express): void {
   api.post("/api/leads/bulk-update", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const org = (req as any).organization;
-      const { ids, updates } = req.body;
-      
-      if (!Array.isArray(ids) || ids.length === 0) {
-        return res.status(400).json({ message: "ids must be a non-empty array" });
+      const parsed = bulkLeadUpdateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.errors[0].message });
       }
-      
-      if (!updates || typeof updates !== "object") {
-        return res.status(400).json({ message: "updates must be an object" });
-      }
-      
+      const { ids, updates } = parsed.data;
+
       const updatedCount = await storage.bulkUpdateLeads(org.id, ids, updates);
       
       const user = req.user as any;

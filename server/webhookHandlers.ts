@@ -138,6 +138,27 @@ export class WebhookHandlers {
       return;
     }
 
+    if (event.type === 'customer.subscription.paused') {
+      const subscription = event.data.object as Stripe.Subscription;
+      await WebhookHandlers.processSubscriptionPaused(subscription);
+      await WebhookHandlers.markProcessed(event.id, event.type);
+      return;
+    }
+
+    if (event.type === 'customer.subscription.resumed') {
+      const subscription = event.data.object as Stripe.Subscription;
+      await WebhookHandlers.processSubscriptionResumed(subscription);
+      await WebhookHandlers.markProcessed(event.id, event.type);
+      return;
+    }
+
+    if (event.type === 'invoice.paid') {
+      const invoice = event.data.object as Stripe.Invoice;
+      await WebhookHandlers.processInvoicePaid(invoice);
+      await WebhookHandlers.markProcessed(event.id, event.type);
+      return;
+    }
+
     if (event.type === 'customer.subscription.trial_will_end') {
       const subscription = event.data.object as Stripe.Subscription;
       await WebhookHandlers.processTrialWillEnd(subscription);
@@ -398,6 +419,93 @@ export class WebhookHandlers {
       console.log(`[webhook] Trial ending soon alert created: Org ${org.id}`);
     } catch (err) {
       console.error('Error processing trial_will_end:', err);
+    }
+  }
+
+  static async processSubscriptionPaused(subscription: Stripe.Subscription): Promise<void> {
+    try {
+      const customerId = typeof subscription.customer === 'string'
+        ? subscription.customer
+        : subscription.customer?.id;
+
+      if (!customerId) return;
+
+      const org = await storage.getOrganizationByStripeCustomerId(customerId);
+      if (!org) return;
+
+      await storage.updateOrganization(org.id, {
+        subscriptionStatus: 'paused',
+      });
+
+      await storage.logSubscriptionEvent({
+        organizationId: org.id,
+        eventType: 'pause',
+        fromTier: org.subscriptionTier || 'free',
+        toTier: null,
+      });
+
+      console.log(`[webhook] Subscription paused: Org ${org.id}`);
+    } catch (err) {
+      console.error('Error processing subscription paused:', err);
+    }
+  }
+
+  static async processSubscriptionResumed(subscription: Stripe.Subscription): Promise<void> {
+    try {
+      const customerId = typeof subscription.customer === 'string'
+        ? subscription.customer
+        : subscription.customer?.id;
+
+      if (!customerId) return;
+
+      const org = await storage.getOrganizationByStripeCustomerId(customerId);
+      if (!org) return;
+
+      await storage.updateOrganization(org.id, {
+        subscriptionStatus: 'active',
+      });
+
+      await storage.logSubscriptionEvent({
+        organizationId: org.id,
+        eventType: 'resume',
+        fromTier: org.subscriptionTier || 'free',
+        toTier: null,
+      });
+
+      console.log(`[webhook] Subscription resumed: Org ${org.id}`);
+    } catch (err) {
+      console.error('Error processing subscription resumed:', err);
+    }
+  }
+
+  static async processInvoicePaid(invoice: Stripe.Invoice): Promise<void> {
+    try {
+      const customerId = typeof invoice.customer === 'string'
+        ? invoice.customer
+        : invoice.customer?.id;
+
+      if (!customerId) {
+        return;
+      }
+
+      const org = await storage.getOrganizationByStripeCustomerId(customerId);
+      if (!org) {
+        return;
+      }
+
+      // Only process if org was in dunning
+      if (org.dunningStage && org.dunningStage !== 'none') {
+        const { dunningService } = await import('./services/dunning');
+        await dunningService.handlePaymentSucceeded(
+          org.id,
+          invoice.id,
+          invoice.amount_paid
+        );
+
+        console.log(`[webhook] Invoice paid, dunning resolved: Org ${org.id}, Amount: $${invoice.amount_paid / 100}`);
+      }
+    } catch (err) {
+      console.error('Error processing invoice paid:', err);
     }
   }
 

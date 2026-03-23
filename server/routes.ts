@@ -420,6 +420,14 @@ export async function registerRoutes(
   });
 
   // ============================================
+  // F-A04-1: Prompt injection guard on all AI paths
+  // ============================================
+  app.use("/api/ai", promptInjectionMiddleware);
+  app.use("/api/atlas", promptInjectionMiddleware);
+  app.use("/api/chat", promptInjectionMiddleware);
+  app.use("/api/executive", promptInjectionMiddleware);
+
+  // ============================================
   // RATE LIMITING MIDDLEWARE (excludes health check)
   // ============================================
   app.use("/api/ai", aiLimiter);

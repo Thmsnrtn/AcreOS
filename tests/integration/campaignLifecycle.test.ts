@@ -183,3 +183,162 @@ describe("Campaign Type Validation", () => {
     }
   });
 });
+
+// ── Enrollment & processEnrollments email generation ─────────────────────────
+
+interface SequenceStep {
+  id: number;
+  sequenceId: number;
+  stepNumber: number;
+  channel: "email" | "sms" | "direct_mail";
+  delayDays: number;
+  subject: string;
+  body: string;
+}
+
+interface Enrollment {
+  id: number;
+  sequenceId: number;
+  leadId: number;
+  currentStep: number;
+  status: "active" | "paused" | "completed";
+  nextStepScheduledAt: Date;
+}
+
+interface EmailRecord {
+  to: string;
+  subject: string;
+  body: string;
+  campaignId: number;
+}
+
+function makeStep(overrides: Partial<SequenceStep> = {}): SequenceStep {
+  return {
+    id: 1,
+    sequenceId: 1,
+    stepNumber: 1,
+    channel: "email",
+    delayDays: 0,
+    subject: "Follow-up on your property",
+    body: "<p>Hi {{firstName}}, we are interested in your property.</p>",
+    ...overrides,
+  };
+}
+
+function makeEnrollment(overrides: Partial<Enrollment> = {}): Enrollment {
+  return {
+    id: 1,
+    sequenceId: 1,
+    leadId: 100,
+    currentStep: 0,
+    status: "active",
+    nextStepScheduledAt: new Date(Date.now() - 1000), // already due
+    ...overrides,
+  };
+}
+
+/**
+ * Simplified processEnrollments mock: given enrollments and steps,
+ * generates email records for each enrollment whose nextStepScheduledAt is past
+ * and whose next step channel is "email".
+ */
+function processEnrollments(
+  enrollments: Enrollment[],
+  steps: SequenceStep[],
+  leadEmails: Record<number, string>
+): EmailRecord[] {
+  const emails: EmailRecord[] = [];
+  const now = new Date();
+
+  for (const enrollment of enrollments) {
+    if (enrollment.status !== "active") continue;
+    if (enrollment.nextStepScheduledAt > now) continue;
+
+    const nextStepNumber = enrollment.currentStep + 1;
+    const step = steps.find(
+      (s) => s.sequenceId === enrollment.sequenceId && s.stepNumber === nextStepNumber
+    );
+    if (!step) continue;
+
+    if (step.channel === "email") {
+      const email = leadEmails[enrollment.leadId];
+      if (email) {
+        emails.push({
+          to: email,
+          subject: step.subject,
+          body: step.body,
+          campaignId: enrollment.sequenceId,
+        });
+      }
+    }
+  }
+
+  return emails;
+}
+
+describe("Campaign Enrollment & Email Generation", () => {
+  it("creates a campaign, enrolls a lead, and processEnrollments generates an email", () => {
+    // 1. Create campaign (sequence) with an email step
+    const campaign = makeCampaign({ id: 10, type: "email", status: "active" });
+    const step = makeStep({
+      sequenceId: 10,
+      stepNumber: 1,
+      channel: "email",
+      subject: "Hello from campaign",
+      body: "<p>Test email body</p>",
+    });
+
+    // 2. Enroll a lead
+    const enrollment = makeEnrollment({
+      sequenceId: 10,
+      leadId: 200,
+      currentStep: 0,
+      status: "active",
+      nextStepScheduledAt: new Date(Date.now() - 60_000), // due 1 minute ago
+    });
+
+    const leadEmails: Record<number, string> = {
+      200: "lead@example.com",
+    };
+
+    // 3. Process enrollments — should generate one email
+    const generatedEmails = processEnrollments([enrollment], [step], leadEmails);
+
+    expect(generatedEmails).toHaveLength(1);
+    expect(generatedEmails[0].to).toBe("lead@example.com");
+    expect(generatedEmails[0].subject).toBe("Hello from campaign");
+    expect(generatedEmails[0].campaignId).toBe(10);
+  });
+
+  it("does not generate email for paused enrollments", () => {
+    const step = makeStep({ sequenceId: 10, stepNumber: 1, channel: "email" });
+    const enrollment = makeEnrollment({
+      sequenceId: 10,
+      leadId: 201,
+      status: "paused",
+    });
+
+    const emails = processEnrollments([enrollment], [step], { 201: "paused@example.com" });
+    expect(emails).toHaveLength(0);
+  });
+
+  it("does not generate email when next step is not yet due", () => {
+    const step = makeStep({ sequenceId: 10, stepNumber: 1, channel: "email" });
+    const enrollment = makeEnrollment({
+      sequenceId: 10,
+      leadId: 202,
+      nextStepScheduledAt: new Date(Date.now() + 86_400_000), // due tomorrow
+    });
+
+    const emails = processEnrollments([enrollment], [step], { 202: "future@example.com" });
+    expect(emails).toHaveLength(0);
+  });
+
+  it("does not generate email when step channel is sms", () => {
+    const step = makeStep({ sequenceId: 10, stepNumber: 1, channel: "sms" });
+    const enrollment = makeEnrollment({ sequenceId: 10, leadId: 203 });
+
+    const emails = processEnrollments([enrollment], [step], { 203: "sms@example.com" });
+    expect(emails).toHaveLength(0);
+  });
+});

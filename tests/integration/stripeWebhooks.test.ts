@@ -553,6 +553,210 @@ describe("Stripe Webhook: customer.subscription.updated (Tasks #88-90)", () => {
   });
 });
 
+describe("Stripe Webhook: customer.subscription.paused", () => {
+  let WebhookHandlers: any;
+  let mockStripe: any;
+  let storageMock: any;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    process.env.STRIPE_WEBHOOK_SECRET = "whsec_test";
+    mockStripe = { webhooks: { constructEvent: vi.fn() }, prices: { retrieve: vi.fn() } };
+    const { getUncachableStripeClient } = await import("../../server/stripeClient");
+    (getUncachableStripeClient as any).mockResolvedValue(mockStripe);
+    const mod = await import("../../server/webhookHandlers");
+    WebhookHandlers = mod.WebhookHandlers;
+    const storageModule = await import("../../server/storage");
+    storageMock = storageModule.storage;
+  });
+
+  it("updates org subscriptionStatus to paused", async () => {
+    (storageMock.getOrganizationByStripeCustomerId as any).mockResolvedValue(MOCK_ORG);
+
+    const sub = { id: "sub_pause_1", customer: "cus_pause_1" };
+    mockStripe.webhooks.constructEvent.mockReturnValue(
+      makeStripeEvent("customer.subscription.paused", sub, "evt_pause_1")
+    );
+
+    await WebhookHandlers.processWebhook(Buffer.from("{}"), "sig");
+
+    expect(storageMock.updateOrganization).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({
+        subscriptionStatus: "paused",
+      })
+    );
+  });
+
+  it("logs pause subscription event", async () => {
+    (storageMock.getOrganizationByStripeCustomerId as any).mockResolvedValue(MOCK_ORG);
+
+    const sub = { id: "sub_pause_2", customer: "cus_pause_2" };
+    mockStripe.webhooks.constructEvent.mockReturnValue(
+      makeStripeEvent("customer.subscription.paused", sub, "evt_pause_2")
+    );
+
+    await WebhookHandlers.processWebhook(Buffer.from("{}"), "sig");
+
+    expect(storageMock.logSubscriptionEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: 1,
+        eventType: "pause",
+      })
+    );
+  });
+
+  it("no-ops when customer not found", async () => {
+    (storageMock.getOrganizationByStripeCustomerId as any).mockResolvedValue(null);
+
+    const sub = { id: "sub_pause_3", customer: "cus_unknown" };
+    mockStripe.webhooks.constructEvent.mockReturnValue(
+      makeStripeEvent("customer.subscription.paused", sub, "evt_pause_3")
+    );
+
+    await WebhookHandlers.processWebhook(Buffer.from("{}"), "sig");
+    expect(storageMock.updateOrganization).not.toHaveBeenCalled();
+  });
+});
+
+describe("Stripe Webhook: customer.subscription.resumed", () => {
+  let WebhookHandlers: any;
+  let mockStripe: any;
+  let storageMock: any;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    process.env.STRIPE_WEBHOOK_SECRET = "whsec_test";
+    mockStripe = { webhooks: { constructEvent: vi.fn() }, prices: { retrieve: vi.fn() } };
+    const { getUncachableStripeClient } = await import("../../server/stripeClient");
+    (getUncachableStripeClient as any).mockResolvedValue(mockStripe);
+    const mod = await import("../../server/webhookHandlers");
+    WebhookHandlers = mod.WebhookHandlers;
+    const storageModule = await import("../../server/storage");
+    storageMock = storageModule.storage;
+  });
+
+  it("updates org subscriptionStatus to active", async () => {
+    (storageMock.getOrganizationByStripeCustomerId as any).mockResolvedValue({
+      ...MOCK_ORG,
+      subscriptionStatus: "paused",
+    });
+
+    const sub = { id: "sub_resume_1", customer: "cus_resume_1" };
+    mockStripe.webhooks.constructEvent.mockReturnValue(
+      makeStripeEvent("customer.subscription.resumed", sub, "evt_resume_1")
+    );
+
+    await WebhookHandlers.processWebhook(Buffer.from("{}"), "sig");
+
+    expect(storageMock.updateOrganization).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({
+        subscriptionStatus: "active",
+      })
+    );
+  });
+
+  it("logs resume subscription event", async () => {
+    (storageMock.getOrganizationByStripeCustomerId as any).mockResolvedValue(MOCK_ORG);
+
+    const sub = { id: "sub_resume_2", customer: "cus_resume_2" };
+    mockStripe.webhooks.constructEvent.mockReturnValue(
+      makeStripeEvent("customer.subscription.resumed", sub, "evt_resume_2")
+    );
+
+    await WebhookHandlers.processWebhook(Buffer.from("{}"), "sig");
+
+    expect(storageMock.logSubscriptionEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: 1,
+        eventType: "resume",
+      })
+    );
+  });
+
+  it("no-ops when customer not found", async () => {
+    (storageMock.getOrganizationByStripeCustomerId as any).mockResolvedValue(null);
+
+    const sub = { id: "sub_resume_3", customer: "cus_unknown" };
+    mockStripe.webhooks.constructEvent.mockReturnValue(
+      makeStripeEvent("customer.subscription.resumed", sub, "evt_resume_3")
+    );
+
+    await WebhookHandlers.processWebhook(Buffer.from("{}"), "sig");
+    expect(storageMock.updateOrganization).not.toHaveBeenCalled();
+  });
+});
+
+describe("Stripe Webhook: invoice.paid", () => {
+  let WebhookHandlers: any;
+  let mockStripe: any;
+  let storageMock: any;
+  let dunningMock: any;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    process.env.STRIPE_WEBHOOK_SECRET = "whsec_test";
+    mockStripe = { webhooks: { constructEvent: vi.fn() }, prices: { retrieve: vi.fn() } };
+    const { getUncachableStripeClient } = await import("../../server/stripeClient");
+    (getUncachableStripeClient as any).mockResolvedValue(mockStripe);
+    const mod = await import("../../server/webhookHandlers");
+    WebhookHandlers = mod.WebhookHandlers;
+    const storageModule = await import("../../server/storage");
+    storageMock = storageModule.storage;
+    const dunningModule = await import("../../server/services/dunning");
+    dunningMock = dunningModule.dunningService;
+  });
+
+  it("clears dunning state when invoice is paid", async () => {
+    (storageMock.getOrganizationByStripeCustomerId as any).mockResolvedValue({
+      ...MOCK_ORG,
+      dunningStage: "grace_period",
+    });
+
+    const invoice = { id: "in_paid_1", customer: "cus_test_1", amount_paid: 9900 };
+    mockStripe.webhooks.constructEvent.mockReturnValue(
+      makeStripeEvent("invoice.paid", invoice, "evt_paid_1")
+    );
+
+    await WebhookHandlers.processWebhook(Buffer.from("{}"), "sig");
+
+    expect(dunningMock.handlePaymentSucceeded).toHaveBeenCalledWith(
+      1,
+      "in_paid_1",
+      9900
+    );
+  });
+
+  it("skips dunning resolution if org not in dunning", async () => {
+    (storageMock.getOrganizationByStripeCustomerId as any).mockResolvedValue({
+      ...MOCK_ORG,
+      dunningStage: "none",
+    });
+
+    const invoice = { id: "in_paid_2", customer: "cus_test_1", amount_paid: 4900 };
+    mockStripe.webhooks.constructEvent.mockReturnValue(
+      makeStripeEvent("invoice.paid", invoice, "evt_paid_2")
+    );
+
+    await WebhookHandlers.processWebhook(Buffer.from("{}"), "sig");
+
+    expect(dunningMock.handlePaymentSucceeded).not.toHaveBeenCalled();
+  });
+
+  it("no-ops when customer not found", async () => {
+    (storageMock.getOrganizationByStripeCustomerId as any).mockResolvedValue(null);
+
+    const invoice = { id: "in_paid_3", customer: "cus_unknown", amount_paid: 5000 };
+    mockStripe.webhooks.constructEvent.mockReturnValue(
+      makeStripeEvent("invoice.paid", invoice, "evt_paid_3")
+    );
+
+    await WebhookHandlers.processWebhook(Buffer.from("{}"), "sig");
+    expect(dunningMock.handlePaymentSucceeded).not.toHaveBeenCalled();
+  });
+});
+
 describe("Stripe Webhook: customer.subscription.trial_will_end (Task #91)", () => {
   let WebhookHandlers: any;
   let mockStripe: any;
