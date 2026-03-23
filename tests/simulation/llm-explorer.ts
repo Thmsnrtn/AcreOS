@@ -6,8 +6,14 @@
  * making decisions about what to do next based on response data.
  * Produces a structured friction report at the end.
  *
+ * After each action, Claude also rates conversion funnel metrics:
+ *   - continueProbability (0-100)
+ *   - primaryFriction (one sentence)
+ *   - wouldPay ("yes" | "no" | "maybe" with reasoning)
+ *
  * Usage:
  *   npx tsx tests/simulation/llm-explorer.ts --persona firstTimer --actions 50
+ *   npx tsx tests/simulation/llm-explorer.ts --persona firstTimer --actions 20 --runs 10
  *
  * Environment:
  *   ANTHROPIC_API_KEY — required (exits gracefully if missing)
@@ -21,10 +27,11 @@ import * as path from "node:path";
 
 // ── CLI Args ──────────────────────────────────────────────────────────────
 
-function parseArgs(): { persona: PersonaKey; actions: number } {
+function parseArgs(): { persona: PersonaKey; actions: number; runs: number } {
   const args = process.argv.slice(2);
   let persona: PersonaKey = "firstTimer";
   let actions = 50;
+  let runs = 20;
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--persona" && args[i + 1]) {
@@ -41,10 +48,14 @@ function parseArgs(): { persona: PersonaKey; actions: number } {
       actions = parseInt(args[i + 1], 10);
       if (isNaN(actions) || actions < 1) actions = 50;
       i++;
+    } else if (args[i] === "--runs" && args[i + 1]) {
+      runs = parseInt(args[i + 1], 10);
+      if (isNaN(runs) || runs < 1) runs = 20;
+      i++;
     }
   }
 
-  return { persona, actions };
+  return { persona, actions, runs };
 }
 
 // ── API Endpoint Catalog ────────────────────────────────────────────────
@@ -160,6 +171,28 @@ Use null for body on GET/DELETE requests. For POST/PUT, provide the request body
 Only respond with ONE action at a time. Do not include any text outside the JSON block.`;
 }
 
+// ── Conversion Funnel Rating Prompt ──────────────────────────────────────
+
+function buildFunnelRatingPrompt(
+  action: ParsedAction,
+  result: ApiCallResult,
+  iteration: number,
+  totalActions: number,
+): string {
+  return `You just performed action ${iteration}/${totalActions}: ${action.method} ${action.path}
+Result: status ${result.status}, ${result.durationMs}ms${result.error ? `, error: ${result.error}` : ""}
+
+Rate the following as this persona experiencing this product. Respond with ONLY a JSON block:
+\`\`\`json
+{
+  "continueProbability": <0-100 integer — how likely is this user to continue to the next step?>,
+  "primaryFriction": "<one sentence — what is the primary friction at this point?>",
+  "wouldPay": "<yes|no|maybe>",
+  "wouldPayReasoning": "<one sentence explaining why>"
+}
+\`\`\``;
+}
+
 // ── Friction Report Prompt ──────────────────────────────────────────────
 
 const FRICTION_REPORT_PROMPT = `Based on all the API interactions in this conversation, produce a structured friction report as a single JSON block.
@@ -214,6 +247,7 @@ async function callClaude(
   systemPrompt: string,
   messages: Message[],
   maxTokens: number = 1024,
+  temperature: number = 1.0,
 ): Promise<string> {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -225,6 +259,7 @@ async function callClaude(
     body: JSON.stringify({
       model: "claude-sonnet-4-20250514",
       max_tokens: maxTokens,
+      temperature,
       system: systemPrompt,
       messages,
     }),
@@ -246,6 +281,13 @@ interface ParsedAction {
   method: string;
   path: string;
   body: any;
+}
+
+export interface FunnelRating {
+  continueProbability: number;
+  primaryFriction: string;
+  wouldPay: "yes" | "no" | "maybe";
+  wouldPayReasoning: string;
 }
 
 function parseAction(text: string): ParsedAction | null {
@@ -283,6 +325,22 @@ function parseAction(text: string): ParsedAction | null {
   return null;
 }
 
+function parseFunnelRating(text: string): FunnelRating | null {
+  const codeBlockMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+  const jsonStr = codeBlockMatch ? codeBlockMatch[1].trim() : text.trim();
+  try {
+    const parsed = JSON.parse(jsonStr);
+    return {
+      continueProbability: typeof parsed.continueProbability === "number" ? parsed.continueProbability : 50,
+      primaryFriction: parsed.primaryFriction ?? "Unknown",
+      wouldPay: ["yes", "no", "maybe"].includes(parsed.wouldPay) ? parsed.wouldPay : "maybe",
+      wouldPayReasoning: parsed.wouldPayReasoning ?? "",
+    };
+  } catch {
+    return null;
+  }
+}
+
 function parseFrictionReport(text: string): any {
   const codeBlockMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
   const jsonStr = codeBlockMatch ? codeBlockMatch[1].trim() : text.trim();
@@ -293,31 +351,41 @@ function parseFrictionReport(text: string): any {
   }
 }
 
-// ── Main ──────────────────────────────────────────────────────────────────
+// ── Single Run ──────────────────────────────────────────────────────────
 
-async function main(): Promise<void> {
-  // Check for API key
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    console.log("[explorer] ANTHROPIC_API_KEY not set — skipping LLM exploratory testing.");
-    console.log("[explorer] Set ANTHROPIC_API_KEY to enable Layer 3 exploration.");
-    process.exit(0);
-  }
+export interface ActionLogEntryWithFunnel {
+  iteration: number;
+  reasoning: string;
+  method: string;
+  path: string;
+  status: number;
+  durationMs: number;
+  error?: string;
+  body?: any;
+  funnelRating?: FunnelRating;
+}
 
-  const { persona, actions } = parseArgs();
+async function runExploration(
+  apiKey: string,
+  persona: PersonaKey,
+  actions: number,
+  runIndex: number,
+  temperature: number,
+): Promise<{
+  actionLog: ActionLogEntryWithFunnel[];
+  frictionReport: any;
+}> {
   const personaDef = PERSONAS[persona];
 
-  console.log(`[explorer] Starting LLM exploration as ${personaDef.name} (${persona})`);
-  console.log(`[explorer] Planned actions: ${actions}`);
+  console.log(`[explorer] Run ${runIndex + 1}: temp=${temperature.toFixed(2)}, persona=${personaDef.name}`);
 
   // Authenticate
   let session: AuthSession;
   try {
     session = await createAuthenticatedSession(persona);
-    console.log(`[explorer] Authenticated (org: ${session.orgId})`);
   } catch (err) {
-    console.error(`[explorer] Failed to authenticate as ${persona}:`, err);
-    process.exit(1);
+    console.error(`[explorer] Run ${runIndex + 1}: Failed to authenticate:`, err);
+    return { actionLog: [], frictionReport: { error: "Auth failed" } };
   }
 
   // Build initial data state summary
@@ -332,6 +400,7 @@ async function main(): Promise<void> {
     path: string;
     body: any;
     result: ApiCallResult;
+    funnelRating?: FunnelRating;
   }> = [];
 
   // Exploration loop
@@ -339,7 +408,7 @@ async function main(): Promise<void> {
   const MAX_CONSECUTIVE_FAILURES = 5;
 
   for (let i = 0; i < actions; i++) {
-    console.log(`[explorer] Action ${i + 1}/${actions}`);
+    console.log(`[explorer]   Run ${runIndex + 1}, Action ${i + 1}/${actions}`);
 
     // Build user message with previous result context
     let userMsg: string;
@@ -361,12 +430,12 @@ What would you like to do next?`;
     // Ask Claude what to do
     let assistantText: string;
     try {
-      assistantText = await callClaude(apiKey, systemPrompt, messages);
+      assistantText = await callClaude(apiKey, systemPrompt, messages, 1024, temperature);
     } catch (err) {
-      console.error(`[explorer] LLM call failed at action ${i + 1}:`, err);
+      console.error(`[explorer]   LLM call failed at action ${i + 1}:`, err);
       consecutiveFailures++;
       if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-        console.error("[explorer] Too many consecutive LLM failures, stopping.");
+        console.error("[explorer]   Too many consecutive LLM failures, stopping.");
         break;
       }
       // Pop the user message and retry next iteration
@@ -379,17 +448,17 @@ What would you like to do next?`;
     // Parse the action
     const action = parseAction(assistantText);
     if (!action) {
-      console.warn(`[explorer] Could not parse action from LLM response at iteration ${i + 1}`);
+      console.warn(`[explorer]   Could not parse action from LLM response at iteration ${i + 1}`);
       consecutiveFailures++;
       if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-        console.error("[explorer] Too many consecutive parse failures, stopping.");
+        console.error("[explorer]   Too many consecutive parse failures, stopping.");
         break;
       }
       continue;
     }
 
     consecutiveFailures = 0;
-    console.log(`[explorer]   ${action.method} ${action.path} — ${action.reasoning.slice(0, 80)}`);
+    console.log(`[explorer]     ${action.method} ${action.path} — ${action.reasoning.slice(0, 80)}`);
 
     // Execute the action
     const result = await apiCall(
@@ -399,7 +468,19 @@ What would you like to do next?`;
       session,
     );
 
-    console.log(`[explorer]   → ${result.status} (${result.durationMs}ms)`);
+    console.log(`[explorer]     → ${result.status} (${result.durationMs}ms)`);
+
+    // Get conversion funnel rating
+    let funnelRating: FunnelRating | undefined;
+    try {
+      const ratingPrompt = buildFunnelRatingPrompt(action, result, i + 1, actions);
+      messages.push({ role: "user", content: ratingPrompt });
+      const ratingText = await callClaude(apiKey, systemPrompt, messages, 256, temperature);
+      messages.push({ role: "assistant", content: ratingText });
+      funnelRating = parseFunnelRating(ratingText) ?? undefined;
+    } catch {
+      // Non-critical — continue without rating
+    }
 
     actionLog.push({
       iteration: i + 1,
@@ -408,45 +489,26 @@ What would you like to do next?`;
       path: action.path,
       body: action.body,
       result,
+      funnelRating,
     });
   }
 
   // Ask for friction report
-  console.log("[explorer] Requesting friction report from Claude...");
+  console.log(`[explorer]   Run ${runIndex + 1}: Requesting friction report...`);
 
   messages.push({ role: "user", content: FRICTION_REPORT_PROMPT });
 
   let reportText: string;
   try {
-    reportText = await callClaude(apiKey, systemPrompt, messages, 4096);
+    reportText = await callClaude(apiKey, systemPrompt, messages, 4096, temperature);
   } catch (err) {
-    console.error("[explorer] Failed to generate friction report:", err);
-    reportText = JSON.stringify({
-      error: "Failed to generate report",
-      actionLog: actionLog.map((a) => ({
-        iteration: a.iteration,
-        method: a.method,
-        path: a.path,
-        status: a.result.status,
-        durationMs: a.result.durationMs,
-        error: a.result.error,
-      })),
-    });
+    console.error("[explorer]   Failed to generate friction report:", err);
+    reportText = JSON.stringify({ error: "Failed to generate report" });
   }
 
-  const report = parseFrictionReport(reportText);
+  const frictionReport = parseFrictionReport(reportText);
 
-  // Enrich report with raw action log
-  const fullReport = {
-    ...report,
-    meta: {
-      persona,
-      personaName: personaDef.name,
-      tier: personaDef.tier,
-      totalActionsPlanned: actions,
-      totalActionsExecuted: actionLog.length,
-      timestamp: new Date().toISOString(),
-    },
+  return {
     actionLog: actionLog.map((a) => ({
       iteration: a.iteration,
       reasoning: a.reasoning,
@@ -455,6 +517,84 @@ What would you like to do next?`;
       status: a.result.status,
       durationMs: a.result.durationMs,
       error: a.result.error,
+      funnelRating: a.funnelRating,
+    })),
+    frictionReport,
+  };
+}
+
+// ── Main ──────────────────────────────────────────────────────────────────
+
+async function main(): Promise<void> {
+  // Check for API key
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    console.log("[explorer] ANTHROPIC_API_KEY not set — skipping LLM exploratory testing.");
+    console.log("[explorer] Set ANTHROPIC_API_KEY to enable Layer 3 exploration.");
+    process.exit(0);
+  }
+
+  const { persona, actions, runs } = parseArgs();
+  const personaDef = PERSONAS[persona];
+
+  console.log(`[explorer] Starting LLM exploration as ${personaDef.name} (${persona})`);
+  console.log(`[explorer] Planned actions: ${actions}, Runs: ${runs}`);
+
+  const allRuns: Array<{
+    runIndex: number;
+    temperature: number;
+    actionLog: ActionLogEntryWithFunnel[];
+    frictionReport: any;
+  }> = [];
+
+  for (let r = 0; r < runs; r++) {
+    // Vary temperature between 0.7 and 1.0 across runs
+    const temperature = runs === 1 ? 1.0 : 0.7 + (r / (runs - 1)) * 0.3;
+
+    const result = await runExploration(apiKey, persona, actions, r, temperature);
+    allRuns.push({
+      runIndex: r,
+      temperature,
+      ...result,
+    });
+  }
+
+  // Build combined report
+  const allActionLogs = allRuns.flatMap((r) => r.actionLog);
+
+  // Merge friction reports: use first valid one as base, aggregate friction points
+  const baseFrictionReport = allRuns.find((r) => !r.frictionReport.error)?.frictionReport ?? {};
+  const allFrictionPoints = allRuns.flatMap(
+    (r) => r.frictionReport?.frictionPoints ?? [],
+  );
+  const allPerformanceIssues = allRuns.flatMap(
+    (r) => r.frictionReport?.performanceIssues ?? [],
+  );
+  const allMissingFeatures = allRuns.flatMap(
+    (r) => r.frictionReport?.missingFeatures ?? [],
+  );
+
+  const fullReport = {
+    ...baseFrictionReport,
+    frictionPoints: allFrictionPoints,
+    performanceIssues: allPerformanceIssues,
+    missingFeatures: allMissingFeatures,
+    meta: {
+      persona,
+      personaName: personaDef.name,
+      tier: personaDef.tier,
+      totalActionsPlanned: actions,
+      totalActionsExecuted: allActionLogs.length,
+      totalRuns: runs,
+      timestamp: new Date().toISOString(),
+    },
+    actionLog: allActionLogs,
+    runs: allRuns.map((r) => ({
+      runIndex: r.runIndex,
+      temperature: r.temperature,
+      actionsExecuted: r.actionLog.length,
+      errors: r.actionLog.filter((a) => a.status >= 400).length,
+      summary: r.frictionReport?.summary,
     })),
   };
 
@@ -467,9 +607,9 @@ What would you like to do next?`;
   fs.writeFileSync(reportPath, JSON.stringify(fullReport, null, 2));
 
   console.log(`[explorer] Report written to ${reportPath}`);
-  console.log(`[explorer] Actions executed: ${actionLog.length}`);
+  console.log(`[explorer] Total runs: ${runs}, Total actions executed: ${allActionLogs.length}`);
   console.log(
-    `[explorer] Errors: ${actionLog.filter((a) => a.result.status >= 400).length}`,
+    `[explorer] Errors: ${allActionLogs.filter((a) => a.status >= 400).length}`,
   );
 }
 

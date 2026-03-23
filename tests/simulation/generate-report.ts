@@ -22,6 +22,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import type { FunnelRating, ActionLogEntryWithFunnel } from "./llm-explorer";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -56,6 +57,7 @@ interface ActionLogEntry {
   status: number;
   durationMs: number;
   error?: string;
+  funnelRating?: FunnelRating;
 }
 
 interface ExplorerReport {
@@ -65,6 +67,7 @@ interface ExplorerReport {
     tier: string;
     totalActionsPlanned: number;
     totalActionsExecuted: number;
+    totalRuns?: number;
     timestamp: string;
   };
   frictionPoints?: FrictionPoint[];
@@ -72,6 +75,13 @@ interface ExplorerReport {
   missingFeatures?: MissingFeature[];
   summary?: string;
   actionLog?: ActionLogEntry[];
+  runs?: Array<{
+    runIndex: number;
+    temperature: number;
+    actionsExecuted: number;
+    errors: number;
+    summary?: string;
+  }>;
 }
 
 interface PlaywrightResult {
@@ -315,6 +325,159 @@ function computeStats(
   };
 }
 
+// ── Conversion Funnel ────────────────────────────────────────────────────
+
+type FunnelStage = "Signup" | "Onboarding Complete" | "First Core Action" | "Repeat Usage" | "Paid Upgrade";
+
+const FUNNEL_STAGES: FunnelStage[] = [
+  "Signup",
+  "Onboarding Complete",
+  "First Core Action",
+  "Repeat Usage",
+  "Paid Upgrade",
+];
+
+function classifyStepToStage(entry: ActionLogEntry): FunnelStage {
+  const p = entry.path.toLowerCase();
+  const m = entry.method.toUpperCase();
+
+  // Signup stage: auth endpoints
+  if (p.includes("/auth/")) return "Signup";
+
+  // Onboarding: onboarding endpoints
+  if (p.includes("/onboarding")) return "Onboarding Complete";
+
+  // First Core Action: first POST to leads/deals/properties/notes/campaigns
+  if (
+    m === "POST" &&
+    (p.includes("/leads") || p.includes("/deals") || p.includes("/properties") ||
+     p.includes("/notes") || p.includes("/campaigns"))
+  ) {
+    return "First Core Action";
+  }
+
+  // Paid Upgrade: billing/stripe/credits
+  if (p.includes("/stripe") || p.includes("/credits") || p.includes("/billing")) {
+    return "Paid Upgrade";
+  }
+
+  // Everything else is Repeat Usage (GET reads, PUT updates, DELETE, dashboard, settings, team)
+  return "Repeat Usage";
+}
+
+interface FunnelStepData {
+  stage: FunnelStage;
+  totalRatings: number;
+  continueProbabilitySum: number;
+  wouldPayYes: number;
+  wouldPayMaybe: number;
+  wouldPayNo: number;
+  frictionCounts: Map<string, number>;
+}
+
+function buildFunnelData(
+  explorerReports: Array<{ data: ExplorerReport }>,
+): {
+  overall: Map<FunnelStage, FunnelStepData>;
+  perPersona: Map<string, Map<FunnelStage, FunnelStepData>>;
+} {
+  const overall = new Map<FunnelStage, FunnelStepData>();
+  const perPersona = new Map<string, Map<FunnelStage, FunnelStepData>>();
+
+  for (const stage of FUNNEL_STAGES) {
+    overall.set(stage, emptyStepData(stage));
+  }
+
+  for (const { data } of explorerReports) {
+    if (!data.actionLog) continue;
+    const personaName = data.meta?.personaName ?? "Unknown";
+
+    if (!perPersona.has(personaName)) {
+      const pMap = new Map<FunnelStage, FunnelStepData>();
+      for (const stage of FUNNEL_STAGES) {
+        pMap.set(stage, emptyStepData(stage));
+      }
+      perPersona.set(personaName, pMap);
+    }
+    const personaMap = perPersona.get(personaName)!;
+
+    for (const entry of data.actionLog) {
+      if (!entry.funnelRating) continue;
+      const stage = classifyStepToStage(entry);
+      accumulateRating(overall.get(stage)!, entry.funnelRating);
+      accumulateRating(personaMap.get(stage)!, entry.funnelRating);
+    }
+  }
+
+  return { overall, perPersona };
+}
+
+function emptyStepData(stage: FunnelStage): FunnelStepData {
+  return {
+    stage,
+    totalRatings: 0,
+    continueProbabilitySum: 0,
+    wouldPayYes: 0,
+    wouldPayMaybe: 0,
+    wouldPayNo: 0,
+    frictionCounts: new Map(),
+  };
+}
+
+function accumulateRating(data: FunnelStepData, rating: FunnelRating): void {
+  data.totalRatings++;
+  data.continueProbabilitySum += rating.continueProbability;
+  if (rating.wouldPay === "yes") data.wouldPayYes++;
+  else if (rating.wouldPay === "maybe") data.wouldPayMaybe++;
+  else data.wouldPayNo++;
+
+  const friction = rating.primaryFriction.trim();
+  if (friction) {
+    data.frictionCounts.set(friction, (data.frictionCounts.get(friction) ?? 0) + 1);
+  }
+}
+
+function topFriction(data: FunnelStepData): string {
+  if (data.frictionCounts.size === 0) return "—";
+  let maxCount = 0;
+  let topMsg = "—";
+  for (const [msg, count] of data.frictionCounts) {
+    if (count > maxCount) {
+      maxCount = count;
+      topMsg = msg;
+    }
+  }
+  return topMsg;
+}
+
+function dropOffRisk(avgConversion: number): string {
+  if (avgConversion >= 80) return "Low";
+  if (avgConversion >= 50) return "Medium";
+  return "High";
+}
+
+function renderFunnelTable(stageMap: Map<FunnelStage, FunnelStepData>): string[] {
+  const lines: string[] = [];
+  lines.push("| Stage | Avg Conversion % | Drop-off Risk | Primary Friction (most common) | Would Pay % |");
+  lines.push("|-------|-----------------|---------------|-------------------------------|-------------|");
+
+  for (const stage of FUNNEL_STAGES) {
+    const d = stageMap.get(stage)!;
+    if (d.totalRatings === 0) {
+      lines.push(`| ${stage} | — | — | — | — |`);
+      continue;
+    }
+    const avgConv = Math.round(d.continueProbabilitySum / d.totalRatings);
+    const wouldPayPct = Math.round(((d.wouldPayYes + d.wouldPayMaybe * 0.5) / d.totalRatings) * 100);
+    const friction = topFriction(d);
+    // Truncate friction to 60 chars for table readability
+    const frictionDisplay = friction.length > 60 ? friction.slice(0, 57) + "..." : friction;
+    lines.push(`| ${stage} | ${avgConv}% | ${dropOffRisk(avgConv)} | ${frictionDisplay} | ${wouldPayPct}% |`);
+  }
+
+  return lines;
+}
+
 // ── Markdown Renderer ──────────────────────────────────────────────────
 
 function renderMarkdown(stats: SummaryStats, findings: Finding[], explorerReports: Array<{ data: ExplorerReport }>): string {
@@ -384,6 +547,40 @@ function renderMarkdown(stats: SummaryStats, findings: Finding[], explorerReport
     }
   }
 
+  // ── Conversion Funnel ──────────────────────────────────────────────────
+  const { overall, perPersona } = buildFunnelData(explorerReports);
+  const hasRatings = Array.from(overall.values()).some((d) => d.totalRatings > 0);
+
+  if (hasRatings) {
+    lines.push("## Conversion Funnel");
+    lines.push("");
+    lines.push("Aggregated across all runs. Steps are grouped into funnel stages:");
+    lines.push("**Signup → Onboarding Complete → First Core Action → Repeat Usage → Paid Upgrade**");
+    lines.push("");
+
+    // Overall funnel table
+    lines.push("### Overall Funnel");
+    lines.push("");
+    lines.push(...renderFunnelTable(overall));
+    lines.push("");
+
+    // Per-persona breakdowns
+    if (perPersona.size > 0) {
+      lines.push("### Per-Persona Funnel Breakdowns");
+      lines.push("");
+
+      for (const [personaName, stageMap] of perPersona) {
+        const hasData = Array.from(stageMap.values()).some((d) => d.totalRatings > 0);
+        if (!hasData) continue;
+
+        lines.push(`#### ${personaName}`);
+        lines.push("");
+        lines.push(...renderFunnelTable(stageMap));
+        lines.push("");
+      }
+    }
+  }
+
   // Per-persona summaries from Claude
   const summaries = explorerReports.filter((r) => r.data.summary);
   if (summaries.length > 0) {
@@ -401,7 +598,8 @@ function renderMarkdown(stats: SummaryStats, findings: Finding[], explorerReport
         const avg = Math.round(
           data.actionLog.reduce((s, a) => s + a.durationMs, 0) / data.actionLog.length,
         );
-        lines.push(`- Actions: ${data.actionLog.length}, Errors: ${errors}, Avg response: ${avg}ms`);
+        const totalRuns = data.meta?.totalRuns ?? 1;
+        lines.push(`- Actions: ${data.actionLog.length}, Errors: ${errors}, Avg response: ${avg}ms, Runs: ${totalRuns}`);
         lines.push("");
       }
     }
