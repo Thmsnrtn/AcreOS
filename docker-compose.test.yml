@@ -56,4 +56,15 @@ services:
       retries: 10
       start_period: 30s
 
+  smoke-test:
+    image: curlimages/curl:latest
+    depends_on:
+      app:
+        condition: service_healthy
+    volumes:
+      - ./scripts/docker-smoke-test.sh:/smoke-test.sh:ro
+    entrypoint: ["/bin/sh", "/smoke-test.sh"]
+    environment:
+      APP_URL: http://app:5000
+
 volumes: {}

@@ -86,6 +86,64 @@ fly postgres connect -a <pg-app-name>
 
 **Important:** Always verify the rollback was successful by running the post-deploy smoke tests again.
 
+## Zero-Downtime Deploys
+
+Fly.io with `min_machines_running = 2` performs rolling deploys by default — one machine updates while the other continues serving traffic.
+
+### Deploy Command
+
+```bash
+# Standard rolling deploy (zero-downtime):
+fly deploy --strategy rolling
+
+# Verify both machines are healthy after deploy:
+fly status
+fly machines list
+```
+
+### How It Works
+
+1. Fly.io starts a new machine with the updated image
+2. The new machine passes health checks (`/api/health`)
+3. Traffic shifts to the new machine
+4. The old machine is drained and stopped
+5. Repeat for the second machine
+
+### Rollback Procedure
+
+```bash
+# View recent releases:
+fly releases
+
+# Roll back to the previous release:
+fly releases rollback
+
+# Deploy a specific known-good image:
+fly deploy --image <previous-image-ref>
+```
+
+### Post-Deploy Verification Checklist
+
+- [ ] `curl https://<app-url>/api/health` returns 200 with all services healthy
+- [ ] Auth flow works (login/register)
+- [ ] Lead creation works (POST /api/leads)
+- [ ] Stripe webhook endpoint responds (POST /api/stripe/webhook returns 400 for unsigned, not 404)
+- [ ] Both machines show "started" in `fly status`
+
+### Configuration (fly.toml)
+
+Ensure these settings in `fly.toml` for zero-downtime:
+
+```toml
+[deploy]
+  strategy = "rolling"
+
+[[services]]
+  min_machines_running = 2
+```
+
+---
+
 ## Monitoring
 
 - **Logs:** `fly logs` or configure a log drain (`fly logs export`)
