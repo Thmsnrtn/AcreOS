@@ -57,6 +57,7 @@ export function useCreateCampaign() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/campaigns'] });
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/checklist-status"] });
     },
   });
 }

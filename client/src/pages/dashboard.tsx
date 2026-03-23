@@ -7,7 +7,7 @@ import { PullToRefresh } from "@/components/mobile";
 import { useLeads, useAgingLeads, type AgingLead } from "@/hooks/use-leads";
 import { useProperties } from "@/hooks/use-properties";
 import { usePlaybooks } from "@/hooks/use-playbooks";
-import { Users, Map, Banknote, TrendingUp, Activity, Building2, Crown, AlertTriangle, AlertCircle, Clock, Flame, Sun, Snowflake, Sparkles, BookOpen, Target } from "lucide-react";
+import { Users, Map, Banknote, TrendingUp, Activity, Building2, Crown, AlertTriangle, AlertCircle, Clock, Flame, Sun, Snowflake, Sparkles, BookOpen, Target, X } from "lucide-react";
 import { motion } from "framer-motion";
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, FunnelChart, Funnel, LabelList } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -114,6 +114,11 @@ export default function Dashboard() {
       setWidgetSettings(loadSettings(organization));
     }
   }, [organization]);
+
+  const { data: campaignsData = [] } = useQuery<{ id: number }[]>({
+    queryKey: ['/api/campaigns'],
+  });
+  const [tipDismissed, setTipDismissed] = useState(false);
 
   const isLoading = orgLoading || statsLoading;
 
@@ -649,6 +654,49 @@ export default function Dashboard() {
               </Card>
             )}
           </div>
+
+          {/* Contextual tip banner */}
+          {!tipDismissed && !isLoading && (
+            leads.length === 0 ? (
+              <Card className="border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/40">
+                <CardContent className="flex items-center justify-between p-4">
+                  <div className="flex items-center gap-3">
+                    <Sparkles className="w-5 h-5 text-blue-500 shrink-0" />
+                    <p className="text-sm text-blue-800 dark:text-blue-200">
+                      Import your first leads to see pipeline stats here
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Link href="/leads">
+                      <Button size="sm" variant="outline" className="text-xs">Go to Leads</Button>
+                    </Link>
+                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setTipDismissed(true)} aria-label="Dismiss tip">
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : campaignsData.length === 0 ? (
+              <Card className="border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/40">
+                <CardContent className="flex items-center justify-between p-4">
+                  <div className="flex items-center gap-3">
+                    <Sparkles className="w-5 h-5 text-blue-500 shrink-0" />
+                    <p className="text-sm text-blue-800 dark:text-blue-200">
+                      Create your first campaign to start outreach
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Link href="/campaigns">
+                      <Button size="sm" variant="outline" className="text-xs">Go to Campaigns</Button>
+                    </Link>
+                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setTipDismissed(true)} aria-label="Dismiss tip">
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : null
+          )}
 
           {widgetSettings.order.map((widgetId, index) => {
             if (widgetId === "inventoryChart" || widgetId === "leadPipelineChart") {
