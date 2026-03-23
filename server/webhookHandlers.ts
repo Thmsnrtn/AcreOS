@@ -664,6 +664,35 @@ export class WebhookHandlers {
       });
 
       console.log(`Borrower portal payment processed: Note ${note.id}, Amount: $${amount}, New Balance: $${newBalance}`);
+
+      // Send payment receipt email to borrower
+      try {
+        const { emailService } = await import('./services/emailService');
+        const borrower = note.borrowerId ? await storage.getLead(note.organizationId, note.borrowerId) : null;
+        const borrowerEmail = borrower?.email;
+        if (borrowerEmail) {
+          const nextDue = nextPaymentDate.toLocaleDateString();
+          await emailService.sendEmail({
+            to: borrowerEmail,
+            subject: `Payment Receipt — $${amount.toFixed(2)}`,
+            html: `
+              <h2>Payment Receipt</h2>
+              <p>Thank you for your payment.</p>
+              <ul>
+                <li><strong>Amount Paid:</strong> $${amount.toFixed(2)}</li>
+                <li><strong>Payment Date:</strong> ${new Date().toLocaleDateString()}</li>
+                <li><strong>Remaining Balance:</strong> $${newBalance.toFixed(2)}</li>
+                <li><strong>Next Payment Due:</strong> ${newBalance <= 0 ? 'Paid in full!' : nextDue}</li>
+              </ul>
+              <p>If you have questions about your account, please contact your lender.</p>
+            `,
+            text: `Payment Receipt\n\nAmount Paid: $${amount.toFixed(2)}\nPayment Date: ${new Date().toLocaleDateString()}\nRemaining Balance: $${newBalance.toFixed(2)}\nNext Payment Due: ${newBalance <= 0 ? 'Paid in full!' : nextDue}`,
+          });
+          console.log(`[webhook] Payment receipt sent to ${borrowerEmail}`);
+        }
+      } catch (emailErr) {
+        console.warn('[webhook] Could not send payment receipt email:', emailErr);
+      }
     } catch (err) {
       console.error('Error processing borrower portal payment:', err);
       throw err;
