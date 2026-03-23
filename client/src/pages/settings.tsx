@@ -46,6 +46,7 @@ import { ProviderSettings } from "@/components/provider-settings";
 import { AICostDashboard } from "@/components/ai-cost-dashboard";
 import { ByokSettings } from "@/components/settings/ByokSettings";
 import { ThemeSettings } from "@/components/theme-settings";
+import { PlanComparisonModal, type TierKey } from "@/components/tier-upgrade-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
@@ -553,20 +554,35 @@ export default function Settings() {
   const search = useSearch();
   const searchParams = new URLSearchParams(search);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
-  
+  const [showPlanComparison, setShowPlanComparison] = useState(false);
+
   const getTabFromHash = (): TabValue => {
     const hash = window.location.hash.replace("#", "");
+    // Map "billing" alias to "payments" tab
+    if (hash === "billing") return "payments";
     if (VALID_TABS.includes(hash as TabValue)) {
       return hash as TabValue;
     }
     return "general";
   };
-  
+
   const [activeTab, setActiveTab] = useState<TabValue>(getTabFromHash);
-  
+
+  useEffect(() => {
+    // Auto-show plan comparison when arriving via #billing (from upgrade toast)
+    const hash = window.location.hash.replace("#", "");
+    if (hash === "billing") {
+      setShowPlanComparison(true);
+    }
+  }, []);
+
   useEffect(() => {
     const handleHashChange = () => {
+      const hash = window.location.hash.replace("#", "");
       setActiveTab(getTabFromHash());
+      if (hash === "billing") {
+        setShowPlanComparison(true);
+      }
     };
     window.addEventListener("hashchange", handleHashChange);
     return () => window.removeEventListener("hashchange", handleHashChange);
@@ -1543,6 +1559,11 @@ export default function Settings() {
         onConfirm={() => clearDataMutation.mutate()}
         isLoading={clearDataMutation.isPending}
         variant="destructive"
+      />
+      <PlanComparisonModal
+        open={showPlanComparison}
+        onClose={() => setShowPlanComparison(false)}
+        currentTier={(organization?.subscriptionTier || "free") as TierKey}
       />
     </PageShell>
   );

@@ -262,3 +262,13 @@ export function useMailAttribution(campaignId: number) {
     enabled: !!campaignId,
   });
 }
+
+// Test send hook — sends a single test email to the logged-in user
+export function useTestSendCampaign() {
+  return useMutation({
+    mutationFn: async (campaignId: number) => {
+      const res = await apiRequest("POST", `/api/campaigns/${campaignId}/test-send`);
+      return res.json() as Promise<{ success: boolean; to: string; result: any }>;
+    },
+  });
+}
