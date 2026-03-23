@@ -1,5 +1,6 @@
-import { storage } from "../storage";
+import { storage, db } from "../storage";
 import type { SequenceEnrollment, SequenceStep, CampaignSequence, Lead } from "@shared/schema";
+import { campaignDeliveryEvents } from "@shared/schema";
 import { checkTcpaConsentFromLead, canSendViaChannel } from "./tcpaCompliance";
 import crypto from "crypto";
 import { logger } from '../utils/logger';
@@ -68,7 +69,14 @@ export class SequenceProcessorService {
 
       let maxProcessedId = lastProcessedId;
       for (const enrollment of unprocessedEnrollments) {
-        await this.processEnrollment(enrollment);
+        try {
+          await this.processEnrollment(enrollment);
+        } catch (enrollErr) {
+          logger.error("[sequence-processor] Failed to process enrollment, marking as failed and continuing", enrollErr, { metadata: { enrollmentId: enrollment.id } });
+          try {
+            await storage.updateSequenceEnrollment(enrollment.id, { status: "failed" });
+          } catch { /* best effort */ }
+        }
         maxProcessedId = Math.max(maxProcessedId, enrollment.id);
         await storage.updateJobCursor(JOB_TYPE, maxProcessedId, 'running');
       }
@@ -235,6 +243,24 @@ export class SequenceProcessorService {
       }
 
       logger.info("[sequence-processor] Sent message", { metadata: { channel: step.channel, leadId: lead.id, enrollmentId: enrollment.id, stepNumber: step.stepNumber } });
+
+      // Track delivery event
+      try {
+        const campaignId = lead.sourceCampaignId || lead.campaignId;
+        if (campaignId) {
+          await db.insert(campaignDeliveryEvents).values({
+            campaignId,
+            leadId: lead.id,
+            channel: step.channel,
+            status: "sent",
+            sentAt: new Date(),
+            statusUpdatedAt: new Date(),
+            metadata: { enrollmentId: enrollment.id, stepNumber: step.stepNumber },
+          });
+        }
+      } catch (trackErr) {
+        logger.warn("[sequence-processor] Failed to track delivery event", { metadata: { error: String(trackErr) } });
+      }
     } catch (error) {
       logger.error("[sequence-processor] Failed to send message", error, { metadata: { channel: step.channel, enrollmentId: enrollment.id } });
     }
