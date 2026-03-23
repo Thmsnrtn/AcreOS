@@ -23,7 +23,7 @@ import { usageMeteringService, creditService } from "./services/credits";
 import { createRateLimiter, RATE_LIMIT_CONFIGS } from "./middleware/rateLimit";
 import { storage, db } from "./storage";
 import { eq, sql, and, gte } from "drizzle-orm";
-import { leads, deals, properties, campaignResponses } from "@shared/schema";
+import { leads, deals, properties, campaignResponses, campaignDeliveryEvents } from "@shared/schema";
 
 export function registerCampaignRoutes(app: Express): void {
   const api = app;
@@ -97,7 +97,22 @@ export function registerCampaignRoutes(app: Express): void {
     
     const responsesCount = await storage.getCampaignResponsesCount(campaignId);
     const responses = await storage.getCampaignResponses(org.id, campaignId);
-    
+
+    // Delivery event status breakdown
+    let deliveryBreakdown: Record<string, number> = {};
+    try {
+      const deliveryRows = await db.select({
+        status: campaignDeliveryEvents.status,
+        count: sql<number>`count(*)::int`,
+      })
+        .from(campaignDeliveryEvents)
+        .where(eq(campaignDeliveryEvents.campaignId, campaignId))
+        .groupBy(campaignDeliveryEvents.status);
+      for (const row of deliveryRows) {
+        deliveryBreakdown[row.status] = row.count;
+      }
+    } catch { /* table may not exist yet */ }
+
     const sent = campaign.totalSent || 0;
     const delivered = campaign.totalDelivered || 0;
     const opened = campaign.totalOpened || 0;
@@ -141,6 +156,7 @@ export function registerCampaignRoutes(app: Express): void {
         { stage: 'Deal', count: dealCount },
       ],
       responses,
+      deliveryBreakdown,
     });
   });
 

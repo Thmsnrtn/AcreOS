@@ -1049,6 +1049,22 @@ export const insertCampaignResponseSchema = createInsertSchema(campaignResponses
 export type InsertCampaignResponse = z.infer<typeof insertCampaignResponseSchema>;
 export type CampaignResponse = typeof campaignResponses.$inferSelect;
 
+// Campaign delivery events (audit trail for sent messages)
+export const campaignDeliveryEvents = pgTable("campaign_delivery_events", {
+  id: serial("id").primaryKey(),
+  campaignId: integer("campaign_id").references(() => campaigns.id).notNull(),
+  leadId: integer("lead_id").references(() => leads.id).notNull(),
+  channel: text("channel").notNull(), // email, sms, direct_mail
+  status: text("status").notNull().default("sent"), // sent, delivered, bounced, complained, failed
+  sentAt: timestamp("sent_at").defaultNow(),
+  statusUpdatedAt: timestamp("status_updated_at").defaultNow(),
+  metadata: jsonb("metadata"),
+});
+
+export const insertCampaignDeliveryEventSchema = createInsertSchema(campaignDeliveryEvents).omit({ id: true });
+export type InsertCampaignDeliveryEvent = z.infer<typeof insertCampaignDeliveryEventSchema>;
+export type CampaignDeliveryEvent = typeof campaignDeliveryEvents.$inferSelect;
+
 // ============================================
 // AI AGENTS & AUTOMATION
 // ============================================
