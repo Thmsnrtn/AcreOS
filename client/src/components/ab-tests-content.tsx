@@ -58,7 +58,7 @@ const confidenceBadge = (level: number) => {
   return { label: 'Not significant', color: 'bg-muted text-muted-foreground' };
 };
 
-export function ABTestsContent() {
+export function AbTestsContent() {
   const { toast } = useToast();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [selectedTest, setSelectedTest] = useState<AbTestWithVariants | null>(null);

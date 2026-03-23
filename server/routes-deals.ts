@@ -11,6 +11,7 @@ import { checkUsageLimit } from "./services/usageLimits";
 import { db } from "./db";
 import { outcomeTelemetry } from "@shared/schema";
 import { checkUsury } from "./services/usury";
+import { logger } from "./utils/logger";
 
 // Partial update schema for PUT endpoints
 const updateDealSchema = insertDealSchema.partial().omit({ organizationId: true });
@@ -269,8 +270,12 @@ export function registerDealRoutes(app: Express): void {
 
         // Fire Pillar 3 market signal contribution (non-blocking)
         import("./services/marketNetworkContributor").then(({ contributeMarketSignal }) => {
-          contributeMarketSignal(org.id, deal).catch(() => {});
-        }).catch(() => {});
+          contributeMarketSignal(org.id, deal).catch((err) => {
+            logger.error("Market signal contribution failed", { error: err.message });
+          });
+        }).catch((err) => {
+          logger.error("Failed to load marketNetworkContributor", { error: err.message });
+        });
       }
 
       // Push notification when deal is accepted (T61)

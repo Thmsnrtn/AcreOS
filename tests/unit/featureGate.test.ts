@@ -1,0 +1,110 @@
+/**
+ * Unit tests for the featureGate middleware.
+ *
+ * Verifies that:
+ *   1. Enabled flags allow the request through (calls next())
+ *   2. Disabled flags return 404
+ *   3. Missing flags return 404
+ *   4. Database errors fall through gracefully (calls next())
+ */
+
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { Request, Response, NextFunction } from "express";
+
+// ── Mock the DB layer ──────────────────────────────────────────────────────────
+
+const mockSelect = vi.fn();
+const mockFrom = vi.fn();
+const mockWhere = vi.fn();
+const mockLimit = vi.fn();
+
+vi.mock("../../server/storage", () => ({
+  db: {
+    select: (...args: any[]) => {
+      mockSelect(...args);
+      return { from: mockFrom };
+    },
+  },
+}));
+
+// Chain: db.select().from().where().limit() → rows
+mockFrom.mockReturnValue({ where: mockWhere });
+mockWhere.mockReturnValue({ limit: mockLimit });
+
+vi.mock("@shared/schema", () => ({
+  platformFeatureFlags: {
+    key: "key",
+    enabled: "enabled",
+  },
+}));
+
+vi.mock("drizzle-orm", () => ({
+  eq: (col: string, val: string) => ({ col, val }),
+}));
+
+// ── Import after mocks ─────────────────────────────────────────────────────────
+
+import { featureGate } from "../../server/middleware/featureGate";
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
+function mockReqRes() {
+  const req = {} as Request;
+  const res = {
+    status: vi.fn().mockReturnThis(),
+    json: vi.fn().mockReturnThis(),
+  } as unknown as Response;
+  const next = vi.fn() as NextFunction;
+  return { req, res, next };
+}
+
+// ── Tests ──────────────────────────────────────────────────────────────────────
+
+describe("featureGate middleware", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockFrom.mockReturnValue({ where: mockWhere });
+    mockWhere.mockReturnValue({ limit: mockLimit });
+  });
+
+  it("calls next() when the flag exists and is enabled", async () => {
+    mockLimit.mockResolvedValueOnce([{ key: "feature_marketplace", enabled: true }]);
+
+    const { req, res, next } = mockReqRes();
+    await featureGate("feature_marketplace")(req, res, next);
+
+    expect(next).toHaveBeenCalled();
+    expect(res.status).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 when the flag exists but is disabled", async () => {
+    mockLimit.mockResolvedValueOnce([{ key: "feature_marketplace", enabled: false }]);
+
+    const { req, res, next } = mockReqRes();
+    await featureGate("feature_marketplace")(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(res.json).toHaveBeenCalledWith({ message: "Feature not available" });
+  });
+
+  it("returns 404 when the flag does not exist", async () => {
+    mockLimit.mockResolvedValueOnce([]);
+
+    const { req, res, next } = mockReqRes();
+    await featureGate("feature_nonexistent")(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(404);
+  });
+
+  it("calls next() when the database throws (graceful fallthrough)", async () => {
+    mockLimit.mockRejectedValueOnce(new Error("relation does not exist"));
+
+    const { req, res, next } = mockReqRes();
+    await featureGate("feature_marketplace")(req, res, next);
+
+    expect(next).toHaveBeenCalled();
+    expect(res.status).not.toHaveBeenCalled();
+  });
+});

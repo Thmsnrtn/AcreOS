@@ -128,7 +128,6 @@ import type { SavedView } from "@shared/schema";
 import { QueryErrorState } from "@/components/query-error-state";
 import { ResearchSummaryPanel } from "@/components/research-summary-panel";
 import { usePersistedGisFilters } from "@/hooks/use-persisted-gis-filters";
-import { useEffect } from "react";
 import { Bot } from "lucide-react";
 
 export default function PropertiesPage() {

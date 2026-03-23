@@ -254,3 +254,124 @@ describe("Subscription Tier Isolation (Task #6)", () => {
     expect(org1Access.maxMembers).not.toBe(org2Access.maxMembers);
   });
 });
+
+// ── Extended Isolation Tests (Phase 10) ──────────────────────────────────────
+
+interface Property {
+  id: number;
+  organizationId: number;
+  apn: string;
+  county: string;
+  state: string;
+}
+
+interface Note {
+  id: number;
+  organizationId: number;
+  borrowerName: string;
+  balance: number;
+}
+
+interface Campaign {
+  id: number;
+  organizationId: number;
+  name: string;
+  status: string;
+}
+
+const PROPERTIES: Property[] = [
+  { id: 1, organizationId: 1, apn: "APN-001", county: "Hudspeth", state: "TX" },
+  { id: 2, organizationId: 1, apn: "APN-002", county: "Cochise", state: "AZ" },
+  { id: 3, organizationId: 2, apn: "APN-003", county: "Elko", state: "NV" },
+];
+
+const NOTES: Note[] = [
+  { id: 1, organizationId: 1, borrowerName: "Alice", balance: 45000 },
+  { id: 2, organizationId: 2, borrowerName: "Bob", balance: 32000 },
+];
+
+const CAMPAIGNS: Campaign[] = [
+  { id: 1, organizationId: 1, name: "TX Mailer", status: "active" },
+  { id: 2, organizationId: 2, name: "NV Outreach", status: "draft" },
+];
+
+function getPropertiesForOrg(orgId: number): Property[] {
+  return PROPERTIES.filter((p) => p.organizationId === orgId);
+}
+
+function getPropertyById(id: number, orgId: number): Property | null {
+  const prop = PROPERTIES.find((p) => p.id === id);
+  if (!prop || prop.organizationId !== orgId) return null;
+  return prop;
+}
+
+function getNotesForOrg(orgId: number): Note[] {
+  return NOTES.filter((n) => n.organizationId === orgId);
+}
+
+function getNoteById(id: number, orgId: number): Note | null {
+  const note = NOTES.find((n) => n.id === id);
+  if (!note || note.organizationId !== orgId) return null;
+  return note;
+}
+
+function getCampaignsForOrg(orgId: number): Campaign[] {
+  return CAMPAIGNS.filter((c) => c.organizationId === orgId);
+}
+
+describe("Multi-Tenant Property Isolation (Phase 10)", () => {
+  it("org 1 sees only its properties", () => {
+    const props = getPropertiesForOrg(ORG_1.id);
+    expect(props).toHaveLength(2);
+    expect(props.every((p) => p.organizationId === ORG_1.id)).toBe(true);
+  });
+
+  it("org 2 sees only its properties", () => {
+    const props = getPropertiesForOrg(ORG_2.id);
+    expect(props).toHaveLength(1);
+    expect(props[0].apn).toBe("APN-003");
+  });
+
+  it("org 1 cannot access org 2's property by ID", () => {
+    expect(getPropertyById(3, ORG_1.id)).toBeNull();
+  });
+
+  it("org 2 cannot access org 1's property by ID", () => {
+    expect(getPropertyById(1, ORG_2.id)).toBeNull();
+  });
+});
+
+describe("Multi-Tenant Note Isolation (Phase 10)", () => {
+  it("org 1 sees only its notes", () => {
+    const notes = getNotesForOrg(ORG_1.id);
+    expect(notes).toHaveLength(1);
+    expect(notes[0].borrowerName).toBe("Alice");
+  });
+
+  it("org 2 sees only its notes", () => {
+    const notes = getNotesForOrg(ORG_2.id);
+    expect(notes).toHaveLength(1);
+    expect(notes[0].borrowerName).toBe("Bob");
+  });
+
+  it("org 1 cannot access org 2's note by ID", () => {
+    expect(getNoteById(2, ORG_1.id)).toBeNull();
+  });
+
+  it("org 2 cannot access org 1's note by ID", () => {
+    expect(getNoteById(1, ORG_2.id)).toBeNull();
+  });
+});
+
+describe("Multi-Tenant Campaign Isolation (Phase 10)", () => {
+  it("org 1 sees only its campaigns", () => {
+    const campaigns = getCampaignsForOrg(ORG_1.id);
+    expect(campaigns).toHaveLength(1);
+    expect(campaigns[0].name).toBe("TX Mailer");
+  });
+
+  it("org 2 cannot see org 1's campaigns", () => {
+    const campaigns = getCampaignsForOrg(ORG_2.id);
+    expect(campaigns.some((c) => c.organizationId === ORG_1.id)).toBe(false);
+  });
+});

@@ -5,6 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   MessageSquare,
   Activity,
@@ -20,6 +21,7 @@ import {
   ArrowRight,
   CheckCircle2,
   Flame,
+  Settings,
 } from "lucide-react";
 import CommandCenterPage from "@/pages/command-center";
 
@@ -399,6 +401,111 @@ function InsightsTabContent() {
   );
 }
 
+// ─── AI Availability Check ───────────────────────────────────────────────────
+
+interface HealthService {
+  name: string;
+  status: string;
+  message?: string;
+}
+
+function AiChatGuard({ children }: { children: React.ReactNode }) {
+  const { data: healthData, isLoading } = useQuery<{ services: HealthService[] }>({
+    queryKey: ["/api/health/cached"],
+  });
+
+  const openaiService = healthData?.services?.find(s => s.name === "openai");
+  const aiUnavailable = openaiService?.status === "unconfigured";
+
+  if (isLoading) return <Skeleton className="h-64 w-full rounded-lg" />;
+
+  if (aiUnavailable) {
+    return (
+      <Card className="border-dashed">
+        <CardContent className="flex flex-col items-center justify-center py-16 text-center space-y-4">
+          <div className="p-4 rounded-full bg-muted">
+            <Bot className="h-8 w-8 text-muted-foreground" />
+          </div>
+          <div className="space-y-2 max-w-md">
+            <h3 className="text-lg font-semibold">AI assistant requires an OpenAI API key</h3>
+            <p className="text-sm text-muted-foreground">
+              Configure it in Settings &rarr; Integrations to start chatting with Pax.
+            </p>
+          </div>
+          <Button variant="outline" asChild>
+            <a href="/settings#integrations">
+              <Settings className="w-4 h-4 mr-2" />
+              Go to Integrations
+            </a>
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return <>{children}</>;
+}
+
+// ─── Suggested Prompts ────────────────────────────────────────────────────────
+
+const SUGGESTED_PROMPTS = [
+  { label: "What's my pipeline worth?", icon: TrendingUp },
+  { label: "Help me analyze a deal", icon: DollarSign },
+  { label: "How's my note portfolio doing?", icon: CheckCircle2 },
+  { label: "What should I work on today?", icon: Flame },
+];
+
+function SuggestedPrompts() {
+  const { data: conversations } = useQuery<{ id: number }[]>({
+    queryKey: ["/api/ai/conversations"],
+  });
+
+  // Only show when user has no conversations yet
+  if (conversations && conversations.length > 0) return null;
+
+  const handleClick = (prompt: string) => {
+    // Find the textarea in the command center and populate it
+    const textarea = document.querySelector<HTMLTextAreaElement>(
+      '[data-testid="chat-input"], textarea[placeholder*="message"], textarea[placeholder*="Ask"]'
+    );
+    if (textarea) {
+      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+        window.HTMLTextAreaElement.prototype,
+        "value",
+      )?.set;
+      nativeInputValueSetter?.call(textarea, prompt);
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      textarea.focus();
+      // Try to submit by finding the send button
+      setTimeout(() => {
+        const sendBtn = textarea
+          .closest("form")
+          ?.querySelector<HTMLButtonElement>('button[type="submit"]');
+        if (sendBtn) sendBtn.click();
+      }, 100);
+    }
+  };
+
+  return (
+    <div className="mb-6">
+      <p className="text-sm text-muted-foreground mb-3">Try asking Pax:</p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {SUGGESTED_PROMPTS.map(({ label, icon: Icon }) => (
+          <Button
+            key={label}
+            variant="outline"
+            className="justify-start gap-2 h-auto py-3 text-left"
+            onClick={() => handleClick(label)}
+          >
+            <Icon className="w-4 h-4 shrink-0 text-primary" />
+            <span className="text-sm">{label}</span>
+          </Button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function PaxPage() {
@@ -462,7 +569,10 @@ export default function PaxPage() {
         </TabsContent>
 
         <TabsContent value="chat" data-testid="tab-content-chat">
-          <CommandCenterPage />
+          <AiChatGuard>
+            <SuggestedPrompts />
+            <CommandCenterPage />
+          </AiChatGuard>
         </TabsContent>
 
         <TabsContent value="activity" data-testid="tab-content-activity">
@@ -472,7 +582,9 @@ export default function PaxPage() {
         </TabsContent>
 
         <TabsContent value="agents" data-testid="tab-content-agents">
-          <CommandCenterPage />
+          <AiChatGuard>
+            <CommandCenterPage />
+          </AiChatGuard>
         </TabsContent>
 
         <TabsContent value="automation" data-testid="tab-content-automation">

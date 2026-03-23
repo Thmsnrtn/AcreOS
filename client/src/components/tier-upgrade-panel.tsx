@@ -459,6 +459,144 @@ export function TierProgress({ currentTier, onUpgradeClick, compact }: TierProgr
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PLAN COMPARISON MODAL — side-by-side tier comparison for upgrade flow
+// ─────────────────────────────────────────────────────────────────────────────
+
+import { useQuery } from "@tanstack/react-query";
+import { SUBSCRIPTION_TIERS } from "@shared/schema";
+import type { StripeProduct } from "@/hooks/use-organization";
+import { useCreateCheckoutSession } from "@/hooks/use-organization";
+import { Loader2 } from "lucide-react";
+
+interface PlanComparisonModalProps {
+  open: boolean;
+  onClose: () => void;
+  currentTier: TierKey;
+}
+
+const PLAN_ORDER: TierKey[] = ["free", "sprout", "starter", "pro", "scale", "enterprise"];
+
+function formatLimit(value: number | null | undefined): string {
+  if (value === null || value === undefined) return "Unlimited";
+  return value.toLocaleString();
+}
+
+export function PlanComparisonModal({ open, onClose, currentTier }: PlanComparisonModalProps) {
+  const { data: products } = useQuery<StripeProduct[]>({
+    queryKey: ["/api/stripe/products"],
+    enabled: open,
+  });
+  const checkout = useCreateCheckoutSession();
+
+  const handleSubscribe = (tier: TierKey) => {
+    const tierInfo = SUBSCRIPTION_TIERS[tier];
+    // Find matching Stripe product by tier name
+    const product = products?.find(p =>
+      p.metadata?.tier === tier ||
+      p.name?.toLowerCase().includes(tierInfo.name.toLowerCase())
+    );
+    const price = product?.prices?.find(p => p.active && p.recurring);
+    if (price) {
+      checkout.mutate(price.id, {
+        onSuccess: (data) => { window.location.href = data.url; },
+      });
+    }
+  };
+
+  const tiers = PLAN_ORDER.filter(t => {
+    const price = SUBSCRIPTION_TIERS[t].price;
+    return price >= 0; // show all
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="text-xl">Choose Your Plan</DialogTitle>
+          <DialogDescription>
+            Compare plans side by side. Upgrade anytime — your data stays.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mt-4">
+          {tiers.map((tier) => {
+            const info = SUBSCRIPTION_TIERS[tier];
+            const tierMeta = TIER_SUPERPOWERS[tier];
+            const isCurrent = tier === currentTier;
+            const Icon = tierMeta.icon;
+
+            return (
+              <Card
+                key={tier}
+                className={`relative flex flex-col ${isCurrent ? "ring-2 ring-primary" : ""}`}
+              >
+                {isCurrent && (
+                  <Badge className="absolute -top-2.5 left-1/2 -translate-x-1/2 text-[10px]">
+                    Current
+                  </Badge>
+                )}
+                <CardHeader className="p-3 pb-1 text-center">
+                  <div className={`mx-auto w-8 h-8 rounded-full bg-gradient-to-br ${tierMeta.color} text-white flex items-center justify-center mb-1`}>
+                    <Icon className="w-4 h-4" />
+                  </div>
+                  <CardTitle className="text-sm">{info.name}</CardTitle>
+                  <p className="text-lg font-bold">
+                    {info.price === 0 ? "Free" : `$${info.price}`}
+                    {info.price > 0 && <span className="text-xs font-normal text-muted-foreground">/mo</span>}
+                  </p>
+                </CardHeader>
+                <CardContent className="p-3 pt-0 flex-1 flex flex-col">
+                  <ul className="space-y-1.5 text-xs flex-1">
+                    <li className="flex justify-between">
+                      <span className="text-muted-foreground">Leads</span>
+                      <span className="font-medium">{formatLimit(info.limits.leads)}</span>
+                    </li>
+                    <li className="flex justify-between">
+                      <span className="text-muted-foreground">Properties</span>
+                      <span className="font-medium">{formatLimit(info.limits.properties)}</span>
+                    </li>
+                    <li className="flex justify-between">
+                      <span className="text-muted-foreground">Notes</span>
+                      <span className="font-medium">{formatLimit(info.limits.notes)}</span>
+                    </li>
+                    <li className="flex justify-between">
+                      <span className="text-muted-foreground">AI / mo</span>
+                      <span className="font-medium">{formatLimit(info.limits.aiRequestsPerMonth)}</span>
+                    </li>
+                    <li className="flex justify-between">
+                      <span className="text-muted-foreground">Seats</span>
+                      <span className="font-medium">{formatLimit(info.limits.teamMembers)}</span>
+                    </li>
+                  </ul>
+                  {!isCurrent && info.price > 0 ? (
+                    <Button
+                      size="sm"
+                      className={`w-full mt-3 bg-gradient-to-r ${tierMeta.color} text-white border-0 hover:opacity-90 text-xs`}
+                      onClick={() => handleSubscribe(tier)}
+                      disabled={checkout.isPending}
+                    >
+                      {checkout.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Subscribe"}
+                    </Button>
+                  ) : isCurrent ? (
+                    <Button size="sm" variant="outline" className="w-full mt-3 text-xs" disabled>
+                      Current Plan
+                    </Button>
+                  ) : null}
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+
+        <p className="text-xs text-center text-muted-foreground mt-2">
+          All plans include a 7-day free trial. Cancel anytime.
+        </p>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // UTILITY
 // ─────────────────────────────────────────────────────────────────────────────
 

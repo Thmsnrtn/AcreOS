@@ -1,4 +1,5 @@
 import { PageShell } from "@/components/page-shell";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -83,6 +84,7 @@ export default function AutomationPage() {
   const { toast } = useToast();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const [deleteRuleId, setDeleteRuleId] = useState<number | null>(null);
   const [selectedRule, setSelectedRule] = useState<AutomationRule | null>(null);
   const [wizardStep, setWizardStep] = useState(1);
   
@@ -555,7 +557,7 @@ export default function AutomationPage() {
                           <Button 
                             variant="ghost" 
                             size="icon" 
-                            onClick={() => deleteMutation.mutate(rule.id)}
+                            onClick={() => setDeleteRuleId(rule.id)}
                             disabled={deleteMutation.isPending}
                           >
                             <Trash2 className="w-4 h-4" />
@@ -642,6 +644,17 @@ export default function AutomationPage() {
             <RuleWizard onClose={() => setIsEditOpen(false)} />
           </DialogContent>
         </Dialog>
+
+        <ConfirmDialog
+          open={deleteRuleId !== null}
+          onOpenChange={(open) => !open && setDeleteRuleId(null)}
+          title="Delete Automation Rule"
+          description="Are you sure you want to delete this automation rule? This action cannot be undone."
+          confirmLabel="Delete Rule"
+          onConfirm={() => { deleteMutation.mutate(deleteRuleId!); setDeleteRuleId(null); }}
+          isLoading={deleteMutation.isPending}
+          variant="destructive"
+        />
     </PageShell>
   );
 }

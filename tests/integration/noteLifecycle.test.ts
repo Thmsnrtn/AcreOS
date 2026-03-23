@@ -532,3 +532,125 @@ describe("Borrower Portal Access (Task #240)", () => {
     expect(orgNote?.organizationId).toBe(1);
   });
 });
+
+// ── Extended Note Lifecycle: creation → schedule → payment → payoff ──────────
+
+describe("Note Lifecycle End-to-End (Extended)", () => {
+  beforeEach(() => mockStorage.clear());
+
+  it("creates a note with standard terms and verifies monthly payment", () => {
+    const note = createNote({
+      organizationId: 1,
+      borrowerId: 20,
+      propertyId: 10,
+      principal: 50_000,
+      annualRate: 0.10,
+      termMonths: 120,
+      startDate: new Date("2025-06-01"),
+    });
+
+    // $50K @ 10% for 120 months ≈ $660.75/mo
+    expect(note.monthlyPayment).toBeCloseTo(660.75, 0);
+    expect(note.status).toBe("active");
+    expect(note.originalPrincipal).toBe(50_000);
+    expect(note.currentBalance).toBe(50_000);
+  });
+
+  it("generates an amortization schedule with correct length and terminal balance", () => {
+    const note = createNote({
+      organizationId: 1,
+      borrowerId: 20,
+      propertyId: 10,
+      principal: 50_000,
+      annualRate: 0.10,
+      termMonths: 120,
+      startDate: new Date("2025-06-01"),
+    });
+
+    expect(note.amortizationSchedule).toHaveLength(120);
+    expect(note.amortizationSchedule[0].paymentNumber).toBe(1);
+    expect(note.amortizationSchedule[119].paymentNumber).toBe(120);
+    // Final balance should be zero
+    expect(note.amortizationSchedule[119].balance).toBe(0);
+  });
+
+  it("records a payment and reduces the remaining balance", () => {
+    const note = createNote({
+      organizationId: 1,
+      borrowerId: 20,
+      propertyId: 10,
+      principal: 50_000,
+      annualRate: 0.10,
+      termMonths: 120,
+      startDate: new Date("2025-06-01"),
+    });
+
+    const { updatedNote, payment } = applyPayment(note, 1);
+
+    expect(payment.status).toBe("completed");
+    expect(payment.amount).toBeGreaterThan(0);
+    expect(updatedNote.currentBalance).toBeLessThan(note.currentBalance);
+    // First entry should be marked paid
+    const firstEntry = updatedNote.amortizationSchedule.find(e => e.paymentNumber === 1);
+    expect(firstEntry?.status).toBe("paid");
+  });
+
+  it("payoff quote accuracy: remaining balance decreases after each payment", () => {
+    let note = createNote({
+      organizationId: 1,
+      borrowerId: 20,
+      propertyId: 10,
+      principal: 50_000,
+      annualRate: 0.10,
+      termMonths: 120,
+      startDate: new Date("2025-06-01"),
+    });
+
+    const balances: number[] = [note.currentBalance];
+
+    // Apply 5 payments and track balance
+    for (let i = 1; i <= 5; i++) {
+      const { updatedNote } = applyPayment(note, i);
+      note = updatedNote;
+      balances.push(note.currentBalance);
+    }
+
+    // Each successive balance should be strictly less than the previous
+    for (let i = 1; i < balances.length; i++) {
+      expect(balances[i]).toBeLessThan(balances[i - 1]);
+    }
+
+    // After 5 payments, balance should still be well above zero
+    expect(note.currentBalance).toBeGreaterThan(0);
+    expect(note.status).toBe("active");
+  });
+
+  it("full lifecycle: create → schedule → pay all → paid off with zero balance", () => {
+    let note = createNote({
+      organizationId: 1,
+      borrowerId: 20,
+      propertyId: 10,
+      principal: 10_000,
+      annualRate: 0.06,
+      termMonths: 12,
+      startDate: new Date("2025-01-01"),
+    });
+
+    mockStorage.saveNote(note);
+
+    for (let i = 1; i <= 12; i++) {
+      const { updatedNote, payment } = applyPayment(note, i);
+      mockStorage.savePayment(payment);
+      note = updatedNote;
+    }
+
+    mockStorage.saveNote(note);
+
+    expect(note.status).toBe("paid_off");
+    expect(note.currentBalance).toBe(0);
+
+    const payments = mockStorage.getPaymentsByNoteId(note.id);
+    expect(payments).toHaveLength(12);
+    expect(payments.every(p => p.status === "completed")).toBe(true);
+  });
+});

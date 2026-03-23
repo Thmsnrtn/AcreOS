@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { marketplaceService } from './services/marketplace';
 import { matchmaking } from './services/matchmaking';
 import { isAuthenticated } from './auth';
+import { asyncHandler } from './middleware/asyncHandler';
 import { db } from './db';
 import { investorProfiles, organizations } from '@shared/schema';
 import { eq, desc } from 'drizzle-orm';
@@ -19,7 +20,7 @@ function getOrg(req: Request) {
 // LISTINGS
 // =====================
 
-router.post('/listings', async (req: Request, res: Response) => {
+router.post('/listings', asyncHandler(async (req: Request, res: Response) => {
   try {
     const org = getOrg(req);
     const { propertyId, ...data } = req.body;
@@ -28,9 +29,9 @@ router.post('/listings', async (req: Request, res: Response) => {
   } catch (error: any) {
     res.status(400).json({ error: error.message });
   }
-});
+}));
 
-router.get('/listings', async (req: Request, res: Response) => {
+router.get('/listings', asyncHandler(async (req: Request, res: Response) => {
   try {
     const org = getOrg(req);
     const { minPrice, maxPrice, state, listingType, limit = '20', offset = '0' } = req.query;
@@ -50,9 +51,9 @@ router.get('/listings', async (req: Request, res: Response) => {
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
-router.get('/listings/:id', async (req: Request, res: Response) => {
+router.get('/listings/:id', asyncHandler(async (req: Request, res: Response) => {
   try {
     const org = getOrg(req);
     const listing = await marketplaceService.getListing(
@@ -66,9 +67,9 @@ router.get('/listings/:id', async (req: Request, res: Response) => {
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
-router.delete('/listings/:id', async (req: Request, res: Response) => {
+router.delete('/listings/:id', asyncHandler(async (req: Request, res: Response) => {
   try {
     const org = getOrg(req);
     const listing = await marketplaceService.deactivateListing(org.id, parseInt(req.params.id));
@@ -76,13 +77,13 @@ router.delete('/listings/:id', async (req: Request, res: Response) => {
   } catch (error: any) {
     res.status(400).json({ error: error.message });
   }
-});
+}));
 
 // =====================
 // MY ACTIVITY
 // =====================
 
-router.get('/my/listings', async (req: Request, res: Response) => {
+router.get('/my/listings', asyncHandler(async (req: Request, res: Response) => {
   try {
     const org = getOrg(req);
     const listings = await marketplaceService.getMyListings(org.id);
@@ -90,9 +91,9 @@ router.get('/my/listings', async (req: Request, res: Response) => {
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
-router.get('/my/bids', async (req: Request, res: Response) => {
+router.get('/my/bids', asyncHandler(async (req: Request, res: Response) => {
   try {
     const org = getOrg(req);
     const bids = await marketplaceService.getMyBids(org.id);
@@ -100,13 +101,13 @@ router.get('/my/bids', async (req: Request, res: Response) => {
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
 // =====================
 // BIDDING
 // =====================
 
-router.post('/listings/:id/bids', async (req: Request, res: Response) => {
+router.post('/listings/:id/bids', asyncHandler(async (req: Request, res: Response) => {
   try {
     const org = getOrg(req);
     const { bidAmount, message, proposedTerms, bidType, partnershipSplit } = req.body;
@@ -117,13 +118,38 @@ router.post('/listings/:id/bids', async (req: Request, res: Response) => {
       { bidAmount, message, proposedTerms, bidType, partnershipSplit }
     );
 
+    // Notify seller about new bid
+    try {
+      const { emailService } = await import('./services/emailService');
+      const listing = await marketplaceService.getListing(parseInt(req.params.id), org.id);
+      if (listing) {
+        const { storage: storageInst } = await import('./storage');
+        const sellerOrgId = listing.listing?.sellerOrganizationId ?? (listing as any).sellerOrganizationId;
+        if (sellerOrgId) {
+          const sellerOrg = await storageInst.getOrganization(sellerOrgId);
+          if (sellerOrg) {
+            // Try to find the org owner email from the org name or founder email
+            const orgEmail = (sellerOrg as any).email || process.env.FOUNDER_EMAIL;
+            if (orgEmail) {
+              await emailService.sendEmail({
+                to: orgEmail,
+                subject: `New bid on your listing — $${Number(bidAmount).toLocaleString()}`,
+                html: `<p>A new bid of <strong>$${Number(bidAmount).toLocaleString()}</strong> has been placed on your marketplace listing.</p><p><a href="${process.env.APP_URL || ''}/marketplace">View in marketplace</a></p>`,
+                text: `New bid of $${Number(bidAmount).toLocaleString()} on your listing. View at ${process.env.APP_URL || ''}/marketplace`,
+              }).catch(() => {});
+            }
+          }
+        }
+      }
+    } catch { /* email not configured — skip silently */ }
+
     res.json({ bid, success: true });
   } catch (error: any) {
     res.status(400).json({ error: error.message });
   }
-});
+}));
 
-router.get('/listings/:id/bids', async (req: Request, res: Response) => {
+router.get('/listings/:id/bids', asyncHandler(async (req: Request, res: Response) => {
   try {
     const org = getOrg(req);
     const listingId = parseInt(req.params.id);
@@ -137,9 +163,9 @@ router.get('/listings/:id/bids', async (req: Request, res: Response) => {
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
-router.post('/listings/:id/accept/:bidId', async (req: Request, res: Response) => {
+router.post('/listings/:id/accept/:bidId', asyncHandler(async (req: Request, res: Response) => {
   try {
     const org = getOrg(req);
     const result = await marketplaceService.acceptBid(
@@ -151,9 +177,9 @@ router.post('/listings/:id/accept/:bidId', async (req: Request, res: Response) =
   } catch (error: any) {
     res.status(400).json({ error: error.message });
   }
-});
+}));
 
-router.post('/bids/:id/accept', async (req: Request, res: Response) => {
+router.post('/bids/:id/accept', asyncHandler(async (req: Request, res: Response) => {
   try {
     const org = getOrg(req);
     const result = await marketplaceService.respondToBid(
@@ -166,9 +192,9 @@ router.post('/bids/:id/accept', async (req: Request, res: Response) => {
   } catch (error: any) {
     res.status(400).json({ error: error.message });
   }
-});
+}));
 
-router.post('/bids/:id/reject', async (req: Request, res: Response) => {
+router.post('/bids/:id/reject', asyncHandler(async (req: Request, res: Response) => {
   try {
     const org = getOrg(req);
     const result = await marketplaceService.respondToBid(
@@ -181,9 +207,9 @@ router.post('/bids/:id/reject', async (req: Request, res: Response) => {
   } catch (error: any) {
     res.status(400).json({ error: error.message });
   }
-});
+}));
 
-router.post('/bids/:id/counter', async (req: Request, res: Response) => {
+router.post('/bids/:id/counter', asyncHandler(async (req: Request, res: Response) => {
   try {
     const org = getOrg(req);
     const { amount, message } = req.body;
@@ -197,13 +223,13 @@ router.post('/bids/:id/counter', async (req: Request, res: Response) => {
   } catch (error: any) {
     res.status(400).json({ error: error.message });
   }
-});
+}));
 
 // =====================
 // TRANSACTIONS
 // =====================
 
-router.post('/transactions/complete', async (req: Request, res: Response) => {
+router.post('/transactions/complete', asyncHandler(async (req: Request, res: Response) => {
   try {
     const org = getOrg(req);
     const { listingId, salePrice } = req.body;
@@ -216,13 +242,13 @@ router.post('/transactions/complete', async (req: Request, res: Response) => {
   } catch (error: any) {
     res.status(400).json({ error: error.message });
   }
-});
+}));
 
 // =====================
 // INVESTOR PROFILES
 // =====================
 
-router.get('/investor-profile', async (req: Request, res: Response) => {
+router.get('/investor-profile', asyncHandler(async (req: Request, res: Response) => {
   try {
     const org = getOrg(req);
     const profile = await marketplaceService.getInvestorProfile(org.id);
@@ -230,9 +256,9 @@ router.get('/investor-profile', async (req: Request, res: Response) => {
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
-router.post('/investor-profile', async (req: Request, res: Response) => {
+router.post('/investor-profile', asyncHandler(async (req: Request, res: Response) => {
   try {
     const org = getOrg(req);
     const profile = await marketplaceService.updateInvestorProfile(org.id, req.body);
@@ -240,13 +266,13 @@ router.post('/investor-profile', async (req: Request, res: Response) => {
   } catch (error: any) {
     res.status(400).json({ error: error.message });
   }
-});
+}));
 
 // =====================
 // ANALYTICS
 // =====================
 
-router.get('/stats', async (req: Request, res: Response) => {
+router.get('/stats', asyncHandler(async (req: Request, res: Response) => {
   try {
     const org = getOrg(req);
     const stats = await marketplaceService.getMarketplaceStats(org.id);
@@ -254,9 +280,9 @@ router.get('/stats', async (req: Request, res: Response) => {
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
-router.get('/search', async (req: Request, res: Response) => {
+router.get('/search', asyncHandler(async (req: Request, res: Response) => {
   try {
     const { keywords, minPrice, maxPrice, minAcres, maxAcres, sortBy, limit, offset } = req.query;
     const listings = await marketplaceService.searchListings({
@@ -273,13 +299,13 @@ router.get('/search', async (req: Request, res: Response) => {
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
 // =====================
 // MATCHMAKING
 // =====================
 
-router.get('/matches', async (req: Request, res: Response) => {
+router.get('/matches', asyncHandler(async (req: Request, res: Response) => {
   try {
     const org = getOrg(req);
     const matches = await matchmaking.findMatchesForInvestor(org.id);
@@ -287,22 +313,22 @@ router.get('/matches', async (req: Request, res: Response) => {
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
-router.get('/listings/:id/buyers', async (req: Request, res: Response) => {
+router.get('/listings/:id/buyers', asyncHandler(async (req: Request, res: Response) => {
   try {
     const buyers = await matchmaking.findBuyersForListing(parseInt(req.params.id));
     res.json({ buyers });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
 // =====================
 // DEAL ROOMS
 // =====================
 
-router.post('/deal-rooms', async (req: Request, res: Response) => {
+router.post('/deal-rooms', asyncHandler(async (req: Request, res: Response) => {
   try {
     const org = getOrg(req);
     const { listingId, sellerOrgId } = req.body;
@@ -311,9 +337,9 @@ router.post('/deal-rooms', async (req: Request, res: Response) => {
   } catch (error: any) {
     res.status(400).json({ error: error.message });
   }
-});
+}));
 
-router.get('/deal-rooms/:id', async (req: Request, res: Response) => {
+router.get('/deal-rooms/:id', asyncHandler(async (req: Request, res: Response) => {
   try {
     const org = getOrg(req);
     const { dealRooms: drTable } = await import('@shared/schema');
@@ -331,13 +357,13 @@ router.get('/deal-rooms/:id', async (req: Request, res: Response) => {
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
 // =====================
 // INVESTOR DIRECTORY
 // =====================
 
-router.get('/investors', async (req: Request, res: Response) => {
+router.get('/investors', asyncHandler(async (req: Request, res: Response) => {
   try {
     const profiles = await db
       .select({
@@ -354,9 +380,9 @@ router.get('/investors', async (req: Request, res: Response) => {
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
-router.get('/investors/:id', async (req: Request, res: Response) => {
+router.get('/investors/:id', asyncHandler(async (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id);
     const results = await db
@@ -379,9 +405,9 @@ router.get('/investors/:id', async (req: Request, res: Response) => {
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
-});
+}));
 
-router.patch('/investors/me', async (req: Request, res: Response) => {
+router.patch('/investors/me', asyncHandler(async (req: Request, res: Response) => {
   try {
     const org = getOrg(req);
     const data = req.body;
@@ -413,13 +439,13 @@ router.patch('/investors/me', async (req: Request, res: Response) => {
   } catch (error: any) {
     res.status(400).json({ error: error.message });
   }
-});
+}));
 
 // =====================
 // PREMIUM UPGRADE
 // =====================
 
-router.post('/listings/:id/upgrade', async (req: Request, res: Response) => {
+router.post('/listings/:id/upgrade', asyncHandler(async (req: Request, res: Response) => {
   try {
     const org = getOrg(req);
     const result = await marketplaceService.upgradeToPremium(org.id, parseInt(req.params.id));
@@ -427,6 +453,6 @@ router.post('/listings/:id/upgrade', async (req: Request, res: Response) => {
   } catch (error: any) {
     res.status(400).json({ error: error.message });
   }
-});
+}));
 
 export default router;

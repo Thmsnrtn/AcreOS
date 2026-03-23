@@ -164,6 +164,7 @@ const MatchingEnginePage = React.lazy(() => import("@/pages/matching-engine"));
 const AdminSupportPage = React.lazy(() => import("@/pages/admin-support"));
 const FounderDashboard = React.lazy(() => import("@/pages/founder-dashboard"));
 const FounderAiObservatory = React.lazy(() => import("@/pages/founder-ai-observatory"));
+const FounderFeatureFlags = React.lazy(() => import("@/pages/founder/feature-flags"));
 const DealUnderwritingPage = React.lazy(() => import("@/pages/deal-underwriting"));
 const TeamKPIPage = React.lazy(() => import("@/pages/team-kpi"));
 const SafetyGatesPage = React.lazy(() => import("@/pages/safety-gates"));
@@ -252,6 +253,27 @@ function FlaggedRoute({ route, component: Component }: { route: string; componen
 }
 
 
+// Redirect to onboarding-v2 if onboarding hasn't been completed yet
+function OnboardingGuardRoute({ component: Component }: { component: React.ComponentType }) {
+  const { user, isLoading: authLoading } = useAuth();
+  const [orgData, setOrgData] = React.useState<{ onboardingCompleted?: boolean } | null>(null);
+  const [orgLoading, setOrgLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    if (!user) { setOrgLoading(false); return; }
+    fetch("/api/organization", { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => setOrgData(data))
+      .catch(() => setOrgData(null))
+      .finally(() => setOrgLoading(false));
+  }, [user]);
+
+  if (authLoading || orgLoading) return <PageLoader />;
+  if (!user) return <Redirect to="/auth" />;
+  if (orgData && orgData.onboardingCompleted === false) return <Redirect to="/onboarding-v2" />;
+  return <Component />;
+}
+
 function HomeRoute() {
   const { user, isLoading } = useAuth();
   if (isLoading) {
@@ -283,10 +305,15 @@ function Router() {
       <Route path="/portal" component={BorrowerPortal} />
       <Route path="/portal/:accessToken" component={BorrowerPortal} />
       
+      {/* Onboarding V2 wizard */}
+      <Route path="/onboarding-v2">
+        {() => <ProtectedRoute component={OnboardingV2Page} />}
+      </Route>
+
       {/* Home: landing page (unauth) or today hub (auth) */}
       <Route path="/" component={HomeRoute} />
       <Route path="/today">
-        {() => <ProtectedRoute component={TodayPage} />}
+        {() => <OnboardingGuardRoute component={TodayPage} />}
       </Route>
       <Route path="/pipeline">
         {() => <ProtectedRoute component={PipelinePage} />}
@@ -392,6 +419,9 @@ function Router() {
       </Route>
       <Route path="/founder/ai-observatory">
         {() => <FounderProtectedRoute component={FounderAiObservatory} />}
+      </Route>
+      <Route path="/founder/feature-flags">
+        {() => <FounderProtectedRoute component={FounderFeatureFlags} />}
       </Route>
       <Route path="/marketplace">
         {() => <FlaggedRoute route="/marketplace" component={MarketplacePage} />}

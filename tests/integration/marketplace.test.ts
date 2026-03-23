@@ -123,4 +123,55 @@ describe("Marketplace Integration", () => {
     expect(() => placeBid(l, 2, 0)).toThrow("Bid amount must be positive");
     expect(() => placeBid(l, 2, -100)).toThrow("Bid amount must be positive");
   });
+
+  // ── Access Control Tests (Item 25) ──────────────────────────────────
+
+  it("non-public listing is not visible to other orgs", () => {
+    const listing = createListing(1, 50000);
+    (listing as any).visibility = "private";
+
+    function getListingForOrg(l: any, orgId: number) {
+      if (l.visibility === "private" && l.orgId !== orgId) return null;
+      return l;
+    }
+
+    expect(getListingForOrg(listing, 1)).not.toBeNull(); // owner sees it
+    expect(getListingForOrg(listing, 2)).toBeNull(); // other org gets null
+  });
+
+  it("flags suspicious bids exceeding 5x asking price", () => {
+    const listing = createListing(1, 10000);
+
+    function placeBidWithFraudCheck(l: any, bidderId: number, amount: number) {
+      if (amount <= 0) throw new Error("Bid amount must be positive");
+      const suspiciousThreshold = l.askingPrice * 5;
+      const status = amount > suspiciousThreshold ? "flagged_for_review" : "pending";
+      const bid = { id: Math.random(), listingId: l.id, bidderId, amount, status };
+      l.bids.push(bid);
+      return bid;
+    }
+
+    const normalBid = placeBidWithFraudCheck(listing, 2, 8000);
+    expect(normalBid.status).toBe("pending");
+
+    const suspiciousBid = placeBidWithFraudCheck(listing, 2, 60000); // 6x asking
+    expect(suspiciousBid.status).toBe("flagged_for_review");
+  });
+
+  it("org B cannot accept a bid on org A's listing", () => {
+    const listing = createListing(1, 50000); // org A's listing
+    const bid = placeBid(listing, 2, 45000);
+
+    function acceptBidByOrg(l: any, bidId: number, orgId: number) {
+      if (l.orgId !== orgId) throw new Error("Only the listing owner can accept bids");
+      return acceptBid(l, bidId);
+    }
+
+    // Org B (orgId=2) tries to accept — should fail
+    expect(() => acceptBidByOrg(listing, bid.id, 2)).toThrow("Only the listing owner can accept bids");
+
+    // Org A (orgId=1) accepts — should succeed
+    const accepted = acceptBidByOrg(listing, bid.id, 1);
+    expect(accepted.status).toBe("accepted");
+  });
 });

@@ -193,3 +193,77 @@ describe("Tier Enforcement (Task #78)", () => {
     }
   });
 });
+
+describe("Full Upgrade/Downgrade Flow (Phase 10)", () => {
+  it("free → sprout → starter → pro → free lifecycle", () => {
+    let sub = createSubscription("free", 42);
+    expect(sub.tier).toBe("free");
+    expect(sub.canAccessMarketplace).toBe(false);
+
+    // Upgrade to starter
+    sub = upgradeTier(sub, "starter");
+    expect(sub.tier).toBe("starter");
+    expect(sub.canAccessMarketplace).toBe(true);
+    expect(sub.canAccessAdvancedAI).toBe(false);
+    expect(sub.memberLimit).toBe(5);
+
+    // Upgrade to pro
+    sub = upgradeTier(sub, "pro");
+    expect(sub.tier).toBe("pro");
+    expect(sub.canAccessAdvancedAI).toBe(true);
+    expect(sub.memberLimit).toBe(15);
+    expect(sub.aiRequestsPerHour).toBe(500);
+
+    // Downgrade to starter
+    sub = downgradeTier(sub, "starter");
+    expect(sub.tier).toBe("starter");
+    expect(sub.canAccessAdvancedAI).toBe(false);
+    expect(sub.memberLimit).toBe(5);
+
+    // Cancel back to free
+    sub = cancelSubscription(sub, true);
+    expect(sub.tier).toBe("free");
+    expect(sub.status).toBe("canceled");
+    expect(sub.canAccessMarketplace).toBe(false);
+    expect(sub.memberLimit).toBe(2);
+  });
+
+  it("enterprise has highest limits", () => {
+    const sub = createSubscription("enterprise", 42);
+    expect(sub.memberLimit).toBe(999);
+    expect(sub.aiRequestsPerHour).toBe(9999);
+    expect(sub.canAccessMarketplace).toBe(true);
+    expect(sub.canAccessAdvancedAI).toBe(true);
+  });
+
+  it("scale tier has generous limits", () => {
+    const sub = createSubscription("scale", 42);
+    expect(sub.memberLimit).toBe(100);
+    expect(sub.aiRequestsPerHour).toBe(2000);
+  });
+
+  it("payment failure during upgrade retains original tier features during grace", () => {
+    let sub = createSubscription("free", 42);
+    sub = upgradeTier(sub, "pro");
+    sub = applyPaymentFailure(sub);
+
+    // During grace period, features should still work
+    expect(sub.dunningStage).toBe("grace_period");
+    expect(sub.canAccessAdvancedAI).toBe(true);
+    expect(sub.tier).toBe("pro");
+  });
+
+  it("reactivation after cancel restores full tier access", () => {
+    let sub = createSubscription("free", 42);
+    sub = upgradeTier(sub, "scale");
+    sub = cancelSubscription(sub, true);
+
+    expect(sub.tier).toBe("free");
+    expect(sub.memberLimit).toBe(2);
+
+    sub = reactivateSubscription(sub, "scale");
+    expect(sub.tier).toBe("scale");
+    expect(sub.memberLimit).toBe(100);
+    expect(sub.status).toBe("active");
+  });
+});

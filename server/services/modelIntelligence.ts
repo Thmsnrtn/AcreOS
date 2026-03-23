@@ -3,6 +3,7 @@ import { db } from "../db";
 import { openrouterModelCatalog, aiModelConfigs } from "@shared/schema";
 import { invalidateDbModelCache } from "./aiRouter";
 import { eq, sql } from "drizzle-orm";
+import { logger } from '../utils/logger';
 
 // ============================================
 // MODEL INTELLIGENCE SERVICE
@@ -103,7 +104,7 @@ export interface SyncResult {
  * into openrouterModelCatalog. Marks removed models as isActive=false.
  */
 export async function syncOpenRouterCatalog(): Promise<SyncResult> {
-  console.log("[model-intelligence] Starting OpenRouter catalog sync...");
+  logger.info("[model-intelligence] Starting OpenRouter catalog sync...");
 
   const apiKey = getOpenRouterApiKey();
 
@@ -125,11 +126,11 @@ export async function syncOpenRouterCatalog(): Promise<SyncResult> {
     const body = (await resp.json()) as OpenRouterModelsResponse;
     apiModels = body.data ?? [];
   } catch (err) {
-    console.error("[model-intelligence] Failed to fetch OpenRouter models:", err);
+    logger.error("[model-intelligence] Failed to fetch OpenRouter models", err);
     throw err;
   }
 
-  console.log(`[model-intelligence] Fetched ${apiModels.length} models from OpenRouter`);
+  logger.info("[model-intelligence] Fetched models from OpenRouter", { metadata: { count: apiModels.length } });
 
   const apiModelIds = new Set(apiModels.map((m) => m.id));
 
@@ -182,10 +183,7 @@ export async function syncOpenRouterCatalog(): Promise<SyncResult> {
         updated++;
       }
     } catch (err) {
-      console.error(
-        `[model-intelligence] Failed to upsert model '${model.id}':`,
-        err
-      );
+      logger.error("[model-intelligence] Failed to upsert model", err, { metadata: { modelId: model.id } });
     }
   }
 
@@ -200,17 +198,12 @@ export async function syncOpenRouterCatalog(): Promise<SyncResult> {
           .where(eq(openrouterModelCatalog.id, existing.id));
         deprecated++;
       } catch (err) {
-        console.error(
-          `[model-intelligence] Failed to deprecate model '${existing.modelId}':`,
-          err
-        );
+        logger.error("[model-intelligence] Failed to deprecate model", err, { metadata: { modelId: existing.modelId } });
       }
     }
   }
 
-  console.log(
-    `[model-intelligence] Sync complete: ${discovered} discovered, ${updated} updated, ${deprecated} deprecated`
-  );
+  logger.info("[model-intelligence] Sync complete", { metadata: { discovered, updated, deprecated } });
 
   return { discovered, updated, deprecated };
 }
@@ -305,24 +298,17 @@ async function runSingleBenchmark(
       if (typeof rawScore === "number" && rawScore >= 1 && rawScore <= 10) {
         score = rawScore;
       } else {
-        console.warn(
-          `[model-intelligence] Model '${modelId}' returned invalid score for '${tier}': ${JSON.stringify(parsed)}`
-        );
+        logger.warn("[model-intelligence] Model returned invalid score", { metadata: { modelId, tier, parsed } });
       }
     } catch (scoreErr) {
-      console.warn(
-        `[model-intelligence] Self-scoring failed for '${modelId}' tier '${tier}':`,
-        scoreErr
-      );
+      logger.warn("[model-intelligence] Self-scoring failed", { metadata: { modelId, tier, error: scoreErr } });
     }
 
     return { tier, latencyMs, score };
   } catch (err) {
     const latencyMs = Date.now() - start;
     const errMsg = err instanceof Error ? err.message : String(err);
-    console.warn(
-      `[model-intelligence] Benchmark failed for '${modelId}' tier '${tier}': ${errMsg}`
-    );
+    logger.warn("[model-intelligence] Benchmark failed", { metadata: { modelId, tier, error: errMsg } });
     return { tier, latencyMs, score: null, error: errMsg };
   }
 }
@@ -351,7 +337,7 @@ async function getCurrentActiveModelCost(
     const cost = configs[0].costPerMillionInput;
     return cost !== null && cost !== undefined ? parseFloat(cost) : null;
   } catch (err) {
-    console.warn("[model-intelligence] Could not fetch current model cost:", err);
+    logger.warn("[model-intelligence] Could not fetch current model cost", { metadata: { error: err } });
     return null;
   }
 }
@@ -375,10 +361,7 @@ async function maybePromoteModel(
 
   if (currentCost !== null && newCost !== null) {
     if (newCost > currentCost * AUTO_PROMOTE_COST_HEADROOM) {
-      console.log(
-        `[model-intelligence] '${modelId}' score=${score} passes threshold but cost ($${newCost}/M) ` +
-          `exceeds ${AUTO_PROMOTE_COST_HEADROOM * 100}% of current ($${currentCost}/M). Not promoting.`
-      );
+      logger.info("[model-intelligence] Model passes threshold but cost too high, not promoting", { metadata: { modelId, score, newCost, currentCost, costHeadroomPct: AUTO_PROMOTE_COST_HEADROOM * 100 } });
       return false;
     }
   }
@@ -416,16 +399,10 @@ async function maybePromoteModel(
     }
 
     invalidateDbModelCache();
-    console.log(
-      `[model-intelligence] Auto-promoted '${modelId}' to aiModelConfigs (weight=80) ` +
-        `for tier '${tier}' with score=${score}`
-    );
+    logger.info("[model-intelligence] Auto-promoted model to aiModelConfigs", { metadata: { modelId, weight: 80, tier, score } });
     return true;
   } catch (err) {
-    console.error(
-      `[model-intelligence] Failed to promote '${modelId}' to aiModelConfigs:`,
-      err
-    );
+    logger.error("[model-intelligence] Failed to promote model to aiModelConfigs", err, { metadata: { modelId } });
     return false;
   }
 }
@@ -435,7 +412,7 @@ async function maybePromoteModel(
  * against each. Limits to MAX_NEW_MODELS_PER_RUN per execution to control cost.
  */
 export async function benchmarkNewModels(): Promise<BenchmarkSummary> {
-  console.log("[model-intelligence] Scanning for new models to benchmark...");
+  logger.info("[model-intelligence] Scanning for new models to benchmark...");
 
   // 1. Find new models with no benchmark yet
   const newModels = await db
@@ -453,7 +430,7 @@ export async function benchmarkNewModels(): Promise<BenchmarkSummary> {
     .limit(MAX_NEW_MODELS_PER_RUN);
 
   if (newModels.length === 0) {
-    console.log("[model-intelligence] No new models pending benchmarking.");
+    logger.info("[model-intelligence] No new models pending benchmarking.");
     return {
       modelsAttempted: 0,
       modelsCompleted: 0,
@@ -462,9 +439,7 @@ export async function benchmarkNewModels(): Promise<BenchmarkSummary> {
     };
   }
 
-  console.log(
-    `[model-intelligence] Benchmarking ${newModels.length} new model(s): ${newModels.map((m) => m.modelId).join(", ")}`
-  );
+  logger.info("[model-intelligence] Benchmarking new model(s)", { metadata: { count: newModels.length, modelIds: newModels.map((m) => m.modelId).join(", ") } });
 
   const client = getOpenRouterClient();
   const details: BenchmarkRunResult[] = [];
@@ -475,13 +450,13 @@ export async function benchmarkNewModels(): Promise<BenchmarkSummary> {
   for (const catalogEntry of newModels) {
     const { modelId, displayName, inputCostPerMillion, outputCostPerMillion } =
       catalogEntry;
-    console.log(`[model-intelligence] Benchmarking '${modelId}'...`);
+    logger.info("[model-intelligence] Benchmarking model", { metadata: { modelId } });
 
     const tierResults: BenchmarkTierResult[] = [];
 
     // 3. Run all three benchmark prompts
     for (const tier of Object.keys(BENCHMARK_PROMPTS) as ComplexityTier[]) {
-      console.log(`[model-intelligence]   -> tier '${tier}'`);
+      logger.debug("[model-intelligence] Running benchmark tier", { metadata: { tier } });
       const result = await runSingleBenchmark(client, modelId, tier);
       tierResults.push(result);
     }
@@ -512,10 +487,7 @@ export async function benchmarkNewModels(): Promise<BenchmarkSummary> {
 
       modelsCompleted++;
     } catch (err) {
-      console.error(
-        `[model-intelligence] Failed to save benchmark results for '${modelId}':`,
-        err
-      );
+      logger.error("[model-intelligence] Failed to save benchmark results", err, { metadata: { modelId } });
     }
 
     // 5. Check auto-promotion eligibility per tier
@@ -555,15 +527,10 @@ export async function benchmarkNewModels(): Promise<BenchmarkSummary> {
       promoted,
     });
 
-    console.log(
-      `[model-intelligence] '${modelId}' done. Scores: simple=${scoreSimple}, ` +
-        `moderate=${scoreModerate}, complex=${scoreComplex}. Promoted: ${promoted}`
-    );
+    logger.info("[model-intelligence] Model benchmarking done", { metadata: { modelId, scoreSimple, scoreModerate, scoreComplex, promoted } });
   }
 
-  console.log(
-    `[model-intelligence] Benchmarking complete: ${modelsCompleted}/${newModels.length} completed, ${modelsPromoted} promoted.`
-  );
+  logger.info("[model-intelligence] Benchmarking complete", { metadata: { modelsCompleted, modelsAttempted: newModels.length, modelsPromoted } });
 
   return {
     modelsAttempted: newModels.length,
@@ -654,7 +621,7 @@ export interface ModelIntelligenceResult {
  * Called by the weekly scheduler.
  */
 export async function runModelIntelligence(): Promise<ModelIntelligenceResult> {
-  console.log("[model-intelligence] Starting weekly model intelligence run...");
+  logger.info("[model-intelligence] Starting weekly model intelligence run...");
 
   let sync: SyncResult = { discovered: 0, updated: 0, deprecated: 0 };
   let benchmark: BenchmarkSummary = {
@@ -667,22 +634,18 @@ export async function runModelIntelligence(): Promise<ModelIntelligenceResult> {
   try {
     sync = await syncOpenRouterCatalog();
   } catch (err) {
-    console.error("[model-intelligence] Catalog sync failed:", err);
+    logger.error("[model-intelligence] Catalog sync failed", err);
     // Continue to benchmarking — there may still be un-benchmarked models from prior syncs
   }
 
   try {
     benchmark = await benchmarkNewModels();
   } catch (err) {
-    console.error("[model-intelligence] Benchmarking run failed:", err);
+    logger.error("[model-intelligence] Benchmarking run failed", err);
   }
 
   const completedAt = new Date().toISOString();
-  console.log(
-    `[model-intelligence] Weekly run complete at ${completedAt}. ` +
-      `Sync: +${sync.discovered} new, ${sync.updated} updated, ${sync.deprecated} deprecated. ` +
-      `Benchmarks: ${benchmark.modelsCompleted} completed, ${benchmark.modelsPromoted} promoted.`
-  );
+  logger.info("[model-intelligence] Weekly run complete", { metadata: { completedAt, syncDiscovered: sync.discovered, syncUpdated: sync.updated, syncDeprecated: sync.deprecated, benchmarkCompleted: benchmark.modelsCompleted, benchmarkPromoted: benchmark.modelsPromoted } });
 
   return { sync, benchmark, completedAt };
 }

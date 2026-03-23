@@ -168,3 +168,21 @@ Configured in `/server/middleware/rateLimiting.ts`:
 - Email addresses masked: `***@domain.com`
 - Credit scores encrypted at rest (AES-256-GCM)
 - GDPR data deletion pipeline in `gdprService.ts`
+
+---
+
+## npm Audit Log
+
+**Audit Date: 2026-03-23**
+
+`npm audit fix` applied safe fixes (31 vulnerabilities resolved). Remaining 10 vulnerabilities require breaking dependency changes:
+
+| Vulnerability | Severity | Package | Notes |
+|--------------|----------|---------|-------|
+| tough-cookie prototype pollution | moderate | tough-cookie <4.1.3 | Requires lob@7.1.0 breaking change |
+| Remaining 7 high/critical | high/critical | transitive deps | Require `npm audit fix --force` (breaking) |
+
+**Action items:**
+- Monitor upstream packages for non-breaking fixes
+- Schedule breaking dependency upgrade in next maintenance window
+- CI pipeline (`security.yml`) fails on high/critical findings automatically

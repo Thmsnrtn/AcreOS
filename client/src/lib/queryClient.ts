@@ -7,6 +7,31 @@ import { getErrorMessage, getErrorTitle, shouldRetry, isAuthError } from "@/lib/
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     const text = (await res.text()) || res.statusText;
+
+    // Handle 429 usage limit responses with an upgrade prompt
+    if (res.status === 429) {
+      try {
+        const body = JSON.parse(text);
+        if (body.error === "limit_exceeded") {
+          toast({
+            title: "Usage Limit Reached",
+            description: `You've reached the ${body.tier} plan limit for ${body.resourceType} (${body.current}/${body.limit}).`,
+            variant: "destructive",
+            action: React.createElement(
+              ToastAction as any,
+              {
+                altText: "Upgrade plan",
+                onClick: () => { window.location.href = body.upgradeUrl || "/settings#billing"; },
+              },
+              "Upgrade"
+            ) as any,
+          });
+        }
+      } catch {
+        // Not JSON — fall through to normal error
+      }
+    }
+
     throw new Error(`${res.status}: ${text}`);
   }
 }
@@ -26,7 +51,7 @@ function handleQueryError(error: unknown): void {
     description,
     variant: "destructive",
     action: React.createElement(
-      ToastAction,
+      ToastAction as any,
       {
         altText: "Copy details",
         onClick: () => {
@@ -35,15 +60,15 @@ function handleQueryError(error: unknown): void {
         },
       },
       "Copy details"
-    ),
+    ) as any,
   });
-  
+
   console.error("[Query Error]", err);
 }
 
 function handleMutationError(error: unknown): void {
   const err = error instanceof Error ? error : new Error(String(error));
-  
+
   if (isAuthError(err)) {
     toast({
       title: "Session Expired",
@@ -52,16 +77,16 @@ function handleMutationError(error: unknown): void {
     });
     return;
   }
-  
+
   const title = getErrorTitle(err);
   const description = getErrorMessage(err);
-  
+
   toast({
     title,
     description,
     variant: "destructive",
     action: React.createElement(
-      ToastAction,
+      ToastAction as any,
       {
         altText: "Copy details",
         onClick: () => {
@@ -70,7 +95,7 @@ function handleMutationError(error: unknown): void {
         },
       },
       "Copy details"
-    ),
+    ) as any,
   });
   
   console.error("[Mutation Error]", err);

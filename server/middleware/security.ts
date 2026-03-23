@@ -61,14 +61,19 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
   next();
 }
 
-const ALLOWED_ORIGINS: (string | RegExp)[] = [
-  "http://localhost:3000",
-  "http://localhost:5000",
-  "http://localhost:8080",
-  "http://127.0.0.1:3000",
-  "http://127.0.0.1:5000",
-  "http://127.0.0.1:8080",
-];
+const ALLOWED_ORIGINS: (string | RegExp)[] = [];
+
+// Only allow localhost origins in non-production environments
+if (process.env.NODE_ENV !== "production") {
+  ALLOWED_ORIGINS.push(
+    "http://localhost:3000",
+    "http://localhost:5000",
+    "http://localhost:8080",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:5000",
+    "http://127.0.0.1:8080",
+  );
+}
 
 // Add production domain from APP_URL env var
 if (process.env.APP_URL) {

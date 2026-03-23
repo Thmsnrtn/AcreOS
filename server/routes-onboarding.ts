@@ -83,6 +83,51 @@ router.post("/checklist/:item", async (req: Request, res: Response) => {
 });
 
 // ============================================================================
+// Checklist status — single endpoint for the GettingStartedChecklist component
+// Returns completion state of all 5 onboarding items
+// ============================================================================
+router.get("/checklist-status", async (req: Request, res: Response) => {
+  try {
+    const org = getOrg(req);
+    const orgId = org?.id;
+    if (!orgId) {
+      return res.status(401).json({ error: "Organization required" });
+    }
+
+    const { db } = await import("./storage");
+    const { leads, campaigns, deals, payments } = await import("@shared/schema");
+    const { eq, sql } = await import("drizzle-orm");
+
+    const [leadResult, importResult, campaignResult, dealResult, notePaymentResult] = await Promise.all([
+      // hasLead: org has >= 1 lead
+      db.select({ count: sql<number>`count(*)` }).from(leads).where(eq(leads.organizationId, orgId)).then(r => r[0]?.count > 0),
+      // hasImport: any lead with source = 'csv_import' or 'import'
+      db.select({ count: sql<number>`count(*)` }).from(leads).where(
+        sql`${leads.organizationId} = ${orgId} AND (${leads.source} = 'csv_import' OR ${leads.source} = 'import')`
+      ).then(r => r[0]?.count > 0),
+      // hasCampaign: org has >= 1 campaign
+      db.select({ count: sql<number>`count(*)` }).from(campaigns).where(eq(campaigns.organizationId, orgId)).then(r => r[0]?.count > 0),
+      // hasDeal: org has >= 1 deal
+      db.select({ count: sql<number>`count(*)` }).from(deals).where(eq(deals.organizationId, orgId)).then(r => r[0]?.count > 0),
+      // hasNotePayment: org has >= 1 payment recorded
+      db.select({ count: sql<number>`count(*)` }).from(payments)
+        .where(eq(payments.organizationId, orgId))
+        .then(r => r[0]?.count > 0),
+    ]);
+
+    res.json({
+      hasLead: leadResult,
+      hasImport: importResult,
+      hasCampaign: campaignResult,
+      hasDeal: dealResult,
+      hasNotePayment: notePaymentResult,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================================
 // EPIC 9: Instant Deal Hunt — the onboarding "aha moment"
 // Shows real motivated seller opportunities in user's target county in < 2 min
 // ============================================================================
