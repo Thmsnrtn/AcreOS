@@ -79,6 +79,7 @@ export function GettingStartedChecklist() {
   const { data: checklistStatus } = useQuery<ChecklistStatus>({
     queryKey: ["/api/onboarding/checklist-status"],
     staleTime: 30_000,
+    refetchInterval: 30_000,
   });
 
   const settings = organization?.settings as Record<string, unknown> | null;

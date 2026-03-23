@@ -30,6 +30,7 @@ export function useCreateNote() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.notes.list.path] });
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/checklist-status"] });
     },
   });
 }

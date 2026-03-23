@@ -44,6 +44,57 @@ import {
 import { cn } from "@/lib/utils";
 import { useLocation } from "wouter";
 
+// ── Completion celebration animation ─────────────────────────────────────
+// Pure CSS confetti burst that plays for 2s then fades to reveal content.
+
+function CompletionCelebration({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="relative">
+      <style>{`
+        @keyframes acr-confetti-burst {
+          0% { transform: scale(0) rotate(0deg); opacity: 1; }
+          50% { transform: scale(1.2) rotate(180deg); opacity: 0.8; }
+          100% { transform: scale(1) rotate(360deg); opacity: 0; }
+        }
+        @keyframes acr-celebration-glow {
+          0% { transform: scale(0.3); opacity: 0; filter: blur(8px); }
+          40% { transform: scale(1.05); opacity: 1; filter: blur(0px); }
+          100% { transform: scale(1); opacity: 1; filter: blur(0px); }
+        }
+        @keyframes acr-dot {
+          0% { transform: translate(0, 0) scale(1); opacity: 1; }
+          100% { opacity: 0; }
+        }
+        .acr-dot-1 { animation: acr-dot 1.8s ease-out forwards; transform: translate(-60px, -80px) scale(0); }
+        .acr-dot-2 { animation: acr-dot 1.6s ease-out 0.1s forwards; transform: translate(70px, -70px) scale(0); }
+        .acr-dot-3 { animation: acr-dot 1.5s ease-out 0.2s forwards; transform: translate(-40px, -100px) scale(0); }
+        .acr-dot-4 { animation: acr-dot 1.7s ease-out 0.15s forwards; transform: translate(50px, -90px) scale(0); }
+        .acr-dot-5 { animation: acr-dot 1.4s ease-out 0.25s forwards; transform: translate(-80px, -50px) scale(0); }
+        .acr-dot-6 { animation: acr-dot 1.9s ease-out 0.05s forwards; transform: translate(80px, -40px) scale(0); }
+        .acr-dot-7 { animation: acr-dot 1.3s ease-out 0.3s forwards; transform: translate(0px, -110px) scale(0); }
+        .acr-dot-8 { animation: acr-dot 1.6s ease-out 0.12s forwards; transform: translate(-70px, -30px) scale(0); }
+        .acr-celebration-content {
+          animation: acr-celebration-glow 2s ease-out forwards;
+        }
+      `}</style>
+      {/* Confetti dots */}
+      <div className="absolute inset-0 flex items-start justify-center pointer-events-none overflow-hidden">
+        <div className="relative mt-10">
+          <div className="acr-dot-1 absolute w-2 h-2 rounded-full bg-emerald-400" />
+          <div className="acr-dot-2 absolute w-3 h-3 rounded-full bg-yellow-400" />
+          <div className="acr-dot-3 absolute w-2 h-2 rounded-full bg-purple-400" />
+          <div className="acr-dot-4 absolute w-2.5 h-2.5 rounded-full bg-blue-400" />
+          <div className="acr-dot-5 absolute w-2 h-2 rounded-full bg-pink-400" />
+          <div className="acr-dot-6 absolute w-3 h-3 rounded-full bg-orange-400" />
+          <div className="acr-dot-7 absolute w-2 h-2 rounded-full bg-teal-400" />
+          <div className="acr-dot-8 absolute w-2.5 h-2.5 rounded-full bg-red-400" />
+        </div>
+      </div>
+      <div className="acr-celebration-content">{children}</div>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Onboarding flow — 3 paths, guided by Atlas
 //
@@ -1220,6 +1271,7 @@ export default function OnboardingV2() {
           )}
 
           {currentStep.id === "complete" && (
+            <CompletionCelebration>
             <div className="space-y-6 text-center">
               <div className="relative w-20 h-20 mx-auto">
                 <div className="absolute inset-0 bg-emerald-500/20 rounded-full animate-ping" />
@@ -1312,6 +1364,7 @@ export default function OnboardingV2() {
                 AcreOS will run its first deal scan tonight. Check your email at 7 AM for your Morning Briefing.
               </p>
             </div>
+            </CompletionCelebration>
           )}
 
           {/* Active path: portfolio_import */}

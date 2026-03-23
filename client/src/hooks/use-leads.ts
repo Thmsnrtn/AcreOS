@@ -53,6 +53,7 @@ export function useCreateLead() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.leads.list.path] });
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/checklist-status"] });
       toast({
         title: "Success",
         description: "Lead created successfully.",
