@@ -9,6 +9,7 @@ import { db } from "../db";
 import { countyGisEndpoints, type InsertParcelSnapshot } from "@shared/schema";
 import { eq, and, ilike } from "drizzle-orm";
 import { storage } from "../storage";
+import { logger } from '../utils/logger';
 
 interface RegridParcel {
   type: "Feature";
@@ -234,20 +235,20 @@ async function lookupFromCountyGIS(
     );
     
     if (!matchingEndpoint) {
-      console.log(`[CountyGIS] No endpoint for ${county}, ${state} (checked ${endpoints.length} state endpoints)`);
+      logger.debug("[CountyGIS] No endpoint found", { metadata: { county, state, endpointsChecked: endpoints.length } });
       return null;
     }
     
-    console.log(`[CountyGIS] Found endpoint for ${county}, ${state}: ${matchingEndpoint.endpointType}`);
+    logger.info("[CountyGIS] Found endpoint", { metadata: { county, state, endpointType: matchingEndpoint.endpointType } });
     
     if (matchingEndpoint.endpointType === "arcgis_rest" || matchingEndpoint.endpointType === "arcgis_feature") {
       return await queryArcGISEndpoint(apn, matchingEndpoint);
     }
     
-    console.log(`[CountyGIS] Unsupported endpoint type: ${matchingEndpoint.endpointType}`);
+    logger.warn("[CountyGIS] Unsupported endpoint type", { metadata: { endpointType: matchingEndpoint.endpointType } });
     return null;
   } catch (error) {
-    console.error("[CountyGIS] Lookup error:", error);
+    logger.error("[CountyGIS] Lookup error", error);
     return null;
   }
 }
@@ -283,7 +284,7 @@ async function queryArcGISEndpoint(
       });
       
       const url = `${baseUrl}/${layerId}/query?${params.toString()}`;
-      console.log(`[CountyGIS] Querying: ${url.substring(0, 100)}...`);
+      logger.debug("[CountyGIS] Querying", { metadata: { url: url.substring(0, 100) } });
       
       const response = await fetch(url, {
         headers: { "Accept": "application/json" },
@@ -294,7 +295,7 @@ async function queryArcGISEndpoint(
       const data = await response.json() as ArcGISResponse;
       
       if (data.error) {
-        console.log(`[CountyGIS] API error: ${data.error.message}`);
+        logger.warn("[CountyGIS] API error", { metadata: { message: data.error.message } });
         continue;
       }
       
@@ -370,7 +371,7 @@ async function queryArcGISEndpoint(
           };
         }
         
-        console.log(`[CountyGIS] Found parcel via ${endpoint.county}, ${endpoint.state}`);
+        logger.info("[CountyGIS] Found parcel", { metadata: { county: endpoint.county, state: endpoint.state } });
         
         await db
           .update(countyGisEndpoints)
@@ -391,7 +392,7 @@ async function queryArcGISEndpoint(
     
     return null;
   } catch (error) {
-    console.error(`[CountyGIS] Query error for ${endpoint.county}:`, error);
+    logger.error("[CountyGIS] Query error", error instanceof Error ? error : undefined, { metadata: { county: endpoint.county } });
     
     await db
       .update(countyGisEndpoints)
@@ -469,9 +470,9 @@ async function cacheParcelResult(result: ParcelLookupResult, state: string, coun
     };
     
     await storage.upsertParcelSnapshot(snapshotData);
-    console.log(`[ParcelCache] Cached parcel ${result.parcel.apn} for ${county}, ${state}`);
+    logger.info("[ParcelCache] Cached parcel", { metadata: { apn: result.parcel.apn, county, state } });
   } catch (error) {
-    console.error(`[ParcelCache] Failed to cache parcel:`, error);
+    logger.error("[ParcelCache] Failed to cache parcel", error);
   }
 }
 
@@ -497,11 +498,11 @@ export async function lookupParcelByAPN(
     try {
       const cachedSnapshot = await storage.getParcelSnapshot(apn, state, county, CACHE_FRESHNESS_DAYS);
       if (cachedSnapshot) {
-        console.log(`[Parcel] Found in cache (age: ${Math.round((Date.now() - (cachedSnapshot.fetchedAt?.getTime() || 0)) / (1000 * 60 * 60 * 24))} days)`);
+        logger.info("[Parcel] Found in cache", { metadata: { ageDays: Math.round((Date.now() - (cachedSnapshot.fetchedAt?.getTime() || 0)) / (1000 * 60 * 60 * 24)) } });
         return snapshotToResult(cachedSnapshot);
       }
     } catch (error) {
-      console.error(`[ParcelCache] Cache lookup error:`, error);
+      logger.error("[ParcelCache] Cache lookup error", error);
     }
   }
   
@@ -509,7 +510,7 @@ export async function lookupParcelByAPN(
   if (state && county) {
     const countyResult = await lookupFromCountyGIS(apn, state, county);
     if (countyResult?.found) {
-      console.log(`[Parcel] Found via County GIS (FREE)`);
+      logger.info("[Parcel] Found via County GIS (FREE)");
       await cacheParcelResult(countyResult, state, county);
       return countyResult;
     }
@@ -519,14 +520,14 @@ export async function lookupParcelByAPN(
   if (organizationId) {
     const rapidApiResult = await lookupFromRapidAPI(apn, state, county, organizationId);
     if (rapidApiResult?.found) {
-      console.log(`[Parcel] Found via RapidAPI Property Lines (CHEAP BYOK)`);
+      logger.info("[Parcel] Found via RapidAPI Property Lines (CHEAP BYOK)");
       await cacheParcelResult(rapidApiResult, state, county);
       return rapidApiResult;
     }
   }
   
   // Step 4: Fall back to Regrid (paid, most expensive)
-  console.log(`[Parcel] Falling back to Regrid API`);
+  logger.info("[Parcel] Falling back to Regrid API");
   const regridResult = await lookupFromRegrid(apn, stateCountyPath);
   
   // Cache Regrid results too
@@ -554,10 +555,10 @@ async function lookupFromRapidAPI(
     const integration = await storage.getOrganizationIntegration(organizationId, "rapidapi");
     if (integration?.credentials?.apiKey) {
       rapidApiKey = integration.credentials.apiKey;
-      console.log(`[RapidAPI] Using org BYOK key for org ${organizationId}`);
+      logger.info("[RapidAPI] Using org BYOK key", { metadata: { organizationId } });
     }
   } catch (error) {
-    console.error(`[RapidAPI] Failed to get org integration:`, error);
+    logger.error("[RapidAPI] Failed to get org integration", error);
   }
   
   // Fall back to environment variable for single-tenant deployments
@@ -566,7 +567,7 @@ async function lookupFromRapidAPI(
   }
   
   if (!rapidApiKey) {
-    console.log(`[RapidAPI] No RapidAPI key configured, skipping`);
+    logger.debug("[RapidAPI] No RapidAPI key configured, skipping");
     return null;
   }
   
@@ -583,7 +584,7 @@ async function lookupFromRapidAPI(
     // First, we need coordinates. Let's see if we can get them from a basic geocode
     const geocodeUrl = `https://property-lines.p.rapidapi.com/get_parcel?state_code=${stateCode}&parcel_number=${encodeURIComponent(apn)}`;
     
-    console.log(`[RapidAPI] Trying parcel lookup: ${apn} in ${stateCode}`);
+    logger.debug("[RapidAPI] Trying parcel lookup", { metadata: { apn, stateCode } });
     
     const response = await fetch(geocodeUrl, {
       method: "GET",
@@ -595,16 +596,16 @@ async function lookupFromRapidAPI(
     });
     
     if (!response.ok) {
-      console.log(`[RapidAPI] Response status: ${response.status}`);
+      logger.debug("[RapidAPI] Response status", { metadata: { status: response.status } });
       if (response.status === 401 || response.status === 403) {
-        console.log(`[RapidAPI] Auth error - key may be invalid`);
+        logger.warn("[RapidAPI] Auth error - key may be invalid");
         return null;
       }
       return null;
     }
     
     const data = await response.json();
-    console.log(`[RapidAPI] Response keys:`, Object.keys(data));
+    logger.debug("[RapidAPI] Response keys", { metadata: { keys: Object.keys(data) } });
     
     // Parse the response - Property Lines API returns GeoJSON features
     if (data.type === "FeatureCollection" && data.features?.length > 0) {
@@ -662,10 +663,10 @@ async function lookupFromRapidAPI(
       };
     }
     
-    console.log(`[RapidAPI] No parcel geometry found in response`);
+    logger.debug("[RapidAPI] No parcel geometry found in response");
     return null;
   } catch (error) {
-    console.error("[RapidAPI] Lookup error:", error);
+    logger.error("[RapidAPI] Lookup error", error);
     return null;
   }
 }
@@ -705,18 +706,18 @@ async function lookupFromRegrid(
         url += `&path=${encodeURIComponent(stateCountyPath)}`;
       }
       
-      console.log(`[Regrid] Trying APN lookup: ${apnVariant}`);
-      console.log(`[Regrid] URL: ${url.replace(token, 'REDACTED')}`);
+      logger.debug("[Regrid] Trying APN lookup", { metadata: { apnVariant } });
+      logger.debug("[Regrid] URL", { metadata: { url: url.replace(token, 'REDACTED') } });
       
       const response = await fetch(url);
-      console.log(`[Regrid] Response status: ${response.status}`);
+      logger.debug("[Regrid] Response status", { metadata: { status: response.status } });
       
       if (response.ok) {
         const result = await response.json() as RegridResponse;
-        console.log(`[Regrid] Response keys:`, Object.keys(result));
+        logger.debug("[Regrid] Response keys", { metadata: { keys: Object.keys(result) } });
         
         if (result.status === "error") {
-          console.log(`[Regrid] Account error: ${result.message}`);
+          logger.warn("[Regrid] Account error", { metadata: { message: result.message } });
           return { 
             found: false, 
             error: "Regrid API account issue: Your API key may not have parcel data access." 
@@ -724,14 +725,14 @@ async function lookupFromRegrid(
         }
         
         const features = result.parcels?.features || result.results || [];
-        console.log(`[Regrid] Found ${features.length} features`);
+        logger.debug("[Regrid] Found features", { metadata: { count: features.length } });
         if (features.length > 0) {
           data = { ...result, results: features };
           break;
         }
       } else if (response.status === 401 || response.status === 403) {
         const errorText = await response.text();
-        console.log(`[Regrid] Auth error: ${errorText}`);
+        logger.warn("[Regrid] Auth error", { metadata: { errorText } });
         
         // Check for trial limitation
         if (errorText.includes("not included in API trials")) {
@@ -740,7 +741,7 @@ async function lookupFromRegrid(
         return { found: false, error: "Regrid API key is invalid or expired." };
       } else {
         const errorText = await response.text();
-        console.log(`[Regrid] Error response: ${errorText}`);
+        logger.warn("[Regrid] Error response", { metadata: { errorText } });
       }
     }
     
@@ -755,7 +756,7 @@ async function lookupFromRegrid(
     const rawProps = parcel.properties?.fields || parcel.properties || {};
     const props = rawProps as Record<string, any>;
     
-    console.log(`[Regrid] Parcel properties keys:`, Object.keys(props).slice(0, 20));
+    logger.debug("[Regrid] Parcel properties keys", { metadata: { keys: Object.keys(props).slice(0, 20) } });
     
     const centroid = props.lat && props.lon
       ? { lat: Number(props.lat), lng: Number(props.lon) }
@@ -781,7 +782,7 @@ async function lookupFromRegrid(
       },
     };
   } catch (error) {
-    console.error("Regrid lookup error:", error);
+    logger.error("Regrid lookup error", error);
     return {
       found: false,
       error: error instanceof Error ? error.message : "Unknown error",
@@ -847,7 +848,7 @@ export async function lookupParcelByCoordinates(
       },
     };
   } catch (error) {
-    console.error("Parcel coordinate lookup error:", error);
+    logger.error("Parcel coordinate lookup error", error);
     return {
       found: false,
       error: error instanceof Error ? error.message : "Unknown error",
@@ -1584,7 +1585,7 @@ export async function seedCountyGisEndpoints(): Promise<{ added: number; skipped
         contributedBy: "system",
       });
       added++;
-      console.log(`[Seed] Added endpoint: ${endpoint.county}, ${endpoint.state}`);
+      logger.info("[Seed] Added endpoint", { metadata: { county: endpoint.county, state: endpoint.state } });
     } else {
       skipped++;
     }
@@ -1625,7 +1626,7 @@ export async function getNearbyParcelsFromCountyGIS(
     .limit(1);
 
   if (endpoints.length === 0) {
-    console.log(`[NearbyParcels] No county GIS endpoint for ${county}, ${state}`);
+    logger.debug("[NearbyParcels] No county GIS endpoint", { metadata: { county, state } });
     return { parcels: [], source: "none", count: 0 };
   }
 
@@ -1670,23 +1671,23 @@ export async function getNearbyParcelsFromCountyGIS(
       resultRecordCount: "100",
     });
 
-    console.log(`[NearbyParcels] Querying ${endpoint.county}, ${endpoint.state} - ${queryUrl}`);
+    logger.debug("[NearbyParcels] Querying", { metadata: { county: endpoint.county, state: endpoint.state, queryUrl } });
     
     const response = await fetch(`${queryUrl}?${params.toString()}`);
     
     if (!response.ok) {
-      console.log(`[NearbyParcels] Query failed: ${response.status}`);
+      logger.warn("[NearbyParcels] Query failed", { metadata: { status: response.status } });
       return { parcels: [], source: "error", count: 0 };
     }
     
     const data = await response.json();
     
     if (!data.features || data.features.length === 0) {
-      console.log(`[NearbyParcels] No features returned`);
+      logger.debug("[NearbyParcels] No features returned");
       return { parcels: [], source: endpoint.county, count: 0 };
     }
     
-    console.log(`[NearbyParcels] Found ${data.features.length} nearby parcels`);
+    logger.info("[NearbyParcels] Found nearby parcels", { metadata: { count: data.features.length } });
     
     const parcels = data.features.map((feature: any) => {
       let geometry: GeoJSON.Geometry;
@@ -1724,7 +1725,7 @@ export async function getNearbyParcelsFromCountyGIS(
       count: parcels.length,
     };
   } catch (error) {
-    console.error(`[NearbyParcels] Error:`, error);
+    logger.error("[NearbyParcels] Error", error);
     return { parcels: [], source: "error", count: 0 };
   }
 }

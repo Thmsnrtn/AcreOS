@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Sidebar, useSidebarCollapsed } from "@/components/layout-sidebar";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -1521,6 +1522,7 @@ export default function CommandCenterPage() {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isImageMode, setIsImageMode] = useState(false);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [deleteConvoId, setDeleteConvoId] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1809,7 +1811,7 @@ export default function CommandCenterPage() {
 
   const handleDeleteConversation = (e: React.MouseEvent, id: number) => {
     e.stopPropagation();
-    deleteConversationMutation.mutate(id);
+    setDeleteConvoId(id);
   };
 
   const messages = currentConversation?.messages || [];
@@ -2241,6 +2243,17 @@ export default function CommandCenterPage() {
           )}
         </div>
       </main>
+
+      <ConfirmDialog
+        open={deleteConvoId !== null}
+        onOpenChange={(open) => !open && setDeleteConvoId(null)}
+        title="Delete Conversation"
+        description="Are you sure you want to delete this conversation? This action cannot be undone."
+        confirmLabel="Delete"
+        onConfirm={() => { deleteConversationMutation.mutate(deleteConvoId!); setDeleteConvoId(null); }}
+        isLoading={deleteConversationMutation.isPending}
+        variant="destructive"
+      />
     </div>
   );
 }
