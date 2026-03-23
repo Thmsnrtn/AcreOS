@@ -26,7 +26,7 @@ function handleQueryError(error: unknown): void {
     description,
     variant: "destructive",
     action: React.createElement(
-      ToastAction,
+      ToastAction as any,
       {
         altText: "Copy details",
         onClick: () => {
@@ -35,15 +35,15 @@ function handleQueryError(error: unknown): void {
         },
       },
       "Copy details"
-    ),
+    ) as any,
   });
-  
+
   console.error("[Query Error]", err);
 }
 
 function handleMutationError(error: unknown): void {
   const err = error instanceof Error ? error : new Error(String(error));
-  
+
   if (isAuthError(err)) {
     toast({
       title: "Session Expired",
@@ -52,16 +52,16 @@ function handleMutationError(error: unknown): void {
     });
     return;
   }
-  
+
   const title = getErrorTitle(err);
   const description = getErrorMessage(err);
-  
+
   toast({
     title,
     description,
     variant: "destructive",
     action: React.createElement(
-      ToastAction,
+      ToastAction as any,
       {
         altText: "Copy details",
         onClick: () => {
@@ -70,7 +70,7 @@ function handleMutationError(error: unknown): void {
         },
       },
       "Copy details"
-    ),
+    ) as any,
   });
   
   console.error("[Mutation Error]", err);
