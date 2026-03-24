@@ -279,6 +279,61 @@ export class DealUnderwritingService {
 
     return query;
   }
+
+  /**
+   * ARV analysis for fix & flip properties.
+   * Uses 70% rule: MAO = ARV × 0.70 − estimated repair cost.
+   */
+  calculateFlipAnalysis(afterRepairValue: number, estimatedRepairCost: number, purchasePrice: number): {
+    mao: number;
+    profitProjection: number;
+    roi: number;
+    isGoodDeal: boolean;
+  } {
+    const mao = afterRepairValue * 0.70 - estimatedRepairCost;
+    const totalInvested = purchasePrice + estimatedRepairCost;
+    const profitProjection = afterRepairValue * 0.93 - totalInvested; // 7% selling costs
+    const roi = totalInvested > 0 ? (profitProjection / totalInvested) * 100 : 0;
+
+    return {
+      mao: Math.round(mao),
+      profitProjection: Math.round(profitProjection),
+      roi: Math.round(roi * 10) / 10,
+      isGoodDeal: purchasePrice <= mao && profitProjection > 0,
+    };
+  }
+
+  /**
+   * Cash-on-cash and cap rate analysis for buy & hold (rental) properties.
+   */
+  calculateRentalAnalysis(
+    purchasePrice: number,
+    monthlyRent: number,
+    monthlyExpenses: number = 0
+  ): {
+    cashOnCashReturn: number;
+    capRate: number;
+    grossRentMultiplier: number;
+    monthlyCashFlow: number;
+    annualNOI: number;
+  } {
+    const annualRent = monthlyRent * 12;
+    // Estimate 40% expenses if not provided (taxes, insurance, maintenance, vacancy)
+    const annualExpenses = monthlyExpenses > 0 ? monthlyExpenses * 12 : annualRent * 0.4;
+    const annualNOI = annualRent - annualExpenses;
+    const monthlyCashFlow = annualNOI / 12;
+    const capRate = purchasePrice > 0 ? (annualNOI / purchasePrice) * 100 : 0;
+    const cashOnCashReturn = capRate; // Simplified — no leverage
+    const grossRentMultiplier = monthlyRent > 0 ? purchasePrice / annualRent : 0;
+
+    return {
+      cashOnCashReturn: Math.round(cashOnCashReturn * 10) / 10,
+      capRate: Math.round(capRate * 10) / 10,
+      grossRentMultiplier: Math.round(grossRentMultiplier * 10) / 10,
+      monthlyCashFlow: Math.round(monthlyCashFlow),
+      annualNOI: Math.round(annualNOI),
+    };
+  }
 }
 
 export const dealUnderwritingService = new DealUnderwritingService();
