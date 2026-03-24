@@ -1,26 +1,349 @@
 /**
  * Listing Syndication Service
  *
- * Syndicates land property listings to major platforms:
- * - Land.com / Lands of America (CoStar Group) — via Land.com API
- * - LandFlip.com — via LandFlip Partner API
- * - LandSearch.com — via REST API
- * - Facebook Marketplace — via Meta Classified Listings API (partner program)
- * - Craigslist — deep-link URL generation (manual posting, no public API)
+ * Generates formatted listing descriptions for different syndication platforms
+ * based on property data and business type. Supports residential, commercial,
+ * and land listings across platform-specific formats.
  *
- * Each platform has its own API contract. Where APIs require partner agreements,
- * we generate formatted listing data and provide deep links / CSV exports.
+ * Platform mapping:
+ *   - Residential: Zillow, Redfin, Facebook Marketplace
+ *   - Commercial:  LoopNet, Crexi, Facebook Marketplace
+ *   - Land:        Facebook Marketplace
  */
 
-import { db } from "../db";
-import { properties } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+import logger from "../utils/logger";
+import type { BusinessType } from "./onboarding";
 
-// ============================================
-// PLATFORM DEFINITIONS
-// ============================================
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 export type SyndicationPlatform =
+  | "zillow"
+  | "redfin"
+  | "loopnet"
+  | "crexi"
+  | "facebook_marketplace";
+
+export type ListingCategory = "residential" | "commercial" | "land";
+
+export interface ResidentialDetails {
+  bedrooms: number;
+  bathrooms: number;
+  sqft: number;
+  yearBuilt?: number;
+  upgrades?: string[];
+  lotSizeSqft?: number;
+  garageSpaces?: number;
+  hoa?: number;
+}
+
+export interface CommercialDetails {
+  noi: number;
+  capRate: number;
+  tenants?: string[];
+  leaseType?: string;
+  occupancyRate?: number;
+  buildingSqft: number;
+  zoning?: string;
+  parkingSpaces?: number;
+}
+
+export interface LandDetails {
+  acreage: number;
+  zoning?: string;
+  access?: string;
+  utilities?: string[];
+  topography?: string;
+  floodZone?: string;
+  mineralRights?: boolean;
+}
+
+export interface PropertyData {
+  address: string;
+  city: string;
+  state: string;
+  zip: string;
+  price: number;
+  description?: string;
+  category: ListingCategory;
+  residential?: ResidentialDetails;
+  commercial?: CommercialDetails;
+  land?: LandDetails;
+  photos?: string[];
+}
+
+export interface SyndicationResult {
+  platform: SyndicationPlatform;
+  title: string;
+  body: string;
+  category: ListingCategory;
+  generatedAt: string;
+}
+
+// ─── Platform availability by listing category ──────────────────────────────
+
+const PLATFORM_MAP: Record<ListingCategory, SyndicationPlatform[]> = {
+  residential: ["zillow", "redfin", "facebook_marketplace"],
+  commercial: ["loopnet", "crexi", "facebook_marketplace"],
+  land: ["facebook_marketplace"],
+};
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function categoryFromBusinessType(businessType: BusinessType): ListingCategory {
+  switch (businessType) {
+    case "commercial":
+      return "commercial";
+    case "land_flipper":
+      return "land";
+    case "residential_wholesaler":
+    case "fix_and_flip":
+    case "buy_and_hold":
+      return "residential";
+    case "note_investor":
+    case "hybrid":
+      return "residential";
+    default:
+      return "residential";
+  }
+}
+
+function formatPrice(price: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(price);
+}
+
+function formatNumber(n: number): string {
+  return new Intl.NumberFormat("en-US").format(n);
+}
+
+// ─── Service ─────────────────────────────────────────────────────────────────
+
+export class ListingSyndicationService {
+  /**
+   * Returns the syndication platforms available for a given business type.
+   */
+  getAvailablePlatforms(businessType: BusinessType): SyndicationPlatform[] {
+    const category = categoryFromBusinessType(businessType);
+    return PLATFORM_MAP[category];
+  }
+
+  /**
+   * Generates a formatted listing description for the given property,
+   * business type, and target platform.
+   */
+  generateListingDescription(
+    property: PropertyData,
+    businessType: BusinessType,
+    platform: SyndicationPlatform,
+  ): SyndicationResult {
+    const category = property.category ?? categoryFromBusinessType(businessType);
+    const available = PLATFORM_MAP[category];
+
+    if (!available.includes(platform)) {
+      logger.warn(`Platform "${platform}" is not available for category "${category}"`, {
+        source: "ListingSyndication",
+        metadata: { platform, category, businessType },
+      });
+    }
+
+    const title = this.buildTitle(property, category);
+    const body = this.buildBody(property, category, platform);
+
+    logger.info(`Generated syndication listing for ${platform}`, {
+      source: "ListingSyndication",
+      metadata: { platform, category, address: property.address },
+    });
+
+    return {
+      platform,
+      title,
+      body,
+      category,
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+  // ── Title builders ───────────────────────────────────────────────────────
+
+  private buildTitle(property: PropertyData, category: ListingCategory): string {
+    const location = `${property.city}, ${property.state}`;
+    const price = formatPrice(property.price);
+
+    switch (category) {
+      case "residential": {
+        const r = property.residential;
+        const beds = r ? `${r.bedrooms}BD/${r.bathrooms}BA` : "";
+        return `${beds} Home in ${location} - ${price}`.trim();
+      }
+      case "commercial": {
+        const c = property.commercial;
+        const sqft = c ? `${formatNumber(c.buildingSqft)} SF` : "";
+        return `Commercial Property ${sqft} in ${location} - ${price}`.trim();
+      }
+      case "land": {
+        const l = property.land;
+        const acres = l ? `${l.acreage} Acres` : "Land";
+        return `${acres} in ${location} - ${price}`.trim();
+      }
+    }
+  }
+
+  // ── Body builders ────────────────────────────────────────────────────────
+
+  private buildBody(
+    property: PropertyData,
+    category: ListingCategory,
+    platform: SyndicationPlatform,
+  ): string {
+    switch (category) {
+      case "residential":
+        return this.buildResidentialBody(property, platform);
+      case "commercial":
+        return this.buildCommercialBody(property, platform);
+      case "land":
+        return this.buildLandBody(property, platform);
+    }
+  }
+
+  private buildResidentialBody(
+    property: PropertyData,
+    platform: SyndicationPlatform,
+  ): string {
+    const r = property.residential;
+    const lines: string[] = [];
+
+    lines.push(
+      `${formatPrice(property.price)} | ${property.address}, ${property.city}, ${property.state} ${property.zip}`,
+    );
+    lines.push("");
+
+    if (r) {
+      lines.push(
+        `${r.bedrooms} Bedrooms | ${r.bathrooms} Bathrooms | ${formatNumber(r.sqft)} Sq Ft`,
+      );
+      if (r.yearBuilt) lines.push(`Year Built: ${r.yearBuilt}`);
+      if (r.lotSizeSqft) lines.push(`Lot Size: ${formatNumber(r.lotSizeSqft)} Sq Ft`);
+      if (r.garageSpaces) lines.push(`Garage: ${r.garageSpaces}-car`);
+      if (r.hoa) lines.push(`HOA: ${formatPrice(r.hoa)}/mo`);
+      lines.push("");
+    }
+
+    if (property.description) {
+      lines.push(property.description);
+      lines.push("");
+    }
+
+    if (r?.upgrades && r.upgrades.length > 0) {
+      lines.push("Recent Upgrades:");
+      for (const upgrade of r.upgrades) {
+        lines.push(`  - ${upgrade}`);
+      }
+      lines.push("");
+    }
+
+    if (platform === "zillow" || platform === "redfin") {
+      lines.push("Schedule a showing today. Pre-approval recommended.");
+    } else if (platform === "facebook_marketplace") {
+      lines.push("Message for details or to schedule a walkthrough.");
+    }
+
+    return lines.join("\n").trim();
+  }
+
+  private buildCommercialBody(
+    property: PropertyData,
+    platform: SyndicationPlatform,
+  ): string {
+    const c = property.commercial;
+    const lines: string[] = [];
+
+    lines.push(
+      `${formatPrice(property.price)} | ${property.address}, ${property.city}, ${property.state} ${property.zip}`,
+    );
+    lines.push("");
+
+    if (c) {
+      lines.push(`Building Size: ${formatNumber(c.buildingSqft)} SF`);
+      lines.push(`NOI: ${formatPrice(c.noi)} | Cap Rate: ${c.capRate.toFixed(2)}%`);
+      if (c.occupancyRate != null) lines.push(`Occupancy: ${c.occupancyRate}%`);
+      if (c.leaseType) lines.push(`Lease Type: ${c.leaseType}`);
+      if (c.zoning) lines.push(`Zoning: ${c.zoning}`);
+      if (c.parkingSpaces) lines.push(`Parking: ${c.parkingSpaces} spaces`);
+      lines.push("");
+
+      if (c.tenants && c.tenants.length > 0) {
+        lines.push("Current Tenants:");
+        for (const tenant of c.tenants) {
+          lines.push(`  - ${tenant}`);
+        }
+        lines.push("");
+      }
+    }
+
+    if (property.description) {
+      lines.push(property.description);
+      lines.push("");
+    }
+
+    if (platform === "loopnet" || platform === "crexi") {
+      lines.push("Contact listing broker for financials and due diligence materials.");
+    } else if (platform === "facebook_marketplace") {
+      lines.push("Investment opportunity. Message for property details and financials.");
+    }
+
+    return lines.join("\n").trim();
+  }
+
+  private buildLandBody(
+    property: PropertyData,
+    platform: SyndicationPlatform,
+  ): string {
+    const l = property.land;
+    const lines: string[] = [];
+
+    lines.push(
+      `${formatPrice(property.price)} | ${property.address}, ${property.city}, ${property.state} ${property.zip}`,
+    );
+    lines.push("");
+
+    if (l) {
+      lines.push(`Acreage: ${l.acreage} acres`);
+      if (l.zoning) lines.push(`Zoning: ${l.zoning}`);
+      if (l.access) lines.push(`Access: ${l.access}`);
+      if (l.topography) lines.push(`Topography: ${l.topography}`);
+      if (l.floodZone) lines.push(`Flood Zone: ${l.floodZone}`);
+      if (l.mineralRights != null) {
+        lines.push(`Mineral Rights: ${l.mineralRights ? "Included" : "Not included"}`);
+      }
+      lines.push("");
+
+      if (l.utilities && l.utilities.length > 0) {
+        lines.push(`Utilities: ${l.utilities.join(", ")}`);
+        lines.push("");
+      }
+    }
+
+    if (property.description) {
+      lines.push(property.description);
+      lines.push("");
+    }
+
+    lines.push("Message for more information or to schedule a site visit.");
+
+    return lines.join("\n").trim();
+  }
+}
+
+export const listingSyndicationService = new ListingSyndicationService();
+
+// ─── Legacy platform syndication API ─────────────────────────────────────────
+// These exports are used by routes-elite-features.ts for the original
+// land-focused syndication workflow (Land.com, LandFlip, Facebook, Craigslist).
+
+export type LegacySyndicationPlatform =
   | "land_com"
   | "landflip"
   | "landsearch"
@@ -30,7 +353,7 @@ export type SyndicationPlatform =
   | "lands_of_america";
 
 export interface PlatformConfig {
-  id: SyndicationPlatform;
+  id: LegacySyndicationPlatform;
   name: string;
   apiAvailable: boolean;
   requiresPartnerAccount: boolean;
@@ -38,7 +361,7 @@ export interface PlatformConfig {
   envKeys: string[];
 }
 
-export const PLATFORMS: Record<SyndicationPlatform, PlatformConfig> = {
+export const PLATFORMS: Record<LegacySyndicationPlatform, PlatformConfig> = {
   land_com: {
     id: "land_com",
     name: "Land.com",
@@ -93,13 +416,9 @@ export const PLATFORMS: Record<SyndicationPlatform, PlatformConfig> = {
     apiAvailable: true,
     requiresPartnerAccount: true,
     partnerSignupUrl: "https://www.landsofamerica.com/advertise/",
-    envKeys: ["LANDCOM_API_KEY", "LANDCOM_BROKER_ID"], // Same CoStar group API as land.com
+    envKeys: ["LANDCOM_API_KEY", "LANDCOM_BROKER_ID"],
   },
 };
-
-// ============================================
-// NORMALIZED LISTING DATA (platform-agnostic)
-// ============================================
 
 export interface NormalizedListing {
   propertyId: number;
@@ -131,27 +450,19 @@ export interface NormalizedListing {
   apn?: string;
 }
 
-// ============================================
-// SYNDICATION RESULT
-// ============================================
-
-export interface SyndicationResult {
-  platform: SyndicationPlatform;
+export interface LegacySyndicationResult {
+  platform: LegacySyndicationPlatform;
   success: boolean;
   listingId?: string;
   listingUrl?: string;
-  deepLinkUrl?: string; // For platforms without API (Craigslist)
-  preformattedText?: string; // For manual posting
+  deepLinkUrl?: string;
+  preformattedText?: string;
   error?: string;
   requiresManualAction?: boolean;
   manualInstructions?: string;
 }
 
-// ============================================
-// PLATFORM ADAPTERS
-// ============================================
-
-async function syndicateToLandCom(listing: NormalizedListing): Promise<SyndicationResult> {
+async function syndicateToLandCom(listing: NormalizedListing): Promise<LegacySyndicationResult> {
   const apiKey = process.env.LANDCOM_API_KEY;
   const brokerId = process.env.LANDCOM_BROKER_ID;
 
@@ -225,7 +536,7 @@ async function syndicateToLandCom(listing: NormalizedListing): Promise<Syndicati
   }
 }
 
-async function syndicateToLandFlip(listing: NormalizedListing): Promise<SyndicationResult> {
+async function syndicateToLandFlip(listing: NormalizedListing): Promise<LegacySyndicationResult> {
   const apiKey = process.env.LANDFLIP_API_KEY;
   const memberId = process.env.LANDFLIP_MEMBER_ID;
 
@@ -283,7 +594,7 @@ async function syndicateToLandFlip(listing: NormalizedListing): Promise<Syndicat
   }
 }
 
-async function syndicateToFacebookMarketplace(listing: NormalizedListing): Promise<SyndicationResult> {
+async function syndicateToFacebookMarketplace(listing: NormalizedListing): Promise<LegacySyndicationResult> {
   const accessToken = process.env.META_ACCESS_TOKEN;
   const pageId = process.env.META_PAGE_ID;
   const catalogId = process.env.META_CATALOG_ID;
@@ -299,7 +610,6 @@ async function syndicateToFacebookMarketplace(listing: NormalizedListing): Promi
   }
 
   try {
-    // Add property to Meta catalog (powers Marketplace listings via catalog)
     const resp = await fetch(`https://graph.facebook.com/v21.0/${catalogId}/products?access_token=${accessToken}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -314,7 +624,7 @@ async function syndicateToFacebookMarketplace(listing: NormalizedListing): Promi
         link: listing.listingUrl,
         image_link: listing.photos[0] || "",
         additional_image_link: listing.photos.slice(1, 10).join(","),
-        google_product_category: "216", // Real Estate
+        google_product_category: "216",
         custom_label_0: listing.state,
         custom_label_1: listing.county,
         custom_label_2: `${listing.acreage} acres`,
@@ -336,8 +646,7 @@ async function syndicateToFacebookMarketplace(listing: NormalizedListing): Promi
   }
 }
 
-async function generateCraigslistPost(listing: NormalizedListing): Promise<SyndicationResult> {
-  // Craigslist has no public API — generate a pre-formatted post and deep link
+async function generateCraigslistPost(listing: NormalizedListing): Promise<LegacySyndicationResult> {
   const formattedText = `
 ${listing.title}
 $${listing.askingPrice.toLocaleString()}
@@ -365,7 +674,6 @@ ${listing.contactPhone ? `Phone: ${listing.contactPhone}` : ""}
 ${listing.contactEmail ? `Email: ${listing.contactEmail}` : ""}
   `.trim();
 
-  // Craigslist deep link prefills some fields
   const stateMap: Record<string, string> = {
     AZ: "phoenix", CA: "sfbay", TX: "dallas", FL: "miami", NM: "albuquerque",
     NV: "lasvegas", UT: "saltlake", CO: "denver", OR: "portland", WA: "seattle",
@@ -384,14 +692,10 @@ ${listing.contactEmail ? `Email: ${listing.contactEmail}` : ""}
   };
 }
 
-// ============================================
-// MAIN SYNDICATION FUNCTION
-// ============================================
-
 export async function syndicateListing(
   listing: NormalizedListing,
-  platforms: SyndicationPlatform[]
-): Promise<SyndicationResult[]> {
+  platforms: LegacySyndicationPlatform[],
+): Promise<LegacySyndicationResult[]> {
   const results = await Promise.all(
     platforms.map(async (platform) => {
       switch (platform) {
@@ -410,23 +714,19 @@ export async function syndicateListing(
             success: false,
             error: `Platform "${platform}" not yet implemented`,
             requiresManualAction: true,
-          };
+          } as LegacySyndicationResult;
       }
-    })
+    }),
   );
 
   return results;
 }
 
-// ============================================
-// UPDATE LISTING ACROSS PLATFORMS
-// ============================================
-
 export async function updateSyndicatedListing(
   listing: NormalizedListing,
-  platformListingIds: Record<SyndicationPlatform, string>
-): Promise<SyndicationResult[]> {
-  const results: SyndicationResult[] = [];
+  platformListingIds: Record<LegacySyndicationPlatform, string>,
+): Promise<LegacySyndicationResult[]> {
+  const results: LegacySyndicationResult[] = [];
 
   for (const [platform, listingId] of Object.entries(platformListingIds)) {
     if (platform === "land_com" || platform === "lands_of_america") {
@@ -438,9 +738,9 @@ export async function updateSyndicatedListing(
             headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
             body: JSON.stringify({ price: listing.askingPrice, description: listing.description }),
           });
-          results.push({ platform: platform as SyndicationPlatform, success: true, listingId });
+          results.push({ platform: platform as LegacySyndicationPlatform, success: true, listingId });
         } catch (err: any) {
-          results.push({ platform: platform as SyndicationPlatform, success: false, error: err.message });
+          results.push({ platform: platform as LegacySyndicationPlatform, success: false, error: err.message });
         }
       }
     }
@@ -449,13 +749,9 @@ export async function updateSyndicatedListing(
   return results;
 }
 
-// ============================================
-// TAKE DOWN LISTING
-// ============================================
-
 export async function takeDownListing(
-  platform: SyndicationPlatform,
-  externalListingId: string
+  platform: LegacySyndicationPlatform,
+  externalListingId: string,
 ): Promise<{ success: boolean; error?: string }> {
   if (platform === "land_com") {
     const apiKey = process.env.LANDCOM_API_KEY;
@@ -490,14 +786,10 @@ export async function takeDownListing(
   return { success: false, error: `Take-down not supported for ${platform}` };
 }
 
-// ============================================
-// GENERATE NORMALIZED LISTING from AcreOS property
-// ============================================
-
 export async function buildNormalizedListing(
   property: any,
   org: any,
-  overrides?: Partial<NormalizedListing>
+  overrides?: Partial<NormalizedListing>,
 ): Promise<NormalizedListing> {
   const acreage = parseFloat(property.sizeAcres || property.acreage || "0");
   const askingPrice = parseFloat(property.listPrice || property.askingPrice || property.marketValue || "0");

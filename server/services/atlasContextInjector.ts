@@ -28,7 +28,7 @@ import { db } from "../db";
 import { sql } from "drizzle-orm";
 import {
   leads, properties, deals, notes, tasks, campaigns,
-  paxMemory, payments,
+  paxMemory, payments, organizations,
 } from "@shared/schema";
 import { eq, and, lt, gt, desc, count } from "drizzle-orm";
 
@@ -51,6 +51,38 @@ export async function buildAtlasContextBlock(
   const sections: string[] = [];
 
   try {
+    // ── Business type context ─────────────────────────────────────────────────
+    const [org] = await db
+      .select({
+        onboardingData: organizations.onboardingData,
+      })
+      .from(organizations)
+      .where(eq(organizations.id, orgId))
+      .limit(1);
+
+    const businessType = org?.onboardingData?.businessType;
+    if (businessType) {
+      const businessTypeGuidance: Record<string, string> = {
+        residential_wholesaler:
+          "This org is a residential wholesaler. Focus on ARV (after-repair value), assignment fee margins, speed to close, buyer list depth, and contract assignment logistics.",
+        fix_and_flip:
+          "This org does fix & flip. Focus on repair cost estimates, rehab timelines, contractor availability, ARV, holding costs, and renovation scope vs. budget.",
+        buy_and_hold:
+          "This org is buy & hold. Focus on monthly cash flow, cap rate, rent comps, vacancy rates, property management costs, long-term appreciation, and 1031 exchange opportunities.",
+        commercial:
+          "This org invests in commercial real estate. Focus on NOI, cap rate, lease abstracts, tenant financials, CAM reconciliation, zoning compliance, and Phase 1 environmental.",
+        land_flipper:
+          "This org flips land. Focus on price per acre, market absorption rate, comparable land sales, county restrictions, and quick-turn margins.",
+        note_investor:
+          "This org invests in notes. Focus on note balance, yield, payment history, borrower creditworthiness, collateral value, and servicing logistics.",
+        hybrid:
+          "This org uses a hybrid strategy. Adapt advice based on the specific deal type — land flips, notes, or other strategies as context dictates.",
+      };
+
+      const guidance = businessTypeGuidance[businessType] || `Business type: ${businessType}`;
+      sections.push(`BUSINESS TYPE:\n  ${guidance}`);
+    }
+
     // ── Active deals ──────────────────────────────────────────────────────────
     const activeDeals = await db
       .select()
