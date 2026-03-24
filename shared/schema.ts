@@ -2469,6 +2469,27 @@ export const insertVaTemplateSchema = createInsertSchema(vaTemplates).omit({
 });
 
 // ============================================
+// PROVIDER CACHE
+// ============================================
+
+export const providerCache = pgTable("provider_cache", {
+  id: serial("id").primaryKey(),
+  provider: text("provider").notNull(),
+  category: text("category").notNull(),
+  cacheKey: text("cache_key").notNull().unique(),
+  responseData: jsonb("response_data").notNull(),
+  costCents: integer("cost_cents").notNull().default(0),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_provider_cache_key").on(table.cacheKey),
+  index("idx_provider_cache_expires").on(table.expiresAt),
+  index("idx_provider_cache_provider_category").on(table.provider, table.category),
+]);
+
+export type ProviderCache = typeof providerCache.$inferSelect;
+
+// ============================================
 // TYPE EXPORTS
 // ============================================
 

@@ -67,6 +67,10 @@ const httpServer = createServer(app);
 wsServer.initialize(httpServer);
 realtimeAlertsService.setWebSocketServer(wsServer);
 
+// Initialize data providers
+import { initializeProviders } from "./providers-init";
+initializeProviders();
+
 declare module "http" {
   interface IncomingMessage {
     rawBody: unknown;
