@@ -1,8 +1,10 @@
-import React from "react";
+import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -22,7 +24,22 @@ import {
   BrainCircuit,
   Activity,
   Layers,
+  CheckCircle2,
+  ArrowUpCircle,
+  XCircle,
+  ThumbsUp,
+  ThumbsDown,
+  ChevronDown,
+  ChevronRight,
+  Gauge,
+  FileText,
+  Users,
+  Settings,
+  TrendingUp,
+  BarChart3,
 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { staggerContainer, staggerItem, collapsibleContent } from "@/lib/animations";
 import { format, formatDistanceToNow } from "date-fns";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -152,6 +169,395 @@ function modelStatusColor(s: string) {
   }
 }
 
+// ─── Decision Feed Types & Mock Data ─────────────────────────────────────────
+
+type DecisionOutcome = "auto-executed" | "escalated" | "denied";
+type DecisionCategory = "pricing" | "lease" | "maintenance" | "compliance" | "tenant";
+
+interface AutonomousDecision {
+  id: string;
+  timestamp: string;
+  actionType: DecisionCategory;
+  summary: string;
+  confidence: number; // 0–100
+  outcome: DecisionOutcome;
+  reasoning: string;
+  dataConsidered: string[];
+  feedback?: "good" | "different" | null;
+}
+
+const MOCK_DECISIONS: AutonomousDecision[] = [
+  {
+    id: "d1",
+    timestamp: new Date(Date.now() - 12 * 60000).toISOString(),
+    actionType: "pricing",
+    summary: "Adjusted Unit 4B rent to $2,450/mo based on comp analysis",
+    confidence: 92,
+    outcome: "auto-executed",
+    reasoning:
+      "Market comps within 0.5mi show median $2,475 for similar 2BR units. Current vacancy rate is 4.1% (below 5% threshold). Seasonal demand index is +8% vs baseline. Recommended a modest increase from $2,380 to $2,450 to capture value without exceeding the 3% month-over-month guardrail.",
+    dataConsidered: [
+      "12 comparable units within 0.5mi radius",
+      "Current portfolio vacancy rate: 4.1%",
+      "Seasonal demand index: +8%",
+      "Tenant payment history: 36 months on-time",
+    ],
+  },
+  {
+    id: "d2",
+    timestamp: new Date(Date.now() - 47 * 60000).toISOString(),
+    actionType: "maintenance",
+    summary: "Dispatched emergency plumber to 210 Oak St, Unit 7A",
+    confidence: 88,
+    outcome: "auto-executed",
+    reasoning:
+      "Tenant reported active water leak via portal with photo evidence. NLP classified as severity:critical. Nearest preferred vendor (ProFlow Plumbing) has availability within 2hr window. Estimated cost $350-$600 falls within auto-approve threshold for emergency maintenance.",
+    dataConsidered: [
+      "Tenant report with photo evidence",
+      "NLP severity classification: critical",
+      "Vendor availability: ProFlow Plumbing, 2hr ETA",
+      "Estimated cost: $350-$600 (within $750 auto-approve limit)",
+    ],
+  },
+  {
+    id: "d3",
+    timestamp: new Date(Date.now() - 2.3 * 3600000).toISOString(),
+    actionType: "lease",
+    summary: "Flagged lease renewal for 510 Elm, Unit 3C for review",
+    confidence: 61,
+    outcome: "escalated",
+    reasoning:
+      "Tenant has 2 late payments in the last 6 months but strong overall history (4 years). Market suggests 4.2% increase is viable, but risk model flags potential churn. Confidence below 70% threshold for auto-renewal terms, escalating to property manager.",
+    dataConsidered: [
+      "Tenant tenure: 4 years",
+      "Late payments: 2 in last 6 months",
+      "Market rent increase potential: 4.2%",
+      "Churn risk model output: 31% probability",
+    ],
+  },
+  {
+    id: "d4",
+    timestamp: new Date(Date.now() - 5.1 * 3600000).toISOString(),
+    actionType: "compliance",
+    summary: "Blocked bulk email blast: missing Fair Housing disclaimer",
+    confidence: 97,
+    outcome: "denied",
+    reasoning:
+      "Outbound marketing email to 340 prospects was missing required Fair Housing Act disclaimer. Regulatory compliance check flagged violation before send. Email queued for edit. This is a hard compliance rule with zero tolerance.",
+    dataConsidered: [
+      "Email content analysis: no Fair Housing disclaimer detected",
+      "Regulatory rule: Fair Housing Act compliance (mandatory)",
+      "Recipient count: 340 prospects",
+    ],
+  },
+  {
+    id: "d5",
+    timestamp: new Date(Date.now() - 8 * 3600000).toISOString(),
+    actionType: "tenant",
+    summary: "Auto-approved application for J. Martinez (credit 745, income 3.2x)",
+    confidence: 94,
+    outcome: "auto-executed",
+    reasoning:
+      "Applicant meets all auto-approve criteria: credit score 745 (threshold: 680), income-to-rent ratio 3.2x (threshold: 2.5x), clean background check, positive landlord references (2/2). No manual review flags triggered.",
+    dataConsidered: [
+      "Credit score: 745 (threshold: 680)",
+      "Income-to-rent ratio: 3.2x (threshold: 2.5x)",
+      "Background check: clear",
+      "Landlord references: 2/2 positive",
+    ],
+  },
+];
+
+const CATEGORY_ICONS: Record<DecisionCategory, React.ElementType> = {
+  pricing: DollarSign,
+  lease: FileText,
+  maintenance: Settings,
+  compliance: ShieldAlert,
+  tenant: Users,
+};
+
+const OUTCOME_DISPLAY: Record<DecisionOutcome, { icon: React.ReactNode; label: string; className: string }> = {
+  "auto-executed": {
+    icon: <CheckCircle2 className="w-3.5 h-3.5" />,
+    label: "Auto-executed",
+    className: "bg-green-500/10 text-green-700 border-green-500/20",
+  },
+  escalated: {
+    icon: <ArrowUpCircle className="w-3.5 h-3.5" />,
+    label: "Escalated",
+    className: "bg-yellow-500/10 text-yellow-700 border-yellow-500/20",
+  },
+  denied: {
+    icon: <XCircle className="w-3.5 h-3.5" />,
+    label: "Denied",
+    className: "bg-red-500/10 text-red-700 border-red-500/20",
+  },
+};
+
+function confidenceColor(confidence: number): string {
+  if (confidence >= 85) return "bg-green-500";
+  if (confidence >= 70) return "bg-yellow-500";
+  return "bg-orange-500";
+}
+
+function categoryColor(cat: DecisionCategory): string {
+  switch (cat) {
+    case "pricing":     return "bg-blue-500/10 text-blue-700 border-blue-500/20";
+    case "lease":       return "bg-purple-500/10 text-purple-700 border-purple-500/20";
+    case "maintenance": return "bg-orange-500/10 text-orange-700 border-orange-500/20";
+    case "compliance":  return "bg-red-500/10 text-red-700 border-red-500/20";
+    case "tenant":      return "bg-teal-500/10 text-teal-700 border-teal-500/20";
+    default:            return "bg-muted text-muted-foreground border-border";
+  }
+}
+
+// ─── Decision Feed Components ────────────────────────────────────────────────
+
+function DecisionCard({
+  decision,
+  onFeedback,
+}: {
+  decision: AutonomousDecision;
+  onFeedback: (id: string, feedback: "good" | "different") => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const CategoryIcon = CATEGORY_ICONS[decision.actionType];
+  const outcome = OUTCOME_DISPLAY[decision.outcome];
+
+  return (
+    <motion.div variants={staggerItem}>
+      <div className="p-4 rounded-lg border border-border bg-muted/30 space-y-3">
+        {/* Top row: timestamp + category + summary + outcome */}
+        <div className="flex items-start gap-3">
+          <div className="p-2 rounded-lg bg-muted shrink-0 mt-0.5">
+            <CategoryIcon className="w-4 h-4 text-muted-foreground" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs text-muted-foreground">
+                {formatDistanceToNow(new Date(decision.timestamp), { addSuffix: true })}
+              </span>
+              <Badge variant="outline" className={`text-xs ${categoryColor(decision.actionType)}`}>
+                {decision.actionType}
+              </Badge>
+              <Badge variant="outline" className={`text-xs inline-flex items-center gap-1 ${outcome.className}`}>
+                {outcome.icon}
+                {outcome.label}
+              </Badge>
+            </div>
+            <p className="text-sm text-foreground mt-1 leading-snug">{decision.summary}</p>
+
+            {/* Confidence meter */}
+            <div className="flex items-center gap-2 mt-2">
+              <span className="text-xs text-muted-foreground w-20 shrink-0">
+                Confidence
+              </span>
+              <div className="flex-1 max-w-[200px]">
+                <Progress
+                  value={decision.confidence}
+                  className={`h-1.5 [&>div]:${confidenceColor(decision.confidence)}`}
+                />
+              </div>
+              <span className="text-xs font-medium text-foreground w-8 text-right">
+                {decision.confidence}%
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Action row: expand + feedback */}
+        <div className="flex items-center justify-between pl-11">
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {expanded ? (
+              <ChevronDown className="w-3.5 h-3.5" />
+            ) : (
+              <ChevronRight className="w-3.5 h-3.5" />
+            )}
+            {expanded ? "Hide details" : "Show reasoning"}
+          </button>
+          <div className="flex items-center gap-1.5">
+            <Button
+              variant={decision.feedback === "good" ? "default" : "outline"}
+              size="sm"
+              className="h-7 text-xs gap-1"
+              onClick={() => onFeedback(decision.id, "good")}
+            >
+              <ThumbsUp className="w-3 h-3" />
+              Good call
+            </Button>
+            <Button
+              variant={decision.feedback === "different" ? "destructive" : "outline"}
+              size="sm"
+              className="h-7 text-xs gap-1"
+              onClick={() => onFeedback(decision.id, "different")}
+            >
+              <ThumbsDown className="w-3 h-3" />
+              I'd have decided differently
+            </Button>
+          </div>
+        </div>
+
+        {/* Expandable detail */}
+        <AnimatePresence>
+          {expanded && (
+            <motion.div
+              variants={collapsibleContent}
+              initial="hidden"
+              animate="visible"
+              exit="hidden"
+              className="overflow-hidden"
+            >
+              <div className="pl-11 pt-2 space-y-3 border-t border-border mt-1 pt-3">
+                <div>
+                  <p className="text-xs font-medium text-foreground mb-1">AI Reasoning</p>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    {decision.reasoning}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-foreground mb-1">Data Considered</p>
+                  <ul className="space-y-1">
+                    {decision.dataConsidered.map((item, i) => (
+                      <li key={i} className="text-xs text-muted-foreground flex items-start gap-1.5">
+                        <span className="text-muted-foreground/50 mt-0.5">-</span>
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </motion.div>
+  );
+}
+
+function CalibrationPanel({ decisions }: { decisions: AutonomousDecision[] }) {
+  // Decisions by category
+  const categoryCounts: Record<string, number> = {};
+  for (const d of decisions) {
+    categoryCounts[d.actionType] = (categoryCounts[d.actionType] ?? 0) + 1;
+  }
+
+  // Override trend (escalated + denied = overrides for calibration context)
+  const totalDecisions = decisions.length;
+  const autoExecuted = decisions.filter((d) => d.outcome === "auto-executed").length;
+  const escalated = decisions.filter((d) => d.outcome === "escalated").length;
+  const denied = decisions.filter((d) => d.outcome === "denied").length;
+  const feedbackDifferent = decisions.filter((d) => d.feedback === "different").length;
+
+  // Confidence calibration: avg confidence by outcome
+  const avgConfByOutcome: Record<string, number> = {};
+  const outcomeGroups: Record<string, number[]> = {};
+  for (const d of decisions) {
+    if (!outcomeGroups[d.outcome]) outcomeGroups[d.outcome] = [];
+    outcomeGroups[d.outcome].push(d.confidence);
+  }
+  for (const [outcome, confs] of Object.entries(outcomeGroups)) {
+    avgConfByOutcome[outcome] = Math.round(
+      confs.reduce((a, b) => a + b, 0) / confs.length
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base font-semibold flex items-center gap-2">
+          <Gauge className="w-4 h-4 text-muted-foreground" />
+          Calibration
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        {/* Confidence Calibration */}
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-foreground">Confidence Calibration</p>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Well-calibrated AI should show higher confidence on auto-executed decisions
+            and lower confidence on escalated ones. A large gap indicates the model
+            knows its limits.
+          </p>
+          <div className="space-y-2 mt-2">
+            {(["auto-executed", "escalated", "denied"] as DecisionOutcome[]).map((outcome) => {
+              const avg = avgConfByOutcome[outcome];
+              if (avg === undefined) return null;
+              const display = OUTCOME_DISPLAY[outcome];
+              return (
+                <div key={outcome} className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground w-24 shrink-0 flex items-center gap-1">
+                    {display.icon} {display.label}
+                  </span>
+                  <div className="flex-1">
+                    <Progress value={avg} className="h-2" />
+                  </div>
+                  <span className="text-xs font-medium text-foreground w-8 text-right">{avg}%</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Decisions by Category */}
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-foreground flex items-center gap-1.5">
+            <BarChart3 className="w-3.5 h-3.5" />
+            Decisions by Category
+          </p>
+          <div className="space-y-1.5">
+            {Object.entries(categoryCounts)
+              .sort(([, a], [, b]) => b - a)
+              .map(([cat, count]) => {
+                const Icon = CATEGORY_ICONS[cat as DecisionCategory];
+                return (
+                  <div key={cat} className="flex items-center gap-2">
+                    <Icon className="w-3.5 h-3.5 text-muted-foreground" />
+                    <span className="text-xs text-foreground capitalize flex-1">{cat}</span>
+                    <span className="text-xs font-medium text-foreground">{count}</span>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+
+        {/* Override Trend */}
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-foreground flex items-center gap-1.5">
+            <TrendingUp className="w-3.5 h-3.5" />
+            Override Trend
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="p-2 rounded-md border border-border bg-muted/30 text-center">
+              <p className="text-lg font-bold text-foreground">{autoExecuted}</p>
+              <p className="text-xs text-muted-foreground">Auto-executed</p>
+            </div>
+            <div className="p-2 rounded-md border border-border bg-muted/30 text-center">
+              <p className="text-lg font-bold text-foreground">{escalated}</p>
+              <p className="text-xs text-muted-foreground">Escalated</p>
+            </div>
+            <div className="p-2 rounded-md border border-border bg-muted/30 text-center">
+              <p className="text-lg font-bold text-foreground">{denied}</p>
+              <p className="text-xs text-muted-foreground">Denied</p>
+            </div>
+            <div className="p-2 rounded-md border border-border bg-muted/30 text-center">
+              <p className="text-lg font-bold text-foreground">{feedbackDifferent}</p>
+              <p className="text-xs text-muted-foreground">Disagreed</p>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            {totalDecisions > 0
+              ? `${Math.round(((escalated + denied) / totalDecisions) * 100)}% of recent decisions required human intervention or were blocked.`
+              : "No decision data available."}
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function StatCard({
@@ -271,6 +677,18 @@ export default function AiObservatory() {
       enabled: isFounder,
     });
 
+  const [decisions, setDecisions] = useState<AutonomousDecision[]>(MOCK_DECISIONS);
+
+  const handleFeedback = (id: string, feedback: "good" | "different") => {
+    setDecisions((prev) =>
+      prev.map((d) =>
+        d.id === id
+          ? { ...d, feedback: d.feedback === feedback ? null : feedback }
+          : d
+      )
+    );
+  };
+
   if (authLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -343,6 +761,45 @@ export default function AiObservatory() {
             icon={Zap}
             loading={statsLoading}
           />
+        </div>
+
+        {/* Decision Feed + Calibration Panel */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Decision Feed (2/3 width) */}
+          <div className="lg:col-span-2">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-3">
+                <CardTitle className="text-base font-semibold flex items-center gap-2">
+                  <BrainCircuit className="w-4 h-4 text-violet-500" />
+                  Decision Feed
+                </CardTitle>
+                <span className="text-xs text-muted-foreground">
+                  {decisions.length} recent decisions
+                </span>
+              </CardHeader>
+              <CardContent>
+                <motion.div
+                  variants={staggerContainer}
+                  initial="hidden"
+                  animate="visible"
+                  className="space-y-3"
+                >
+                  {decisions.map((decision) => (
+                    <DecisionCard
+                      key={decision.id}
+                      decision={decision}
+                      onFeedback={handleFeedback}
+                    />
+                  ))}
+                </motion.div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Calibration Side Panel (1/3 width) */}
+          <div className="lg:col-span-1">
+            <CalibrationPanel decisions={decisions} />
+          </div>
         </div>
 
         {/* Live Telemetry Feed */}
