@@ -26,6 +26,9 @@ export type SessionType =
   | "market_intelligence"
   | "portfolio_monitoring"
   | "autonomous_acquisition_pipeline"   // Pillar 2: hands-off deal flow
+  | "new_lead_processing"               // Session 6: enrich → score → assign → notify
+  | "deal_analysis_workflow"            // Session 6: enrich → comps → intel → offer → draft
+  | "delinquent_note_cascade"           // Session 6: grace → remind → escalate
   | "custom";
 
 export type StepStatus = "pending" | "running" | "completed" | "failed" | "skipped" | "awaiting_approval";
@@ -1056,6 +1059,231 @@ class AgentOrchestrationService {
       },
       dependsOnSteps: [1],
       description: "Check county assessor records",
+    });
+
+    return session;
+  }
+
+  // ─── Session 6: Workflow Templates ─────────────────────────────────────────
+
+  /**
+   * New Lead Processing: enrich → score → assign campaign → notify.
+   * Auto-runs in supervised+ autonomy levels.
+   */
+  async createNewLeadProcessing(
+    organizationId: number,
+    data: {
+      leadId: number;
+      initiatedBy?: string;
+    }
+  ): Promise<AgentSession> {
+    const session = await this.createSession(organizationId, {
+      name: `New Lead Processing - Lead ${data.leadId}`,
+      sessionType: "new_lead_processing",
+      initiatedBy: data.initiatedBy ?? "trigger_monitor",
+      sharedContext: {
+        targetEntity: { type: "lead", id: data.leadId },
+        inputs: { leadId: data.leadId, autoRun: true },
+        intermediateResults: {},
+        decisions: [],
+        structuredOutputs: {},
+        pendingApprovals: {},
+        outputHistory: [],
+      },
+      config: {
+        participatingAgents: ["research", "communications", "operations"],
+        requireHumanApproval: [],
+        maxSteps: 4,
+        timeout: 120000,
+      },
+    });
+
+    await this.addStep(session.id, organizationId, {
+      agentType: "research",
+      skillName: "enrichLead",
+      input: { leadId: data.leadId },
+      description: "Enrich lead with available data sources",
+    });
+
+    await this.addStep(session.id, organizationId, {
+      agentType: "research",
+      skillName: "scoreLead",
+      input: { leadId: data.leadId },
+      dependsOnSteps: [1],
+      description: "Score lead based on enriched data",
+    });
+
+    await this.addStep(session.id, organizationId, {
+      agentType: "communications",
+      skillName: "assignCampaign",
+      input: { leadId: data.leadId },
+      dependsOnSteps: [2],
+      description: "Assign lead to appropriate campaign",
+    });
+
+    await this.addStep(session.id, organizationId, {
+      agentType: "operations",
+      skillName: "notifyTeam",
+      input: { leadId: data.leadId, event: "new_lead_processed" },
+      dependsOnSteps: [3],
+      description: "Notify team of new lead assignment",
+    });
+
+    return session;
+  }
+
+  /**
+   * Deal Analysis: enrich → comps → intelligence report → calculate offer → draft offer letter.
+   * Pauses at the offer step for human approval.
+   */
+  async createDealAnalysis(
+    organizationId: number,
+    data: {
+      dealId: number;
+      propertyId: number;
+      initiatedBy?: string;
+    }
+  ): Promise<AgentSession> {
+    const session = await this.createSession(organizationId, {
+      name: `Deal Analysis - Deal ${data.dealId}`,
+      sessionType: "deal_analysis_workflow",
+      initiatedBy: data.initiatedBy,
+      sharedContext: {
+        targetEntity: { type: "deal", id: data.dealId },
+        inputs: { dealId: data.dealId, propertyId: data.propertyId },
+        intermediateResults: {},
+        decisions: [],
+        structuredOutputs: {},
+        pendingApprovals: {},
+        outputHistory: [],
+      },
+      config: {
+        participatingAgents: ["research", "deals"],
+        requireHumanApproval: ["deals:draftOfferLetter"],
+        maxSteps: 5,
+        timeout: 300000,
+      },
+    });
+
+    await this.addStep(session.id, organizationId, {
+      agentType: "research",
+      skillName: "enrichProperty",
+      input: { propertyId: data.propertyId },
+      description: "Enrich property data for deal analysis",
+    });
+
+    await this.addStep(session.id, organizationId, {
+      agentType: "research",
+      skillName: "researchComps",
+      input: { propertyId: data.propertyId },
+      dependsOnSteps: [1],
+      description: "Research comparable sales",
+    });
+
+    await this.addStep(session.id, organizationId, {
+      agentType: "research",
+      skillName: "generateIntelligenceReport",
+      input: { dealId: data.dealId, propertyId: data.propertyId },
+      dependsOnSteps: [2],
+      description: "Generate intelligence report from enriched data and comps",
+    });
+
+    await this.addStep(session.id, organizationId, {
+      agentType: "deals",
+      skillName: "calculateOffer",
+      input: { dealId: data.dealId, propertyId: data.propertyId },
+      dependsOnSteps: [3],
+      description: "Calculate offer based on intelligence report",
+    });
+
+    await this.addStep(session.id, organizationId, {
+      agentType: "deals",
+      skillName: "draftOfferLetter",
+      input: { dealId: data.dealId },
+      dependsOnSteps: [4],
+      description: "Draft offer letter — pauses for human approval",
+    });
+
+    return session;
+  }
+
+  /**
+   * Delinquent Note Cascade: wait grace → remind → wait 7d → remind → wait 14d → escalate.
+   */
+  async createDelinquentNoteCascade(
+    organizationId: number,
+    data: {
+      noteId: number;
+      propertyId?: number;
+      initiatedBy?: string;
+    }
+  ): Promise<AgentSession> {
+    const session = await this.createSession(organizationId, {
+      name: `Delinquent Note Cascade - Note ${data.noteId}`,
+      sessionType: "delinquent_note_cascade",
+      initiatedBy: data.initiatedBy ?? "trigger_monitor",
+      sharedContext: {
+        targetEntity: { type: "note", id: data.noteId },
+        inputs: { noteId: data.noteId, propertyId: data.propertyId },
+        intermediateResults: {},
+        decisions: [],
+        structuredOutputs: {},
+        pendingApprovals: {},
+        outputHistory: [],
+      },
+      config: {
+        participatingAgents: ["communications", "operations"],
+        requireHumanApproval: ["operations:escalateDelinquency"],
+        maxSteps: 6,
+        timeout: 0, // No timeout — cascade spans weeks
+      },
+    });
+
+    await this.addStep(session.id, organizationId, {
+      agentType: "operations",
+      skillName: "waitGracePeriod",
+      input: { noteId: data.noteId, waitDays: 5 },
+      description: "Wait for grace period to expire (5 days)",
+    });
+
+    await this.addStep(session.id, organizationId, {
+      agentType: "communications",
+      skillName: "sendPaymentReminder",
+      input: { noteId: data.noteId, reminderLevel: 1 },
+      dependsOnSteps: [1],
+      description: "Send first payment reminder",
+    });
+
+    await this.addStep(session.id, organizationId, {
+      agentType: "operations",
+      skillName: "waitPeriod",
+      input: { noteId: data.noteId, waitDays: 7 },
+      dependsOnSteps: [2],
+      description: "Wait 7 days after first reminder",
+    });
+
+    await this.addStep(session.id, organizationId, {
+      agentType: "communications",
+      skillName: "sendPaymentReminder",
+      input: { noteId: data.noteId, reminderLevel: 2 },
+      dependsOnSteps: [3],
+      description: "Send second payment reminder",
+    });
+
+    await this.addStep(session.id, organizationId, {
+      agentType: "operations",
+      skillName: "waitPeriod",
+      input: { noteId: data.noteId, waitDays: 14 },
+      dependsOnSteps: [4],
+      description: "Wait 14 days after second reminder",
+    });
+
+    await this.addStep(session.id, organizationId, {
+      agentType: "operations",
+      skillName: "escalateDelinquency",
+      input: { noteId: data.noteId, escalationLevel: "formal" },
+      dependsOnSteps: [5],
+      description: "Escalate delinquent note — requires human approval",
     });
 
     return session;

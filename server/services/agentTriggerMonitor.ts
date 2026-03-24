@@ -23,8 +23,28 @@
  */
 
 import { db } from "../db";
-import { leads, properties, deals, notes, agentTasks, agentRuns, organizations } from "@shared/schema";
+import { leads, properties, deals, notes, agentTasks, agentRuns, organizations, campaigns } from "@shared/schema";
 import { eq, and, lt, isNull, ne, gte, lte, desc, sql, count } from "drizzle-orm";
+
+// ─── Structured Logger ──────────────────────────────────────────────────────
+
+function triggerLog(level: "info" | "warn" | "error", trigger: string, orgId: number, details: Record<string, any>): void {
+  const entry = {
+    timestamp: new Date().toISOString(),
+    service: "AgentTriggerMonitor",
+    level,
+    trigger,
+    organizationId: orgId,
+    ...details,
+  };
+  if (level === "error") {
+    console.error(JSON.stringify(entry));
+  } else if (level === "warn") {
+    console.warn(JSON.stringify(entry));
+  } else {
+    console.log(JSON.stringify(entry));
+  }
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -36,7 +56,12 @@ export type AgentTriggerType =
   | "deal_stalled"
   | "property_needs_dd"
   | "daily_digest"
-  | "weekly_performance";
+  | "weekly_performance"
+  | "note_late_reminder"
+  | "deal_stale_analysis"
+  | "lead_untouched"
+  | "campaign_low_response"
+  | "credits_low";
 
 export interface AgentTrigger {
   type: AgentTriggerType;
@@ -85,6 +110,12 @@ class AgentTriggerMonitor {
   private readonly MAX_TRIGGERS_PER_ORG = 15;
   private readonly DAILY_DIGEST_HOUR = 7;
   private readonly WEEKLY_DAY = 1; // Monday
+  private readonly NOTE_LATE_DAYS = 5;
+  private readonly DEAL_STALE_DAYS = 30;
+  private readonly LEAD_UNTOUCHED_DAYS = 14;
+  private readonly CAMPAIGN_MIN_SENDS = 100;
+  private readonly CAMPAIGN_LOW_RESPONSE_PCT = 2;
+  private readonly CREDITS_LOW_THRESHOLD_CENTS = 500; // $5.00
 
   start(intervalMs = 5 * 60 * 1000): void {
     if (this.intervalHandle) return;
@@ -130,16 +161,21 @@ class AgentTriggerMonitor {
   // ─── Per-org trigger detection ─────────────────────────────────────────────
 
   private async detectTriggers(orgId: number): Promise<AgentTrigger[]> {
-    const [t1, t2, t3, t4, t5, t6] = await Promise.all([
+    const [t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11] = await Promise.all([
       this.detectHotLeadStalls(orgId),
       this.detectFollowUpsDue(orgId),
       this.detectNewLeadsWithNoPlan(orgId),
       this.detectOverduePayments(orgId),
       this.detectStalledDeals(orgId),
       this.detectPropertiesNeedingDD(orgId),
+      this.detectLateNotes(orgId),
+      this.detectStaleDeals(orgId),
+      this.detectUntouchedLeads(orgId),
+      this.detectLowResponseCampaigns(orgId),
+      this.detectLowCredits(orgId),
     ]);
 
-    const all = [...t1, ...t2, ...t3, ...t4, ...t5, ...t6];
+    const all = [...t1, ...t2, ...t3, ...t4, ...t5, ...t6, ...t7, ...t8, ...t9, ...t10, ...t11];
     // Sort by priority, cap to prevent storms
     return all.sort((a, b) => a.priority - b.priority).slice(0, this.MAX_TRIGGERS_PER_ORG);
   }
@@ -328,6 +364,189 @@ class AgentTriggerMonitor {
         description: `Property ${p.address ?? `#${p.id}`} missing due diligence`,
         relatedPropertyId: p.id,
       }));
+  }
+
+  // ─── Session 6: Proactive triggers ──────────────────────────────────────────
+
+  /** Notes with payment 5+ days late → draft reminder (queued for approval in supervised mode) */
+  private async detectLateNotes(orgId: number): Promise<AgentTrigger[]> {
+    const cutoff = new Date(Date.now() - this.NOTE_LATE_DAYS * 86400_000);
+    const rows = await db
+      .select({ id: notes.id, propertyId: notes.propertyId })
+      .from(notes)
+      .where(and(
+        eq(notes.organizationId, orgId),
+        eq(notes.status, "active"),
+        lt(notes.nextPaymentDate, cutoff)
+      ))
+      .limit(10);
+
+    return rows
+      .filter(n => !alreadyFired(`notelate:${orgId}:${n.id}`))
+      .map(n => {
+        triggerLog("warn", "note_late_reminder", orgId, { noteId: n.id, lateDays: this.NOTE_LATE_DAYS });
+        return {
+          type: "note_late_reminder" as AgentTriggerType,
+          organizationId: orgId,
+          priority: 2,
+          agentType: "communications",
+          input: {
+            action: "draft_reminder",
+            noteId: n.id,
+            lateDays: this.NOTE_LATE_DAYS,
+            mode: "supervised",
+            requiresApproval: true,
+          },
+          description: `Note #${n.id} payment is ${this.NOTE_LATE_DAYS}+ days late — draft reminder queued for approval`,
+          relatedPropertyId: n.propertyId ?? undefined,
+        };
+      });
+  }
+
+  /** Deals not updated in 30+ days → flag with analysis */
+  private async detectStaleDeals(orgId: number): Promise<AgentTrigger[]> {
+    const cutoff = new Date(Date.now() - this.DEAL_STALE_DAYS * 86400_000);
+    const rows = await db
+      .select({ id: deals.id })
+      .from(deals)
+      .where(and(
+        eq(deals.organizationId, orgId),
+        ne(deals.status, "closed_won"), ne(deals.status, "closed_lost"),
+        lt(deals.updatedAt, cutoff)
+      ))
+      .limit(5);
+
+    return rows
+      .filter(d => !alreadyFired(`dealstale:${orgId}:${d.id}`))
+      .map(d => {
+        triggerLog("warn", "deal_stale_analysis", orgId, { dealId: d.id, staleDays: this.DEAL_STALE_DAYS });
+        return {
+          type: "deal_stale_analysis" as AgentTriggerType,
+          organizationId: orgId,
+          priority: 3,
+          agentType: "deals",
+          input: {
+            action: "analyze_stale_deal",
+            dealId: d.id,
+            staleDays: this.DEAL_STALE_DAYS,
+            requestAnalysis: true,
+          },
+          description: `Deal #${d.id} stale ${this.DEAL_STALE_DAYS}+ days — flagged with analysis`,
+          relatedDealId: d.id,
+        };
+      });
+  }
+
+  /** Leads with no contact in 14+ days → suggest follow-up */
+  private async detectUntouchedLeads(orgId: number): Promise<AgentTrigger[]> {
+    const cutoff = new Date(Date.now() - this.LEAD_UNTOUCHED_DAYS * 86400_000);
+    const rows = await db
+      .select({ id: leads.id, firstName: leads.firstName, lastName: leads.lastName })
+      .from(leads)
+      .where(and(
+        eq(leads.organizationId, orgId),
+        ne(leads.status, "dead"), ne(leads.status, "closed"),
+        ne(leads.doNotContact, true),
+        lt(leads.lastContactedAt, cutoff)
+      ))
+      .limit(5);
+
+    return rows
+      .filter(l => !alreadyFired(`untouched:${orgId}:${l.id}`))
+      .map(l => {
+        triggerLog("info", "lead_untouched", orgId, { leadId: l.id, untouchedDays: this.LEAD_UNTOUCHED_DAYS });
+        return {
+          type: "lead_untouched" as AgentTriggerType,
+          organizationId: orgId,
+          priority: 4,
+          agentType: "communications",
+          input: {
+            action: "suggest_follow_up",
+            leadId: l.id,
+            untouchedDays: this.LEAD_UNTOUCHED_DAYS,
+          },
+          description: `Lead ${l.firstName} ${l.lastName} untouched ${this.LEAD_UNTOUCHED_DAYS}+ days — suggest follow-up`,
+          relatedLeadId: l.id,
+        };
+      });
+  }
+
+  /** Campaigns with <2% response rate after 100+ sends → suggest revision */
+  private async detectLowResponseCampaigns(orgId: number): Promise<AgentTrigger[]> {
+    const rows = await db
+      .select({
+        id: campaigns.id,
+        name: campaigns.name,
+        totalSent: campaigns.totalSent,
+        totalResponded: campaigns.totalResponded,
+      })
+      .from(campaigns)
+      .where(and(
+        eq(campaigns.organizationId, orgId),
+        eq(campaigns.status, "active"),
+        gte(campaigns.totalSent, this.CAMPAIGN_MIN_SENDS)
+      ))
+      .limit(5);
+
+    return rows
+      .filter(c => {
+        const sent = c.totalSent ?? 0;
+        const responded = c.totalResponded ?? 0;
+        const responseRate = sent > 0 ? (responded / sent) * 100 : 0;
+        return responseRate < this.CAMPAIGN_LOW_RESPONSE_PCT && !alreadyFired(`camplowresp:${orgId}:${c.id}`);
+      })
+      .map(c => {
+        const sent = c.totalSent ?? 0;
+        const responded = c.totalResponded ?? 0;
+        const responseRate = sent > 0 ? ((responded / sent) * 100).toFixed(1) : "0.0";
+        triggerLog("warn", "campaign_low_response", orgId, { campaignId: c.id, responseRate, totalSent: sent });
+        return {
+          type: "campaign_low_response" as AgentTriggerType,
+          organizationId: orgId,
+          priority: 5,
+          agentType: "communications",
+          input: {
+            action: "suggest_campaign_revision",
+            campaignId: c.id,
+            campaignName: c.name,
+            responseRate: parseFloat(responseRate),
+            totalSent: sent,
+          },
+          description: `Campaign "${c.name}" response rate ${responseRate}% after ${sent} sends — suggest revision`,
+        };
+      });
+  }
+
+  /** Organization credits running low → alert + suggest auto-top-up */
+  private async detectLowCredits(orgId: number): Promise<AgentTrigger[]> {
+    const [org] = await db
+      .select({ id: organizations.id, creditBalance: organizations.creditBalance })
+      .from(organizations)
+      .where(eq(organizations.id, orgId))
+      .limit(1);
+
+    if (!org) return [];
+
+    const balance = parseFloat(org.creditBalance ?? "0");
+    if (balance >= this.CREDITS_LOW_THRESHOLD_CENTS || alreadyFired(`creditslow:${orgId}`)) return [];
+
+    triggerLog("warn", "credits_low", orgId, { balanceCents: balance, thresholdCents: this.CREDITS_LOW_THRESHOLD_CENTS });
+
+    return [{
+      type: "credits_low" as AgentTriggerType,
+      organizationId: orgId,
+      priority: 2,
+      agentType: "operations",
+      input: {
+        action: "generate_alert",
+        type: "credits_low",
+        severity: "high",
+        balanceCents: balance,
+        suggestAutoTopUp: true,
+        details: `Credit balance is $${(balance / 100).toFixed(2)} — below threshold of $${(this.CREDITS_LOW_THRESHOLD_CENTS / 100).toFixed(2)}`,
+      },
+      description: `Credits low ($${(balance / 100).toFixed(2)}) — alert + suggest auto-top-up`,
+    }];
   }
 
   // ─── Time-based triggers ───────────────────────────────────────────────────
