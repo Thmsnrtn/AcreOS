@@ -74,20 +74,24 @@ export class WebhookHandlers {
       return;
     }
 
-    // Handle checkout session completed
+    // Dispatch and always mark processed to prevent infinite Stripe retries
+    try {
+      await WebhookHandlers.dispatchEvent(event);
+    } catch (err: any) {
+      console.error(`[webhook] Unrecoverable error processing ${event.type} (${event.id}):`, err.message);
+    } finally {
+      await WebhookHandlers.markProcessed(event.id, event.type);
+    }
+  }
+
+  private static async dispatchEvent(event: Stripe.Event): Promise<void> {
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object as Stripe.Checkout.Session;
-      
       if (session.metadata?.type === 'borrower_portal_payment') {
-        await WebhookHandlers.processBorrowerPortalPayment(session);
-        await WebhookHandlers.markProcessed(event.id, event.type);
-        return;
+        return WebhookHandlers.processBorrowerPortalPayment(session);
       }
-      
       if (session.metadata?.type === 'credit_purchase') {
-        await WebhookHandlers.processCreditPurchase(session);
-        await WebhookHandlers.markProcessed(event.id, event.type);
-        return;
+        return WebhookHandlers.processCreditPurchase(session);
       }
 
       // Subscription checkout — eagerly record the subscription ID so the org
@@ -97,30 +101,19 @@ export class WebhookHandlers {
         await WebhookHandlers.markProcessed(event.id, event.type);
         return;
       }
+      return;
     }
 
-    // Handle invoice payment failed - trigger dunning
     if (event.type === 'invoice.payment_failed') {
-      const invoice = event.data.object as Stripe.Invoice;
-      await WebhookHandlers.processPaymentFailed(invoice);
-      await WebhookHandlers.markProcessed(event.id, event.type);
-      return;
+      return WebhookHandlers.processPaymentFailed(event.data.object as Stripe.Invoice);
     }
 
-    // Handle invoice payment succeeded - resolve dunning
     if (event.type === 'invoice.payment_succeeded') {
-      const invoice = event.data.object as Stripe.Invoice;
-      await WebhookHandlers.processPaymentSucceeded(invoice);
-      await WebhookHandlers.markProcessed(event.id, event.type);
-      return;
+      return WebhookHandlers.processPaymentSucceeded(event.data.object as Stripe.Invoice);
     }
 
-    // Handle subscription lifecycle
     if (event.type === 'customer.subscription.deleted') {
-      const subscription = event.data.object as Stripe.Subscription;
-      await WebhookHandlers.processSubscriptionCancelled(subscription);
-      await WebhookHandlers.markProcessed(event.id, event.type);
-      return;
+      return WebhookHandlers.processSubscriptionCancelled(event.data.object as Stripe.Subscription);
     }
 
     // customer.subscription.created fires when any new subscription is created.
@@ -133,10 +126,7 @@ export class WebhookHandlers {
     }
 
     if (event.type === 'customer.subscription.updated') {
-      const subscription = event.data.object as Stripe.Subscription;
-      await WebhookHandlers.processSubscriptionUpdated(subscription);
-      await WebhookHandlers.markProcessed(event.id, event.type);
-      return;
+      return WebhookHandlers.processSubscriptionUpdated(event.data.object as Stripe.Subscription);
     }
 
     if (event.type === 'customer.subscription.paused') {
@@ -161,10 +151,7 @@ export class WebhookHandlers {
     }
 
     if (event.type === 'customer.subscription.trial_will_end') {
-      const subscription = event.data.object as Stripe.Subscription;
-      await WebhookHandlers.processTrialWillEnd(subscription);
-      await WebhookHandlers.markProcessed(event.id, event.type);
-      return;
+      return WebhookHandlers.processTrialWillEnd(event.data.object as Stripe.Subscription);
     }
 
     // Unhandled event type — log and acknowledge
