@@ -156,7 +156,7 @@ async function withJobLock<T>(
 ): Promise<T | null> {
   const acquired = await storage.acquireJobLock(jobName, instanceId, ttlSeconds);
   if (!acquired) {
-    console.log(`[${jobName}] Lock not acquired, skipping execution`);
+    logger.info(`[${jobName}] Lock not acquired, skipping execution`);
     return null;
   }
   try {
@@ -172,11 +172,11 @@ setInterval(async () => {
     try {
       const cleaned = await storage.cleanExpiredBorrowerSessions();
       if (cleaned > 0) {
-        console.log(`Cleaned ${cleaned} expired borrower sessions`);
+        logger.info(`Cleaned ${cleaned} expired borrower sessions`);
       }
       return cleaned;
     } catch (err) {
-      console.error("Error cleaning expired borrower sessions:", err);
+      logger.error("Error cleaning expired borrower sessions", err instanceof Error ? err : undefined);
       return 0;
     }
   });
@@ -187,7 +187,7 @@ setInterval(async () => {
   try {
     await storage.cleanExpiredJobLocks();
   } catch (err) {
-    console.error("Error cleaning expired job locks:", err);
+    logger.error("Error cleaning expired job locks", err instanceof Error ? err : undefined);
   }
 }, 5 * 60 * 1000);
 
@@ -249,7 +249,7 @@ export async function registerRoutes(
   // ============================================
   app.get("/api/founder/readiness", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).org || (req as any).organization;
+      const org = req.organization || req.organization;
       if (!org?.isFounder) {
         return res.status(403).json({ message: "Founder access required" });
       }
@@ -406,7 +406,7 @@ export async function registerRoutes(
   // ============================================
   app.get("/api/search", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const query = (req.query.q as string) || "";
       const limit = Math.min(parseInt((req.query.limit as string) || "20", 10), 50);
 
@@ -487,7 +487,7 @@ export async function registerRoutes(
   const statsCache: Map<number, { ts: number; data: any }> = new Map();
 
   api.get("/api/dashboard/stats", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const key = org.id as number;
     const now = Date.now();
     const cached = statsCache.get(key);
@@ -502,7 +502,7 @@ export async function registerRoutes(
   // Preview leads that will be affected by bulk delete
   app.post("/api/leads/bulk-delete/preview", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { ids } = req.body;
       
       if (!Array.isArray(ids) || ids.length === 0) {
@@ -524,7 +524,7 @@ export async function registerRoutes(
         })),
       });
     } catch (error: any) {
-      console.error("Bulk delete preview error:", error);
+      logger.error("Bulk delete preview error", error instanceof Error ? error : undefined);
       res.status(500).json({ message: error.message || "Failed to preview bulk delete" });
     }
   });
@@ -532,7 +532,7 @@ export async function registerRoutes(
     // Mark a lead as contacted (updates lastContactedAt timestamp)
   app.post("/api/leads/:id/mark-contacted", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const leadId = Number(req.params.id);
       
       if (isNaN(leadId)) {
@@ -571,7 +571,7 @@ export async function registerRoutes(
         lead,
       });
     } catch (err) {
-      console.error("Mark contacted error:", err);
+      logger.error("Mark contacted error", err instanceof Error ? err : undefined);
       res.status(500).json({ message: "Failed to mark lead as contacted" });
     }
   });
@@ -579,7 +579,7 @@ export async function registerRoutes(
     // Merge two leads
   app.post("/api/leads/merge", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { primaryId, duplicateId } = req.body;
       
       if (!primaryId || !duplicateId) {
@@ -594,7 +594,7 @@ export async function registerRoutes(
         lead: merged,
       });
     } catch (err) {
-      console.error("Merge leads error:", err);
+      logger.error("Merge leads error", err instanceof Error ? err : undefined);
       res.status(500).json({ message: "Failed to merge leads" });
     }
   });
@@ -602,7 +602,7 @@ export async function registerRoutes(
   // Record contact (marks lead as contacted now)
   app.post("/api/leads/:id/record-contact", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const leadId = Number(req.params.id);
       
       if (isNaN(leadId)) {
@@ -652,14 +652,14 @@ export async function registerRoutes(
         contactedAt: now.toISOString(),
       });
     } catch (error: any) {
-      console.error("Record contact error:", error);
+      logger.error("Record contact error", error instanceof Error ? error : undefined);
       res.status(500).json({ message: error.message || "Failed to record contact" });
     }
   });
 
   app.post("/api/leads/bulk-delete", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteLeads"), async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { ids } = req.body;
       
       if (!Array.isArray(ids) || ids.length === 0) {
@@ -691,7 +691,7 @@ export async function registerRoutes(
         message: `${deletedCount} lead(s) moved to trash. They can be restored within 30 days.`,
       });
     } catch (error: any) {
-      console.error("Bulk delete leads error:", error);
+      logger.error("Bulk delete leads error", error instanceof Error ? error : undefined);
       res.status(500).json({ message: error.message || "Failed to bulk delete leads" });
     }
   });
@@ -699,11 +699,11 @@ export async function registerRoutes(
   // Get deleted/trashed leads
   app.get("/api/leads/deleted", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const deletedLeads = await storage.getDeletedLeads(org.id);
       res.json(deletedLeads);
     } catch (error: any) {
-      console.error("Get deleted leads error:", error);
+      logger.error("Get deleted leads error", error instanceof Error ? error : undefined);
       res.status(500).json({ message: error.message || "Failed to get deleted leads" });
     }
   });
@@ -711,7 +711,7 @@ export async function registerRoutes(
   // Restore soft-deleted leads
   app.post("/api/leads/restore", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteLeads"), async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { ids } = req.body;
       
       if (!Array.isArray(ids) || ids.length === 0) {
@@ -736,7 +736,7 @@ export async function registerRoutes(
 
       res.json({ restoredCount });
     } catch (error: any) {
-      console.error("Restore leads error:", error);
+      logger.error("Restore leads error", error instanceof Error ? error : undefined);
       res.status(500).json({ message: error.message || "Failed to restore leads" });
     }
   });
@@ -744,7 +744,7 @@ export async function registerRoutes(
   // Permanently delete leads (empty trash)
   app.post("/api/leads/permanent-delete", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteLeads"), async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { ids } = req.body;
       
       if (!Array.isArray(ids) || ids.length === 0) {
@@ -769,7 +769,7 @@ export async function registerRoutes(
       
       res.json({ deletedCount });
     } catch (error: any) {
-      console.error("Permanent delete leads error:", error);
+      logger.error("Permanent delete leads error", error instanceof Error ? error : undefined);
       res.status(500).json({ message: error.message || "Failed to permanently delete leads" });
     }
   });
@@ -859,7 +859,7 @@ export async function registerRoutes(
     // Bulk stage update for deals with undo support
   app.post("/api/deals/bulk-stage-update", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { ids, newStage, confirmed } = req.body;
       
       // Validate required fields
@@ -957,7 +957,7 @@ export async function registerRoutes(
         undoAvailable: true,
       });
     } catch (error: any) {
-      console.error("Bulk stage update deals error:", error);
+      logger.error("Bulk stage update deals error", error instanceof Error ? error : undefined);
       res.status(500).json({ message: error.message || "Failed to bulk update deal stages" });
     }
   });
@@ -965,7 +965,7 @@ export async function registerRoutes(
   // Undo bulk stage update
   app.post("/api/deals/bulk-stage-undo", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { previousStates } = req.body;
       
       if (!Array.isArray(previousStates) || previousStates.length === 0) {
@@ -1028,7 +1028,7 @@ export async function registerRoutes(
         restoredCount,
       });
     } catch (error: any) {
-      console.error("Bulk stage undo error:", error);
+      logger.error("Bulk stage undo error", error instanceof Error ? error : undefined);
       res.status(500).json({ message: error.message || "Failed to undo bulk stage update" });
     }
   });
@@ -1051,7 +1051,7 @@ export async function registerRoutes(
   // ============================================
   app.get("/api/admin/feature-flags", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).org || (req as any).organization;
+      const org = req.organization || req.organization;
       if (!org?.isFounder) {
         return res.status(403).json({ message: "Founder access required" });
       }
@@ -1065,7 +1065,7 @@ export async function registerRoutes(
 
   app.patch("/api/admin/feature-flags/:key", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).org || (req as any).organization;
+      const org = req.organization || req.organization;
       if (!org?.isFounder) {
         return res.status(403).json({ message: "Founder access required" });
       }
@@ -1193,7 +1193,7 @@ export async function registerRoutes(
 
   app.get("/api/tasks", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const orgId = (req as any).organization!.id;
+      const orgId = req.organization!.id;
       const filters: { status?: string; priority?: string; assignedTo?: number; entityType?: string; entityId?: number } = {};
       
       if (req.query.status) filters.status = req.query.status as string;
@@ -1205,14 +1205,14 @@ export async function registerRoutes(
       const tasks = await storage.getTasks(orgId, Object.keys(filters).length > 0 ? filters : undefined);
       res.json(tasks);
     } catch (error: any) {
-      console.error("Get tasks error:", error);
+      logger.error("Get tasks error", error instanceof Error ? error : undefined);
       res.status(500).json({ message: error.message || "Failed to fetch tasks" });
     }
   });
 
   app.get("/api/tasks/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const orgId = (req as any).organization!.id;
+      const orgId = req.organization!.id;
       const id = parseInt(req.params.id);
       
       const task = await storage.getTask(orgId, id);
@@ -1222,14 +1222,14 @@ export async function registerRoutes(
       
       res.json(task);
     } catch (error: any) {
-      console.error("Get task error:", error);
+      logger.error("Get task error", error instanceof Error ? error : undefined);
       res.status(500).json({ message: error.message || "Failed to fetch task" });
     }
   });
 
   app.post("/api/tasks", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const orgId = (req as any).organization!.id;
+      const orgId = req.organization!.id;
       const userId = (req.user as any).id;
       
       const validated = insertTaskSchema.parse({
@@ -1264,14 +1264,14 @@ export async function registerRoutes(
       
       res.status(201).json(task);
     } catch (error: any) {
-      console.error("Create task error:", error);
+      logger.error("Create task error", error instanceof Error ? error : undefined);
       res.status(500).json({ message: error.message || "Failed to create task" });
     }
   });
 
   app.put("/api/tasks/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const orgId = (req as any).organization!.id;
+      const orgId = req.organization!.id;
       const userId = (req.user as any).id;
       const id = parseInt(req.params.id);
       
@@ -1310,14 +1310,14 @@ export async function registerRoutes(
       
       res.json(task);
     } catch (error: any) {
-      console.error("Update task error:", error);
+      logger.error("Update task error", error instanceof Error ? error : undefined);
       res.status(500).json({ message: error.message || "Failed to update task" });
     }
   });
 
   app.delete("/api/tasks/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const orgId = (req as any).organization!.id;
+      const orgId = req.organization!.id;
       const id = parseInt(req.params.id);
       
       const task = await storage.getTask(orgId, id);
@@ -1343,14 +1343,14 @@ export async function registerRoutes(
       
       res.json({ message: "Task deleted" });
     } catch (error: any) {
-      console.error("Delete task error:", error);
+      logger.error("Delete task error", error instanceof Error ? error : undefined);
       res.status(500).json({ message: error.message || "Failed to delete task" });
     }
   });
 
   app.post("/api/tasks/:id/complete", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const orgId = (req as any).organization!.id;
+      const orgId = req.organization!.id;
       const userId = (req.user as any).id;
       const id = parseInt(req.params.id);
       
@@ -1377,7 +1377,7 @@ export async function registerRoutes(
       
       res.json({ completedTask });
     } catch (error: any) {
-      console.error("Complete task error:", error);
+      logger.error("Complete task error", error instanceof Error ? error : undefined);
       res.status(500).json({ message: error.message || "Failed to complete task" });
     }
   });
@@ -1394,7 +1394,7 @@ export async function registerRoutes(
       
       res.json({ processed: recurringTasksDue.length, created: createdTasks });
     } catch (error: any) {
-      console.error("Process recurring tasks error:", error);
+      logger.error("Process recurring tasks error", error instanceof Error ? error : undefined);
       res.status(500).json({ message: error.message || "Failed to process recurring tasks" });
     }
   });
@@ -1402,7 +1402,7 @@ export async function registerRoutes(
   // Dashboard summary: overdue + today's pending tasks
   app.get("/api/tasks/dashboard-summary", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const orgId = (req as any).organization!.id;
+      const orgId = req.organization!.id;
       
       // Get all pending/in_progress tasks
       const allTasks = await storage.getTasks(orgId);
@@ -1446,7 +1446,7 @@ export async function registerRoutes(
         dueTodayCount: dueToday.length,
       });
     } catch (error: any) {
-      console.error("Get dashboard tasks summary error:", error);
+      logger.error("Get dashboard tasks summary error", error instanceof Error ? error : undefined);
       res.status(500).json({ message: error.message || "Failed to fetch tasks summary" });
     }
   });

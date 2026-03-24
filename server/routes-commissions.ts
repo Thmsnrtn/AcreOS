@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * T145 — Commission Service Routes
  *
@@ -26,16 +25,11 @@ import {
 
 const router = Router();
 
-function getOrg(req: Request) {
-  const org = (req as any).organization;
-  if (!org) throw new Error("Organization not found");
-  return org;
-}
 
 // Get commission configuration
 router.get("/config", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const config = await getCommissionConfig(org.id);
     res.json({ config });
   } catch (err: any) {
@@ -46,7 +40,7 @@ router.get("/config", isAuthenticated, getOrCreateOrg, async (req: Request, res:
 // Update commission configuration
 router.put("/config", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const config = await saveCommissionConfig(org.id, req.body);
     res.json({ config });
   } catch (err: any) {
@@ -57,7 +51,7 @@ router.put("/config", isAuthenticated, getOrCreateOrg, async (req: Request, res:
 // List commission records
 router.get("/", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const filters: any = {};
     if (req.query.agentId) filters.agentId = req.query.agentId as string;
     if (req.query.dealId) filters.dealId = parseInt(req.query.dealId as string);
@@ -72,7 +66,7 @@ router.get("/", isAuthenticated, getOrCreateOrg, async (req: Request, res: Respo
 // Record deal commission
 router.post("/deal", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { dealId, agentId, dealAmount } = req.body;
     if (!dealId || !agentId || !dealAmount) {
       return res.status(400).json({ error: "dealId, agentId, and dealAmount are required" });
@@ -87,7 +81,7 @@ router.post("/deal", isAuthenticated, getOrCreateOrg, async (req: Request, res: 
 // Record commission payment
 router.post("/:id/payment", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const commissionId = parseInt(req.params.id);
     if (isNaN(commissionId)) return res.status(400).json({ error: "Invalid commission ID" });
     const { amount, method, notes } = req.body;
@@ -102,7 +96,7 @@ router.post("/:id/payment", isAuthenticated, getOrCreateOrg, async (req: Request
 // Agent commission summaries
 router.get("/agents", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const summaries = await getAgentCommissionSummaries(org.id);
     res.json({ summaries });
   } catch (err: any) {
@@ -113,7 +107,7 @@ router.get("/agents", isAuthenticated, getOrCreateOrg, async (req: Request, res:
 // Generate commission statement for an agent
 router.get("/statement/:agentId", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { agentId } = req.params;
     const from = req.query.from ? new Date(req.query.from as string) : undefined;
     const to = req.query.to ? new Date(req.query.to as string) : undefined;

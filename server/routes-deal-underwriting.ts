@@ -7,7 +7,7 @@ const svc = new DealUnderwritingService();
 // POST /api/deal-underwriting/analyze
 router.post("/analyze", async (req, res) => {
   try {
-    const org = (req as any).organization;
+    const org = req.organization;
     const results = await svc.analyzeScenarios(org.id, req.body);
     res.json({ results });
   } catch (e: any) {
@@ -18,7 +18,7 @@ router.post("/analyze", async (req, res) => {
 // GET /api/deal-underwriting/history
 router.get("/history", async (req, res) => {
   try {
-    const org = (req as any).organization;
+    const org = req.organization;
     const dealId = req.query.dealId ? parseInt(req.query.dealId as string) : undefined;
     const history = await svc.getUnderwritingHistory(org.id, dealId);
     res.json({ history });

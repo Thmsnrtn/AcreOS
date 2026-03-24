@@ -77,7 +77,7 @@ export function registerImportExportRoutes(app: Express): void {
 
   api.post("/api/import/:entityType", isAuthenticated, getOrCreateOrg, upload.single("file"), async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const entityType = req.params.entityType as "leads" | "properties" | "deals";
 
       if (!["leads", "properties", "deals"].includes(entityType)) {
@@ -149,7 +149,7 @@ export function registerImportExportRoutes(app: Express): void {
 
   api.post("/api/import/notes", isAuthenticated, getOrCreateOrg, upload.single("file"), async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
 
       if (!req.file) {
         return res.status(400).json({ message: "No file uploaded" });
@@ -206,7 +206,7 @@ export function registerImportExportRoutes(app: Express): void {
 
   api.get("/api/export/:entityType", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const entityType = req.params.entityType as "leads" | "properties" | "deals" | "notes";
       const format = (req.query.format as string) || "csv";
 
@@ -273,7 +273,7 @@ export function registerImportExportRoutes(app: Express): void {
 
   api.get("/api/export/backup", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const backup = await createBackupZip(org.id);
 
       const jsonResponse = {
@@ -307,7 +307,7 @@ export function registerImportExportRoutes(app: Express): void {
   // Audit Log (20.1)
   api.get("/api/audit-log", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const orgId = (req as any).organization!.id;
+      const orgId = req.organization!.id;
       
       const filters: {
         action?: string;
@@ -344,7 +344,7 @@ export function registerImportExportRoutes(app: Express): void {
   // TCPA Compliance (20.2)
   api.get("/api/compliance/tcpa/no-consent", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const orgId = (req as any).organization!.id;
+      const orgId = req.organization!.id;
       const leads = await storage.getLeadsWithoutConsent(orgId);
       res.json(leads);
     } catch (error: any) {
@@ -355,7 +355,7 @@ export function registerImportExportRoutes(app: Express): void {
 
   api.get("/api/compliance/tcpa/opted-out", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const orgId = (req as any).organization!.id;
+      const orgId = req.organization!.id;
       const leads = await storage.getLeadsOptedOut(orgId);
       res.json(leads);
     } catch (error: any) {
@@ -366,7 +366,7 @@ export function registerImportExportRoutes(app: Express): void {
 
   api.patch("/api/leads/:id/consent", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const orgId = (req as any).organization!.id;
+      const orgId = req.organization!.id;
       const userId = (req.user as any).id;
       const leadId = parseInt(req.params.id);
       const { tcpaConsent, consentSource, optOutReason } = req.body;
@@ -408,7 +408,7 @@ export function registerImportExportRoutes(app: Express): void {
   // Data Retention (20.3)
   api.get("/api/compliance/retention-policies", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization!;
+      const org = req.organization!;
       const policies = org.settings?.retentionPolicies || {
         leads: { enabled: false, retentionDays: 365 },
         closedDeals: { enabled: false, retentionDays: 2555 }, // 7 years for tax purposes
@@ -424,9 +424,9 @@ export function registerImportExportRoutes(app: Express): void {
 
   api.patch("/api/compliance/retention-policies", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const orgId = (req as any).organization!.id;
+      const orgId = req.organization!.id;
       const userId = (req.user as any).id;
-      const org = (req as any).organization!;
+      const org = req.organization!;
       const newPolicies = req.body;
       
       const updatedSettings = {
@@ -461,7 +461,7 @@ export function registerImportExportRoutes(app: Express): void {
 
   api.post("/api/compliance/purge-data", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const orgId = (req as any).organization!.id;
+      const orgId = req.organization!.id;
       const userId = (req.user as any).id;
       const { dataType, beforeDate } = req.body;
       
@@ -515,7 +515,7 @@ export function registerImportExportRoutes(app: Express): void {
   // TCPA stats endpoint
   api.get("/api/compliance/tcpa/stats", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const orgId = (req as any).organization!.id;
+      const orgId = req.organization!.id;
       
       const [noConsent, optedOut, allLeads] = await Promise.all([
         storage.getLeadsWithoutConsent(orgId),

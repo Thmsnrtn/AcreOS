@@ -1,20 +1,14 @@
-// @ts-nocheck
 import { Router, type Request, type Response } from 'express';
 import { complianceAI } from './services/complianceAI';
 import { storage } from './storage';
 
 const router = Router();
 
-function getOrg(req: Request) {
-  const org = (req as any).organization;
-  if (!org) throw new Error('Organization not found');
-  return org;
-}
 
 // GET /dashboard — full compliance dashboard for org
 router.get('/dashboard', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const dashboard = await complianceAI.getComplianceDashboard(org.id);
     res.json({ dashboard });
   } catch (err: any) {
@@ -25,7 +19,7 @@ router.get('/dashboard', async (req: Request, res: Response) => {
 // GET /alerts — all compliance alerts for org
 router.get('/alerts', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const alerts = await complianceAI.getAlertsForOrganization(org.id);
     res.json({ alerts });
   } catch (err: any) {
@@ -56,12 +50,12 @@ router.get('/properties/:id/check', async (req: Request, res: Response) => {
 // PATCH /alerts/:id/acknowledge
 router.patch('/alerts/:id/acknowledge', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const alertId = parseInt(req.params.id);
     await complianceAI.acknowledgeAlert(alertId);
 
     try {
-      const user = (req as any).user;
+      const user = req.user;
       await storage.createAuditLogEntry({
         organizationId: org.id,
         userId: (user?.claims?.sub || user?.id)?.toString() || null,
@@ -84,13 +78,13 @@ router.patch('/alerts/:id/acknowledge', async (req: Request, res: Response) => {
 // PATCH /alerts/:id/resolve
 router.patch('/alerts/:id/resolve', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const alertId = parseInt(req.params.id);
     const { resolution } = req.body;
     await complianceAI.resolveAlert(alertId, resolution);
 
     try {
-      const user = (req as any).user;
+      const user = req.user;
       await storage.createAuditLogEntry({
         organizationId: org.id,
         userId: (user?.claims?.sub || user?.id)?.toString() || null,
@@ -113,12 +107,12 @@ router.patch('/alerts/:id/resolve', async (req: Request, res: Response) => {
 // POST /disclosures — generate a required disclosure document
 router.post('/disclosures', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { propertyId, disclosureType } = req.body;
     const disclosure = await complianceAI.generateDisclosure(org.id, parseInt(propertyId), disclosureType);
 
     try {
-      const user = (req as any).user;
+      const user = req.user;
       await storage.createAuditLogEntry({
         organizationId: org.id,
         userId: (user?.claims?.sub || user?.id)?.toString() || null,
@@ -141,12 +135,12 @@ router.post('/disclosures', async (req: Request, res: Response) => {
 // POST /monitor — register a jurisdiction for ongoing compliance monitoring
 router.post('/monitor', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { state, county } = req.body;
     await complianceAI.monitorJurisdiction(org.id, state, county);
 
     try {
-      const user = (req as any).user;
+      const user = req.user;
       await storage.createAuditLogEntry({
         organizationId: org.id,
         userId: (user?.claims?.sub || user?.id)?.toString() || null,
@@ -183,7 +177,7 @@ router.post('/usury-check', async (req: Request, res: Response) => {
 router.get('/usury-audit', async (req: Request, res: Response) => {
   try {
     const { auditOrgUsury } = await import('./services/usury');
-    const org = getOrg(req);
+    const org = req.organization;
     const audit = await auditOrgUsury(org.id);
     res.json(audit);
   } catch (e: any) {

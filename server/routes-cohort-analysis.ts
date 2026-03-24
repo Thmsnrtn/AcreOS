@@ -10,7 +10,6 @@ import { buildCohortReport, type CohortSegment } from "./services/cohortAnalysis
 
 const router = Router();
 
-function getOrg(req: Request) { return (req as any).org; }
 
 const VALID_SEGMENTS: CohortSegment[] = [
   "source",
@@ -23,7 +22,7 @@ const VALID_SEGMENTS: CohortSegment[] = [
 
 router.get("/", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const segmentBy = (req.query.segmentBy as CohortSegment) ?? "source";
 
     if (!VALID_SEGMENTS.includes(segmentBy)) {

@@ -1,19 +1,13 @@
-// @ts-nocheck
 import { Router, type Request, type Response } from 'express';
 import { documentIntelligenceService } from './services/documentIntelligence';
 
 const router = Router();
 
-function getOrg(req: Request) {
-  const org = (req as any).organization;
-  if (!org) throw new Error('Organization not found');
-  return org;
-}
 
 // POST /upload — upload and process a document
 router.post('/upload', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { name, fileUrl, fileType, propertyId, dealId } = req.body;
     const doc = await documentIntelligenceService.uploadDocument({
       organizationId: org.id,
@@ -104,7 +98,7 @@ router.get('/deals/:id/documents', async (req: Request, res: Response) => {
 // POST /search — semantic document search
 router.post('/search', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { query, filters } = req.body;
     const results = await documentIntelligenceService.searchDocuments(org.id, query, filters);
     res.json({ results });

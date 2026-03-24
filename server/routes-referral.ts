@@ -64,7 +64,7 @@ export function registerReferralRoutes(app: Express): void {
       const userId = (req.user as any)?.id;
       if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
-      const org = (req as any).org;
+      const org = req.organization;
 
       const rows = await db
         .select()

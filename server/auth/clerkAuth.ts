@@ -81,6 +81,6 @@ export const requireFounder: RequestHandler = (req, res, next) => {
     return res.status(404).json({ message: "Not found" });
   }
 
-  (req as any).isFounder = true;
+  req.isFounder = true;
   next();
 };

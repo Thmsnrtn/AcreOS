@@ -4,6 +4,7 @@ import { creditService } from './services/credits';
 import { CreditPackId, stripeProcessedEvents } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import Stripe from 'stripe';
+import { logger } from './utils/logger';
 
 export class WebhookHandlers {
   /**
@@ -50,7 +51,7 @@ export class WebhookHandlers {
       }).onConflictDoNothing();
     } catch (err) {
       // Non-fatal — log and continue
-      console.warn(`[webhook] Failed to record processed event ${eventId}:`, err);
+      logger.warn(`[webhook] Failed to record processed event ${eventId}`, err instanceof Error ? err : undefined);
     }
   }
 
@@ -69,7 +70,7 @@ export class WebhookHandlers {
 
     // Idempotency: skip already-processed events
     if (await WebhookHandlers.isDuplicate(event.id)) {
-      console.log(`[webhook] Skipping duplicate event: ${event.id} (${event.type})`);
+      logger.info(`[webhook] Skipping duplicate event: ${event.id} (${event.type})`);
       return;
     }
 
@@ -167,7 +168,7 @@ export class WebhookHandlers {
     }
 
     // Unhandled event type — log and acknowledge
-    console.log(`[webhook] Unhandled Stripe event type: ${event.type}`);
+    logger.info(`[webhook] Unhandled Stripe event type: ${event.type}`);
     await WebhookHandlers.markProcessed(event.id, event.type);
   }
 
@@ -183,7 +184,7 @@ export class WebhookHandlers {
         : null;
 
       if (!organizationId) {
-        console.warn('[webhook] subscription checkout missing organizationId metadata');
+        logger.warn('[webhook] subscription checkout missing organizationId metadata');
         return;
       }
 
@@ -199,7 +200,7 @@ export class WebhookHandlers {
         trialUsed: true, // Mark here, not at checkout creation — abandoned checkouts must not consume the trial
       });
 
-      console.log(`[webhook] Subscription checkout completed: Org ${organizationId}, sub ${subscriptionId}`);
+      logger.info(`[webhook] Subscription checkout completed: Org ${organizationId}, sub ${subscriptionId}`);
 
       // Send subscription welcome email
       try {
@@ -235,14 +236,14 @@ export class WebhookHandlers {
               `,
               text: `Welcome to AcreOS ${tierName}!\n\nYour plan includes:\n- Leads: ${limits.leads}\n- Properties: ${limits.properties}\n- AI Requests: ${limits.ai}\n\nGo to your dashboard: ${process.env.APP_URL || 'https://app.acreos.com'}`,
             });
-            console.log(`[webhook] Welcome email sent to ${userEmail} for ${tierName} plan`);
+            logger.info(`[webhook] Welcome email sent to ${userEmail} for ${tierName} plan`);
           }
         }
       } catch (emailErr) {
-        console.warn('[webhook] Could not send subscription welcome email (email service may not be configured):', emailErr);
+        logger.warn('[webhook] Could not send subscription welcome email (email service may not be configured)', emailErr instanceof Error ? emailErr : undefined);
       }
     } catch (err) {
-      console.error('[webhook] Error processing subscription checkout:', err);
+      logger.error('[webhook] Error processing subscription checkout', err instanceof Error ? err : undefined);
     }
   }
 
@@ -253,14 +254,14 @@ export class WebhookHandlers {
         : invoice.customer?.id;
       
       if (!customerId) {
-        console.error('No customer ID on failed invoice');
+        logger.error('No customer ID on failed invoice');
         return;
       }
 
       // Find org by stripe customer ID
       const org = await storage.getOrganizationByStripeCustomerId(customerId);
       if (!org) {
-        console.log(`No organization found for Stripe customer: ${customerId}`);
+        logger.info(`No organization found for Stripe customer: ${customerId}`);
         return;
       }
 
@@ -277,9 +278,9 @@ export class WebhookHandlers {
         invoice.attempt_count || 1
       );
 
-      console.log(`Payment failed processed: Org ${org.id}, Invoice ${invoice.id}, Amount: $${invoice.amount_due / 100}`);
+      logger.info(`Payment failed processed: Org ${org.id}, Invoice ${invoice.id}, Amount: $${invoice.amount_due / 100}`);
     } catch (err) {
-      console.error('Error processing payment failed:', err);
+      logger.error('Error processing payment failed', err instanceof Error ? err : undefined);
     }
   }
 
@@ -307,10 +308,10 @@ export class WebhookHandlers {
           invoice.amount_paid
         );
 
-        console.log(`Payment succeeded, dunning resolved: Org ${org.id}, Amount: $${invoice.amount_paid / 100}`);
+        logger.info(`Payment succeeded, dunning resolved: Org ${org.id}, Amount: $${invoice.amount_paid / 100}`);
       }
     } catch (err) {
-      console.error('Error processing payment succeeded:', err);
+      logger.error('Error processing payment succeeded', err instanceof Error ? err : undefined);
     }
   }
 
@@ -343,9 +344,9 @@ export class WebhookHandlers {
         toTier: null,
       });
 
-      console.log(`Subscription cancelled: Org ${org.id}`);
+      logger.info(`Subscription cancelled: Org ${org.id}`);
     } catch (err) {
-      console.error('Error processing subscription cancelled:', err);
+      logger.error('Error processing subscription cancelled', err instanceof Error ? err : undefined);
     }
   }
 
@@ -406,7 +407,7 @@ export class WebhookHandlers {
       }
 
       await storage.updateOrganization(org.id, updates);
-      console.log(`[webhook] Subscription updated: Org ${org.id}, Status: ${subscription.status}${newTier ? `, Tier: ${newTier}` : ''}`);
+      logger.info(`[webhook] Subscription updated: Org ${org.id}, Status: ${subscription.status}${newTier ? `, Tier: ${newTier}` : ''}`);
 
       // Founder notification: new paid signup or upgrade
       if (newTier && newTier !== 'free' && subscription.status === 'active') {
@@ -426,7 +427,7 @@ export class WebhookHandlers {
         }
       }
     } catch (err) {
-      console.error('Error processing subscription updated:', err);
+      logger.error('Error processing subscription updated', err instanceof Error ? err : undefined);
     }
   }
 
@@ -457,9 +458,9 @@ export class WebhookHandlers {
         },
       });
 
-      console.log(`[webhook] Trial ending soon alert created: Org ${org.id}`);
+      logger.info(`[webhook] Trial ending soon alert created: Org ${org.id}`);
     } catch (err) {
-      console.error('Error processing trial_will_end:', err);
+      logger.error('Error processing trial_will_end', err instanceof Error ? err : undefined);
     }
   }
 
@@ -485,9 +486,9 @@ export class WebhookHandlers {
         toTier: null,
       });
 
-      console.log(`[webhook] Subscription paused: Org ${org.id}`);
+      logger.info(`[webhook] Subscription paused: Org ${org.id}`);
     } catch (err) {
-      console.error('Error processing subscription paused:', err);
+      logger.error('Error processing subscription paused', err instanceof Error ? err : undefined);
     }
   }
 
@@ -513,9 +514,9 @@ export class WebhookHandlers {
         toTier: null,
       });
 
-      console.log(`[webhook] Subscription resumed: Org ${org.id}`);
+      logger.info(`[webhook] Subscription resumed: Org ${org.id}`);
     } catch (err) {
-      console.error('Error processing subscription resumed:', err);
+      logger.error('Error processing subscription resumed', err instanceof Error ? err : undefined);
     }
   }
 
@@ -543,10 +544,10 @@ export class WebhookHandlers {
           invoice.amount_paid
         );
 
-        console.log(`[webhook] Invoice paid, dunning resolved: Org ${org.id}, Amount: $${invoice.amount_paid / 100}`);
+        logger.info(`[webhook] Invoice paid, dunning resolved: Org ${org.id}, Amount: $${invoice.amount_paid / 100}`);
       }
     } catch (err) {
-      console.error('Error processing invoice paid:', err);
+      logger.error('Error processing invoice paid', err instanceof Error ? err : undefined);
     }
   }
 
@@ -555,7 +556,7 @@ export class WebhookHandlers {
       const { organizationId, packId } = session.metadata || {};
       
       if (!organizationId || !packId) {
-        console.error('Missing organizationId or packId in credit purchase session metadata');
+        logger.error('Missing organizationId or packId in credit purchase session metadata');
         return;
       }
 
@@ -571,9 +572,9 @@ export class WebhookHandlers {
         paymentIntentId
       );
 
-      console.log(`Credit purchase processed: Org ${orgId}, Pack ${packId}, Credits added: ${transaction.amountCents} cents`);
+      logger.info(`Credit purchase processed: Org ${orgId}, Pack ${packId}, Credits added: ${transaction.amountCents} cents`);
     } catch (err) {
-      console.error('Error processing credit purchase:', err);
+      logger.error('Error processing credit purchase', err instanceof Error ? err : undefined);
       throw err;
     }
   }
@@ -583,27 +584,27 @@ export class WebhookHandlers {
       const { noteId, accessToken, paymentAmount } = session.metadata || {};
       
       if (!noteId || !accessToken) {
-        console.error('Missing noteId or accessToken in session metadata');
+        logger.error('Missing noteId or accessToken in session metadata');
         return;
       }
 
       const note = await storage.getNoteByAccessToken(accessToken);
       if (!note) {
-        console.error(`Note not found for accessToken: ${accessToken}`);
+        logger.error(`Note not found for accessToken: ${accessToken}`);
         return;
       }
 
       // Security: Verify the session ID matches what was stored when payment was initiated
       // This prevents replay attacks and ensures payment was actually created for this note
       if (note.pendingCheckoutSessionId !== session.id) {
-        console.error(`Session ID mismatch for note ${note.id}. Expected: ${note.pendingCheckoutSessionId}, Got: ${session.id}`);
+        logger.error(`Session ID mismatch for note ${note.id}. Expected: ${note.pendingCheckoutSessionId}, Got: ${session.id}`);
         return;
       }
 
       const existingPayments = await storage.getPayments(note.organizationId, note.id);
       const alreadyRecorded = existingPayments.some(p => p.transactionId === session.id);
       if (alreadyRecorded) {
-        console.log(`Payment already recorded for session: ${session.id}`);
+        logger.info(`Payment already recorded for session: ${session.id}`);
         return;
       }
 
@@ -663,7 +664,7 @@ export class WebhookHandlers {
         pendingCheckoutSessionId: null, // Clear after successful payment
       });
 
-      console.log(`Borrower portal payment processed: Note ${note.id}, Amount: $${amount}, New Balance: $${newBalance}`);
+      logger.info(`Borrower portal payment processed: Note ${note.id}, Amount: $${amount}, New Balance: $${newBalance}`);
 
       // Send payment receipt email to borrower
       try {
@@ -688,13 +689,13 @@ export class WebhookHandlers {
             `,
             text: `Payment Receipt\n\nAmount Paid: $${amount.toFixed(2)}\nPayment Date: ${new Date().toLocaleDateString()}\nRemaining Balance: $${newBalance.toFixed(2)}\nNext Payment Due: ${newBalance <= 0 ? 'Paid in full!' : nextDue}`,
           });
-          console.log(`[webhook] Payment receipt sent to ${borrowerEmail}`);
+          logger.info(`[webhook] Payment receipt sent to ${borrowerEmail}`);
         }
       } catch (emailErr) {
-        console.warn('[webhook] Could not send payment receipt email:', emailErr);
+        logger.warn('[webhook] Could not send payment receipt email', emailErr instanceof Error ? emailErr : undefined);
       }
     } catch (err) {
-      console.error('Error processing borrower portal payment:', err);
+      logger.error('Error processing borrower portal payment', err instanceof Error ? err : undefined);
       throw err;
     }
   }

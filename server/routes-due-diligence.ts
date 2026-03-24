@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * T148 — Due Diligence Pods Routes
  *
@@ -27,7 +26,7 @@ const router = Router();
 // Request a full due diligence dossier
 router.post("/request/:propertyId", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const org = (req as any).organization;
+    const org = req.organization;
     const propertyId = parseInt(req.params.propertyId);
     if (isNaN(propertyId)) return res.status(400).json({ error: "Invalid property ID" });
     const dossier = await dueDiligencePodService.requestDossier(org.id, propertyId, req.body);
@@ -53,7 +52,7 @@ router.get("/dossier/:id", isAuthenticated, async (req: Request, res: Response) 
 // Get all dossiers for a property
 router.get("/property/:propertyId", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const org = (req as any).organization;
+    const org = req.organization;
     const propertyId = parseInt(req.params.propertyId);
     if (isNaN(propertyId)) return res.status(400).json({ error: "Invalid property ID" });
     const dossiers = await dueDiligencePodService.getPropertyDossiers(org.id, propertyId);

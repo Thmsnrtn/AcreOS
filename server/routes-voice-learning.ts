@@ -4,11 +4,6 @@ import { contextProfileService } from './services/contextProfile';
 
 const router = Router();
 
-function getOrg(req: Request) {
-  const org = (req as any).organization;
-  if (!org) throw new Error('Organization not found');
-  return org;
-}
 
 // ============================
 // VOICE LEARNING
@@ -21,7 +16,7 @@ function getOrg(req: Request) {
  */
 router.get('/voice-profile', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const profile = await voiceLearningService.getProfile(org.id);
     res.json({ profile });
   } catch (err: any) {
@@ -36,7 +31,7 @@ router.get('/voice-profile', async (req: Request, res: Response) => {
  */
 router.post('/voice-profile/refresh', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     voiceLearningService.invalidateProfile(org.id);
     const profile = await voiceLearningService.buildProfile(org.id);
     res.json({ profile, refreshed: true });
@@ -52,7 +47,7 @@ router.post('/voice-profile/refresh', async (req: Request, res: Response) => {
  */
 router.post('/voice-profile/apply', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { text } = req.body;
 
     if (!text || typeof text !== 'string') {
@@ -73,7 +68,7 @@ router.post('/voice-profile/apply', async (req: Request, res: Response) => {
  */
 router.get('/voice-profile/style-instruction', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const profile = await voiceLearningService.getProfile(org.id);
     const instruction = voiceLearningService.buildStyleInstruction(profile);
     res.json({ instruction, profile });
@@ -92,7 +87,7 @@ router.get('/voice-profile/style-instruction', async (req: Request, res: Respons
  */
 router.get('/context-profile', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const profile = await contextProfileService.getProfile(org.id);
     res.json({ profile });
   } catch (err: any) {
@@ -106,7 +101,7 @@ router.get('/context-profile', async (req: Request, res: Response) => {
  */
 router.post('/context-profile/refresh', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     contextProfileService.invalidate(org.id);
     const profile = await contextProfileService.buildProfile(org.id);
     res.json({ profile, refreshed: true });

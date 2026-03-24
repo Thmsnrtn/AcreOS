@@ -19,20 +19,15 @@ import { portfolioSentinelService } from "./services/portfolioSentinel";
 
 const router = Router();
 
-function getOrg(req: Request) {
-  const org = (req as any).organization;
-  if (!org) throw new Error("Organization not found");
-  return org;
-}
 
 function getUser(req: Request) {
-  return (req as any).user;
+  return req.user;
 }
 
 // Get all active alerts for the organization
 router.get("/alerts", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const filters: any = {};
     if (req.query.severity) filters.severity = req.query.severity;
     if (req.query.alertType) filters.alertType = req.query.alertType;
@@ -47,7 +42,7 @@ router.get("/alerts", isAuthenticated, getOrCreateOrg, async (req: Request, res:
 // Alert summary narrative
 router.get("/alerts/summary", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const summary = await portfolioSentinelService.generateAlertSummary(org.id);
     res.json({ summary });
   } catch (err: any) {
@@ -58,7 +53,7 @@ router.get("/alerts/summary", isAuthenticated, getOrCreateOrg, async (req: Reque
 // Monitor a single property
 router.get("/property/:id", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const propertyId = parseInt(req.params.id);
     if (isNaN(propertyId)) return res.status(400).json({ error: "Invalid property ID" });
     const result = await portfolioSentinelService.monitorProperty(org.id, propertyId);
@@ -71,7 +66,7 @@ router.get("/property/:id", isAuthenticated, getOrCreateOrg, async (req: Request
 // Get alerts for a specific property
 router.get("/property/:id/alerts", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const propertyId = parseInt(req.params.id);
     if (isNaN(propertyId)) return res.status(400).json({ error: "Invalid property ID" });
     const alerts = await portfolioSentinelService.getPropertyAlerts(org.id, propertyId);
@@ -84,7 +79,7 @@ router.get("/property/:id/alerts", isAuthenticated, getOrCreateOrg, async (req: 
 // Run full portfolio monitor
 router.post("/monitor", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const results = await portfolioSentinelService.monitorPortfolio(org.id);
     res.json({ results });
   } catch (err: any) {

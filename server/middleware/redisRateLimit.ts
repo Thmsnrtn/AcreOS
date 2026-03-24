@@ -141,9 +141,9 @@ const API_KEY_TIERS: Record<
 export function createOrgRateLimit(redisClient: any) {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const orgId = (req as any).orgId || (req as any).user?.organizationId;
-      const tier = (req as any).org?.subscriptionTier || "free";
-      const isFounder = (req as any).org?.isFounder;
+      const orgId = req.organizationId || req.user?.organizationId;
+      const tier = req.organization?.subscriptionTier || "free";
+      const isFounder = req.organization?.isFounder;
 
       if (!orgId || isFounder) {
         // Not authenticated or founder bypass — skip rate limiting
@@ -257,9 +257,9 @@ export function createApiKeyRateLimit(redisClient: any) {
  */
 export function createAIRateLimit(redisClient: any) {
   return async (req: Request, res: Response, next: NextFunction) => {
-    const orgId = (req as any).orgId;
-    const isFounder = (req as any).org?.isFounder;
-    const tier = (req as any).org?.subscriptionTier || "free";
+    const orgId = req.organizationId;
+    const isFounder = req.organization?.isFounder;
+    const tier = req.organization?.subscriptionTier || "free";
 
     if (!orgId || isFounder) return next();
 
@@ -347,7 +347,7 @@ export function createIpRateLimit(
  */
 export function createWebhookRateLimit(redisClient: any) {
   return async (req: Request, res: Response, next: NextFunction) => {
-    const orgId = (req as any).orgId;
+    const orgId = req.organizationId;
     if (!orgId) return next();
 
     const result = await checkRateLimit(redisClient, `org:${orgId}:webhook`, {

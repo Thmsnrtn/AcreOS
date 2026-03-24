@@ -23,7 +23,7 @@ function isFounderEmail(email: string | undefined): boolean {
 
 /**
  * Middleware to get or create an organization for the authenticated user.
- * Attaches `(req as any).organization` for downstream handlers.
+ * Attaches `req.organization` and `req.organizationId` for downstream handlers.
  *
  * Must be placed AFTER `isAuthenticated` in the middleware chain.
  */
@@ -100,8 +100,10 @@ export async function getOrCreateOrg(req: Request, res: Response, next: NextFunc
     logger.info(`Founder organization upgraded to enterprise`, { source: "getOrCreateOrg", metadata: { email: userEmail } });
   }
 
-  // Set both `.org` (used by most route files) and `.organization` (legacy alias in routes.ts)
+  // Set typed properties on the request
+  req.organization = org;
+  req.organizationId = org.id;
+  // Legacy alias — will be removed once all route files use AuthenticatedRequest
   (req as any).org = org;
-  (req as any).organization = org;
   next();
 }

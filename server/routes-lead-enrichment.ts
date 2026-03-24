@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * T187 — Lead Enrichment Routes
  *
@@ -16,14 +15,11 @@ import { eq, and } from "drizzle-orm";
 
 const router = Router();
 
-function getOrg(req: Request) {
-  return (req as any).org;
-}
 
 // POST /api/leads/:id/enrich — enrich a single lead
 router.post("/:id/enrich", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const leadId = parseInt(req.params.id);
     if (isNaN(leadId)) return res.status(400).json({ error: "Invalid lead ID" });
 
@@ -37,7 +33,7 @@ router.post("/:id/enrich", async (req: Request, res: Response) => {
 // POST /api/leads/bulk-enrich — enrich multiple leads
 router.post("/bulk-enrich", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { leadIds } = req.body;
 
     if (!Array.isArray(leadIds) || leadIds.length === 0) {
@@ -61,7 +57,7 @@ router.post("/bulk-enrich", async (req: Request, res: Response) => {
 // GET /api/leads/:id/completeness — contact completeness score
 router.get("/:id/completeness", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const leadId = parseInt(req.params.id);
     if (isNaN(leadId)) return res.status(400).json({ error: "Invalid lead ID" });
 

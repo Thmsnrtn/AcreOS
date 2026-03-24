@@ -21,12 +21,7 @@ import {
   recordCommissionPayment,
   generateCommissionStatement,
 } from "./services/commissionService";
-
-const logger = {
-  info: (msg: string, meta?: Record<string, any>) => console.log(JSON.stringify({ level: 'INFO', timestamp: new Date().toISOString(), message: msg, ...meta })),
-  warn: (msg: string, meta?: Record<string, any>) => console.warn(JSON.stringify({ level: 'WARN', timestamp: new Date().toISOString(), message: msg, ...meta })),
-  error: (msg: string, meta?: Record<string, any>) => console.error(JSON.stringify({ level: 'ERROR', timestamp: new Date().toISOString(), message: msg, ...meta })),
-};
+import { logger } from "./utils/logger";
 
 export function registerOrganizationRoutes(app: Express): void {
   const api = app;
@@ -93,7 +88,7 @@ export function registerOrganizationRoutes(app: Express): void {
   // GET /api/playbooks - List available playbook templates with user's active instances
   api.get("/api/playbooks", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       
       // Get all playbook instances for this organization
       const instances = await storage.getPlaybookInstances(org.id);
@@ -123,7 +118,7 @@ export function registerOrganizationRoutes(app: Express): void {
   api.get("/api/playbooks/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { id } = req.params;
-      const org = (req as any).organization;
+      const org = req.organization;
       
       const template = PLAYBOOK_TEMPLATES_DATA.find(t => t.id === id);
       if (!template) {
@@ -147,7 +142,7 @@ export function registerOrganizationRoutes(app: Express): void {
   api.post("/api/playbooks/:id/start", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { id } = req.params;
-      const org = (req as any).organization;
+      const org = req.organization;
       const { linkedDealId, linkedPropertyId, linkedLeadId } = req.body;
       
       const template = PLAYBOOK_TEMPLATES_DATA.find(t => t.id === id);
@@ -195,7 +190,7 @@ export function registerOrganizationRoutes(app: Express): void {
   api.get("/api/playbooks/instances/:instanceId", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { instanceId } = req.params;
-      const org = (req as any).organization;
+      const org = req.organization;
       
       const instance = await storage.getPlaybookInstanceById(org.id, parseInt(instanceId));
       if (!instance) {
@@ -218,7 +213,7 @@ export function registerOrganizationRoutes(app: Express): void {
   api.post("/api/playbooks/instances/:instanceId/steps/:stepId/complete", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { instanceId, stepId } = req.params;
-      const org = (req as any).organization;
+      const org = req.organization;
       
       const instance = await storage.getPlaybookInstanceById(org.id, parseInt(instanceId));
       if (!instance) {
@@ -281,7 +276,7 @@ export function registerOrganizationRoutes(app: Express): void {
   api.post("/api/playbooks/instances/:instanceId/steps/:stepId/uncomplete", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { instanceId, stepId } = req.params;
-      const org = (req as any).organization;
+      const org = req.organization;
       
       const instance = await storage.getPlaybookInstanceById(org.id, parseInt(instanceId));
       if (!instance) {
@@ -308,7 +303,7 @@ export function registerOrganizationRoutes(app: Express): void {
   api.delete("/api/playbooks/instances/:instanceId", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { instanceId } = req.params;
-      const org = (req as any).organization;
+      const org = req.organization;
       
       await storage.deletePlaybookInstance(org.id, parseInt(instanceId));
       
@@ -324,12 +319,12 @@ export function registerOrganizationRoutes(app: Express): void {
   // ============================================
   
   api.get("/api/organization", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     res.json(org);
   });
   
   api.patch("/api/organization", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const updates = req.body;
     const updated = await storage.updateOrganization(org.id, updates);
 
@@ -354,7 +349,7 @@ export function registerOrganizationRoutes(app: Express): void {
   // Update AI settings for the organization
   api.patch("/api/organization/ai-settings", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const aiSettings = req.body;
 
       const aiSettingsSchema = z.object({
@@ -384,7 +379,7 @@ export function registerOrganizationRoutes(app: Express): void {
 
       res.json({ success: true });
     } catch (error: any) {
-      console.error("Update AI settings error:", error);
+      logger.error("Update AI settings error", error instanceof Error ? error : undefined);
       res.status(400).json({ message: error.message || "Failed to update AI settings" });
     }
   });
@@ -418,7 +413,7 @@ export function registerOrganizationRoutes(app: Express): void {
         },
       });
     } catch (error: any) {
-      console.error("Get provider status error:", error);
+      logger.error("Get provider status error", error instanceof Error ? error : undefined);
       res.status(500).json({ message: error.message || "Failed to get provider status" });
     }
   });
@@ -426,12 +421,12 @@ export function registerOrganizationRoutes(app: Express): void {
   // Get seat information for the organization
   api.get("/api/organization/seats", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { getSeatInfo } = await import("./services/usageLimits");
       const seatInfo = await getSeatInfo(org.id);
       res.json(seatInfo);
     } catch (error: any) {
-      console.error("Get seat info error:", error);
+      logger.error("Get seat info error", error instanceof Error ? error : undefined);
       res.status(500).json({ message: error.message || "Failed to fetch seat info" });
     }
   });
@@ -439,7 +434,7 @@ export function registerOrganizationRoutes(app: Express): void {
   // Get seat add-on pricing for the organization's tier
   api.get("/api/organization/seats/pricing", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const tier = org.subscriptionTier || "free";
       
       if (tier === "free" || tier === "enterprise") {
@@ -476,7 +471,7 @@ export function registerOrganizationRoutes(app: Express): void {
         } : null,
       });
     } catch (error: any) {
-      console.error("Get seat pricing error:", error);
+      logger.error("Get seat pricing error", error instanceof Error ? error : undefined);
       res.status(500).json({ message: error.message || "Failed to fetch seat pricing" });
     }
   });
@@ -484,7 +479,7 @@ export function registerOrganizationRoutes(app: Express): void {
   // Purchase additional seats
   api.post("/api/organization/seats/purchase", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { quantity, billingPeriod } = req.body;
       
       if (!quantity || quantity < 1) {
@@ -545,10 +540,10 @@ export function registerOrganizationRoutes(app: Express): void {
         },
       });
       
-      console.log(`[seats] Org ${org.id} initiating seat purchase: ${quantity} seats, ${billingPeriod}, price ${validPrice.id}`);
+      logger.info(`[seats] Org ${org.id} initiating seat purchase: ${quantity} seats, ${billingPeriod}, price ${validPrice.id}`);
       res.json({ url: session.url });
     } catch (error: any) {
-      console.error("Purchase seats error:", error);
+      logger.error("Purchase seats error", error instanceof Error ? error : undefined);
       res.status(500).json({ message: error.message || "Failed to create checkout session" });
     }
   });
@@ -559,7 +554,7 @@ export function registerOrganizationRoutes(app: Express): void {
   
   api.get("/api/onboarding/status", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const status = await onboardingService.getOnboardingStatus(org.id);
       res.json(status);
     } catch (error: any) {
@@ -569,7 +564,7 @@ export function registerOrganizationRoutes(app: Express): void {
   
   api.put("/api/onboarding/step", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { step, data, skipped } = req.body;
       
       if (typeof step !== "number" || step < 0 || step > 4) {
@@ -590,7 +585,7 @@ export function registerOrganizationRoutes(app: Express): void {
   
   api.post("/api/onboarding/complete-step", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { stepId, data } = req.body;
       
       if (typeof stepId !== "number" || stepId < 0 || stepId > 5) {
@@ -612,7 +607,7 @@ export function registerOrganizationRoutes(app: Express): void {
   
   api.post("/api/onboarding/provision", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { businessType } = req.body;
       
       if (!["land_flipper", "note_investor", "hybrid"].includes(businessType)) {
@@ -628,7 +623,7 @@ export function registerOrganizationRoutes(app: Express): void {
   
   api.post("/api/onboarding/complete", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       await onboardingService.completeOnboarding(org.id);
       res.json({ success: true });
     } catch (error: any) {
@@ -638,7 +633,7 @@ export function registerOrganizationRoutes(app: Express): void {
   
   api.post("/api/onboarding/tips", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { step } = req.body;
       
       const stepNumber = typeof step === "number" ? step : 0;
@@ -651,7 +646,7 @@ export function registerOrganizationRoutes(app: Express): void {
   
   api.post("/api/onboarding/reset", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       await onboardingService.resetOnboarding(org.id);
       res.json({ success: true });
     } catch (error: any) {
@@ -661,7 +656,7 @@ export function registerOrganizationRoutes(app: Express): void {
   
   api.post("/api/onboarding/sample-data", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const result = await onboardingService.generateSampleData(org.id);
       res.json(result);
     } catch (error: any) {
@@ -671,7 +666,7 @@ export function registerOrganizationRoutes(app: Express): void {
   
   api.delete("/api/onboarding/sample-data", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const result = await onboardingService.clearSampleData(org.id);
       res.json(result);
     } catch (error: any) {
@@ -684,7 +679,7 @@ export function registerOrganizationRoutes(app: Express): void {
   });
   
   api.get("/api/usage", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const usage = await getAllUsageLimits(org.id);
     res.json(usage);
   });
@@ -698,13 +693,13 @@ export function registerOrganizationRoutes(app: Express): void {
   // ============================================
   
   api.get("/api/team", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const members = await storage.getTeamMembers(org.id);
     res.json(members);
   });
   
   api.get("/api/me/permissions", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const context = await getUserPermissionContext(req.user, org);
     if (!context) {
       return res.status(403).json({ message: "You are not a member of this organization" });
@@ -719,10 +714,10 @@ export function registerOrganizationRoutes(app: Express): void {
   });
   
   api.patch("/api/team/:id/role", isAuthenticated, getOrCreateOrg, requireAdminOrAbove(), async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const memberId = Number(req.params.id);
     const { role } = req.body;
-    const context = (req as any).permissionContext as UserPermissionContext;
+    const context = req.permissionContext as UserPermissionContext;
 
     if (!ROLES.includes(role)) {
       return res.status(400).json({ message: `Invalid role. Must be one of: ${ROLES.join(", ")}` });
@@ -777,7 +772,7 @@ export function registerOrganizationRoutes(app: Express): void {
   
   api.get("/api/team/performance", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const periodDays = Math.min(parseInt(req.query.period as string) || 30, 90);
       const cacheKey = `${org.id}-${periodDays}`;
       
@@ -883,7 +878,7 @@ export function registerOrganizationRoutes(app: Express): void {
       
       res.json(responseData);
     } catch (error: any) {
-      console.error("Team performance error:", error);
+      logger.error("Team performance error", error instanceof Error ? error : undefined);
       res.status(500).json({ message: error.message || "Failed to fetch team performance" });
     }
   });
@@ -894,7 +889,7 @@ export function registerOrganizationRoutes(app: Express): void {
   
   api.get("/api/recent-items", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const limit = 5;
       
       const [recentLeads, recentProperties, recentDeals] = await Promise.all([
@@ -933,7 +928,7 @@ export function registerOrganizationRoutes(app: Express): void {
         deals: recentDeals,
       });
     } catch (err) {
-      console.error("Recent items fetch error:", err);
+      logger.error("Recent items fetch error", err instanceof Error ? err : undefined);
       res.status(500).json({ message: "Failed to fetch recent items" });
     }
   });
@@ -942,7 +937,7 @@ export function registerOrganizationRoutes(app: Express): void {
   // Used by feature-hints and other UI toggles (showTips, checklistDismissed…)
   api.patch("/api/organization/settings", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const allowed = z.object({
         showTips: z.boolean().optional(),
         checklistDismissed: z.boolean().optional(),
@@ -992,8 +987,8 @@ export function registerOrganizationRoutes(app: Express): void {
   // Subscribe — store endpoint + keys
   api.post("/api/push/subscribe", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
-      const user = (req as any).user;
+      const org = req.organization;
+      const user = req.user;
       const userId = user?.claims?.sub ?? user?.id ?? "unknown";
       const { endpoint, keys } = req.body;
       if (!endpoint || !keys?.p256dh || !keys?.auth) {
@@ -1030,7 +1025,7 @@ export function registerOrganizationRoutes(app: Express): void {
   // GET /api/commissions/config — get tier configuration
   api.get("/api/commissions/config", isAuthenticated, getOrCreateOrg, requireAdminOrAbove, async (req, res) => {
     try {
-      const config = await getCommissionConfig((req as any).org.id);
+      const config = await getCommissionConfig(req.organization.id);
       res.json(config);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -1040,7 +1035,7 @@ export function registerOrganizationRoutes(app: Express): void {
   // PUT /api/commissions/config — save tier configuration
   api.put("/api/commissions/config", isAuthenticated, getOrCreateOrg, requireAdminOrAbove, async (req, res) => {
     try {
-      await saveCommissionConfig((req as any).org.id, req.body);
+      await saveCommissionConfig(req.organization.id, req.body);
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -1051,7 +1046,7 @@ export function registerOrganizationRoutes(app: Express): void {
   api.get("/api/commissions/summaries", isAuthenticated, getOrCreateOrg, requireAdminOrAbove, async (req, res) => {
     try {
       const year = parseInt(req.query.year as string) || new Date().getFullYear();
-      const summaries = await getAgentCommissionSummaries((req as any).org.id, year);
+      const summaries = await getAgentCommissionSummaries(req.organization.id, year);
       res.json(summaries);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -1062,7 +1057,7 @@ export function registerOrganizationRoutes(app: Express): void {
   api.get("/api/commissions", isAuthenticated, getOrCreateOrg, requireAdminOrAbove, async (req, res) => {
     try {
       const { teamMemberId, dealId, status, fromDate, toDate } = req.query;
-      const records = await getCommissionRecords((req as any).org.id, {
+      const records = await getCommissionRecords(req.organization.id, {
         teamMemberId: teamMemberId ? parseInt(teamMemberId as string) : undefined,
         dealId: dealId ? parseInt(dealId as string) : undefined,
         status: status as any,
@@ -1083,7 +1078,7 @@ export function registerOrganizationRoutes(app: Express): void {
         return res.status(400).json({ message: "teamMemberId, dealId, and salePriceCents are required" });
       }
       const record = await recordDealCommission(
-        (req as any).org.id,
+        req.organization.id,
         teamMemberId,
         dealId,
         salePriceCents,
@@ -1103,7 +1098,7 @@ export function registerOrganizationRoutes(app: Express): void {
         return res.status(400).json({ message: "paidCents must be a positive number" });
       }
       const updated = await recordCommissionPayment(
-        (req as any).org.id,
+        req.organization.id,
         req.params.id,
         paidCents
       );
@@ -1117,11 +1112,11 @@ export function registerOrganizationRoutes(app: Express): void {
   api.get("/api/commissions/statement/:teamMemberId", isAuthenticated, getOrCreateOrg, requireAdminOrAbove, async (req, res) => {
     try {
       const year = parseInt(req.query.year as string) || new Date().getFullYear();
-      const summaries = await getAgentCommissionSummaries((req as any).org.id, year);
+      const summaries = await getAgentCommissionSummaries(req.organization.id, year);
       const summary = summaries.find(s => s.teamMemberId === parseInt(req.params.teamMemberId));
       if (!summary) return res.status(404).json({ message: "Team member not found" });
 
-      const org = (req as any).org;
+      const org = req.organization;
       const statement = generateCommissionStatement(summary, org.name || "Organization", year);
 
       res.setHeader("Content-Type", "text/plain");

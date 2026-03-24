@@ -20,9 +20,6 @@ import { eq, and, inArray } from "drizzle-orm";
 const router = Router();
 const MAX_BATCH = 100;
 
-function getOrg(req: Request) {
-  return (req as any).organization;
-}
 
 function validateIds(ids: any[]): number[] {
   if (!Array.isArray(ids) || ids.length === 0) {
@@ -42,7 +39,7 @@ function validateIds(ids: any[]): number[] {
 
 router.post("/leads/update", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { ids, updates } = req.body;
     const parsedIds = validateIds(ids);
 
@@ -72,7 +69,7 @@ router.post("/leads/update", async (req: Request, res: Response) => {
 
 router.post("/leads/delete", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { ids } = req.body;
     const parsedIds = validateIds(ids);
 
@@ -92,7 +89,7 @@ router.post("/leads/delete", async (req: Request, res: Response) => {
 
 router.post("/properties/update", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { ids, updates } = req.body;
     const parsedIds = validateIds(ids);
 
@@ -123,7 +120,7 @@ router.post("/properties/update", async (req: Request, res: Response) => {
 
 router.post("/deals/update", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { ids, updates } = req.body;
     const parsedIds = validateIds(ids);
 
@@ -155,7 +152,7 @@ router.post("/deals/update", async (req: Request, res: Response) => {
 
 router.post("/tasks/complete", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { ids } = req.body;
     const parsedIds = validateIds(ids);
 

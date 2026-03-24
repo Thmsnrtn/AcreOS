@@ -6,11 +6,6 @@ import { eq } from 'drizzle-orm';
 
 const router = Router();
 
-function getOrg(req: Request) {
-  const org = (req as any).organization;
-  if (!org) throw new Error('Organization not found');
-  return org;
-}
 
 // =====================
 // DEAL SOURCES
@@ -79,7 +74,7 @@ router.get('/deals', async (req: Request, res: Response) => {
 
 router.post('/deals/:id/convert-lead', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const lead = await dealHunterService.convertToLead(org.id, parseInt(req.params.id));
     res.json({ lead, success: true });
   } catch (error: any) {
@@ -89,7 +84,7 @@ router.post('/deals/:id/convert-lead', async (req: Request, res: Response) => {
 
 router.post('/deals/:id/convert-property', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const property = await dealHunterService.convertToProperty(org.id, parseInt(req.params.id));
     res.json({ property, success: true });
   } catch (error: any) {

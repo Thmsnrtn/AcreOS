@@ -1,14 +1,8 @@
-// @ts-nocheck
 import { Router, type Request, type Response } from 'express';
 import { negotiationCopilotService } from './services/negotiationCopilot';
 
 const router = Router();
 
-function getOrg(req: Request) {
-  const org = (req as any).organization;
-  if (!org) throw new Error('Organization not found');
-  return org;
-}
 
 // =====================
 // SESSION MANAGEMENT
@@ -16,7 +10,7 @@ function getOrg(req: Request) {
 
 router.post('/sessions', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { dealId, leadId, propertyId, initialOffer, askingPrice } = req.body;
     const session = await negotiationCopilotService.startSession(
       org.id,
@@ -33,7 +27,7 @@ router.post('/sessions', async (req: Request, res: Response) => {
 
 router.get('/sessions/:id', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const sessions = await negotiationCopilotService.getSessionHistory(org.id, parseInt(req.params.id));
     res.json({ sessions });
   } catch (error: any) {
@@ -43,7 +37,7 @@ router.get('/sessions/:id', async (req: Request, res: Response) => {
 
 router.get('/deal/:dealId', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const sessions = await negotiationCopilotService.getSessionHistory(org.id, parseInt(req.params.dealId));
     res.json({ sessions });
   } catch (error: any) {
@@ -129,7 +123,7 @@ router.get('/sessions/:id/strategy', async (req: Request, res: Response) => {
 
 router.get('/effectiveness', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const effectiveness = await negotiationCopilotService.analyzeObjectionEffectiveness(org.id);
     res.json({ effectiveness });
   } catch (error: any) {

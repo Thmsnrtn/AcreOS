@@ -56,8 +56,8 @@ export function registerCoreAIRoutes(app: Express): void {
 
   api.post("/api/agents/skills/:skillId/execute", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
-      const user = (req as any).user;
+      const org = req.organization;
+      const user = req.user;
       const { skillId } = req.params;
       const { params, agentType } = req.body;
       
@@ -101,8 +101,8 @@ export function registerCoreAIRoutes(app: Express): void {
 
   api.post("/api/agents/execute", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
-      const user = (req as any).user;
+      const org = req.organization;
+      const user = req.user;
       
       const parseResult = agentTaskSchema.safeParse(req.body);
       if (!parseResult.success) {
@@ -133,7 +133,7 @@ export function registerCoreAIRoutes(app: Express): void {
 
   api.post("/api/agents/research/due-diligence", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { propertyId } = req.body;
 
       if (!propertyId) {
@@ -156,7 +156,7 @@ export function registerCoreAIRoutes(app: Express): void {
 
   api.post("/api/agents/deals/generate-offer", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { leadId, propertyId, offerPrice, terms } = req.body;
 
       const { executeAgentTask } = await import('./services/core-agents');
@@ -175,7 +175,7 @@ export function registerCoreAIRoutes(app: Express): void {
 
   api.post("/api/agents/communications/compose", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { type, leadId, purpose, tone, customDetails } = req.body;
 
       const { executeAgentTask } = await import('./services/core-agents');
@@ -197,8 +197,8 @@ export function registerCoreAIRoutes(app: Express): void {
   // Agent Memory & Feedback Endpoints
   api.post("/api/agents/feedback", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
-      const user = (req as any).user;
+      const org = req.organization;
+      const user = req.user;
       const { agentTaskId, rating, helpful, feedback: feedbackText } = req.body;
 
       if (!agentTaskId || rating === undefined || helpful === undefined) {
@@ -237,7 +237,7 @@ export function registerCoreAIRoutes(app: Express): void {
 
   api.get("/api/agents/memory/:agentType", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { agentType } = req.params;
       const limit = Math.min(100, parseInt(req.query.limit as string) || 50);
 
@@ -256,7 +256,7 @@ export function registerCoreAIRoutes(app: Express): void {
 
   api.get("/api/agents/feedback/stats", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const agentType = req.query.agentType as string | undefined;
 
       const stats = await storage.getAgentFeedbackStats(org.id, agentType);
@@ -296,7 +296,7 @@ export function registerCoreAIRoutes(app: Express): void {
    */
   api.get("/api/pax/observations", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const limit = parseInt(req.query.limit as string) || 20;
       const unreadOnly = req.query.unread === "true";
 
@@ -366,7 +366,7 @@ export function registerCoreAIRoutes(app: Express): void {
 
   api.post("/api/communications/send", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { type, leadId, subject, content, template, variables } = req.body;
       
       if (!leadId || !type || !content) {
@@ -407,7 +407,7 @@ export function registerCoreAIRoutes(app: Express): void {
       }
 
       const { negotiationOrchestrator } = await import("./services/negotiationOrchestrator");
-      const orgId = String((req as any).org?.id ?? "");
+      const orgId = String(req.organization?.id ?? "");
       const recommendation = await negotiationOrchestrator.generateCounterOffer(
         orgId,
         "counter-offer",
@@ -446,7 +446,7 @@ export function registerCoreAIRoutes(app: Express): void {
       }
 
       const { negotiationOrchestrator } = await import("./services/negotiationOrchestrator");
-      const orgId = String((req as any).org?.id ?? "");
+      const orgId = String(req.organization?.id ?? "");
       const profile = await negotiationOrchestrator.analyzeSellerPsychology(
         orgId,
         propertyId ? String(propertyId) : "unknown",
@@ -470,7 +470,7 @@ export function registerCoreAIRoutes(app: Express): void {
       const { negotiationOrchestrator } = await import("./services/negotiationOrchestrator");
 
       // Build a seller profile from the provided context
-      const scriptOrgId = String((req as any).org?.id ?? "");
+      const scriptOrgId = String(req.organization?.id ?? "");
       const sellerProfile = sellerMessages?.length
         ? await negotiationOrchestrator.analyzeSellerPsychology(scriptOrgId, "active", sellerMessages)
         : {

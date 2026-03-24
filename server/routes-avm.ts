@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { Router, type Request, type Response } from 'express';
 import { acreOSValuation } from './services/acreOSValuation';
 import { db } from './db';
@@ -8,11 +7,6 @@ import { cacheResponse } from './middleware/responseCache';
 
 const router = Router();
 
-function getOrg(req: Request) {
-  const org = (req as any).organization;
-  if (!org) throw new Error('Organization not found');
-  return org;
-}
 
 // =====================
 // GENERATE VALUATION
@@ -20,7 +14,7 @@ function getOrg(req: Request) {
 
 router.post('/generate', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const valuation = await acreOSValuation.generateValuation(
       org.id.toString(),
       req.body
@@ -34,7 +28,7 @@ router.post('/generate', async (req: Request, res: Response) => {
 // Generate valuation by property ID (pulls property details from DB)
 router.post('/property/:propertyId', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const [property] = await db
       .select()
       .from(properties)
@@ -77,7 +71,7 @@ router.post('/property/:propertyId', async (req: Request, res: Response) => {
 
 router.get('/history/:propertyId', cacheResponse(300), async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const history = await acreOSValuation.getValuationHistory(
       org.id.toString(),
       req.params.propertyId
@@ -94,7 +88,7 @@ router.get('/history/:propertyId', cacheResponse(300), async (req: Request, res:
 
 router.get('/stats', cacheResponse(600), async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const stats = await acreOSValuation.getTrainingDataStats(org.id.toString());
     res.json({ stats });
   } catch (error: any) {
@@ -108,7 +102,7 @@ router.get('/stats', cacheResponse(600), async (req: Request, res: Response) => 
 
 router.post('/record-transaction', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     await acreOSValuation.recordTransactionForTraining(org.id.toString(), req.body);
     res.json({ success: true });
   } catch (error: any) {
@@ -122,7 +116,7 @@ router.post('/record-transaction', async (req: Request, res: Response) => {
 
 router.post('/bulk', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     await acreOSValuation.generateBulkValuations(org.id.toString());
     res.json({ success: true, message: 'Bulk valuation started for all owned properties' });
   } catch (error: any) {

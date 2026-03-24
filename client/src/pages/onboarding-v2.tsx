@@ -43,6 +43,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLocation } from "wouter";
+import { QueryErrorState } from "@/components/query-error-state";
 
 // ── Completion celebration animation ─────────────────────────────────────
 // Pure CSS confetti burst that plays for 2s then fades to reveal content.
@@ -166,7 +167,7 @@ function InstantDealHunt({
   targetState: string;
   onContinue: () => void;
 }) {
-  const { data, isLoading } = useQuery<{ opportunities: DealOpportunity[]; totalScanned: number }>({
+  const { data, isLoading, error, refetch } = useQuery<{ opportunities: DealOpportunity[]; totalScanned: number }>({
     queryKey: ["/api/onboarding/instant-deal-hunt", targetCounty, targetState],
     queryFn: async () => {
       const resp = await apiRequest(
@@ -180,6 +181,26 @@ function InstantDealHunt({
 
   const opportunities = data?.opportunities || [];
   const totalScanned = data?.totalScanned || 0;
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <QueryErrorState
+          error={error}
+          onRetry={() => refetch()}
+          compact
+          title="Couldn't scan this county"
+          description="We hit a snag searching for deals. Try again or continue to set up later."
+        />
+        <Button
+          onClick={onContinue}
+          className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3"
+        >
+          Continue to Dashboard <ArrowRight className="w-4 h-4 ml-2" />
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

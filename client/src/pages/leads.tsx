@@ -8,6 +8,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { ListSkeleton, TableRowSkeleton } from "@/components/list-skeleton";
 import { InlineError } from "@/components/inline-error";
+import { QueryErrorState } from "@/components/query-error-state";
 import { useDelayedLoading } from "@/hooks/use-delayed-loading";
 import { useState, useMemo } from "react";
 import { useForm } from "react-hook-form";
@@ -958,12 +959,12 @@ export default function LeadsPage() {
   if (error) {
     return (
       <PageShell>
-        <div className="flex flex-col items-center justify-center py-16 text-center" data-testid="error-state-leads">
-          <AlertCircle className="w-12 h-12 text-destructive mb-4" />
-          <h3 className="text-lg font-semibold mb-2">Failed to load leads</h3>
-          <p className="text-muted-foreground mb-4">{(error as Error).message || 'Something went wrong'}</p>
-          <Button onClick={() => refetch()} variant="outline">Try again</Button>
-        </div>
+        <QueryErrorState
+          error={error as Error}
+          onRetry={() => refetch()}
+          title="Failed to load leads"
+          testId="error-state-leads"
+        />
       </PageShell>
     );
   }
@@ -1019,8 +1020,9 @@ export default function LeadsPage() {
                 <DropdownMenuTrigger asChild>
                   <Button 
                     variant="outline" 
-                    size="icon" 
+                    size="icon"
                     className="md:hidden min-h-[44px] min-w-[44px]"
+                    aria-label="More actions"
                     data-testid="button-more-actions-mobile"
                   >
                     <MoreVertical className="w-5 h-5" />
@@ -1223,8 +1225,9 @@ export default function LeadsPage() {
                       <CollapsibleTrigger asChild>
                         <Button 
                           variant="outline" 
-                          size="icon" 
+                          size="icon"
                           className="min-h-[44px] min-w-[44px] shrink-0"
+                          aria-label="Toggle filters"
                           data-testid="button-toggle-filters"
                         >
                           <Filter className="w-4 h-4" />
@@ -1491,7 +1494,7 @@ export default function LeadsPage() {
                                   </Tooltip>
                                   <DropdownMenu>
                                     <DropdownMenuTrigger asChild>
-                                      <Button variant="ghost" size="icon" className="h-8 w-8" data-testid={`button-actions-lead-${lead.id}`}>
+                                      <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Lead actions" data-testid={`button-actions-lead-${lead.id}`}>
                                         <MoreVertical className="w-4 h-4" />
                                       </Button>
                                     </DropdownMenuTrigger>
@@ -1606,9 +1609,10 @@ export default function LeadsPage() {
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
                                   <Button 
-                                    variant="ghost" 
-                                    size="icon" 
+                                    variant="ghost"
+                                    size="icon"
                                     className="min-h-[44px] min-w-[44px] shrink-0"
+                                    aria-label="Lead actions"
                                     data-testid={`button-actions-lead-mobile-${lead.id}`}
                                   >
                                     <MoreVertical className="w-5 h-5" />
@@ -2221,10 +2225,10 @@ function LeadDetailDrawer({ lead, onClose, onEdit }: { lead: Lead; onClose: () =
               </h2>
             </div>
             <div className="flex items-center gap-2">
-              <Button size="icon" variant="ghost" onClick={onEdit} data-testid="button-edit-lead-drawer">
+              <Button size="icon" variant="ghost" onClick={onEdit} aria-label="Edit lead" data-testid="button-edit-lead-drawer">
                 <Edit className="w-5 h-5" />
               </Button>
-              <Button size="icon" variant="ghost" onClick={onClose} data-testid="button-close-lead-drawer">
+              <Button size="icon" variant="ghost" onClick={onClose} aria-label="Close drawer" data-testid="button-close-lead-drawer">
                 <X className="w-5 h-5" />
               </Button>
             </div>

@@ -19,7 +19,7 @@ export function registerIntegrationRoutes(app: Express): void {
   
   api.get("/api/integrations", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const integrations = await storage.getOrganizationIntegrations(org.id);
       
       const { maskApiKey, decryptJsonCredentials } = await import('./services/encryption');
@@ -52,7 +52,7 @@ export function registerIntegrationRoutes(app: Express): void {
   
   api.get("/api/integrations/:provider", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { provider } = req.params;
       
       const integration = await storage.getOrganizationIntegration(org.id, provider);
@@ -89,7 +89,7 @@ export function registerIntegrationRoutes(app: Express): void {
   
   api.post("/api/integrations/:provider", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { provider } = req.params;
       const { apiKey, settings } = req.body;
 
@@ -146,7 +146,7 @@ export function registerIntegrationRoutes(app: Express): void {
   
   api.post("/api/integrations/:provider/test", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { provider } = req.params;
       
       const integration = await storage.getOrganizationIntegration(org.id, provider);
@@ -236,7 +236,7 @@ export function registerIntegrationRoutes(app: Express): void {
   
   api.delete("/api/integrations/:provider", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { provider } = req.params;
 
       await storage.deleteOrganizationIntegration(org.id, provider);
@@ -269,7 +269,7 @@ export function registerIntegrationRoutes(app: Express): void {
   
   api.get("/api/email/status", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { getEmailServiceStatus, emailService } = await import("./services/emailService");
       
       const status = await getEmailServiceStatus();
@@ -289,7 +289,7 @@ export function registerIntegrationRoutes(app: Express): void {
   
   api.get("/api/email/logs", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const limit = Math.min(Number(req.query.limit) || 50, 100);
       const { emailService } = await import("./services/emailService");
       
@@ -303,7 +303,7 @@ export function registerIntegrationRoutes(app: Express): void {
   
   api.post("/api/email/test", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const user = req.user as any;
       const { to } = req.body;
       
@@ -353,7 +353,7 @@ export function registerIntegrationRoutes(app: Express): void {
   
   api.get("/api/email-domains", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const domains = await storage.getVerifiedEmailDomains(org.id);
       res.json(domains);
     } catch (err: any) {
@@ -364,7 +364,7 @@ export function registerIntegrationRoutes(app: Express): void {
   
   api.post("/api/email-domains", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { domain, fromEmail, fromName } = req.body;
       
       if (!domain) {
@@ -461,7 +461,7 @@ export function registerIntegrationRoutes(app: Express): void {
   
   api.post("/api/email-domains/:id/verify", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const domainId = Number(req.params.id);
       
       const domainRecord = await storage.getVerifiedEmailDomain(domainId);
@@ -534,7 +534,7 @@ export function registerIntegrationRoutes(app: Express): void {
   
   api.patch("/api/email-domains/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const domainId = Number(req.params.id);
       const { fromEmail, fromName, isDefault } = req.body;
       
@@ -582,7 +582,7 @@ export function registerIntegrationRoutes(app: Express): void {
 
   api.delete("/api/email-domains/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const domainId = Number(req.params.id);
 
       const domainRecord = await storage.getVerifiedEmailDomain(domainId);
@@ -645,7 +645,7 @@ export function registerIntegrationRoutes(app: Express): void {
   
   api.get("/api/phone-numbers", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const phones = await storage.getProvisionedPhoneNumbers(org.id);
       res.json(phones);
     } catch (err: any) {
@@ -656,7 +656,7 @@ export function registerIntegrationRoutes(app: Express): void {
   
   api.get("/api/phone-numbers/available", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { areaCode, contains, country } = req.query;
       
       const integration = await storage.getOrganizationIntegration(org.id, 'twilio');
@@ -713,7 +713,7 @@ export function registerIntegrationRoutes(app: Express): void {
   
   api.post("/api/phone-numbers", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { phoneNumber, friendlyName } = req.body;
       
       if (!phoneNumber) {
@@ -795,7 +795,7 @@ export function registerIntegrationRoutes(app: Express): void {
 
   api.patch("/api/phone-numbers/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const phoneId = Number(req.params.id);
       const { friendlyName, isDefault } = req.body;
 
@@ -842,7 +842,7 @@ export function registerIntegrationRoutes(app: Express): void {
 
   api.delete("/api/phone-numbers/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const phoneId = Number(req.params.id);
 
       const phoneRecord = await storage.getProvisionedPhoneNumber(phoneId);
@@ -951,7 +951,7 @@ export function registerIntegrationRoutes(app: Express): void {
   // Get all A/B tests for organization
   api.get("/api/ab-tests", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const tests = await storage.getAbTests(org.id);
       
       const testsWithVariants = await Promise.all(
@@ -970,7 +970,7 @@ export function registerIntegrationRoutes(app: Express): void {
   // Get single A/B test with variants
   api.get("/api/ab-tests/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const testId = Number(req.params.id);
       
       const result = await storage.getAbTestWithVariants(org.id, testId);
@@ -987,7 +987,7 @@ export function registerIntegrationRoutes(app: Express): void {
   // Create A/B test for campaign
   api.post("/api/campaigns/:id/ab-test", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const campaignId = Number(req.params.id);
       
       const campaign = await storage.getCampaign(org.id, campaignId);
@@ -1045,7 +1045,7 @@ export function registerIntegrationRoutes(app: Express): void {
   // Start A/B test (split recipients)
   api.patch("/api/ab-tests/:id/start", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const testId = Number(req.params.id);
       
       const result = await storage.getAbTestWithVariants(org.id, testId);
@@ -1076,7 +1076,7 @@ export function registerIntegrationRoutes(app: Express): void {
   // Complete A/B test and declare winner
   api.patch("/api/ab-tests/:id/complete", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const testId = Number(req.params.id);
       
       const result = await storage.getAbTestWithVariants(org.id, testId);
@@ -1204,7 +1204,7 @@ export function registerIntegrationRoutes(app: Express): void {
   // Add variant to existing test
   api.post("/api/ab-tests/:id/variants", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const testId = Number(req.params.id);
       
       const result = await storage.getAbTestWithVariants(org.id, testId);
@@ -1238,7 +1238,7 @@ export function registerIntegrationRoutes(app: Express): void {
   // Delete A/B test
   api.delete("/api/ab-tests/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const testId = Number(req.params.id);
       
       const test = await storage.getAbTest(org.id, testId);
@@ -1256,7 +1256,7 @@ export function registerIntegrationRoutes(app: Express): void {
   // Apply winning variant to campaign
   api.post("/api/ab-tests/:id/apply-winner", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const testId = Number(req.params.id);
       
       const result = await storage.getAbTestWithVariants(org.id, testId);
@@ -1297,7 +1297,7 @@ export function registerIntegrationRoutes(app: Express): void {
   // Custom Field Definitions
   api.get("/api/custom-fields/definitions", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const entityType = req.query.entityType as string | undefined;
       const definitions = await storage.getCustomFieldDefinitions(org.id, entityType);
       res.json(definitions);
@@ -1308,7 +1308,7 @@ export function registerIntegrationRoutes(app: Express): void {
 
   api.get("/api/custom-fields/definitions/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = Number(req.params.id);
       const definition = await storage.getCustomFieldDefinition(org.id, id);
       if (!definition) {
@@ -1322,7 +1322,7 @@ export function registerIntegrationRoutes(app: Express): void {
 
   api.post("/api/custom-fields/definitions", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const parsed = insertCustomFieldDefinitionSchema.parse({
         ...req.body,
         organizationId: org.id
@@ -1355,7 +1355,7 @@ export function registerIntegrationRoutes(app: Express): void {
 
   api.patch("/api/custom-fields/definitions/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = Number(req.params.id);
 
       const existing = await storage.getCustomFieldDefinition(org.id, id);
@@ -1388,7 +1388,7 @@ export function registerIntegrationRoutes(app: Express): void {
 
   api.delete("/api/custom-fields/definitions/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = Number(req.params.id);
 
       const existing = await storage.getCustomFieldDefinition(org.id, id);
@@ -1433,7 +1433,7 @@ export function registerIntegrationRoutes(app: Express): void {
 
   api.post("/api/custom-fields/values", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { definitionId, entityId, value } = req.body;
       
       const definition = await storage.getCustomFieldDefinition(org.id, definitionId);
@@ -1450,7 +1450,7 @@ export function registerIntegrationRoutes(app: Express): void {
 
   api.post("/api/custom-fields/values/bulk", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { entityType, entityId, values } = req.body as {
         entityType: string;
         entityId: number;
@@ -1478,7 +1478,7 @@ export function registerIntegrationRoutes(app: Express): void {
 
   api.get("/api/saved-views", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const entityType = req.query.entityType as string | undefined;
       const views = await storage.getSavedViews(org.id, entityType);
       res.json(views);
@@ -1489,7 +1489,7 @@ export function registerIntegrationRoutes(app: Express): void {
 
   api.get("/api/saved-views/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = Number(req.params.id);
       const view = await storage.getSavedView(org.id, id);
       if (!view) {
@@ -1503,8 +1503,8 @@ export function registerIntegrationRoutes(app: Express): void {
 
   api.post("/api/saved-views", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
-      const user = (req as any).user;
+      const org = req.organization;
+      const user = req.user;
       const parsed = insertSavedViewSchema.parse({
         ...req.body,
         organizationId: org.id,
@@ -1537,7 +1537,7 @@ export function registerIntegrationRoutes(app: Express): void {
 
   api.patch("/api/saved-views/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = Number(req.params.id);
 
       const existing = await storage.getSavedView(org.id, id);
@@ -1570,7 +1570,7 @@ export function registerIntegrationRoutes(app: Express): void {
 
   api.delete("/api/saved-views/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = Number(req.params.id);
 
       const existing = await storage.getSavedView(org.id, id);
@@ -1603,7 +1603,7 @@ export function registerIntegrationRoutes(app: Express): void {
 
   api.post("/api/saved-views/:id/set-default", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = Number(req.params.id);
 
       const existing = await storage.getSavedView(org.id, id);
@@ -1668,7 +1668,7 @@ export function registerIntegrationRoutes(app: Express): void {
   // GET /api/webhooks — list org webhook endpoints
   api.get("/api/webhooks", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { getWebhookEndpoints } = await import("./services/webhookDispatcher");
       const endpoints = await getWebhookEndpoints(org.id);
       res.json(endpoints);
@@ -1680,7 +1680,7 @@ export function registerIntegrationRoutes(app: Express): void {
   // PUT /api/webhooks — save/replace all webhook endpoints for org
   api.put("/api/webhooks", isAuthenticated, getOrCreateOrg, requireAdminOrAbove, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { endpoints } = req.body;
 
       if (!Array.isArray(endpoints)) {
@@ -1701,7 +1701,7 @@ export function registerIntegrationRoutes(app: Express): void {
   // POST /api/webhooks/test — fire a test event to a given URL
   api.post("/api/webhooks/test", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { url, secret } = req.body;
 
       if (!url || typeof url !== "string") {

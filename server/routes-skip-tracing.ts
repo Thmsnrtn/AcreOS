@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * T193 — Skip Tracing Routes
  *
@@ -15,14 +14,11 @@ import { skipTracingService } from "./services/skipTracingService";
 
 const router = Router();
 
-function getOrg(req: Request) {
-  return (req as any).org;
-}
 
 // POST /api/skip-tracing/trace/:leadId — trace a single lead
 router.post("/trace/:leadId", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const leadId = parseInt(req.params.leadId);
     if (isNaN(leadId)) return res.status(400).json({ error: "Invalid lead ID" });
 
@@ -36,7 +32,7 @@ router.post("/trace/:leadId", async (req: Request, res: Response) => {
 // POST /api/skip-tracing/batch — queue batch trace
 router.post("/batch", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { limit = 50 } = req.body;
 
     const queued = await skipTracingService.queueBatchTrace(org.id, Math.min(limit, 100));
@@ -49,7 +45,7 @@ router.post("/batch", async (req: Request, res: Response) => {
 // GET /api/skip-tracing/stats — aggregate stats
 router.get("/stats", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const stats = await skipTracingService.getStats(org.id);
     res.json(stats);
   } catch (err: any) {

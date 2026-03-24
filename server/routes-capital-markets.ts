@@ -3,16 +3,11 @@ import { capitalMarkets } from './services/capitalMarkets';
 
 const router = Router();
 
-function getOrg(req: Request) {
-  const org = (req as any).organization;
-  if (!org) throw new Error('Organization not found');
-  return org;
-}
 
 // GET /securities — list available note securities
 router.get('/securities', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const securities = await capitalMarkets.listSecurities(org.id);
     res.json({ securities });
   } catch (err: any) {
@@ -23,7 +18,7 @@ router.get('/securities', async (req: Request, res: Response) => {
 // POST /pool-notes — pool multiple notes for securitization analysis
 router.post('/pool-notes', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { noteIds } = req.body;
     const pool = await capitalMarkets.poolNotes(org.id, noteIds.map(Number));
     res.json({ pool });
@@ -35,7 +30,7 @@ router.post('/pool-notes', async (req: Request, res: Response) => {
 // POST /securitize — create a securitization offering from pooled notes
 router.post('/securitize', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { noteIds, offeringDetails } = req.body;
     const security = await capitalMarkets.createSecuritization(org.id, noteIds.map(Number), offeringDetails);
     res.json({ security });
@@ -47,7 +42,7 @@ router.post('/securitize', async (req: Request, res: Response) => {
 // POST /securities/:id/invest — invest in a security offering
 router.post('/securities/:id/invest', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { amount } = req.body;
     const result = await capitalMarkets.investInSecurity(parseInt(req.params.id), org.id, amount);
     res.json({ result });
@@ -59,7 +54,7 @@ router.post('/securities/:id/invest', async (req: Request, res: Response) => {
 // GET /lenders — list lender network
 router.get('/lenders', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const lenders = await capitalMarkets.getLenderNetwork(org.id);
     res.json({ lenders });
   } catch (err: any) {
@@ -70,7 +65,7 @@ router.get('/lenders', async (req: Request, res: Response) => {
 // POST /lenders — add a lender to the network
 router.post('/lenders', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { organizationId: _omit, ...lenderData } = req.body;
     const lender = await capitalMarkets.addLender(org.id, lenderData);
     res.json({ lender });
@@ -82,7 +77,7 @@ router.post('/lenders', async (req: Request, res: Response) => {
 // POST /match-lenders — find lenders matching a specific deal
 router.post('/match-lenders', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { propertyId, loanAmount, ltv } = req.body;
     const matches = await capitalMarkets.matchLenders(org.id, propertyId, loanAmount, ltv);
     res.json({ matches });
@@ -94,7 +89,7 @@ router.post('/match-lenders', async (req: Request, res: Response) => {
 // GET /raises — list capital raise campaigns
 router.get('/raises', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const raises = await capitalMarkets.getCapitalRaises(org.id);
     res.json({ raises });
   } catch (err: any) {
@@ -105,7 +100,7 @@ router.get('/raises', async (req: Request, res: Response) => {
 // POST /raises — create a new capital raise
 router.post('/raises', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { organizationId: _omit, ...raiseData } = req.body;
     const raise = await capitalMarkets.createCapitalRaise(org.id, raiseData);
     res.json({ raise });
@@ -117,7 +112,7 @@ router.post('/raises', async (req: Request, res: Response) => {
 // GET /efficiency — capital efficiency metrics
 router.get('/efficiency', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const metrics = await capitalMarkets.calculateCapitalEfficiency(org.id);
     res.json({ metrics });
   } catch (err: any) {

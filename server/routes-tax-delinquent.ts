@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * T226 — Tax Delinquent Pipeline Routes
  *
@@ -13,11 +12,10 @@ import { taxDelinquentPipeline } from "./services/taxDelinquentPipeline";
 
 const router = Router();
 
-function getOrg(req: Request) { return (req as any).org; }
 
 router.get("/", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { state, risk, limit = "50", page = "1" } = req.query;
 
     const leads = await taxDelinquentPipeline.getLeads({
@@ -35,7 +33,7 @@ router.get("/", async (req: Request, res: Response) => {
 
 router.post("/import", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { stateCode, county, limit = 500 } = req.body;
 
     const result = await taxDelinquentPipeline.importFromCounty({
@@ -52,7 +50,7 @@ router.post("/import", async (req: Request, res: Response) => {
 
 router.get("/:id", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
 
@@ -66,7 +64,7 @@ router.get("/:id", async (req: Request, res: Response) => {
 
 router.post("/:id/contact", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
 

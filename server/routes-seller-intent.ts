@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * T142 — Seller Intent Predictor Routes
  *
@@ -21,11 +20,6 @@ import { sellerIntentPredictorService } from "./services/sellerIntentPredictor";
 
 const router = Router();
 
-function getOrg(req: Request) {
-  const org = (req as any).organization;
-  if (!org) throw new Error("Organization not found");
-  return org;
-}
 
 // Full intent prediction for a lead
 router.get("/:leadId", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
@@ -130,7 +124,7 @@ router.post("/:leadId/outcome", isAuthenticated, getOrCreateOrg, async (req: Req
 // Model accuracy stats
 router.get("/accuracy", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const accuracy = await sellerIntentPredictorService.analyzeAccuracy(org.id);
     res.json({ accuracy });
   } catch (err: any) {
@@ -141,7 +135,7 @@ router.get("/accuracy", isAuthenticated, getOrCreateOrg, async (req: Request, re
 // Hot leads (high intent) for the organization
 router.get("/hot-leads", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const minScore = parseFloat((req.query.minScore as string) || "60");
     const predictions = await sellerIntentPredictorService.getLeadPredictions(org.id, minScore);
     res.json({ predictions });

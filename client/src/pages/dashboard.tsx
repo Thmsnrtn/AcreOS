@@ -7,8 +7,10 @@ import { PullToRefresh } from "@/components/mobile";
 import { useLeads, useAgingLeads, type AgingLead } from "@/hooks/use-leads";
 import { useProperties } from "@/hooks/use-properties";
 import { usePlaybooks } from "@/hooks/use-playbooks";
-import { Users, Map, Banknote, TrendingUp, Activity, Building2, Crown, AlertTriangle, AlertCircle, Clock, Flame, Sun, Snowflake, Sparkles, BookOpen, Target, X } from "lucide-react";
+import { Users, Map, Banknote, TrendingUp, Activity, Building2, Crown, AlertTriangle, Clock, Flame, Sun, Snowflake, Sparkles, BookOpen, Target, X } from "lucide-react";
 import { motion } from "framer-motion";
+import { staggerContainer, staggerItem } from "@/lib/animations";
+import { QueryErrorState } from "@/components/query-error-state";
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, FunnelChart, Funnel, LabelList } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -179,20 +181,8 @@ export default function Dashboard() {
     { name: 'Closed', value: leads.filter(l => l.status === 'closed').length },
   ];
 
-  const container = {
-    hidden: { opacity: 0 },
-    show: {
-      opacity: 1,
-      transition: {
-        staggerChildren: 0.08
-      }
-    }
-  };
-
-  const item = {
-    hidden: { translateY: 12, opacity: 0 },
-    show: { translateY: 0, opacity: 1 }
-  };
+  const container = staggerContainer;
+  const item = staggerItem;
 
   const getTierColor = (tier: string) => {
     switch (tier) {
@@ -215,7 +205,7 @@ export default function Dashboard() {
             key={widgetId}
             variants={container}
             initial="hidden"
-            animate="show"
+            animate="visible"
             className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-5"
           >
             <motion.div variants={item}>
@@ -597,12 +587,12 @@ export default function Dashboard() {
   if (orgError) {
     return (
       <PageShell>
-        <div className="flex flex-col items-center justify-center py-16 text-center" data-testid="error-state-dashboard">
-          <AlertCircle className="w-12 h-12 text-destructive mb-4" />
-          <h3 className="text-lg font-semibold mb-2">Failed to load dashboard</h3>
-          <p className="text-muted-foreground mb-4">{(orgError as Error).message || 'Something went wrong'}</p>
-          <Button onClick={() => refetchOrg()} variant="outline">Try again</Button>
-        </div>
+        <QueryErrorState
+          error={orgError as Error}
+          onRetry={() => refetchOrg()}
+          title="Failed to load dashboard"
+          testId="error-state-dashboard"
+        />
       </PageShell>
     );
   }

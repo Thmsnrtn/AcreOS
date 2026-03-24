@@ -72,7 +72,7 @@ setInterval(() => {
 
 function getRateLimitKey(feature: FeatureArea, req: Request): string {
   // Prefer org-scoped limiting (authenticated users)
-  const orgId = (req as any).organization?.id ?? (req as any).session?.organizationId;
+  const orgId = req.organization?.id ?? (req as any).session?.organizationId;
   if (orgId) {
     return `${feature}:org:${orgId}`;
   }

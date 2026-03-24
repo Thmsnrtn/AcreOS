@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 import type { Express } from "express";
 import { storage, db } from "./storage";
 import { z } from "zod";
@@ -24,7 +23,7 @@ export function registerDashboardRoutes(app: Express): void {
   // ============================================
   
   api.get("/api/dashboard/stats", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const stats = await storage.getDashboardStats(org.id);
     res.json(stats);
   });
@@ -32,7 +31,7 @@ export function registerDashboardRoutes(app: Express): void {
   // Dashboard Intelligence - Anomalies, Predictions, Next Best Actions
   api.get("/api/dashboard/intelligence", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const now = new Date();
       const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
       const twoWeeksAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
@@ -328,8 +327,8 @@ export function registerDashboardRoutes(app: Express): void {
   
   api.post("/api/telemetry", isAuthenticated, async (req, res) => {
     const { events } = req.body;
-    const user = (req as any).user;
-    const org = (req as any).organization;
+    const user = req.user;
+    const org = req.organization;
     
     // Log events for now (can be sent to analytics service later)
     if (process.env.NODE_ENV === 'development') {
@@ -350,7 +349,7 @@ export function registerDashboardRoutes(app: Express): void {
 
   api.get("/api/alerts/active", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       // Refresh alerts on each fetch (lightweight scan)
       await runPortfolioHealthJob(org.id);
       const alerts = await getActiveAlerts(org.id);
@@ -362,7 +361,7 @@ export function registerDashboardRoutes(app: Express): void {
 
   api.delete("/api/alerts/:id/dismiss", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const alertId = parseInt(req.params.id);
       await dismissAlert(org.id, alertId);
       res.json({ success: true });
@@ -378,7 +377,7 @@ export function registerDashboardRoutes(app: Express): void {
   // GET /api/goals — list goals with computed current_value
   api.get("/api/goals", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const now = new Date();
 
       const orgGoals = await db
@@ -428,7 +427,7 @@ export function registerDashboardRoutes(app: Express): void {
   // POST /api/goals — create a goal
   api.post("/api/goals", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const parsed = insertGoalSchema.safeParse({ ...req.body, organizationId: org.id });
       if (!parsed.success) return res.status(400).json({ message: "Invalid goal data", errors: parsed.error.flatten() });
 
@@ -442,7 +441,7 @@ export function registerDashboardRoutes(app: Express): void {
   // DELETE /api/goals/:id — remove a goal
   api.delete("/api/goals/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       await db.delete(goals).where(and(eq(goals.id, id), eq(goals.organizationId, org.id)));
       res.json({ success: true });
@@ -458,7 +457,7 @@ export function registerDashboardRoutes(app: Express): void {
 
   api.get("/api/dashboard/today-priorities", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const orgId = org.id;
       const now = new Date();
       const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);

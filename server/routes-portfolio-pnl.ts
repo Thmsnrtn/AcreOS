@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * T144 — Portfolio P&L Routes
  *
@@ -14,16 +13,11 @@ import { getPortfolioPnl } from "./services/portfolioPnl";
 
 const router = Router();
 
-function getOrg(req: Request) {
-  const org = (req as any).organization;
-  if (!org) throw new Error("Organization not found");
-  return org;
-}
 
 // Full P&L for current year
 router.get("/", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const year = new Date().getFullYear();
     const report = await getPortfolioPnl(org.id, year);
     res.json({ report });
@@ -35,7 +29,7 @@ router.get("/", isAuthenticated, getOrCreateOrg, async (req: Request, res: Respo
 // P&L for a specific year
 router.get("/:year", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const year = parseInt(req.params.year);
     if (isNaN(year) || year < 2000 || year > 2100) {
       return res.status(400).json({ error: "Invalid year" });

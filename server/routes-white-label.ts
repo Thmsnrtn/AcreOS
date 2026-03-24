@@ -3,11 +3,6 @@ import { whiteLabelService } from './services/whiteLabelService';
 
 const router = Router();
 
-function getOrg(req: Request) {
-  const org = (req as any).organization;
-  if (!org) throw new Error('Organization not found');
-  return org;
-}
 
 /**
  * GET /white-label/config
@@ -15,7 +10,7 @@ function getOrg(req: Request) {
  */
 router.get('/config', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const config = await whiteLabelService.getConfig(org.id);
     res.json({ config });
   } catch (err: any) {
@@ -30,7 +25,7 @@ router.get('/config', async (req: Request, res: Response) => {
  */
 router.post('/tenants', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { tenantOrganizationId, ...configData } = req.body;
 
     if (!tenantOrganizationId) {
@@ -55,7 +50,7 @@ router.post('/tenants', async (req: Request, res: Response) => {
  */
 router.get('/tenants', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const tenants = await whiteLabelService.listTenants(org.id);
     res.json({ tenants });
   } catch (err: any) {
@@ -69,7 +64,7 @@ router.get('/tenants', async (req: Request, res: Response) => {
  */
 router.patch('/config', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const updated = await whiteLabelService.updateConfig(org.id, req.body);
     res.json({ config: updated, success: true });
   } catch (err: any) {
@@ -96,7 +91,7 @@ router.post('/tenants/:id/suspend', async (req: Request, res: Response) => {
  */
 router.get('/report', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const report = await whiteLabelService.getResellerReport(org.id);
     res.json({ report });
   } catch (err: any) {
@@ -110,7 +105,7 @@ router.get('/report', async (req: Request, res: Response) => {
  */
 router.get('/features/:feature', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const feature = req.params.feature as any;
     const enabled = await whiteLabelService.isFeatureEnabled(org.id, feature);
     res.json({ feature, enabled });

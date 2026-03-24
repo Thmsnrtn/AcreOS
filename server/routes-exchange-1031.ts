@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * T213 — 1031 Exchange Tracker Routes
  *
@@ -15,12 +14,11 @@ import { exchange1031Service } from "./services/exchange1031";
 
 const router = Router();
 
-function getOrg(req: Request) { return (req as any).org; }
-function getUser(req: Request) { return (req as any).user; }
+function getUser(req: Request) { return req.user; }
 
 router.get("/", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const exchanges = await exchange1031Service.listExchanges(org.id);
     res.json({ exchanges });
   } catch (err: any) {
@@ -30,7 +28,7 @@ router.get("/", async (req: Request, res: Response) => {
 
 router.post("/", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const user = getUser(req);
     const { relinquishedPropertyAddress, relinquishedSalePriceCents, dealId, qualifiedIntermediaryName } = req.body;
 
@@ -54,7 +52,7 @@ router.post("/", async (req: Request, res: Response) => {
 
 router.get("/:id", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
 
@@ -68,7 +66,7 @@ router.get("/:id", async (req: Request, res: Response) => {
 
 router.post("/:id/identify", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
 
@@ -86,7 +84,7 @@ router.post("/:id/identify", async (req: Request, res: Response) => {
 
 router.post("/:id/complete", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
 

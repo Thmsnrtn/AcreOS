@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * T141 — Disposition Optimizer Routes
  *
@@ -19,11 +18,6 @@ import { dispositionOptimizerService } from "./services/dispositionOptimizer";
 
 const router = Router();
 
-function getOrg(req: Request) {
-  const org = (req as any).organization;
-  if (!org) throw new Error("Organization not found");
-  return org;
-}
 
 // Full recommendation for a property
 router.get("/:propertyId", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
@@ -88,7 +82,7 @@ router.get("/:propertyId/timing", isAuthenticated, getOrCreateOrg, async (req: R
 // ROI analysis
 router.get("/:propertyId/roi", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const propertyId = parseInt(req.params.propertyId);
     if (isNaN(propertyId)) return res.status(400).json({ error: "Invalid property ID" });
     const salePrice = req.query.salePrice ? parseFloat(req.query.salePrice as string) : undefined;
@@ -115,7 +109,7 @@ router.post("/:propertyId/compare", isAuthenticated, getOrCreateOrg, async (req:
 // Properties ready for disposition
 router.get("/ready", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const properties = await dispositionOptimizerService.getPropertiesReadyForDisposition(org.id);
     res.json({ properties });
   } catch (err: any) {

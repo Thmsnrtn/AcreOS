@@ -16,14 +16,11 @@ import { priceOptimizerService } from "./services/priceOptimizer";
 
 const router = Router();
 
-function getOrg(req: Request) {
-  return (req as any).organization;
-}
 
 // Recommend acquisition price for a property
 router.post("/:propertyId/acquisition", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const propertyId = parseInt(req.params.propertyId);
     if (isNaN(propertyId)) return res.status(400).json({ error: "Invalid propertyId" });
 
@@ -42,7 +39,7 @@ router.post("/:propertyId/acquisition", async (req: Request, res: Response) => {
 // Recommend disposition/listing price
 router.post("/:propertyId/disposition", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const propertyId = parseInt(req.params.propertyId);
     if (isNaN(propertyId)) return res.status(400).json({ error: "Invalid propertyId" });
 
@@ -61,7 +58,7 @@ router.post("/:propertyId/disposition", async (req: Request, res: Response) => {
 // Recommend counter-offer price
 router.post("/:propertyId/counter", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const propertyId = parseInt(req.params.propertyId);
     if (isNaN(propertyId)) return res.status(400).json({ error: "Invalid propertyId" });
 
@@ -85,7 +82,7 @@ router.post("/:propertyId/counter", async (req: Request, res: Response) => {
 // Get all recommendations for a property
 router.get("/:propertyId", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const propertyId = parseInt(req.params.propertyId);
     if (isNaN(propertyId)) return res.status(400).json({ error: "Invalid propertyId" });
 
@@ -117,7 +114,7 @@ router.post("/outcome/:id", async (req: Request, res: Response) => {
 // Get accuracy metrics for the organization
 router.get("/accuracy/stats", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const metrics = await priceOptimizerService.analyzeRecommendationAccuracy(org.id);
     res.json({ metrics });
   } catch (err: any) {

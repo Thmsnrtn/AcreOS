@@ -1,17 +1,11 @@
-// @ts-nocheck
 import { Router, type Request, type Response } from 'express';
 import { investorVerificationService } from './services/investorVerification';
 
 const router = Router();
 
-function getOrg(req: Request) {
-  const org = (req as any).organization;
-  if (!org) throw new Error('Organization not found');
-  return org;
-}
 
 function isAdmin(req: Request): boolean {
-  const user = (req as any).user;
+  const user = req.user;
   return user?.role === 'admin' || user?.role === 'super_admin';
 }
 
@@ -37,7 +31,7 @@ router.get('/verifications/:investorId', async (req: Request, res: Response) => 
 // POST /verifications — create verification request
 router.post('/verifications', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const verification = await investorVerificationService.createVerification({
       ...req.body,
       organizationId: org.id,

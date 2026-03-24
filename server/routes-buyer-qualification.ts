@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * T147 — Buyer Qualification Bot Routes
  *
@@ -22,16 +21,11 @@ import { buyerQualificationBotService } from "./services/buyerQualificationBot";
 
 const router = Router();
 
-function getOrg(req: Request) {
-  const org = (req as any).organization;
-  if (!org) throw new Error("Organization not found");
-  return org;
-}
 
 // Start qualification process for a buyer
 router.post("/start", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { buyerName, email, phone, dealId } = req.body;
     if (!buyerName || !email) {
       return res.status(400).json({ error: "buyerName and email are required" });
@@ -62,7 +56,7 @@ router.get("/:id", isAuthenticated, getOrCreateOrg, async (req: Request, res: Re
 // All qualified buyers for org
 router.get("/org/qualified", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const buyers = await buyerQualificationBotService.getQualifiedBuyers(org.id);
     res.json({ buyers });
   } catch (err: any) {
@@ -73,7 +67,7 @@ router.get("/org/qualified", isAuthenticated, getOrCreateOrg, async (req: Reques
 // High-risk buyers
 router.get("/org/high-risk", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const buyers = await buyerQualificationBotService.getHighRiskBuyers(org.id);
     res.json({ buyers });
   } catch (err: any) {

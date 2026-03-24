@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 import { Router, type Request, type Response } from 'express';
 import { db } from './db';
 import { voiceCalls, callTranscripts, agentEvents } from '../shared/schema';
@@ -12,11 +11,6 @@ const voiceRouter = Router();
 // HELPERS
 // ============================================================
 
-function getOrg(req: Request) {
-  const org = (req as any).organization;
-  if (!org) throw new Error('Organization not found');
-  return org;
-}
 
 // ============================================================
 // MOTIVATION SIGNAL EXTRACTION
@@ -219,7 +213,7 @@ voiceRouter.post('/webhook/twilio/recording-complete', async (req: Request, res:
 
 voiceRouter.post('/calls', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { phoneNumber, direction = 'outbound', leadId, propertyId } = req.body;
 
     if (!phoneNumber) {
@@ -247,7 +241,7 @@ voiceRouter.post('/calls', async (req: Request, res: Response) => {
 
 voiceRouter.get('/calls', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { leadId, limit = '50' } = req.query;
 
     let calls: any[];
@@ -282,7 +276,7 @@ voiceRouter.get('/calls', async (req: Request, res: Response) => {
 
 voiceRouter.get('/calls/:id/transcript', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const callId = parseInt(req.params.id, 10);
 
     if (isNaN(callId)) {
@@ -338,7 +332,7 @@ voiceRouter.post('/webhook/disclosure', verifyTwilioSignature, async (req: Reque
 
 voiceRouter.post('/calls/:id/outcome', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const callId = parseInt(req.params.id, 10);
     if (isNaN(callId)) return res.status(400).json({ error: 'Invalid call ID' });
 
@@ -379,7 +373,7 @@ voiceRouter.post('/calls/:id/outcome', async (req: Request, res: Response) => {
 
 voiceRouter.get('/calls/:id/summary', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const callId = parseInt(req.params.id, 10);
     if (isNaN(callId)) return res.status(400).json({ error: 'Invalid call ID' });
 
@@ -426,7 +420,7 @@ voiceRouter.get('/calls/:id/summary', async (req: Request, res: Response) => {
 
 voiceRouter.get('/transcripts/search', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { q, limit = '20' } = req.query;
 
     if (!q || typeof q !== 'string') {
@@ -483,7 +477,7 @@ voiceRouter.get('/transcripts/search', async (req: Request, res: Response) => {
 
 voiceRouter.get('/calls/:id/speakers', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const callId = parseInt(req.params.id, 10);
     if (isNaN(callId)) return res.status(400).json({ error: 'Invalid call ID' });
 
@@ -536,7 +530,7 @@ voiceRouter.get('/calls/:id/speakers', async (req: Request, res: Response) => {
 
 voiceRouter.get('/analytics', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const analytics = await voiceAI.getCallAnalytics(org.id);
     res.json({ success: true, analytics });
   } catch (error: any) {

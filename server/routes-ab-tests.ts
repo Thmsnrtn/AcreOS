@@ -21,17 +21,16 @@ import {
 
 const router = Router();
 
-function getOrg(req: Request) { return (req as any).org; }
 
 router.get("/", (req: Request, res: Response) => {
-  const org = getOrg(req);
+  const org = req.organization;
   const tests = listTests(org.id);
   res.json({ tests });
 });
 
 router.post("/", (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { id, name, variants, metric } = req.body;
 
     if (!id || !name || !variants || !metric) {

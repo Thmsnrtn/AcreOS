@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 import type { Express } from "express";
 import { storage, db } from "./storage";
 import { z } from "zod";
@@ -21,7 +20,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
 
   api.get("/api/alerts", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { priority, limit } = req.query;
       const alerts = await leadQualificationService.getPendingAlerts(org.id, {
         priority: priority as string,
@@ -36,7 +35,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
 
   api.post("/api/alerts/:id/acknowledge", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const user = (req as any).user;
+      const user = req.user;
       const id = parseInt(req.params.id);
       const { actionTaken } = req.body;
       await leadQualificationService.acknowledgeAlert(id, user.id, actionTaken);
@@ -60,7 +59,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
 
   api.get("/api/leads/:id/intent-score", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const leadId = parseInt(req.params.id);
       const score = await leadQualificationService.calculateLeadIntentScore(org.id, leadId);
       res.json(score);
@@ -72,7 +71,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
 
   api.post("/api/leads/:id/analyze-message", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const leadId = parseInt(req.params.id);
       const { message, conversationId } = req.body;
       const signals = await leadQualificationService.analyzeMessageForSignals(
@@ -90,7 +89,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
 
   api.get("/api/leads/:id/suggested-response", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const leadId = parseInt(req.params.id);
       const { propertyId } = req.query;
       const response = await leadQualificationService.generateSuggestedResponse(
@@ -107,7 +106,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
 
   api.post("/api/check-hot-leads", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const hotLeadIds = await leadQualificationService.checkForHotLeads(org.id);
       res.json({ hotLeads: hotLeadIds.length, leadIds: hotLeadIds });
     } catch (error: any) {
@@ -124,7 +123,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
 
   api.get("/api/browser-automation/templates", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const systemTemplates = await browserAutomationService.getSystemTemplates();
       const orgTemplates = await browserAutomationService.getOrganizationTemplates(org.id);
       res.json({ system: systemTemplates, organization: orgTemplates });
@@ -136,7 +135,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
 
   api.get("/api/browser-automation/jobs", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { status, limit } = req.query;
       const jobs = await browserAutomationService.getOrganizationJobs(org.id, {
         status: status as string,
@@ -165,8 +164,8 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
 
   api.post("/api/browser-automation/jobs", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
-      const user = (req as any).user;
+      const org = req.organization;
+      const user = req.user;
       const { templateId, name, inputData, priority } = req.body;
       const job = await browserAutomationService.createJob(org.id, {
         templateId,
@@ -201,7 +200,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
 
   api.get("/api/sms/config", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const config = await smsServiceModule.checkTwilioConfiguration(org.id);
       res.json(config);
     } catch (error: any) {
@@ -212,7 +211,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
 
   api.post("/api/sms/config", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { accountSid, authToken, fromPhoneNumber } = req.body;
       
       if (!accountSid || !authToken || !fromPhoneNumber) {
@@ -239,7 +238,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
 
   api.post("/api/sms/send", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { to, message } = req.body;
       
       if (!to || !message) {
@@ -261,8 +260,8 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
 
   api.post("/api/leads/:leadId/sms", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
-      const user = (req as any).user;
+      const org = req.organization;
+      const user = req.user;
       const leadId = parseInt(req.params.leadId);
       const { message } = req.body;
       
@@ -522,7 +521,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
   // Get integration statuses for BYOK services
   api.get("/api/settings/integrations/status", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const services = ["lob", "regrid", "twilio", "sendgrid", "rapidapi"];
       
       const statuses = await Promise.all(
@@ -550,7 +549,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
   // Save API key for a service
   api.post("/api/settings/save-api-key", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { service, apiKey } = req.body;
 
       if (!service || !apiKey) {
@@ -728,7 +727,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
   // GET /api/tax-optimizer/position — year-end tax position analysis
   api.get("/api/tax-optimizer/position", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const taxYear = req.query.year ? parseInt(req.query.year as string) : new Date().getFullYear();
       const { taxOptimizerService } = await import("./services/taxOptimizer");
       const position = await taxOptimizerService.analyzeYearEndPosition(org.id, taxYear);
@@ -742,7 +741,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
   // GET /api/tax-optimizer/deal/:dealId — quick tax estimate for a deal
   api.get("/api/tax-optimizer/deal/:dealId", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const dealId = parseInt(req.params.dealId);
       const { taxOptimizerService } = await import("./services/taxOptimizer");
       const estimate = await taxOptimizerService.estimateDealTax(org.id, dealId);
@@ -755,7 +754,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
   // POST /api/tax-optimizer/report — AI-generated tax planning report
   api.post("/api/tax-optimizer/report", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const taxYear = req.body.taxYear || new Date().getFullYear();
       const { taxOptimizerService } = await import("./services/taxOptimizer");
       const report = await taxOptimizerService.generateTaxPlanningReport(org.id, taxYear);
@@ -772,8 +771,8 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
   // GET /api/investor-profiles/my — get or create own investor profile
   api.get("/api/investor-profiles/my", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
-      const user = (req as any).user;
+      const org = req.organization;
+      const user = req.user;
       const { db: database } = await import("./db");
       const { investorProfiles } = await import("@shared/schema");
       const { eq } = await import("drizzle-orm");
@@ -790,8 +789,8 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
   // POST /api/investor-profiles — create/update investor profile
   api.post("/api/investor-profiles", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
-      const user = (req as any).user;
+      const org = req.organization;
+      const user = req.user;
       const body = req.body;
       const { db: database } = await import("./db");
       const { investorProfiles } = await import("@shared/schema");
@@ -831,7 +830,7 @@ export async function registerMiscRoutes(app: Express): Promise<void> {
   // POST /api/investor-profiles/verify — submit verification documents
   api.post("/api/investor-profiles/verify", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { verificationType, documentUrl, selfAttestation } = req.body;
       const { db: database } = await import("./db");
       const { investorProfiles } = await import("@shared/schema");

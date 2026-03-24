@@ -109,7 +109,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
         : undefined;
       const entityType = req.query.entityType as string | undefined;
       
-      const orgId = (req as any).organization!.id;
+      const orgId = req.organization!.id;
       
       let events = await storage.getRecentActivityEvents(orgId, limit + offset);
       
@@ -141,7 +141,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
   api.get("/api/notification-preferences", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const userId = (req.user as any).id;
-      const orgId = (req as any).organization!.id;
+      const orgId = req.organization!.id;
       
       const preferences = await storage.getNotificationPreferences(userId, orgId);
       res.json(preferences);
@@ -154,7 +154,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
   api.post("/api/notification-preferences", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const userId = (req.user as any).id;
-      const orgId = (req as any).organization!.id;
+      const orgId = req.organization!.id;
       
       const { eventType, emailEnabled, pushEnabled, inAppEnabled } = req.body;
       
@@ -180,7 +180,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
 
   api.put("/api/notification-preferences/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       // Task #2: IDOR prevention — verify notification preference belongs to requesting org
       const [existing] = await db.select({ id: notificationPreferences.id })
@@ -209,7 +209,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
 
   api.get("/api/tasks", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const orgId = (req as any).organization!.id;
+      const orgId = req.organization!.id;
       const filters: { status?: string; priority?: string; assignedTo?: number; entityType?: string; entityId?: number } = {};
       
       if (req.query.status) filters.status = req.query.status as string;
@@ -228,7 +228,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
 
   api.get("/api/tasks/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const orgId = (req as any).organization!.id;
+      const orgId = req.organization!.id;
       const id = parseInt(req.params.id);
       
       const task = await storage.getTask(orgId, id);
@@ -245,7 +245,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
 
   api.post("/api/tasks", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const orgId = (req as any).organization!.id;
+      const orgId = req.organization!.id;
       const userId = (req.user as any).id;
       
       const validated = insertTaskSchema.parse({
@@ -287,7 +287,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
 
   api.put("/api/tasks/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const orgId = (req as any).organization!.id;
+      const orgId = req.organization!.id;
       const userId = (req.user as any).id;
       const id = parseInt(req.params.id);
       
@@ -333,7 +333,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
 
   api.delete("/api/tasks/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const orgId = (req as any).organization!.id;
+      const orgId = req.organization!.id;
       const id = parseInt(req.params.id);
       
       const task = await storage.getTask(orgId, id);
@@ -366,7 +366,7 @@ export function registerCRMExtrasRoutes(app: Express): void {
 
   api.post("/api/tasks/:id/complete", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const orgId = (req as any).organization!.id;
+      const orgId = req.organization!.id;
       const userId = (req.user as any).id;
       const id = parseInt(req.params.id);
       

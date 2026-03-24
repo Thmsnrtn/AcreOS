@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Elite Features Routes
  *
@@ -45,7 +44,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
 
   app.post("/api/notes/:id/record-payment", ...auth, async (req: Request, res: Response) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const noteId = parseInt(req.params.id);
       const {
         amount,
@@ -141,7 +140,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
 
   app.get("/api/notes/:id/tax-escrow", ...auth, async (req: Request, res: Response) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const noteId = parseInt(req.params.id);
       const status = await propertyTaxService.getNoteEscrowStatus(noteId, org.id);
       if (!status) return res.status(404).json({ message: "Note not found" });
@@ -153,7 +152,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
 
   app.post("/api/notes/:id/tax-escrow/enable", ...auth, async (req: Request, res: Response) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const noteId = parseInt(req.params.id);
       const { annualPropertyTax, nextTaxDueDate, countyTaxPortalUrl } = req.body;
       if (!annualPropertyTax || !nextTaxDueDate) {
@@ -174,7 +173,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
 
   app.post("/api/notes/:id/tax-escrow/disable", ...auth, async (req: Request, res: Response) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       await propertyTaxService.disableTaxEscrow(org.id, parseInt(req.params.id));
       res.json({ success: true });
     } catch (err: any) {
@@ -184,7 +183,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
 
   app.post("/api/notes/:id/tax-escrow/record-payment", ...auth, async (req: Request, res: Response) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const noteId = parseInt(req.params.id);
       const { taxYear, installment, amountPaid, paymentDate, countyConfirmationNumber, paymentMethod, notes: paymentNotes, receiptUrl, propertyId } = req.body;
       const result = await propertyTaxService.recordTaxPaymentFromEscrow(org.id, {
@@ -200,7 +199,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
 
   app.get("/api/tax-escrow/portfolio-summary", ...auth, async (req: Request, res: Response) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const summary = await propertyTaxService.getPortfolioTaxSummary(org.id);
       res.json(summary);
     } catch (err: any) {
@@ -220,7 +219,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
 
   app.post("/api/documents/:id/send-for-signature", ...auth, async (req: Request, res: Response) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const documentId = parseInt(req.params.id);
       const { title, subject, message, signers, testMode, expiresAt } = req.body;
 
@@ -283,7 +282,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
 
   app.post("/api/properties/:id/auto-due-diligence", ...auth, async (req: Request, res: Response) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const propertyId = parseInt(req.params.id);
 
       const [property] = await db.select().from(properties)
@@ -351,7 +350,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
         targetRadiusMiles, targetLat, targetLng, listingUrl, imageUrl, headline,
         primaryText, callToAction
       } = req.body;
-      const org = (req as any).organization;
+      const org = req.organization;
       const result = await metaAdsService.createLandListingCampaign({
         propertyId, orgId: org.id, campaignName, dailyBudgetCents,
         targetStates, targetZipCodes, targetRadiusMiles, targetLat, targetLng,
@@ -374,7 +373,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
 
   app.post("/api/meta-ads/sync-catalog", ...auth, async (req: Request, res: Response) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { catalogId } = req.body;
       const appUrl = process.env.APP_URL || req.headers.origin as string;
       const result = await metaAdsService.syncPropertyCatalog(org.id, catalogId, appUrl);
@@ -402,7 +401,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
 
   app.post("/api/actum/batch-payment-run", ...auth, async (req: Request, res: Response) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const result = await actumProcessing.runMonthlyActumPaymentBatch(org.id);
       res.json(result);
     } catch (err: any) {
@@ -435,7 +434,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
 
   app.post("/api/listings/:id/syndicate", ...auth, async (req: Request, res: Response) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { platforms, overrides } = req.body;
 
       if (!platforms?.length) return res.status(400).json({ message: "platforms array required" });
@@ -482,7 +481,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
 
   app.get("/api/bookkeeping/annual-interest-report", ...auth, async (req: Request, res: Response) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const taxYear = parseInt(req.query.year as string) || new Date().getFullYear() - 1;
       const report = await bookkeeping.generateAnnualInterestReport(org.id, taxYear);
       res.json(report);
@@ -493,7 +492,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
 
   app.get("/api/bookkeeping/1099-int", ...auth, async (req: Request, res: Response) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const taxYear = parseInt(req.query.year as string) || new Date().getFullYear() - 1;
       const forms = await bookkeeping.generate1099IntForms(org.id, taxYear);
       res.json({ taxYear, forms });
@@ -504,7 +503,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
 
   app.get("/api/bookkeeping/portfolio-summary", ...auth, async (req: Request, res: Response) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const taxYear = parseInt(req.query.year as string) || new Date().getFullYear() - 1;
       const summary = await bookkeeping.getPortfolioAnnualSummary(org.id, taxYear);
       res.json(summary);
@@ -515,7 +514,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
 
   app.get("/api/bookkeeping/quickbooks/auth-url", ...auth, (req: Request, res: Response) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const url = bookkeeping.getQboOAuthUrl(org.id);
       res.json({ url });
     } catch (err: any) {
@@ -525,7 +524,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
 
   app.post("/api/bookkeeping/quickbooks/sync", ...auth, async (req: Request, res: Response) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
 
       // Retrieve stored QBO tokens from the integrations table
       const [integration] = await db
@@ -635,7 +634,7 @@ export async function registerEliteFeatureRoutes(app: Express): Promise<void> {
   // Create a task
   app.post("/api/va/tasks", ...auth, (req: Request, res: Response) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const task = vaManagement.createTask({ ...req.body, organizationId: org.id });
       res.json(task);
     } catch (err: any) {

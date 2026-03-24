@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * T227 — Buyer Matching Engine Routes
  *
@@ -15,11 +14,10 @@ import { matchmaking } from "./services/matchmaking";
 
 const router = Router();
 
-function getOrg(req: Request) { return (req as any).org; }
 
 router.post("/run", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { propertyId, buyerId } = req.body;
 
     const result = await matchmaking.runMatching({
@@ -35,7 +33,7 @@ router.post("/run", async (req: Request, res: Response) => {
 
 router.get("/top-matches", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const limit = Math.min(parseInt(String(req.query.limit ?? "20")), 50);
 
     const result = await matchmaking.getTopMatches(org.id, limit);
@@ -47,7 +45,7 @@ router.get("/top-matches", async (req: Request, res: Response) => {
 
 router.get("/:propertyId/buyers", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const propertyId = parseInt(req.params.propertyId);
     if (isNaN(propertyId)) return res.status(400).json({ error: "Invalid property ID" });
 
@@ -60,7 +58,7 @@ router.get("/:propertyId/buyers", async (req: Request, res: Response) => {
 
 router.post("/:id/notify", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
 
@@ -73,7 +71,7 @@ router.post("/:id/notify", async (req: Request, res: Response) => {
 
 router.delete("/:id", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
 

@@ -1,19 +1,13 @@
-// @ts-nocheck
 import { Router, type Request, type Response } from 'express';
 import { taxResearcher } from './services/taxResearcher';
 
 const router = Router();
 
-function getOrg(req: Request) {
-  const org = (req as any).organization;
-  if (!org) throw new Error('Organization not found');
-  return org;
-}
 
 // GET /auctions — upcoming tax sale auctions
 router.get('/auctions', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { state, county, startDate, endDate } = req.query;
     const auctions = await taxResearcher.getUpcomingAuctions(org.id, {
       state: state as string | undefined,
@@ -71,7 +65,7 @@ router.get('/delinquent', async (req: Request, res: Response) => {
 // GET /alerts — tax sale alerts for org
 router.get('/alerts', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const alerts = await taxResearcher.getTaxSaleAlerts(org.id);
     res.json({ alerts });
   } catch (err: any) {
@@ -82,7 +76,7 @@ router.get('/alerts', async (req: Request, res: Response) => {
 // POST /alerts — create a tax sale alert
 router.post('/alerts', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const alert = await taxResearcher.createTaxSaleAlert({ ...req.body, organizationId: org.id });
     res.json({ alert });
   } catch (err: any) {
@@ -93,7 +87,7 @@ router.post('/alerts', async (req: Request, res: Response) => {
 // DELETE /alerts/:id
 router.delete('/alerts/:id', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     await taxResearcher.deleteTaxSaleAlert(parseInt(req.params.id), org.id);
     res.json({ success: true });
   } catch (err: any) {
@@ -104,7 +98,7 @@ router.delete('/alerts/:id', async (req: Request, res: Response) => {
 // GET /watchlist — org's watchlist
 router.get('/watchlist', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const watchlist = await taxResearcher.getWatchlist(org.id);
     res.json({ watchlist });
   } catch (err: any) {
@@ -115,7 +109,7 @@ router.get('/watchlist', async (req: Request, res: Response) => {
 // POST /watchlist — add listing to watchlist
 router.post('/watchlist', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { listingId } = req.body;
     await taxResearcher.addToWatchlist(org.id, parseInt(listingId));
     res.json({ success: true });
@@ -138,7 +132,7 @@ router.get('/redemption-rates', async (req: Request, res: Response) => {
 // POST /surface-to-radar — push tax opportunities into Acquisition Radar
 router.post('/surface-to-radar', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const result = await taxResearcher.surfaceTaxOpportunitiesToRadar(org.id);
     res.json({ result });
   } catch (err: any) {

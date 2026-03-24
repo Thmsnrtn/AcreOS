@@ -1,14 +1,8 @@
-// @ts-nocheck
 import { Router, type Request, type Response } from 'express';
 import { taxOptimizationEngine as taxOptimizationService } from './services/taxOptimizationEngine';
 
 const router = Router();
 
-function getOrg(req: Request) {
-  const org = (req as any).organization;
-  if (!org) throw new Error('Organization not found');
-  return org;
-}
 
 // =====================
 // STRATEGIES
@@ -17,7 +11,7 @@ function getOrg(req: Request) {
 // GET /tax-optimization/strategies — list recommended strategies for org
 router.get('/tax-optimization/strategies', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { type } = req.query;
     const strategies = await taxOptimizationService.listStrategies({
       organizationId: org.id,
@@ -45,7 +39,7 @@ router.get('/tax-optimization/strategies/:id', async (req: Request, res: Respons
 // POST /tax-optimization/analyze — run full portfolio tax analysis
 router.post('/tax-optimization/analyze', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { propertyIds, taxYear, includeProjections } = req.body;
     const analysis = await taxOptimizationService.analyzePortfolio({
       organizationId: org.id,
@@ -66,7 +60,7 @@ router.post('/tax-optimization/analyze', async (req: Request, res: Response) => 
 // GET /tax-optimization/scenarios — list tax forecast scenarios
 router.get('/tax-optimization/scenarios', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { propertyId } = req.query;
     const scenarios = await taxOptimizationService.listScenarios({
       organizationId: org.id,
@@ -81,7 +75,7 @@ router.get('/tax-optimization/scenarios', async (req: Request, res: Response) =>
 // POST /tax-optimization/scenarios — create new tax scenario
 router.post('/tax-optimization/scenarios', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const {
       name,
       scenarioType,
@@ -180,7 +174,7 @@ router.post('/tax-optimization/cost-basis', async (req: Request, res: Response) 
 // GET /tax-optimization/oz-holdings — opportunity zone holdings
 router.get('/tax-optimization/oz-holdings', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const holdings = await taxOptimizationService.getOZHoldings(org.id);
     res.json({ holdings });
   } catch (error: any) {
@@ -191,7 +185,7 @@ router.get('/tax-optimization/oz-holdings', async (req: Request, res: Response) 
 // POST /tax-optimization/oz-holdings — add OZ holding
 router.post('/tax-optimization/oz-holdings', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const {
       propertyId,
       censusTrackId,
