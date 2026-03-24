@@ -10,3 +10,5 @@ export { ChurnIntelligence } from "./ChurnIntelligence";
 export { GrowthEngine } from "./GrowthEngine";
 export { PlatformPassiveScore } from "./PlatformPassiveScore";
 export { TasksDueWidget } from "./TasksDueWidget";
+export { TypeSpecificWidgets } from "./type-specific-widgets";
+export type { TypeSpecificWidgetsProps } from "./type-specific-widgets";

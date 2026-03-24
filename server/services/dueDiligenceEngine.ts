@@ -159,6 +159,71 @@ export interface AutoDDReport {
 }
 
 // ============================================
+// BUSINESS-TYPE-SPECIFIC DUE DILIGENCE TEMPLATES
+// ============================================
+
+export type BusinessDDType = "fix_and_flip" | "buy_and_hold" | "commercial";
+
+export interface DDChecklistItem {
+  category: string;
+  item: string;
+  description: string;
+  priority: "required" | "recommended" | "optional";
+}
+
+export const businessTypeDDTemplates: Record<BusinessDDType, DDChecklistItem[]> = {
+  fix_and_flip: [
+    { category: "Structural", item: "Foundation inspection", description: "Check for cracks, settling, water intrusion, and structural integrity", priority: "required" },
+    { category: "Structural", item: "Roof condition", description: "Age, material, leaks, remaining lifespan, and replacement cost estimate", priority: "required" },
+    { category: "HVAC", item: "HVAC system evaluation", description: "Age, efficiency rating, repair vs. replace cost analysis", priority: "required" },
+    { category: "Plumbing", item: "Plumbing inspection", description: "Pipe material (galvanized, PEX, copper), water heater age, sewer line scope", priority: "required" },
+    { category: "Electrical", item: "Electrical panel and wiring", description: "Panel amperage, wiring type (knob-and-tube, aluminum, copper), code compliance", priority: "required" },
+    { category: "Permits", item: "Open or unpulled permits", description: "Check county records for open permits or unpermitted work that must be resolved", priority: "required" },
+    { category: "Permits", item: "Renovation permit requirements", description: "Determine which planned improvements require permits and estimated timeline", priority: "recommended" },
+    { category: "Contractor", item: "Contractor bids (minimum 2)", description: "Get itemized bids for full rehab scope from licensed, insured contractors", priority: "required" },
+    { category: "Contractor", item: "Rehab timeline estimate", description: "Realistic project timeline including permit approval, material lead times, and inspections", priority: "recommended" },
+  ],
+
+  buy_and_hold: [
+    { category: "Rental Comps", item: "Rental comparable analysis", description: "Verify market rents for similar units within 1-mile radius using recent lease data", priority: "required" },
+    { category: "Rental Comps", item: "Vacancy rate assessment", description: "Local vacancy trends and seasonal patterns for the submarket", priority: "recommended" },
+    { category: "Property Management", item: "Property management plan", description: "Self-manage vs. PM company; typical fees (8-12%), maintenance reserves, turnover costs", priority: "required" },
+    { category: "Insurance", item: "Landlord insurance quote", description: "Dwelling coverage, liability, loss-of-rent, and flood/wind riders as needed", priority: "required" },
+    { category: "Insurance", item: "Umbrella policy review", description: "Consider umbrella policy if holding multiple rental units", priority: "optional" },
+    { category: "Tenant Screening", item: "Tenant screening criteria", description: "Define income-to-rent ratio, credit score threshold, background check standards", priority: "required" },
+    { category: "Tenant Screening", item: "Lease agreement review", description: "State-compliant lease with maintenance responsibilities, pet policy, late fees", priority: "recommended" },
+    { category: "Cash Flow", item: "Cash flow projection (12-month)", description: "Gross rent minus PITI, vacancy, CapEx reserves, PM fees, maintenance, and utilities", priority: "required" },
+    { category: "Cash Flow", item: "Cap rate and cash-on-cash return", description: "Calculate NOI / purchase price and annual cash flow / total cash invested", priority: "required" },
+  ],
+
+  commercial: [
+    { category: "Environmental", item: "Phase 1 Environmental Site Assessment", description: "ASTM E1527 standard assessment for recognized environmental conditions (RECs)", priority: "required" },
+    { category: "Environmental", item: "Phase 2 ESA (if triggered)", description: "Soil/groundwater sampling if Phase 1 identifies potential contamination", priority: "recommended" },
+    { category: "Zoning", item: "Zoning verification and compliance", description: "Confirm permitted uses, FAR, setbacks, parking requirements, and variance history", priority: "required" },
+    { category: "Zoning", item: "Conditional use or special permit status", description: "Identify if current use requires special permits and their transferability", priority: "recommended" },
+    { category: "Leases", item: "Lease abstract review", description: "Summarize all leases: term, rent, escalations, options, CAM structure, tenant improvement allowances", priority: "required" },
+    { category: "Leases", item: "Lease expiration schedule", description: "Staggered rollover risk assessment and market rent gap analysis", priority: "required" },
+    { category: "Tenant Financials", item: "Tenant financial statements", description: "Request 2-3 years of financials from major tenants; assess creditworthiness and rent coverage ratio", priority: "required" },
+    { category: "Tenant Financials", item: "Tenant concentration risk", description: "Flag if any single tenant represents >30% of gross revenue", priority: "recommended" },
+    { category: "CAM", item: "CAM reconciliation audit", description: "Review 3 years of CAM budgets vs. actuals; identify pass-through gaps and landlord exposure", priority: "required" },
+    { category: "CAM", item: "Operating expense history", description: "Verify trailing 12-month OpEx and compare to pro forma assumptions", priority: "required" },
+  ],
+};
+
+/**
+ * Returns the due diligence checklist template for a given business type.
+ * Returns undefined for business types without a specific template (e.g., land_flipper, note_investor).
+ */
+export function getDDTemplateForBusinessType(
+  businessType: string
+): DDChecklistItem[] | undefined {
+  if (businessType in businessTypeDDTemplates) {
+    return businessTypeDDTemplates[businessType as BusinessDDType];
+  }
+  return undefined;
+}
+
+// ============================================
 // FEMA FLOOD ZONE CHECK
 // Uses FEMA's NFHL API (free, no key)
 // ============================================
