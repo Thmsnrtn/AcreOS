@@ -4392,6 +4392,71 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
     }
   });
 
+  // GET /api/admin/agents/status — agent status (founder only)
+  api.get("/api/admin/agents/status", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      if (!org.isFounder) return res.status(403).json({ message: "Founder access required" });
+      const { getAgentStatus } = await import("./agents/index");
+      res.json(getAgentStatus());
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/admin/agents/:name/toggle — enable/disable agent (founder only)
+  api.post("/api/admin/agents/:name/toggle", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      if (!org.isFounder) return res.status(403).json({ message: "Founder access required" });
+      const { setAgentEnabled } = await import("./agents/index");
+      const { enabled } = req.body as { enabled: boolean };
+      const success = setAgentEnabled(req.params.name, enabled);
+      if (!success) return res.status(404).json({ message: "Agent not found" });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/admin/digests — list recent digests (founder only)
+  api.get("/api/admin/digests", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      if (!org.isFounder) return res.status(403).json({ message: "Founder access required" });
+      const result = await db.execute(sql`
+        SELECT id, agent_type as "agentType", brief_type as "briefType", content, generated_at as "generatedAt", read_at as "readAt"
+        FROM founder_briefs
+        WHERE brief_type = 'daily_digest'
+        ORDER BY generated_at DESC LIMIT 30
+      `);
+      res.json((result as any).rows ?? []);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/admin/digests/latest — latest digest (founder only)
+  api.get("/api/admin/digests/latest", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      if (!org.isFounder) return res.status(403).json({ message: "Founder access required" });
+      const result = await db.execute(sql`
+        SELECT id, agent_type as "agentType", brief_type as "briefType", content, generated_at as "generatedAt"
+        FROM founder_briefs
+        WHERE brief_type = 'daily_digest'
+        ORDER BY generated_at DESC LIMIT 1
+      `);
+      const row = (result as any).rows?.[0] ?? null;
+      if (row) {
+        await db.execute(sql`UPDATE founder_briefs SET read_at = NOW() WHERE id = ${row.id}`);
+      }
+      res.json(row);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // GET /api/admin/beta-analytics — founder analytics dashboard data
   api.get("/api/admin/beta-analytics", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
