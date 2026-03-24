@@ -11,6 +11,7 @@ export interface TierLimits {
   properties: number | null;
   notes: number | null;
   ai_requests: number | null;
+  premium_lookups: number | null; // Monthly premium data provider lookups
   includedSeats: number; // Seats included in the tier
   maxSeats: number | null; // Maximum seats allowed (null = unlimited)
   seatPriceCents: number | null; // Price per additional seat in cents (null = cannot purchase)
@@ -30,8 +31,9 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     properties: 10,
     notes: 5,
     ai_requests: 100,
+    premium_lookups: 0,
     includedSeats: 1,
-    maxSeats: 1, // Cannot add seats on free tier
+    maxSeats: 1,
     seatPriceCents: null,
   },
   sprout: {
@@ -39,8 +41,9 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     properties: 50,
     notes: 25,
     ai_requests: 500,
+    premium_lookups: 20,
     includedSeats: 1,
-    maxSeats: 1, // Solo tier
+    maxSeats: 1,
     seatPriceCents: null,
   },
   starter: {
@@ -48,36 +51,40 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     properties: 100,
     notes: 50,
     ai_requests: 1000,
+    premium_lookups: 100,
     includedSeats: 2,
     maxSeats: 5,
-    seatPriceCents: 2000, // $20/seat
+    seatPriceCents: 2000,
   },
   pro: {
     leads: 5000,
     properties: 1000,
     notes: 500,
     ai_requests: 10000,
+    premium_lookups: 500,
     includedSeats: 5,
     maxSeats: 20,
-    seatPriceCents: 3000, // $30/seat
+    seatPriceCents: 3000,
   },
   scale: {
     leads: null,
     properties: null,
     notes: null,
     ai_requests: null,
+    premium_lookups: 2000,
     includedSeats: 10,
     maxSeats: 100,
-    seatPriceCents: 4000, // $40/seat
+    seatPriceCents: 4000,
   },
   enterprise: {
     leads: null,
     properties: null,
     notes: null,
     ai_requests: null,
+    premium_lookups: null,
     includedSeats: 25,
-    maxSeats: null, // Unlimited
-    seatPriceCents: 5000, // $50/seat (negotiable)
+    maxSeats: null,
+    seatPriceCents: 5000,
   },
 };
 
@@ -87,9 +94,10 @@ export const FOUNDER_TIER_LIMITS: TierLimits = {
   properties: null,
   notes: null,
   ai_requests: null,
-  includedSeats: 1000, // Effectively unlimited
+  premium_lookups: null,
+  includedSeats: 1000,
   maxSeats: null,
-  seatPriceCents: null, // Founders don't pay for seats
+  seatPriceCents: null,
 };
 
 function normalizeTier(tier: string): SubscriptionTier {
