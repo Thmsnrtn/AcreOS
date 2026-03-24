@@ -2506,6 +2506,32 @@ export const providerCache = pgTable("provider_cache", {
 export type ProviderCache = typeof providerCache.$inferSelect;
 
 // ============================================
+// CUSTOM AUTONOMY RULES
+// ============================================
+
+// Natural language rules for agent autonomy (e.g., "Never auto-email California leads")
+export const customAutonomyRules = pgTable("custom_autonomy_rules", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  ruleText: text("rule_text").notNull(),
+  ruleType: text("rule_type").notNull().default("scope"), // scope, temporal
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  expiresAt: timestamp("expires_at"), // nullable — null means never expires
+}, (table) => [
+  index("idx_autonomy_rules_org").on(table.organizationId),
+  index("idx_autonomy_rules_active").on(table.organizationId, table.isActive),
+]);
+
+export const insertCustomAutonomyRuleSchema = createInsertSchema(customAutonomyRules).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type CustomAutonomyRule = typeof customAutonomyRules.$inferSelect;
+export type InsertCustomAutonomyRule = z.infer<typeof insertCustomAutonomyRuleSchema>;
+
+// ============================================
 // TYPE EXPORTS
 // ============================================
 
