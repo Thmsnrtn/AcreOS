@@ -1,6 +1,7 @@
 import { dataSourceBroker, type LookupCategory } from "./data-source-broker";
 import { storage } from "../storage";
 import type { Property, Lead } from "@shared/schema";
+import { recordSourceSuccess, recordSourceFailure } from "./dataQualityMonitor";
 
 export interface EnrichmentResult {
   propertyId?: number;
@@ -260,6 +261,14 @@ export class PropertyEnrichmentService {
     };
     
     for (const [category, lookupResult] of Object.entries(multiResult.results)) {
+      // Record health for data quality monitoring
+      const sourceName = lookupResult.source?.title || category;
+      if (lookupResult.success) {
+        recordSourceSuccess(sourceName, lookupResult.lookupTimeMs);
+      } else {
+        recordSourceFailure(sourceName, lookupResult.fallbacksUsed.join("; ") || "Lookup failed", lookupResult.lookupTimeMs);
+      }
+
       if (!lookupResult.success) {
         errors[category] = lookupResult.fallbacksUsed.join("; ") || "Lookup failed";
         continue;
