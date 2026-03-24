@@ -215,11 +215,15 @@ export class OnboardingService {
   }
 
   async updateOnboardingStep(
-    orgId: number, 
-    step: number, 
+    orgId: number,
+    step: number,
     data: Partial<OnboardingData>,
     skipped: boolean = false
   ): Promise<OnboardingStatus> {
+    if (step < 0 || step >= ONBOARDING_STEPS.length) {
+      throw new Error(`Invalid onboarding step: ${step}. Must be 0-${ONBOARDING_STEPS.length - 1}.`);
+    }
+
     const org = await storage.getOrganization(orgId);
     if (!org) {
       throw new Error("Organization not found");

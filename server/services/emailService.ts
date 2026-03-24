@@ -263,8 +263,21 @@ export class EmailService {
       ...DEFAULT_RETRY_CONFIG,
       ...options.retryConfig,
     };
-    
+
     const toAddresses = Array.isArray(options.to) ? options.to : [options.to];
+
+    // Validate email addresses before attempting to send
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const invalidAddresses = toAddresses.filter(addr => !emailRegex.test(addr));
+    if (invalidAddresses.length > 0) {
+      return {
+        success: false,
+        error: `Invalid email address(es): ${invalidAddresses.join(', ')}`,
+        errorType: 'recipient_rejected',
+        attempts: 0,
+        durationMs: Date.now() - startTime,
+      };
+    }
     let lastError: any = null;
     let attempts = 0;
     
@@ -407,7 +420,9 @@ export class EmailService {
         this.sendEmail({ ...email, organizationId: email.organizationId || orgId })
       );
       
-      const batchResults = await Promise.all(batchPromises);
+      const batchResults = await Promise.allSettled(batchPromises).then(settled =>
+        settled.map(r => r.status === 'fulfilled' ? r.value : { success: false, error: (r.reason as Error).message })
+      );
       
       for (const result of batchResults) {
         results.push(result);

@@ -73,6 +73,7 @@ export class SequenceProcessorService {
           await this.processEnrollment(enrollment);
         } catch (enrollErr) {
           logger.error("[sequence-processor] Failed to process enrollment, marking as failed and continuing", enrollErr, { metadata: { enrollmentId: enrollment.id } });
+          // Mark individual enrollment as failed so it isn't retried indefinitely
           try {
             await storage.updateSequenceEnrollment(enrollment.id, { status: "failed" });
           } catch { /* best effort */ }

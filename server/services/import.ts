@@ -31,10 +31,21 @@ export interface ImportResult {
   transactionUsed: boolean;
 }
 
+// 10 MB limit for CSV imports to prevent memory exhaustion
+const MAX_CSV_SIZE_BYTES = 10 * 1024 * 1024;
+const MAX_CSV_ROWS = 50_000;
+
 export function parseCSV(csvString: string): Array<Record<string, string>> {
+  if (csvString.length > MAX_CSV_SIZE_BYTES) {
+    throw new Error(`CSV file too large (${(csvString.length / 1024 / 1024).toFixed(1)} MB). Maximum is 10 MB.`);
+  }
+
   const lines = csvString.trim().split(/\r?\n/);
   if (lines.length < 2) {
     throw new Error("CSV must have a header row and at least one data row");
+  }
+  if (lines.length > MAX_CSV_ROWS + 1) {
+    throw new Error(`CSV has too many rows (${lines.length - 1}). Maximum is ${MAX_CSV_ROWS.toLocaleString()}.`);
   }
 
   const headers = parseCSVLine(lines[0]);
