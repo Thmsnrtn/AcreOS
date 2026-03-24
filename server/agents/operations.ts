@@ -19,6 +19,7 @@ export class OperationsAgent extends BaseAgent {
   async runOnce(): Promise<void> {
     await this.checkDataSourceHealth();
     await this.checkApiHealth();
+    await this.expireTrials();
 
     // Daily ops brief
     const now = new Date();
@@ -90,6 +91,26 @@ export class OperationsAgent extends BaseAgent {
       }
     } catch (err: any) {
       console.error(`[${this.name}] API health check failed:`, err.message);
+    }
+  }
+
+  private async expireTrials(): Promise<void> {
+    try {
+      const { trialService } = await import("../services/trialService");
+      const expired = await trialService.expireTrials();
+      if (expired > 0) {
+        await this.logDecision({
+          agentName: this.name,
+          action: "expire_trials",
+          reason: `Expired ${expired} trial(s) past 14-day window`,
+          riskLevel: "low",
+          autoApproved: true,
+          data: { expiredCount: expired },
+          timestamp: new Date(),
+        });
+      }
+    } catch (err: any) {
+      console.error(`[${this.name}] Trial expiry check failed:`, err.message);
     }
   }
 
