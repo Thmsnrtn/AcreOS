@@ -2,26 +2,37 @@ import { db } from "../storage";
 import { organizations, leads, properties, notes, usageEvents } from "@shared/schema";
 import { eq, and, gte, count, sum } from "drizzle-orm";
 
-export type SubscriptionTier = "free" | "sprout" | "starter" | "pro" | "scale" | "enterprise";
+export type SubscriptionTier = "free" | "starter" | "pro" | "scale" | "enterprise";
 
 export type ResourceType = "leads" | "properties" | "notes" | "ai_requests";
-
-export type AutonomyLevel = "none" | "assisted" | "supervised" | "autonomous";
-export type DataTier = "open" | "basic" | "standard" | "premium";
 
 export interface TierLimits {
   leads: number | null;
   properties: number | null;
   notes: number | null;
   ai_requests: number | null;
-  premium_lookups: number | null; // Monthly premium data provider lookups
-  skip_traces: number | null; // Monthly skip trace lookups (null = unlimited)
-  enrichments: number | null; // Monthly data enrichments (null = unlimited)
-  autonomy_level: AutonomyLevel | null; // AI autonomy capability (null = full autonomous)
-  data_tier: DataTier; // Data provider access tier
+  campaigns: number | null; // null = unlimited
+  sequences: number | null; // null = unlimited
+  byokSupport: boolean; // Bring Your Own Key data provider support
   includedSeats: number; // Seats included in the tier
   maxSeats: number | null; // Maximum seats allowed (null = unlimited)
   seatPriceCents: number | null; // Price per additional seat in cents (null = cannot purchase)
+}
+
+// Feature flags for higher tiers — Scale and Enterprise are hidden until manually enabled
+export const PRICING_FEATURE_FLAGS = {
+  pricing_scale_tier_enabled: false,
+  pricing_enterprise_tier_enabled: false,
+} as const;
+
+export function isTierVisible(tier: SubscriptionTier): boolean {
+  if (tier === "scale") return PRICING_FEATURE_FLAGS.pricing_scale_tier_enabled;
+  if (tier === "enterprise") return PRICING_FEATURE_FLAGS.pricing_enterprise_tier_enabled;
+  return true; // free, starter, pro always visible
+}
+
+export function getVisibleTiers(): SubscriptionTier[] {
+  return (Object.keys(TIER_LIMITS) as SubscriptionTier[]).filter(isTierVisible);
 }
 
 export interface UsageLimitResult {
@@ -34,88 +45,65 @@ export interface UsageLimitResult {
 
 export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
   free: {
-    leads: 50,
-    properties: 10,
-    notes: 5,
-    ai_requests: 100,
-    premium_lookups: 0,
-    skip_traces: 0,
-    enrichments: 10,
-    autonomy_level: "none",
-    data_tier: "open",
+    leads: 25,
+    properties: 5,
+    notes: 3,
+    ai_requests: 50,
+    campaigns: 0, // No campaigns on free tier
+    sequences: 0, // No sequences on free tier
+    byokSupport: false,
     includedSeats: 1,
-    maxSeats: 1,
+    maxSeats: 1, // Cannot add seats on free tier
     seatPriceCents: null,
   },
-  sprout: {
+  starter: {
     leads: 250,
     properties: 50,
     notes: 25,
     ai_requests: 500,
-    premium_lookups: 20,
-    skip_traces: 0,
-    enrichments: 50,
-    autonomy_level: "none",
-    data_tier: "basic",
+    campaigns: 5,
+    sequences: 2,
+    byokSupport: false,
     includedSeats: 1,
     maxSeats: 1,
     seatPriceCents: null,
   },
-  starter: {
+  pro: {
     leads: 500,
     properties: 100,
     notes: 50,
     ai_requests: 1000,
-    premium_lookups: 100,
-    skip_traces: 50,
-    enrichments: 200,
-    autonomy_level: "assisted",
-    data_tier: "standard",
+    campaigns: null, // Unlimited
+    sequences: null, // Unlimited
+    byokSupport: true, // BYOK data provider support (Regrid, ATTOM, BatchData)
     includedSeats: 2,
     maxSeats: 5,
-    seatPriceCents: 2000,
+    seatPriceCents: 2000, // $20/seat
   },
-  pro: {
-    leads: 5000,
-    properties: 1000,
-    notes: 500,
-    ai_requests: 10000,
-    premium_lookups: 500,
-    skip_traces: 200,
-    enrichments: 1000,
-    autonomy_level: "supervised",
-    data_tier: "premium",
-    includedSeats: 5,
-    maxSeats: 20,
-    seatPriceCents: 3000,
-  },
+  // Scale and Enterprise are feature-flagged — not visible in UI until manually enabled
   scale: {
     leads: null,
     properties: null,
     notes: null,
     ai_requests: null,
-    premium_lookups: 2000,
-    skip_traces: 1000,
-    enrichments: 5000,
-    autonomy_level: "autonomous",
-    data_tier: "premium",
+    campaigns: null,
+    sequences: null,
+    byokSupport: true,
     includedSeats: 10,
     maxSeats: 100,
-    seatPriceCents: 4000,
+    seatPriceCents: 4000, // $40/seat
   },
   enterprise: {
     leads: null,
     properties: null,
     notes: null,
     ai_requests: null,
-    premium_lookups: null,
-    skip_traces: null,
-    enrichments: null,
-    autonomy_level: "autonomous",
-    data_tier: "premium",
+    campaigns: null,
+    sequences: null,
+    byokSupport: true,
     includedSeats: 25,
-    maxSeats: null,
-    seatPriceCents: 5000,
+    maxSeats: null, // Unlimited
+    seatPriceCents: 5000, // $50/seat (negotiable)
   },
 };
 
@@ -125,20 +113,17 @@ export const FOUNDER_TIER_LIMITS: TierLimits = {
   properties: null,
   notes: null,
   ai_requests: null,
-  premium_lookups: null,
-  skip_traces: null,
-  enrichments: null,
-  autonomy_level: "autonomous",
-  data_tier: "premium",
-  includedSeats: 1000,
+  campaigns: null,
+  sequences: null,
+  byokSupport: true,
+  includedSeats: 1000, // Effectively unlimited
   maxSeats: null,
-  seatPriceCents: null,
+  seatPriceCents: null, // Founders don't pay for seats
 };
 
 function normalizeTier(tier: string): SubscriptionTier {
   const normalized = tier.toLowerCase();
   if (normalized === "professional") return "pro";
-  if (normalized === "growth") return "sprout";
   if (normalized in TIER_LIMITS) return normalized as SubscriptionTier;
   return "free";
 }
