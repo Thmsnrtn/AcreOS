@@ -11199,3 +11199,68 @@ export const notesReceivable = pgTable("notes_receivable", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 export type NoteReceivable = typeof notesReceivable.$inferSelect;
+
+// ============================================
+// BETA ANALYTICS TABLES
+// ============================================
+
+export const userSessions = pgTable("user_sessions", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  orgId: integer("org_id").references(() => organizations.id).notNull(),
+  startedAt: timestamp("started_at").defaultNow(),
+  endedAt: timestamp("ended_at"),
+  pageViews: jsonb("page_views").$type<Array<{ path: string; timestamp: string }>>().default([]),
+}, (table) => [
+  index("user_sessions_org_idx").on(table.orgId),
+  index("user_sessions_user_idx").on(table.userId),
+]);
+
+export const userActivationEvents = pgTable("user_activation_events", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  orgId: integer("org_id").references(() => organizations.id).notNull(),
+  eventName: text("event_name").notNull(),
+  occurredAt: timestamp("occurred_at").defaultNow(),
+}, (table) => [
+  index("user_activation_events_org_idx").on(table.orgId),
+  index("user_activation_events_event_idx").on(table.eventName),
+]);
+
+export const userFeedback = pgTable("user_feedback", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  orgId: integer("org_id").references(() => organizations.id).notNull(),
+  page: text("page").notNull(),
+  feedback: text("feedback").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("user_feedback_org_idx").on(table.orgId),
+]);
+
+// ============================================
+// FOUNDER BRIEFS TABLE (for agent digest/reports)
+// ============================================
+
+export const founderBriefs = pgTable("founder_briefs", {
+  id: serial("id").primaryKey(),
+  agentType: text("agent_type").notNull(), // customer_success, growth, revenue, operations, digest
+  briefType: text("brief_type").notNull(), // daily, weekly, monthly
+  content: jsonb("content").$type<Record<string, any>>().notNull(),
+  generatedAt: timestamp("generated_at").defaultNow(),
+  readAt: timestamp("read_at"),
+});
+
+// ============================================
+// PROCESSED FEEDBACK TABLE (for AI categorization)
+// ============================================
+
+export const processedFeedback = pgTable("processed_feedback", {
+  id: serial("id").primaryKey(),
+  feedbackId: integer("feedback_id").references(() => userFeedback.id).notNull(),
+  category: text("category"), // bug, feature, confusion, praise, complaint
+  coreRequest: text("core_request"),
+  severity: text("severity"), // low, medium, high, critical
+  productArea: text("product_area"),
+  processedAt: timestamp("processed_at").defaultNow(),
+});

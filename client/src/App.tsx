@@ -23,6 +23,66 @@ import { KeyboardShortcutsModal } from "@/components/keyboard-shortcuts";
 import { NewItemMenu } from "@/components/new-item-menu";
 import { QuickActionsMenu } from "@/components/quick-actions-menu";
 import { OnboardingWizard } from "@/components/onboarding-wizard";
+import TodayPage from "@/pages/today";
+import PipelinePage from "@/pages/pipeline";
+import MoneyPage from "@/pages/money";
+import AtlasPage from "@/pages/atlas";
+import Dashboard from "@/pages/dashboard";
+import LeadsPage from "@/pages/leads";
+import PropertiesPage from "@/pages/properties";
+import FinancePage from "@/pages/finance";
+import PortfolioPage from "@/pages/portfolio";
+import CampaignsPage from "@/pages/campaigns";
+import DealsPage from "@/pages/deals";
+import ToolsPage from "@/pages/tools";
+import CommandCenterPage from "@/pages/command-center";
+import SupportPage from "@/pages/support";
+import SettingsPage from "@/pages/settings";
+import HelpPage from "@/pages/help";
+import AdminSupportPage from "@/pages/admin-support";
+import FounderDashboard from "@/pages/founder-dashboard";
+import SequencesPage from "@/pages/sequences";
+import AbTestsPage from "@/pages/ab-tests";
+import TasksPage from "@/pages/tasks";
+import TeamDashboardPage from "@/pages/team-dashboard";
+import AutomationPage from "@/pages/automation";
+import WorkflowsPage from "@/pages/workflows";
+import ActivityPage from "@/pages/activity";
+import CountiesPage from "@/pages/counties";
+import OffersPage from "@/pages/offers";
+import ListingsPage from "@/pages/listings";
+import DocumentsPage from "@/pages/documents";
+import AnalyticsPage from "@/pages/analytics";
+import EmailSettingsPage from "@/pages/email-settings";
+import MailSettingsPage from "@/pages/mail-settings";
+import InboxPage from "@/pages/inbox";
+import MarketplacePage from "@/pages/marketplace";
+import AcademyPage from "@/pages/academy";
+import LandCreditPage from "@/pages/land-credit";
+import AcquisitionRadarPage from "@/pages/acquisition-radar";
+import PortfolioOptimizerPage from "@/pages/portfolio-optimizer";
+import AVMPage from "@/pages/avm";
+import MapsPage from "@/pages/maps";
+import NegotiationCopilotPage from "@/pages/negotiation-copilot";
+import CashFlowPage from "@/pages/cash-flow";
+import DealHunterPage from "@/pages/deal-hunter";
+import VisionAIPage from "@/pages/vision-ai";
+import CapitalMarketsPage from "@/pages/capital-markets";
+import MarketIntelligencePage from "@/pages/market-intelligence";
+import CompliancePage from "@/pages/compliance";
+import TaxResearcherPage from "@/pages/tax-researcher";
+import DocumentIntelligencePage from "@/pages/document-intelligence";
+import AuthPage from "@/pages/auth-page";
+import BorrowerPortal from "@/pages/borrower-portal";
+import TermsOfService from "@/pages/terms";
+import PrivacyPolicy from "@/pages/privacy";
+import LandingPage from "@/pages/landing";
+import NotFound from "@/pages/not-found";
+import SafetyGatesPage from "@/pages/safety-gates";
+import DecisionQueuePage from "@/pages/decision-queue";
+import OpsDashboardPage from "@/pages/ops-dashboard";
+import BetaIntakePage from "@/pages/beta-intake";
+import BetaAnalyticsPage from "@/pages/beta-analytics";
 import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
 import { ConversationTray } from "@/components/conversation-tray";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -483,6 +543,9 @@ function Router() {
       </Route>
       <Route path="/admin/beta-intake">
         {() => <FounderProtectedRoute component={BetaIntakePage} />}
+      </Route>
+      <Route path="/founder/beta-analytics">
+        {() => <FounderProtectedRoute component={BetaAnalyticsPage} />}
       </Route>
 
       <Route path="/deal-underwriting">
