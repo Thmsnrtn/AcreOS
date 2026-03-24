@@ -4301,4 +4301,116 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
 
   // ============================================
 
+  // ============================================
+  // BETA ANALYTICS & FEEDBACK ENDPOINTS
+  // ============================================
+
+  // POST /api/feedback — submit user feedback
+  api.post("/api/feedback", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = req.user as any;
+      const userId = user.claims?.sub || user.id;
+      const { page, feedback } = req.body as { page: string; feedback: string };
+      if (!feedback?.trim()) return res.status(400).json({ message: "Feedback required" });
+      const { betaAnalytics } = await import("./services/betaAnalytics");
+      const id = await betaAnalytics.submitFeedback(userId, org.id, page || "/", feedback.trim());
+      res.json({ id, success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/admin/feedback — all feedback (founder only)
+  api.get("/api/admin/feedback", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      if (!org.isFounder) return res.status(403).json({ message: "Founder access required" });
+      const { betaAnalytics } = await import("./services/betaAnalytics");
+      const limit = Number(req.query.limit) || 100;
+      const offset = Number(req.query.offset) || 0;
+      const feedback = await betaAnalytics.getAllFeedback(limit, offset);
+      res.json(feedback);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/analytics/session/start — start a user session
+  api.post("/api/analytics/session/start", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = req.user as any;
+      const userId = user.claims?.sub || user.id;
+      const { betaAnalytics } = await import("./services/betaAnalytics");
+      const sessionId = await betaAnalytics.startSession(userId, org.id);
+      res.json({ sessionId });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/analytics/session/end — end a user session
+  api.post("/api/analytics/session/end", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { sessionId } = req.body as { sessionId: number };
+      if (!sessionId) return res.status(400).json({ message: "sessionId required" });
+      const { betaAnalytics } = await import("./services/betaAnalytics");
+      await betaAnalytics.endSession(sessionId);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/analytics/pageview — record a page view
+  api.post("/api/analytics/pageview", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { sessionId, path } = req.body as { sessionId: number; path: string };
+      if (!sessionId || !path) return res.status(400).json({ message: "sessionId and path required" });
+      const { betaAnalytics } = await import("./services/betaAnalytics");
+      await betaAnalytics.recordPageView(sessionId, path);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/analytics/activation — track activation event
+  api.post("/api/analytics/activation", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      const user = req.user as any;
+      const userId = user.claims?.sub || user.id;
+      const { eventName } = req.body as { eventName: string };
+      if (!eventName) return res.status(400).json({ message: "eventName required" });
+      const { betaAnalytics } = await import("./services/betaAnalytics");
+      const recorded = await betaAnalytics.trackActivation(userId, org.id, eventName as any);
+      res.json({ recorded });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/admin/beta-analytics — founder analytics dashboard data
+  api.get("/api/admin/beta-analytics", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      if (!org.isFounder) return res.status(403).json({ message: "Founder access required" });
+      const { betaAnalytics } = await import("./services/betaAnalytics");
+      const [signupCount, onboardingRate, activationRates, userTimelines, healthIndicators, pageVisits, feedback] = await Promise.all([
+        betaAnalytics.getSignupCount(),
+        betaAnalytics.getOnboardingCompletionRate(),
+        betaAnalytics.getActivationRates(),
+        betaAnalytics.getUserTimelines(),
+        betaAnalytics.getUserHealthIndicators(),
+        betaAnalytics.getPageVisitFrequency(),
+        betaAnalytics.getAllFeedback(50),
+      ]);
+      res.json({ signupCount, onboardingRate, activationRates, userTimelines, healthIndicators, pageVisits, feedback });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
 }
