@@ -384,6 +384,82 @@ async function executeFeatureRequestApproval(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Hard guardrails — code-level blocks checked BEFORE AI is consulted
+// ─────────────────────────────────────────────────────────────────────────────
+
+const HARD_GUARDRAIL_AMOUNT_LIMIT = 50_000; // cents ($500)
+const HARD_GUARDRAIL_RECIPIENT_LIMIT = 100;
+
+const BILLING_SUBSCRIPTION_ACTIONS = [
+  "billing_modification",
+  "subscription_change",
+  "plan_upgrade",
+  "plan_downgrade",
+  "pricing_change",
+  "payment_method_update",
+  "invoice_adjustment",
+  "subscription_cancel",
+];
+
+const DATA_DELETION_ACTIONS = [
+  "data_deletion",
+  "bulk_delete",
+  "account_deletion",
+  "record_purge",
+  "permanent_delete",
+];
+
+export function checkHardGuardrails(action: {
+  itemType?: string;
+  actionPayload?: Record<string, any>;
+}): { blocked: boolean; reason: string } {
+  const payload = action.actionPayload ?? {};
+
+  // 1. Financial amount exceeds hard limit
+  if (typeof payload.amount === "number" && payload.amount > HARD_GUARDRAIL_AMOUNT_LIMIT) {
+    return {
+      blocked: true,
+      reason: `Hard block: actionPayload.amount (${payload.amount}) exceeds hard limit of ${HARD_GUARDRAIL_AMOUNT_LIMIT} cents ($${(HARD_GUARDRAIL_AMOUNT_LIMIT / 100).toFixed(0)}). Requires founder approval.`,
+    };
+  }
+
+  // 2. Recipient count exceeds hard limit
+  if (Array.isArray(payload.recipients) && payload.recipients.length > HARD_GUARDRAIL_RECIPIENT_LIMIT) {
+    return {
+      blocked: true,
+      reason: `Hard block: recipients list (${payload.recipients.length}) exceeds hard limit of ${HARD_GUARDRAIL_RECIPIENT_LIMIT}. Mass actions require founder approval.`,
+    };
+  }
+
+  // 3. Billing/subscription modification
+  const actionType = (payload.actionType ?? action.itemType ?? "").toLowerCase();
+  if (BILLING_SUBSCRIPTION_ACTIONS.some((t) => actionType.includes(t) || (payload.category ?? "").toLowerCase().includes(t))) {
+    return {
+      blocked: true,
+      reason: `Hard block: billing/subscription modification detected (${actionType}). All billing changes require founder approval.`,
+    };
+  }
+
+  // 4. Data deletion
+  if (DATA_DELETION_ACTIONS.some((t) => actionType.includes(t) || (payload.category ?? "").toLowerCase().includes(t))) {
+    return {
+      blocked: true,
+      reason: `Hard block: data deletion action detected (${actionType}). All data deletions require founder approval.`,
+    };
+  }
+
+  // Also check for delete-related flags in the payload itself
+  if (payload.delete === true || payload.permanent === true || payload.purge === true) {
+    return {
+      blocked: true,
+      reason: `Hard block: destructive action flag detected in payload (delete/permanent/purge). Requires founder approval.`,
+    };
+  }
+
+  return { blocked: false, reason: "" };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Core executor — processes a single inbox item
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -433,6 +509,33 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
     result.executedAction = "hard_stop_type";
     result.executionSuccess = true;
     result.executed = false;
+    return result;
+  }
+
+  // Hard guardrails — code-level blocks checked BEFORE AI is consulted
+  const guardrailCheck = checkHardGuardrails({
+    itemType: item.itemType,
+    actionPayload: item.actionPayload,
+  });
+  if (guardrailCheck.blocked) {
+    result.decision = {
+      action: "hard_stop",
+      confidence: 100,
+      reasoning: guardrailCheck.reason,
+    };
+    result.executedAction = "hard_guardrail_blocked";
+    result.executionSuccess = true;
+    result.executed = false;
+
+    await db.update(decisionsInboxItems)
+      .set({
+        status: "deferred",
+        deferredUntil: new Date(Date.now() + 72 * 60 * 60 * 1000),
+        updatedAt: new Date(),
+      })
+      .where(eq(decisionsInboxItems.id, item.id));
+
+    console.log(`[AutonomousExecutor] Hard guardrail blocked item #${item.id}: ${guardrailCheck.reason}`);
     return result;
   }
 

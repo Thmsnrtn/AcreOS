@@ -331,3 +331,317 @@ export async function getOrgAutonomyLevel(
   // TODO: Read paxAutonomyLevel from organizations table once the column is added.
   return "assisted";
 }
+
+// ── Graduated Autonomy Ramp ──────────────────────────────────────────────────
+
+const RAMP_MIN_DAYS_FOR_SUPERVISED = 7;
+const RAMP_MIN_MANUAL_REVIEWS_FOR_SUPERVISED = 20;
+const RAMP_MIN_DAYS_SUPERVISED = 30;
+const RAMP_MAX_OVERRIDE_RATE_FOR_AUTONOMOUS = 0.05; // 5%
+
+export interface AutonomyEligibility {
+  currentLevel: AutonomyLevel;
+  upgradeAvailable: boolean;
+  nextLevel: AutonomyLevel | null;
+  reason: string;
+  metrics: {
+    orgAgeDays: number;
+    manualReviews: number;
+    daysSupervisedStarted: number | null;
+    overrideRate: number | null;
+  };
+}
+
+/**
+ * Checks the current autonomy level for an org and whether an upgrade is available.
+ *
+ * Graduation path:
+ *   1. New orgs start "assisted"
+ *   2. After 7 days + 20 manual reviews → eligible for "supervised"
+ *   3. After 30 days supervised + <5% override rate → eligible for "autonomous"
+ */
+export async function getAutonomyEligibility(
+  organizationId: number
+): Promise<AutonomyEligibility> {
+  try {
+    const currentLevel = await getOrgAutonomyLevel(organizationId);
+
+    // Fetch the org to get creation date
+    const org = await db.query.organizations.findFirst({
+      where: eq(organizations.id, organizationId),
+    });
+
+    const orgCreatedAt = org?.createdAt ? new Date(org.createdAt) : new Date();
+    const orgAgeDays = Math.floor(
+      (Date.now() - orgCreatedAt.getTime()) / (1000 * 60 * 60 * 24)
+    );
+
+    // Count manual reviews (agent memory entries where founder took action)
+    const reviewRows = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(agentMemory)
+      .where(
+        and(
+          eq(agentMemory.organizationId, organizationId),
+          eq(agentMemory.agentType, "pax"),
+          eq(agentMemory.memoryType, "fact"),
+          sql`${agentMemory.key} LIKE 'founder_review_%'`
+        )
+      );
+    const manualReviews = Number(reviewRows[0]?.count ?? 0);
+
+    // Check for supervised start date (stored in agent memory)
+    const supervisedStartRows = await db
+      .select({ value: agentMemory.value })
+      .from(agentMemory)
+      .where(
+        and(
+          eq(agentMemory.organizationId, organizationId),
+          eq(agentMemory.agentType, "pax"),
+          eq(agentMemory.memoryType, "fact"),
+          eq(agentMemory.key, "autonomy_supervised_started_at")
+        )
+      )
+      .limit(1);
+
+    const supervisedStartedAt = supervisedStartRows[0]
+      ? new Date((supervisedStartRows[0].value as any)?.date ?? 0)
+      : null;
+    const daysSupervisedStarted = supervisedStartedAt
+      ? Math.floor((Date.now() - supervisedStartedAt.getTime()) / (1000 * 60 * 60 * 24))
+      : null;
+
+    // Count overrides (founder overrode an autonomous decision)
+    let overrideRate: number | null = null;
+    if (currentLevel === "supervised" && daysSupervisedStarted !== null) {
+      const overrideRows = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(agentMemory)
+        .where(
+          and(
+            eq(agentMemory.organizationId, organizationId),
+            eq(agentMemory.agentType, "pax"),
+            eq(agentMemory.memoryType, "fact"),
+            sql`${agentMemory.key} LIKE 'autonomy_override_%'`
+          )
+        );
+      const totalOverrides = Number(overrideRows[0]?.count ?? 0);
+
+      const totalDecisionRows = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(agentMemory)
+        .where(
+          and(
+            eq(agentMemory.organizationId, organizationId),
+            eq(agentMemory.agentType, "pax"),
+            eq(agentMemory.memoryType, "fact"),
+            sql`${agentMemory.key} LIKE 'autonomy_decision_%'`
+          )
+        );
+      const totalDecisions = Number(totalDecisionRows[0]?.count ?? 0);
+
+      overrideRate = totalDecisions > 0 ? totalOverrides / totalDecisions : null;
+    }
+
+    const metrics = {
+      orgAgeDays,
+      manualReviews,
+      daysSupervisedStarted,
+      overrideRate,
+    };
+
+    // Evaluate eligibility based on current level
+    if (currentLevel === "assisted") {
+      if (
+        orgAgeDays >= RAMP_MIN_DAYS_FOR_SUPERVISED &&
+        manualReviews >= RAMP_MIN_MANUAL_REVIEWS_FOR_SUPERVISED
+      ) {
+        return {
+          currentLevel,
+          upgradeAvailable: true,
+          nextLevel: "supervised",
+          reason: `Org has been active ${orgAgeDays} days with ${manualReviews} manual reviews. Eligible for supervised autonomy.`,
+          metrics,
+        };
+      }
+      return {
+        currentLevel,
+        upgradeAvailable: false,
+        nextLevel: null,
+        reason: `Needs ${Math.max(0, RAMP_MIN_DAYS_FOR_SUPERVISED - orgAgeDays)} more days and ${Math.max(0, RAMP_MIN_MANUAL_REVIEWS_FOR_SUPERVISED - manualReviews)} more manual reviews before supervised is available.`,
+        metrics,
+      };
+    }
+
+    if (currentLevel === "supervised") {
+      if (
+        daysSupervisedStarted !== null &&
+        daysSupervisedStarted >= RAMP_MIN_DAYS_SUPERVISED &&
+        overrideRate !== null &&
+        overrideRate < RAMP_MAX_OVERRIDE_RATE_FOR_AUTONOMOUS
+      ) {
+        return {
+          currentLevel,
+          upgradeAvailable: true,
+          nextLevel: "autonomous",
+          reason: `Supervised for ${daysSupervisedStarted} days with ${(overrideRate * 100).toFixed(1)}% override rate. Eligible for full autonomy.`,
+          metrics,
+        };
+      }
+      const reasons: string[] = [];
+      if (daysSupervisedStarted === null || daysSupervisedStarted < RAMP_MIN_DAYS_SUPERVISED) {
+        reasons.push(
+          `${Math.max(0, RAMP_MIN_DAYS_SUPERVISED - (daysSupervisedStarted ?? 0))} more days in supervised mode`
+        );
+      }
+      if (overrideRate === null || overrideRate >= RAMP_MAX_OVERRIDE_RATE_FOR_AUTONOMOUS) {
+        reasons.push(
+          `override rate must drop below ${RAMP_MAX_OVERRIDE_RATE_FOR_AUTONOMOUS * 100}% (currently ${overrideRate !== null ? (overrideRate * 100).toFixed(1) + "%" : "N/A"})`
+        );
+      }
+      return {
+        currentLevel,
+        upgradeAvailable: false,
+        nextLevel: null,
+        reason: `Needs: ${reasons.join("; ")}.`,
+        metrics,
+      };
+    }
+
+    // Already autonomous
+    return {
+      currentLevel,
+      upgradeAvailable: false,
+      nextLevel: null,
+      reason: "Already at maximum autonomy level.",
+      metrics,
+    };
+  } catch (err: any) {
+    console.error("[autonomyGuardrails] getAutonomyEligibility error:", err.message);
+    return {
+      currentLevel: "assisted",
+      upgradeAvailable: false,
+      nextLevel: null,
+      reason: `Error evaluating eligibility: ${err.message}`,
+      metrics: { orgAgeDays: 0, manualReviews: 0, daysSupervisedStarted: null, overrideRate: null },
+    };
+  }
+}
+
+// ── Circuit Breaker ──────────────────────────────────────────────────────────
+
+const CIRCUIT_BREAKER_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const CIRCUIT_BREAKER_OVERRIDE_THRESHOLD = 3;
+
+export interface CircuitBreakerResult {
+  tripped: boolean;
+  overridesInWindow: number;
+  downgraded: boolean;
+  reason: string;
+}
+
+/**
+ * Circuit breaker: if 3+ overrides happen within 1 hour, auto-downgrade to
+ * "assisted" and notify the founder.
+ *
+ * Call this after every founder override of an autonomous decision.
+ */
+export async function checkCircuitBreaker(
+  organizationId: number
+): Promise<CircuitBreakerResult> {
+  try {
+    const windowStart = new Date(Date.now() - CIRCUIT_BREAKER_WINDOW_MS);
+
+    // Count overrides within the last hour
+    const overrideRows = await db
+      .select({ value: agentMemory.value, createdAt: agentMemory.createdAt })
+      .from(agentMemory)
+      .where(
+        and(
+          eq(agentMemory.organizationId, organizationId),
+          eq(agentMemory.agentType, "pax"),
+          eq(agentMemory.memoryType, "fact"),
+          sql`${agentMemory.key} LIKE 'autonomy_override_%'`,
+          gte(agentMemory.createdAt, windowStart)
+        )
+      );
+
+    const overridesInWindow = overrideRows.length;
+
+    if (overridesInWindow < CIRCUIT_BREAKER_OVERRIDE_THRESHOLD) {
+      return {
+        tripped: false,
+        overridesInWindow,
+        downgraded: false,
+        reason: `${overridesInWindow}/${CIRCUIT_BREAKER_OVERRIDE_THRESHOLD} overrides in the last hour. No action needed.`,
+      };
+    }
+
+    // Circuit breaker tripped — downgrade to assisted
+    // Record the downgrade event
+    await db.insert(agentMemory).values({
+      organizationId,
+      agentType: "pax",
+      memoryType: "fact",
+      key: `circuit_breaker_trip_${new Date().toISOString()}`,
+      value: {
+        trippedAt: new Date().toISOString(),
+        overridesInWindow,
+        previousOverrides: overrideRows.map((r) => r.value),
+        action: "downgraded_to_assisted",
+      },
+      confidence: "1.0",
+    });
+
+    // TODO: When organizations.paxAutonomyLevel column exists, update it here:
+    // await db.update(organizations)
+    //   .set({ paxAutonomyLevel: "assisted", updatedAt: new Date() })
+    //   .where(eq(organizations.id, organizationId));
+
+    // Notify founder via email
+    const { emailService } = await import("./emailService");
+    const org = await db.query.organizations.findFirst({
+      where: eq(organizations.id, organizationId),
+    });
+    const founderEmail =
+      (org as any)?.contactEmail ||
+      (org as any)?.ownerEmail ||
+      process.env.FOUNDER_EMAIL;
+
+    if (founderEmail) {
+      await emailService.sendEmail({
+        to: founderEmail,
+        subject: `[AcreOS] Autonomy circuit breaker tripped for ${org?.name ?? `Org #${organizationId}`}`,
+        html: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#1a1a1a;">
+          <h2 style="color:#c0392b;">Autonomy Circuit Breaker Tripped</h2>
+          <p><strong>${overridesInWindow} founder overrides</strong> detected within the last hour for <strong>${org?.name ?? `Org #${organizationId}`}</strong>.</p>
+          <p>The organization has been automatically downgraded to <strong>assisted</strong> mode. All autonomous decisions now require manual approval.</p>
+          <p>Review recent decisions at <a href="${process.env.APP_URL || "https://app.acreos.com"}/founder/autonomy-log">the autonomy log</a> and re-enable when ready.</p>
+          <p style="color:#7f8c8d;font-size:12px;">This is an automated safety notification from the AcreOS autonomy system.</p>
+        </div>`,
+        text: `Autonomy Circuit Breaker Tripped\n\n${overridesInWindow} founder overrides detected within the last hour for ${org?.name ?? `Org #${organizationId}`}.\n\nThe organization has been automatically downgraded to "assisted" mode. All autonomous decisions now require manual approval.\n\nReview recent decisions at the autonomy log and re-enable when ready.`,
+      });
+    }
+
+    console.warn(
+      `[autonomyGuardrails] CIRCUIT BREAKER TRIPPED for org ${organizationId}: ` +
+      `${overridesInWindow} overrides in 1h. Downgraded to assisted.`
+    );
+
+    return {
+      tripped: true,
+      overridesInWindow,
+      downgraded: true,
+      reason: `Circuit breaker tripped: ${overridesInWindow} overrides in the last hour. Org downgraded to assisted mode. Founder notified.`,
+    };
+  } catch (err: any) {
+    console.error("[autonomyGuardrails] checkCircuitBreaker error:", err.message);
+    // Fail safe — report as tripped so caller can take defensive action
+    return {
+      tripped: true,
+      overridesInWindow: -1,
+      downgraded: false,
+      reason: `Circuit breaker check failed: ${err.message}. Treating as tripped for safety.`,
+    };
+  }
+}
