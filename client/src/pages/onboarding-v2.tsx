@@ -1209,49 +1209,56 @@ export default function OnboardingV2() {
           )}
 
           {currentStep.id === "strategy" && (
-            <div className="space-y-3">
+            <div className="space-y-6">
               {[
                 {
-                  value: "flip_cash",
-                  icon: DollarSign,
-                  title: "Cash Flip",
-                  desc: "Buy at 25-35% of market, sell for cash at 70-80%. Fast profit, repeat.",
-                  roi: "~200-400% ROI, 60-120 day cycle",
+                  group: "Land",
+                  types: [
+                    { value: "land_flipper", icon: MapPin, title: "Land Flipper", desc: "Buy rural land at 25-35%, sell for cash at 70-80%. Fast cycles, high margins." },
+                    { value: "note_investor", icon: TrendingUp, title: "Note Investor", desc: "Buy cheap, sell on terms with monthly payments. Build passive income streams." },
+                    { value: "hybrid", icon: BarChart3, title: "Hybrid", desc: "Cash flips for capital + seller-financed notes for passive income. Best of both worlds." },
+                  ],
                 },
                 {
-                  value: "owner_finance",
-                  icon: TrendingUp,
-                  title: "Owner Financing",
-                  desc: "Buy cheap, sell on 5-year terms with monthly payments. Passive income.",
-                  roi: "~400-800% total ROI, $200-500/month per note",
+                  group: "Residential",
+                  types: [
+                    { value: "residential_wholesaler", icon: Zap, title: "Wholesaler", desc: "Find deals, assign contracts. Earn assignment fees with zero rehab risk." },
+                    { value: "fix_and_flip", icon: Home, title: "Fix & Flip", desc: "Buy distressed homes, renovate, sell at market. Higher returns, hands-on approach." },
+                    { value: "buy_and_hold", icon: Building, title: "Buy & Hold", desc: "Acquire rentals for cash flow + appreciation. Long-term wealth building." },
+                  ],
                 },
                 {
-                  value: "hybrid",
-                  icon: BarChart3,
-                  title: "Hybrid (Recommended)",
-                  desc: "Some flips for cash flow, some notes for passive income. Best of both.",
-                  roi: "Balanced cash flow + wealth building",
+                  group: "Commercial",
+                  types: [
+                    { value: "commercial", icon: Briefcase, title: "Commercial", desc: "Office, retail, industrial, multi-family. Larger deals, longer timelines, bigger returns." },
+                  ],
                 },
-              ].map(({ value, icon: Icon, title, desc, roi }) => (
-                <button
-                  key={value}
-                  onClick={() => advance({ strategy: value })}
-                  className={cn(
-                    "w-full text-left p-4 rounded-xl border-2 transition-all",
-                    formData.strategy === value
-                      ? "border-emerald-500 bg-emerald-900/20"
-                      : "border-gray-700 bg-gray-900 hover:border-gray-600"
-                  )}
-                >
-                  <div className="flex items-center gap-3">
-                    <Icon className="w-5 h-5 text-emerald-400 flex-shrink-0" />
-                    <div>
-                      <div className="font-semibold text-white">{title}</div>
-                      <div className="text-sm text-gray-400">{desc}</div>
-                      <div className="text-xs text-emerald-400 mt-1">{roi}</div>
-                    </div>
-                  </div>
-                </button>
+              ].map(({ group, types }) => (
+                <div key={group} className="space-y-2">
+                  <div className="text-xs font-medium uppercase tracking-wider text-gray-500 px-1">{group}</div>
+                  {types.map(({ value, icon: Icon, title, desc }) => (
+                    <button
+                      key={value}
+                      onClick={() => advance({ strategy: value, businessType: value })}
+                      className={cn(
+                        "w-full text-left p-4 rounded-xl border-2 transition-all",
+                        formData.strategy === value
+                          ? "border-emerald-500 bg-emerald-900/20"
+                          : "border-gray-700 bg-gray-900 hover:border-gray-600"
+                      )}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-lg bg-emerald-900/50 flex items-center justify-center flex-shrink-0">
+                          <Icon className="w-5 h-5 text-emerald-400" />
+                        </div>
+                        <div>
+                          <div className="font-semibold text-white">{title}</div>
+                          <div className="text-sm text-gray-400">{desc}</div>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
               ))}
             </div>
           )}

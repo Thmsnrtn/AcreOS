@@ -38,7 +38,7 @@ export const organizations = pgTable("organizations", {
   onboardingCompleted: boolean("onboarding_completed").default(false),
   onboardingStep: integer("onboarding_step").default(0),
   onboardingData: jsonb("onboarding_data").$type<{
-    businessType?: "land_flipper" | "note_investor" | "hybrid";
+    businessType?: "land_flipper" | "note_investor" | "hybrid" | "residential_wholesaler" | "fix_and_flip" | "buy_and_hold" | "commercial";
     dataImported?: boolean;
     stripeConnected?: boolean;
     campaignCreated?: boolean;
@@ -625,6 +625,22 @@ export const properties = pgTable("properties", {
   enrichmentData: jsonb("enrichment_data"),
   enrichmentStatus: text("enrichment_status"), // pending, processing, complete, failed
   enrichedAt: timestamp("enriched_at"),
+
+  // Structural fields (all nullable — populated by ATTOM/BatchData providers)
+  bedrooms: integer("bedrooms"),
+  bathrooms: numeric("bathrooms"),
+  squareFeet: integer("square_feet"),
+  yearBuilt: integer("year_built"),
+  stories: integer("stories"),
+  garageSpaces: integer("garage_spaces"),
+  lotSizeSqFt: integer("lot_size_sq_ft"),
+  structureType: text("structure_type"), // sfr, duplex, triplex, fourplex, condo, townhouse, commercial, mixed_use, vacant_land
+  condition: text("condition"), // excellent, good, fair, poor, distressed
+  afterRepairValue: numeric("after_repair_value"),
+  estimatedRepairCost: numeric("estimated_repair_cost"),
+  monthlyRent: numeric("monthly_rent"),
+  capRate: numeric("cap_rate"),
+  noi: numeric("noi"),
 
   // Timestamps
   createdAt: timestamp("created_at").defaultNow(),
