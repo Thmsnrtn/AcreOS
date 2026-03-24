@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 import type { Express } from "express";
 import { storage } from "./storage";
 import { db } from "./db";
@@ -104,7 +103,7 @@ export function registerDocSystemRoutes(app: Express): void {
   // GET /api/document-templates - List all templates (system + org-specific)
   api.get("/api/document-templates", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       
       // Seed system templates if none exist
       await storage.seedSystemTemplates();
@@ -141,7 +140,7 @@ export function registerDocSystemRoutes(app: Express): void {
   // POST /api/document-templates - Create new custom template
   api.post("/api/document-templates", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { name, type, category, content, variables } = req.body;
       
       if (!name || !type || !content) {
@@ -169,7 +168,7 @@ export function registerDocSystemRoutes(app: Express): void {
   // PUT /api/document-templates/:id - Update template
   api.put("/api/document-templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
@@ -212,7 +211,7 @@ export function registerDocSystemRoutes(app: Express): void {
   // PATCH /api/document-templates/:id - Update template (alias for PUT)
   api.patch("/api/document-templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
@@ -255,7 +254,7 @@ export function registerDocSystemRoutes(app: Express): void {
   // DELETE /api/document-templates/:id - Delete template
   api.delete("/api/document-templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
@@ -288,7 +287,7 @@ export function registerDocSystemRoutes(app: Express): void {
   // POST /api/document-templates/:id/preview - Preview template with sample data
   api.post("/api/document-templates/:id/preview", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
@@ -392,7 +391,7 @@ export function registerDocSystemRoutes(app: Express): void {
   // GET /api/document-templates/:id/versions - Get version history for a template
   api.get("/api/document-templates/:id/versions", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
@@ -410,7 +409,7 @@ export function registerDocSystemRoutes(app: Express): void {
   // POST /api/document-templates/:id/versions - Create a version snapshot for a template
   api.post("/api/document-templates/:id/versions", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const user = req.user as any;
       const id = parseInt(req.params.id);
       
@@ -451,7 +450,7 @@ export function registerDocSystemRoutes(app: Express): void {
   // GET /api/generated-documents/:id/versions - Get version history for a generated document
   api.get("/api/generated-documents/:id/versions", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
@@ -469,7 +468,7 @@ export function registerDocSystemRoutes(app: Express): void {
   // POST /api/generated-documents/:id/versions - Create a version snapshot for a generated document
   api.post("/api/generated-documents/:id/versions", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const user = req.user as any;
       const id = parseInt(req.params.id);
       
@@ -505,7 +504,7 @@ export function registerDocSystemRoutes(app: Express): void {
   // GET /api/documents/versions/:versionId - Get a specific version
   api.get("/api/documents/versions/:versionId", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const versionId = parseInt(req.params.versionId);
       
       if (isNaN(versionId)) {
@@ -531,7 +530,7 @@ export function registerDocSystemRoutes(app: Express): void {
   // POST /api/documents/versions/:versionId/restore - Restore to a previous version
   api.post("/api/documents/versions/:versionId/restore", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const versionId = parseInt(req.params.versionId);
       
       if (isNaN(versionId)) {
@@ -558,7 +557,7 @@ export function registerDocSystemRoutes(app: Express): void {
   // GET /api/documents - List generated documents (alias)
   api.get("/api/documents", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const dealId = req.query.dealId ? parseInt(req.query.dealId as string) : undefined;
       const propertyId = req.query.propertyId ? parseInt(req.query.propertyId as string) : undefined;
       const status = req.query.status as string | undefined;
@@ -574,8 +573,8 @@ export function registerDocSystemRoutes(app: Express): void {
   // POST /api/documents/generate - Generate document from template
   api.post("/api/documents/generate", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
-      const user = (req as any).user;
+      const org = req.organization;
+      const user = req.user;
       const { templateId, dealId, propertyId, name, variables } = req.body;
       
       if (!templateId) {
@@ -623,7 +622,7 @@ export function registerDocSystemRoutes(app: Express): void {
   // GET /api/documents/resolve-context - Preview resolved template variables for a deal/property
   api.get("/api/documents/resolve-context", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const dealId = req.query.dealId ? parseInt(req.query.dealId as string) : null;
       const propertyId = req.query.propertyId ? parseInt(req.query.propertyId as string) : null;
       const ctx = await resolveContextVariables(org.id, dealId, propertyId);
@@ -637,7 +636,7 @@ export function registerDocSystemRoutes(app: Express): void {
   // GET /api/generated-documents - List generated documents
   api.get("/api/generated-documents", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const dealId = req.query.dealId ? parseInt(req.query.dealId as string) : undefined;
       const propertyId = req.query.propertyId ? parseInt(req.query.propertyId as string) : undefined;
       const status = req.query.status as string | undefined;
@@ -653,7 +652,7 @@ export function registerDocSystemRoutes(app: Express): void {
   // GET /api/generated-documents/:id - Get document by ID
   api.get("/api/generated-documents/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
@@ -675,8 +674,8 @@ export function registerDocSystemRoutes(app: Express): void {
   // POST /api/generated-documents - Generate document from template
   api.post("/api/generated-documents", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
-      const user = (req as any).user;
+      const org = req.organization;
+      const user = req.user;
       const { templateId, dealId, propertyId, name, variables } = req.body;
       
       if (!templateId) {
@@ -723,7 +722,7 @@ export function registerDocSystemRoutes(app: Express): void {
   // PUT /api/generated-documents/:id - Update document
   api.put("/api/generated-documents/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
@@ -758,7 +757,7 @@ export function registerDocSystemRoutes(app: Express): void {
   // POST /api/signatures - Create a new signature
   api.post("/api/signatures", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { documentId, signerName, signerEmail, signerRole, signatureData, signatureType, consentGiven, consentText } = req.body;
       
       if (!signerName || !signatureData) {
@@ -824,7 +823,7 @@ export function registerDocSystemRoutes(app: Express): void {
   // GET /api/signatures - List signatures
   api.get("/api/signatures", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const documentId = req.query.documentId ? parseInt(req.query.documentId as string) : undefined;
       
       const signatures = await storage.getSignatures(org.id, documentId);
@@ -838,7 +837,7 @@ export function registerDocSystemRoutes(app: Express): void {
   // GET /api/signatures/:id - Get a specific signature
   api.get("/api/signatures/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
@@ -860,7 +859,7 @@ export function registerDocSystemRoutes(app: Express): void {
   // GET /api/generated-documents/:id/signatures - Get signatures for a document
   api.get("/api/generated-documents/:id/signatures", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const documentId = parseInt(req.params.id);
       
       if (isNaN(documentId)) {
@@ -883,7 +882,7 @@ export function registerDocSystemRoutes(app: Express): void {
   // POST /api/generated-documents/:id/request-signature - Request signatures (native system)
   api.post("/api/generated-documents/:id/request-signature", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
@@ -938,7 +937,7 @@ export function registerDocSystemRoutes(app: Express): void {
   // POST /api/generated-documents/:id/send-for-signature - Send document for e-signature (legacy)
   api.post("/api/generated-documents/:id/send-for-signature", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
@@ -983,7 +982,7 @@ export function registerDocSystemRoutes(app: Express): void {
   // GET /api/document-packages - List packages
   api.get("/api/document-packages", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const dealId = req.query.dealId ? parseInt(req.query.dealId as string) : undefined;
       const propertyId = req.query.propertyId ? parseInt(req.query.propertyId as string) : undefined;
       const status = req.query.status as string | undefined;
@@ -999,7 +998,7 @@ export function registerDocSystemRoutes(app: Express): void {
   // GET /api/document-packages/:id - Get package with documents
   api.get("/api/document-packages/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
@@ -1021,7 +1020,7 @@ export function registerDocSystemRoutes(app: Express): void {
   // POST /api/document-packages - Create package
   api.post("/api/document-packages", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const user = req.user as any;
       const { name, description, dealId, propertyId, documents } = req.body;
       
@@ -1050,7 +1049,7 @@ export function registerDocSystemRoutes(app: Express): void {
   // PUT /api/document-packages/:id - Update package
   api.put("/api/document-packages/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
@@ -1085,7 +1084,7 @@ export function registerDocSystemRoutes(app: Express): void {
   // DELETE /api/document-packages/:id - Delete package
   api.delete("/api/document-packages/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
@@ -1107,7 +1106,7 @@ export function registerDocSystemRoutes(app: Express): void {
   // POST /api/document-packages/:id/documents - Add document/template to package
   api.post("/api/document-packages/:id/documents", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
@@ -1150,7 +1149,7 @@ export function registerDocSystemRoutes(app: Express): void {
   // DELETE /api/document-packages/:id/documents/:docIndex - Remove document from package
   api.delete("/api/document-packages/:id/documents/:docIndex", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const docIndex = parseInt(req.params.docIndex);
       
@@ -1185,7 +1184,7 @@ export function registerDocSystemRoutes(app: Express): void {
   // POST /api/document-packages/:id/generate-all - Generate all documents in package
   api.post("/api/document-packages/:id/generate-all", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const user = req.user as any;
       const id = parseInt(req.params.id);
       
@@ -1292,7 +1291,7 @@ export function registerDocSystemRoutes(app: Express): void {
   // GET /api/deals/:id/packages - Get packages for a deal
   api.get("/api/deals/:id/packages", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const dealId = parseInt(req.params.id);
       
       if (isNaN(dealId)) {
@@ -1310,7 +1309,7 @@ export function registerDocSystemRoutes(app: Express): void {
   // GET /api/properties/:id/packages - Get packages for a property
   api.get("/api/properties/:id/packages", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const propertyId = parseInt(req.params.id);
       
       if (isNaN(propertyId)) {

@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 import type { Express, Request, Response, NextFunction, RequestHandler } from "express";
 import { storage, db } from "./storage";
 import { z } from "zod";
@@ -84,7 +83,7 @@ export function registerAdminRoutes(app: Express): void {
   // Create a new support case
   api.post("/api/support/cases", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const user = req.user as any;
       const userId = user.claims?.sub || user.id;
       const parsed = createSupportCaseSchema.safeParse(req.body);
@@ -120,7 +119,7 @@ export function registerAdminRoutes(app: Express): void {
   // Get user's support cases
   api.get("/api/support/cases", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { status } = req.query as { status?: string };
       const cases = await storage.getSupportCases(org.id, status);
       const casesWithSla = cases.map((c) => {
@@ -149,7 +148,7 @@ export function registerAdminRoutes(app: Express): void {
   // Get specific support case with messages
   api.get("/api/support/cases/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const caseId = parseInt(req.params.id);
       const supportCase = await storage.getSupportCase(caseId);
       
@@ -170,7 +169,7 @@ export function registerAdminRoutes(app: Express): void {
   // Send message to a support case
   api.post("/api/support/cases/:id/messages", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const caseId = parseInt(req.params.id);
       const parsed = supportCaseMessageSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Invalid input", errors: parsed.error.errors });
@@ -203,7 +202,7 @@ export function registerAdminRoutes(app: Express): void {
   // Rate satisfaction and close case
   api.post("/api/support/cases/:id/rate", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const caseId = parseInt(req.params.id);
       const parsed = supportCaseRatingSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Invalid input", errors: parsed.error.errors });
@@ -227,7 +226,7 @@ export function registerAdminRoutes(app: Express): void {
   // Resolve case (user marking as resolved)
   api.post("/api/support/cases/:id/resolve", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const caseId = parseInt(req.params.id);
 
       const supportCase = await storage.getSupportCase(caseId);
@@ -248,8 +247,8 @@ export function registerAdminRoutes(app: Express): void {
   // Get all escalated cases (admin only - for now just check org owner)
   api.get("/api/admin/support/escalated", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
-      const user = (req as any).user;
+      const org = req.organization;
+      const user = req.user;
 
       // Simple admin check - org owner can see escalated cases
       if (org.ownerId !== user.id) {
@@ -283,8 +282,8 @@ export function registerAdminRoutes(app: Express): void {
   // Admin respond to escalated case
   api.post("/api/admin/support/cases/:id/respond", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
-      const user = (req as any).user;
+      const org = req.organization;
+      const user = req.user;
       const caseId = parseInt(req.params.id);
       const parsed = adminRespondSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Invalid input", errors: parsed.error.errors });
@@ -330,8 +329,8 @@ export function registerAdminRoutes(app: Express): void {
   // Get support metrics
   api.get("/api/admin/support/metrics", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
-      const user = (req as any).user;
+      const org = req.organization;
+      const user = req.user;
 
       if (org.ownerId !== user.id) {
         return res.status(403).json({ error: "Admin access required" });
@@ -364,7 +363,7 @@ export function registerAdminRoutes(app: Express): void {
   // GET /api/notes/:noteId/borrower-messages — lender views thread
   api.get("/api/notes/:noteId/borrower-messages", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const noteId = parseInt(req.params.noteId);
       const note = await storage.getNote(org.id, noteId);
       if (!note) return res.status(404).json({ error: "Note not found" });
@@ -380,7 +379,7 @@ export function registerAdminRoutes(app: Express): void {
   // POST /api/notes/:noteId/borrower-messages/reply — lender replies
   api.post("/api/notes/:noteId/borrower-messages/reply", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const noteId = parseInt(req.params.noteId);
       const parsed = z.object({ content: z.string().min(1).max(10000) }).safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Invalid input", errors: parsed.error.errors });
@@ -406,7 +405,7 @@ export function registerAdminRoutes(app: Express): void {
   // GET /api/notes/:noteId/borrower-messages/unread-count — unread borrower message count for badge
   api.get("/api/notes/:noteId/borrower-messages/unread-count", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const noteId = parseInt(req.params.noteId);
       const note = await storage.getNote(org.id, noteId);
       if (!note) return res.status(404).json({ error: "Note not found" });
@@ -424,8 +423,8 @@ export function registerAdminRoutes(app: Express): void {
   // Create a new feature request
   api.post("/api/feature-requests", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
-      const user = (req as any).user;
+      const org = req.organization;
+      const user = req.user;
       const userId = user.claims?.sub || user.id;
 
       const validation = insertFeatureRequestSchema.safeParse({
@@ -449,7 +448,7 @@ export function registerAdminRoutes(app: Express): void {
   // Get user's organization feature requests
   api.get("/api/feature-requests", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const requests = await storage.getFeatureRequests(org.id);
       res.json(requests);
     } catch (err: any) {
@@ -461,8 +460,8 @@ export function registerAdminRoutes(app: Express): void {
   // Founder: Get all feature requests across all orgs
   api.get("/api/founder/feature-requests", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
-      const user = (req as any).user;
+      const org = req.organization;
+      const user = req.user;
 
       // Simple founder check - org owner can see all feature requests
       if (org.ownerId !== (user.claims?.sub || user.id)) {
@@ -480,8 +479,8 @@ export function registerAdminRoutes(app: Express): void {
   // Founder: Update feature request status/notes
   api.patch("/api/founder/feature-requests/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
-      const user = (req as any).user;
+      const org = req.organization;
+      const user = req.user;
       const requestId = parseInt(req.params.id);
 
       // Simple founder check
@@ -512,7 +511,7 @@ export function registerAdminRoutes(app: Express): void {
   
   api.post("/api/seed-demo-data", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       
       // Sample leads
       const demoLeads = [
@@ -623,7 +622,7 @@ export function registerAdminRoutes(app: Express): void {
   // Clear demo data endpoint
   api.post("/api/clear-demo-data", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       
       // Delete in order to respect foreign key constraints
       await db.delete(payments).where(eq(payments.organizationId, org.id));
@@ -645,12 +644,12 @@ export function registerAdminRoutes(app: Express): void {
   // ============================================
   
   const isFounderAdmin: RequestHandler = async (req, res, next) => {
-    if (!(req as any).user) {
+    if (!req.user) {
       res.status(401).json({ message: "Unauthorized" });
       return;
     }
 
-    const user = (req as any).user;
+    const user = req.user;
     const userId = user.claims?.sub || user.id;
     const userEmail = user.claims?.email || user.email;
 
@@ -668,7 +667,7 @@ export function registerAdminRoutes(app: Express): void {
   // F-A01-1: Cross-org admin guard — validates URL :orgId matches authenticated org
   // Apply this middleware on any route that accepts :orgId in URL path
   const crossOrgAdminGuard: RequestHandler = (req, res, next) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const paramOrgId = req.params.orgId ? parseInt(req.params.orgId, 10) : null;
     if (paramOrgId !== null && org && org.id !== paramOrgId) {
       logger.warn("Cross-org access attempt blocked", { orgId: org.id, requestedOrgId: paramOrgId, path: req.path });
@@ -932,7 +931,7 @@ export function registerAdminRoutes(app: Express): void {
       const { organizationId, isFounder } = parsedFounder.data;
 
       // If no organizationId provided, use the current user's organization
-      const org = (req as any).organization;
+      const org = req.organization;
       const targetOrgId = organizationId || org?.id;
       
       if (!targetOrgId) {
@@ -1177,7 +1176,7 @@ export function registerAdminRoutes(app: Express): void {
         notes: req.body.notes,
         isActive: true,
         isVerified: false,
-        contributedBy: (req as any).user?.email || "admin",
+        contributedBy: req.user?.email || "admin",
       }).returning();
       res.json(endpoint[0]);
     } catch (err: any) {
@@ -2175,7 +2174,7 @@ export function registerAdminRoutes(app: Express): void {
 
   api.post("/api/broker/enrich-property", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const parsedPe = propertyEnrichSchema.safeParse(req.body);
       if (!parsedPe.success) return res.status(400).json({ message: "Invalid input", errors: parsedPe.error.errors });
       const { propertyId, forceRefresh } = parsedPe.data;
@@ -2630,7 +2629,7 @@ export function registerAdminRoutes(app: Express): void {
   // GET /api/monitor/alerts — get all active alerts for current org
   api.get("/api/monitor/alerts", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { proactiveMonitor } = await import("./services/proactiveMonitor");
       const limit = Math.min(100, req.query.limit ? parseInt(req.query.limit as string) : 50);
       const alerts = await proactiveMonitor.getAllAlerts(org.id, limit);
@@ -2643,7 +2642,7 @@ export function registerAdminRoutes(app: Express): void {
   // POST /api/monitor/run — run all checks for current org
   api.post("/api/monitor/run", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { proactiveMonitor } = await import("./services/proactiveMonitor");
       const activityResult = await proactiveMonitor.checkActivityDrop(org.id);
       const integrityIssues = await proactiveMonitor.checkDataIntegrity(org.id);
@@ -3915,7 +3914,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   // GET /api/org/api-keys — list keys (masked)
   api.get("/api/org/api-keys", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const rows = await db
         .select({
           id: orgApiKeys.id,
@@ -3939,7 +3938,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   // POST /api/org/api-keys — create key (returns full key ONCE)
   api.post("/api/org/api-keys", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const user = req.user as any;
       const userId = user?.claims?.sub || user?.id;
       const parsedKey = z.object({ name: z.string().min(1).max(100), scope: z.enum(["read", "write", "admin"]).optional(), expiresInDays: z.number().int().positive().nullable().optional() }).safeParse(req.body);
@@ -3980,7 +3979,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   // DELETE /api/org/api-keys/:id — revoke key
   api.delete("/api/org/api-keys/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const keyId = parseInt(req.params.id);
       const [updated] = await db
         .update(orgApiKeys)
@@ -3998,7 +3997,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   // GET /api/org/activity-log — last 50 entries for this org
   api.get("/api/org/activity-log", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const rows = await db
         .select()
         .from(auditLog)
@@ -4015,7 +4014,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   // GET /api/campaigns/:id/mail-attribution — responses attributed to direct mail
   api.get("/api/campaigns/:id/mail-attribution", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const campaignId = parseInt(req.params.id);
 
       // Get mailing orders for this campaign
@@ -4272,7 +4271,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   // GET /api/ai/memory — list paxMemory for current org
   api.get("/api/ai/memory", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).org;
+      const org = req.organization;
       const { paxMemory } = await import("@shared/schema");
       const memories = await db
         .select()
@@ -4289,7 +4288,7 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
   // DELETE /api/ai/memory/:id — delete a specific memory entry
   api.delete("/api/ai/memory/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).org;
+      const org = req.organization;
       const memoryId = Number(req.params.id);
       const { paxMemory } = await import("@shared/schema");
       await db.delete(paxMemory)

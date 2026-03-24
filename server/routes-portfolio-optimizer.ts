@@ -3,11 +3,6 @@ import { portfolioOptimizer } from './services/portfolioOptimizer';
 
 const router = Router();
 
-function getOrg(req: Request) {
-  const org = (req as any).organization;
-  if (!org) throw new Error('Organization not found');
-  return org;
-}
 
 // =====================
 // FULL ANALYSIS
@@ -15,7 +10,7 @@ function getOrg(req: Request) {
 
 router.post('/analyze', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { yearsForward = 5 } = req.body;
     const analysis = await portfolioOptimizer.runCompleteAnalysis(
       org.id.toString(),
@@ -33,7 +28,7 @@ router.post('/analyze', async (req: Request, res: Response) => {
 
 router.post('/simulate', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { yearsForward = 5, numSimulations = 10000 } = req.body;
     const holdings = await portfolioOptimizer.getPortfolioHoldings(org.id.toString());
     if (holdings.length === 0) {
@@ -53,7 +48,7 @@ router.post('/simulate', async (req: Request, res: Response) => {
 
 router.get('/simulations', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { limit = 10 } = req.query;
     const simulations = await portfolioOptimizer.getSimulations(
       org.id.toString(),
@@ -71,7 +66,7 @@ router.get('/simulations', async (req: Request, res: Response) => {
 
 router.get('/metrics', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const holdings = await portfolioOptimizer.getPortfolioHoldings(org.id.toString());
     if (holdings.length === 0) {
       return res.json({ metrics: null, holdings: [] });
@@ -88,7 +83,7 @@ router.get('/metrics', async (req: Request, res: Response) => {
 
 router.get('/diversification', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const holdings = await portfolioOptimizer.getPortfolioHoldings(org.id.toString());
     if (holdings.length === 0) {
       return res.json({ diversification: null });
@@ -109,7 +104,7 @@ router.get('/diversification', async (req: Request, res: Response) => {
 
 router.get('/recommendations', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const recommendations = await portfolioOptimizer.getPendingRecommendations(
       org.id.toString()
     );
@@ -121,7 +116,7 @@ router.get('/recommendations', async (req: Request, res: Response) => {
 
 router.patch('/recommendations/:id', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { status } = req.body;
     await portfolioOptimizer.updateRecommendationStatus(
       org.id,

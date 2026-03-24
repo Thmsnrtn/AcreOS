@@ -1,17 +1,11 @@
-// @ts-nocheck
 import { Router, type Request, type Response } from 'express';
 import { education } from './services/education';
 
 const router = Router();
 
-function getOrg(req: Request) {
-  const org = (req as any).organization;
-  if (!org) throw new Error('Organization not found');
-  return org;
-}
 
 function getUser(req: Request) {
-  const user = (req as any).user;
+  const user = req.user;
   if (!user) throw new Error('User not found');
   return user;
 }
@@ -54,7 +48,7 @@ router.get('/courses/:id/stats', async (req: Request, res: Response) => {
 // POST /courses — create a new course (org-published content)
 router.post('/courses', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const courseId = await education.createCourse(org.id, req.body);
     res.json({ courseId });
   } catch (err: any) {

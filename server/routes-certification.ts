@@ -15,7 +15,7 @@ import { certificationService } from "./services/certification";
 const router = Router();
 
 function getUser(req: Request) {
-  return (req as any).user;
+  return req.user;
 }
 
 // Check and award certificate for course completion

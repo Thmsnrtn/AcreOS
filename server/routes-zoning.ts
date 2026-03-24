@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * T195 — Zoning & Permit Lookup Routes
  *

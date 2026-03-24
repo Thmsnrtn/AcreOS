@@ -95,7 +95,7 @@ export function registerAutonomousAgentRoutes(app: Express): void {
   // ── GET /agents ─────────────────────────────────────────────────────────────
   router.get("/agents", async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const statuses = await Promise.all(
         CORE_AGENT_TYPES.map(type => autonomousAgentEngine.getAgentStatus(org.id, type))
       );
@@ -108,7 +108,7 @@ export function registerAutonomousAgentRoutes(app: Express): void {
   // ── GET /agents/:type ───────────────────────────────────────────────────────
   router.get("/agents/:type", async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { type } = req.params;
 
       if (!CORE_AGENT_TYPES.includes(type as CoreAgentType)) {
@@ -125,7 +125,7 @@ export function registerAutonomousAgentRoutes(app: Express): void {
   // ── PUT /agents/:type/config ────────────────────────────────────────────────
   router.put("/agents/:type/config", async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { type } = req.params;
 
       if (!CORE_AGENT_TYPES.includes(type as CoreAgentType)) {
@@ -156,7 +156,7 @@ export function registerAutonomousAgentRoutes(app: Express): void {
   // ── GET /tasks ──────────────────────────────────────────────────────────────
   router.get("/tasks", async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const {
         status,
         agentType,
@@ -197,7 +197,7 @@ export function registerAutonomousAgentRoutes(app: Express): void {
   // ── GET /tasks/pending-approval ─────────────────────────────────────────────
   router.get("/tasks/pending-approval", async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
 
       const tasks = await db
         .select()
@@ -221,7 +221,7 @@ export function registerAutonomousAgentRoutes(app: Express): void {
   // ── POST /tasks ─────────────────────────────────────────────────────────────
   router.post("/tasks", async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const parsed = queueTaskSchema.safeParse(req.body);
       if (!parsed.success) {
         return res.status(400).json({ message: "Invalid task", errors: parsed.error.errors });
@@ -249,8 +249,8 @@ export function registerAutonomousAgentRoutes(app: Express): void {
   // ── POST /tasks/:id/approve ─────────────────────────────────────────────────
   router.post("/tasks/:id/approve", async (req, res) => {
     try {
-      const org = (req as any).organization;
-      const user = (req as any).user;
+      const org = req.organization;
+      const user = req.user;
       const taskId = parseInt(req.params.id);
       const { notes } = req.body;
 
@@ -279,8 +279,8 @@ export function registerAutonomousAgentRoutes(app: Express): void {
   // ── POST /tasks/:id/reject ──────────────────────────────────────────────────
   router.post("/tasks/:id/reject", async (req, res) => {
     try {
-      const org = (req as any).organization;
-      const user = (req as any).user;
+      const org = req.organization;
+      const user = req.user;
       const taskId = parseInt(req.params.id);
       const { notes } = req.body;
 
@@ -305,8 +305,8 @@ export function registerAutonomousAgentRoutes(app: Express): void {
   // Execute a specific task immediately (bypass queue)
   router.post("/tasks/:id/run", async (req, res) => {
     try {
-      const org = (req as any).organization;
-      const user = (req as any).user;
+      const org = req.organization;
+      const user = req.user;
       const taskId = parseInt(req.params.id);
 
       const [task] = await db
@@ -371,7 +371,7 @@ export function registerAutonomousAgentRoutes(app: Express): void {
   // Evaluate a hypothetical action before queuing it
   router.post("/evaluate", async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const parsed = evaluateActionSchema.safeParse(req.body);
       if (!parsed.success) {
         return res.status(400).json({ message: "Invalid request", errors: parsed.error.errors });

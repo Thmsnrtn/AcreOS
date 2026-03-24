@@ -33,16 +33,11 @@ const router = Router();
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function getUser(req: Request) {
-  const user = (req as any).user;
+  const user = req.user;
   if (!user) throw new Error('Not authenticated');
   return user;
 }
 
-function getOrg(req: Request) {
-  const org = (req as any).organization;
-  if (!org) throw new Error('Organization not found');
-  return org;
-}
 
 async function getDealRoomOrFail(id: number, res: Response) {
   const results = await db.select().from(dealRooms).where(eq(dealRooms.id, id)).limit(1);
@@ -314,7 +309,7 @@ router.post('/:id/participants', asyncHandler(async (req: Request, res: Response
     // Send email invitation to the new participant
     try {
       const { emailService } = await import('./services/emailService');
-      const org = getOrg(req);
+      const org = req.organization;
       const dealRoomUrl = `${process.env.APP_URL ?? 'http://localhost:5000'}/deal-rooms/${dealRoomId}`;
       await emailService.sendEmail({
         to: email,

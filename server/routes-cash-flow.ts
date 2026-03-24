@@ -3,11 +3,6 @@ import { cashFlowForecasterService } from './services/cashFlowForecaster';
 
 const router = Router();
 
-function getOrg(req: Request) {
-  const org = (req as any).organization;
-  if (!org) throw new Error('Organization not found');
-  return org;
-}
 
 // =====================
 // GENERATE FORECAST
@@ -15,7 +10,7 @@ function getOrg(req: Request) {
 
 router.post('/forecast', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { noteId, propertyId, periodMonths = 12 } = req.body;
     const forecast = await cashFlowForecasterService.generateForecast(
       org.id,
@@ -33,7 +28,7 @@ router.post('/forecast', async (req: Request, res: Response) => {
 
 router.get('/portfolio/summary', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const summary = await cashFlowForecasterService.getPortfolioCashFlowSummary(org.id);
     res.json({ summary });
   } catch (error: any) {
@@ -43,7 +38,7 @@ router.get('/portfolio/summary', async (req: Request, res: Response) => {
 
 router.get('/portfolio/high-risk', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const highRisk = await cashFlowForecasterService.flagHighRiskNotes(org.id);
     res.json({ highRisk });
   } catch (error: any) {
@@ -95,7 +90,7 @@ router.get('/forecast/:forecastId/insights', async (req: Request, res: Response)
 // Returns month-by-month income projections across all active notes + owned properties.
 router.get('/portfolio/timeline', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const months = Math.min(parseInt((req.query.months as string) || '24', 10), 36);
     const timeline = await cashFlowForecasterService.getPortfolioTimeline(org.id, months);
     res.json({ timeline });
@@ -110,7 +105,7 @@ router.get('/portfolio/timeline', async (req: Request, res: Response) => {
 
 router.get('/forecast/actual-vs-projected', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { periodMonths = 6 } = req.query;
     const comparison = await cashFlowForecasterService.compareActualVsProjected(
       org.id,

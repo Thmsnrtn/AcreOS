@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * T215 — Onboarding Routes
  *
@@ -14,13 +13,12 @@ import { onboardingService } from "./services/onboarding";
 
 const router = Router();
 
-function getUser(req: Request) { return (req as any).user; }
-function getOrg(req: Request) { return (req as any).org; }
+function getUser(req: Request) { return req.user; }
 
 router.post("/complete", async (req: Request, res: Response) => {
   try {
     const user = getUser(req);
-    const org = getOrg(req);
+    const org = req.organization;
     const { orgName, inviteEmails = [], goals = [], targetAcreage, targetBudgetCents } = req.body;
 
     const result = await onboardingService.completeOnboarding({
@@ -41,7 +39,7 @@ router.post("/complete", async (req: Request, res: Response) => {
 router.get("/status", async (req: Request, res: Response) => {
   try {
     const user = getUser(req);
-    const org = getOrg(req);
+    const org = req.organization;
     const status = await onboardingService.getStatus(user.id, org.id);
     res.json(status);
   } catch (err: any) {
@@ -52,7 +50,7 @@ router.get("/status", async (req: Request, res: Response) => {
 router.post("/skip", async (req: Request, res: Response) => {
   try {
     const user = getUser(req);
-    const org = getOrg(req);
+    const org = req.organization;
     await onboardingService.skipOnboarding(user.id, org.id);
     res.json({ skipped: true });
   } catch (err: any) {
@@ -63,7 +61,7 @@ router.post("/skip", async (req: Request, res: Response) => {
 router.get("/checklist", async (req: Request, res: Response) => {
   try {
     const user = getUser(req);
-    const org = getOrg(req);
+    const org = req.organization;
     const checklist = await onboardingService.getChecklist(user.id, org.id);
     res.json({ checklist });
   } catch (err: any) {
@@ -74,7 +72,7 @@ router.get("/checklist", async (req: Request, res: Response) => {
 router.post("/checklist/:item", async (req: Request, res: Response) => {
   try {
     const user = getUser(req);
-    const org = getOrg(req);
+    const org = req.organization;
     const updated = await onboardingService.completeChecklistItem(user.id, org.id, req.params.item);
     res.json({ checklist: updated });
   } catch (err: any) {
@@ -88,7 +86,7 @@ router.post("/checklist/:item", async (req: Request, res: Response) => {
 // ============================================================================
 router.get("/checklist-status", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const orgId = org?.id;
     if (!orgId) {
       return res.status(401).json({ error: "Organization required" });
@@ -204,7 +202,7 @@ router.get("/instant-deal-hunt", async (req: Request, res: Response) => {
 // Track onboarding v2 step progress
 router.patch("/progress", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { step, ...stepData } = req.body;
     const { db } = await import("./db");
     const { organizations } = await import("@shared/schema");

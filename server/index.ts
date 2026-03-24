@@ -44,17 +44,17 @@ installConsoleInterceptor();
 process.on("unhandledRejection", (reason: unknown) => {
   // Log the full error — reason can be an empty object {}, so serialize it
   const msg = reason instanceof Error ? reason.stack : JSON.stringify(reason, null, 2);
-  console.error("[process] Unhandled promise rejection:", msg);
+  logger.error("[process] Unhandled promise rejection", reason instanceof Error ? reason : undefined);
   Sentry.captureException(reason);
 });
 
 process.on("uncaughtException", (err: Error) => {
   // ERR_HTTP_HEADERS_SENT is non-fatal — log and continue instead of crashing
   if ((err as any)?.code === "ERR_HTTP_HEADERS_SENT") {
-    console.warn("[process] Non-fatal: ERR_HTTP_HEADERS_SENT (headers already sent, skipping)");
+    logger.warn("[process] Non-fatal: ERR_HTTP_HEADERS_SENT (headers already sent, skipping)");
     return;
   }
-  console.error("[process] Uncaught exception:", err);
+  logger.error("[process] Uncaught exception", err);
   Sentry.captureException(err);
   // Allow Sentry to flush, then exit so the process manager can restart
   Sentry.close(2000).finally(() => process.exit(1));
@@ -81,7 +81,7 @@ export function log(message: string, source = "express") {
     hour12: true,
   });
 
-  console.log(`${formattedTime} [${source}] ${message}`);
+  logger.info(`${formattedTime} [${source}] ${message}`);
 }
 
 // ============================================
@@ -395,7 +395,7 @@ app.use("/api", apiLimiter);
   try {
     await initTracing();
   } catch (e) {
-    console.warn("[startup] Tracing init skipped:", (e as Error).message);
+    logger.warn(`[startup] Tracing init skipped: ${(e as Error).message}`);
   }
 
   // Load founder-configured credentials from DB into process.env (non-fatal if DB not ready)
@@ -403,7 +403,7 @@ app.use("/api", apiLimiter);
     const { loadConfigToEnv } = await import("./services/configManager");
     await loadConfigToEnv();
   } catch (e) {
-    console.warn("[startup] configManager load skipped:", (e as Error).message);
+    logger.warn(`[startup] configManager load skipped: ${(e as Error).message}`);
   }
 
   await registerRoutes(httpServer, app);
@@ -473,7 +473,7 @@ app.use("/api", apiLimiter);
       // Start autonomous agent task processor (every 30 seconds)
       import('./jobs/autonomousTaskProcessor').then(({ startAutonomousTaskProcessor }) => {
         startAutonomousTaskProcessor();
-      }).catch(err => console.warn('[startup] autonomousTaskProcessor failed to start:', err));
+      }).catch(err => logger.warn('[startup] autonomousTaskProcessor failed to start', err instanceof Error ? err : undefined));
 
       // Start scheduled task runner background job (every minute)
       startScheduledTaskRunnerJob();
@@ -637,16 +637,16 @@ app.use("/api", apiLimiter);
     },
   );
 })().catch((err) => {
-  console.error("[startup] Fatal error during server initialization:");
+  logger.error("[startup] Fatal error during server initialization", err instanceof Error ? err : undefined);
   if (err instanceof Error) {
-    console.error("  Name:", err.name);
-    console.error("  Message:", err.message);
-    console.error("  Stack:", err.stack);
+    logger.error(`  Name: ${err.name}`);
+    logger.error(`  Message: ${err.message}`);
+    logger.error(`  Stack: ${err.stack}`);
   } else {
-    console.error("  Type:", typeof err);
-    console.error("  Value:", JSON.stringify(err, null, 2));
-    console.error("  String:", String(err));
-    try { console.error("  Keys:", Object.keys(err)); } catch {}
+    logger.error(`  Type: ${typeof err}`);
+    logger.error(`  Value: ${JSON.stringify(err, null, 2)}`);
+    logger.error(`  String: ${String(err)}`);
+    try { logger.error(`  Keys: ${Object.keys(err)}`); } catch {}
   }
   process.exit(1);
 });

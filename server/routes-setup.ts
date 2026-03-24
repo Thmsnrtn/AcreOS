@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Founder Setup API — Interactive Platform Configuration
  *

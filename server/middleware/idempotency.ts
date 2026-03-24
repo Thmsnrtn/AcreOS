@@ -102,7 +102,7 @@ export function idempotencyMiddleware(
   }
 
   // Scope key to organization to prevent cross-tenant collisions
-  const org = (req as any).organization;
+  const org = req.organization;
   const scopedKey = org
     ? `org:${org.id}:${idempotencyKey}`
     : idempotencyKey;

@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 import type { Express } from "express";
 import { storage, db } from "./storage";
 import { z } from "zod";
@@ -10,6 +9,8 @@ import { usageMeteringService, creditService } from "./services/credits";
 import multer from "multer";
 import { parseCSV, importProperties, exportPropertiesToCSV, getExpectedColumns, type ExportFilters } from "./services/importExport";
 import { propertyEnrichmentService } from "./services/propertyEnrichment";
+import { Errors } from "./utils/errors";
+import { logger } from "./utils/logger";
 
 // Partial update schema for PUT endpoints
 const updatePropertySchema = insertPropertySchema.partial().omit({ organizationId: true });
@@ -56,21 +57,21 @@ export function registerPropertyRoutes(app: Express): void {
   // ============================================
   
   api.get("/api/properties", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const properties = await storage.getProperties(org.id);
     res.json(properties);
   });
   
   api.get("/api/properties/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const property = await storage.getProperty(org.id, Number(req.params.id));
-    if (!property) return res.status(404).json({ message: "Property not found" });
+    if (!property) return Errors.notFound(res, "Property");
     res.json(property);
   });
-  
+
   api.post("/api/properties", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       
       const usageCheck = await checkUsageLimit(org.id, "properties");
       if (!usageCheck.allowed) {
@@ -115,29 +116,26 @@ export function registerPropertyRoutes(app: Express): void {
       // Auto-enrich new properties that have GPS coordinates (fire-and-forget, non-blocking)
       if (property.latitude && property.longitude) {
         propertyEnrichmentService.enrichProperty(org.id, property.id, false).catch((err: Error) => {
-          console.error(`[AutoEnrich] Background enrichment failed for property ${property.id}:`, err.message);
+          logger.error(`[AutoEnrich] Background enrichment failed for property ${property.id}: ${err.message}`);
         });
       }
 
       res.status(201).json(property);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ 
-          message: "Validation failed", 
-          errors: err.errors.map(e => ({ field: e.path.join('.'), message: e.message }))
-        });
+        return Errors.badRequest(res, "Validation failed", err.errors.map(e => ({ field: e.path.join('.'), message: e.message })));
       }
       throw err;
     }
   });
-  
+
   api.put("/api/properties/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const propertyId = Number(req.params.id);
       const existingProperty = await storage.getProperty(org.id, propertyId);
-      if (!existingProperty) return res.status(404).json({ message: "Property not found" });
-      
+      if (!existingProperty) return Errors.notFound(res, "Property");
+
       const numericFields = ["sizeAcres", "assessedValue", "marketValue", "purchasePrice", "listPrice", "soldPrice"];
       const sanitizedBody = { ...req.body };
       for (const field of numericFields) {
@@ -183,7 +181,7 @@ export function registerPropertyRoutes(app: Express): void {
             county: property.county || undefined,
             apn: property.apn || undefined,
           }).catch(err =>
-            console.warn(`[AutoEnrich] Background enrichment failed for property ${propertyId}:`, err)
+            logger.warn(`[AutoEnrich] Background enrichment failed for property ${propertyId}`, err instanceof Error ? err : undefined)
           );
         }
       }
@@ -191,30 +189,27 @@ export function registerPropertyRoutes(app: Express): void {
       res.json(property);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ 
-          message: "Validation failed", 
-          errors: err.errors.map(e => ({ field: e.path.join('.'), message: e.message }))
-        });
+        return Errors.badRequest(res, "Validation failed", err.errors.map(e => ({ field: e.path.join('.'), message: e.message })));
       }
       throw err;
     }
   });
-  
+
   api.delete("/api/properties/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const propertyId = Number(req.params.id);
       
       if (isNaN(propertyId)) {
-        return res.status(400).json({ message: "Invalid property ID" });
+        return Errors.badRequest(res, "Invalid property ID");
       }
       
       const existingProperty = await storage.getProperty(org.id, propertyId);
       
       if (!existingProperty) {
-        return res.status(404).json({ message: "Property not found" });
+        return Errors.notFound(res, "Property");
       }
-      
+
       await storage.deleteProperty(propertyId);
       
       const user = req.user as any;
@@ -232,20 +227,20 @@ export function registerPropertyRoutes(app: Express): void {
       
       res.status(204).send();
     } catch (error: any) {
-      console.error("Delete property error:", error);
-      res.status(500).json({ message: error.message || "Failed to delete property" });
+      logger.error("Delete property error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
   
   api.post("/api/properties/bulk-delete", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const parsed = bulkIdsSchema.safeParse(req.body);
       if (!parsed.success) {
-        return res.status(400).json({ message: parsed.error.errors[0].message });
+        return Errors.badRequest(res, parsed.error.errors[0].message);
       }
       const { ids } = parsed.data;
-      
+
       const deletedCount = await storage.bulkDeleteProperties(org.id, ids);
       
       const user = req.user as any;
@@ -263,17 +258,17 @@ export function registerPropertyRoutes(app: Express): void {
       
       res.json({ deletedCount });
     } catch (error: any) {
-      console.error("Bulk delete properties error:", error);
-      res.status(500).json({ message: error.message || "Failed to bulk delete properties" });
+      logger.error("Bulk delete properties error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
   
   api.post("/api/properties/bulk-update", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const parsed = bulkUpdateSchema.safeParse(req.body);
       if (!parsed.success) {
-        return res.status(400).json({ message: parsed.error.errors[0].message });
+        return Errors.badRequest(res, parsed.error.errors[0].message);
       }
       const { ids, updates } = parsed.data;
 
@@ -294,13 +289,13 @@ export function registerPropertyRoutes(app: Express): void {
       
       res.json({ updatedCount });
     } catch (error: any) {
-      console.error("Bulk update properties error:", error);
-      res.status(500).json({ message: error.message || "Failed to bulk update properties" });
+      logger.error("Bulk update properties error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
   
   api.get("/api/properties/export", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const csv = await exportPropertiesToCSV(org.id);
     const date = new Date().toISOString().split("T")[0];
     res.setHeader("Content-Type", "text/csv");
@@ -310,24 +305,23 @@ export function registerPropertyRoutes(app: Express): void {
   
   api.post("/api/properties/import", isAuthenticated, getOrCreateOrg, upload.single("file"), async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const file = req.file;
       
       if (!file) {
-        return res.status(400).json({ message: "No file uploaded" });
+        return Errors.badRequest(res, "No file uploaded");
       }
-      
+
       const csvString = file.buffer.toString("utf-8");
       const csvData = parseCSV(csvString);
-      
+
       if (csvData.length === 0) {
-        return res.status(400).json({ message: "CSV file is empty or has no data rows" });
+        return Errors.badRequest(res, "CSV file is empty or has no data rows");
       }
-      
+
       // Check row count limit
       if (csvData.length > MAX_CSV_IMPORT_ROWS) {
-        return res.status(400).json({ 
-          message: `CSV file exceeds maximum of ${MAX_CSV_IMPORT_ROWS} rows. Your file has ${csvData.length} rows. Please split into smaller files.`,
+        return Errors.badRequest(res, `CSV file exceeds maximum of ${MAX_CSV_IMPORT_ROWS} rows. Your file has ${csvData.length} rows. Please split into smaller files.`, {
           rowCount: csvData.length,
           maxRows: MAX_CSV_IMPORT_ROWS,
         });
@@ -351,10 +345,8 @@ export function registerPropertyRoutes(app: Express): void {
       const result = await importProperties(csvData, org.id);
       res.json(result);
     } catch (err) {
-      console.error("Property import error:", err);
-      res.status(400).json({ 
-        message: err instanceof Error ? err.message : "Failed to import properties" 
-      });
+      logger.error("Property import error", err instanceof Error ? err : undefined);
+      Errors.badRequest(res, err instanceof Error ? err.message : "Failed to import properties");
     }
   });
   
@@ -363,16 +355,16 @@ export function registerPropertyRoutes(app: Express): void {
       const file = req.file;
       
       if (!file) {
-        return res.status(400).json({ message: "No file uploaded" });
+        return Errors.badRequest(res, "No file uploaded");
       }
-      
+
       const csvString = file.buffer.toString("utf-8");
       const csvData = parseCSV(csvString);
-      
+
       if (csvData.length === 0) {
-        return res.status(400).json({ message: "CSV file is empty or has no data rows" });
+        return Errors.badRequest(res, "CSV file is empty or has no data rows");
       }
-      
+
       const headers = Object.keys(csvData[0]);
       const preview = csvData.slice(0, 5);
       const expectedColumns = getExpectedColumns("properties");
@@ -384,10 +376,8 @@ export function registerPropertyRoutes(app: Express): void {
         expectedColumns,
       });
     } catch (err) {
-      console.error("Property import preview error:", err);
-      res.status(400).json({ 
-        message: err instanceof Error ? err.message : "Failed to parse CSV" 
-      });
+      logger.error("Property import preview error", err instanceof Error ? err : undefined);
+      Errors.badRequest(res, err instanceof Error ? err.message : "Failed to parse CSV");
     }
   });
   
@@ -397,23 +387,20 @@ export function registerPropertyRoutes(app: Express): void {
   
   api.get("/api/properties/:id/comps", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const property = await storage.getProperty(org.id, Number(req.params.id));
       
       if (!property) {
-        return res.status(404).json({ message: "Property not found" });
+        return Errors.notFound(res, "Property");
       }
-      
+
       const lat = property.parcelCentroid?.lat || (property.latitude ? parseFloat(String(property.latitude)) : null);
       const lng = property.parcelCentroid?.lng || (property.longitude ? parseFloat(String(property.longitude)) : null);
-      
+
       if (!lat || !lng) {
-        return res.status(400).json({ 
-          message: "Property coordinates not available. Please fetch parcel data first.",
-          error: "missing_coordinates"
-        });
+        return Errors.badRequest(res, "Property coordinates not available. Please fetch parcel data first.", { error: "missing_coordinates" });
       }
-      
+
       // Check if org has their own Regrid credentials (BYOK) - if so, skip credit check
       const regridIntegration = await storage.getOrganizationIntegration(org.id, 'regrid');
       const usingOrgRegridCredentials = regridIntegration?.isEnabled && regridIntegration?.credentials?.encrypted;
@@ -431,7 +418,7 @@ export function registerPropertyRoutes(app: Express): void {
           });
         }
       } else {
-        console.log(`[CompsEndpoint] Skipping credit pre-check for org ${org.id} - using org Regrid credentials`);
+        logger.info(`[CompsEndpoint] Skipping credit pre-check for org ${org.id} - using org Regrid credentials`);
       }
       
       const radiusMiles = parseFloat(req.query.radius as string) || 5;
@@ -472,7 +459,7 @@ export function registerPropertyRoutes(app: Express): void {
           radiusMiles,
         });
       } else {
-        console.log(`[CompsEndpoint] Skipping credit usage for org ${org.id} - using org Regrid credentials`);
+        logger.info(`[CompsEndpoint] Skipping credit usage for org ${org.id} - using org Regrid credentials`);
       }
       
       res.json({
@@ -486,20 +473,18 @@ export function registerPropertyRoutes(app: Express): void {
         },
       });
     } catch (err) {
-      console.error("Comps lookup error:", err);
-      res.status(500).json({ 
-        message: err instanceof Error ? err.message : "Failed to fetch comparable properties" 
-      });
+      logger.error("Comps lookup error", err instanceof Error ? err : undefined);
+      Errors.internal(res, err instanceof Error ? err : new Error("Failed to fetch comparable properties"));
     }
   });
   
   api.post("/api/comps/search", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { lat, lng, radius, subjectAcreage, filters } = req.body;
       
       if (!lat || !lng) {
-        return res.status(400).json({ message: "Latitude and longitude are required" });
+        return Errors.badRequest(res, "Latitude and longitude are required");
       }
       
       // Check if org has their own Regrid credentials (BYOK) - if so, skip credit check
@@ -519,7 +504,7 @@ export function registerPropertyRoutes(app: Express): void {
           });
         }
       } else {
-        console.log(`[CompsSearch] Skipping credit pre-check for org ${org.id} - using org Regrid credentials`);
+        logger.info(`[CompsSearch] Skipping credit pre-check for org ${org.id} - using org Regrid credentials`);
       }
       
       const radiusMiles = radius || 5;
@@ -539,15 +524,13 @@ export function registerPropertyRoutes(app: Express): void {
           radiusMiles,
         });
       } else {
-        console.log(`[CompsSearch] Skipping credit usage for org ${org.id} - using org Regrid credentials`);
+        logger.info(`[CompsSearch] Skipping credit usage for org ${org.id} - using org Regrid credentials`);
       }
       
       res.json(result);
     } catch (err) {
-      console.error("Comps search error:", err);
-      res.status(500).json({ 
-        message: err instanceof Error ? err.message : "Failed to search comparable properties" 
-      });
+      logger.error("Comps search error", err instanceof Error ? err : undefined);
+      Errors.internal(res, err instanceof Error ? err : new Error("Failed to search comparable properties"));
     }
   });
   
@@ -562,7 +545,7 @@ export function registerPropertyRoutes(app: Express): void {
       const { apn, lat, lng, state, county } = req.body;
       
       if (!apn && (!lat || !lng)) {
-        return res.status(400).json({ message: "Provide either APN or coordinates (lat/lng)" });
+        return Errors.badRequest(res, "Provide either APN or coordinates (lat/lng)");
       }
       
       let result;
@@ -572,20 +555,20 @@ export function registerPropertyRoutes(app: Express): void {
         if (state && county) {
           path = `/us/${state.toLowerCase()}/${county.toLowerCase().replace(/\s+/g, "-")}`;
         }
-        const org = (req as any).organization;
+        const org = req.organization;
         result = await lookupParcelByAPN(apn, path, org?.id);
       } else {
         result = await lookupParcelByCoordinates(lat, lng);
       }
       
       if (!result.found) {
-        return res.status(404).json({ message: result.error || "Parcel not found" });
+        return Errors.notFound(res, "Parcel");
       }
-      
+
       res.json(result.parcel);
     } catch (err) {
-      console.error("Parcel lookup error:", err);
-      res.status(500).json({ message: "Failed to lookup parcel data" });
+      logger.error("Parcel lookup error", err instanceof Error ? err : undefined);
+      Errors.internal(res, err instanceof Error ? err : new Error("Failed to lookup parcel data"));
     }
   });
   
@@ -601,46 +584,40 @@ export function registerPropertyRoutes(app: Express): void {
       const radius = parseFloat(req.query.radius as string) || 0.5;
       
       if (isNaN(lat) || isNaN(lng)) {
-        return res.status(400).json({ message: "Valid lat/lng coordinates required" });
+        return Errors.badRequest(res, "Valid lat/lng coordinates required");
       }
       
       if (!state || !county) {
-        return res.status(400).json({ message: "State and county required" });
+        return Errors.badRequest(res, "State and county required");
       }
       
       const result = await getNearbyParcelsFromCountyGIS(lat, lng, state, county, radius);
       res.json(result);
     } catch (err) {
-      console.error("Nearby parcels error:", err);
-      res.status(500).json({ message: "Failed to fetch nearby parcels" });
+      logger.error("Nearby parcels error", err instanceof Error ? err : undefined);
+      Errors.internal(res, err instanceof Error ? err : new Error("Failed to fetch nearby parcels"));
     }
   });
 
   // Get nearby parcels for a specific property by ID
   api.get("/api/properties/:id/nearby", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const property = await storage.getProperty(org.id, Number(req.params.id));
       
       if (!property) {
-        return res.status(404).json({ message: "Property not found" });
+        return Errors.notFound(res, "Property");
       }
-      
+
       const lat = property.parcelCentroid?.lat || (property.latitude ? parseFloat(String(property.latitude)) : null);
       const lng = property.parcelCentroid?.lng || (property.longitude ? parseFloat(String(property.longitude)) : null);
-      
+
       if (!lat || !lng) {
-        return res.status(400).json({ 
-          message: "Property coordinates not available. Please fetch parcel data first.",
-          error: "missing_coordinates"
-        });
+        return Errors.badRequest(res, "Property coordinates not available. Please fetch parcel data first.", { error: "missing_coordinates" });
       }
-      
+
       if (!property.state || !property.county) {
-        return res.status(400).json({ 
-          message: "Property state and county required for nearby parcel lookup.",
-          error: "missing_location"
-        });
+        return Errors.badRequest(res, "Property state and county required for nearby parcel lookup.", { error: "missing_location" });
       }
       
       const radiusMiles = parseFloat(req.query.radius as string) || 1;
@@ -667,8 +644,8 @@ export function registerPropertyRoutes(app: Express): void {
         },
       });
     } catch (err) {
-      console.error("Nearby parcels by property error:", err);
-      res.status(500).json({ message: "Failed to fetch nearby parcels" });
+      logger.error("Nearby parcels by property error", err instanceof Error ? err : undefined);
+      Errors.internal(res, err instanceof Error ? err : new Error("Failed to fetch nearby parcels"));
     }
   });
 
@@ -676,13 +653,13 @@ export function registerPropertyRoutes(app: Express): void {
   api.post("/api/properties/:id/fetch-parcel", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { lookupParcelByAPN } = await import("./services/parcel");
-      const org = (req as any).organization;
+      const org = req.organization;
       
       const property = await storage.getProperty(org.id, Number(req.params.id));
       if (!property) {
-        return res.status(404).json({ message: "Property not found" });
+        return Errors.notFound(res, "Property");
       }
-      
+
       // Build state/county path
       let path: string | undefined;
       if (property.state && property.county) {
@@ -692,7 +669,7 @@ export function registerPropertyRoutes(app: Express): void {
       const result = await lookupParcelByAPN(property.apn, path, org.id);
       
       if (!result.found || !result.parcel) {
-        return res.status(404).json({ message: result.error || "Parcel not found" });
+        return Errors.notFound(res, "Parcel");
       }
       
       // Update property with parcel data
@@ -706,8 +683,8 @@ export function registerPropertyRoutes(app: Express): void {
       
       res.json(updated);
     } catch (err) {
-      console.error("Fetch parcel error:", err);
-      res.status(500).json({ message: "Failed to fetch parcel data" });
+      logger.error("Fetch parcel error", err instanceof Error ? err : undefined);
+      Errors.internal(res, err instanceof Error ? err : new Error("Failed to fetch parcel data"));
     }
   });
 
@@ -715,7 +692,7 @@ export function registerPropertyRoutes(app: Express): void {
   api.post("/api/properties/fetch-all-parcels", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { lookupParcelByAPN } = await import("./services/parcel");
-      const org = (req as any).organization;
+      const org = req.organization;
       
       // Get all properties missing parcel boundaries
       const allProperties = await storage.getProperties(org.id);
@@ -731,7 +708,7 @@ export function registerPropertyRoutes(app: Express): void {
         });
       }
       
-      console.log(`[BulkParcel] Fetching parcels for ${propertiesWithoutBoundaries.length} properties`);
+      logger.info(`[BulkParcel] Fetching parcels for ${propertiesWithoutBoundaries.length} properties`);
       
       const results: Array<{ propertyId: number; apn: string; success: boolean; source?: string; error?: string }> = [];
       
@@ -749,7 +726,7 @@ export function registerPropertyRoutes(app: Express): void {
               longitude: String(result.parcel.centroid.lng),
             });
             results.push({ propertyId: property.id, apn: property.apn, success: true, source: result.source });
-            console.log(`[BulkParcel] Found parcel for ${property.apn} from ${result.source}`);
+            logger.info(`[BulkParcel] Found parcel for ${property.apn} from ${result.source}`);
           } else {
             results.push({ propertyId: property.id, apn: property.apn, success: false, error: result.error || 'not found' });
           }
@@ -768,8 +745,8 @@ export function registerPropertyRoutes(app: Express): void {
         results
       });
     } catch (err) {
-      console.error("Bulk fetch parcel error:", err);
-      res.status(500).json({ message: "Failed to bulk fetch parcel data" });
+      logger.error("Bulk fetch parcel error", err instanceof Error ? err : undefined);
+      Errors.internal(res, err instanceof Error ? err : new Error("Failed to bulk fetch parcel data"));
     }
   });
   

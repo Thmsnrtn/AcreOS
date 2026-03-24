@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Data Intelligence Routes
  *
@@ -42,8 +41,7 @@ import { Router, type Request, type Response } from "express";
 
 const router = Router();
 
-function getOrg(req: Request) { return (req as any).org; }
-function getUser(req: Request) { return (req as any).user; }
+function getUser(req: Request) { return req.user; }
 
 // ---------------------------------------------------------------------------
 // County Intelligence Snapshot
@@ -271,7 +269,7 @@ router.get("/freedom-snapshot", async (req: Request, res: Response) => {
     const { db } = await import("./db");
     const { deals, properties } = await import("@shared/schema");
     const { eq, and } = await import("drizzle-orm");
-    const org = getOrg(req);
+    const org = req.organization;
     const monthlyExpenses = parseFloat(String(req.query.expenses || "4500"));
 
     // Fetch active seller-financed deals for this org
@@ -410,7 +408,7 @@ router.get("/census-profile/:state/:county", async (req: Request, res: Response)
 router.get("/market-pulse", async (req: Request, res: Response) => {
   try {
     const { generateMarketPulseReport, DEFAULT_WATCHLIST_COUNTIES } = await import("./services/marketPulseEngine");
-    const org = getOrg(req);
+    const org = req.organization;
 
     let counties: { county: string; state: string }[] = DEFAULT_WATCHLIST_COUNTIES;
 
@@ -465,7 +463,7 @@ router.get("/market-pulse/:state/:county", async (req: Request, res: Response) =
 router.get("/lead-intelligence/batch", async (req: Request, res: Response) => {
   try {
     const { batchScoreLeadsForOrg } = await import("./services/leadIntelligenceEngine");
-    const org = getOrg(req);
+    const org = req.organization;
     const limit = Math.min(100, parseInt(String(req.query.limit || "100"), 10));
     const result = await batchScoreLeadsForOrg(org?.id ?? "demo", limit);
     res.json(result);
@@ -629,7 +627,7 @@ router.get("/signal-catalog", async (_req: Request, res: Response) => {
 router.get("/data-freshness/:propertyId", async (req: Request, res: Response) => {
   try {
     const { storage } = await import("./storage");
-    const org = (req as any).organization;
+    const org = req.organization;
     const propertyId = parseInt(req.params.propertyId);
     const property = await storage.getProperty(org.id, propertyId);
     if (!property) return res.status(404).json({ error: "Property not found" });
@@ -658,7 +656,7 @@ router.get("/freedom-number", async (req: Request, res: Response) => {
     const { payments, notes } = await import("@shared/schema");
     const { eq, and, sum } = await import("drizzle-orm");
 
-    const org = (req as any).organization;
+    const org = req.organization;
     const monthlyExpenses = parseFloat(req.query.monthlyExpenses as string)
       || (org.settings?.monthlyExpenses || org.freedomNumber || 5000);
 
@@ -687,7 +685,7 @@ router.get("/prospect/:leadId", async (req: Request, res: Response) => {
   try {
     const { calculateMotivationScore, getOutreachRecommendation, getEnrichmentPipeline } = await import("./services/prospectIntelligence");
     const { storage } = await import("./storage");
-    const org = (req as any).organization;
+    const org = req.organization;
     const leadId = parseInt(req.params.leadId);
     const lead = await storage.getLead(org.id, leadId);
     if (!lead) return res.status(404).json({ error: "Lead not found" });

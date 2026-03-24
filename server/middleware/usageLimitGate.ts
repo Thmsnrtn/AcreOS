@@ -27,7 +27,7 @@ import { checkUsageLimit, type ResourceType } from "../services/usageLimits";
 export function usageLimitGate(resourceType: ResourceType) {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const organizationId = (req as any).organizationId ?? (req as any).user?.organizationId;
+      const organizationId = req.organizationId ?? req.user?.organizationId;
 
       if (!organizationId) {
         return res.status(401).json({ error: "organization_required" });

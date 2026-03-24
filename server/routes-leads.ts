@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 import type { Express } from "express";
 import { storage, db } from "./storage";
 import { z } from "zod";
@@ -18,6 +17,7 @@ import { usageMeteringService, creditService } from "./services/credits";
 import multer from "multer";
 import { parseCSV, importLeads, exportLeadsToCSV, getExpectedColumns, type ExportFilters } from "./services/importExport";
 import { logger } from "./utils/logger";
+import { Errors } from "./utils/errors";
 
 // Partial update schema for PUT endpoints
 const updateLeadSchema = insertLeadSchema.partial().omit({ organizationId: true });
@@ -52,8 +52,8 @@ export function registerLeadRoutes(app: Express): void {
   // ============================================
   
   api.get("/api/leads", isAuthenticated, getOrCreateOrg, attachPermissionContext(), async (req, res) => {
-    const org = (req as any).organization;
-    const context = (req as any).permissionContext as UserPermissionContext | undefined;
+    const org = req.organization;
+    const context = req.permissionContext as UserPermissionContext | undefined;
     const stage = req.query.stage as string | undefined;
     const assignedToFilter = req.query.assignedTo as string | undefined;
 
@@ -92,8 +92,8 @@ export function registerLeadRoutes(app: Express): void {
   
   // Paginated leads endpoint for infinite scroll
   api.get("/api/leads/paginated", isAuthenticated, getOrCreateOrg, attachPermissionContext(), async (req, res) => {
-    const org = (req as any).organization;
-    const context = (req as any).permissionContext as UserPermissionContext | undefined;
+    const org = req.organization;
+    const context = req.permissionContext as UserPermissionContext | undefined;
     const stage = req.query.stage as string | undefined;
     const assignedToFilter = req.query.assignedTo as string | undefined;
     const limit = Math.min(Number(req.query.limit) || 25, 100);
@@ -156,7 +156,7 @@ export function registerLeadRoutes(app: Express): void {
 
   // Focus List: Top 10 leads not contacted in last 24 hours
   api.get("/api/leads/focus", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const allLeads = await storage.getLeads(org.id);
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
     
@@ -187,30 +187,30 @@ export function registerLeadRoutes(app: Express): void {
 
   // Lead Nurturing Endpoints - Must be before /api/leads/:id to avoid route conflict
   api.get("/api/leads/insights", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const insights = await leadNurturerService.getLeadInsights(org.id);
     res.json(insights);
   });
 
   api.get("/api/leads/aging", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const agingLeads = await alertingService.getAgingLeads(org.id);
     res.json(agingLeads);
   });
 
   api.get("/api/leads/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const leadId = Number(req.params.id);
-    if (isNaN(leadId)) return res.status(400).json({ message: "Invalid lead ID" });
+    if (isNaN(leadId)) return Errors.badRequest(res, "Invalid lead ID");
     const lead = await storage.getLead(org.id, leadId);
-    if (!lead) return res.status(404).json({ message: "Lead not found" });
+    if (!lead) return Errors.notFound(res, "Lead");
     res.json(lead);
   });
   
   // Check for duplicate leads before creating
   api.post("/api/leads/check-duplicates", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { firstName, lastName, email, phone, address } = req.body;
       
       const duplicates = await storage.findDuplicateLeads(org.id, {
@@ -235,19 +235,19 @@ export function registerLeadRoutes(app: Express): void {
         })),
       });
     } catch (err) {
-      console.error("Check duplicates error:", err);
-      res.status(500).json({ message: "Failed to check for duplicates" });
+      logger.error("Check duplicates error", err instanceof Error ? err : undefined);
+      Errors.internal(res, err);
     }
   });
 
   // Merge two leads
   api.post("/api/leads/merge", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { primaryId, duplicateId } = req.body;
       
       if (!primaryId || !duplicateId) {
-        return res.status(400).json({ message: "Primary and duplicate lead IDs are required" });
+        return Errors.badRequest(res, "Primary and duplicate lead IDs are required");
       }
       
       const merged = await storage.mergeLeads(org.id, primaryId, duplicateId);
@@ -258,14 +258,14 @@ export function registerLeadRoutes(app: Express): void {
         lead: merged,
       });
     } catch (err) {
-      console.error("Merge leads error:", err);
-      res.status(500).json({ message: "Failed to merge leads" });
+      logger.error("Merge leads error", err instanceof Error ? err : undefined);
+      Errors.internal(res, err);
     }
   });
 
   api.post("/api/leads", isAuthenticated, getOrCreateOrg, usageLimitGate("leads"), async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       
       const usageCheck = await checkUsageLimit(org.id, "leads");
       if (!usageCheck.allowed) {
@@ -313,23 +313,20 @@ export function registerLeadRoutes(app: Express): void {
       res.status(201).json(lead);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ 
-          message: "Validation failed", 
-          errors: err.errors.map(e => ({ field: e.path.join('.'), message: e.message }))
-        });
+        return Errors.badRequest(res, "Validation failed", err.errors.map(e => ({ field: e.path.join('.'), message: e.message })));
       }
       throw err;
     }
   });
-  
+
   api.put("/api/leads/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const leadId = Number(req.params.id);
       
       const existingLead = await storage.getLead(org.id, leadId);
-      if (!existingLead) return res.status(404).json({ message: "Lead not found" });
-      
+      if (!existingLead) return Errors.notFound(res, "Lead");
+
       const validated = updateLeadSchema.parse(req.body);
       const lead = await storage.updateLead(leadId, validated);
       
@@ -375,24 +372,21 @@ export function registerLeadRoutes(app: Express): void {
       });
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ 
-          message: "Validation failed", 
-          errors: err.errors.map(e => ({ field: e.path.join('.'), message: e.message }))
-        });
+        return Errors.badRequest(res, "Validation failed", err.errors.map(e => ({ field: e.path.join('.'), message: e.message })));
       }
       throw err;
     }
   });
   
   api.delete("/api/leads/:id", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteLeads"), async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const leadId = Number(req.params.id);
     if (isNaN(leadId)) {
-      return res.status(400).json({ message: "Invalid lead ID" });
+      return Errors.badRequest(res, "Invalid lead ID");
     }
     const existingLead = await storage.getLead(org.id, leadId);
     if (!existingLead) {
-      return res.status(404).json({ message: "Lead not found" });
+      return Errors.notFound(res, "Lead");
     }
 
     // Soft delete: set deletedAt instead of hard deleting
@@ -419,10 +413,10 @@ export function registerLeadRoutes(app: Express): void {
 
   // Restore a soft-deleted lead
   api.patch("/api/leads/:id/restore", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const leadId = Number(req.params.id);
     if (isNaN(leadId)) {
-      return res.status(400).json({ message: "Invalid lead ID" });
+      return Errors.badRequest(res, "Invalid lead ID");
     }
 
     // Find the lead even if soft-deleted
@@ -430,7 +424,7 @@ export function registerLeadRoutes(app: Express): void {
       and(eq(leads.id, leadId), eq(leads.organizationId, org.id))
     ).limit(1);
     if (!lead) {
-      return res.status(404).json({ message: "Lead not found" });
+      return Errors.notFound(res, "Lead");
     }
 
     await db.update(leads).set({
@@ -443,22 +437,22 @@ export function registerLeadRoutes(app: Express): void {
   
   api.post("/api/leads/:id/enrich", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const leadId = Number(req.params.id);
       
       if (isNaN(leadId)) {
-        return res.status(400).json({ message: "Invalid lead ID" });
+        return Errors.badRequest(res, "Invalid lead ID");
       }
-      
+
       const lead = await storage.getLead(org.id, leadId);
       if (!lead) {
-        return res.status(404).json({ message: "Lead not found" });
+        return Errors.notFound(res, "Lead");
       }
-      
+
       const { latitude, longitude, forceRefresh } = req.body;
-      
+
       if (!latitude || !longitude) {
-        return res.status(400).json({ message: "latitude and longitude are required" });
+        return Errors.badRequest(res, "latitude and longitude are required");
       }
       
       const result = await propertyEnrichmentService.enrichLead(
@@ -469,7 +463,7 @@ export function registerLeadRoutes(app: Express): void {
       );
       
       if (!result) {
-        return res.status(400).json({ message: "Enrichment failed - coordinates required" });
+        return Errors.badRequest(res, "Enrichment failed - coordinates required");
       }
       
       logger.info("Manual lead enrichment completed", { leadId, organizationId: org.id });
@@ -481,16 +475,16 @@ export function registerLeadRoutes(app: Express): void {
       });
     } catch (err) {
       logger.error("Manual lead enrichment failed", { error: (err as Error).message });
-      res.status(500).json({ message: (err as Error).message || "Enrichment failed" });
+      Errors.internal(res, err);
     }
   });
   
   api.post("/api/leads/bulk-delete", isAuthenticated, getOrCreateOrg, requirePermission("canDeleteLeads"), async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const parsed = bulkLeadIdsSchema.safeParse(req.body);
       if (!parsed.success) {
-        return res.status(400).json({ message: parsed.error.errors[0].message });
+        return Errors.badRequest(res, parsed.error.errors[0].message);
       }
       const { ids } = parsed.data;
 
@@ -511,17 +505,17 @@ export function registerLeadRoutes(app: Express): void {
       
       res.json({ deletedCount });
     } catch (error: any) {
-      console.error("Bulk delete leads error:", error);
-      res.status(500).json({ message: error.message || "Failed to bulk delete leads" });
+      logger.error("Bulk delete leads error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
   
   api.post("/api/leads/bulk-update", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const parsed = bulkLeadUpdateSchema.safeParse(req.body);
       if (!parsed.success) {
-        return res.status(400).json({ message: parsed.error.errors[0].message });
+        return Errors.badRequest(res, parsed.error.errors[0].message);
       }
       const { ids, updates } = parsed.data;
 
@@ -542,17 +536,17 @@ export function registerLeadRoutes(app: Express): void {
       
       res.json({ updatedCount });
     } catch (error: any) {
-      console.error("Bulk update leads error:", error);
-      res.status(500).json({ message: error.message || "Failed to bulk update leads" });
+      logger.error("Bulk update leads error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
   
   api.get("/api/leads/:id/activities", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const leadId = Number(req.params.id);
     // Task #2: Verify lead belongs to org (IDOR prevention)
     const lead = await storage.getLead(org.id, leadId);
-    if (!lead) return res.status(404).json({ message: "Lead not found" });
+    if (!lead) return Errors.notFound(res, "Lead");
     const limit = Math.min(100, req.query.limit ? Number(req.query.limit) : 50);
     const activities = await storage.getLeadActivities(leadId, limit);
     res.json(activities);
@@ -560,27 +554,27 @@ export function registerLeadRoutes(app: Express): void {
 
   api.get("/api/leads/:id/properties", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const leadId = Number(req.params.id);
       
       const lead = await storage.getLead(org.id, leadId);
       if (!lead) {
-        return res.status(404).json({ message: "Lead not found" });
+        return Errors.notFound(res, "Lead");
       }
-      
+
       const allProperties = await storage.getProperties(org.id);
       const linkedProperties = allProperties.filter(p => p.sellerId === leadId);
-      
+
       res.json(linkedProperties);
     } catch (error: any) {
-      console.error("Get lead properties error:", error);
-      res.status(500).json({ message: error.message || "Failed to get lead properties" });
+      logger.error("Get lead properties error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
 
   // Timeline endpoints for communication history
   api.get("/api/leads/:id/timeline", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const leadId = Number(req.params.id);
     const eventTypes = req.query.eventTypes ? (req.query.eventTypes as string).split(",") : undefined;
     const events = await storage.getActivityEvents(org.id, "lead", leadId, eventTypes);
@@ -588,7 +582,7 @@ export function registerLeadRoutes(app: Express): void {
   });
 
   api.get("/api/properties/:id/timeline", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const propertyId = Number(req.params.id);
     const eventTypes = req.query.eventTypes ? (req.query.eventTypes as string).split(",") : undefined;
     const events = await storage.getActivityEvents(org.id, "property", propertyId, eventTypes);
@@ -596,7 +590,7 @@ export function registerLeadRoutes(app: Express): void {
   });
 
   api.get("/api/deals/:id/timeline", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const dealId = Number(req.params.id);
     const eventTypes = req.query.eventTypes ? (req.query.eventTypes as string).split(",") : undefined;
     const events = await storage.getActivityEvents(org.id, "deal", dealId, eventTypes);
@@ -604,14 +598,14 @@ export function registerLeadRoutes(app: Express): void {
   });
 
   api.post("/api/leads/:id/score", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const leadId = Number(req.params.id);
     
     const lead = await storage.getLead(org.id, leadId);
     if (!lead) {
-      return res.status(404).json({ message: "Lead not found" });
+      return Errors.notFound(res, "Lead");
     }
-    
+
     const scoredLead = await leadNurturerService.scoreLead(lead);
     res.json({
       lead: scoredLead,
@@ -626,7 +620,7 @@ export function registerLeadRoutes(app: Express): void {
   // ============================================
   
   api.post("/api/leads/:id/betty-score", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const leadId = Number(req.params.id);
     const triggerSource = req.body.triggerSource || "manual";
     
@@ -641,20 +635,20 @@ export function registerLeadRoutes(app: Express): void {
         scoredAt: result.scoredAt,
       });
     } catch (error: any) {
-      res.status(500).json({ message: error.message || "Failed to score lead" });
+      Errors.internal(res, error);
     }
   });
 
   api.post("/api/leads/batch-score", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const { leadIds, triggerSource = "batch" } = req.body;
     
     if (!Array.isArray(leadIds) || leadIds.length === 0) {
-      return res.status(400).json({ message: "leadIds array is required" });
+      return Errors.badRequest(res, "leadIds array is required");
     }
-    
+
     if (leadIds.length > 100) {
-      return res.status(400).json({ message: "Maximum 100 leads per batch" });
+      return Errors.badRequest(res, "Maximum 100 leads per batch");
     }
     
     try {
@@ -669,12 +663,12 @@ export function registerLeadRoutes(app: Express): void {
         })),
       });
     } catch (error: any) {
-      res.status(500).json({ message: error.message || "Failed to batch score leads" });
+      Errors.internal(res, error);
     }
   });
 
   api.get("/api/leads/:id/score-history", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const leadId = Number(req.params.id);
     const limit = Math.min(Number(req.query.limit) || 10, 50);
     
@@ -682,39 +676,39 @@ export function registerLeadRoutes(app: Express): void {
       const history = await leadScoringService.getScoreHistory(leadId, limit);
       res.json(history);
     } catch (error: any) {
-      res.status(500).json({ message: error.message || "Failed to get score history" });
+      Errors.internal(res, error);
     }
   });
 
   api.get("/api/scoring/profiles", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     
     try {
       const profile = await leadScoringService.getOrCreateDefaultProfile(org.id);
       res.json([profile]);
     } catch (error: any) {
-      res.status(500).json({ message: error.message || "Failed to get scoring profiles" });
+      Errors.internal(res, error);
     }
   });
 
   api.get("/api/scoring/stats", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     
     try {
       const stats = await leadScoringService.getScoringStats(org.id);
       res.json(stats);
     } catch (error: any) {
-      res.status(500).json({ message: error.message || "Failed to get scoring stats" });
+      Errors.internal(res, error);
     }
   });
 
   api.post("/api/leads/:id/conversion", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const leadId = Number(req.params.id);
     const { conversionType, campaignId, campaignType, touchNumber, dealValue, profitMargin } = req.body;
     
     if (!conversionType) {
-      return res.status(400).json({ message: "conversionType is required" });
+      return Errors.badRequest(res, "conversionType is required");
     }
     
     try {
@@ -727,17 +721,17 @@ export function registerLeadRoutes(app: Express): void {
       });
       res.json({ success: true });
     } catch (error: any) {
-      res.status(500).json({ message: error.message || "Failed to record conversion" });
+      Errors.internal(res, error);
     }
   });
 
   api.post("/api/leads/:id/nurture", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const leadId = Number(req.params.id);
     
     const lead = await storage.getLead(org.id, leadId);
     if (!lead) {
-      return res.status(404).json({ message: "Lead not found" });
+      return Errors.notFound(res, "Lead");
     }
 
     const usageResult = await usageMeteringService.recordUsage(
@@ -757,7 +751,7 @@ export function registerLeadRoutes(app: Express): void {
     const followUp = await leadNurturerService.generateFollowUp(lead);
     
     if (!followUp) {
-      return res.status(500).json({ message: "Failed to generate follow-up message" });
+      return Errors.internal(res, new Error("Failed to generate follow-up message"));
     }
 
     await storage.createLeadActivity({
@@ -779,7 +773,7 @@ export function registerLeadRoutes(app: Express): void {
   });
   
   api.get("/api/leads/export", isAuthenticated, getOrCreateOrg, requirePermission("canExportData"), async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const csv = await exportLeadsToCSV(org.id);
     const date = new Date().toISOString().split("T")[0];
     res.setHeader("Content-Type", "text/csv");
@@ -789,27 +783,23 @@ export function registerLeadRoutes(app: Express): void {
   
   api.post("/api/leads/import", isAuthenticated, getOrCreateOrg, upload.single("file"), async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const file = req.file;
       
       if (!file) {
-        return res.status(400).json({ message: "No file uploaded" });
+        return Errors.badRequest(res, "No file uploaded");
       }
-      
+
       const csvString = file.buffer.toString("utf-8");
       const csvData = parseCSV(csvString);
-      
+
       if (csvData.length === 0) {
-        return res.status(400).json({ message: "CSV file is empty or has no data rows" });
+        return Errors.badRequest(res, "CSV file is empty or has no data rows");
       }
-      
+
       // Check row count limit
       if (csvData.length > MAX_CSV_IMPORT_ROWS) {
-        return res.status(400).json({ 
-          message: `CSV file exceeds maximum of ${MAX_CSV_IMPORT_ROWS} rows. Your file has ${csvData.length} rows. Please split into smaller files.`,
-          rowCount: csvData.length,
-          maxRows: MAX_CSV_IMPORT_ROWS,
-        });
+        return Errors.badRequest(res, `CSV file exceeds maximum of ${MAX_CSV_IMPORT_ROWS} rows. Your file has ${csvData.length} rows. Please split into smaller files.`);
       }
       
       // Pre-check usage limits before importing
@@ -830,10 +820,8 @@ export function registerLeadRoutes(app: Express): void {
       const result = await importLeads(csvData, org.id);
       res.json(result);
     } catch (err) {
-      console.error("Lead import error:", err);
-      res.status(400).json({ 
-        message: err instanceof Error ? err.message : "Failed to import leads" 
-      });
+      logger.error("Lead import error", err instanceof Error ? err : undefined);
+      Errors.badRequest(res, err instanceof Error ? err.message : "Failed to import leads");
     }
   });
   
@@ -842,16 +830,16 @@ export function registerLeadRoutes(app: Express): void {
       const file = req.file;
       
       if (!file) {
-        return res.status(400).json({ message: "No file uploaded" });
+        return Errors.badRequest(res, "No file uploaded");
       }
-      
+
       const csvString = file.buffer.toString("utf-8");
       const csvData = parseCSV(csvString);
-      
+
       if (csvData.length === 0) {
-        return res.status(400).json({ message: "CSV file is empty or has no data rows" });
+        return Errors.badRequest(res, "CSV file is empty or has no data rows");
       }
-      
+
       const headers = Object.keys(csvData[0]);
       const preview = csvData.slice(0, 5);
       const expectedColumns = getExpectedColumns("leads");
@@ -863,33 +851,27 @@ export function registerLeadRoutes(app: Express): void {
         expectedColumns,
       });
     } catch (err) {
-      console.error("Lead import preview error:", err);
-      res.status(400).json({ 
-        message: err instanceof Error ? err.message : "Failed to parse CSV" 
-      });
+      logger.error("Lead import preview error", err instanceof Error ? err : undefined);
+      Errors.badRequest(res, err instanceof Error ? err.message : "Failed to parse CSV");
     }
   });
 
   // Tax Delinquent List Import (Phase 2.5)
   api.post("/api/leads/import/tax-delinquent", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { mappedData, columnMapping } = req.body;
 
       if (!mappedData || !Array.isArray(mappedData)) {
-        return res.status(400).json({ message: "No mapped data provided" });
+        return Errors.badRequest(res, "No mapped data provided");
       }
 
       if (mappedData.length === 0) {
-        return res.status(400).json({ message: "No records to import" });
+        return Errors.badRequest(res, "No records to import");
       }
 
       if (mappedData.length > MAX_CSV_IMPORT_ROWS) {
-        return res.status(400).json({
-          message: `Import exceeds maximum of ${MAX_CSV_IMPORT_ROWS} rows. Please split into smaller batches.`,
-          rowCount: mappedData.length,
-          maxRows: MAX_CSV_IMPORT_ROWS,
-        });
+        return Errors.badRequest(res, `Import exceeds maximum of ${MAX_CSV_IMPORT_ROWS} rows. Please split into smaller batches.`);
       }
 
       // Check usage limits
@@ -958,10 +940,8 @@ export function registerLeadRoutes(app: Express): void {
         ...results,
       });
     } catch (err) {
-      console.error("Tax delinquent import error:", err);
-      res.status(400).json({
-        message: err instanceof Error ? err.message : "Failed to import tax delinquent list",
-      });
+      logger.error("Tax delinquent import error", err instanceof Error ? err : undefined);
+      Errors.badRequest(res, err instanceof Error ? err.message : "Failed to import tax delinquent list");
     }
   });
 
@@ -970,37 +950,37 @@ export function registerLeadRoutes(app: Express): void {
   // ============================================
 
   api.get("/api/skip-traces", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const traces = await storage.getSkipTraces(org.id);
     res.json(traces);
   });
 
   api.get("/api/skip-traces/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const trace = await storage.getSkipTrace(org.id, Number(req.params.id));
-    if (!trace) return res.status(404).json({ message: "Skip trace not found" });
+    if (!trace) return Errors.notFound(res, "Skip trace");
     res.json(trace);
   });
 
   api.get("/api/skip-traces/lead/:leadId", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const trace = await storage.getSkipTraceByLead(org.id, Number(req.params.leadId));
     res.json(trace || null);
   });
 
   api.post("/api/skip-traces", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { leadId, inputData } = req.body;
 
       if (!leadId) {
-        return res.status(400).json({ message: "Lead ID is required" });
+        return Errors.badRequest(res, "Lead ID is required");
       }
 
       // Check if lead exists
       const lead = await storage.getLead(org.id, leadId);
       if (!lead) {
-        return res.status(404).json({ message: "Lead not found" });
+        return Errors.notFound(res, "Lead");
       }
 
       // Create pending skip trace
@@ -1052,7 +1032,7 @@ export function registerLeadRoutes(app: Express): void {
             completedAt: new Date(),
           });
         } catch (err) {
-          console.error("Error updating skip trace:", err);
+          logger.error("Error updating skip trace", err instanceof Error ? err : undefined);
           await storage.updateSkipTrace(skipTrace.id, {
             status: "failed",
           });
@@ -1061,10 +1041,8 @@ export function registerLeadRoutes(app: Express): void {
 
       res.json(skipTrace);
     } catch (err) {
-      console.error("Skip trace error:", err);
-      res.status(500).json({
-        message: err instanceof Error ? err.message : "Failed to create skip trace",
-      });
+      logger.error("Skip trace error", err instanceof Error ? err : undefined);
+      Errors.internal(res, err);
     }
   });
   

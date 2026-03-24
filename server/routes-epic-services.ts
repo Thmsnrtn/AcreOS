@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * EPIC Services Routes (EPICs 1–8)
  *
@@ -24,8 +23,7 @@ import { Router, type Request, type Response } from "express";
 
 const router = Router();
 
-function getUser(req: Request) { return (req as any).user; }
-function getOrg(req: Request) { return (req as any).org; }
+function getUser(req: Request) { return req.user; }
 
 // ============================================================================
 // EPIC 1+2: Seller Motivation Score
@@ -37,7 +35,7 @@ router.get("/seller-motivation/:leadId", async (req: Request, res: Response) => 
     const { db } = await import("./db");
     const { leads } = await import("@shared/schema");
     const { eq, and } = await import("drizzle-orm");
-    const org = getOrg(req);
+    const org = req.organization;
 
     const [lead] = await db
       .select()
@@ -97,7 +95,7 @@ router.post("/seller-motivation/score", async (req: Request, res: Response) => {
 router.post("/seller-motivation/rescore-org", async (req: Request, res: Response) => {
   try {
     const { rescoreLeadsForOrg } = await import("./services/sellerMotivationEngine");
-    const org = getOrg(req);
+    const org = req.organization;
     const result = await rescoreLeadsForOrg(org.id);
     res.json(result);
   } catch (err: any) {
@@ -197,7 +195,7 @@ router.get("/closing-checklist/:dealId", async (req: Request, res: Response) => 
     const { db } = await import("./db");
     const { deals } = await import("@shared/schema");
     const { eq, and } = await import("drizzle-orm");
-    const org = getOrg(req);
+    const org = req.organization;
 
     const [deal] = await db
       .select()
@@ -222,7 +220,7 @@ router.get("/closing-checklist/:dealId", async (req: Request, res: Response) => 
 router.get("/investor-network/trust-score", async (req: Request, res: Response) => {
   try {
     const { computeInvestorTrustScore, computeInvestorBadges } = await import("./services/investorNetworkService");
-    const org = getOrg(req);
+    const org = req.organization;
 
     const trustScore = await computeInvestorTrustScore(org.id);
     const badges = computeInvestorBadges({
@@ -244,7 +242,7 @@ router.get("/investor-network/trust-score", async (req: Request, res: Response) 
 router.post("/investor-network/share-deal", async (req: Request, res: Response) => {
   try {
     const { shareDealWithPartner } = await import("./services/investorNetworkService");
-    const org = getOrg(req);
+    const org = req.organization;
     const { toOrganizationId, dealSummary, referralFeeAmount, notes } = req.body;
 
     const result = await shareDealWithPartner({
@@ -278,7 +276,7 @@ router.post("/financial/deal-pnl", async (req: Request, res: Response) => {
 router.get("/financial/tax-report/:year", async (req: Request, res: Response) => {
   try {
     const { generateTaxReport } = await import("./services/financialOSService");
-    const org = getOrg(req);
+    const org = req.organization;
     const year = parseInt(req.params.year) || new Date().getFullYear() - 1;
     const report = await generateTaxReport(org.id, year);
     res.json(report);
@@ -347,7 +345,7 @@ router.get("/developer/openapi", async (req: Request, res: Response) => {
 router.post("/developer/api-keys", async (req: Request, res: Response) => {
   try {
     const { generateApiKey } = await import("./services/developerApiService");
-    const org = getOrg(req);
+    const org = req.organization;
     const { name, scopes = [] } = req.body;
 
     const { publicKeyId, secretKey, keyHash } = generateApiKey();
@@ -386,7 +384,7 @@ router.post("/developer/api-keys", async (req: Request, res: Response) => {
 router.get("/developer/widget-embed/:type", async (req: Request, res: Response) => {
   try {
     const { generateWidgetEmbedCode } = await import("./services/developerApiService");
-    const org = getOrg(req);
+    const org = req.organization;
     const validTypes = ["deal_analyzer", "market_heatmap", "property_valuation", "county_score"];
     const widgetType = req.params.type;
 

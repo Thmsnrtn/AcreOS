@@ -10,11 +10,6 @@ import { eq, desc } from 'drizzle-orm';
 const router = Router();
 
 // All marketplace routes require authentication + org
-function getOrg(req: Request) {
-  const org = (req as any).organization;
-  if (!org) throw new Error('Organization not found');
-  return org;
-}
 
 // =====================
 // LISTINGS
@@ -22,7 +17,7 @@ function getOrg(req: Request) {
 
 router.post('/listings', asyncHandler(async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { propertyId, ...data } = req.body;
     const listing = await marketplaceService.createListing(org.id, propertyId, data);
     res.json({ listing, success: true });
@@ -33,7 +28,7 @@ router.post('/listings', asyncHandler(async (req: Request, res: Response) => {
 
 router.get('/listings', asyncHandler(async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { minPrice, maxPrice, state, listingType, limit = '20', offset = '0' } = req.query;
 
     const listings = await marketplaceService.getListings({
@@ -55,7 +50,7 @@ router.get('/listings', asyncHandler(async (req: Request, res: Response) => {
 
 router.get('/listings/:id', asyncHandler(async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const listing = await marketplaceService.getListing(
       parseInt(req.params.id),
       org.id
@@ -71,7 +66,7 @@ router.get('/listings/:id', asyncHandler(async (req: Request, res: Response) => 
 
 router.delete('/listings/:id', asyncHandler(async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const listing = await marketplaceService.deactivateListing(org.id, parseInt(req.params.id));
     res.json({ listing, success: true });
   } catch (error: any) {
@@ -85,7 +80,7 @@ router.delete('/listings/:id', asyncHandler(async (req: Request, res: Response) 
 
 router.get('/my/listings', asyncHandler(async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const listings = await marketplaceService.getMyListings(org.id);
     res.json({ listings });
   } catch (error: any) {
@@ -95,7 +90,7 @@ router.get('/my/listings', asyncHandler(async (req: Request, res: Response) => {
 
 router.get('/my/bids', asyncHandler(async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const bids = await marketplaceService.getMyBids(org.id);
     res.json({ bids });
   } catch (error: any) {
@@ -109,7 +104,7 @@ router.get('/my/bids', asyncHandler(async (req: Request, res: Response) => {
 
 router.post('/listings/:id/bids', asyncHandler(async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { bidAmount, message, proposedTerms, bidType, partnershipSplit } = req.body;
 
     const bid = await marketplaceService.placeBid(
@@ -151,7 +146,7 @@ router.post('/listings/:id/bids', asyncHandler(async (req: Request, res: Respons
 
 router.get('/listings/:id/bids', asyncHandler(async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const listingId = parseInt(req.params.id);
     // Task #2: IDOR prevention — only sellers can see all bids (org is seller or buyer)
     const listing = await marketplaceService.getListing(listingId, org.id);
@@ -167,7 +162,7 @@ router.get('/listings/:id/bids', asyncHandler(async (req: Request, res: Response
 
 router.post('/listings/:id/accept/:bidId', asyncHandler(async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const result = await marketplaceService.acceptBid(
       org.id,
       parseInt(req.params.id),
@@ -181,7 +176,7 @@ router.post('/listings/:id/accept/:bidId', asyncHandler(async (req: Request, res
 
 router.post('/bids/:id/accept', asyncHandler(async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const result = await marketplaceService.respondToBid(
       org.id,
       parseInt(req.params.id),
@@ -196,7 +191,7 @@ router.post('/bids/:id/accept', asyncHandler(async (req: Request, res: Response)
 
 router.post('/bids/:id/reject', asyncHandler(async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const result = await marketplaceService.respondToBid(
       org.id,
       parseInt(req.params.id),
@@ -211,7 +206,7 @@ router.post('/bids/:id/reject', asyncHandler(async (req: Request, res: Response)
 
 router.post('/bids/:id/counter', asyncHandler(async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { amount, message } = req.body;
     const result = await marketplaceService.respondToBid(
       org.id,
@@ -231,7 +226,7 @@ router.post('/bids/:id/counter', asyncHandler(async (req: Request, res: Response
 
 router.post('/transactions/complete', asyncHandler(async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { listingId, salePrice } = req.body;
     const transaction = await marketplaceService.completeTransaction(
       listingId,
@@ -250,7 +245,7 @@ router.post('/transactions/complete', asyncHandler(async (req: Request, res: Res
 
 router.get('/investor-profile', asyncHandler(async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const profile = await marketplaceService.getInvestorProfile(org.id);
     res.json({ profile });
   } catch (error: any) {
@@ -260,7 +255,7 @@ router.get('/investor-profile', asyncHandler(async (req: Request, res: Response)
 
 router.post('/investor-profile', asyncHandler(async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const profile = await marketplaceService.updateInvestorProfile(org.id, req.body);
     res.json({ profile, success: true });
   } catch (error: any) {
@@ -274,7 +269,7 @@ router.post('/investor-profile', asyncHandler(async (req: Request, res: Response
 
 router.get('/stats', asyncHandler(async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const stats = await marketplaceService.getMarketplaceStats(org.id);
     res.json({ stats });
   } catch (error: any) {
@@ -307,7 +302,7 @@ router.get('/search', asyncHandler(async (req: Request, res: Response) => {
 
 router.get('/matches', asyncHandler(async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const matches = await matchmaking.findMatchesForInvestor(org.id);
     res.json({ matches });
   } catch (error: any) {
@@ -330,7 +325,7 @@ router.get('/listings/:id/buyers', asyncHandler(async (req: Request, res: Respon
 
 router.post('/deal-rooms', asyncHandler(async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { listingId, sellerOrgId } = req.body;
     const dealRoom = await marketplaceService.createDealRoom(listingId, org.id, sellerOrgId);
     res.json({ dealRoom, success: true });
@@ -341,7 +336,7 @@ router.post('/deal-rooms', asyncHandler(async (req: Request, res: Response) => {
 
 router.get('/deal-rooms/:id', asyncHandler(async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { dealRooms: drTable } = await import('@shared/schema');
     const { eq, or } = await import('drizzle-orm');
     const results = await db.select().from(drTable).where(eq(drTable.id, parseInt(req.params.id))).limit(1);
@@ -409,7 +404,7 @@ router.get('/investors/:id', asyncHandler(async (req: Request, res: Response) =>
 
 router.patch('/investors/me', asyncHandler(async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const data = req.body;
 
     // Upsert: try update first, then insert if not found
@@ -447,7 +442,7 @@ router.patch('/investors/me', asyncHandler(async (req: Request, res: Response) =
 
 router.post('/listings/:id/upgrade', asyncHandler(async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const result = await marketplaceService.upgradeToPremium(org.id, parseInt(req.params.id));
     res.json({ result, success: true });
   } catch (error: any) {

@@ -62,7 +62,7 @@ export function cacheResponse(ttlSeconds: number) {
       return;
     }
 
-    const orgId = (req as any).organization?.id ?? "anon";
+    const orgId = req.organization?.id ?? "anon";
     const cacheKey = `${req.method}:${req.path}:${orgId}:${JSON.stringify(req.query)}`;
 
     // Evict expired entries periodically (every 100 requests)

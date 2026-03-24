@@ -2,11 +2,6 @@ import { Router, type Request, type Response } from 'express';
 
 const router = Router();
 
-function getOrg(req: Request) {
-  const org = (req as any).organization;
-  if (!org) throw new Error('Organization not found');
-  return org;
-}
 
 // =====================
 // ROUTING CONFIG
@@ -15,7 +10,7 @@ function getOrg(req: Request) {
 // GET /call-routing/config — get routing config for org
 router.get('/call-routing/config', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     // Stub: fetch from DB by org.id
     const config = {
       organizationId: org.id,
@@ -48,7 +43,7 @@ router.get('/call-routing/config', async (req: Request, res: Response) => {
 // PUT /call-routing/config — update routing config
 router.put('/call-routing/config', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const updates = req.body;
     // Stub: persist to DB
     const config = {
@@ -69,7 +64,7 @@ router.put('/call-routing/config', async (req: Request, res: Response) => {
 // GET /call-routing/agents — list available agents with availability
 router.get('/call-routing/agents', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { available } = req.query;
     // Stub: replace with DB query filtered by org and optionally availability
     const agents: any[] = [];
@@ -108,7 +103,7 @@ router.patch('/call-routing/agents/:agentId/status', async (req: Request, res: R
 // GET /call-routing/queue — get current call queue
 router.get('/call-routing/queue', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     // Stub: return live queue from telephony provider
     const queue = {
       organizationId: org.id,
@@ -183,7 +178,7 @@ router.post('/call-routing/transfer', async (req: Request, res: Response) => {
 // GET /call-routing/stats — queue stats and performance metrics
 router.get('/call-routing/stats', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { period } = req.query; // today | week | month
     // Stub: aggregate from call logs
     const stats = {
@@ -212,7 +207,7 @@ router.get('/call-routing/stats', async (req: Request, res: Response) => {
 // GET /call-routing/skills — list agent skills and mappings
 router.get('/call-routing/skills', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     // Stub: return skill catalog + agent assignments
     const skills: any[] = [];
     res.json({ skills, organizationId: org.id });

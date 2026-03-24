@@ -1,19 +1,13 @@
-// @ts-nocheck
 import { Router, type Request, type Response } from 'express';
 import { visionAI } from './services/visionAI';
 
 const router = Router();
 
-function getOrg(req: Request) {
-  const org = (req as any).organization;
-  if (!org) throw new Error('Organization not found');
-  return org;
-}
 
 // POST /analyze-photo — analyze a single property photo by URL
 router.post('/analyze-photo', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { photoId, imageUrl } = req.body;
     const result = await visionAI.analyzePhoto(org.id.toString(), parseInt(photoId), imageUrl);
     res.json({ analysis: result });
@@ -116,7 +110,7 @@ router.post('/find-similar', async (req: Request, res: Response) => {
 // POST /batch-analyze — batch analyze multiple photos
 router.post('/batch-analyze', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { propertyId } = req.body;
     const results = await visionAI.batchAnalyzePhotos(parseInt(propertyId), org.id.toString());
     res.json({ results });

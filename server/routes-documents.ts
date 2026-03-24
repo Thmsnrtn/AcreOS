@@ -15,7 +15,7 @@ export function registerDocumentRoutes(app: Express): void {
   api.get("/api/notes/:id/document", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { generatePromissoryNote } = await import("./services/documents");
-      const org = (req as any).organization;
+      const org = req.organization;
       
       // Credit pre-check for PDF generation (5 cents per document)
       const pdfCost = await usageMeteringService.calculateCost("pdf_generated", 1);
@@ -52,7 +52,7 @@ export function registerDocumentRoutes(app: Express): void {
   api.get("/api/properties/:id/deed", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { generateWarrantyDeed } = await import("./services/documents");
-      const org = (req as any).organization;
+      const org = req.organization;
       
       // Credit pre-check for PDF generation (5 cents per document)
       const pdfCost = await usageMeteringService.calculateCost("pdf_generated", 1);
@@ -89,7 +89,7 @@ export function registerDocumentRoutes(app: Express): void {
   api.post("/api/documents/offer-letter", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { generateOfferLetter } = await import("./services/documents");
-      const org = (req as any).organization;
+      const org = req.organization;
       const { leadId, propertyId, offerAmount, earnestMoney, closingDate, contingencies, additionalTerms } = req.body;
       
       if (!leadId || !propertyId) {
@@ -138,7 +138,7 @@ export function registerDocumentRoutes(app: Express): void {
   api.post("/api/documents/generate/settlement-statement", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { generateSettlementStatement } = await import("./services/documents");
-      const org = (req as any).organization;
+      const org = req.organization;
       const { propertyId, purchasePrice, closingDate, buyerName, sellerName, earnestMoney, titleInsurance, recordingFees, escrowFees, transferTax, prorations, additionalCosts } = req.body;
       
       if (!propertyId) {
@@ -184,7 +184,7 @@ export function registerDocumentRoutes(app: Express): void {
   api.post("/api/documents/generate/property-flyer", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { generatePropertyFlyer } = await import("./services/documents");
-      const org = (req as any).organization;
+      const org = req.organization;
       const { propertyId, headline, price, priceLabel, highlights, contactName, contactPhone, contactEmail, qrCodePlaceholder } = req.body;
       
       if (!propertyId) {
@@ -230,7 +230,7 @@ export function registerDocumentRoutes(app: Express): void {
   api.post("/api/documents/generate/promissory-note", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { generatePromissoryNote } = await import("./services/documents");
-      const org = (req as any).organization;
+      const org = req.organization;
       const { noteId } = req.body;
       
       if (!noteId) {
@@ -272,7 +272,7 @@ export function registerDocumentRoutes(app: Express): void {
   api.post("/api/documents/generate/warranty-deed", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { generateWarrantyDeed } = await import("./services/documents");
-      const org = (req as any).organization;
+      const org = req.organization;
       const { propertyId } = req.body;
       
       if (!propertyId) {
@@ -317,7 +317,7 @@ export function registerDocumentRoutes(app: Express): void {
   
   api.post("/api/documents/generate", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { type, entityType, entityId } = req.body;
       
       let documentContent = "";
@@ -488,7 +488,7 @@ Seller Signature (if applicable)
   api.post("/api/documents/deed-of-trust", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { generateDeedOfTrust } = await import("./services/documents");
-      const org = (req as any).organization;
+      const org = req.organization;
       const pdfBuffer = await generateDeedOfTrust({ ...req.body, orgName: org.name });
       res.set("Content-Type", "application/pdf");
       res.set("Content-Disposition", `attachment; filename="deed-of-trust.pdf"`);
@@ -502,7 +502,7 @@ Seller Signature (if applicable)
   api.post("/api/documents/land-contract", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { generateLandContract } = await import("./services/documents");
-      const org = (req as any).organization;
+      const org = req.organization;
       const pdfBuffer = await generateLandContract({ ...req.body, orgName: org.name });
       res.set("Content-Type", "application/pdf");
       res.set("Content-Disposition", `attachment; filename="land-contract.pdf"`);

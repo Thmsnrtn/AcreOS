@@ -23,7 +23,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // GET /api/email-identities - Get all email sender identities for org
   api.get("/api/email-identities", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const identities = await storage.getEmailSenderIdentities(org.id);
       res.json(identities);
     } catch (error: any) {
@@ -35,7 +35,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // POST /api/email-identities - Create new email sender identity
   api.post("/api/email-identities", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const user = req.user as any;
       const teamMember = await storage.getTeamMember(org.id, user.claims?.sub || user.id);
 
@@ -93,7 +93,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // GET /api/email-identities/:id - Get single email sender identity
   api.get("/api/email-identities/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const identity = await storage.getEmailSenderIdentity(id);
       // Task #2: IDOR prevention — verify resource belongs to requesting org
@@ -110,7 +110,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // PATCH /api/email-identities/:id - Update email sender identity
   api.patch("/api/email-identities/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       // Task #2: IDOR prevention — verify resource belongs to requesting org
       const existing = await storage.getEmailSenderIdentity(id);
@@ -151,7 +151,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // POST /api/email-identities/:id/set-default - Set identity as default
   api.post("/api/email-identities/:id/set-default", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       await storage.setDefaultEmailSenderIdentity(org.id, id);
 
@@ -180,7 +180,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // DELETE /api/email-identities/:id - Delete email sender identity
   api.delete("/api/email-identities/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       // Task #2: IDOR prevention — verify resource belongs to requesting org
       const existing = await storage.getEmailSenderIdentity(id);
@@ -218,7 +218,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // GET /api/mail-identities - Get all mail sender identities for org
   api.get("/api/mail-identities", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const identities = await storage.getMailSenderIdentities(org.id);
       res.json(identities);
     } catch (error: any) {
@@ -230,7 +230,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // POST /api/mail-identities - Create new mail sender identity
   api.post("/api/mail-identities", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const parsed = insertMailSenderIdentitySchema.parse({
         ...req.body,
         organizationId: org.id,
@@ -262,7 +262,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // GET /api/mail-identities/:id - Get single identity
   api.get("/api/mail-identities/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const identity = await storage.getMailSenderIdentity(id);
       // Task #2: IDOR prevention — verify resource belongs to requesting org
@@ -279,7 +279,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // PATCH /api/mail-identities/:id - Update identity
   api.patch("/api/mail-identities/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       // Task #2: IDOR prevention — verify resource belongs to requesting org
       const existing = await storage.getMailSenderIdentity(id);
@@ -313,7 +313,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // POST /api/mail-identities/:id/set-default - Set as default
   api.post("/api/mail-identities/:id/set-default", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       await storage.setDefaultMailSenderIdentity(org.id, id);
 
@@ -342,7 +342,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // DELETE /api/mail-identities/:id - Delete identity
   api.delete("/api/mail-identities/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       // Task #2: IDOR prevention — verify resource belongs to requesting org
       const existing = await storage.getMailSenderIdentity(id);
@@ -376,7 +376,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // POST /api/mail-identities/:id/verify - Trigger Lob address verification
   api.post("/api/mail-identities/:id/verify", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const identity = await storage.getMailSenderIdentity(id);
       // Task #2: IDOR prevention — verify resource belongs to requesting org
@@ -437,7 +437,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // GET /api/mailing-orders - Get all mailing orders for org
   api.get("/api/mailing-orders", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const filters: { campaignId?: number; status?: string } = {};
       if (req.query.campaignId) {
         filters.campaignId = parseInt(req.query.campaignId as string);
@@ -456,7 +456,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // GET /api/mailing-orders/:id - Get single order with pieces
   api.get("/api/mailing-orders/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const order = await storage.getMailingOrder(id);
       // Task #2: IDOR prevention — verify resource belongs to requesting org
@@ -473,7 +473,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // POST /api/mailing-orders - Create new mailing order
   api.post("/api/mailing-orders", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const parsed = insertMailingOrderSchema.parse({
         ...req.body,
         organizationId: org.id,
@@ -505,7 +505,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // PATCH /api/mailing-orders/:id - Update order
   api.patch("/api/mailing-orders/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       // Task #2: IDOR prevention — verify resource belongs to requesting org
       const existing = await storage.getMailingOrder(id);
@@ -539,7 +539,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // GET /api/mailing-orders/:id/pieces - Get all pieces for an order
   api.get("/api/mailing-orders/:id/pieces", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const orderId = parseInt(req.params.id);
       // Task #2: IDOR prevention — verify order belongs to requesting org
       const order = await storage.getMailingOrder(orderId);
@@ -561,7 +561,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // GET /api/inbox - Get inbox messages
   api.get("/api/inbox", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const isRead = req.query.isRead !== undefined ? req.query.isRead === 'true' : undefined;
       const isArchived = req.query.isArchived !== undefined ? req.query.isArchived === 'true' : undefined;
       const isStarred = req.query.isStarred !== undefined ? req.query.isStarred === 'true' : undefined;
@@ -585,7 +585,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // GET /api/inbox/unread-count - Get unread count
   api.get("/api/inbox/unread-count", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const count = await storage.getUnreadInboxCount(org.id);
       res.json({ count });
     } catch (error: any) {
@@ -597,7 +597,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // GET /api/inbox/:id - Get single inbox message
   api.get("/api/inbox/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const message = await storage.getInboxMessage(id);
       // Task #2: IDOR prevention — verify resource belongs to requesting org
@@ -614,7 +614,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // POST /api/inbox/:id/read - Mark message as read
   api.post("/api/inbox/:id/read", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const existing = await storage.getInboxMessage(id);
       if (!existing || existing.organizationId !== org.id) {
@@ -633,7 +633,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // POST /api/inbox/:id/unread - Mark message as unread
   api.post("/api/inbox/:id/unread", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const existing = await storage.getInboxMessage(id);
       if (!existing || existing.organizationId !== org.id) {
@@ -650,7 +650,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // POST /api/inbox/:id/star - Toggle star
   api.post("/api/inbox/:id/star", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const currentMessage = await storage.getInboxMessage(id);
       // Task #2: IDOR prevention — verify resource belongs to requesting org
@@ -668,7 +668,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // POST /api/inbox/:id/archive - Archive message
   api.post("/api/inbox/:id/archive", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const existing = await storage.getInboxMessage(id);
       if (!existing || existing.organizationId !== org.id) {
@@ -685,7 +685,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // POST /api/send-email - Send email reply
   api.post("/api/send-email", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { to, subject, html, text, replyTo, inReplyToMessageId } = req.body;
 
       if (!to || !subject || (!html && !text)) {
@@ -735,7 +735,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // GET /api/activity-feed - Get activity feed
   api.get("/api/activity-feed", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const entityType = req.query.entityType as string | undefined;
       const limit = Math.min(100, req.query.limit ? parseInt(req.query.limit as string) : 50);
       const offset = req.query.offset ? parseInt(req.query.offset as string) : 0;
@@ -751,7 +751,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // POST /api/activity-feed — Add a note/activity entry with @mention support (T57)
   api.post("/api/activity-feed", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const user = req.user as any;
       const userId = user?.claims?.sub ?? user?.id ?? "";
       const { entityType, entityId, content, eventType = "note_added" } = req.body;
@@ -802,7 +802,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // GET /api/export/leads - Export leads to CSV
   api.get("/api/export/leads", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const status = req.query.status as string | undefined;
       const startDate = req.query.startDate as string | undefined;
       const endDate = req.query.endDate as string | undefined;
@@ -826,7 +826,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // GET /api/export/properties - Export properties to CSV
   api.get("/api/export/properties", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const status = req.query.status as string | undefined;
       const startDate = req.query.startDate as string | undefined;
       const endDate = req.query.endDate as string | undefined;
@@ -850,7 +850,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // GET /api/export/deals - Export deals to CSV
   api.get("/api/export/deals", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const status = req.query.status as string | undefined;
       const startDate = req.query.startDate as string | undefined;
       const endDate = req.query.endDate as string | undefined;
@@ -874,7 +874,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // GET /api/export/notes - Export notes/finance to CSV
   api.get("/api/export/notes", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const status = req.query.status as string | undefined;
       const startDate = req.query.startDate as string | undefined;
       const endDate = req.query.endDate as string | undefined;
@@ -898,7 +898,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // GET /api/export/report - Generate PDF report (placeholder)
   api.get("/api/export/report", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const reportType = req.query.type as string || 'executive';
       const format = req.query.format as string || 'pdf';
       
@@ -924,7 +924,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // GET /api/workflows - List organization's workflows
   api.get("/api/workflows", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const workflows = await storage.getWorkflows(org.id);
       res.json(workflows);
     } catch (error: any) {
@@ -944,7 +944,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // GET /api/workflows/:id - Get single workflow
   api.get("/api/workflows/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const workflow = await storage.getWorkflow(org.id, id);
       if (!workflow) {
@@ -960,7 +960,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // POST /api/workflows - Create workflow
   api.post("/api/workflows", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const parsed = insertWorkflowSchema.parse({
         ...req.body,
         organizationId: org.id,
@@ -992,7 +992,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // PUT /api/workflows/:id - Update workflow
   api.put("/api/workflows/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const existing = await storage.getWorkflow(org.id, id);
       if (!existing) {
@@ -1025,7 +1025,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // DELETE /api/workflows/:id - Delete workflow
   api.delete("/api/workflows/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const existing = await storage.getWorkflow(org.id, id);
       if (!existing) {
@@ -1058,7 +1058,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // POST /api/workflows/:id/toggle - Enable/disable workflow
   api.post("/api/workflows/:id/toggle", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const existing = await storage.getWorkflow(org.id, id);
       if (!existing) {
@@ -1092,7 +1092,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // GET /api/workflows/:id/runs - Get workflow run history
   api.get("/api/workflows/:id/runs", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const existing = await storage.getWorkflow(org.id, id);
       if (!existing) {
@@ -1110,7 +1110,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // POST /api/workflows/:id/test - Test run a workflow manually
   api.post("/api/workflows/:id/test", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const workflow = await storage.getWorkflow(org.id, id);
       if (!workflow) {
@@ -1133,7 +1133,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // POST /api/workflow-templates/:templateId/install - Install a template as a live workflow
   api.post("/api/workflow-templates/:templateId/install", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { templateId } = req.params;
       const template = LAND_INVESTING_WORKFLOW_TEMPLATES.find(t => t.id === templateId);
       if (!template) {
@@ -1173,7 +1173,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // GET /api/workflows/analytics - Workflow usage stats
   api.get("/api/workflows/analytics", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
 
       // Total workflows and active/inactive counts
       const allWorkflows = await db
@@ -1281,7 +1281,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // GET /api/scheduled-tasks - List organization's scheduled tasks
   api.get("/api/scheduled-tasks", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const tasks = await storage.getScheduledTasks(org.id);
       res.json(tasks);
     } catch (error: any) {
@@ -1293,7 +1293,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // GET /api/scheduled-tasks/:id - Get single scheduled task
   api.get("/api/scheduled-tasks/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const task = await storage.getScheduledTaskByOrg(org.id, id);
       if (!task) {
@@ -1309,7 +1309,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // POST /api/scheduled-tasks - Create scheduled task
   api.post("/api/scheduled-tasks", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { taskRunnerService, parseSchedule } = await import("./services/task-runner");
 
       const nextRunAt = req.body.nextRunAt ? new Date(req.body.nextRunAt) : parseSchedule(req.body.schedule);
@@ -1344,7 +1344,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // PUT /api/scheduled-tasks/:id - Update scheduled task
   api.put("/api/scheduled-tasks/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const existing = await storage.getScheduledTaskByOrg(org.id, id);
       if (!existing) {
@@ -1387,7 +1387,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // DELETE /api/scheduled-tasks/:id - Delete scheduled task
   api.delete("/api/scheduled-tasks/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const existing = await storage.getScheduledTaskByOrg(org.id, id);
       if (!existing) {
@@ -1420,7 +1420,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // POST /api/scheduled-tasks/:id/pause - Pause task
   api.post("/api/scheduled-tasks/:id/pause", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const existing = await storage.getScheduledTaskByOrg(org.id, id);
       if (!existing) {
@@ -1438,7 +1438,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // POST /api/scheduled-tasks/:id/resume - Resume task
   api.post("/api/scheduled-tasks/:id/resume", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const existing = await storage.getScheduledTaskByOrg(org.id, id);
       if (!existing) {
@@ -1456,7 +1456,7 @@ export function registerCommunicationRoutes(app: Express): void {
   // POST /api/scheduled-tasks/:id/run-now - Run task immediately
   api.post("/api/scheduled-tasks/:id/run-now", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const existing = await storage.getScheduledTaskByOrg(org.id, id);
       if (!existing) {

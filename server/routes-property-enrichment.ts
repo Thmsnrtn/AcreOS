@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * T209 — Property Enrichment Routes
  *
@@ -15,12 +14,11 @@ import { eq, and } from "drizzle-orm";
 
 const router = Router();
 
-function getOrg(req: Request) { return (req as any).org; }
 
 // POST /api/properties/:id/enrich
 router.post("/:id/enrich", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const propertyId = parseInt(req.params.id);
     if (isNaN(propertyId)) return res.status(400).json({ error: "Invalid property ID" });
 
@@ -34,7 +32,7 @@ router.post("/:id/enrich", async (req: Request, res: Response) => {
 // POST /api/properties/bulk-enrich
 router.post("/bulk-enrich", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { propertyIds, limit = 50 } = req.body;
 
     if (propertyIds && !Array.isArray(propertyIds)) {
@@ -55,7 +53,7 @@ router.post("/bulk-enrich", async (req: Request, res: Response) => {
 // GET /api/properties/:id/enrichment
 router.get("/:id/enrichment", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const propertyId = parseInt(req.params.id);
     if (isNaN(propertyId)) return res.status(400).json({ error: "Invalid property ID" });
 

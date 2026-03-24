@@ -11,6 +11,8 @@ import { storage, db } from "./storage";
 import { eq, sql, and } from "drizzle-orm";
 import type { SubscriptionTier } from "./services/usageLimits";
 import { aiLimiter } from "./middleware/rateLimit";
+import { Errors } from "./utils/errors";
+import { logger } from "./utils/logger";
 
 export function registerAIRoutes(app: Express): void {
   const api = app;
@@ -19,34 +21,34 @@ export function registerAIRoutes(app: Express): void {
   // ============================================
   
   api.get("/api/agents/configs", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const configs = await storage.getAgentConfigs(org.id);
     res.json(configs);
   });
   
   api.post("/api/agents/configs", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const input = insertAgentConfigSchema.parse({ ...req.body, organizationId: org.id });
       const config = await storage.createAgentConfig(input);
       res.status(201).json(config);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return Errors.badRequest(res, err.errors[0].message);
       }
       throw err;
     }
   });
-  
+
   api.get("/api/agents/tasks", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const tasks = await storage.getAgentTasks(org.id);
     res.json(tasks);
   });
   
   api.post("/api/agents/tasks", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       
       const usageCheck = await checkUsageLimit(org.id, "ai_requests");
       if (!usageCheck.allowed) {
@@ -64,7 +66,7 @@ export function registerAIRoutes(app: Express): void {
       res.status(201).json(task);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return Errors.badRequest(res, err.errors[0].message);
       }
       throw err;
     }
@@ -76,7 +78,7 @@ export function registerAIRoutes(app: Express): void {
       const statuses = await storage.getAgentStatuses();
       res.json(statuses);
     } catch (error: any) {
-      res.status(500).json({ message: error.message || "Failed to fetch agent statuses" });
+      Errors.internal(res, error);
     }
   });
   
@@ -85,7 +87,7 @@ export function registerAIRoutes(app: Express): void {
   // ============================================
   
   api.get("/api/conversations", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const filters: { leadId?: number; channel?: string } = {};
     if (req.query.leadId) {
       filters.leadId = Number(req.query.leadId);
@@ -113,7 +115,7 @@ export function registerAIRoutes(app: Express): void {
   
   // Get conversation history
   api.get("/api/ai/conversations", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const q = (req.query.q as string | undefined)?.trim();
     if (q) {
       const { ilike } = await import("drizzle-orm");
@@ -131,12 +133,12 @@ export function registerAIRoutes(app: Express): void {
   
   // Get a specific conversation with messages
   api.get("/api/ai/conversations/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const conversationId = parseInt(req.params.id);
     const conversation = await storage.getAiConversation(conversationId);
     
     if (!conversation || conversation.organizationId !== org.id) {
-      return res.status(404).json({ message: "Conversation not found" });
+      return Errors.notFound(res, "Conversation");
     }
     
     const messages = await storage.getAiMessages(conversationId);
@@ -145,13 +147,13 @@ export function registerAIRoutes(app: Express): void {
   
   // Get messages for a conversation (lightweight, for session restore)
   api.get("/api/ai/conversations/:id/messages", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const conversationId = parseInt(req.params.id);
     const limit = Math.min(parseInt((req.query.limit as string) ?? "20"), 50);
 
     const conversation = await storage.getAiConversation(conversationId);
     if (!conversation || conversation.organizationId !== org.id) {
-      return res.status(404).json({ message: "Conversation not found" });
+      return Errors.notFound(res, "Conversation");
     }
 
     const allMessages = await storage.getAiMessages(conversationId);
@@ -167,7 +169,7 @@ export function registerAIRoutes(app: Express): void {
 
   // Create new conversation
   api.post("/api/ai/conversations", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const user = req.user as any;
     const userId = user.claims?.sub || user.id;
     const { agentRole = "executive" } = req.body;
@@ -185,13 +187,13 @@ export function registerAIRoutes(app: Express): void {
   // Send a message (non-streaming)
   api.post("/api/ai/chat", isAuthenticated, getOrCreateOrg, aiLimiter, usageLimitGate("ai_requests"), async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const user = req.user as any;
       const userId = user.claims?.sub || user.id;
       const { message, conversationId, agentRole, propertyId } = req.body;
 
       if (!message) {
-        return res.status(400).json({ message: "Message is required" });
+        return Errors.badRequest(res, "Message is required");
       }
       
       const usageCheck = await checkUsageLimit(org.id, "ai_requests");
@@ -238,21 +240,21 @@ export function registerAIRoutes(app: Express): void {
       
       res.json(result);
     } catch (error: any) {
-      console.error("AI Chat error:", error);
-      res.status(500).json({ message: error.message || "AI processing failed" });
+      logger.error("AI Chat error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
   
   // Send a message (streaming)
   api.post("/api/ai/chat/stream", isAuthenticated, getOrCreateOrg, aiLimiter, usageLimitGate("ai_requests"), async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const user = req.user as any;
       const userId = user.claims?.sub || user.id;
       const { message, conversationId, agentRole, files, propertyId: streamPropertyId, mentionedEntities, activeProjectId, modelOverride } = req.body;
       
       if (!message) {
-        return res.status(400).json({ message: "Message is required" });
+        return Errors.badRequest(res, "Message is required");
       }
       
       const usageCheck = await checkUsageLimit(org.id, "ai_requests");
@@ -328,7 +330,7 @@ export function registerAIRoutes(app: Express): void {
       
       res.end();
     } catch (error: any) {
-      console.error("AI Stream error:", error);
+      logger.error("AI Stream error", error instanceof Error ? error : undefined);
       res.write(`data: ${JSON.stringify({ type: "error", error: error.message })}\n\n`);
       res.end();
     }
@@ -336,12 +338,12 @@ export function registerAIRoutes(app: Express): void {
   
   // Delete a conversation
   api.delete("/api/ai/conversations/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const conversationId = parseInt(req.params.id);
     const conversation = await storage.getAiConversation(conversationId);
     
     if (!conversation || conversation.organizationId !== org.id) {
-      return res.status(404).json({ message: "Conversation not found" });
+      return Errors.notFound(res, "Conversation");
     }
     
     await storage.deleteAiConversation(conversationId);
@@ -351,17 +353,17 @@ export function registerAIRoutes(app: Express): void {
   // PATCH /api/ai/conversations/:id/project — set active project for conversation
   api.patch("/api/ai/conversations/:id/project", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const conversationId = parseInt(req.params.id);
       const conversation = await storage.getAiConversation(conversationId);
       if (!conversation || conversation.organizationId !== org.id) {
-        return res.status(404).json({ message: "Conversation not found" });
+        return Errors.notFound(res, "Conversation");
       }
       const { projectId } = req.body;
       await storage.setConversationProject(conversationId, projectId ?? null);
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -371,24 +373,24 @@ export function registerAIRoutes(app: Express): void {
 
   api.get("/api/ai/knowledge", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const files = await storage.getKnowledgeFiles(org.id);
       res.json(files);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
   api.post("/api/ai/knowledge", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
-      const userId = (req as any).user?.id ?? "unknown";
+      const org = req.organization;
+      const userId = req.user?.id ?? "unknown";
       const { name, content, mimeType, sizeBytes } = req.body;
 
       // Check limit
       const existing = await storage.getKnowledgeFiles(org.id);
       if (existing.length >= 8) {
-        return res.status(400).json({ message: "Knowledge base file limit (8) reached." });
+        return Errors.badRequest(res, "Knowledge base file limit (8) reached.");
       }
 
       // Extract text from base64 content via executive helper
@@ -409,7 +411,7 @@ export function registerAIRoutes(app: Express): void {
       });
       res.json(file);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -419,7 +421,7 @@ export function registerAIRoutes(app: Express): void {
       await storage.updateKnowledgeFile(parseInt(req.params.id), { isActive, description });
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -428,7 +430,7 @@ export function registerAIRoutes(app: Express): void {
       await storage.deleteKnowledgeFile(parseInt(req.params.id));
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -438,7 +440,7 @@ export function registerAIRoutes(app: Express): void {
 
   api.get("/api/ai/search-entities", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const q = (req.query.q as string) ?? "";
       const type = (req.query.type as string) ?? "all";
       const limit = parseInt((req.query.limit as string) ?? "6");
@@ -446,7 +448,7 @@ export function registerAIRoutes(app: Express): void {
       const results = await storage.searchPaxEntities(org.id, q, type, limit);
       res.json(results);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -456,23 +458,23 @@ export function registerAIRoutes(app: Express): void {
 
   api.get("/api/ai/projects", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       res.json(await storage.getPaxProjects(org.id));
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
   api.post("/api/ai/projects", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
-      const userId = (req as any).user?.id ?? "unknown";
+      const org = req.organization;
+      const userId = req.user?.id ?? "unknown";
       const { name, description, entityType, entityId } = req.body;
-      if (!name) return res.status(400).json({ message: "name required" });
+      if (!name) return Errors.badRequest(res, "name required");
       const proj = await storage.createPaxProject({ organizationId: org.id, userId, name, description, entityType, entityId });
       res.json(proj);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -482,7 +484,7 @@ export function registerAIRoutes(app: Express): void {
       await storage.updatePaxProject(parseInt(req.params.id), { name, description, isActive });
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -491,7 +493,7 @@ export function registerAIRoutes(app: Express): void {
       await storage.deletePaxProject(parseInt(req.params.id));
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -499,13 +501,13 @@ export function registerAIRoutes(app: Express): void {
     try {
       res.json(await storage.getPaxProjectFiles(parseInt(req.params.id)));
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
   api.post("/api/ai/projects/:id/files", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const userId = (req as any).user?.id ?? "unknown";
+      const userId = req.user?.id ?? "unknown";
       const projectId = parseInt(req.params.id);
       const { fileName, content, mimeType, sizeBytes } = req.body;
 
@@ -516,7 +518,7 @@ export function registerAIRoutes(app: Express): void {
       const file = await storage.createPaxProjectFile({ projectId, fileName, mimeType, sizeBytes: sizeBytes ?? 0, extractedContent, uploadedBy: userId });
       res.json(file);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -525,7 +527,7 @@ export function registerAIRoutes(app: Express): void {
       await storage.deletePaxProjectFile(parseInt(req.params.fileId));
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -535,30 +537,30 @@ export function registerAIRoutes(app: Express): void {
 
   api.get("/api/ai/scheduled-tasks/pending-results", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const since = req.query.since ? new Date(req.query.since as string) : new Date(Date.now() - 24 * 60 * 60 * 1000);
       const results = await storage.getPaxPendingTaskResults(org.id, since);
       res.json(results.map((t) => ({ id: t.id, name: t.name, lastRunAt: t.lastRunAt, lastRunConversationId: t.lastRunConversationId })));
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
   api.get("/api/ai/scheduled-tasks", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       res.json(await storage.getPaxScheduledTasks(org.id));
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
   api.post("/api/ai/scheduled-tasks", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
-      const userId = (req as any).user?.id ?? "unknown";
+      const org = req.organization;
+      const userId = req.user?.id ?? "unknown";
       const { name, prompt, schedule, timezone } = req.body;
-      if (!name || !prompt || !schedule) return res.status(400).json({ message: "name, prompt, schedule required" });
+      if (!name || !prompt || !schedule) return Errors.badRequest(res, "name, prompt, schedule required");
 
       const { computeNextRun } = await import("./services/paxScheduler");
       const nextRunAt = computeNextRun(schedule, timezone ?? "America/New_York");
@@ -566,7 +568,7 @@ export function registerAIRoutes(app: Express): void {
       const task = await storage.createPaxScheduledTask({ organizationId: org.id, userId, name, prompt, schedule, timezone, nextRunAt });
       res.json(task);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -582,7 +584,7 @@ export function registerAIRoutes(app: Express): void {
       await storage.updatePaxScheduledTask(parseInt(req.params.id), updates);
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -591,21 +593,21 @@ export function registerAIRoutes(app: Express): void {
       await storage.deletePaxScheduledTask(parseInt(req.params.id));
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
   api.post("/api/ai/scheduled-tasks/:id/run-now", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const tasks = await storage.getPaxScheduledTasks(org.id);
       const task = tasks.find((t) => t.id === parseInt(req.params.id));
-      if (!task) return res.status(404).json({ message: "Task not found" });
+      if (!task) return Errors.notFound(res, "Task");
       const { executeTask } = await import("./services/paxScheduler");
       await executeTask(task, org);
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -617,7 +619,7 @@ export function registerAIRoutes(app: Express): void {
     try {
       const { rating } = req.body; // 1 or -1
       const msgId = parseInt(req.params.id);
-      if (rating !== 1 && rating !== -1) return res.status(400).json({ message: "rating must be 1 or -1" });
+      if (rating !== 1 && rating !== -1) return Errors.badRequest(res, "rating must be 1 or -1");
       const { aiMessages } = await import("@shared/schema");
       const { eq: _eq } = await import("drizzle-orm");
       await db.update(aiMessages).set({ rating } as any).where(_eq(aiMessages.id, msgId));
@@ -632,7 +634,7 @@ export function registerAIRoutes(app: Express): void {
       });
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -642,13 +644,13 @@ export function registerAIRoutes(app: Express): void {
 
   api.get("/api/ai/conversations/:id/export", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const convId = parseInt(req.params.id);
       const format = (req.query.format as string) || "markdown";
       const { aiConversations, aiMessages: msgs } = await import("@shared/schema");
       const { eq: _eq, and: _and } = await import("drizzle-orm");
       const [conv] = await db.select().from(aiConversations).where(_eq(aiConversations.id, convId));
-      if (!conv || conv.organizationId !== org.id) return res.status(404).json({ message: "Not found" });
+      if (!conv || conv.organizationId !== org.id) return Errors.notFound(res, "Conversation");
       const messages = await db.select().from(msgs).where(_eq(msgs.conversationId, convId)).orderBy(msgs.createdAt);
       // Build Markdown
       const md = [
@@ -686,7 +688,7 @@ export function registerAIRoutes(app: Express): void {
         res.send(md);
       }
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -696,7 +698,7 @@ export function registerAIRoutes(app: Express): void {
 
   api.get("/api/ai/nudges", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const user = req.user as any;
       const userId = user?.claims?.sub || user?.id;
       const { paxNudges } = await import("@shared/schema");
@@ -713,7 +715,7 @@ export function registerAIRoutes(app: Express): void {
         .limit(5);
       res.json(nudges);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -724,7 +726,7 @@ export function registerAIRoutes(app: Express): void {
       await db.update(paxNudges).set({ dismissedAt: new Date() } as any).where(_eq(paxNudges.id, parseInt(req.params.id)));
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -736,7 +738,7 @@ export function registerAIRoutes(app: Express): void {
     try {
       const user = req.user as any;
       const isFounder = user?.id === 'founder' || user?.claims?.sub === 'founder';
-      if (!isFounder) return res.status(403).json({ message: "Founder only" });
+      if (!isFounder) return Errors.forbidden(res, "Founder only");
       const { aiConversations, aiMessages: msgs, organizations } = await import("@shared/schema");
       const { desc: _desc, eq: _eq } = await import("drizzle-orm");
       // Last 50 conversations across all orgs
@@ -754,7 +756,7 @@ export function registerAIRoutes(app: Express): void {
         .limit(50);
       res.json(conversations);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -762,7 +764,7 @@ export function registerAIRoutes(app: Express): void {
     try {
       const user = req.user as any;
       const isFounder = user?.id === 'founder' || user?.claims?.sub === 'founder';
-      if (!isFounder) return res.status(403).json({ message: "Founder only" });
+      if (!isFounder) return Errors.forbidden(res, "Founder only");
       const { aiConversations, aiMessages: msgs, paxConnectorInstances, organizations } = await import("@shared/schema");
       const { count: _count, eq: _eq, desc: _desc } = await import("drizzle-orm");
       const startOfMonth = new Date(); startOfMonth.setDate(1); startOfMonth.setHours(0, 0, 0, 0);
@@ -788,7 +790,7 @@ export function registerAIRoutes(app: Express): void {
         .orderBy(_desc(_count(paxConnectorInstances.id)));
       res.json({ convPerOrg, connectorAdoption, generatedAt: new Date() });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -799,7 +801,7 @@ export function registerAIRoutes(app: Express): void {
   // GET /api/ai/connectors — list all connectors + per-org connection status
   api.get("/api/ai/connectors", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { CONNECTOR_REGISTRY } = await import("./services/connectors/registry");
       const instances = await storage.getPaxConnectors(org.id);
       const instanceMap = new Map(instances.map(i => [i.connectorId, i]));
@@ -809,19 +811,19 @@ export function registerAIRoutes(app: Express): void {
       }));
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
   // POST /api/ai/connectors/:id/connect — save credentials and mark connected
   api.post("/api/ai/connectors/:id/connect", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const connectorId = req.params.id;
       const { credentials, settings } = req.body;
       const { getConnector } = await import("./services/connectors/registry");
       const def = getConnector(connectorId);
-      if (!def) return res.status(404).json({ message: "Connector not found" });
+      if (!def) return Errors.notFound(res, "Connector");
       const { encryptCredentials } = await import("./services/encryption");
       const credentialsEncrypted = credentials
         ? encryptCredentials(JSON.stringify(credentials), org.id)
@@ -833,18 +835,18 @@ export function registerAIRoutes(app: Express): void {
       });
       res.json({ success: true, instance: { ...instance, credentialsEncrypted: undefined } });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
   // POST /api/ai/connectors/:id/test — test the connection
   api.post("/api/ai/connectors/:id/test", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const connectorId = req.params.id;
       const instance = await storage.getPaxConnector(org.id, connectorId);
       if (!instance || instance.status !== "connected") {
-        return res.status(400).json({ message: "Connector not connected" });
+        return Errors.badRequest(res, "Connector not connected");
       }
       // Basic connectivity test — attempt to load credentials
       await storage.upsertPaxConnector(org.id, connectorId, {
@@ -853,25 +855,25 @@ export function registerAIRoutes(app: Express): void {
       });
       res.json({ success: true, testedAt: new Date() });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
   // DELETE /api/ai/connectors/:id — disconnect and remove credentials
   api.delete("/api/ai/connectors/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       await storage.deletePaxConnector(org.id, req.params.id);
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
   // GET /api/ai/cost-savings - Get AI cost savings summary
   api.get("/api/ai/cost-savings", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       
       // Cost per million tokens for each model (blended input/output rate)
       // Using weighted average: assume 1:1 input:output ratio for simplicity
@@ -971,8 +973,8 @@ export function registerAIRoutes(app: Express): void {
         monthStart: startOfMonth.toISOString(),
       });
     } catch (error: any) {
-      console.error("AI Cost Savings error:", error);
-      res.status(500).json({ message: error.message || "Failed to fetch AI cost savings" });
+      logger.error("AI Cost Savings error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
 
@@ -982,8 +984,8 @@ export function registerAIRoutes(app: Express): void {
 
   api.get("/api/assistant/skills", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
-      const user = (req as any).user;
+      const org = req.organization;
+      const user = req.user;
       const isFounder = user?.id === 'founder' || org?.stripeCustomerId?.includes('founder');
       const tier = (org?.subscriptionTier || 'free') as SubscriptionTier;
       
@@ -999,18 +1001,18 @@ export function registerAIRoutes(app: Express): void {
         allActions: SKILL_ACTIONS,
       });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
   api.post("/api/assistant/check-permission", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
-      const user = (req as any).user;
+      const org = req.organization;
+      const user = req.user;
       const { actionId } = req.body;
       
       if (!actionId) {
-        return res.status(400).json({ message: "actionId is required" });
+        return Errors.badRequest(res, "actionId is required");
       }
       
       const isFounder = user?.id === 'founder' || org?.stripeCustomerId?.includes('founder');
@@ -1021,7 +1023,7 @@ export function registerAIRoutes(app: Express): void {
       
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1029,24 +1031,24 @@ export function registerAIRoutes(app: Express): void {
     try {
       const { message } = req.body;
       if (!message) {
-        return res.status(400).json({ message: "message is required" });
+        return Errors.badRequest(res, "message is required");
       }
       const { classifyIntentSimple } = await import('./services/intent-router');
       const intent = classifyIntentSimple(message);
       res.json(intent);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
   api.post("/api/assistant/execute", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
-      const user = (req as any).user;
+      const org = req.organization;
+      const user = req.user;
       const { message, useAIClassification, useTrialToken } = req.body;
 
       if (!message) {
-        return res.status(400).json({ message: "message is required" });
+        return Errors.badRequest(res, "message is required");
       }
 
       const { classifyIntentSimple, classifyIntentWithAI } = await import('./services/intent-router');
@@ -1073,37 +1075,20 @@ export function registerAIRoutes(app: Express): void {
           if (useTrialToken) {
             const eligibility = checkTrialTokenEligibility(actionId, tier, trialTokens);
             if (!eligibility.eligible) {
-              return res.status(403).json({
-                error: "trial_token_ineligible",
-                message: eligibility.reason,
-                intent,
-              });
+              return Errors.forbidden(res, eligibility.reason);
             }
             
             // Attempt to consume a trial token atomically
             const consumption = await storage.consumeTrialToken(org.id);
             if (!consumption.success) {
-              return res.status(403).json({
-                error: "trial_token_failed",
-                message: "No trial tokens available",
-                intent,
-              });
+              return Errors.forbidden(res, "No trial tokens available");
             }
             
             // Trial token consumed successfully - action is now allowed
             usedTrialToken = true;
           } else {
             // No trial token requested - deny access
-            return res.status(403).json({
-              error: "upgrade_required",
-              message: permissionCheck.reason,
-              requiredTier: permissionCheck.requiredTier,
-              currentTier: permissionCheck.currentTier,
-              upgradeMessage: permissionCheck.upgradeMessage,
-              canUseTrialToken: permissionCheck.canUseTrialToken,
-              trialTokensRemaining: permissionCheck.trialTokensRemaining,
-              intent,
-            });
+            return Errors.forbidden(res, permissionCheck.reason);
           }
         }
         // If permissionCheck.allowed is true, action proceeds normally
@@ -1129,15 +1114,15 @@ export function registerAIRoutes(app: Express): void {
         usedTrialToken,
       });
     } catch (err: any) {
-      console.error("Assistant execute error:", err);
-      res.status(500).json({ message: err.message });
+      logger.error("Assistant execute error", err instanceof Error ? err : undefined);
+      Errors.internal(res, err);
     }
   });
 
   api.get("/api/assistant/suggestions", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
-      const user = (req as any).user;
+      const org = req.organization;
+      const user = req.user;
       const isFounder = user?.id === 'founder' || org?.stripeCustomerId?.includes('founder');
       const tier = (org?.subscriptionTier || 'free') as SubscriptionTier;
       const trialTokens = await storage.getTrialTokens(org.id);
@@ -1172,14 +1157,14 @@ export function registerAIRoutes(app: Express): void {
         tier,
       });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
   // Get trial token info
   api.get("/api/assistant/trial-tokens", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const trialTokens = await storage.getTrialTokens(org.id);
       const tier = (org?.subscriptionTier || 'free') as SubscriptionTier;
       
@@ -1189,7 +1174,7 @@ export function registerAIRoutes(app: Express): void {
         maxTokens: 5, // Initial tokens granted to new users
       });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1200,54 +1185,54 @@ export function registerAIRoutes(app: Express): void {
   // Get all VA agents for the organization
   api.get("/api/va/agents", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const agents = await storage.initializeVaAgents(org.id);
       res.json(agents);
     } catch (error: any) {
-      console.error("Error fetching VA agents:", error);
-      res.status(500).json({ message: error.message });
+      logger.error("Error fetching VA agents", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
-  
+
   // Get a specific VA agent
   api.get("/api/va/agents/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const agentId = parseInt(req.params.id);
       const agent = await storage.getVaAgent(org.id, agentId);
       
       if (!agent) {
-        return res.status(404).json({ message: "Agent not found" });
+        return Errors.notFound(res, "Agent");
       }
       
       res.json(agent);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      Errors.internal(res, error);
     }
   });
   
   // Update a VA agent settings
   api.patch("/api/va/agents/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const agentId = parseInt(req.params.id);
       const agent = await storage.getVaAgent(org.id, agentId);
       
       if (!agent) {
-        return res.status(404).json({ message: "Agent not found" });
+        return Errors.notFound(res, "Agent");
       }
       
       const updated = await storage.updateVaAgent(agentId, req.body);
       res.json(updated);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      Errors.internal(res, error);
     }
   });
   
   // Get VA actions (activity feed)
   api.get("/api/va/actions", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const options: { agentId?: number; status?: string; limit?: number } = {};
       
       if (req.query.agentId) options.agentId = parseInt(req.query.agentId as string);
@@ -1257,18 +1242,18 @@ export function registerAIRoutes(app: Express): void {
       const actions = await storage.getVaActions(org.id, options);
       res.json(actions);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      Errors.internal(res, error);
     }
   });
   
   // Get pending actions count
   api.get("/api/va/actions/pending/count", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const count = await storage.getPendingActionsCount(org.id);
       res.json({ count });
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      Errors.internal(res, error);
     }
   });
   
@@ -1282,7 +1267,7 @@ export function registerAIRoutes(app: Express): void {
       
       const action = await storage.getVaAction(actionId);
       if (!action) {
-        return res.status(404).json({ message: "Action not found" });
+        return Errors.notFound(res, "Action");
       }
       
       const updated = await storage.approveVaAction(actionId, userId);
@@ -1294,7 +1279,7 @@ export function registerAIRoutes(app: Express): void {
       const finalAction = await storage.getVaAction(actionId);
       res.json({ action: finalAction, executionResult });
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      Errors.internal(res, error);
     }
   });
   
@@ -1306,13 +1291,13 @@ export function registerAIRoutes(app: Express): void {
       
       const action = await storage.getVaAction(actionId);
       if (!action) {
-        return res.status(404).json({ message: "Action not found" });
+        return Errors.notFound(res, "Action");
       }
       
       const updated = await storage.rejectVaAction(actionId, reason || "Rejected by user");
       res.json(updated);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      Errors.internal(res, error);
     }
   });
   
@@ -1320,12 +1305,12 @@ export function registerAIRoutes(app: Express): void {
   api.post("/api/va/agents/:type/task", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { vaAgentService } = await import("./ai/vaService");
-      const org = (req as any).organization;
+      const org = req.organization;
       const agentType = req.params.type as any;
       const { task } = req.body;
 
       if (!task) {
-        return res.status(400).json({ message: "Task description is required" });
+        return Errors.badRequest(res, "Task description is required");
       }
 
       const usageCheck = await checkUsageLimit(org.id, "ai_requests");
@@ -1336,8 +1321,8 @@ export function registerAIRoutes(app: Express): void {
       const result = await vaAgentService.processAgentTask(org.id, agentType, task);
       res.json(result);
     } catch (error: any) {
-      console.error("VA Task error:", error);
-      res.status(500).json({ message: error.message });
+      logger.error("VA Task error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
   
@@ -1345,13 +1330,13 @@ export function registerAIRoutes(app: Express): void {
   api.get("/api/va/agents/:type/status", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { vaAgentService } = await import("./ai/vaService");
-      const org = (req as any).organization;
+      const org = req.organization;
       const agentType = req.params.type as any;
       
       const status = await vaAgentService.getAgentStatus(org.id, agentType);
       res.json(status);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      Errors.internal(res, error);
     }
   });
   
@@ -1363,18 +1348,18 @@ export function registerAIRoutes(app: Express): void {
       
       const action = await storage.getVaAction(actionId);
       if (!action) {
-        return res.status(404).json({ message: "Action not found" });
+        return Errors.notFound(res, "Action");
       }
       
       if (action.status !== "approved") {
-        return res.status(400).json({ message: "Action must be approved before execution" });
+        return Errors.badRequest(res, "Action must be approved before execution");
       }
       
       const result = await vaAgentService.executeAgentAction(action);
       const finalAction = await storage.getVaAction(actionId);
       res.json({ action: finalAction, executionResult: result });
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      Errors.internal(res, error);
     }
   });
   
@@ -1382,24 +1367,24 @@ export function registerAIRoutes(app: Express): void {
   api.post("/api/va/actions/process-autonomous", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { vaAgentService } = await import("./ai/vaService");
-      const org = (req as any).organization;
+      const org = req.organization;
       
       const result = await vaAgentService.processAutonomousActions(org.id);
       res.json(result);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      Errors.internal(res, error);
     }
   });
   
   // Get briefings
   api.get("/api/va/briefings", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const limit = Math.min(100, parseInt(req.query.limit as string) || 10);
       const briefings = await storage.getVaBriefings(org.id, limit);
       res.json(briefings);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      Errors.internal(res, error);
     }
   });
   
@@ -1407,7 +1392,7 @@ export function registerAIRoutes(app: Express): void {
   api.post("/api/va/briefings/generate", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { vaAgentService } = await import("./ai/vaService");
-      const org = (req as any).organization;
+      const org = req.organization;
       const usageCheck = await checkUsageLimit(org.id, "ai_requests");
       if (!usageCheck.allowed) {
         return res.status(429).json({ message: "AI request limit reached. Upgrade to continue." });
@@ -1415,8 +1400,8 @@ export function registerAIRoutes(app: Express): void {
       const briefing = await vaAgentService.generateBriefing(org.id);
       res.json(briefing);
     } catch (error: any) {
-      console.error("Briefing generation error:", error);
-      res.status(500).json({ message: error.message });
+      logger.error("Briefing generation error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error);
     }
   });
   
@@ -1427,34 +1412,34 @@ export function registerAIRoutes(app: Express): void {
       const updated = await storage.markBriefingRead(briefingId);
       res.json(updated);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      Errors.internal(res, error);
     }
   });
   
   // Get calendar events
   api.get("/api/va/calendar", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const startDate = req.query.start ? new Date(req.query.start as string) : undefined;
       const endDate = req.query.end ? new Date(req.query.end as string) : undefined;
       const events = await storage.getVaCalendarEvents(org.id, startDate, endDate);
       res.json(events);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      Errors.internal(res, error);
     }
   });
   
   // Create calendar event
   api.post("/api/va/calendar", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const event = await storage.createVaCalendarEvent({
         ...req.body,
         organizationId: org.id
       });
       res.json(event);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      Errors.internal(res, error);
     }
   });
 
@@ -1467,9 +1452,9 @@ export function registerAIRoutes(app: Express): void {
       const multer = (await import("multer")).default;
       const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
       upload.single("audio")(req as any, res as any, async (err: any) => {
-        if (err) return res.status(400).json({ message: err.message });
+        if (err) return Errors.badRequest(res, err.message);
         const file = (req as any).file;
-        if (!file) return res.status(400).json({ message: "No audio file provided" });
+        if (!file) return Errors.badRequest(res, "No audio file provided");
         try {
           const { default: OpenAI } = await import("openai");
           const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -1483,11 +1468,11 @@ export function registerAIRoutes(app: Express): void {
           });
           res.json({ transcript: transcription });
         } catch (transcribeErr: any) {
-          res.status(500).json({ message: transcribeErr.message || "Transcription failed" });
+          Errors.internal(res, transcribeErr);
         }
       });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1497,7 +1482,7 @@ export function registerAIRoutes(app: Express): void {
 
   api.get("/api/ai/memory", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { aiMemory: memTable } = await import("@shared/schema");
       const { desc: _desc, eq: _eq } = await import("drizzle-orm");
       const memories = await db.select().from(memTable)
@@ -1506,20 +1491,20 @@ export function registerAIRoutes(app: Express): void {
         .limit(100);
       res.json(memories);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
   api.delete("/api/ai/memory/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const { aiMemory: memTable } = await import("@shared/schema");
       const { eq: _eq, and: _and } = await import("drizzle-orm");
       await db.delete(memTable).where(_and(_eq(memTable.id, id), _eq(memTable.organizationId, org.id)));
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1529,7 +1514,7 @@ export function registerAIRoutes(app: Express): void {
 
   api.get("/api/ai/scheduled-tasks/:id/runs", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const taskId = parseInt(req.params.id);
       const { paxScheduledTaskRuns } = await import("@shared/schema");
       const { desc: _desc, eq: _eq, and: _and } = await import("drizzle-orm");
@@ -1539,7 +1524,7 @@ export function registerAIRoutes(app: Express): void {
         .limit(20);
       res.json(runs);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1558,12 +1543,12 @@ export function registerAIRoutes(app: Express): void {
       const { toolCallId, approved } = req.body;
       const key = `${req.params.id}:${toolCallId}`;
       const pending = pendingApprovals.get(key);
-      if (!pending) return res.status(404).json({ message: "No pending approval found" });
+      if (!pending) return Errors.notFound(res, "Pending approval");
       pendingApprovals.delete(key);
       pending.resolve(!!approved);
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err);
     }
   });
 
@@ -1576,7 +1561,7 @@ export function registerAIRoutes(app: Express): void {
   (global as any).__paxObsClients = obsClients;
 
   api.get("/api/pax/observations/stream", isAuthenticated, getOrCreateOrg, (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");

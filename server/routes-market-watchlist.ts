@@ -33,13 +33,13 @@ const addSchema = z.object({
 });
 
 router.get("/", isAuthenticated, getOrCreateOrg, (req, res) => {
-  const org = (req as any).organization;
+  const org = req.organization;
   res.json(marketWatchlistService.getWatchlist(org.id));
 });
 
 router.post("/", isAuthenticated, getOrCreateOrg, (req, res) => {
-  const org = (req as any).organization;
-  const user = (req as any).user;
+  const org = req.organization;
+  const user = req.user;
   try {
     const data = addSchema.parse(req.body);
     const entry = marketWatchlistService.addToWatchlist(org.id, String(user.id), data);
@@ -51,27 +51,27 @@ router.post("/", isAuthenticated, getOrCreateOrg, (req, res) => {
 });
 
 router.patch("/:id", isAuthenticated, getOrCreateOrg, (req, res) => {
-  const org = (req as any).organization;
+  const org = req.organization;
   const entry = marketWatchlistService.updateEntry(org.id, req.params.id, req.body);
   if (!entry) return res.status(404).json({ message: "Watchlist entry not found" });
   res.json(entry);
 });
 
 router.delete("/:id", isAuthenticated, getOrCreateOrg, (req, res) => {
-  const org = (req as any).organization;
+  const org = req.organization;
   const removed = marketWatchlistService.removeFromWatchlist(org.id, req.params.id);
   if (!removed) return res.status(404).json({ message: "Watchlist entry not found" });
   res.json({ success: true });
 });
 
 router.get("/alerts", isAuthenticated, getOrCreateOrg, (req, res) => {
-  const org = (req as any).organization;
+  const org = req.organization;
   const limit = Math.min(100, parseInt((req.query.limit as string) || "50", 10));
   res.json(marketWatchlistService.getAlerts(org.id, limit));
 });
 
 router.post("/alerts/read", isAuthenticated, getOrCreateOrg, (req, res) => {
-  const org = (req as any).organization;
+  const org = req.organization;
   const { alertIds } = req.body;
   if (!Array.isArray(alertIds)) return res.status(400).json({ message: "alertIds must be an array" });
   marketWatchlistService.markAlertsRead(org.id, alertIds);
@@ -79,12 +79,12 @@ router.post("/alerts/read", isAuthenticated, getOrCreateOrg, (req, res) => {
 });
 
 router.get("/unread", isAuthenticated, getOrCreateOrg, (req, res) => {
-  const org = (req as any).organization;
+  const org = req.organization;
   res.json({ count: marketWatchlistService.getUnreadCount(org.id) });
 });
 
 router.post("/:id/test", isAuthenticated, getOrCreateOrg, (req, res) => {
-  const org = (req as any).organization;
+  const org = req.organization;
   const alert = marketWatchlistService.testAlert(org.id, req.params.id);
   if (!alert) return res.status(404).json({ message: "Watchlist entry not found" });
   res.json(alert);

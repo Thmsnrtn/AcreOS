@@ -1,4 +1,3 @@
-// @ts-nocheck — AcreOS Data API — anonymized benchmark data for API licensing
 import { Router, type Request, type Response } from "express";
 import { db } from "./db";
 import { eq, and, desc, gte, sql, avg } from "drizzle-orm";
@@ -16,7 +15,7 @@ const router = Router();
 // ── API Key Authentication Middleware ──────────────────────────────────────────
 async function requireApiKey(req: Request, res: Response, next: any) {
   const apiKey = req.headers["x-api-key"] as string;
-  const org = (req as any).organization;
+  const org = req.organization;
 
   // Allow admin session auth as fallback
   if (org?.isFounder) return next();
@@ -139,7 +138,7 @@ router.get("/demand/:state", requireApiKey, async (req: Request, res: Response) 
 
 // ── API Key Management (Admin only) ────────────────────────────────────────────
 router.get("/keys", async (req: Request, res: Response) => {
-  const org = (req as any).organization;
+  const org = req.organization;
   if (!org?.isFounder) return res.status(403).json({ error: "Admin access required" });
   try {
     const keys = await db.select({
@@ -158,7 +157,7 @@ router.get("/keys", async (req: Request, res: Response) => {
 });
 
 router.post("/keys", async (req: Request, res: Response) => {
-  const org = (req as any).organization;
+  const org = req.organization;
   if (!org?.isFounder) return res.status(403).json({ error: "Admin access required" });
   try {
     const { name, provider } = req.body;
@@ -180,7 +179,7 @@ router.post("/keys", async (req: Request, res: Response) => {
 });
 
 router.delete("/keys/:id", async (req: Request, res: Response) => {
-  const org = (req as any).organization;
+  const org = req.organization;
   if (!org?.isFounder) return res.status(403).json({ error: "Admin access required" });
   try {
     await db.update(systemApiKeys)
@@ -194,7 +193,7 @@ router.delete("/keys/:id", async (req: Request, res: Response) => {
 
 // ── API Key Usage Stats ───────────────────────────────────────────────────────
 router.get("/usage/:keyId", async (req: Request, res: Response) => {
-  const org = (req as any).organization;
+  const org = req.organization;
   if (!org?.isFounder) return res.status(403).json({ error: "Admin access required" });
   try {
     const keyId = parseInt(req.params.keyId);

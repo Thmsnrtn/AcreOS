@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Night Cap Snapshot API
  *
@@ -97,7 +96,7 @@ function getTodaysQuote(): { quote: string; author: string } {
 
 router.get("/snapshot", async (req: Request, res: Response) => {
   try {
-    const org = (req as any).organization || (req as any).org;
+    const org = req.organization || req.organization;
     if (!org) return res.status(401).json({ error: "Organization required" });
 
     const orgId = org.id;

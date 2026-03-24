@@ -783,7 +783,7 @@ export function registerBorrowerRoutes(app: Express): void {
   // Generate borrower portal link
   api.post("/api/notes/:id/portal-link", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const noteId = Number(req.params.id);
       
       const note = await storage.getNote(org.id, noteId);

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type { Express } from "express";
 import { storage } from "./storage";
 import { z } from "zod";
@@ -41,7 +40,7 @@ export function registerAnalyticsRoutes(app: Express): void {
   // GET /api/analytics/executive - Executive metrics
   api.get("/api/analytics/executive", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const range = (req.query.range as string) || '30d';
       const dateRange = parseDateRange(range);
       
@@ -56,7 +55,7 @@ export function registerAnalyticsRoutes(app: Express): void {
   // GET /api/analytics/revenue - Revenue metrics
   api.get("/api/analytics/revenue", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const range = (req.query.range as string) || '30d';
       const dateRange = parseDateRange(range);
       
@@ -71,7 +70,7 @@ export function registerAnalyticsRoutes(app: Express): void {
   // GET /api/analytics/leads - Lead metrics
   api.get("/api/analytics/leads", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const range = (req.query.range as string) || '30d';
       const dateRange = parseDateRange(range);
       
@@ -86,7 +85,7 @@ export function registerAnalyticsRoutes(app: Express): void {
   // GET /api/analytics/deals - Deal metrics
   api.get("/api/analytics/deals", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const range = (req.query.range as string) || '30d';
       const dateRange = parseDateRange(range);
       
@@ -101,7 +100,7 @@ export function registerAnalyticsRoutes(app: Express): void {
   // GET /api/analytics/campaigns - Campaign metrics
   api.get("/api/analytics/campaigns", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const range = (req.query.range as string) || '30d';
       const dateRange = parseDateRange(range);
       
@@ -116,7 +115,7 @@ export function registerAnalyticsRoutes(app: Express): void {
   // GET /api/analytics/pipeline - Pipeline value by stage
   api.get("/api/analytics/pipeline", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       
       const metrics = await storage.getPipelineValue(org.id);
       res.json(metrics);
@@ -129,7 +128,7 @@ export function registerAnalyticsRoutes(app: Express): void {
   // GET /api/analytics/velocity - Deal velocity metrics
   api.get("/api/analytics/velocity", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const range = (req.query.range as string) || '30d';
       const dateRange = parseDateRange(range);
       
@@ -144,7 +143,7 @@ export function registerAnalyticsRoutes(app: Express): void {
   // GET /api/analytics/conversions - Conversion rates
   api.get("/api/analytics/conversions", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const range = (req.query.range as string) || '30d';
       const dateRange = parseDateRange(range);
       
@@ -159,7 +158,7 @@ export function registerAnalyticsRoutes(app: Express): void {
   // GET /api/analytics/team-kpi - Team performance KPIs
   api.get("/api/analytics/team-kpi", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const now = new Date();
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(now.getDate() - 30);
@@ -208,7 +207,7 @@ export function registerAnalyticsRoutes(app: Express): void {
   // GET /api/automation-rules - List all automation rules
   api.get("/api/automation-rules", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const rules = await storage.getAutomationRules(org.id);
       res.json(rules);
     } catch (error: any) {
@@ -220,7 +219,7 @@ export function registerAnalyticsRoutes(app: Express): void {
   // GET /api/automation-rules/:id - Get single rule
   api.get("/api/automation-rules/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const rule = await storage.getAutomationRule(org.id, id);
       if (!rule) {
@@ -236,7 +235,7 @@ export function registerAnalyticsRoutes(app: Express): void {
   // POST /api/automation-rules - Create new rule
   api.post("/api/automation-rules", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const user = req.user as any;
       const userId = user.claims?.sub || user.id;
       
@@ -255,7 +254,7 @@ export function registerAnalyticsRoutes(app: Express): void {
   // PUT /api/automation-rules/:id - Update rule
   api.put("/api/automation-rules/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       
       const existing = await storage.getAutomationRule(org.id, id);
@@ -274,7 +273,7 @@ export function registerAnalyticsRoutes(app: Express): void {
   // DELETE /api/automation-rules/:id - Delete rule
   api.delete("/api/automation-rules/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       
       const existing = await storage.getAutomationRule(org.id, id);
@@ -296,7 +295,7 @@ export function registerAnalyticsRoutes(app: Express): void {
 
   api.get("/api/workspaces", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const user = req.user as any;
       const userId = user?.claims?.sub || user?.id;
       const presets = await storage.getWorkspacePresets(org.id, userId);
@@ -309,7 +308,7 @@ export function registerAnalyticsRoutes(app: Express): void {
 
   api.post("/api/workspaces", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const user = req.user as any;
       const userId = user?.claims?.sub || user?.id;
       
@@ -327,7 +326,7 @@ export function registerAnalyticsRoutes(app: Express): void {
 
   api.delete("/api/workspaces/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       
       const existing = await storage.getWorkspacePreset(org.id, id);
@@ -346,7 +345,7 @@ export function registerAnalyticsRoutes(app: Express): void {
   // POST /api/automation-rules/:id/toggle - Toggle rule enabled status
   api.post("/api/automation-rules/:id/toggle", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const { enabled } = req.body;
       
@@ -366,7 +365,7 @@ export function registerAnalyticsRoutes(app: Express): void {
   // GET /api/automation-executions - Get execution log
   api.get("/api/automation-executions", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const ruleId = req.query.ruleId ? parseInt(req.query.ruleId as string) : undefined;
       const limit = Math.min(100, req.query.limit ? parseInt(req.query.limit as string) : 50);
       
@@ -385,7 +384,7 @@ export function registerAnalyticsRoutes(app: Express): void {
   // GET /api/tasks/my - Get current user's tasks
   api.get("/api/tasks/my", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const user = req.user as any;
       const userId = user.claims?.sub || user.id;
       
@@ -400,7 +399,7 @@ export function registerAnalyticsRoutes(app: Express): void {
   // GET /api/tasks/entity/:entityType/:entityId - Get tasks for entity
   api.get("/api/tasks/entity/:entityType/:entityId", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { entityType, entityId } = req.params;
       
       const tasks = await storage.getTasksByEntity(org.id, entityType, parseInt(entityId));
@@ -414,7 +413,7 @@ export function registerAnalyticsRoutes(app: Express): void {
   // PUT /api/tasks/:id/complete - Mark task as complete
   api.put("/api/tasks/:id/complete", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       
       const existing = await storage.getTask(org.id, id);
@@ -437,7 +436,7 @@ export function registerAnalyticsRoutes(app: Express): void {
   // GET /api/notifications - Get user's notifications
   api.get("/api/notifications", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const user = req.user as any;
       const userId = user.claims?.sub || user.id;
       const unreadOnly = req.query.unreadOnly === 'true';
@@ -453,7 +452,7 @@ export function registerAnalyticsRoutes(app: Express): void {
   // GET /api/notifications/count - Get unread notification count
   api.get("/api/notifications/count", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const user = req.user as any;
       const userId = user.claims?.sub || user.id;
       
@@ -480,7 +479,7 @@ export function registerAnalyticsRoutes(app: Express): void {
   // PUT /api/notifications/read-all - Mark all notifications as read
   api.put("/api/notifications/read-all", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const user = req.user as any;
       const userId = user.claims?.sub || user.id;
       
@@ -500,7 +499,7 @@ export function registerAnalyticsRoutes(app: Express): void {
 
   api.get("/api/analytics/team-leaderboard", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization || (req as any).org;
+      const org = req.organization || req.organization;
       const orgId: number = org.id;
 
       const since = req.query.since
@@ -582,7 +581,7 @@ export function registerAnalyticsRoutes(app: Express): void {
 
   api.get("/api/analytics/cohorts", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const segmentBy = ((req.query.segmentBy as string) || "source") as any;
       const from = req.query.from ? new Date(req.query.from as string) : undefined;
       const to = req.query.to ? new Date(req.query.to as string) : undefined;
@@ -602,7 +601,7 @@ export function registerAnalyticsRoutes(app: Express): void {
 
   api.get("/api/analytics/attribution", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const from = req.query.from ? new Date(req.query.from as string) : new Date(Date.now() - 90 * 86400000);
       const to = req.query.to ? new Date(req.query.to as string) : new Date();
       const { getAttributionReport } = await import("./services/attributionService");
@@ -620,8 +619,8 @@ export function registerAnalyticsRoutes(app: Express): void {
 
   api.post("/api/offers/batch", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
-      const user = (req as any).user;
+      const org = req.organization;
+      const user = req.user;
       const { createOfferBatch } = await import("./services/offerBatchService");
       const batch = await createOfferBatch({
         ...req.body,
@@ -636,7 +635,7 @@ export function registerAnalyticsRoutes(app: Express): void {
 
   api.get("/api/offers/batch/:id/status", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { getBatchStatus } = await import("./services/offerBatchService");
       const batch = await getBatchStatus(parseInt(req.params.id, 10), org.id);
       if (!batch) return res.status(404).json({ message: "Batch not found" });

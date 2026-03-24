@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Founder Intelligence API
  *

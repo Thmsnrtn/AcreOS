@@ -182,7 +182,7 @@ export function registerAIOperationsRoutes(app: Express): void {
   // ============================================
   router.post("/due-diligence/request", isAuthenticated, getOrCreateOrg, validateRequest(dueDiligenceRequestSchema), async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { propertyId, leadId, priorityLevel } = req.body;
       
       const { dueDiligencePodService } = await import("./services/dueDiligencePods");
@@ -217,7 +217,7 @@ export function registerAIOperationsRoutes(app: Express): void {
   // ============================================
   router.post("/intent/predict", isAuthenticated, getOrCreateOrg, validateRequest(intentPredictSchema), async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { leadId, propertyId } = req.body;
       
       const { sellerIntentPredictorService } = await import("./services/sellerIntentPredictor");
@@ -232,7 +232,7 @@ export function registerAIOperationsRoutes(app: Express): void {
 
   router.get("/intent/lead/:leadId", isAuthenticated, getOrCreateOrg, validateNumericParam("leadId"), async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const leadId = parseInt(req.params.leadId);
       
       const { sellerIntentPredictorService } = await import("./services/sellerIntentPredictor");
@@ -250,7 +250,7 @@ export function registerAIOperationsRoutes(app: Express): void {
   // ============================================
   router.post("/pricing/acquisition", isAuthenticated, getOrCreateOrg, validateRequest(pricingAcquisitionSchema), async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { propertyId, targetMargin } = req.body;
       
       const { priceOptimizerService } = await import("./services/priceOptimizer");
@@ -265,7 +265,7 @@ export function registerAIOperationsRoutes(app: Express): void {
 
   router.post("/pricing/disposition", isAuthenticated, getOrCreateOrg, validateRequest(pricingDispositionSchema), async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { propertyId, quickSale } = req.body;
       
       const { priceOptimizerService } = await import("./services/priceOptimizer");
@@ -280,7 +280,7 @@ export function registerAIOperationsRoutes(app: Express): void {
 
   router.post("/pricing/optimize", isAuthenticated, getOrCreateOrg, validateRequest(pricingOptimizeSchema), async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { propertyId, sellerAskingPrice, dealType } = req.body;
       
       const { priceOptimizerService } = await import("./services/priceOptimizer");
@@ -343,7 +343,7 @@ export function registerAIOperationsRoutes(app: Express): void {
   // ============================================
   router.post("/patterns/analyze", isAuthenticated, getOrCreateOrg, validateRequest(patternAnalyzeSchema), async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { dealId } = req.body;
       
       const { dealPatternCloningService } = await import("./services/dealPatternCloning");
@@ -358,7 +358,7 @@ export function registerAIOperationsRoutes(app: Express): void {
 
   router.get("/patterns/match/:propertyId", isAuthenticated, getOrCreateOrg, validateNumericParam("propertyId"), async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const propertyId = parseInt(req.params.propertyId);
       
       const { dealPatternCloningService } = await import("./services/dealPatternCloning");
@@ -376,7 +376,7 @@ export function registerAIOperationsRoutes(app: Express): void {
   // ============================================
   router.post("/negotiation/session", isAuthenticated, getOrCreateOrg, validateRequest(negotiationSessionSchema), async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { dealId, leadId, initialOffer, sellerAsk } = req.body;
       
       const { negotiationCopilotService } = await import("./services/negotiationCopilot");
@@ -391,7 +391,7 @@ export function registerAIOperationsRoutes(app: Express): void {
 
   router.post("/negotiation/objection", isAuthenticated, getOrCreateOrg, validateRequest(negotiationObjectionSchema), async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { sessionId, objectionText } = req.body;
       
       const { negotiationCopilotService } = await import("./services/negotiationCopilot");
@@ -406,7 +406,7 @@ export function registerAIOperationsRoutes(app: Express): void {
 
   router.get("/negotiation/:id", isAuthenticated, getOrCreateOrg, validateNumericParam("id"), async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const dealId = parseInt(req.params.id);
       
       const { negotiationCopilotService } = await import("./services/negotiationCopilot");
@@ -424,7 +424,7 @@ export function registerAIOperationsRoutes(app: Express): void {
   // ============================================
   router.post("/sequences/performance", isAuthenticated, getOrCreateOrg, validateRequest(sequencePerformanceSchema), async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const performanceData = req.body;
       
       const { sequenceOptimizerService } = await import("./services/sequenceOptimizer");
@@ -439,7 +439,7 @@ export function registerAIOperationsRoutes(app: Express): void {
 
   router.get("/sequences/:sequenceId/analysis", isAuthenticated, getOrCreateOrg, validateNumericParam("sequenceId"), async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const sequenceId = parseInt(req.params.sequenceId);
       
       const { sequenceOptimizerService } = await import("./services/sequenceOptimizer");
@@ -457,7 +457,7 @@ export function registerAIOperationsRoutes(app: Express): void {
   // ============================================
   router.post("/voice/record", isAuthenticated, getOrCreateOrg, validateRequest(voiceRecordSchema), async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const callData = req.body;
       
       const { voiceCallAIService } = await import("./services/voiceCallAI");
@@ -472,7 +472,7 @@ export function registerAIOperationsRoutes(app: Express): void {
 
   router.get("/voice/:id", isAuthenticated, getOrCreateOrg, validateNumericParam("id"), async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const leadId = parseInt(req.params.id);
       
       const { voiceCallAIService } = await import("./services/voiceCallAI");
@@ -490,7 +490,7 @@ export function registerAIOperationsRoutes(app: Express): void {
   // ============================================
   router.post("/portfolio/monitor", isAuthenticated, getOrCreateOrg, validateRequest(portfolioMonitorSchema), async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { propertyId } = req.body;
       
       const { portfolioSentinelService } = await import("./services/portfolioSentinel");
@@ -505,7 +505,7 @@ export function registerAIOperationsRoutes(app: Express): void {
 
   router.get("/portfolio/alerts", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const options = {
         severities: req.query.severities ? String(req.query.severities).split(",") as any[] : undefined,
         limit: Math.min(100, req.query.limit ? parseInt(req.query.limit as string) : 50),
@@ -525,7 +525,7 @@ export function registerAIOperationsRoutes(app: Express): void {
 
   router.patch("/portfolio/alerts/:id", isAuthenticated, getOrCreateOrg, validateNumericParam("id"), validateRequest(portfolioAlertUpdateSchema), async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const alertId = parseInt(req.params.id);
       const { action, resolution, userId } = req.body;
       
@@ -551,7 +551,7 @@ export function registerAIOperationsRoutes(app: Express): void {
 
   router.post("/portfolio/scan", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       
       const { portfolioSentinelService } = await import("./services/portfolioSentinel");
       const results = await portfolioSentinelService.monitorPortfolio(org.id);
@@ -568,7 +568,7 @@ export function registerAIOperationsRoutes(app: Express): void {
   // ============================================
   router.post("/documents/analyze", isAuthenticated, getOrCreateOrg, validateRequest(documentAnalyzeSchema), async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const documentData = req.body;
       
       const { documentIntelligenceService } = await import("./services/documentIntelligence");
@@ -583,7 +583,7 @@ export function registerAIOperationsRoutes(app: Express): void {
 
   router.get("/documents/:id", isAuthenticated, getOrCreateOrg, validateNumericParam("id"), async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const propertyId = parseInt(req.params.id);
       
       const { documentIntelligenceService } = await import("./services/documentIntelligence");
@@ -601,7 +601,7 @@ export function registerAIOperationsRoutes(app: Express): void {
   // ============================================
   router.post("/cashflow/forecast", isAuthenticated, getOrCreateOrg, validateRequest(cashflowForecastSchema), async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const forecastParams = req.body;
       
       const { cashFlowForecasterService } = await import("./services/cashFlowForecaster");
@@ -616,7 +616,7 @@ export function registerAIOperationsRoutes(app: Express): void {
 
   router.get("/cashflow/organization", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       
       const { cashFlowForecasterService } = await import("./services/cashFlowForecaster");
       const summary = await cashFlowForecasterService.getPortfolioCashFlowSummary(org.id);
@@ -663,7 +663,7 @@ export function registerAIOperationsRoutes(app: Express): void {
 
   router.post("/compliance/check", isAuthenticated, getOrCreateOrg, validateRequest(complianceCheckSchema), async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { propertyId } = req.body;
       
       const { complianceGuardianService } = await import("./services/complianceGuardian");
@@ -681,7 +681,7 @@ export function registerAIOperationsRoutes(app: Express): void {
   // ============================================
   router.post("/buyer-matching/profile", isAuthenticated, getOrCreateOrg, validateRequest(buyerProfileSchema), async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const params = req.body;
       
       const { buyerMatchingAIService } = await import("./services/buyerMatchingAI");
@@ -696,7 +696,7 @@ export function registerAIOperationsRoutes(app: Express): void {
 
   router.post("/buyer-matching/match", isAuthenticated, getOrCreateOrg, validateRequest(buyerMatchSchema), async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { propertyId } = req.body;
       
       const { buyerMatchingAIService } = await import("./services/buyerMatchingAI");
@@ -714,7 +714,7 @@ export function registerAIOperationsRoutes(app: Express): void {
   // ============================================
   router.post("/buyer-qualification/qualify", isAuthenticated, getOrCreateOrg, validateRequest(buyerQualifySchema), async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { buyerProfileId } = req.body;
       
       const { buyerQualificationBotService } = await import("./services/buyerQualificationBot");
@@ -749,7 +749,7 @@ export function registerAIOperationsRoutes(app: Express): void {
   // ============================================
   router.post("/disposition/recommend", isAuthenticated, getOrCreateOrg, validateRequest(dispositionRecommendSchema), async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { propertyId } = req.body;
       
       const { dispositionOptimizerService } = await import("./services/dispositionOptimizer");
@@ -764,7 +764,7 @@ export function registerAIOperationsRoutes(app: Express): void {
 
   router.get("/disposition/property/:id", isAuthenticated, getOrCreateOrg, validateNumericParam("id"), async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const propertyId = parseInt(req.params.id);
       
       const { dispositionOptimizerService } = await import("./services/dispositionOptimizer");

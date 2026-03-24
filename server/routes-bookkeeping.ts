@@ -17,11 +17,10 @@ import {
 
 const router = Router();
 
-function getOrg(req: Request) { return (req as any).org; }
 
 router.get("/annual-report", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const taxYear = parseInt((req.query.year as string) ?? String(new Date().getFullYear() - 1));
     if (isNaN(taxYear)) return res.status(400).json({ error: "Invalid tax year" });
 
@@ -34,7 +33,7 @@ router.get("/annual-report", async (req: Request, res: Response) => {
 
 router.get("/1099", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const taxYear = parseInt((req.query.year as string) ?? String(new Date().getFullYear() - 1));
     if (isNaN(taxYear)) return res.status(400).json({ error: "Invalid tax year" });
 
@@ -78,7 +77,7 @@ router.post("/deal-pnl", (req: Request, res: Response) => {
 
 router.get("/portfolio-summary", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const taxYear = parseInt((req.query.year as string) ?? String(new Date().getFullYear() - 1));
     if (isNaN(taxYear)) return res.status(400).json({ error: "Invalid tax year" });
 

@@ -232,7 +232,7 @@ export async function getUserPermissionContext(
 export function requirePermission(permission: keyof RolePermissions) {
   return async (req: Request, res: Response, next: NextFunction) => {
     const user = req.user;
-    const org = (req as any).organization as Organization;
+    const org = req.organization as Organization;
 
     if (!user || !org) {
       return res.status(401).json({ message: "Unauthorized" });
@@ -243,7 +243,7 @@ export function requirePermission(permission: keyof RolePermissions) {
       return res.status(403).json({ message: "You are not a member of this organization" });
     }
 
-    (req as any).permissionContext = context;
+    req.permissionContext = context;
 
     if (!context.permissions[permission]) {
       const permissionLabel = permission.replace(/([A-Z])/g, " $1").toLowerCase();
@@ -261,7 +261,7 @@ export function requirePermission(permission: keyof RolePermissions) {
 export function requireAdminOrAbove() {
   return async (req: Request, res: Response, next: NextFunction) => {
     const user = req.user;
-    const org = (req as any).organization as Organization;
+    const org = req.organization as Organization;
 
     if (!user || !org) {
       return res.status(401).json({ message: "Unauthorized" });
@@ -272,7 +272,7 @@ export function requireAdminOrAbove() {
       return res.status(403).json({ message: "You are not a member of this organization" });
     }
 
-    (req as any).permissionContext = context;
+    req.permissionContext = context;
 
     if (!isAdminOrAbove(context.role)) {
       return res.status(403).json({ 
@@ -288,7 +288,7 @@ export function requireAdminOrAbove() {
 export function requireOwner() {
   return async (req: Request, res: Response, next: NextFunction) => {
     const user = req.user;
-    const org = (req as any).organization as Organization;
+    const org = req.organization as Organization;
 
     if (!user || !org) {
       return res.status(401).json({ message: "Unauthorized" });
@@ -299,7 +299,7 @@ export function requireOwner() {
       return res.status(403).json({ message: "You are not a member of this organization" });
     }
 
-    (req as any).permissionContext = context;
+    req.permissionContext = context;
 
     if (!isOwner(context.role)) {
       return res.status(403).json({ 
@@ -315,7 +315,7 @@ export function requireOwner() {
 export function attachPermissionContext() {
   return async (req: Request, res: Response, next: NextFunction) => {
     const user = req.user;
-    const org = (req as any).organization as Organization;
+    const org = req.organization as Organization;
 
     if (!user || !org) {
       return next();
@@ -323,7 +323,7 @@ export function attachPermissionContext() {
 
     const context = await getUserPermissionContext(user, org);
     if (context) {
-      (req as any).permissionContext = context;
+      req.permissionContext = context;
     }
 
     next();

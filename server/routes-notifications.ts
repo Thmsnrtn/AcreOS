@@ -15,16 +15,16 @@ const router = Router();
 
 // Get user's notification preferences
 router.get("/preferences", isAuthenticated, getOrCreateOrg, (req, res) => {
-  const user = (req as any).user;
-  const org = (req as any).organization;
+  const user = req.user;
+  const org = req.organization;
   const prefs = notificationPrefsService.getPreferences(String(user.id), org.id);
   res.json(prefs);
 });
 
 // Update preferences
 router.put("/preferences", isAuthenticated, getOrCreateOrg, (req, res) => {
-  const user = (req as any).user;
-  const org = (req as any).organization;
+  const user = req.user;
+  const org = req.organization;
   const updated = notificationPrefsService.updatePreferences(String(user.id), org.id, req.body);
   res.json(updated);
 });

@@ -8,14 +8,9 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 const router = Router();
 
-function getOrg(req: Request) {
-  const org = (req as any).organization;
-  if (!org) throw new Error('Organization not found');
-  return org;
-}
 
 function getUser(req: Request) {
-  const user = (req as any).user;
+  const user = req.user;
   if (!user) throw new Error('User not found');
   return user;
 }
@@ -96,7 +91,7 @@ Respond with JSON: { "reply": "...", "actionPath": "/path or null", "actionLabel
  */
 router.get('/alerts', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const limit = Math.min(100, parseInt(req.query.limit as string || '20'));
     const alerts = realtimeAlertsService.getAlerts(org.id, limit);
     const unreadCount = realtimeAlertsService.getUnreadCount(org.id);
@@ -112,7 +107,7 @@ router.get('/alerts', async (req: Request, res: Response) => {
  */
 router.post('/alerts/mark-read', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { alertIds } = req.body;
     if (!Array.isArray(alertIds)) {
       return res.status(400).json({ error: 'alertIds must be an array' });
@@ -130,7 +125,7 @@ router.post('/alerts/mark-read', async (req: Request, res: Response) => {
  */
 router.get('/alerts/count', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const count = realtimeAlertsService.getUnreadCount(org.id);
     res.json({ count });
   } catch (err: any) {
@@ -187,7 +182,7 @@ router.post('/certifications/check', async (req: Request, res: Response) => {
 
     // If new certificate issued, push a real-time notification
     if (result.certificate) {
-      const org = getOrg(req);
+      const org = req.organization;
       await realtimeAlertsService.pushAlert({
         type: 'system',
         title: 'Certificate Earned! 🎓',

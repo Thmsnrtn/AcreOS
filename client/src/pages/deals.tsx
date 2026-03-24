@@ -4,6 +4,7 @@ import { useDeals, useCreateDeal, useUpdateDeal, useDeleteDeal, useSaveDealAnaly
 import { useProperties } from "@/hooks/use-properties";
 import { ListSkeleton } from "@/components/list-skeleton";
 import { InlineError } from "@/components/inline-error";
+import { QueryErrorState } from "@/components/query-error-state";
 import { telemetry } from "@/lib/telemetry";
 import { useDealChecklist, useChecklistTemplates, useApplyChecklistTemplate, useUpdateChecklistItem, useStageGate } from "@/hooks/use-checklists";
 import { useState, useMemo } from "react";
@@ -326,12 +327,12 @@ export default function DealsPage() {
   if (error) {
     return (
       <PageShell>
-        <div className="flex flex-col items-center justify-center py-16 text-center" data-testid="error-state-deals">
-          <AlertCircle className="w-12 h-12 text-destructive mb-4" />
-          <h3 className="text-lg font-semibold mb-2">Failed to load deals</h3>
-          <p className="text-muted-foreground mb-4">{(error as Error).message || 'Something went wrong'}</p>
-          <Button onClick={() => refetch()} variant="outline">Try again</Button>
-        </div>
+        <QueryErrorState
+          error={error as Error}
+          onRetry={() => refetch()}
+          title="Failed to load deals"
+          testId="error-state-deals"
+        />
       </PageShell>
     );
   }
@@ -570,6 +571,7 @@ export default function DealsPage() {
                       variant={mobileViewMode === 'kanban' ? 'secondary' : 'ghost'}
                       onClick={() => setMobileViewMode('kanban')}
                       className="min-h-[44px] min-w-[44px]"
+                      aria-label="Kanban view"
                       data-testid="button-view-kanban"
                     >
                       <LayoutGrid className="w-4 h-4" />
@@ -579,6 +581,7 @@ export default function DealsPage() {
                       variant={mobileViewMode === 'list' ? 'secondary' : 'ghost'}
                       onClick={() => setMobileViewMode('list')}
                       className="min-h-[44px] min-w-[44px]"
+                      aria-label="List view"
                       data-testid="button-view-list"
                     >
                       <List className="w-4 h-4" />
@@ -593,6 +596,7 @@ export default function DealsPage() {
                         onClick={() => setSelectedStageIndex(Math.max(0, selectedStageIndex - 1))}
                         disabled={selectedStageIndex === 0}
                         className="min-h-[44px] min-w-[44px]"
+                        aria-label="Previous stage"
                         data-testid="button-prev-stage"
                       >
                         <ChevronLeft className="w-4 h-4" />
@@ -621,6 +625,7 @@ export default function DealsPage() {
                         onClick={() => setSelectedStageIndex(Math.min(dealStages.length - 1, selectedStageIndex + 1))}
                         disabled={selectedStageIndex === dealStages.length - 1}
                         className="min-h-[44px] min-w-[44px]"
+                        aria-label="Next stage"
                         data-testid="button-next-stage"
                       >
                         <ChevronRight className="w-4 h-4" />

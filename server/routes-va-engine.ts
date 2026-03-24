@@ -17,7 +17,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/marketing-lists", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const lists = await storage.getMarketingLists(org.id);
       res.json(lists);
     } catch (error: any) {
@@ -28,7 +28,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/marketing-lists/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const list = await storage.getMarketingListById(org.id, id);
       if (!list) {
@@ -43,7 +43,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.post("/api/marketing-lists", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const validated = insertMarketingListSchema.parse({
         ...req.body,
         organizationId: org.id,
@@ -58,7 +58,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.patch("/api/marketing-lists/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const existing = await storage.getMarketingListById(org.id, id);
       if (!existing) {
@@ -74,7 +74,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.delete("/api/marketing-lists/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const existing = await storage.getMarketingListById(org.id, id);
       if (!existing) {
@@ -94,7 +94,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/offer-batches", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const batches = await storage.getOfferBatches(org.id);
       res.json(batches);
     } catch (error: any) {
@@ -105,7 +105,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/offer-batches/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const batch = await storage.getOfferBatchById(org.id, id);
       if (!batch) {
@@ -121,7 +121,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/offer-batches/:id/offers", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const batch = await storage.getOfferBatchById(org.id, id);
       if (!batch) {
@@ -137,7 +137,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.post("/api/offer-batches", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const validated = insertOfferBatchSchema.parse({
         ...req.body,
         organizationId: org.id,
@@ -152,7 +152,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.patch("/api/offer-batches/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const existing = await storage.getOfferBatchById(org.id, id);
       if (!existing) {
@@ -168,7 +168,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.delete("/api/offer-batches/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const existing = await storage.getOfferBatchById(org.id, id);
       if (!existing) {
@@ -188,7 +188,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/offers", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       let orgOffers = await storage.getOffers(org.id);
       
       const batchId = req.query.batchId ? parseInt(req.query.batchId as string) : undefined;
@@ -214,7 +214,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/offers/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const offer = await storage.getOfferById(org.id, id);
       if (!offer) {
@@ -229,7 +229,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.post("/api/offers", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const validated = insertOfferSchema.parse({
         ...req.body,
         organizationId: org.id,
@@ -244,7 +244,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.patch("/api/offers/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const existing = await storage.getOfferById(org.id, id);
       if (!existing) {
@@ -260,7 +260,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.delete("/api/offers/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const existing = await storage.getOfferById(org.id, id);
       if (!existing) {
@@ -280,7 +280,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/seller-communications", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       let comms = await storage.getSellerCommunications(org.id);
       
       const leadId = req.query.leadId ? parseInt(req.query.leadId as string) : undefined;
@@ -308,7 +308,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/seller-communications/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const comm = await storage.getSellerCommunicationById(org.id, id);
       if (!comm) {
@@ -323,7 +323,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.post("/api/seller-communications", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const validated = insertSellerCommunicationSchema.parse({
         ...req.body,
         organizationId: org.id,
@@ -342,7 +342,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/ad-postings", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const postings = await storage.getAdPostings(org.id);
       res.json(postings);
     } catch (error: any) {
@@ -364,7 +364,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/ad-postings/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const posting = await storage.getAdPostingById(org.id, id);
       if (!posting) {
@@ -379,7 +379,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.post("/api/ad-postings", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const validated = insertAdPostingSchema.parse({
         ...req.body,
         organizationId: org.id,
@@ -394,7 +394,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.patch("/api/ad-postings/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const existing = await storage.getAdPostingById(org.id, id);
       if (!existing) {
@@ -410,7 +410,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.delete("/api/ad-postings/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const existing = await storage.getAdPostingById(org.id, id);
       if (!existing) {
@@ -430,7 +430,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/buyer-prequalifications", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const prequalifications = await storage.getBuyerPrequalifications(org.id);
       res.json(prequalifications);
     } catch (error: any) {
@@ -455,7 +455,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/buyer-prequalifications/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const prequal = await storage.getBuyerPrequalificationById(org.id, id);
       if (!prequal) {
@@ -470,7 +470,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.post("/api/buyer-prequalifications", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const validated = insertBuyerPrequalificationSchema.parse({
         ...req.body,
         organizationId: org.id,
@@ -485,7 +485,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.patch("/api/buyer-prequalifications/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const existing = await storage.getBuyerPrequalificationById(org.id, id);
       if (!existing) {
@@ -501,7 +501,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.delete("/api/buyer-prequalifications/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const existing = await storage.getBuyerPrequalificationById(org.id, id);
       if (!existing) {
@@ -521,7 +521,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/collection-sequences", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const sequences = await storage.getCollectionSequences(org.id);
       res.json(sequences);
     } catch (error: any) {
@@ -532,7 +532,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/collection-sequences/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const sequence = await storage.getCollectionSequenceById(org.id, id);
       if (!sequence) {
@@ -547,7 +547,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.post("/api/collection-sequences", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const validated = insertCollectionSequenceSchema.parse({
         ...req.body,
         organizationId: org.id,
@@ -562,7 +562,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.patch("/api/collection-sequences/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const existing = await storage.getCollectionSequenceById(org.id, id);
       if (!existing) {
@@ -578,7 +578,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.delete("/api/collection-sequences/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const existing = await storage.getCollectionSequenceById(org.id, id);
       if (!existing) {
@@ -598,7 +598,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/collection-enrollments", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const enrollments = await storage.getCollectionEnrollments(org.id);
       res.json(enrollments);
     } catch (error: any) {
@@ -620,7 +620,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/collection-enrollments/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const enrollment = await storage.getCollectionEnrollmentById(org.id, id);
       if (!enrollment) {
@@ -635,7 +635,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.post("/api/collection-enrollments", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const validated = insertCollectionEnrollmentSchema.parse({
         ...req.body,
         organizationId: org.id,
@@ -650,7 +650,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.patch("/api/collection-enrollments/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const existing = await storage.getCollectionEnrollmentById(org.id, id);
       if (!existing) {
@@ -744,7 +744,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/buyer-reservations", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const reservations = await storage.getBuyerReservations(org.id);
       res.json(reservations);
     } catch (error: any) {
@@ -755,7 +755,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/buyer-reservations/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const reservation = await storage.getBuyerReservationById(org.id, id);
       if (!reservation) {
@@ -770,7 +770,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/properties/:propertyId/reservations", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const propertyId = parseInt(req.params.propertyId);
       const reservations = await storage.getBuyerReservationsByProperty(org.id, propertyId);
       res.json(reservations);
@@ -782,7 +782,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.post("/api/buyer-reservations", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const reservation = await storage.createBuyerReservation({
         ...req.body,
         organizationId: org.id,
@@ -796,7 +796,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.patch("/api/buyer-reservations/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const existing = await storage.getBuyerReservationById(org.id, id);
       if (!existing) {
@@ -812,7 +812,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.delete("/api/buyer-reservations/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const success = await storage.deleteBuyerReservation(org.id, id);
       if (!success) {
@@ -831,7 +831,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/escrow-checklists", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const checklists = await storage.getEscrowChecklists(org.id);
       res.json(checklists);
     } catch (error: any) {
@@ -842,7 +842,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/escrow-checklists/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const checklist = await storage.getEscrowChecklistById(org.id, id);
       if (!checklist) {
@@ -857,7 +857,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/deals/:dealId/escrow-checklist", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const dealId = parseInt(req.params.dealId);
       const checklist = await storage.getEscrowChecklistByDeal(org.id, dealId);
       res.json(checklist);
@@ -869,7 +869,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.post("/api/escrow-checklists", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const checklist = await storage.createEscrowChecklist({
         ...req.body,
         organizationId: org.id,
@@ -883,7 +883,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.patch("/api/escrow-checklists/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const existing = await storage.getEscrowChecklistById(org.id, id);
       if (!existing) {
@@ -899,7 +899,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.delete("/api/escrow-checklists/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const success = await storage.deleteEscrowChecklist(org.id, id);
       if (!success) {
@@ -918,7 +918,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/closing-packets", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const packets = await storage.getClosingPackets(org.id);
       res.json(packets);
     } catch (error: any) {
@@ -929,7 +929,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/closing-packets/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const packet = await storage.getClosingPacketById(org.id, id);
       if (!packet) {
@@ -944,7 +944,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/deals/:dealId/closing-packets", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const dealId = parseInt(req.params.dealId);
       const packets = await storage.getClosingPacketsByDeal(org.id, dealId);
       res.json(packets);
@@ -956,7 +956,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.post("/api/closing-packets", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const packet = await storage.createClosingPacket({
         ...req.body,
         organizationId: org.id,
@@ -970,7 +970,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.patch("/api/closing-packets/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const existing = await storage.getClosingPacketById(org.id, id);
       if (!existing) {
@@ -986,7 +986,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.delete("/api/closing-packets/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const success = await storage.deleteClosingPacket(org.id, id);
       if (!success) {
@@ -1005,7 +1005,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/autopay-enrollments", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const enrollments = await storage.getAutopayEnrollments(org.id);
       res.json(enrollments);
     } catch (error: any) {
@@ -1016,7 +1016,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/autopay-enrollments/active", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const enrollments = await storage.getActiveAutopayEnrollments(org.id);
       res.json(enrollments);
     } catch (error: any) {
@@ -1027,7 +1027,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/autopay-enrollments/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const enrollment = await storage.getAutopayEnrollmentById(org.id, id);
       if (!enrollment) {
@@ -1042,7 +1042,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/notes/:noteId/autopay", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const noteId = parseInt(req.params.noteId);
       const enrollment = await storage.getAutopayEnrollmentByNote(org.id, noteId);
       res.json(enrollment);
@@ -1054,7 +1054,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.post("/api/autopay-enrollments", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const enrollment = await storage.createAutopayEnrollment({
         ...req.body,
         organizationId: org.id,
@@ -1068,7 +1068,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.patch("/api/autopay-enrollments/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const existing = await storage.getAutopayEnrollmentById(org.id, id);
       if (!existing) {
@@ -1084,7 +1084,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.delete("/api/autopay-enrollments/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const success = await storage.deleteAutopayEnrollment(org.id, id);
       if (!success) {
@@ -1103,7 +1103,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/payoff-quotes", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const quotes = await storage.getPayoffQuotes(org.id);
       res.json(quotes);
     } catch (error: any) {
@@ -1114,7 +1114,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/payoff-quotes/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const quote = await storage.getPayoffQuoteById(org.id, id);
       if (!quote) {
@@ -1129,7 +1129,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/notes/:noteId/payoff-quotes", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const noteId = parseInt(req.params.noteId);
       const quotes = await storage.getPayoffQuotesByNote(org.id, noteId);
       res.json(quotes);
@@ -1141,7 +1141,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.post("/api/payoff-quotes", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const quote = await storage.createPayoffQuote({
         ...req.body,
         organizationId: org.id,
@@ -1155,7 +1155,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.patch("/api/payoff-quotes/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const existing = await storage.getPayoffQuoteById(org.id, id);
       if (!existing) {
@@ -1175,7 +1175,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/trust-ledger", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const entries = await storage.getTrustLedgerEntries(org.id);
       res.json(entries);
     } catch (error: any) {
@@ -1186,7 +1186,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/trust-ledger/balance", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const balance = await storage.getTrustBalance(org.id);
       res.json({ balance });
     } catch (error: any) {
@@ -1197,7 +1197,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/notes/:noteId/trust-ledger", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const noteId = parseInt(req.params.noteId);
       const entries = await storage.getTrustLedgerByNote(org.id, noteId);
       res.json(entries);
@@ -1209,7 +1209,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.post("/api/trust-ledger", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const entry = await storage.createTrustLedgerEntry({
         ...req.body,
         organizationId: org.id,
@@ -1227,7 +1227,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/delinquency-escalations", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const escalations = await storage.getDelinquencyEscalations(org.id);
       res.json(escalations);
     } catch (error: any) {
@@ -1238,7 +1238,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/delinquency-escalations/active", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const escalations = await storage.getActiveDelinquencyEscalations(org.id);
       res.json(escalations);
     } catch (error: any) {
@@ -1249,7 +1249,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/delinquency-escalations/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const escalation = await storage.getDelinquencyEscalationById(org.id, id);
       if (!escalation) {
@@ -1264,7 +1264,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/notes/:noteId/delinquency", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const noteId = parseInt(req.params.noteId);
       const escalation = await storage.getDelinquencyEscalationByNote(org.id, noteId);
       res.json(escalation ? [escalation] : []);
@@ -1276,7 +1276,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.post("/api/delinquency-escalations", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const escalation = await storage.createDelinquencyEscalation({
         ...req.body,
         organizationId: org.id,
@@ -1290,7 +1290,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.patch("/api/delinquency-escalations/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const existing = await storage.getDelinquencyEscalationById(org.id, id);
       if (!existing) {
@@ -1310,7 +1310,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/dd-assignments", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const assignments = await storage.getDDAssignments(org.id);
       res.json(assignments);
     } catch (error: any) {
@@ -1321,7 +1321,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/dd-assignments/pending", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const assignments = await storage.getPendingDDAssignments(org.id);
       res.json(assignments);
     } catch (error: any) {
@@ -1332,7 +1332,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/dd-assignments/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const assignment = await storage.getDDAssignmentById(org.id, id);
       if (!assignment) {
@@ -1347,7 +1347,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/properties/:propertyId/dd-assignments", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const propertyId = parseInt(req.params.propertyId);
       const assignments = await storage.getDDAssignmentsByProperty(org.id, propertyId);
       res.json(assignments);
@@ -1359,7 +1359,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.post("/api/dd-assignments", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const assignment = await storage.createDDAssignment({
         ...req.body,
         organizationId: org.id,
@@ -1373,7 +1373,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.patch("/api/dd-assignments/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const existing = await storage.getDDAssignmentById(org.id, id);
       if (!existing) {
@@ -1389,7 +1389,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.delete("/api/dd-assignments/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const success = await storage.deleteDDAssignment(org.id, id);
       if (!success) {
@@ -1408,7 +1408,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/swot-reports", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const reports = await storage.getSwotReports(org.id);
       res.json(reports);
     } catch (error: any) {
@@ -1419,7 +1419,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/swot-reports/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const report = await storage.getSwotReportById(org.id, id);
       if (!report) {
@@ -1434,7 +1434,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/properties/:propertyId/swot-report", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const propertyId = parseInt(req.params.propertyId);
       const report = await storage.getSwotReportByProperty(org.id, propertyId);
       res.json(report);
@@ -1446,7 +1446,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.post("/api/swot-reports", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const report = await storage.createSwotReport({
         ...req.body,
         organizationId: org.id,
@@ -1460,7 +1460,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.patch("/api/swot-reports/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const existing = await storage.getSwotReportById(org.id, id);
       if (!existing) {
@@ -1480,7 +1480,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/go-nogo-memos", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const memos = await storage.getGoNogoMemos(org.id);
       res.json(memos);
     } catch (error: any) {
@@ -1491,7 +1491,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/go-nogo-memos/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const memo = await storage.getGoNogoMemoById(org.id, id);
       if (!memo) {
@@ -1506,7 +1506,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/properties/:propertyId/go-nogo-memo", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const propertyId = parseInt(req.params.propertyId);
       const memo = await storage.getGoNogoMemoByProperty(org.id, propertyId);
       res.json(memo);
@@ -1518,7 +1518,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.post("/api/go-nogo-memos", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const memo = await storage.createGoNogoMemo({
         ...req.body,
         organizationId: org.id,
@@ -1532,7 +1532,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.patch("/api/go-nogo-memos/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       const existing = await storage.getGoNogoMemoById(org.id, id);
       if (!existing) {
@@ -1554,7 +1554,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/writing-styles", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const profiles = await writingStyleService.getAllStyleProfiles(org.id);
       res.json(profiles);
     } catch (error: any) {
@@ -1565,8 +1565,8 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.get("/api/writing-styles/current", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
-      const user = (req as any).user;
+      const org = req.organization;
+      const user = req.user;
       let profile = await writingStyleService.getWritingStyleProfile(org.id, user.id);
       if (!profile) {
         profile = await writingStyleService.createWritingStyleProfile(org.id, user.id);
@@ -1580,8 +1580,8 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.post("/api/writing-styles", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
-      const user = (req as any).user;
+      const org = req.organization;
+      const user = req.user;
       const { name } = req.body;
       const profile = await writingStyleService.createWritingStyleProfile(org.id, user.id, name);
       res.status(201).json(profile);
@@ -1634,8 +1634,8 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
 
   api.post("/api/writing-styles/:id/import", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
-      const user = (req as any).user;
+      const org = req.organization;
+      const user = req.user;
       const id = parseInt(req.params.id);
       const { limit } = req.body;
       const count = await writingStyleService.importMessagesFromConversations(
@@ -1669,7 +1669,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   // GET /api/va/metrics — VA performance metrics
   api.get("/api/va/metrics", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { period = "week" } = req.query;
 
       // Build metrics from tasks stored in org settings
@@ -1718,7 +1718,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   // GET /api/va/audit-trail — full audit log of VA actions
   api.get("/api/va/audit-trail", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { limit = "50", offset = "0" } = req.query;
 
       const orgRecord = await storage.getOrganization(org.id);
@@ -1757,7 +1757,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   // POST /api/va/tasks/:id/verify — verify task completion
   api.post("/api/va/tasks/:id/verify", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const taskId = req.params.id;
       const { verified, notes } = req.body;
 
@@ -1794,8 +1794,8 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   // POST /api/va/escalate — escalate task to human supervisor
   api.post("/api/va/escalate", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
-      const user = (req as any).user;
+      const org = req.organization;
+      const user = req.user;
       const { taskId, reason, urgency = "medium", supervisorUserId } = req.body;
 
       if (!taskId || !reason) {
@@ -1834,7 +1834,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   // GET /api/va/scheduled — list scheduled tasks with next run times
   api.get("/api/va/scheduled", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
 
       const orgRecord = await storage.getOrganization(org.id);
       const scheduled: any[] = (orgRecord as any)?.settings?.va_scheduled_tasks || [];
@@ -1874,8 +1874,8 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   // POST /api/va/workflows — create multi-step workflow
   api.post("/api/va/workflows", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
-      const user = (req as any).user;
+      const org = req.organization;
+      const user = req.user;
       const { name, description, steps, triggerType = "manual", triggerConfig } = req.body;
 
       if (!name || !steps || !Array.isArray(steps) || steps.length === 0) {
@@ -1925,7 +1925,7 @@ export async function registerVAEngineRoutes(app: Express): Promise<void> {
   // GET /api/va/workflows — list workflows
   api.get("/api/va/workflows", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const orgRecord = await storage.getOrganization(org.id);
       const workflows: any[] = (orgRecord as any)?.settings?.va_workflows || [];
       res.json({ workflows });

@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 import type { Express } from "express";
 import { storage } from "./storage";
 import { z } from "zod";
@@ -12,6 +11,7 @@ import { db } from "./db";
 import { outcomeTelemetry } from "@shared/schema";
 import { checkUsury } from "./services/usury";
 import { logger } from "./utils/logger";
+import { Errors } from "./utils/errors";
 
 // Partial update schema for PUT endpoints
 const updateDealSchema = insertDealSchema.partial().omit({ organizationId: true });
@@ -39,12 +39,6 @@ function validateOfferAmounts(data: Record<string, any>): string | null {
   }
   return null;
 }
-
-const logger = {
-  info: (msg: string, meta?: Record<string, any>) => console.log(JSON.stringify({ level: 'INFO', timestamp: new Date().toISOString(), message: msg, ...meta })),
-  warn: (msg: string, meta?: Record<string, any>) => console.warn(JSON.stringify({ level: 'WARN', timestamp: new Date().toISOString(), message: msg, ...meta })),
-  error: (msg: string, meta?: Record<string, any>) => console.error(JSON.stringify({ level: 'ERROR', timestamp: new Date().toISOString(), message: msg, ...meta })),
-};
 
 // Helper function to trigger deal enrichment asynchronously (non-blocking)
 async function triggerDealEnrichmentAsync(
@@ -94,26 +88,26 @@ export function registerDealRoutes(app: Express): void {
   // ============================================
   
   api.get("/api/deals", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const deals = await storage.getDeals(org.id);
     res.json(deals);
   });
   
   api.get("/api/deals/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const deal = await storage.getDeal(org.id, Number(req.params.id));
-    if (!deal) return res.status(404).json({ message: "Deal not found" });
+    if (!deal) return Errors.notFound(res, "Deal");
     res.json(deal);
   });
-  
+
   api.post("/api/deals", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
 
       // Task 211: validate offer amounts before parsing
       const offerValidationError = validateOfferAmounts(req.body);
       if (offerValidationError) {
-        return res.status(400).json({ message: offerValidationError });
+        return Errors.badRequest(res, offerValidationError);
       }
 
       const input = insertDealSchema.parse({ ...req.body, organizationId: org.id });
@@ -159,15 +153,12 @@ export function registerDealRoutes(app: Express): void {
       res.status(201).json(deal);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ 
-          message: "Validation failed", 
-          errors: err.errors.map(e => ({ field: e.path.join('.'), message: e.message }))
-        });
+        return Errors.badRequest(res, "Validation failed", err.errors.map(e => ({ field: e.path.join('.'), message: e.message })));
       }
       throw err;
     }
   });
-  
+
   // Valid deal status transitions — no skipping states (Task #210)
   const DEAL_STATUS_TRANSITIONS: Record<string, string[]> = {
     negotiating: ["offer_sent", "cancelled"],
@@ -181,15 +172,15 @@ export function registerDealRoutes(app: Express): void {
 
   api.put("/api/deals/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const dealId = Number(req.params.id);
       const existingDeal = await storage.getDeal(org.id, dealId);
-      if (!existingDeal) return res.status(404).json({ message: "Deal not found" });
+      if (!existingDeal) return Errors.notFound(res, "Deal");
 
       // Task 211: validate offer amounts before parsing
       const offerValidationError = validateOfferAmounts(req.body);
       if (offerValidationError) {
-        return res.status(400).json({ message: offerValidationError });
+        return Errors.badRequest(res, offerValidationError);
       }
 
       const validated = updateDealSchema.parse(req.body);
@@ -247,7 +238,7 @@ export function registerDealRoutes(app: Express): void {
             });
           }
         } catch (conversionErr) {
-          console.error("Failed to record conversion:", conversionErr);
+          logger.error("Failed to record conversion", conversionErr instanceof Error ? conversionErr : undefined);
         }
 
         // Write outcome telemetry for the feedback loop (non-blocking)
@@ -301,10 +292,7 @@ export function registerDealRoutes(app: Express): void {
       res.json(deal);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({
-          message: "Validation failed",
-          errors: err.errors.map(e => ({ field: e.path.join('.'), message: e.message }))
-        });
+        return Errors.badRequest(res, "Validation failed", err.errors.map(e => ({ field: e.path.join('.'), message: e.message })));
       }
       // Task 219: surface optimistic-lock conflicts as 409 Conflict
       if (err instanceof Error && err.message.includes("modified by another request")) {
@@ -317,30 +305,30 @@ export function registerDealRoutes(app: Express): void {
   // Manual deal enrichment trigger endpoint
   api.post("/api/deals/:id/enrich", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const dealId = Number(req.params.id);
       const forceRefresh = req.body.forceRefresh === true;
       
       const deal = await storage.getDeal(org.id, dealId);
       if (!deal) {
-        return res.status(404).json({ message: "Deal not found" });
+        return Errors.notFound(res, "Deal");
       }
-      
+
       if (!deal.propertyId) {
-        return res.status(400).json({ message: "Deal has no associated property" });
+        return Errors.badRequest(res, "Deal has no associated property");
       }
-      
+
       // Get the property to find coordinates
       const property = await storage.getProperty(org.id, deal.propertyId);
       if (!property) {
-        return res.status(400).json({ message: "Property not found" });
+        return Errors.badRequest(res, "Property not found");
       }
-      
+
       const lat = property.latitude ? parseFloat(String(property.latitude)) : null;
       const lng = property.longitude ? parseFloat(String(property.longitude)) : null;
-      
+
       if (!lat || !lng) {
-        return res.status(400).json({ message: "Property missing coordinates" });
+        return Errors.badRequest(res, "Property missing coordinates");
       }
       
       // Mark as pending
@@ -394,7 +382,7 @@ export function registerDealRoutes(app: Express): void {
       });
     } catch (err) {
       logger.error("Manual deal enrichment failed", { dealId: req.params.id, error: String(err) });
-      res.status(500).json({ message: "Enrichment failed", error: String(err) });
+      Errors.internal(res, err instanceof Error ? err : new Error("Enrichment failed"));
     }
   });
   
@@ -403,7 +391,7 @@ export function registerDealRoutes(app: Express): void {
   // ============================================
   
   api.get("/api/due-diligence/templates", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const templates = await storage.getDueDiligenceTemplates(org.id);
     if (templates.length === 0) {
       const initialized = await storage.initializeDefaultTemplates(org.id);
@@ -414,13 +402,13 @@ export function registerDealRoutes(app: Express): void {
   
   api.get("/api/due-diligence/templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const template = await storage.getDueDiligenceTemplate(Number(req.params.id));
-    if (!template) return res.status(404).json({ message: "Template not found" });
+    if (!template) return Errors.notFound(res, "Template");
     res.json(template);
   });
-  
+
   api.post("/api/due-diligence/templates", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const template = await storage.createDueDiligenceTemplate({
         ...req.body,
         organizationId: org.id,
@@ -428,18 +416,18 @@ export function registerDealRoutes(app: Express): void {
       res.status(201).json(template);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return Errors.badRequest(res, err.errors[0].message);
       }
       throw err;
     }
   });
-  
+
   api.put("/api/due-diligence/templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const template = await storage.updateDueDiligenceTemplate(Number(req.params.id), req.body);
-    if (!template) return res.status(404).json({ message: "Template not found" });
+    if (!template) return Errors.notFound(res, "Template");
     res.json(template);
   });
-  
+
   api.delete("/api/due-diligence/templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     await storage.deleteDueDiligenceTemplate(Number(req.params.id));
     res.status(204).send();
@@ -454,12 +442,12 @@ export function registerDealRoutes(app: Express): void {
     try {
       const { templateId } = req.body;
       if (!templateId) {
-        return res.status(400).json({ message: "templateId is required" });
+        return Errors.badRequest(res, "templateId is required");
       }
       const items = await storage.applyTemplateToProperty(Number(req.params.id), templateId);
       res.json(items);
     } catch (err: any) {
-      res.status(400).json({ message: err.message || "Failed to apply template" });
+      Errors.badRequest(res, err.message || "Failed to apply template");
     }
   });
   
@@ -472,12 +460,12 @@ export function registerDealRoutes(app: Express): void {
       res.status(201).json(item);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return Errors.badRequest(res, err.errors[0].message);
       }
       throw err;
     }
   });
-  
+
   api.put("/api/due-diligence/items/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const user = req.user as any;
     const userId = user?.claims?.sub || user?.id;
@@ -486,7 +474,7 @@ export function registerDealRoutes(app: Express): void {
       updates.completedBy = userId;
     }
     const item = await storage.updateDueDiligenceItem(Number(req.params.id), updates);
-    if (!item) return res.status(404).json({ message: "Item not found" });
+    if (!item) return Errors.notFound(res, "Item");
     res.json(item);
   });
   
@@ -501,12 +489,12 @@ export function registerDealRoutes(app: Express): void {
   
   api.post("/api/properties/:id/analyze", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const propertyId = Number(req.params.id);
       const { message, conversationHistory } = req.body;
       
       if (!message) {
-        return res.status(400).json({ message: "Message is required" });
+        return Errors.badRequest(res, "Message is required");
       }
       
       const usageCheck = await checkUsageLimit(org.id, "ai_requests");
@@ -516,7 +504,7 @@ export function registerDealRoutes(app: Express): void {
 
       const property = await storage.getProperty(org.id, propertyId);
       if (!property) {
-        return res.status(404).json({ message: "Property not found" });
+        return Errors.notFound(res, "Property");
       }
 
       const { ResearchIntelligenceAgent, DealsAcquisitionAgent, skillRegistry } = await import('./services/core-agents');
@@ -588,8 +576,8 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
         actions: [],
       });
     } catch (err: any) {
-      console.error("Property analysis error:", err);
-      res.status(500).json({ message: err.message || "Failed to analyze property" });
+      logger.error("Property analysis error", err instanceof Error ? err : undefined);
+      Errors.internal(res, err instanceof Error ? err : new Error("Failed to analyze property"));
     }
   });
 
@@ -628,44 +616,44 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   
   api.get("/api/due-diligence/:propertyId", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const propertyId = Number(req.params.propertyId);
       const checklist = await storage.getOrCreateDueDiligenceChecklist(org.id, propertyId);
       res.json(checklist);
     } catch (error: any) {
-      console.error("Get due diligence checklist error:", error);
-      res.status(500).json({ message: error.message || "Failed to fetch checklist" });
+      logger.error("Get due diligence checklist error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error("Failed to fetch checklist"));
     }
   });
 
   api.put("/api/due-diligence/:propertyId", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const propertyId = Number(req.params.propertyId);
       const existing = await storage.getDueDiligenceChecklist(propertyId);
       if (!existing) {
-        return res.status(404).json({ message: "Checklist not found" });
+        return Errors.notFound(res, "Checklist");
       }
       const updated = await storage.updateDueDiligenceChecklist(existing.id, req.body);
       res.json(updated);
     } catch (error: any) {
-      console.error("Update due diligence checklist error:", error);
-      res.status(500).json({ message: error.message || "Failed to update checklist" });
+      logger.error("Update due diligence checklist error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error("Failed to update checklist"));
     }
   });
 
   api.post("/api/due-diligence/:propertyId/lookup/flood-zone", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const propertyId = Number(req.params.propertyId);
       
       const property = await storage.getProperty(org.id, propertyId);
       if (!property) {
-        return res.status(404).json({ message: "Property not found" });
+        return Errors.notFound(res, "Property");
       }
-      
+
       const { dataSourceLookupService } = await import('./services/data-source-lookup');
-      
+
       if (property.latitude && property.longitude) {
         const lookupResult = await dataSourceLookupService.lookupFloodZone({
           latitude: Number(property.latitude),
@@ -684,23 +672,23 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
         });
       }
     } catch (error: any) {
-      console.error("Flood zone lookup error:", error);
-      res.status(500).json({ message: error.message || "Failed to lookup flood zone" });
+      logger.error("Flood zone lookup error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error("Failed to lookup flood zone"));
     }
   });
 
   api.post("/api/due-diligence/:propertyId/lookup/wetlands", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const propertyId = Number(req.params.propertyId);
       
       const property = await storage.getProperty(org.id, propertyId);
       if (!property) {
-        return res.status(404).json({ message: "Property not found" });
+        return Errors.notFound(res, "Property");
       }
-      
+
       const { dataSourceLookupService } = await import('./services/data-source-lookup');
-      
+
       if (property.latitude && property.longitude) {
         const lookupResult = await dataSourceLookupService.lookupWetlands({
           latitude: Number(property.latitude),
@@ -720,23 +708,23 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
         });
       }
     } catch (error: any) {
-      console.error("Wetlands lookup error:", error);
-      res.status(500).json({ message: error.message || "Failed to lookup wetlands" });
+      logger.error("Wetlands lookup error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error("Failed to lookup wetlands"));
     }
   });
 
   api.post("/api/due-diligence/:propertyId/lookup/soil", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const propertyId = Number(req.params.propertyId);
       
       const property = await storage.getProperty(org.id, propertyId);
       if (!property) {
-        return res.status(404).json({ message: "Property not found" });
+        return Errors.notFound(res, "Property");
       }
-      
+
       const { dataSourceLookupService } = await import('./services/data-source-lookup');
-      
+
       if (property.latitude && property.longitude) {
         const lookupResult = await dataSourceLookupService.lookupSoilData({
           latitude: Number(property.latitude),
@@ -756,23 +744,23 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
         });
       }
     } catch (error: any) {
-      console.error("Soil data lookup error:", error);
-      res.status(500).json({ message: error.message || "Failed to lookup soil data" });
+      logger.error("Soil data lookup error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error("Failed to lookup soil data"));
     }
   });
 
   api.post("/api/due-diligence/:propertyId/lookup/environmental", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const propertyId = Number(req.params.propertyId);
       
       const property = await storage.getProperty(org.id, propertyId);
       if (!property) {
-        return res.status(404).json({ message: "Property not found" });
+        return Errors.notFound(res, "Property");
       }
-      
+
       const { dataSourceLookupService } = await import('./services/data-source-lookup');
-      
+
       if (property.latitude && property.longitude) {
         const lookupResult = await dataSourceLookupService.lookupEpaData({
           latitude: Number(property.latitude),
@@ -792,8 +780,8 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
         });
       }
     } catch (error: any) {
-      console.error("EPA environmental lookup error:", error);
-      res.status(500).json({ message: error.message || "Failed to lookup EPA data" });
+      logger.error("EPA environmental lookup error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error("Failed to lookup EPA data"));
     }
   });
 
@@ -816,7 +804,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       };
       res.json(result);
     } catch (error: any) {
-      res.status(500).json({ message: error.message || "Failed to lookup tax info" });
+      Errors.internal(res, error instanceof Error ? error : new Error("Failed to lookup tax info"));
     }
   });
 
@@ -826,7 +814,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
 
   api.get("/api/properties/:id/report", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const propertyId = Number(req.params.id);
       const includeComps = req.query.comps === "true";
       const includeAI = req.query.ai === "true";
@@ -834,25 +822,25 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       // Verify property belongs to organization
       const property = await storage.getProperty(org.id, propertyId);
       if (!property) {
-        return res.status(404).json({ message: "Property not found" });
+        return Errors.notFound(res, "Property");
       }
-      
+
       const { generateDueDiligenceReport } = await import("./services/dueDiligence");
       const report = await generateDueDiligenceReport(org.id, propertyId, {
         includeComps,
         includeAI,
       });
-      
+
       res.json(report);
     } catch (error: any) {
-      console.error("Due diligence report error:", error);
-      res.status(500).json({ message: error.message || "Failed to generate report" });
+      logger.error("Due diligence report error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error("Failed to generate report"));
     }
   });
 
   api.get("/api/properties/:id/report/pdf", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const propertyId = Number(req.params.id);
       const includeComps = req.query.comps === "true";
       const includeAI = req.query.ai === "true";
@@ -860,9 +848,9 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       // Verify property belongs to organization
       const property = await storage.getProperty(org.id, propertyId);
       if (!property) {
-        return res.status(404).json({ message: "Property not found" });
+        return Errors.notFound(res, "Property");
       }
-      
+
       const { generateDueDiligenceReport } = await import("./services/dueDiligence");
       const jsPDF = (await import("jspdf")).jsPDF;
       
@@ -1056,27 +1044,27 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       res.setHeader("Content-Disposition", `attachment; filename="due-diligence-${report.summary.apn}.pdf"`);
       res.send(pdfBuffer);
     } catch (error: any) {
-      console.error("PDF generation error:", error);
-      res.status(500).json({ message: error.message || "Failed to generate PDF" });
+      logger.error("PDF generation error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error("Failed to generate PDF"));
     }
   });
 
   api.get("/api/properties/:id/report/summary", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const propertyId = Number(req.params.id);
       
       const { getQuickPropertySummary } = await import("./services/dueDiligence");
       const summary = await getQuickPropertySummary(org.id, propertyId);
       
       if (!summary) {
-        return res.status(404).json({ message: "Property not found" });
+        return Errors.notFound(res, "Property");
       }
-      
+
       res.json(summary);
     } catch (error: any) {
-      console.error("Quick summary error:", error);
-      res.status(500).json({ message: error.message || "Failed to get summary" });
+      logger.error("Quick summary error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error("Failed to get summary"));
     }
   });
   
@@ -1085,7 +1073,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   // ============================================
   
   api.get("/api/checklist-templates", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const templates = await storage.getChecklistTemplates(org.id);
     if (templates.length === 0) {
       const initialized = await storage.initializeDefaultChecklistTemplates(org.id);
@@ -1096,13 +1084,13 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   
   api.get("/api/checklist-templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const template = await storage.getChecklistTemplate(Number(req.params.id));
-    if (!template) return res.status(404).json({ message: "Template not found" });
+    if (!template) return Errors.notFound(res, "Template");
     res.json(template);
   });
-  
+
   api.post("/api/checklist-templates", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const template = await storage.createChecklistTemplate({
         ...req.body,
         organizationId: org.id,
@@ -1110,18 +1098,18 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       res.status(201).json(template);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return Errors.badRequest(res, err.errors[0].message);
       }
       throw err;
     }
   });
-  
+
   api.put("/api/checklist-templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     const template = await storage.updateChecklistTemplate(Number(req.params.id), req.body);
-    if (!template) return res.status(404).json({ message: "Template not found" });
+    if (!template) return Errors.notFound(res, "Template");
     res.json(template);
   });
-  
+
   api.delete("/api/checklist-templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     await storage.deleteChecklistTemplate(Number(req.params.id));
     res.status(204).send();
@@ -1132,11 +1120,11 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   // ============================================
   
   api.get("/api/deals/:id/checklist", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const dealId = Number(req.params.id);
     // Task #2: Verify deal belongs to org before returning checklist (IDOR prevention)
     const deal = await storage.getDeal(org.id, dealId);
-    if (!deal) return res.status(404).json({ message: "Deal not found" });
+    if (!deal) return Errors.notFound(res, "Deal");
     const checklist = await storage.getDealChecklist(dealId);
     if (!checklist) {
       return res.json(null);
@@ -1154,29 +1142,29 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
   
   api.post("/api/deals/:id/checklist", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const dealId = Number(req.params.id);
       // Task #2: Verify deal belongs to org (IDOR prevention)
       const deal = await storage.getDeal(org.id, dealId);
-      if (!deal) return res.status(404).json({ message: "Deal not found" });
+      if (!deal) return Errors.notFound(res, "Deal");
       const { templateId } = req.body;
       if (!templateId) {
-        return res.status(400).json({ message: "templateId is required" });
+        return Errors.badRequest(res, "templateId is required");
       }
       const checklist = await storage.applyChecklistTemplateToDeal(dealId, templateId);
       res.status(201).json(checklist);
     } catch (err: any) {
-      res.status(400).json({ message: err.message || "Failed to apply template" });
+      Errors.badRequest(res, err.message || "Failed to apply template");
     }
   });
 
   api.patch("/api/deals/:id/checklist/items/:itemId", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const dealId = Number(req.params.id);
       // Task #2: Verify deal belongs to org (IDOR prevention)
       const deal = await storage.getDeal(org.id, dealId);
-      if (!deal) return res.status(404).json({ message: "Deal not found" });
+      if (!deal) return Errors.notFound(res, "Deal");
       const user = req.user as any;
       const userId = user?.claims?.sub || user?.id;
       const { checked, documentUrl } = req.body;
@@ -1188,23 +1176,23 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       );
       res.json(checklist);
     } catch (err: any) {
-      res.status(400).json({ message: err.message || "Failed to update checklist item" });
+      Errors.badRequest(res, err.message || "Failed to update checklist item");
     }
   });
   
   api.get("/api/deals/:id/stage-gate", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const dealId = Number(req.params.id);
     // Task #2: Verify deal belongs to org (IDOR prevention)
     const deal = await storage.getDeal(org.id, dealId);
-    if (!deal) return res.status(404).json({ message: "Deal not found" });
+    if (!deal) return Errors.notFound(res, "Deal");
     const result = await storage.checkStageGate(dealId);
     res.json(result);
   });
 
   api.get("/api/deals/:id/report", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const dealId = Number(req.params.id);
       const includeComps = req.query.comps === "true";
       const includeAI = req.query.ai === "true";
@@ -1212,9 +1200,9 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       // Task #2: Pass org.id to getDeal to scope query (IDOR prevention)
       const deal = await storage.getDeal(org.id, dealId);
       if (!deal) {
-        return res.status(404).json({ message: "Deal not found" });
+        return Errors.notFound(res, "Deal");
       }
-      
+
       const { generateDueDiligenceReport } = await import("./services/dueDiligence");
       const report = await generateDueDiligenceReport(org.id, deal.propertyId, {
         includeComps,
@@ -1232,8 +1220,8 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
         },
       });
     } catch (error: any) {
-      console.error("Deal due diligence report error:", error);
-      res.status(500).json({ message: error.message || "Failed to generate report" });
+      logger.error("Deal due diligence report error", error instanceof Error ? error : undefined);
+      Errors.internal(res, error instanceof Error ? error : new Error("Failed to generate report"));
     }
   });
   
@@ -1246,59 +1234,56 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       if (!force) {
         const stageGate = await storage.checkStageGate(dealId);
         if (!stageGate.canAdvance) {
-          return res.status(400).json({
-            message: "Cannot advance stage: incomplete required checklist items",
-            incompleteItems: stageGate.incompleteItems,
-          });
+          return Errors.badRequest(res, "Cannot advance stage: incomplete required checklist items", { incompleteItems: stageGate.incompleteItems });
         }
       }
       
       const deal = await storage.updateDeal(dealId, { status: stage });
-      if (!deal) return res.status(404).json({ message: "Deal not found" });
+      if (!deal) return Errors.notFound(res, "Deal");
       res.json(deal);
     } catch (err: any) {
-      res.status(400).json({ message: err.message || "Failed to update stage" });
+      Errors.badRequest(res, err.message || "Failed to update stage");
     }
   });
 
   // Bulk operations
   api.post("/api/deals/bulk-delete", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { ids } = req.body;
       if (!Array.isArray(ids) || ids.length === 0) {
-        return res.status(400).json({ message: "ids must be a non-empty array" });
+        return Errors.badRequest(res, "ids must be a non-empty array");
       }
       const deletedCount = await storage.bulkDeleteDeals(org.id, ids);
       res.json({ deletedCount });
     } catch (err: any) {
-      res.status(500).json({ message: err.message || "Failed to bulk delete deals" });
+      Errors.internal(res, err instanceof Error ? err : new Error("Failed to bulk delete deals"));
     }
   });
 
   api.post("/api/deals/bulk-update", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { ids, updates } = req.body;
       if (!Array.isArray(ids) || ids.length === 0) {
-        return res.status(400).json({ message: "ids must be a non-empty array" });
+        return Errors.badRequest(res, "ids must be a non-empty array");
       }
       if (!updates || typeof updates !== "object") {
-        return res.status(400).json({ message: "updates must be an object" });
+        return Errors.badRequest(res, "updates must be an object");
       }
       const updatedCount = await storage.bulkUpdateDeals(org.id, ids, updates);
       res.json({ updatedCount });
     } catch (err: any) {
-      res.status(500).json({ message: err.message || "Failed to bulk update deals" });
+      Errors.internal(res, err instanceof Error ? err : new Error("Failed to bulk update deals"));
     }
   });
 
   // ─── T23 + T49: Generate Offer Letter PDF + (optionally) send for e-signature ─
   api.post("/api/deals/:id/offer-letter-pdf", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const deal = await storage.getDeal(org.id, Number(req.params.id));
-      if (!deal) return res.status(404).json({ message: "Deal not found" });
+      if (!deal) return Errors.notFound(res, "Deal");
 
       const { generateOfferLetterPdf } = await import("./services/offerLetterPdf");
       const { sendForEsign, sellerEmail, sellerName, ...offerData } = req.body;
@@ -1335,7 +1320,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       res.set("Content-Disposition", `attachment; filename="offer-${deal.id}.pdf"`);
       res.send(buffer);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err instanceof Error ? err : new Error(err.message));
     }
   });
 
@@ -1349,7 +1334,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       const handoffs = await getAllHandoffs(req.org.id);
       res.json(handoffs);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err instanceof Error ? err : new Error(err.message));
     }
   });
 
@@ -1359,7 +1344,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       const handoffs = await getHandoffsForDeal(req.org.id, parseInt(req.params.dealId));
       res.json(handoffs);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err instanceof Error ? err : new Error(err.message));
     }
   });
 
@@ -1368,7 +1353,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
     try {
       const { fromTeamMemberId, toTeamMemberId, fromRole, toRole, notes, customChecklist } = req.body;
       if (!fromTeamMemberId || !toTeamMemberId || !fromRole || !toRole) {
-        return res.status(400).json({ message: "fromTeamMemberId, toTeamMemberId, fromRole, and toRole are required" });
+        return Errors.badRequest(res, "fromTeamMemberId, toTeamMemberId, fromRole, and toRole are required");
       }
       const handoff = await initiateHandoff(req.org.id, {
         dealId: parseInt(req.params.dealId),
@@ -1381,7 +1366,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       });
       res.status(201).json(handoff);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err instanceof Error ? err : new Error(err.message));
     }
   });
 
@@ -1397,7 +1382,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       );
       res.json(handoff);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      Errors.internal(res, err instanceof Error ? err : new Error(err.message));
     }
   });
 
@@ -1407,7 +1392,7 @@ ${historyContext ? `\nConversation history:\n${historyContext}\n` : ''}`;
       const handoff = await completeHandoff(req.org.id, req.params.handoffId);
       res.json(handoff);
     } catch (err: any) {
-      res.status(400).json({ message: err.message });
+      Errors.badRequest(res, err.message);
     }
   });
 

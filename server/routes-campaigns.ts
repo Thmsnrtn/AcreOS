@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 import type { Express } from "express";
 import { z } from "zod";
 import crypto from "crypto";
@@ -32,13 +31,13 @@ export function registerCampaignRoutes(app: Express): void {
   // ============================================
   
   api.get("/api/campaigns", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const campaigns = await storage.getCampaigns(org.id);
     res.json(campaigns);
   });
   
   api.get("/api/campaigns/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const campaign = await storage.getCampaign(org.id, Number(req.params.id));
     if (!campaign) return res.status(404).json({ message: "Campaign not found" });
     res.json(campaign);
@@ -46,7 +45,7 @@ export function registerCampaignRoutes(app: Express): void {
   
   api.post("/api/campaigns", isAuthenticated, getOrCreateOrg, requirePermission("canCreateCampaign"), async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const trackingCode = storage.generateTrackingCode();
       const input = insertCampaignSchema.parse({ 
         ...req.body, 
@@ -79,7 +78,7 @@ export function registerCampaignRoutes(app: Express): void {
 
   // Get responses for a specific campaign
   api.get("/api/campaigns/:id/responses", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const campaignId = Number(req.params.id);
     const campaign = await storage.getCampaign(org.id, campaignId);
     if (!campaign) return res.status(404).json({ message: "Campaign not found" });
@@ -90,7 +89,7 @@ export function registerCampaignRoutes(app: Express): void {
 
   // Get campaign analytics with response data
   api.get("/api/campaigns/:id/analytics", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const campaignId = Number(req.params.id);
     const campaign = await storage.getCampaign(org.id, campaignId);
     if (!campaign) return res.status(404).json({ message: "Campaign not found" });
@@ -166,7 +165,7 @@ export function registerCampaignRoutes(app: Express): void {
 
   // Get all responses for the organization
   api.get("/api/responses", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const responses = await storage.getCampaignResponses(org.id);
     res.json(responses);
   });
@@ -174,7 +173,7 @@ export function registerCampaignRoutes(app: Express): void {
   // Log a new response (auto-attributes to campaign if tracking code matches)
   api.post("/api/responses", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { trackingCode, channel, content, leadId, contactName, contactEmail, contactPhone, metadata } = req.body;
       
       let campaignId: number | undefined;
@@ -257,14 +256,14 @@ export function registerCampaignRoutes(app: Express): void {
 
   // Get all target counties for the organization
   api.get("/api/target-counties", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const counties = await storage.getTargetCounties(org.id);
     res.json(counties);
   });
 
   // Get a specific target county
   api.get("/api/target-counties/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const county = await storage.getTargetCounty(org.id, Number(req.params.id));
     if (!county) return res.status(404).json({ message: "Target county not found" });
     res.json(county);
@@ -273,7 +272,7 @@ export function registerCampaignRoutes(app: Express): void {
   // Create a new target county
   api.post("/api/target-counties", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { insertTargetCountySchema } = await import("@shared/schema");
       const input = insertTargetCountySchema.parse({
         ...req.body,
@@ -292,7 +291,7 @@ export function registerCampaignRoutes(app: Express): void {
   // Update a target county
   api.put("/api/target-counties/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const county = await storage.getTargetCounty(org.id, Number(req.params.id));
       if (!county) return res.status(404).json({ message: "Target county not found" });
       const validated = updateTargetCountySchema.parse(req.body);
@@ -306,7 +305,7 @@ export function registerCampaignRoutes(app: Express): void {
 
   // Delete a target county
   api.delete("/api/target-counties/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const county = await storage.getTargetCounty(org.id, Number(req.params.id));
     if (!county) return res.status(404).json({ message: "Target county not found" });
     
@@ -320,21 +319,21 @@ export function registerCampaignRoutes(app: Express): void {
 
   // Get all sequences for the organization
   api.get("/api/sequences", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const sequences = await storage.getSequences(org.id);
     res.json(sequences);
   });
 
   // Get sequence stats (enrollment counts)
   api.get("/api/sequences/stats", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const stats = await storage.getSequenceStats(org.id);
     res.json(stats);
   });
 
   // Get a specific sequence with its steps
   api.get("/api/sequences/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const sequence = await storage.getSequence(org.id, Number(req.params.id));
     if (!sequence) return res.status(404).json({ message: "Sequence not found" });
     
@@ -345,7 +344,7 @@ export function registerCampaignRoutes(app: Express): void {
   // Create a new sequence
   api.post("/api/sequences", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const input = insertCampaignSequenceSchema.parse({
         ...req.body,
         organizationId: org.id,
@@ -363,7 +362,7 @@ export function registerCampaignRoutes(app: Express): void {
   // Update a sequence
   api.put("/api/sequences/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const sequence = await storage.getSequence(org.id, Number(req.params.id));
       if (!sequence) return res.status(404).json({ message: "Sequence not found" });
       const validated = updateCampaignSequenceSchema.parse(req.body);
@@ -377,7 +376,7 @@ export function registerCampaignRoutes(app: Express): void {
 
   // Delete a sequence
   api.delete("/api/sequences/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const sequence = await storage.getSequence(org.id, Number(req.params.id));
     if (!sequence) return res.status(404).json({ message: "Sequence not found" });
     
@@ -391,7 +390,7 @@ export function registerCampaignRoutes(app: Express): void {
 
   // Get steps for a sequence
   api.get("/api/sequences/:id/steps", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const sequence = await storage.getSequence(org.id, Number(req.params.id));
     if (!sequence) return res.status(404).json({ message: "Sequence not found" });
     
@@ -402,7 +401,7 @@ export function registerCampaignRoutes(app: Express): void {
   // Add a step to a sequence
   api.post("/api/sequences/:id/steps", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const sequence = await storage.getSequence(org.id, Number(req.params.id));
       if (!sequence) return res.status(404).json({ message: "Sequence not found" });
       
@@ -427,7 +426,7 @@ export function registerCampaignRoutes(app: Express): void {
   // Update a step
   api.put("/api/sequences/:id/steps/:stepId", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const sequence = await storage.getSequence(org.id, Number(req.params.id));
       if (!sequence) return res.status(404).json({ message: "Sequence not found" });
       const validated = updateSequenceStepSchema.parse(req.body);
@@ -441,7 +440,7 @@ export function registerCampaignRoutes(app: Express): void {
 
   // Delete a step
   api.delete("/api/sequences/:id/steps/:stepId", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const sequence = await storage.getSequence(org.id, Number(req.params.id));
     if (!sequence) return res.status(404).json({ message: "Sequence not found" });
     
@@ -451,7 +450,7 @@ export function registerCampaignRoutes(app: Express): void {
 
   // Reorder steps
   api.put("/api/sequences/:id/steps/reorder", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const sequence = await storage.getSequence(org.id, Number(req.params.id));
     if (!sequence) return res.status(404).json({ message: "Sequence not found" });
     
@@ -468,7 +467,7 @@ export function registerCampaignRoutes(app: Express): void {
 
   // Get enrollments for a sequence
   api.get("/api/sequences/:id/enrollments", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const sequence = await storage.getSequence(org.id, Number(req.params.id));
     if (!sequence) return res.status(404).json({ message: "Sequence not found" });
     
@@ -478,7 +477,7 @@ export function registerCampaignRoutes(app: Express): void {
 
   // Get all active enrollments
   api.get("/api/enrollments/active", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const enrollments = await storage.getActiveEnrollments(org.id);
     res.json(enrollments);
   });
@@ -486,7 +485,7 @@ export function registerCampaignRoutes(app: Express): void {
   // Enroll a lead in a sequence
   api.post("/api/sequences/:id/enroll", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const sequence = await storage.getSequence(org.id, Number(req.params.id));
       if (!sequence) return res.status(404).json({ message: "Sequence not found" });
       
@@ -550,7 +549,7 @@ export function registerCampaignRoutes(app: Express): void {
 
   // Get lead's enrollments
   api.get("/api/leads/:id/enrollments", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const lead = await storage.getLead(org.id, Number(req.params.id));
     if (!lead) return res.status(404).json({ message: "Lead not found" });
     
@@ -576,7 +575,7 @@ export function registerCampaignRoutes(app: Express): void {
   // responsible for partitioning leadIds accordingly when variant splits are active.
   api.post("/api/campaigns/:id/send-direct-mail", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const campaignId = parseInt(req.params.id);
       const { pieceType, leadIds } = req.body as {
         pieceType: 'postcard_4x6' | 'postcard_6x9' | 'postcard_6x11' | 'letter_1_page';
@@ -858,7 +857,7 @@ export function registerCampaignRoutes(app: Express): void {
   // Estimate cost for sending a campaign to selected recipients
   api.get("/api/campaigns/:id/estimate-cost", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { pieceType, recipientCount } = req.query as { pieceType: string; recipientCount: string };
       
       const { DIRECT_MAIL_COSTS } = await import("./services/directMail");
@@ -891,7 +890,7 @@ export function registerCampaignRoutes(app: Express): void {
   
   api.get("/api/campaigns/analytics", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { campaignOptimizerService } = await import("./services/campaignOptimizer");
       const analytics = await campaignOptimizerService.getCampaignAnalytics(org.id);
       res.json(analytics);
@@ -902,7 +901,7 @@ export function registerCampaignRoutes(app: Express): void {
   
   api.get("/api/campaigns/:id/optimizations", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const campaignId = parseInt(req.params.id);
       
       const campaign = await storage.getCampaign(org.id, campaignId);
@@ -920,7 +919,7 @@ export function registerCampaignRoutes(app: Express): void {
   // 7-day response trend: daily response counts for sparkline charts
   api.get("/api/campaigns/:id/response-trend", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const campaignId = parseInt(req.params.id);
 
       const campaign = await storage.getCampaign(org.id, campaignId);
@@ -965,7 +964,7 @@ export function registerCampaignRoutes(app: Express): void {
 
   api.post("/api/campaigns/:id/optimize", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const campaignId = parseInt(req.params.id);
       
       const campaign = await storage.getCampaign(org.id, campaignId);
@@ -1044,7 +1043,7 @@ export function registerCampaignRoutes(app: Express): void {
   
   // Get direct mail status and configuration
   api.get("/api/direct-mail/status", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const { directMailService, DIRECT_MAIL_COSTS } = await import("./services/directMail");
     
     const currentMode = org.settings?.mailMode || 'test';
@@ -1063,7 +1062,7 @@ export function registerCampaignRoutes(app: Express): void {
   
   // Update mail mode (test/live)
   api.patch("/api/direct-mail/mode", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const { mode } = req.body;
     
     if (mode !== 'test' && mode !== 'live') {
@@ -1096,7 +1095,7 @@ export function registerCampaignRoutes(app: Express): void {
   // Get cost estimate for a batch of mail
   api.post("/api/direct-mail/estimate", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { pieceType, recipientCount, recipientIds, campaignId } = req.body;
       
       const { directMailService, DIRECT_MAIL_COSTS } = await import("./services/directMail");
@@ -1184,7 +1183,7 @@ export function registerCampaignRoutes(app: Express): void {
   // Bulk verify addresses for leads
   api.post("/api/direct-mail/bulk-verify-addresses", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { leadIds } = req.body;
       
       if (!leadIds || !Array.isArray(leadIds) || leadIds.length === 0) {
@@ -1281,7 +1280,7 @@ export function registerCampaignRoutes(app: Express): void {
   // POST /api/campaigns/:id/variants — create a variant for a campaign
   api.post("/api/campaigns/:id/variants", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const campaignId = Number(req.params.id);
 
       const campaign = await storage.getCampaign(org.id, campaignId);
@@ -1306,7 +1305,7 @@ export function registerCampaignRoutes(app: Express): void {
   // GET /api/campaigns/:id/variants — list variants with performance stats
   api.get("/api/campaigns/:id/variants", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const campaignId = Number(req.params.id);
 
       const campaign = await storage.getCampaign(org.id, campaignId);
@@ -1338,7 +1337,7 @@ export function registerCampaignRoutes(app: Express): void {
   // Marks a variant as winner; requires >10% better response rate than others AND >50 sends
   api.post("/api/campaigns/:id/variants/:variantId/declare-winner", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const campaignId = Number(req.params.id);
       const variantId = Number(req.params.variantId);
 
@@ -1406,7 +1405,7 @@ export function registerCampaignRoutes(app: Express): void {
   // GET /api/campaigns/:id/ab-analysis — returns which variant is winning, confidence, recommendation
   api.get("/api/campaigns/:id/ab-analysis", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const campaignId = Number(req.params.id);
 
       const campaign = await storage.getCampaign(org.id, campaignId);
@@ -1478,7 +1477,7 @@ export function registerCampaignRoutes(app: Express): void {
   // POST /api/campaigns/:id/test-send — send a single test email to the current user
   api.post("/api/campaigns/:id/test-send", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const user = req.user as any;
       const campaign = await storage.getCampaign(org.id, Number(req.params.id));
       if (!campaign) return res.status(404).json({ message: "Campaign not found" });
@@ -1515,7 +1514,7 @@ export function registerCampaignRoutes(app: Express): void {
   api.get("/api/campaigns/overlap-report", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { campaignOverlapDetector } = await import("./services/campaignOverlapDetector");
-      const org = (req as any).organization;
+      const org = req.organization;
       const report = await campaignOverlapDetector.generateOverlapReport(org.id);
       res.json(report);
     } catch (e: any) {

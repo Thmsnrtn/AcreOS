@@ -23,6 +23,7 @@ import {
   Flame,
   Settings,
 } from "lucide-react";
+import { QueryErrorState } from "@/components/query-error-state";
 import CommandCenterPage from "@/pages/command-center";
 
 const ActivityPage = lazy(() => import("@/pages/activity"));
@@ -162,7 +163,7 @@ function revenueImpact(severity: string, type?: string): string | null {
 // ─── Insights Tab Content ─────────────────────────────────────────────────────
 
 function InsightsTabContent() {
-  const { data, isLoading } = useQuery<InsightsData>({
+  const { data, isLoading, error, refetch, isRefetching } = useQuery<InsightsData>({
     queryKey: ["/api/pax/insights"],
   });
 
@@ -182,6 +183,19 @@ function InsightsTabContent() {
           ))}
         </div>
       </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <QueryErrorState
+        error={error}
+        onRetry={() => refetch()}
+        isRetrying={isRefetching}
+        title="Couldn't load insights"
+        description="Pax was unable to fetch your latest insights. Please try again."
+        testId="insights-error"
+      />
     );
   }
 

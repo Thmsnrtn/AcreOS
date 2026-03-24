@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * T149 — Deal Pattern Cloning Routes
  *
@@ -16,16 +15,11 @@ import { dealPatternCloningService } from "./services/dealPatternCloning";
 
 const router = Router();
 
-function getOrg(req: Request) {
-  const org = (req as any).organization;
-  if (!org) throw new Error("Organization not found");
-  return org;
-}
 
 // Extract pattern from a closed deal (record for future matching)
 router.post("/extract/:dealId", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const dealId = parseInt(req.params.dealId);
     if (isNaN(dealId)) return res.status(400).json({ error: "Invalid deal ID" });
     const pattern = await dealPatternCloningService.recordPatternFromClosedDeal(org.id, dealId);
@@ -38,7 +32,7 @@ router.post("/extract/:dealId", isAuthenticated, getOrCreateOrg, async (req: Req
 // Find similar patterns for a property
 router.post("/find-similar", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { propertyId, limit } = req.body;
     if (!propertyId) return res.status(400).json({ error: "propertyId is required" });
     const matches = await dealPatternCloningService.findSimilarPatterns(
@@ -55,7 +49,7 @@ router.post("/find-similar", isAuthenticated, getOrCreateOrg, async (req: Reques
 // Pattern performance statistics
 router.get("/performance", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const performance = await dealPatternCloningService.getPatternPerformance(org.id);
     res.json({ performance });
   } catch (err: any) {

@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 import { Router } from "express";
 import { db, storage } from "./storage";
 import { eq, and, desc, lt, gte, lte, gt, sql } from "drizzle-orm";
@@ -17,7 +16,7 @@ const router = Router();
 // Returns a contextual first-session greeting (fewer than 5 leads = first session).
 router.get("/greeting", async (req, res) => {
   try {
-    const org = (req as any).organization;
+    const org = req.organization;
 
     const leadCount = await storage.getLeadCount(org.id);
     const isFirstSession = leadCount < 5;
@@ -57,7 +56,7 @@ router.get("/greeting", async (req, res) => {
 // GET /api/pax/insights
 router.get("/insights", async (req, res) => {
   try {
-    const org = (req as any).organization;
+    const org = req.organization;
     const now = new Date();
 
     // ── 1. Pax observations (status = 'detected', ordered severity desc, createdAt desc, limit 10) ──
@@ -280,7 +279,7 @@ router.get("/insights", async (req, res) => {
 // Returns top 3-5 actionable suggestions from recent high-confidence pax observations
 router.get("/pax-suggestions", async (req, res) => {
   try {
-    const org = (req as any).organization;
+    const org = req.organization;
     const now = new Date();
     const seventyTwoHoursAgo = new Date(now.getTime() - 72 * 60 * 60 * 1000);
 
@@ -425,7 +424,7 @@ router.get("/pax-suggestions", async (req, res) => {
 // PATCH /api/pax/nudges/:nudgeId/snooze
 router.patch("/nudges/:nudgeId/snooze", async (req, res) => {
   try {
-    const org = (req as any).organization;
+    const org = req.organization;
     const nudgeId = parseInt(req.params.nudgeId);
     const { hours = 24 } = req.body; // default snooze 24 hours
 
@@ -451,7 +450,7 @@ router.patch("/nudges/:nudgeId/snooze", async (req, res) => {
 // PATCH /api/pax/nudges/:nudgeId/action
 router.patch("/nudges/:nudgeId/action", async (req, res) => {
   try {
-    const org = (req as any).organization;
+    const org = req.organization;
     const nudgeId = parseInt(req.params.nudgeId);
 
     await db.update(paxNudges)

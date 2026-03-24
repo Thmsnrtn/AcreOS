@@ -1,14 +1,8 @@
-// @ts-nocheck
 import { Router, type Request, type Response } from 'express';
 import { acquisitionRadar } from './services/acquisitionRadar';
 
 const router = Router();
 
-function getOrg(req: Request) {
-  const org = (req as any).organization;
-  if (!org) throw new Error('Organization not found');
-  return org;
-}
 
 // =====================
 // CONFIGURATION
@@ -16,7 +10,7 @@ function getOrg(req: Request) {
 
 router.get('/config', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const config = await acquisitionRadar.getOrCreateConfig(org.id);
     res.json({ config });
   } catch (error: any) {
@@ -26,7 +20,7 @@ router.get('/config', async (req: Request, res: Response) => {
 
 router.put('/config/:id', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const config = await acquisitionRadar.updateConfig(
       org.id,
       parseInt(req.params.id),
@@ -44,7 +38,7 @@ router.put('/config/:id', async (req: Request, res: Response) => {
 
 router.get('/opportunities', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { limit, county, state, opportunityType, minScore, status } = req.query;
     const opportunities = await acquisitionRadar.getTopOpportunities(org.id, {
       limit: limit ? parseInt(limit as string) : 20,
@@ -62,7 +56,7 @@ router.get('/opportunities', async (req: Request, res: Response) => {
 
 router.get('/opportunities/by-market', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const byMarket = await acquisitionRadar.getOpportunitiesByMarket(org.id);
     res.json({ byMarket });
   } catch (error: any) {
@@ -72,7 +66,7 @@ router.get('/opportunities/by-market', async (req: Request, res: Response) => {
 
 router.get('/stats', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const stats = await acquisitionRadar.getRadarStats(org.id);
     res.json({ stats });
   } catch (error: any) {
@@ -86,7 +80,7 @@ router.get('/stats', async (req: Request, res: Response) => {
 
 router.post('/score', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const config = await acquisitionRadar.getOrCreateConfig(org.id);
     const result = await acquisitionRadar.scoreParcel(req.body, config);
 

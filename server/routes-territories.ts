@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * T194 — Territory Management Routes
  *
@@ -16,13 +15,12 @@ import { eq, and } from "drizzle-orm";
 
 const router = Router();
 
-function getOrg(req: Request) { return (req as any).org; }
-function getUser(req: Request) { return (req as any).user; }
+function getUser(req: Request) { return req.user; }
 
 // GET /api/territories
 router.get("/", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const rows = await db
       .select()
       .from(territories)
@@ -36,7 +34,7 @@ router.get("/", async (req: Request, res: Response) => {
 // POST /api/territories
 router.post("/", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { name, description, stateCode, counties } = req.body;
     if (!name || !stateCode) return res.status(400).json({ error: "name and stateCode required" });
 
@@ -60,7 +58,7 @@ router.post("/", async (req: Request, res: Response) => {
 // PUT /api/territories/:id
 router.put("/:id", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
 
@@ -87,7 +85,7 @@ router.put("/:id", async (req: Request, res: Response) => {
 // DELETE /api/territories/:id
 router.delete("/:id", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
 
@@ -103,7 +101,7 @@ router.delete("/:id", async (req: Request, res: Response) => {
 // POST /api/territories/:id/assign
 router.post("/:id/assign", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const id = parseInt(req.params.id);
     const { userId } = req.body;
     if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });

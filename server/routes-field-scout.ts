@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 import { Router, type Request, type Response } from 'express';
 import { storage, db } from './storage';
 import { fieldScoutVisits, fieldScoutPhotos, leads, properties } from '@shared/schema';
@@ -11,14 +10,9 @@ const fieldScoutRouter = Router();
 // HELPERS
 // ============================================================
 
-function getOrg(req: Request) {
-  const org = (req as any).organization;
-  if (!org) throw new Error('Organization not found');
-  return org;
-}
 
 function getUser(req: Request) {
-  return (req as any).user;
+  return req.user;
 }
 
 // Multer for voice memos (single audio file, up to 25MB for Whisper)
@@ -157,7 +151,7 @@ fieldScoutRouter.post('/voice/transcribe', voiceUpload.single('audio'), async (r
 
 fieldScoutRouter.post('/leads/:id/photos', photoUpload.array('photos', 10), async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const leadId = parseInt(req.params.id);
 
     if (isNaN(leadId)) {
@@ -290,7 +284,7 @@ fieldScoutRouter.get('/field-scout/visits', async (req: Request, res: Response) 
       let property = null;
 
       try {
-        const org = getOrg(req);
+        const org = req.organization;
         lead = await storage.getLead(org.id, visit.leadId);
         if (visit.propertyId) {
           property = await storage.getProperty(org.id, visit.propertyId);

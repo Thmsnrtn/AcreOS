@@ -70,7 +70,7 @@ export function complianceGate(checkType: "note" | "deal") {
         res.setHeader("X-Compliance-Warnings", JSON.stringify(warnings));
 
         // Log compliance event
-        const org = (req as any).organization;
+        const org = req.organization;
         const user = req.user as any;
         if (org) {
           const { storage } = await import("../storage");

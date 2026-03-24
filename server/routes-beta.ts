@@ -88,7 +88,7 @@ const feedbackSchema = z.object({
 
 router.post("/feedback", isAuthenticated, async (req, res) => {
   try {
-    const user = (req as any).user;
+    const user = req.user;
     const data = feedbackSchema.parse(req.body);
     const result = await betaProgramService.submitFeedback({ ...data, email: user.email });
     res.json(result);

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { insertNoteSchema, insertPaymentSchema, paymentReminders } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { isAuthenticated } from "./auth";
+import { Errors } from "./utils/errors";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { checkUsageLimit } from "./services/usageLimits";
 import { usageLimitGate } from "./middleware/usageLimitGate";
@@ -11,6 +12,7 @@ import { usageMeteringService, creditService } from "./services/credits";
 import { financeAgentService } from "./services/financeAgent";
 import { exportNotesToCSV, type ExportFilters } from "./services/importExport";
 import { checkUsury } from "./services/usury";
+import { logger } from "./utils/logger";
 
 export function registerFinanceRoutes(app: Express): void {
   const api = app;
@@ -19,21 +21,21 @@ export function registerFinanceRoutes(app: Express): void {
   // ============================================
   
   api.get("/api/notes", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const notes = await storage.getNotes(org.id);
     res.json(notes);
   });
   
   api.get("/api/notes/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const note = await storage.getNote(org.id, Number(req.params.id));
-    if (!note) return res.status(404).json({ message: "Note not found" });
+    if (!note) return Errors.notFound(res, "Note");
     res.json(note);
   });
-  
+
   api.post("/api/notes", isAuthenticated, getOrCreateOrg, usageLimitGate("notes"), async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       
       const usageCheck = await checkUsageLimit(org.id, "notes");
       if (!usageCheck.allowed) {
@@ -107,17 +109,17 @@ export function registerFinanceRoutes(app: Express): void {
       res.status(201).json(note);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        return res.status(400).json({ message: err.errors[0].message });
+        return Errors.badRequest(res, err.errors[0].message);
       }
       throw err;
     }
   });
-  
+
   api.put("/api/notes/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const noteId = Number(req.params.id);
     const existingNote = await storage.getNote(org.id, noteId);
-    if (!existingNote) return res.status(404).json({ message: "Note not found" });
+    if (!existingNote) return Errors.notFound(res, "Note");
 
     // Usury hard block: check updated interest rate against state law before saving
     const rateToCheck = req.body.interestRate ?? existingNote.interestRate;
@@ -157,14 +159,14 @@ export function registerFinanceRoutes(app: Express): void {
   });
   
   api.delete("/api/notes/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const noteId = Number(req.params.id);
     if (isNaN(noteId)) {
-      return res.status(400).json({ message: "Invalid note ID" });
+      return Errors.badRequest(res, "Invalid note ID");
     }
     const existingNote = await storage.getNote(org.id, noteId);
     if (!existingNote) {
-      return res.status(404).json({ message: "Note not found" });
+      return Errors.notFound(res, "Note");
     }
 
     await storage.deleteNote(noteId);
@@ -186,7 +188,7 @@ export function registerFinanceRoutes(app: Express): void {
   });
   
   api.get("/api/notes/export", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const csv = await exportNotesToCSV(org.id);
     const date = new Date().toISOString().split("T")[0];
     res.setHeader("Content-Type", "text/csv");
@@ -210,42 +212,42 @@ export function registerFinanceRoutes(app: Express): void {
   // ============================================
   
   api.get("/api/notes/delinquent", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const delinquentNotes = await storage.getDelinquentNotes(org.id);
     res.json(delinquentNotes);
   });
 
   api.get("/api/notes/:id/reminders", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const noteId = Number(req.params.id);
     const note = await storage.getNote(org.id, noteId);
-    if (!note) return res.status(404).json({ message: "Note not found" });
-    
+    if (!note) return Errors.notFound(res, "Note");
+
     const reminders = await storage.getRemindersForNote(noteId);
     res.json(reminders);
   });
 
   api.post("/api/notes/:id/send-reminder", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const noteId = Number(req.params.id);
       const { type = "due" } = req.body;
       
       const validTypes = ["upcoming", "due", "late", "final_warning"];
       if (!validTypes.includes(type)) {
-        return res.status(400).json({ message: "Invalid reminder type" });
+        return Errors.badRequest(res, "Invalid reminder type");
       }
       
       const result = await financeAgentService.sendManualReminder(noteId, org.id, type);
       
       if (!result.success) {
-        return res.status(400).json({ message: result.error });
+        return Errors.badRequest(res, result.error);
       }
-      
+
       res.json({ success: true, reminderId: result.reminderId });
     } catch (err: any) {
-      console.error("Error sending manual reminder:", err);
-      res.status(500).json({ message: err.message || "Failed to send reminder" });
+      logger.error("Error sending manual reminder", err instanceof Error ? err : undefined);
+      Errors.internal(res, err);
     }
   });
 
@@ -255,11 +257,11 @@ export function registerFinanceRoutes(app: Express): void {
 
   api.get("/api/notes/:id/schedule", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const noteId = Number(req.params.id);
       const note = await storage.getNote(org.id, noteId);
-      if (!note) return res.status(404).json({ message: "Note not found" });
-      
+      if (!note) return Errors.notFound(res, "Note");
+
       const schedule = note.amortizationSchedule || [];
       const totalInterest = schedule.reduce((sum, s) => sum + (s.interest || 0), 0);
       const payoffDate = schedule.length > 0 ? schedule[schedule.length - 1].dueDate : null;
@@ -278,18 +280,18 @@ export function registerFinanceRoutes(app: Express): void {
         }
       });
     } catch (err: any) {
-      console.error("Error getting schedule:", err);
-      res.status(500).json({ message: err.message || "Failed to get schedule" });
+      logger.error("Error getting schedule", err instanceof Error ? err : undefined);
+      Errors.internal(res, err);
     }
   });
 
   api.post("/api/notes/:id/schedule/generate", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const noteId = Number(req.params.id);
       const note = await storage.getNote(org.id, noteId);
-      if (!note) return res.status(404).json({ message: "Note not found" });
-      
+      if (!note) return Errors.notFound(res, "Note");
+
       const principal = Number(note.originalPrincipal);
       const annualRate = Number(note.interestRate);
       const termMonths = note.termMonths;
@@ -337,8 +339,8 @@ export function registerFinanceRoutes(app: Express): void {
         }
       });
     } catch (err: any) {
-      console.error("Error generating schedule:", err);
-      res.status(500).json({ message: err.message || "Failed to generate schedule" });
+      logger.error("Error generating schedule", err instanceof Error ? err : undefined);
+      Errors.internal(res, err);
     }
   });
 
@@ -348,11 +350,11 @@ export function registerFinanceRoutes(app: Express): void {
 
   api.get("/api/notes/:id/dunning", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const noteId = Number(req.params.id);
       const note = await storage.getNote(org.id, noteId);
-      if (!note) return res.status(404).json({ message: "Note not found" });
-      
+      if (!note) return Errors.notFound(res, "Note");
+
       const reminders = await storage.getRemindersForNote(noteId);
       const daysDelinquent = note.daysDelinquent || 0;
       
@@ -388,23 +390,23 @@ export function registerFinanceRoutes(app: Express): void {
         })),
       });
     } catch (err: any) {
-      console.error("Error getting dunning info:", err);
-      res.status(500).json({ message: err.message || "Failed to get dunning info" });
+      logger.error("Error getting dunning info", err instanceof Error ? err : undefined);
+      Errors.internal(res, err);
     }
   });
 
   api.post("/api/notes/:id/dunning", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const noteId = Number(req.params.id);
       const { action, stage, notes: actionNotes } = req.body;
       
       const note = await storage.getNote(org.id, noteId);
-      if (!note) return res.status(404).json({ message: "Note not found" });
-      
+      if (!note) return Errors.notFound(res, "Note");
+
       const validActions = ["send_reminder", "escalate", "record_contact", "waive_fee", "set_payment_plan"];
       if (!validActions.includes(action)) {
-        return res.status(400).json({ message: "Invalid dunning action" });
+        return Errors.badRequest(res, "Invalid dunning action");
       }
       
       if (action === "send_reminder" || action === "escalate") {
@@ -412,7 +414,7 @@ export function registerFinanceRoutes(app: Express): void {
         const result = await financeAgentService.sendManualReminder(noteId, org.id, reminderType);
         
         if (!result.success) {
-          return res.status(400).json({ message: result.error });
+          return Errors.badRequest(res, result.error);
         }
         
         res.json({ 
@@ -441,14 +443,14 @@ export function registerFinanceRoutes(app: Express): void {
         });
       }
     } catch (err: any) {
-      console.error("Error creating dunning action:", err);
-      res.status(500).json({ message: err.message || "Failed to create dunning action" });
+      logger.error("Error creating dunning action", err instanceof Error ? err : undefined);
+      Errors.internal(res, err);
     }
   });
 
   api.get("/api/payment-reminders", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { noteId, status, type } = req.query;
       
       let reminders;
@@ -468,21 +470,21 @@ export function registerFinanceRoutes(app: Express): void {
       
       res.json(reminders);
     } catch (err: any) {
-      console.error("Error getting payment reminders:", err);
-      res.status(500).json({ message: err.message || "Failed to get reminders" });
+      logger.error("Error getting payment reminders", err instanceof Error ? err : undefined);
+      Errors.internal(res, err);
     }
   });
 
   api.put("/api/payment-reminders/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const reminderId = Number(req.params.id);
       // Task #2: IDOR prevention — verify reminder belongs to requesting org
       const [existing] = await db.select({ id: paymentReminders.id })
         .from(paymentReminders)
         .where(and(eq(paymentReminders.id, reminderId), eq(paymentReminders.organizationId, org.id)))
         .limit(1);
-      if (!existing) return res.status(404).json({ message: "Payment reminder not found" });
+      if (!existing) return Errors.notFound(res, "Payment reminder");
       const { status, content, channel } = req.body;
 
       const updates: any = {};
@@ -511,25 +513,25 @@ export function registerFinanceRoutes(app: Express): void {
 
       res.json(updated);
     } catch (err: any) {
-      console.error("Error updating reminder:", err);
-      res.status(500).json({ message: err.message || "Failed to update reminder" });
+      logger.error("Error updating reminder", err instanceof Error ? err : undefined);
+      Errors.internal(res, err);
     }
   });
 
   api.get("/api/finance/health", isAuthenticated, getOrCreateOrg, async (req, res) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     const health = await storage.getFinancePortfolioHealth(org.id);
     res.json(health);
   });
 
   api.post("/api/finance/process", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const result = await financeAgentService.processOrganizationNotes(org.id);
       res.json(result);
     } catch (err: any) {
-      console.error("Error processing finance agent:", err);
-      res.status(500).json({ message: err.message || "Failed to process notes" });
+      logger.error("Error processing finance agent", err instanceof Error ? err : undefined);
+      Errors.internal(res, err);
     }
   });
 
@@ -539,7 +541,7 @@ export function registerFinanceRoutes(app: Express): void {
 
   api.get("/api/finance/portfolio-summary", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const allNotes = await storage.getNotes(org.id);
       const allPayments = await storage.getPayments(org.id);
 
@@ -589,14 +591,14 @@ export function registerFinanceRoutes(app: Express): void {
         monthlyCashFlow,
       });
     } catch (err: any) {
-      console.error("Error getting portfolio summary:", err);
-      res.status(500).json({ message: err.message || "Failed to get portfolio summary" });
+      logger.error("Error getting portfolio summary", err instanceof Error ? err : undefined);
+      Errors.internal(res, err);
     }
   });
 
   api.get("/api/finance/delinquency", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const allNotes = await storage.getNotes(org.id);
       const activeNotes = allNotes.filter(n => n.status === 'active');
 
@@ -675,14 +677,14 @@ export function registerFinanceRoutes(app: Express): void {
         monthlyBreakdown,
       });
     } catch (err: any) {
-      console.error("Error getting delinquency metrics:", err);
-      res.status(500).json({ message: err.message || "Failed to get delinquency metrics" });
+      logger.error("Error getting delinquency metrics", err instanceof Error ? err : undefined);
+      Errors.internal(res, err);
     }
   });
 
   api.get("/api/finance/projections", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const allNotes = await storage.getNotes(org.id);
       const allPayments = await storage.getPayments(org.id);
 
@@ -766,8 +768,8 @@ export function registerFinanceRoutes(app: Express): void {
         },
       });
     } catch (err: any) {
-      console.error("Error getting projections:", err);
-      res.status(500).json({ message: err.message || "Failed to get projections" });
+      logger.error("Error getting projections", err instanceof Error ? err : undefined);
+      Errors.internal(res, err);
     }
   });
   
@@ -778,22 +780,22 @@ export function registerFinanceRoutes(app: Express): void {
   // GET /api/payments — list payments, optionally filtered by noteId
   api.get("/api/payments", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const noteId = req.query.noteId ? Number(req.query.noteId) : undefined;
       const result = await storage.getPayments(org.id, noteId);
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ message: err.message || "Failed to fetch payments" });
+      Errors.internal(res, err);
     }
   });
 
   // POST /api/payments — record a payment against a note
   api.post("/api/payments", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const parsed = insertPaymentSchema.safeParse({ ...req.body, organizationId: org.id });
       if (!parsed.success) {
-        return res.status(400).json({ message: "Invalid payment data", errors: parsed.error.flatten() });
+        return Errors.badRequest(res, "Invalid payment data");
       }
       const payment = await storage.createPayment(parsed.data);
 
@@ -815,7 +817,7 @@ export function registerFinanceRoutes(app: Express): void {
 
       res.status(201).json(payment);
     } catch (err: any) {
-      res.status(500).json({ message: err.message || "Failed to record payment" });
+      Errors.internal(res, err);
     }
   });
 
@@ -825,21 +827,21 @@ export function registerFinanceRoutes(app: Express): void {
   api.get("/api/finance/ltv-report", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { ltvMonitorService } = await import("./services/ltvMonitor");
-      const org = (req as any).organization;
+      const org = req.organization;
       const report = await ltvMonitorService.getOrgLTVReport(org.id);
       res.json(report);
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      Errors.internal(res, e);
     }
   });
 
   // GET /api/notes/:id/schedule/pdf — Amortization schedule PDF download
   api.get("/api/notes/:id/schedule/pdf", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const noteId = Number(req.params.id);
       const note = await storage.getNote(org.id, noteId);
-      if (!note) return res.status(404).json({ message: "Note not found" });
+      if (!note) return Errors.notFound(res, "Note");
 
       const PDFDocument = (await import("pdfkit")).default;
       const doc = new PDFDocument({ margin: 50, size: "LETTER" });
@@ -909,9 +911,9 @@ export function registerFinanceRoutes(app: Express): void {
 
       doc.end();
     } catch (err: any) {
-      console.error("Error generating schedule PDF:", err);
+      logger.error("Error generating schedule PDF", err instanceof Error ? err : undefined);
       if (!res.headersSent) {
-        res.status(500).json({ message: err.message || "Failed to generate PDF" });
+        Errors.internal(res, err);
       }
     }
   });
@@ -921,10 +923,10 @@ export function registerFinanceRoutes(app: Express): void {
     try {
       const { ltvMonitorService } = await import("./services/ltvMonitor");
       const snapshot = await ltvMonitorService.getLTVSnapshot(parseInt(req.params.noteId));
-      if (!snapshot) return res.status(404).json({ error: "Note not found" });
+      if (!snapshot) return Errors.notFound(res, "Note");
       res.json(snapshot);
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      Errors.internal(res, e);
     }
   });
 

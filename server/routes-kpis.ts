@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * T228 — KPI Dashboard Routes
  *
@@ -13,11 +12,10 @@ import { kpiStreaming as kpiStreamingService } from "./services/kpiStreamingServ
 
 const router = Router();
 
-function getOrg(req: Request) { return (req as any).org; }
 
 router.get("/", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const period = (req.query.period as string) ?? "mtd";
     const metrics = await kpiStreamingService.getMetrics(org.id, period);
     res.json(metrics);
@@ -28,7 +26,7 @@ router.get("/", async (req: Request, res: Response) => {
 
 router.get("/:id", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { id } = req.params;
     const periods = Math.min(parseInt(String(req.query.periods ?? "12")), 36);
     const detail = await kpiStreamingService.getMetricDetail(org.id, id, periods);
@@ -41,7 +39,7 @@ router.get("/:id", async (req: Request, res: Response) => {
 
 router.post("/targets", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const { targets } = req.body;
     if (!Array.isArray(targets)) return res.status(400).json({ error: "targets must be an array" });
 
@@ -54,7 +52,7 @@ router.post("/targets", async (req: Request, res: Response) => {
 
 router.get("/export", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const period = (req.query.period as string) ?? "mtd";
     const report = await kpiStreamingService.exportReport(org.id, period);
     res.json(report);

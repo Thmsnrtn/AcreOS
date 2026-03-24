@@ -1,4 +1,3 @@
-// @ts-nocheck — ORM type refinement deferred; runtime-correct
 import type { Express } from "express";
 import { storage, db } from "./storage";
 import { z } from "zod";
@@ -23,7 +22,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   
   // Tier gating middleware for team messaging (requires 2+ seats)
   const requireMessagingTier = async (req: Request, res: Response, next: NextFunction) => {
-    const org = (req as any).organization;
+    const org = req.organization;
     if (!org) {
       return res.status(401).json({ message: "Unauthorized" });
     }
@@ -44,7 +43,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   // GET /api/team-messaging/conversations - List all conversations for the current user
   api.get("/api/team-messaging/conversations", isAuthenticated, getOrCreateOrg, requireMessagingTier, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const user = req.user as any;
       const userId = user.claims?.sub || user.id;
       
@@ -69,7 +68,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   // POST /api/team-messaging/conversations - Create a new conversation
   api.post("/api/team-messaging/conversations", isAuthenticated, getOrCreateOrg, requireMessagingTier, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const user = req.user as any;
       const userId = user.claims?.sub || user.id;
       
@@ -133,7 +132,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   // GET /api/team-messaging/conversations/:id/messages - Get messages (cursor-based pagination)
   api.get("/api/team-messaging/conversations/:id/messages", isAuthenticated, getOrCreateOrg, requireMessagingTier, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const user = req.user as any;
       const userId = user.claims?.sub || user.id;
       const conversationId = parseInt(req.params.id, 10);
@@ -206,7 +205,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   // POST /api/team-messaging/conversations/:id/messages - Send a message
   api.post("/api/team-messaging/conversations/:id/messages", isAuthenticated, getOrCreateOrg, requireMessagingTier, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const user = req.user as any;
       const userId = user.claims?.sub || user.id;
       const conversationId = parseInt(req.params.id, 10);
@@ -320,7 +319,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   // PATCH /api/team-messaging/conversations/:id/read - Mark messages as read
   api.patch("/api/team-messaging/conversations/:id/read", isAuthenticated, getOrCreateOrg, requireMessagingTier, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const user = req.user as any;
       const userId = user.claims?.sub || user.id;
       const conversationId = parseInt(req.params.id, 10);
@@ -412,7 +411,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   // GET /api/team-messaging/presence - Get team member presence statuses
   api.get("/api/team-messaging/presence", isAuthenticated, getOrCreateOrg, requireMessagingTier, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       
       const presenceStatuses = await db
         .select()
@@ -429,7 +428,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   // PATCH /api/team-messaging/presence - Update current user's presence status
   api.patch("/api/team-messaging/presence", isAuthenticated, getOrCreateOrg, requireMessagingTier, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const user = req.user as any;
       const userId = user.claims?.sub || user.id;
       
@@ -494,7 +493,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   // GET /api/offer-letters - List offer letters with optional filters
   api.get("/api/offer-letters", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const { status, batchId } = req.query;
       
       const filters: { status?: string; batchId?: string } = {};
@@ -512,7 +511,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   // POST /api/offer-letters - Create a single offer letter
   api.post("/api/offer-letters", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const parsed = insertOfferLetterSchema.omit({ organizationId: true }).safeParse(req.body);
       
       if (!parsed.success) {
@@ -534,7 +533,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   // POST /api/offer-letters/batch - Create batch of offer letters
   api.post("/api/offer-letters/batch", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       
       const batchSchema = z.object({
         leadIds: z.array(z.number()).min(1),
@@ -606,7 +605,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   // PUT /api/offer-letters/:id - Update an offer letter
   api.put("/api/offer-letters/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
@@ -634,7 +633,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   // DELETE /api/offer-letters/:id - Delete an offer letter
   api.delete("/api/offer-letters/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
@@ -657,7 +656,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   // POST /api/offer-letters/:id/send - Queue offer letter for sending
   api.post("/api/offer-letters/:id/send", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
@@ -688,7 +687,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   // GET /api/offer-templates - List offer templates
   api.get("/api/offer-templates", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const templates = await storage.getOfferTemplates(org.id);
       res.json(templates);
     } catch (error: any) {
@@ -700,7 +699,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   // POST /api/offer-templates - Create offer template
   api.post("/api/offer-templates", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const parsed = insertOfferTemplateSchema.omit({ organizationId: true }).safeParse(req.body);
       
       if (!parsed.success) {
@@ -722,7 +721,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   // PUT /api/offer-templates/:id - Update offer template
   api.put("/api/offer-templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
@@ -750,7 +749,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   // DELETE /api/offer-templates/:id - Delete offer template
   api.delete("/api/offer-templates/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
@@ -777,7 +776,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   // GET /api/listings - List all listings with optional status filter
   api.get("/api/listings", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const status = req.query.status as string | undefined;
       const listings = await storage.getPropertyListings(org.id, status ? { status } : undefined);
       res.json(listings);
@@ -790,7 +789,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   // GET /api/listings/:id - Get listing by ID
   api.get("/api/listings/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
@@ -812,7 +811,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   // POST /api/listings - Create new listing
   api.post("/api/listings", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const parsed = insertPropertyListingSchema.omit({ organizationId: true }).safeParse(req.body);
       
       if (!parsed.success) {
@@ -846,7 +845,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   // PUT /api/listings/:id - Update listing
   api.put("/api/listings/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
@@ -874,7 +873,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   // DELETE /api/listings/:id - Delete listing
   api.delete("/api/listings/:id", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
@@ -897,7 +896,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   // POST /api/listings/:id/publish - Publish to syndication targets (stub)
   api.post("/api/listings/:id/publish", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
@@ -937,7 +936,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   // POST /api/listings/:id/unpublish - Remove from syndication
   api.post("/api/listings/:id/unpublish", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const id = parseInt(req.params.id);
       
       if (isNaN(id)) {
@@ -977,7 +976,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   // GET /api/team-messaging/channels - List named channels for the org
   api.get("/api/team-messaging/channels", isAuthenticated, getOrCreateOrg, requireMessagingTier, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const user = req.user as any;
       const userId = user.claims?.sub || user.id;
 
@@ -1024,7 +1023,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   // POST /api/team-messaging/channels - Create a new named channel
   api.post("/api/team-messaging/channels", isAuthenticated, getOrCreateOrg, requireMessagingTier, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const user = req.user as any;
       const userId = user.claims?.sub || user.id;
 
@@ -1074,7 +1073,7 @@ export function registerTeamMessagingRoutes(app: Express): void {
   // POST /api/team-messaging/channels/:id/join - Join a channel
   api.post("/api/team-messaging/channels/:id/join", isAuthenticated, getOrCreateOrg, requireMessagingTier, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       const user = req.user as any;
       const userId = user.claims?.sub || user.id;
       const channelId = parseInt(req.params.id, 10);

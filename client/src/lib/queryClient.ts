@@ -4,24 +4,42 @@ import React from "react";
 import { ToastAction } from "@/components/ui/toast";
 import { getErrorMessage, getErrorTitle, shouldRetry, isAuthError } from "@/lib/error-utils";
 
+/**
+ * Standardized API error shape returned by the server.
+ */
+interface ApiErrorBody {
+  error: string;
+  message: string;
+  details?: unknown;
+  statusCode: number;
+}
+
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     const text = (await res.text()) || res.statusText;
 
+    // Try to parse standardized { error, message, details } response
+    let parsed: ApiErrorBody | null = null;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      // Not JSON — fall through to raw error
+    }
+
     // Handle 429 usage limit responses with an upgrade prompt
     if (res.status === 429) {
       try {
-        const body = JSON.parse(text);
-        if (body.error === "limit_exceeded") {
+        const body = parsed ?? JSON.parse(text);
+        if (body.error === "limit_exceeded" || body.error === "LIMIT_EXCEEDED") {
           toast({
             title: "Usage Limit Reached",
-            description: `You've reached the ${body.tier} plan limit for ${body.resourceType} (${body.current}/${body.limit}).`,
+            description: body.message || `You've reached the plan limit.`,
             variant: "destructive",
             action: React.createElement(
               ToastAction as any,
               {
                 altText: "Upgrade plan",
-                onClick: () => { window.location.href = body.upgradeUrl || "/settings#billing"; },
+                onClick: () => { window.location.href = (body as any).upgradeUrl || "/settings#billing"; },
               },
               "Upgrade"
             ) as any,
@@ -32,7 +50,9 @@ async function throwIfResNotOk(res: Response) {
       }
     }
 
-    throw new Error(`${res.status}: ${text}`);
+    // Use the parsed message if available, otherwise fall back to raw text
+    const errorMessage = parsed?.message ?? text;
+    throw new Error(`${res.status}: ${errorMessage}`);
   }
 }
 

@@ -30,6 +30,7 @@ import { format, addMonths } from "date-fns";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { DisclaimerBanner } from "@/components/disclaimer-banner";
+import { QueryErrorState } from "@/components/query-error-state";
 
 interface StripeConnectStatus {
   isConnected: boolean;
@@ -45,7 +46,7 @@ type NoteWithDetails = Note & {
 };
 
 export default function FinancePage() {
-  const { data: notes, isLoading } = useNotes();
+  const { data: notes, isLoading, error: notesError, refetch: refetchNotes } = useNotes();
   const { data: leads } = useLeads();
   const { data: properties } = useProperties();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -281,6 +282,15 @@ export default function FinancePage() {
             </Card>
           </div>
 
+          {notesError && (
+            <QueryErrorState
+              error={notesError}
+              onRetry={() => refetchNotes()}
+              title="Failed to load notes"
+              compact
+            />
+          )}
+
           <Card className="floating-window overflow-hidden">
             <CardHeader className="pb-4">
               <CardTitle>Loan Portfolio</CardTitle>
@@ -369,7 +379,7 @@ export default function FinancePage() {
                             </Badge>
                           </TableCell>
                           <TableCell>
-                            <Button size="icon" variant="ghost" data-testid={`button-view-note-${note.id}`}>
+                            <Button size="icon" variant="ghost" aria-label="View note details" data-testid={`button-view-note-${note.id}`}>
                               <Eye className="w-4 h-4" />
                             </Button>
                           </TableCell>
@@ -551,21 +561,22 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
             </div>
             <div className="flex items-center gap-2">
               <div className="flex flex-col items-center gap-0.5">
-                <Button 
-                  size="icon" 
-                  variant="ghost" 
-                  onClick={handleDownloadPdf} 
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={handleDownloadPdf}
                   disabled={isDownloading}
+                  aria-label="Download note PDF"
                   data-testid="button-download-note-pdf"
                 >
                   {isDownloading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
                 </Button>
                 <span className="text-[10px] text-muted-foreground" data-testid="text-cost-pdf">$0.05</span>
               </div>
-              <Button size="icon" variant="ghost" onClick={onDelete} data-testid="button-delete-note">
+              <Button size="icon" variant="ghost" onClick={onDelete} aria-label="Delete note" data-testid="button-delete-note">
                 <Trash2 className="w-5 h-5 text-destructive" />
               </Button>
-              <Button size="icon" variant="ghost" onClick={onClose} data-testid="button-close-drawer">
+              <Button size="icon" variant="ghost" onClick={onClose} aria-label="Close drawer" data-testid="button-close-drawer">
                 <X className="w-5 h-5" />
               </Button>
             </div>
@@ -690,10 +701,11 @@ function NoteDetailDrawer({ note, onClose, onDelete }: {
                           className="font-mono text-xs"
                           data-testid="text-payment-link"
                         />
-                        <Button 
-                          size="icon" 
+                        <Button
+                          size="icon"
                           variant="outline"
                           onClick={handleCopyPaymentLink}
+                          aria-label="Copy payment link"
                           data-testid="button-copy-payment-link"
                         >
                           <Copy className="w-4 h-4" />

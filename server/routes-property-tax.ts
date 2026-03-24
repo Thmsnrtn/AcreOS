@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * T268 — Property Tax Service Routes
  *
@@ -23,7 +22,6 @@ import {
 
 const router = Router();
 
-function getOrg(req: Request) { return (req as any).org; }
 
 router.post("/escrow/setup", async (req: Request, res: Response) => {
   try {
@@ -32,7 +30,7 @@ router.post("/escrow/setup", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "noteId, annualPropertyTax, and state are required" });
     }
 
-    const org = getOrg(req);
+    const org = req.organization;
     const escrowSetup = calculateTaxEscrow(annualPropertyTax, 0, state, county);
     await enableTaxEscrow(org.id, noteId, annualPropertyTax, state, county);
 
@@ -44,7 +42,7 @@ router.post("/escrow/setup", async (req: Request, res: Response) => {
 
 router.get("/escrow/:noteId", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const noteId = parseInt(req.params.noteId);
     if (isNaN(noteId)) return res.status(400).json({ error: "Invalid note ID" });
 
@@ -58,7 +56,7 @@ router.get("/escrow/:noteId", async (req: Request, res: Response) => {
 
 router.post("/escrow/:noteId/credit", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const noteId = parseInt(req.params.noteId);
     if (isNaN(noteId)) return res.status(400).json({ error: "Invalid note ID" });
 
@@ -71,7 +69,7 @@ router.post("/escrow/:noteId/credit", async (req: Request, res: Response) => {
 
 router.post("/escrow/:noteId/pay", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const noteId = parseInt(req.params.noteId);
     if (isNaN(noteId)) return res.status(400).json({ error: "Invalid note ID" });
 
@@ -96,7 +94,7 @@ router.get("/portal", (req: Request, res: Response) => {
 
 router.get("/portfolio", async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const summary = await getPortfolioTaxSummary(org.id);
     res.json(summary);
   } catch (err: any) {

@@ -6,12 +6,7 @@ import { isAuthenticated } from "./auth";
 import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { getAllUsageLimits, type SubscriptionTier, TIER_LIMITS } from "./services/usageLimits";
 import { idempotencyMiddleware } from "./middleware/idempotency";
-
-const logger = {
-  info: (msg: string, meta?: Record<string, any>) => console.log(JSON.stringify({ level: 'INFO', timestamp: new Date().toISOString(), message: msg, ...meta })),
-  warn: (msg: string, meta?: Record<string, any>) => console.warn(JSON.stringify({ level: 'WARN', timestamp: new Date().toISOString(), message: msg, ...meta })),
-  error: (msg: string, meta?: Record<string, any>) => console.error(JSON.stringify({ level: 'ERROR', timestamp: new Date().toISOString(), message: msg, ...meta })),
-};
+import { logger } from "./utils/logger";
 
 export function registerBillingRoutes(app: Express): void {
   const api = app;
@@ -22,7 +17,7 @@ export function registerBillingRoutes(app: Express): void {
   api.get("/api/credits/balance", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { creditService } = await import("./services/credits");
-      const org = (req as any).organization;
+      const org = req.organization;
       const balance = await creditService.getBalance(org.id);
       res.json({ balance });
     } catch (error: any) {
@@ -33,7 +28,7 @@ export function registerBillingRoutes(app: Express): void {
   api.get("/api/credits/transactions", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { creditService } = await import("./services/credits");
-      const org = (req as any).organization;
+      const org = req.organization;
       const limit = Math.min(100, parseInt(req.query.limit as string) || 50);
       const transactions = await creditService.getTransactionHistory(org.id, limit);
       res.json(transactions);
@@ -45,7 +40,7 @@ export function registerBillingRoutes(app: Express): void {
   api.get("/api/usage/summary", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { usageMeteringService } = await import("./services/credits");
-      const org = (req as any).organization;
+      const org = req.organization;
       const month = req.query.month as string || new Date().toISOString().slice(0, 7);
       const summary = await usageMeteringService.getUsageSummary(org.id, month);
       res.json(summary);
@@ -57,7 +52,7 @@ export function registerBillingRoutes(app: Express): void {
   api.get("/api/usage/records", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { usageMeteringService } = await import("./services/credits");
-      const org = (req as any).organization;
+      const org = req.organization;
       const limit = Math.min(100, parseInt(req.query.limit as string) || 50);
       const records = await usageMeteringService.getRecentUsage(org.id, limit);
       res.json(records);
@@ -91,7 +86,7 @@ export function registerBillingRoutes(app: Express): void {
     try {
       const { usageMeteringService, creditService } = await import("./services/credits");
       const { USAGE_ACTION_TYPES } = await import("@shared/schema");
-      const org = (req as any).organization;
+      const org = req.organization;
       const { actionType, quantity = 1 } = req.body;
       
       if (!actionType || !USAGE_ACTION_TYPES[actionType as keyof typeof USAGE_ACTION_TYPES]) {
@@ -119,7 +114,7 @@ export function registerBillingRoutes(app: Express): void {
     try {
       const { stripeService } = await import("./stripeService");
       const { CREDIT_PACKS } = await import("@shared/schema");
-      const org = (req as any).organization;
+      const org = req.organization;
       const { packId } = req.body;
       
       if (!packId || !CREDIT_PACKS[packId as keyof typeof CREDIT_PACKS]) {
@@ -164,7 +159,7 @@ export function registerBillingRoutes(app: Express): void {
   // Get auto-top-up settings
   api.get("/api/credits/auto-top-up", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
-      const org = (req as any).organization;
+      const org = req.organization;
       res.json({
         enabled: org.autoTopUpEnabled || false,
         thresholdCents: org.autoTopUpThresholdCents || 200,
@@ -179,7 +174,7 @@ export function registerBillingRoutes(app: Express): void {
   api.post("/api/credits/auto-top-up", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { usageMeteringService } = await import("./services/credits");
-      const org = (req as any).organization;
+      const org = req.organization;
       const { enabled, thresholdCents, amountCents } = req.body;
 
       await usageMeteringService.updateAutoTopUpSettings(
@@ -244,7 +239,7 @@ export function registerBillingRoutes(app: Express): void {
   api.post("/api/stripe/checkout", isAuthenticated, getOrCreateOrg, idempotencyMiddleware, async (req, res) => {
     try {
       const { stripeService } = await import("./stripeService");
-      const org = (req as any).organization;
+      const org = req.organization;
       const { priceId } = req.body;
       
       if (!priceId) {
@@ -306,7 +301,7 @@ export function registerBillingRoutes(app: Express): void {
   api.post("/api/stripe/portal", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { stripeService } = await import("./stripeService");
-      const org = (req as any).organization;
+      const org = req.organization;
       
       if (!org.stripeCustomerId) {
         return res.status(400).json({ message: "No subscription found" });
@@ -326,7 +321,7 @@ export function registerBillingRoutes(app: Express): void {
   api.get("/api/stripe/subscription", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { stripeService } = await import("./stripeService");
-      const org = (req as any).organization;
+      const org = req.organization;
       
       if (!org.stripeCustomerId) {
         return res.json({ subscription: null });
@@ -350,7 +345,7 @@ export function registerBillingRoutes(app: Express): void {
   api.post("/api/stripe/connect/link", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { stripeConnectService } = await import("./services/stripeConnect");
-      const org = (req as any).organization;
+      const org = req.organization;
       const user = req.user as any;
 
       const email = user?.claims?.email || req.body.email;
@@ -391,7 +386,7 @@ export function registerBillingRoutes(app: Express): void {
 
       res.json(result);
     } catch (err: any) {
-      console.error("Stripe Connect link error:", err);
+      logger.error("Stripe Connect link error", err instanceof Error ? err : undefined);
       if (err.message?.includes("not configured")) {
         return res.status(503).json({ message: err.message });
       }
@@ -402,12 +397,12 @@ export function registerBillingRoutes(app: Express): void {
   api.get("/api/stripe/connect/status", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { stripeConnectService } = await import("./services/stripeConnect");
-      const org = (req as any).organization;
+      const org = req.organization;
       
       const status = await stripeConnectService.getOrganizationConnectStatus(org.id);
       res.json(status);
     } catch (err: any) {
-      console.error("Stripe Connect status error:", err);
+      logger.error("Stripe Connect status error", err instanceof Error ? err : undefined);
       if (err.message?.includes("not configured")) {
         return res.status(503).json({ message: err.message });
       }
@@ -418,7 +413,7 @@ export function registerBillingRoutes(app: Express): void {
   api.post("/api/stripe/connect/refresh", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { stripeConnectService } = await import("./services/stripeConnect");
-      const org = (req as any).organization;
+      const org = req.organization;
       
       const integration = await storage.getOrganizationIntegration(org.id, "stripe_connect");
       
@@ -431,7 +426,7 @@ export function registerBillingRoutes(app: Express): void {
       
       res.json(status);
     } catch (err: any) {
-      console.error("Stripe Connect refresh error:", err);
+      logger.error("Stripe Connect refresh error", err instanceof Error ? err : undefined);
       if (err.message?.includes("not configured")) {
         return res.status(503).json({ message: err.message });
       }
@@ -442,7 +437,7 @@ export function registerBillingRoutes(app: Express): void {
   api.post("/api/stripe/connect/disconnect", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { stripeConnectService } = await import("./services/stripeConnect");
-      const org = (req as any).organization;
+      const org = req.organization;
 
       await stripeConnectService.disconnectAccount(org.id);
 
@@ -463,7 +458,7 @@ export function registerBillingRoutes(app: Express): void {
 
       res.json({ success: true });
     } catch (err: any) {
-      console.error("Stripe Connect disconnect error:", err);
+      logger.error("Stripe Connect disconnect error", err instanceof Error ? err : undefined);
       if (err.message?.includes("not configured")) {
         return res.status(503).json({ message: err.message });
       }
@@ -474,7 +469,7 @@ export function registerBillingRoutes(app: Express): void {
   api.post("/api/stripe/connect/payment-intent", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { stripeConnectService } = await import("./services/stripeConnect");
-      const org = (req as any).organization;
+      const org = req.organization;
       const { amount, noteId, propertyId, paymentType, description } = req.body;
       
       if (!amount || amount <= 0) {
@@ -498,7 +493,7 @@ export function registerBillingRoutes(app: Express): void {
         amount: paymentIntent.amount,
       });
     } catch (err: any) {
-      console.error("Stripe payment intent error:", err);
+      logger.error("Stripe payment intent error", err instanceof Error ? err : undefined);
       if (err.message?.includes("not configured")) {
         return res.status(503).json({ message: err.message });
       }
@@ -509,7 +504,7 @@ export function registerBillingRoutes(app: Express): void {
   api.get("/api/stripe/connect/payment-link/:noteId", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const { stripeConnectService } = await import("./services/stripeConnect");
-      const org = (req as any).organization;
+      const org = req.organization;
       const noteId = Number(req.params.noteId);
       
       const note = await storage.getNote(org.id, noteId);
@@ -522,7 +517,7 @@ export function registerBillingRoutes(app: Express): void {
       
       res.json({ paymentLink, amount });
     } catch (err: any) {
-      console.error("Stripe payment link error:", err);
+      logger.error("Stripe payment link error", err instanceof Error ? err : undefined);
       if (err.message?.includes("not configured")) {
         return res.status(503).json({ message: err.message });
       }

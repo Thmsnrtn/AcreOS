@@ -13,7 +13,7 @@ import { exportUserData, anonymizeUser, isUserDeleted } from "./services/gdprSer
 const router = Router();
 
 function getUser(req: Request) {
-  return (req as any).user;
+  return req.user;
 }
 
 // Export personal data (GDPR Article 15)

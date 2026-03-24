@@ -3,11 +3,6 @@ import { landCredit } from './services/landCredit';
 
 const router = Router();
 
-function getOrg(req: Request) {
-  const org = (req as any).organization;
-  if (!org) throw new Error('Organization not found');
-  return org;
-}
 
 // =====================
 // CALCULATE / GET SCORE
@@ -15,7 +10,7 @@ function getOrg(req: Request) {
 
 router.post('/score/:propertyId', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const score = await landCredit.calculateCreditScore(
       org.id.toString(),
       req.params.propertyId
@@ -28,7 +23,7 @@ router.post('/score/:propertyId', async (req: Request, res: Response) => {
 
 router.get('/property/:propertyId', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const history = await landCredit.getScoreHistory(
       org.id.toString(),
       req.params.propertyId
@@ -45,7 +40,7 @@ router.get('/property/:propertyId', async (req: Request, res: Response) => {
 
 router.get('/portfolio', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const distribution = await landCredit.getPortfolioScoreDistribution(org.id.toString());
     res.json({ distribution });
   } catch (error: any) {
@@ -59,7 +54,7 @@ router.get('/portfolio', async (req: Request, res: Response) => {
 
 router.post('/bulk', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     await landCredit.calculateBulkScores(org.id.toString());
     res.json({ success: true, message: 'Bulk scoring started' });
   } catch (error: any) {
@@ -86,7 +81,7 @@ router.get('/feature-importance', async (_req: Request, res: Response) => {
 
 router.get('/drilldown/:propertyId', async (req: Request, res: Response) => {
   try {
-    const org = getOrg(req);
+    const org = req.organization;
     const drillDown = await landCredit.generateScoreDrillDown(
       req.params.propertyId,
       org.id.toString()
