@@ -83,6 +83,8 @@ import DecisionQueuePage from "@/pages/decision-queue";
 import OpsDashboardPage from "@/pages/ops-dashboard";
 import BetaIntakePage from "@/pages/beta-intake";
 import BetaAnalyticsPage from "@/pages/beta-analytics";
+import FounderAgentsPage from "@/pages/founder-agents";
+import FounderDailyDigestPage from "@/pages/founder-daily-digest";
 import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
 import { ConversationTray } from "@/components/conversation-tray";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -546,6 +548,12 @@ function Router() {
       </Route>
       <Route path="/founder/beta-analytics">
         {() => <FounderProtectedRoute component={BetaAnalyticsPage} />}
+      </Route>
+      <Route path="/founder/agents">
+        {() => <FounderProtectedRoute component={FounderAgentsPage} />}
+      </Route>
+      <Route path="/founder/daily-digest">
+        {() => <FounderProtectedRoute component={FounderDailyDigestPage} />}
       </Route>
 
       <Route path="/deal-underwriting">
