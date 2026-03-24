@@ -4336,6 +4336,32 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
     }
   });
 
+  // POST /api/admin/feedback/process — process unprocessed feedback (founder only)
+  api.post("/api/admin/feedback/process", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      if (!org.isFounder) return res.status(403).json({ message: "Founder access required" });
+      const { feedbackProcessor } = await import("./services/feedbackProcessor");
+      const processed = await feedbackProcessor.processNewFeedback();
+      res.json({ processed });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/admin/feedback/summary — feedback summary by category/severity (founder only)
+  api.get("/api/admin/feedback/summary", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      if (!org.isFounder) return res.status(403).json({ message: "Founder access required" });
+      const { feedbackProcessor } = await import("./services/feedbackProcessor");
+      const summary = await feedbackProcessor.getFeedbackSummary();
+      res.json(summary);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // POST /api/analytics/session/start — start a user session
   api.post("/api/analytics/session/start", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
