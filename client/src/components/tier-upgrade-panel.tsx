@@ -1,20 +1,22 @@
 /**
- * Tier Upgrade Panel — Aspirational, not punitive
+ * Tier Upgrade Panel — Apple-style product comparison
  *
  * Philosophy: Every tier upgrade should feel like gaining superpowers,
  * not like being released from chains. Users at lower tiers should feel
  * valued and capable, with a clear, exciting vision of what they can unlock.
  *
  * Design principles:
+ * - Apple-style product comparison with prominent "killer feature" per tier
+ * - Highlight current plan with clear visual distinction
+ * - Mobile-first with animated tier switching (swipe / tab)
  * - Show WHAT you gain (superpowers), not what you're missing
  * - Preview locked features with ghosted UI, not hard errors
  * - Celebrate current tier's strengths before showing next tier
  * - Use aspirational language: "Unlock", "Gain", "Activate" not "Upgrade required"
- * - Show the founder's vision: "Built by investors, for investors"
  */
 
-import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { motion, AnimatePresence, useMotionValue, useTransform, PanInfo } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,12 +24,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import {
   Zap, Lock, Crown, Star, ArrowRight, Check, ChevronRight,
   Sparkles, TrendingUp, Target, Brain, Globe, Users, BarChart3,
-  Shield, Rocket, Infinity
+  Shield, Rocket, Infinity, ChevronLeft, Database, Bot, Search
 } from "lucide-react";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// TIER DEFINITIONS — Aspirational framing
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------
+// TIER DEFINITIONS -- Aspirational framing
+// -----------------------------------------------------------------------
 
 export const TIER_SUPERPOWERS = {
   free: {
@@ -36,10 +38,17 @@ export const TIER_SUPERPOWERS = {
     price: 0,
     tagline: "Explore the platform",
     color: "from-slate-500 to-slate-600",
+    accentColor: "slate",
     icon: Star,
+    killerFeature: {
+      icon: Star,
+      label: "Free Forever",
+      desc: "Get started with zero commitment",
+    },
     currentPowers: [
       "50 leads to build your first pipeline",
       "10 properties in your inventory",
+      "10 enrichments/mo (open data)",
       "Basic deal calculator",
       "Platform exploration mode",
     ],
@@ -48,14 +57,21 @@ export const TIER_SUPERPOWERS = {
   sprout: {
     name: "Sprout",
     tier: "sprout",
-    price: 20,
+    price: 29,
     tagline: "Plant your first seeds",
     badge: "Best to start",
     color: "from-green-500 to-emerald-600",
+    accentColor: "emerald",
     icon: Rocket,
+    killerFeature: {
+      icon: Brain,
+      label: "AI Due Diligence",
+      desc: "Atlas analyzes every parcel automatically",
+    },
     currentPowers: [
       "250 leads with AcreScore ranking",
       "50 properties with full enrichment",
+      "50 enrichments/mo (basic data tier)",
       "AI due diligence on every parcel",
       "Tax delinquent list import",
       "Night Cap passive income dashboard",
@@ -72,70 +88,92 @@ export const TIER_SUPERPOWERS = {
   starter: {
     name: "Starter",
     tier: "starter",
-    price: 49,
+    price: 59,
     tagline: "Build momentum",
     badge: "Most popular solo",
     color: "from-blue-500 to-blue-600",
+    accentColor: "blue",
     icon: TrendingUp,
+    killerFeature: {
+      icon: Search,
+      label: "50 Skip Traces/mo",
+      desc: "Find owner contact info with assisted AI",
+    },
     currentPowers: [
       "500 leads with full AcreScore",
       "100 properties with AI enrichment",
-      "Atlas AI executive assistant",
+      "50 skip traces/mo + 200 enrichments/mo",
+      "Standard data tier access",
+      "Atlas AI assistant (assisted mode)",
       "Seller intent prediction engine",
       "Automated comps analysis",
-      "Basic skip tracing",
       "AVM (Automated Valuation Model)",
       "Email drip sequences",
       "2 team member seats",
     ],
     nextTierPreview: "pro",
     unlockHighlights: [
+      { icon: Search, label: "Skip Tracing", desc: "Find owner phone & email from any parcel" },
       { icon: Brain, label: "Atlas AI Assistant", desc: "Your land investing executive AI" },
-      { icon: Target, label: "Seller Intent Prediction", desc: "Know who wants to sell before they call" },
       { icon: BarChart3, label: "Comps Analysis", desc: "Automated comparable sales research" },
     ],
   },
   pro: {
     name: "Pro",
     tier: "pro",
-    price: 149,
+    price: 179,
     tagline: "Scale your operation",
     badge: "Best value for growth",
     color: "from-purple-500 to-purple-700",
+    accentColor: "purple",
     icon: Crown,
+    killerFeature: {
+      icon: Bot,
+      label: "Supervised AI Autonomy",
+      desc: "Deal Hunter AI finds opportunities while you sleep",
+    },
     currentPowers: [
-      "5,000 leads — serious deal flow",
-      "1,000 properties — real portfolio scale",
-      "Full skip tracing suite",
-      "Deal Hunter AI — finds deals automatically",
+      "5,000 leads -- serious deal flow",
+      "1,000 properties -- real portfolio scale",
+      "200 skip traces/mo + 1,000 enrichments/mo",
+      "Premium data tier access",
+      "AI supervised autonomy -- Deal Hunter runs automatically",
       "Negotiation Copilot",
       "Owner financing management & note portfolio",
       "Buyer network access",
       "Portfolio health monitoring",
       "Market intelligence reports",
-      "Acquisition Radar — proactive deal alerts",
+      "Acquisition Radar -- proactive deal alerts",
       "SMS campaigns",
       "10 team members",
     ],
     nextTierPreview: "scale",
     unlockHighlights: [
-      { icon: Brain, label: "Deal Hunter AI", desc: "AI proactively identifies opportunities for you" },
-      { icon: Target, label: "Note Portfolio Manager", desc: "Full owner financing & passive income tracking" },
+      { icon: Bot, label: "Deal Hunter AI", desc: "AI proactively identifies opportunities for you" },
+      { icon: Database, label: "Premium Data", desc: "Access the highest-quality property & owner data" },
       { icon: Users, label: "Buyer Network", desc: "Access to qualified land buyers" },
     ],
   },
   scale: {
     name: "Scale",
     tier: "scale",
-    price: 399,
+    price: 449,
     tagline: "Operate like a fund",
     badge: "For serious operators",
     color: "from-orange-500 to-orange-600",
+    accentColor: "orange",
     icon: Infinity,
+    killerFeature: {
+      icon: Shield,
+      label: "Autonomous AI + Sentinel",
+      desc: "Fully autonomous portfolio management & protection",
+    },
     currentPowers: [
       "Unlimited leads, properties & notes",
-      "Portfolio Optimizer AI — ML-managed portfolio",
-      "Portfolio Sentinel — autonomous monitoring",
+      "1,000 skip traces/mo + 5,000 enrichments/mo",
+      "Premium data tier -- full access",
+      "Fully autonomous AI -- Portfolio Optimizer",
+      "Portfolio Sentinel -- 24/7 autonomous monitoring",
       "Capital markets access",
       "VA management system",
       "Voice AI for calls",
@@ -147,21 +185,28 @@ export const TIER_SUPERPOWERS = {
     ],
     nextTierPreview: "enterprise",
     unlockHighlights: [
-      { icon: Brain, label: "Portfolio AI", desc: "Machine learning manages your portfolio automatically" },
+      { icon: Shield, label: "Portfolio Sentinel", desc: "24/7 autonomous portfolio protection" },
       { icon: Globe, label: "Unlimited Scale", desc: "No limits on leads, properties, or notes" },
-      { icon: Shield, label: "Sentinel Monitoring", desc: "24/7 autonomous portfolio protection" },
+      { icon: Bot, label: "Autonomous AI", desc: "Machine learning manages your portfolio automatically" },
     ],
   },
   enterprise: {
     name: "Enterprise",
     tier: "enterprise",
-    price: 799,
+    price: 899,
     tagline: "White-label your empire",
     badge: "For funds & teams",
     color: "from-rose-500 to-rose-700",
+    accentColor: "rose",
     icon: Crown,
+    killerFeature: {
+      icon: Globe,
+      label: "White-Label Platform",
+      desc: "Rebrand the entire platform as your own",
+    },
     currentPowers: [
       "Everything in Scale, plus:",
+      "Unlimited skip traces & enrichments",
       "White-label portal for your brand",
       "Multi-organization management",
       "SSO & enterprise authentication",
@@ -173,7 +218,7 @@ export const TIER_SUPERPOWERS = {
     ],
     unlockHighlights: [
       { icon: Globe, label: "White Label Portal", desc: "Rebrand the entire platform as your own" },
-      { icon: Users, label: "Unlimited Teams", desc: "No seat limits — grow without friction" },
+      { icon: Users, label: "Unlimited Teams", desc: "No seat limits -- grow without friction" },
       { icon: Shield, label: "Enterprise Security", desc: "SSO, audit logs, compliance exports" },
     ],
   },
@@ -181,9 +226,9 @@ export const TIER_SUPERPOWERS = {
 
 export type TierKey = keyof typeof TIER_SUPERPOWERS;
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SUPERPOWER UNLOCK BADGE — inline, shown on locked features
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------
+// SUPERPOWER UNLOCK BADGE -- inline, shown on locked features
+// -----------------------------------------------------------------------
 
 interface SuperpowerBadgeProps {
   requiredTier: TierKey;
@@ -210,9 +255,9 @@ export function SuperpowerBadge({ requiredTier, featureName, onUpgradeClick, cla
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// LOCKED FEATURE OVERLAY — wraps any component with a superpower unlock CTA
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------
+// LOCKED FEATURE OVERLAY -- wraps any component with a superpower unlock CTA
+// -----------------------------------------------------------------------
 
 interface LockedFeatureProps {
   requiredTier: TierKey;
@@ -225,7 +270,6 @@ interface LockedFeatureProps {
 
 export function LockedFeature({ requiredTier, featureName, featureDescription, children, blurContent = true, onUpgradeClick }: LockedFeatureProps) {
   const tierInfo = TIER_SUPERPOWERS[requiredTier];
-  const TierIcon = tierInfo.icon;
 
   return (
     <div className="relative group">
@@ -267,9 +311,9 @@ export function LockedFeature({ requiredTier, featureName, featureDescription, c
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// UPGRADE DIALOG — Full tier comparison with aspirational messaging
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------
+// UPGRADE DIALOG -- Full tier comparison with aspirational messaging
+// -----------------------------------------------------------------------
 
 interface TierUpgradeDialogProps {
   open: boolean;
@@ -300,7 +344,7 @@ export function TierUpgradeDialog({ open, onClose, currentTier, targetTier, trig
             )}
           </DialogTitle>
           <DialogDescription>
-            Upgrading feels like gaining new abilities — never losing old ones. Your data stays, your work continues.
+            Upgrading feels like gaining new abilities -- never losing old ones. Your data stays, your work continues.
           </DialogDescription>
         </DialogHeader>
 
@@ -308,7 +352,7 @@ export function TierUpgradeDialog({ open, onClose, currentTier, targetTier, trig
           {/* Current tier acknowledgment */}
           <div className="p-3 rounded-lg bg-muted/50 border">
             <p className="text-sm text-muted-foreground">
-              <span className="font-medium text-foreground">You're on {currentTierInfo.name}</span> — and you've built a great foundation.
+              <span className="font-medium text-foreground">You're on {currentTierInfo.name}</span> -- and you've built a great foundation.
               Here's what you can unlock next:
             </p>
           </div>
@@ -329,7 +373,7 @@ export function TierUpgradeDialog({ open, onClose, currentTier, targetTier, trig
                   }`}
                 >
                   <Icon className="w-3.5 h-3.5" />
-                  {info.name} — ${info.price}/mo
+                  {info.name} -- ${info.price}/mo
                   {(info as any).badge && (
                     <span className="text-xs opacity-80">({(info as any).badge})</span>
                   )}
@@ -392,7 +436,7 @@ export function TierUpgradeDialog({ open, onClose, currentTier, targetTier, trig
                   onClick={() => onUpgrade?.(selectedTier)}
                 >
                   <Zap className="w-4 h-4 mr-2" />
-                  Activate {selectedTierInfo.name} — ${selectedTierInfo.price}/mo
+                  Activate {selectedTierInfo.name} -- ${selectedTierInfo.price}/mo
                   <ArrowRight className="w-4 h-4 ml-2" />
                 </Button>
                 <Button variant="outline" onClick={onClose}>
@@ -412,9 +456,9 @@ export function TierUpgradeDialog({ open, onClose, currentTier, targetTier, trig
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// TIER PROGRESS INDICATOR — shows growth path in UI
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------
+// TIER PROGRESS INDICATOR -- shows growth path in UI
+// -----------------------------------------------------------------------
 
 interface TierProgressProps {
   currentTier: TierKey;
@@ -458,9 +502,9 @@ export function TierProgress({ currentTier, onUpgradeClick, compact }: TierProgr
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PLAN COMPARISON MODAL — side-by-side tier comparison for upgrade flow
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------
+// PLAN COMPARISON MODAL -- Apple-style product comparison
+// -----------------------------------------------------------------------
 
 import { useQuery } from "@tanstack/react-query";
 import { SUBSCRIPTION_TIERS } from "@shared/schema";
@@ -477,9 +521,39 @@ interface PlanComparisonModalProps {
 const PLAN_ORDER: TierKey[] = ["free", "sprout", "starter", "pro", "scale", "enterprise"];
 
 function formatLimit(value: number | null | undefined): string {
-  if (value === null || value === undefined) return "Unlimited";
+  if (value === null || value === undefined || value === -1) return "Unlimited";
   return value.toLocaleString();
 }
+
+// Data rows for the comparison table
+const AUTONOMY_LABELS: Record<string, string> = {
+  none: "Manual",
+  assisted: "Assisted",
+  supervised: "Supervised",
+  autonomous: "Autonomous",
+};
+
+const DATA_TIER_LABELS: Record<string, string> = {
+  open: "Open",
+  basic: "Basic",
+  standard: "Standard",
+  premium: "Premium",
+};
+
+// Tier-specific data for comparison rows
+const TIER_DATA: Record<TierKey, {
+  skipTraces: string;
+  enrichments: string;
+  autonomy: string;
+  dataTier: string;
+}> = {
+  free:       { skipTraces: "--",        enrichments: "10",    autonomy: "Manual",     dataTier: "Open" },
+  sprout:     { skipTraces: "--",        enrichments: "50",    autonomy: "Manual",     dataTier: "Basic" },
+  starter:    { skipTraces: "50",        enrichments: "200",   autonomy: "Assisted",   dataTier: "Standard" },
+  pro:        { skipTraces: "200",       enrichments: "1,000", autonomy: "Supervised", dataTier: "Premium" },
+  scale:      { skipTraces: "1,000",     enrichments: "5,000", autonomy: "Autonomous", dataTier: "Premium" },
+  enterprise: { skipTraces: "Unlimited", enrichments: "Unlimited", autonomy: "Autonomous", dataTier: "Premium" },
+};
 
 export function PlanComparisonModal({ open, onClose, currentTier }: PlanComparisonModalProps) {
   const { data: products } = useQuery<StripeProduct[]>({
@@ -487,10 +561,13 @@ export function PlanComparisonModal({ open, onClose, currentTier }: PlanComparis
     enabled: open,
   });
   const checkout = useCreateCheckoutSession();
+  const [activeMobileTier, setActiveMobileTier] = useState<number>(
+    Math.max(PLAN_ORDER.indexOf(currentTier), 0)
+  );
+  const [swipeDirection, setSwipeDirection] = useState<"left" | "right">("right");
 
   const handleSubscribe = (tier: TierKey) => {
     const tierInfo = SUBSCRIPTION_TIERS[tier];
-    // Find matching Stripe product by tier name
     const product = products?.find(p =>
       p.metadata?.tier === tier ||
       p.name?.toLowerCase().includes(tierInfo.name.toLowerCase())
@@ -503,102 +580,373 @@ export function PlanComparisonModal({ open, onClose, currentTier }: PlanComparis
     }
   };
 
-  const tiers = PLAN_ORDER.filter(t => {
-    const price = SUBSCRIPTION_TIERS[t].price;
-    return price >= 0; // show all
-  });
+  const navigateMobileTier = useCallback((direction: "left" | "right") => {
+    setSwipeDirection(direction);
+    setActiveMobileTier(prev => {
+      if (direction === "left") return Math.max(0, prev - 1);
+      return Math.min(PLAN_ORDER.length - 1, prev + 1);
+    });
+  }, []);
+
+  const handleDragEnd = useCallback((_: any, info: PanInfo) => {
+    const threshold = 50;
+    if (info.offset.x > threshold) {
+      navigateMobileTier("left");
+    } else if (info.offset.x < -threshold) {
+      navigateMobileTier("right");
+    }
+  }, [navigateMobileTier]);
+
+  const mobileSlideVariants = {
+    enter: (dir: "left" | "right") => ({
+      x: dir === "right" ? 300 : -300,
+      opacity: 0,
+    }),
+    center: {
+      x: 0,
+      opacity: 1,
+    },
+    exit: (dir: "left" | "right") => ({
+      x: dir === "right" ? -300 : 300,
+      opacity: 0,
+    }),
+  };
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="text-xl">Choose Your Plan</DialogTitle>
-          <DialogDescription>
-            Compare plans side by side. Upgrade anytime — your data stays.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mt-4">
-          {tiers.map((tier) => {
-            const info = SUBSCRIPTION_TIERS[tier];
-            const tierMeta = TIER_SUPERPOWERS[tier];
-            const isCurrent = tier === currentTier;
-            const Icon = tierMeta.icon;
-
-            return (
-              <Card
-                key={tier}
-                className={`relative flex flex-col ${isCurrent ? "ring-2 ring-primary" : ""}`}
-              >
-                {isCurrent && (
-                  <Badge className="absolute -top-2.5 left-1/2 -translate-x-1/2 text-[10px]">
-                    Current
-                  </Badge>
-                )}
-                <CardHeader className="p-3 pb-1 text-center">
-                  <div className={`mx-auto w-8 h-8 rounded-full bg-gradient-to-br ${tierMeta.color} text-white flex items-center justify-center mb-1`}>
-                    <Icon className="w-4 h-4" />
-                  </div>
-                  <CardTitle className="text-sm">{info.name}</CardTitle>
-                  <p className="text-lg font-bold">
-                    {info.price === 0 ? "Free" : `$${info.price}`}
-                    {info.price > 0 && <span className="text-xs font-normal text-muted-foreground">/mo</span>}
-                  </p>
-                </CardHeader>
-                <CardContent className="p-3 pt-0 flex-1 flex flex-col">
-                  <ul className="space-y-1.5 text-xs flex-1">
-                    <li className="flex justify-between">
-                      <span className="text-muted-foreground">Leads</span>
-                      <span className="font-medium">{formatLimit(info.limits.leads)}</span>
-                    </li>
-                    <li className="flex justify-between">
-                      <span className="text-muted-foreground">Properties</span>
-                      <span className="font-medium">{formatLimit(info.limits.properties)}</span>
-                    </li>
-                    <li className="flex justify-between">
-                      <span className="text-muted-foreground">Notes</span>
-                      <span className="font-medium">{formatLimit(info.limits.notes)}</span>
-                    </li>
-                    <li className="flex justify-between">
-                      <span className="text-muted-foreground">AI / mo</span>
-                      <span className="font-medium">{formatLimit(info.limits.aiRequestsPerMonth)}</span>
-                    </li>
-                    <li className="flex justify-between">
-                      <span className="text-muted-foreground">Seats</span>
-                      <span className="font-medium">{formatLimit(info.limits.teamMembers)}</span>
-                    </li>
-                  </ul>
-                  {!isCurrent && info.price > 0 ? (
-                    <Button
-                      size="sm"
-                      className={`w-full mt-3 bg-gradient-to-r ${tierMeta.color} text-white border-0 hover:opacity-90 text-xs`}
-                      onClick={() => handleSubscribe(tier)}
-                      disabled={checkout.isPending}
-                    >
-                      {checkout.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Subscribe"}
-                    </Button>
-                  ) : isCurrent ? (
-                    <Button size="sm" variant="outline" className="w-full mt-3 text-xs" disabled>
-                      Current Plan
-                    </Button>
-                  ) : null}
-                </CardContent>
-              </Card>
-            );
-          })}
+      <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto p-0">
+        <div className="p-6 pb-0">
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-semibold tracking-tight">
+              Choose your plan
+            </DialogTitle>
+            <DialogDescription className="text-base">
+              Every plan includes your existing data. Upgrade or downgrade anytime.
+            </DialogDescription>
+          </DialogHeader>
         </div>
 
-        <p className="text-xs text-center text-muted-foreground mt-2">
-          All plans include a 7-day free trial. Cancel anytime.
-        </p>
+        {/* ---- DESKTOP: Full grid comparison ---- */}
+        <div className="hidden lg:block px-6 pb-6">
+          <div className="grid grid-cols-6 gap-3 mt-6">
+            {PLAN_ORDER.map((tier) => {
+              const info = SUBSCRIPTION_TIERS[tier];
+              const tierMeta = TIER_SUPERPOWERS[tier];
+              const isCurrent = tier === currentTier;
+              const Icon = tierMeta.icon;
+              const KillerIcon = tierMeta.killerFeature.icon;
+              const tierData = TIER_DATA[tier];
+
+              return (
+                <div
+                  key={tier}
+                  className={`relative flex flex-col rounded-2xl border-2 transition-all duration-300 ${
+                    isCurrent
+                      ? "border-primary bg-primary/[0.03] shadow-lg shadow-primary/10 scale-[1.02]"
+                      : "border-border/50 hover:border-border hover:shadow-md"
+                  }`}
+                >
+                  {/* Current plan indicator */}
+                  {isCurrent && (
+                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-10">
+                      <Badge className="bg-primary text-primary-foreground shadow-sm text-[11px] px-3">
+                        Current plan
+                      </Badge>
+                    </div>
+                  )}
+
+                  {/* Tier badge (e.g. "Most popular") */}
+                  {!isCurrent && (tierMeta as any).badge && (
+                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-10">
+                      <Badge variant="secondary" className="text-[11px] px-2 whitespace-nowrap">
+                        {(tierMeta as any).badge}
+                      </Badge>
+                    </div>
+                  )}
+
+                  {/* Header */}
+                  <div className="p-4 pb-3 text-center pt-5">
+                    <div className={`mx-auto w-10 h-10 rounded-xl bg-gradient-to-br ${tierMeta.color} text-white flex items-center justify-center mb-2.5`}>
+                      <Icon className="w-5 h-5" />
+                    </div>
+                    <h3 className="font-semibold text-base">{info.name}</h3>
+                    <p className="text-muted-foreground text-xs mt-0.5">{tierMeta.tagline}</p>
+                    <div className="mt-3">
+                      <span className="text-3xl font-bold tracking-tight">
+                        {info.price === 0 ? "Free" : `$${info.price}`}
+                      </span>
+                      {info.price > 0 && (
+                        <span className="text-sm text-muted-foreground font-normal">/mo</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Killer Feature -- prominent highlight */}
+                  <div className={`mx-3 p-3 rounded-xl bg-gradient-to-br ${tierMeta.color} text-white mb-3`}>
+                    <KillerIcon className="w-5 h-5 mb-1.5 opacity-90" />
+                    <p className="font-semibold text-xs leading-tight">{tierMeta.killerFeature.label}</p>
+                    <p className="text-[11px] opacity-80 mt-0.5 leading-tight">{tierMeta.killerFeature.desc}</p>
+                  </div>
+
+                  {/* Comparison rows */}
+                  <div className="px-3 pb-3 flex-1 space-y-2 text-xs">
+                    <div className="flex justify-between items-center py-1 border-b border-border/30">
+                      <span className="text-muted-foreground">Leads</span>
+                      <span className="font-medium">{formatLimit(info.limits.leads)}</span>
+                    </div>
+                    <div className="flex justify-between items-center py-1 border-b border-border/30">
+                      <span className="text-muted-foreground">Properties</span>
+                      <span className="font-medium">{formatLimit(info.limits.properties)}</span>
+                    </div>
+                    <div className="flex justify-between items-center py-1 border-b border-border/30">
+                      <span className="text-muted-foreground">Skip Traces</span>
+                      <span className="font-medium">{tierData.skipTraces}</span>
+                    </div>
+                    <div className="flex justify-between items-center py-1 border-b border-border/30">
+                      <span className="text-muted-foreground">Enrichments</span>
+                      <span className="font-medium">{tierData.enrichments}</span>
+                    </div>
+                    <div className="flex justify-between items-center py-1 border-b border-border/30">
+                      <span className="text-muted-foreground">AI Mode</span>
+                      <span className="font-medium">{tierData.autonomy}</span>
+                    </div>
+                    <div className="flex justify-between items-center py-1 border-b border-border/30">
+                      <span className="text-muted-foreground">Data Tier</span>
+                      <span className="font-medium">{tierData.dataTier}</span>
+                    </div>
+                    <div className="flex justify-between items-center py-1">
+                      <span className="text-muted-foreground">Seats</span>
+                      <span className="font-medium">{formatLimit(info.limits.teamMembers)}</span>
+                    </div>
+                  </div>
+
+                  {/* CTA */}
+                  <div className="p-3 pt-0 mt-auto">
+                    {isCurrent ? (
+                      <Button size="sm" variant="outline" className="w-full text-xs" disabled>
+                        Current Plan
+                      </Button>
+                    ) : info.price > 0 ? (
+                      <Button
+                        size="sm"
+                        className={`w-full text-xs bg-gradient-to-r ${tierMeta.color} text-white border-0 hover:opacity-90 transition-opacity`}
+                        onClick={() => handleSubscribe(tier)}
+                        disabled={checkout.isPending}
+                      >
+                        {checkout.isPending ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <>Get {info.name}</>
+                        )}
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* ---- MOBILE: Swipeable card carousel ---- */}
+        <div className="lg:hidden px-4 pb-6">
+          {/* Mobile tier tabs */}
+          <div className="flex gap-1 overflow-x-auto py-3 scrollbar-hide -mx-1 px-1">
+            {PLAN_ORDER.map((tier, idx) => {
+              const tierMeta = TIER_SUPERPOWERS[tier];
+              const isCurrent = tier === currentTier;
+              const isActive = idx === activeMobileTier;
+              return (
+                <button
+                  key={tier}
+                  onClick={() => {
+                    setSwipeDirection(idx > activeMobileTier ? "right" : "left");
+                    setActiveMobileTier(idx);
+                  }}
+                  className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                    isActive
+                      ? `bg-gradient-to-r ${tierMeta.color} text-white shadow-sm`
+                      : isCurrent
+                        ? "bg-primary/10 text-primary border border-primary/30"
+                        : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {tierMeta.name}
+                  {isCurrent && !isActive && (
+                    <span className="ml-1 text-[10px] opacity-70">(you)</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Swipeable card */}
+          <div className="relative overflow-hidden min-h-[520px]">
+            <AnimatePresence mode="wait" custom={swipeDirection}>
+              {(() => {
+                const tier = PLAN_ORDER[activeMobileTier];
+                const info = SUBSCRIPTION_TIERS[tier];
+                const tierMeta = TIER_SUPERPOWERS[tier];
+                const isCurrent = tier === currentTier;
+                const Icon = tierMeta.icon;
+                const KillerIcon = tierMeta.killerFeature.icon;
+                const tierData = TIER_DATA[tier];
+
+                return (
+                  <motion.div
+                    key={tier}
+                    custom={swipeDirection}
+                    variants={mobileSlideVariants}
+                    initial="enter"
+                    animate="center"
+                    exit="exit"
+                    transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                    drag="x"
+                    dragConstraints={{ left: 0, right: 0 }}
+                    dragElastic={0.2}
+                    onDragEnd={handleDragEnd}
+                    className={`rounded-2xl border-2 ${
+                      isCurrent
+                        ? "border-primary bg-primary/[0.03]"
+                        : "border-border/50"
+                    }`}
+                  >
+                    {/* Mobile card header */}
+                    <div className="p-5 text-center">
+                      {isCurrent && (
+                        <Badge className="bg-primary text-primary-foreground mb-3 text-[11px]">
+                          Current plan
+                        </Badge>
+                      )}
+                      {!isCurrent && (tierMeta as any).badge && (
+                        <Badge variant="secondary" className="mb-3 text-[11px]">
+                          {(tierMeta as any).badge}
+                        </Badge>
+                      )}
+
+                      <div className={`mx-auto w-14 h-14 rounded-2xl bg-gradient-to-br ${tierMeta.color} text-white flex items-center justify-center mb-3`}>
+                        <Icon className="w-7 h-7" />
+                      </div>
+                      <h3 className="text-xl font-semibold">{info.name}</h3>
+                      <p className="text-muted-foreground text-sm">{tierMeta.tagline}</p>
+                      <div className="mt-2">
+                        <span className="text-4xl font-bold tracking-tight">
+                          {info.price === 0 ? "Free" : `$${info.price}`}
+                        </span>
+                        {info.price > 0 && (
+                          <span className="text-base text-muted-foreground">/mo</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Killer feature */}
+                    <div className={`mx-4 p-4 rounded-xl bg-gradient-to-br ${tierMeta.color} text-white mb-4`}>
+                      <div className="flex items-start gap-3">
+                        <KillerIcon className="w-8 h-8 opacity-90 flex-shrink-0" />
+                        <div>
+                          <p className="font-semibold text-sm">{tierMeta.killerFeature.label}</p>
+                          <p className="text-xs opacity-80 mt-0.5">{tierMeta.killerFeature.desc}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Stats grid */}
+                    <div className="mx-4 mb-4 grid grid-cols-2 gap-2">
+                      {[
+                        { label: "Leads", value: formatLimit(info.limits.leads) },
+                        { label: "Properties", value: formatLimit(info.limits.properties) },
+                        { label: "Skip Traces", value: tierData.skipTraces },
+                        { label: "Enrichments", value: tierData.enrichments },
+                        { label: "AI Mode", value: tierData.autonomy },
+                        { label: "Data Tier", value: tierData.dataTier },
+                      ].map((stat) => (
+                        <div key={stat.label} className="bg-muted/50 rounded-lg p-2.5 text-center">
+                          <p className="text-[11px] text-muted-foreground">{stat.label}</p>
+                          <p className="font-semibold text-sm">{stat.value}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* CTA */}
+                    <div className="px-4 pb-5">
+                      {isCurrent ? (
+                        <Button variant="outline" className="w-full" disabled>
+                          Current Plan
+                        </Button>
+                      ) : info.price > 0 ? (
+                        <Button
+                          className={`w-full bg-gradient-to-r ${tierMeta.color} text-white border-0 hover:opacity-90`}
+                          onClick={() => handleSubscribe(tier)}
+                          disabled={checkout.isPending}
+                        >
+                          {checkout.isPending ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <>
+                              Get {info.name}
+                              <ArrowRight className="w-4 h-4 ml-2" />
+                            </>
+                          )}
+                        </Button>
+                      ) : null}
+                    </div>
+                  </motion.div>
+                );
+              })()}
+            </AnimatePresence>
+
+            {/* Navigation arrows */}
+            {activeMobileTier > 0 && (
+              <button
+                onClick={() => navigateMobileTier("left")}
+                className="absolute left-1 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-background/80 backdrop-blur border shadow-sm flex items-center justify-center z-10"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+            )}
+            {activeMobileTier < PLAN_ORDER.length - 1 && (
+              <button
+                onClick={() => navigateMobileTier("right")}
+                className="absolute right-1 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-background/80 backdrop-blur border shadow-sm flex items-center justify-center z-10"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+
+          {/* Dot indicators */}
+          <div className="flex justify-center gap-1.5 mt-3">
+            {PLAN_ORDER.map((tier, idx) => (
+              <button
+                key={tier}
+                onClick={() => {
+                  setSwipeDirection(idx > activeMobileTier ? "right" : "left");
+                  setActiveMobileTier(idx);
+                }}
+                className={`w-2 h-2 rounded-full transition-all ${
+                  idx === activeMobileTier
+                    ? `w-6 bg-gradient-to-r ${TIER_SUPERPOWERS[tier].color}`
+                    : tier === currentTier
+                      ? "bg-primary/40"
+                      : "bg-muted-foreground/20"
+                }`}
+              />
+            ))}
+          </div>
+        </div>
+
+        <div className="px-6 pb-4">
+          <p className="text-xs text-center text-muted-foreground">
+            All paid plans include a 7-day free trial. Cancel anytime. Your data always stays.
+          </p>
+        </div>
       </DialogContent>
     </Dialog>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------
 // UTILITY
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------
 
 function getNextTier(current: TierKey): TierKey {
   const order: TierKey[] = ["free", "sprout", "starter", "pro", "scale", "enterprise"];

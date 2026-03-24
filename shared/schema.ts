@@ -2886,7 +2886,7 @@ export const SUBSCRIPTION_TIERS = {
   },
   sprout: {
     name: "Sprout",
-    price: 20,
+    price: 29,
     tagline: "Plant your first seeds",
     badge: "Best to start",
     limits: {
@@ -2916,7 +2916,7 @@ export const SUBSCRIPTION_TIERS = {
   },
   starter: {
     name: "Starter",
-    price: 49,
+    price: 59,
     tagline: "Build momentum",
     badge: "Most popular solo",
     limits: {
@@ -2948,7 +2948,7 @@ export const SUBSCRIPTION_TIERS = {
   },
   pro: {
     name: "Pro",
-    price: 149,
+    price: 179,
     tagline: "Scale your operation",
     badge: "Best value for growth",
     limits: {
@@ -2985,7 +2985,7 @@ export const SUBSCRIPTION_TIERS = {
   },
   scale: {
     name: "Scale",
-    price: 399,
+    price: 449,
     tagline: "Operate like a fund",
     badge: "For serious operators",
     limits: {
@@ -3026,7 +3026,7 @@ export const SUBSCRIPTION_TIERS = {
   },
   enterprise: {
     name: "Enterprise",
-    price: 799,
+    price: 899,
     tagline: "White-label your empire",
     badge: "For funds & teams",
     limits: {

@@ -36,68 +36,86 @@ const SEAT_ADDON_PRODUCTS = [
 const SUBSCRIPTION_PRODUCTS = [
   {
     name: 'Sprout',
-    description: 'The most accessible way to start land investing. Up to 50 properties, 250 leads, AI due diligence, tax delinquent import, Night Cap dashboard.',
+    description: 'Start land investing with AI due diligence, 50 enrichments/mo, basic data access, tax delinquent import, and Night Cap dashboard.',
     metadata: {
       tier: 'sprout',
       propertyLimit: '50',
       leadLimit: '250',
       teamMembers: '1',
       aiCredits: '500',
+      enrichments: '50',
+      dataTier: 'basic',
     },
-    monthlyPrice: 2000, // $20/month
-    yearlyPrice: 19200, // $192/year (20% discount)
+    monthlyPrice: 2900, // $29/month
+    yearlyPrice: 27800, // $278/year (20% discount)
   },
   {
     name: 'Starter',
-    description: 'Perfect for solo land investors building momentum. Up to 100 properties, 500 leads, full AI assistant Atlas, seller intent & comps analysis.',
+    description: 'Build momentum with Atlas AI assistant, 50 skip traces & 200 enrichments/mo, standard data tier, assisted AI autonomy, and comps analysis.',
     metadata: {
       tier: 'starter',
       propertyLimit: '100',
       leadLimit: '500',
       teamMembers: '2',
       aiCredits: '1000',
+      skipTraces: '50',
+      enrichments: '200',
+      dataTier: 'standard',
+      autonomyLevel: 'assisted',
     },
-    monthlyPrice: 4900, // $49/month
-    yearlyPrice: 47000, // $470/year (20% discount)
+    monthlyPrice: 5900, // $59/month
+    yearlyPrice: 56600, // $566/year (20% discount)
   },
   {
     name: 'Pro',
-    description: 'For growing land businesses. Up to 1000 properties, 5000 leads, full AI suite, team collaboration.',
+    description: 'Scale with 200 skip traces, 1000 enrichments/mo, premium data, supervised AI autonomy, Deal Hunter AI, and full team collaboration.',
     metadata: {
       tier: 'pro',
       propertyLimit: '1000',
       leadLimit: '5000',
       teamMembers: '10',
-      aiCredits: '5000',
+      aiCredits: '10000',
+      skipTraces: '200',
+      enrichments: '1000',
+      dataTier: 'premium',
+      autonomyLevel: 'supervised',
     },
-    monthlyPrice: 14900, // $149/month
-    yearlyPrice: 143000, // $1430/year (20% discount)
+    monthlyPrice: 17900, // $179/month
+    yearlyPrice: 171800, // $1718/year (20% discount)
   },
   {
     name: 'Scale',
-    description: 'Unlimited leads and properties. Advanced reporting, API access, team messaging, priority support.',
+    description: 'Unlimited leads & properties. 1000 skip traces, 5000 enrichments/mo, autonomous AI, Portfolio Sentinel, Voice & Vision AI, API access.',
     metadata: {
       tier: 'scale',
       propertyLimit: 'unlimited',
       leadLimit: 'unlimited',
       teamMembers: '25',
-      aiCredits: '25000',
+      aiCredits: 'unlimited',
+      skipTraces: '1000',
+      enrichments: '5000',
+      dataTier: 'premium',
+      autonomyLevel: 'autonomous',
     },
-    monthlyPrice: 39900, // $399/month
-    yearlyPrice: 383000, // $3830/year (20% discount)
+    monthlyPrice: 44900, // $449/month
+    yearlyPrice: 430800, // $4308/year (20% discount)
   },
   {
     name: 'Enterprise',
-    description: 'Everything unlimited. White-label portal, dedicated support, compliance exports, custom integrations.',
+    description: 'Everything unlimited. Unlimited skip traces & enrichments, autonomous AI, white-label portal, SSO, dedicated support, custom integrations.',
     metadata: {
       tier: 'enterprise',
       propertyLimit: 'unlimited',
       leadLimit: 'unlimited',
       teamMembers: 'unlimited',
-      aiCredits: '50000',
+      aiCredits: 'unlimited',
+      skipTraces: 'unlimited',
+      enrichments: 'unlimited',
+      dataTier: 'premium',
+      autonomyLevel: 'autonomous',
     },
-    monthlyPrice: 79900, // $799/month
-    yearlyPrice: 767000, // $7670/year (20% discount)
+    monthlyPrice: 89900, // $899/month
+    yearlyPrice: 862800, // $8628/year (20% discount)
   },
 ];
 
