@@ -77,6 +77,7 @@ import BorrowerPortal from "@/pages/borrower-portal";
 import TermsOfService from "@/pages/terms";
 import PrivacyPolicy from "@/pages/privacy";
 import LandingPage from "@/pages/landing";
+import PricingPage from "@/pages/pricing";
 import NotFound from "@/pages/not-found";
 import SafetyGatesPage from "@/pages/safety-gates";
 import DecisionQueuePage from "@/pages/decision-queue";
@@ -363,6 +364,8 @@ function Router() {
         {/* Competitor comparison pages (public, SEO-targeted) */}
         <Route path="/compare/lg-pass">{() => <ProtectedRoute component={React.lazy(() => import("@/pages/compare-lgpass"))} />}</Route>
         <Route path="/compare/geekpay">{() => <ProtectedRoute component={React.lazy(() => import("@/pages/compare-geekpay"))} />}</Route>
+
+      <Route path="/pricing" component={PricingPage} />
 
       {/* Public Borrower Portal */}
       <Route path="/portal" component={BorrowerPortal} />
