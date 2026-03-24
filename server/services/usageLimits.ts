@@ -6,12 +6,19 @@ export type SubscriptionTier = "free" | "sprout" | "starter" | "pro" | "scale" |
 
 export type ResourceType = "leads" | "properties" | "notes" | "ai_requests";
 
+export type AutonomyLevel = "none" | "assisted" | "supervised" | "autonomous";
+export type DataTier = "open" | "basic" | "standard" | "premium";
+
 export interface TierLimits {
   leads: number | null;
   properties: number | null;
   notes: number | null;
   ai_requests: number | null;
   premium_lookups: number | null; // Monthly premium data provider lookups
+  skip_traces: number | null; // Monthly skip trace lookups (null = unlimited)
+  enrichments: number | null; // Monthly data enrichments (null = unlimited)
+  autonomy_level: AutonomyLevel | null; // AI autonomy capability (null = full autonomous)
+  data_tier: DataTier; // Data provider access tier
   includedSeats: number; // Seats included in the tier
   maxSeats: number | null; // Maximum seats allowed (null = unlimited)
   seatPriceCents: number | null; // Price per additional seat in cents (null = cannot purchase)
@@ -32,6 +39,10 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     notes: 5,
     ai_requests: 100,
     premium_lookups: 0,
+    skip_traces: 0,
+    enrichments: 10,
+    autonomy_level: "none",
+    data_tier: "open",
     includedSeats: 1,
     maxSeats: 1,
     seatPriceCents: null,
@@ -42,6 +53,10 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     notes: 25,
     ai_requests: 500,
     premium_lookups: 20,
+    skip_traces: 0,
+    enrichments: 50,
+    autonomy_level: "none",
+    data_tier: "basic",
     includedSeats: 1,
     maxSeats: 1,
     seatPriceCents: null,
@@ -52,6 +67,10 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     notes: 50,
     ai_requests: 1000,
     premium_lookups: 100,
+    skip_traces: 50,
+    enrichments: 200,
+    autonomy_level: "assisted",
+    data_tier: "standard",
     includedSeats: 2,
     maxSeats: 5,
     seatPriceCents: 2000,
@@ -62,6 +81,10 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     notes: 500,
     ai_requests: 10000,
     premium_lookups: 500,
+    skip_traces: 200,
+    enrichments: 1000,
+    autonomy_level: "supervised",
+    data_tier: "premium",
     includedSeats: 5,
     maxSeats: 20,
     seatPriceCents: 3000,
@@ -72,6 +95,10 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     notes: null,
     ai_requests: null,
     premium_lookups: 2000,
+    skip_traces: 1000,
+    enrichments: 5000,
+    autonomy_level: "autonomous",
+    data_tier: "premium",
     includedSeats: 10,
     maxSeats: 100,
     seatPriceCents: 4000,
@@ -82,6 +109,10 @@ export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
     notes: null,
     ai_requests: null,
     premium_lookups: null,
+    skip_traces: null,
+    enrichments: null,
+    autonomy_level: "autonomous",
+    data_tier: "premium",
     includedSeats: 25,
     maxSeats: null,
     seatPriceCents: 5000,
@@ -95,6 +126,10 @@ export const FOUNDER_TIER_LIMITS: TierLimits = {
   notes: null,
   ai_requests: null,
   premium_lookups: null,
+  skip_traces: null,
+  enrichments: null,
+  autonomy_level: "autonomous",
+  data_tier: "premium",
   includedSeats: 1000,
   maxSeats: null,
   seatPriceCents: null,
