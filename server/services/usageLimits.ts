@@ -128,19 +128,26 @@ function normalizeTier(tier: string): SubscriptionTier {
   return "free";
 }
 
-async function getOrganizationTierAndFounderStatus(organizationId: number): Promise<{ tier: SubscriptionTier; isFounder: boolean }> {
+async function getOrganizationTierAndFounderStatus(organizationId: number): Promise<{ tier: SubscriptionTier; isFounder: boolean; isTrialing: boolean }> {
   const [org] = await db
-    .select({ 
+    .select({
       subscriptionTier: organizations.subscriptionTier,
-      isFounder: organizations.isFounder 
+      subscriptionStatus: organizations.subscriptionStatus,
+      isFounder: organizations.isFounder,
+      trialEndsAt: organizations.trialEndsAt,
     })
     .from(organizations)
     .where(eq(organizations.id, organizationId));
-  
-  if (!org) return { tier: "free", isFounder: false };
-  return { 
+
+  if (!org) return { tier: "free", isFounder: false, isTrialing: false };
+
+  const isTrialing = org.subscriptionStatus === "trialing" &&
+    !!org.trialEndsAt && org.trialEndsAt > new Date();
+
+  return {
     tier: normalizeTier(org.subscriptionTier),
-    isFounder: org.isFounder || false
+    isFounder: org.isFounder || false,
+    isTrialing,
   };
 }
 

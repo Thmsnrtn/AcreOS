@@ -258,11 +258,8 @@ export function registerBillingRoutes(app: Express): void {
         customerId = customer.id;
       }
       
-      // Check if organization is eligible for 7-day free trial (first subscription only).
-      // NOTE: We intentionally do NOT mark trialUsed here — only mark it in the webhook
-      // when checkout.session.completed fires. This way a user who opens checkout and
-      // abandons it (closes the tab, hits back) retains trial eligibility.
-      const trialDays = org.trialUsed ? undefined : 7;
+      // Check if organization is eligible for 14-day free trial (first subscription only)
+      const trialDays = org.trialUsed ? undefined : 14;
       
       // Look up active promo for this price (match by tier name in Stripe product metadata)
       let checkoutOptions: { couponId?: string; allowPromoCodes?: boolean } = {};
@@ -529,6 +526,50 @@ export function registerBillingRoutes(app: Express): void {
   // STRIPE CONNECT WEBHOOK
   // ============================================
   
+  // ============================================
+  // FREE TRIAL
+  // ============================================
+
+  api.get("/api/trial/status", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { trialService } = await import("./services/trialService");
+      const org = (req as any).organization;
+      const status = await trialService.getTrialStatus(org.id);
+      res.json(status);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  api.post("/api/trial/start", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { trialService } = await import("./services/trialService");
+      const org = (req as any).organization;
+      const tier = req.body.tier === "pro" ? "pro" : "starter";
+      const status = await trialService.startTrial(org.id, tier);
+      res.json(status);
+    } catch (error: any) {
+      if (error.message.includes("already used")) {
+        return res.status(409).json({ message: error.message });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  api.post("/api/trial/expire-check", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const { trialService } = await import("./services/trialService");
+      const org = (req as any).organization;
+      if (!org.isFounder) {
+        return res.status(403).json({ message: "Founder only" });
+      }
+      const expired = await trialService.expireTrials();
+      res.json({ expired });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   api.post("/api/stripe/connect/webhook", express.raw({ type: "application/json" }), async (req, res) => {
     try {
       const { stripeConnectService } = await import("./services/stripeConnect");

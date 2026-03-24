@@ -101,6 +101,7 @@ import { PaxCopilotRail } from "@/components/pax-copilot-rail";
 import { DynamicIsland } from "@/components/dynamic-island";
 import { DynamicIslandProvider } from "@/contexts/dynamic-island-context";
 import { useCursorGlass } from "@/hooks/use-cursor-glass";
+import { TrialBanner } from "@/components/trial-banner";
 
 // Eagerly loaded: must be available immediately with no delay
 import AuthPage from "@/pages/auth-page";
@@ -617,6 +618,7 @@ function AppContent() {
       <a href="#main-content" className="skip-to-content" aria-label="Skip to main content">
         Skip to content
       </a>
+      {user && <TrialBanner />}
       <PageWrapper>
         <Router />
       </PageWrapper>
