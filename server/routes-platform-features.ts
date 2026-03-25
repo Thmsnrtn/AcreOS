@@ -877,6 +877,78 @@ export function registerPlatformFeatureRoutes(app: Express): void {
     }
   });
 
+  // ─── LCS Accuracy + Calibration Triggers ─────────────────────────
+
+  // Land Credit Score accuracy report with current weights
+  app.get("/api/land-credit/accuracy", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const { runBacktestAccuracy } = await import("./services/outcomeCalibrationLoop");
+      const { getCurrentWeights } = await import("./services/lcsCalibrator");
+
+      const backtest = await runBacktestAccuracy(org.id);
+      const { weights, lastUpdated } = getCurrentWeights(org.id);
+
+      const sampleSize = backtest.totalPredictions || 0;
+      if (sampleSize < 20) {
+        return res.json({
+          sampleSize,
+          message: "Insufficient data for accuracy report. Need 20+ closed deals with LCS scores.",
+        });
+      }
+
+      res.json({
+        sampleSize,
+        avgError: backtest.calibrationError,
+        accuracyByRange: backtest.bucketAccuracy,
+        defaultRateByRange: backtest.bucketAccuracy.map((b: any) => ({
+          bucket: b.bucket,
+          rate: b.accuracy,
+        })),
+        weights,
+        lastUpdated,
+      });
+    } catch (error) {
+      Errors.internal(res, error);
+    }
+  });
+
+  // Trigger LCS weight calibration
+  app.post("/api/calibration/lcs", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const { runLcsCalibration } = await import("./services/lcsCalibrator");
+      const result = await runLcsCalibration(org.id);
+      res.json(result);
+    } catch (error) {
+      Errors.internal(res, error);
+    }
+  });
+
+  // Trigger seller intent weight calibration
+  app.post("/api/calibration/seller-intent", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const { sellerIntentPredictorService } = await import("./services/sellerIntentPredictor");
+      await sellerIntentPredictorService.calibrateWeights(org.id);
+      res.json({ ok: true, message: "Seller intent weights calibrated." });
+    } catch (error) {
+      Errors.internal(res, error);
+    }
+  });
+
+  // Trigger radar weight calibration
+  app.post("/api/calibration/radar", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const { acquisitionRadar } = await import("./services/acquisitionRadar");
+      await acquisitionRadar.calibrateRadarWeights(org.id);
+      res.json({ ok: true, message: "Radar weights calibrated." });
+    } catch (error) {
+      Errors.internal(res, error);
+    }
+  });
+
   // ─── Voice Profile ───────────────────────────────────────────────
 
   // Get voice profile status
