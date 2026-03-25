@@ -1105,6 +1105,106 @@ class AcquisitionRadarService {
     this.scanIntervalId = setInterval(runScan, intervalMinutes * 60 * 1000);
   }
 
+  /**
+   * Calibrate radar scoring weights based on which radar-scored parcels the user
+   * actually pursued (deals created from radar opportunities).
+   * Uses EMA (0.9 * old + 0.1 * empirical).
+   */
+  async calibrateRadarWeights(orgId: number): Promise<void> {
+    const MIN_OUTCOMES = 15;
+    const EMA_ALPHA = 0.1;
+
+    try {
+      // Get opportunities that were pursued (status = 'pursued' or linked to a deal)
+      const allOpps = await db.select().from(opportunityScores)
+        .where(and(
+          eq(opportunityScores.organizationId, orgId),
+          eq(opportunityScores.isStale, false),
+        ))
+        .orderBy(desc(opportunityScores.scoredAt))
+        .limit(500);
+
+      if (allOpps.length < MIN_OUTCOMES) {
+        return;
+      }
+
+      // Determine which were pursued (status indicates user action)
+      const pursuedStatuses = new Set(["pursued", "under_contract", "closed", "due_diligence"]);
+      const factorKeys = Object.keys(DEFAULT_WEIGHTS) as (keyof ScoringWeights)[];
+
+      // For each factor, compute average contribution in pursued vs not-pursued
+      const factorStats: Record<string, { pursueScores: number[]; skipScores: number[] }> = {};
+      for (const key of factorKeys) {
+        factorStats[key] = { pursueScores: [], skipScores: [] };
+      }
+
+      for (const opp of allOpps) {
+        const factors = (opp.scoreFactors as ScoreBreakdown) || {};
+        const pursued = pursuedStatuses.has(opp.status || "");
+
+        for (const key of factorKeys) {
+          const factor = (factors as any)[key];
+          const score = factor?.score;
+          if (score == null) continue;
+
+          if (pursued) {
+            factorStats[key].pursueScores.push(score);
+          } else {
+            factorStats[key].skipScores.push(score);
+          }
+        }
+      }
+
+      // Count total pursued to check threshold
+      const totalPursued = allOpps.filter(o => pursuedStatuses.has(o.status || "")).length;
+      if (totalPursued < 5) {
+        return; // Not enough pursued outcomes for meaningful calibration
+      }
+
+      // Compute empirical weights based on how well each factor separates pursued from skipped
+      const empiricalWeights: Record<string, number> = {};
+      for (const key of factorKeys) {
+        const { pursueScores, skipScores } = factorStats[key];
+        const pursueAvg = pursueScores.length > 0
+          ? pursueScores.reduce((s, v) => s + v, 0) / pursueScores.length
+          : 50;
+        const skipAvg = skipScores.length > 0
+          ? skipScores.reduce((s, v) => s + v, 0) / skipScores.length
+          : 50;
+
+        // Higher separation = better predictor of user pursuit
+        const separation = Math.abs(pursueAvg - skipAvg);
+        empiricalWeights[key] = separation;
+      }
+
+      // Normalize empirical weights
+      const empTotal = Object.values(empiricalWeights).reduce((s, v) => s + v, 0);
+      if (empTotal === 0) return;
+
+      for (const key of factorKeys) {
+        empiricalWeights[key] = (empiricalWeights[key] / empTotal) * 100;
+      }
+
+      // Apply EMA to DEFAULT_WEIGHTS (module-level mutable)
+      for (const key of factorKeys) {
+        const oldWeight = DEFAULT_WEIGHTS[key];
+        const empWeight = empiricalWeights[key] ?? oldWeight;
+        (DEFAULT_WEIGHTS as any)[key] = parseFloat(
+          ((1 - EMA_ALPHA) * oldWeight + EMA_ALPHA * empWeight).toFixed(2)
+        );
+      }
+
+      logger.info("Radar weights calibrated", {
+        orgId,
+        totalOpps: allOpps.length,
+        totalPursued,
+        newWeights: { ...DEFAULT_WEIGHTS },
+      });
+    } catch (err) {
+      logger.error("Radar calibration failed", err instanceof Error ? err : undefined);
+    }
+  }
+
   stopBackgroundScanner(): void {
     if (this.scanIntervalId) {
       clearInterval(this.scanIntervalId);
