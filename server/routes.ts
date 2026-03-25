@@ -89,6 +89,9 @@ import dealFeedRouter from "./routes-deal-feed";
 import visionScanRouter from "./routes-vision-scan";
 import commentsRouter from "./routes-comments";
 
+// Phase 1: Communication features
+import { registerInboundEmailRoutes } from "./routes-inbound-email";
+
 // Rate limiting middleware
 import { createRateLimiter, rateLimiters, RATE_LIMIT_CONFIGS, authLimiter, aiLimiter, webhookLimiter, importLimiter } from "./middleware/rateLimit";
 
@@ -1174,6 +1177,9 @@ export async function registerRoutes(
   registerPlatformFeatureRoutes(app);
   registerLeaseRoutes(app);
   registerMaintenanceRoutes(app);
+
+  // Phase 1: Communication features
+  registerInboundEmailRoutes(app);
 
   // Register AI Operations (Router-based)
   registerAIOperationsRoutes(app);
