@@ -389,6 +389,46 @@ export function registerPlatformFeatureRoutes(app: Express): void {
 
   // ─── Community Intelligence ────────────────────────────────────────
 
+  // County intelligence — combines network data with community reviews
+  app.get("/api/county-intelligence/:state/:county", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const state = req.params.state;
+      const county = req.params.county;
+
+      // Get network data for this county
+      const { getCountyIntelligenceOverview } = await import("./services/dataNetworkVisibility");
+      const networkOverview = await getCountyIntelligenceOverview(org.id);
+      const countyData = networkOverview.counties?.find(
+        (c: any) => c.state?.toUpperCase() === state.toUpperCase() && c.county?.toUpperCase() === county.toUpperCase()
+      ) || null;
+
+      // Get community reviews for this county
+      const { getCountyReviews } = await import("./services/communityIntelligence");
+      const allReviews = await getCountyReviews(state);
+      const countyReviewsList = allReviews.filter(
+        (r: any) => r.county?.toUpperCase() === county.toUpperCase()
+      );
+
+      // Get LCS benchmarks if available
+      const { getLcsBenchmarks } = await import("./services/dataNetworkVisibility");
+      const benchmarks = await getLcsBenchmarks(org.id);
+
+      res.json({
+        state,
+        county,
+        networkData: countyData,
+        reviews: countyReviewsList,
+        avgRating: countyReviewsList.length > 0
+          ? Math.round(countyReviewsList.reduce((s: number, r: any) => s + (r.rating || 0), 0) / countyReviewsList.length * 10) / 10
+          : null,
+        reviewCount: countyReviewsList.length,
+        lcsBenchmarks: benchmarks,
+        hasSufficientData: (countyData?.dealCount || 0) >= 5,
+      });
+    } catch (error) { Errors.internal(res, error); }
+  });
+
   app.get("/api/community/county-reviews", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const state = req.query.state ? String(req.query.state) : undefined;
@@ -947,6 +987,41 @@ export function registerPlatformFeatureRoutes(app: Express): void {
     } catch (error) {
       Errors.internal(res, error);
     }
+  });
+
+  // ─── Credit Benchmarking ─────────────────────────────────────────
+
+  // Compare LCS to industry benchmarks for a property
+  app.get("/api/land-credit/benchmark/:propertyId", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const propertyId = Number(req.params.propertyId);
+      const { CreditBenchmarkingService } = await import("./services/creditBenchmarking");
+      const benchmarking = new CreditBenchmarkingService();
+
+      // Get property's LCS and state/type
+      const { landCreditScores, properties } = await import("@shared/schema");
+      const { eq, desc } = await import("drizzle-orm");
+      const [score] = await db.select().from(landCreditScores)
+        .where(eq(landCreditScores.propertyId, propertyId))
+        .orderBy(desc(landCreditScores.createdAt)).limit(1);
+      const [property] = await db.select().from(properties)
+        .where(eq(properties.id, propertyId)).limit(1);
+
+      if (!score || !property) return Errors.notFound(res, "Property or LCS");
+
+      const state = property.state || "TX";
+      const propertyType = (property as any).zoning || "agricultural";
+      const comparison = benchmarking.compareToIndustry(score.overall ?? 0, propertyType, state);
+      const benchmarks = benchmarking.getBenchmarks(propertyType, state);
+
+      res.json({
+        score: score.overall,
+        grade: score.grade,
+        comparison,
+        benchmarks,
+        summary: `Your LCS: ${score.overall}. State benchmark: median ${benchmarks.median}, 75th percentile: ${benchmarks.p75}. Your property ranks in the ${comparison.percentile}th percentile for ${state} ${propertyType}.`,
+      });
+    } catch (error) { Errors.internal(res, error); }
   });
 
   // ─── Voice Profile ───────────────────────────────────────────────
