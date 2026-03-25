@@ -357,6 +357,59 @@ export function registerPlatformFeatureRoutes(app: Express): void {
     }
   });
 
+  // ─── Calibration Loop ────────────────────────────────────────────
+
+  // Full calibration report (LCS, confidence intervals, backtest, seller intent, radar)
+  app.get("/api/ml/calibration-report", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const { runFullCalibration } = await import("./services/outcomeCalibrationLoop");
+      const report = await runFullCalibration(org.id);
+      res.json(report);
+    } catch (error) {
+      Errors.internal(res, error);
+    }
+  });
+
+  // Record deal outcome for calibration (called on deal close)
+  app.post("/api/ml/record-outcome", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const { dealId, outcome } = req.body as { dealId?: number; outcome?: "won" | "lost" };
+      if (!dealId || !outcome) return Errors.badRequest(res, "dealId and outcome required");
+
+      const { onDealClosed } = await import("./services/outcomeCalibrationLoop");
+      await onDealClosed(org.id, dealId, outcome);
+      res.json({ ok: true });
+    } catch (error) {
+      Errors.internal(res, error);
+    }
+  });
+
+  // Confidence intervals for LCS dimensions
+  app.get("/api/ml/confidence-intervals", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const { computeConfidenceIntervals } = await import("./services/outcomeCalibrationLoop");
+      const intervals = await computeConfidenceIntervals(org.id);
+      res.json({ intervals });
+    } catch (error) {
+      Errors.internal(res, error);
+    }
+  });
+
+  // Backtest accuracy
+  app.get("/api/ml/backtest", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const { runBacktestAccuracy } = await import("./services/outcomeCalibrationLoop");
+      const result = await runBacktestAccuracy(org.id);
+      res.json(result);
+    } catch (error) {
+      Errors.internal(res, error);
+    }
+  });
+
   // ─── Voice Profile ───────────────────────────────────────────────
 
   // Get voice profile status
