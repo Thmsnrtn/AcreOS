@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { fadeInUp } from "@/lib/animations";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -34,6 +34,12 @@ export function OfferWizard({ dealId, trigger }: OfferWizardProps) {
   const [deliveryMethod, setDeliveryMethod] = useState<string>("email");
   const queryClient = useQueryClient();
   const { toast } = useToast();
+
+  const { data: dealStats } = useQuery<{ offersSent: number }>({
+    queryKey: ["/api/deals/stats"],
+    staleTime: 5 * 60 * 1000,
+  });
+  const isAdvanced = (dealStats?.offersSent ?? 0) >= 3;
 
   const initiateMutation = useMutation({
     mutationFn: async () => {
