@@ -19,8 +19,11 @@ interface OfferAnalysis {
     profit: number;
     strategy: string;
     description: string;
+    recommendedStrategy?: NegotiationStrategy;
+    strategyRationale?: string;
   }>;
   compSummary: string;
+  motivationGrade?: string;
 }
 
 interface ResponseAnalysis {
