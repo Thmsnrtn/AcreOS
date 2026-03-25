@@ -57,6 +57,12 @@ interface DealOpportunity {
     market: string[];
     risks: string[];
   };
+  legal?: {
+    multipleOwners?: boolean;
+    ownerCount?: number;
+    taxDelinquent?: boolean;
+    redemptionMonths?: number;
+  };
   financials: {
     estimatedValue: number;
     suggestedOffer: { aggressive: number; market: number; generous: number };
