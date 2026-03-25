@@ -356,6 +356,39 @@ export function registerPlatformFeatureRoutes(app: Express): void {
       Errors.internal(res, error);
     }
   });
+
+  // ─── Voice Profile ───────────────────────────────────────────────
+
+  // Get voice profile status
+  app.get("/api/voice-profile", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const { voiceLearningService } = await import("./services/voiceLearning");
+      const profile = await voiceLearningService.getProfile(org.id);
+      res.json({
+        hasProfile: profile.sampleCount >= 3,
+        sampleCount: profile.sampleCount,
+        formality: profile.formality,
+        tone: profile.tone,
+        analyzedAt: profile.analyzedAt,
+        commonPhrases: profile.commonPhrases.slice(0, 5),
+      });
+    } catch (error) {
+      Errors.internal(res, error);
+    }
+  });
+
+  // Force rebuild voice profile
+  app.post("/api/voice-profile/rebuild", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const { forceRebuild } = await import("./services/voiceProfileTrigger");
+      await forceRebuild(org.id);
+      res.json({ ok: true, message: "Voice profile rebuilt from latest communications." });
+    } catch (error) {
+      Errors.internal(res, error);
+    }
+  });
 }
 
 // ─── State Disclosure Data ──────────────────────────────────────────

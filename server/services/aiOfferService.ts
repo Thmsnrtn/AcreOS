@@ -1,12 +1,13 @@
 import OpenAI from "openai";
-import { 
-  getComparableProperties, 
-  calculateMarketValue, 
+import {
+  getComparableProperties,
+  calculateMarketValue,
   calculateOfferPrices,
   calculateDesirabilityScore,
   type CompsSearchResult,
-  type PropertyAttributes 
+  type PropertyAttributes
 } from "./comps";
+import { voiceLearningService, type VoiceProfile } from "./voiceLearning";
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
@@ -79,6 +80,7 @@ export interface OfferLetterRequest {
     additionalTerms?: string;
   };
   sellerName?: string;
+  organizationId?: number;
 }
 
 export interface OfferLetterResponse {
@@ -291,6 +293,17 @@ export async function generateOfferLetter(
       urgent: "Convey a sense of urgency and motivation. Emphasize quick closing timeline. Show strong interest and ability to act fast.",
     };
 
+    // Voice learning: inject user's communication style
+    let voiceInstruction = "";
+    if (request.organizationId) {
+      try {
+        const profile = await voiceLearningService.getProfile(request.organizationId);
+        if (profile && profile.sampleCount >= 3) {
+          voiceInstruction = "\n\n" + voiceLearningService.buildStyleInstruction(profile);
+        }
+      } catch (_) { /* voice profile unavailable — continue with default tone */ }
+    }
+
     const prompt = `Generate a professional offer letter for a land purchase.
 
 Property Details:
@@ -316,7 +329,7 @@ ${request.buyerEmail ? `- Email: ${request.buyerEmail}` : ""}
 ${request.sellerName ? `Seller Name: ${request.sellerName}` : ""}
 
 Tone: ${request.tone}
-Instructions: ${toneInstructions[request.tone]}
+Instructions: ${toneInstructions[request.tone]}${voiceInstruction}
 
 Generate a complete offer letter in JSON format:
 {

@@ -15,6 +15,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, sql, avg, count } from "drizzle-orm";
 import { getOpenAIClient } from "../utils/openaiClient";
+import { voiceLearningService } from "./voiceLearning";
 
 type ObjectionCategory = "price" | "timing" | "trust" | "emotional" | "competitive";
 type NegotiationStrategy = "empathy" | "logic" | "urgency" | "anchor" | "silence";
@@ -343,6 +344,15 @@ Respond with only the category name or "none".`,
     try {
       const context = this.buildNegotiationContext(session, deal!, lead!, property);
 
+      // Voice learning: match the user's communication style
+      let voiceBlock = "";
+      try {
+        const profile = await voiceLearningService.getProfile(session.organizationId);
+        if (profile && profile.sampleCount >= 3) {
+          voiceBlock = "\n\n" + voiceLearningService.buildStyleInstruction(profile);
+        }
+      } catch (_) { /* continue without voice */ }
+
       const response = await openai.chat.completions.create({
         model: "gpt-4o",
         messages: [
@@ -356,7 +366,7 @@ Keep responses:
 - Professional and respectful
 - Concise (2-3 sentences max)
 - Focused on moving the deal forward
-- Land deal specific when relevant`,
+- Land deal specific when relevant${voiceBlock}`,
           },
           {
             role: "user",
