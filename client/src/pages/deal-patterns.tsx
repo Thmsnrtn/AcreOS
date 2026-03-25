@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { Copy, Search, TrendingUp, BarChart3, Lightbulb, Loader2, GitBranch } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Copy, Search, TrendingUp, BarChart3, Lightbulb, Loader2, GitBranch, Target, DollarSign, CheckCircle } from "lucide-react";
 
 interface DealPattern {
   id: number;
@@ -26,6 +27,23 @@ interface PatternStats {
   mostClonedPattern?: {
     patternType: string;
     cloneCount: number;
+  };
+}
+
+interface PatternPerformance {
+  totalPatterns: number;
+  successfulPatterns: number;
+  averageRoi: number;
+  topPerformingPatterns: {
+    patternId: number;
+    matchCount: number;
+    successRate: number;
+    avgProfit: number;
+  }[];
+  patternsByOutcome: {
+    success: number;
+    partialSuccess: number;
+    failure: number;
   };
 }
 
@@ -69,6 +87,133 @@ function PatternCard({ pattern }: { pattern: DealPattern }) {
         <p className="text-xs text-muted-foreground">{new Date(pattern.createdAt).toLocaleDateString()}</p>
       </CardContent>
     </Card>
+  );
+}
+
+function PerformanceSection() {
+  const { data, isLoading } = useQuery<{ performance: PatternPerformance }>({
+    queryKey: ["/api/deal-patterns/performance"],
+  });
+
+  if (isLoading) {
+    return (
+      <div className="space-y-3">
+        <Skeleton className="h-6 w-48" />
+        <div className="grid grid-cols-3 gap-3">
+          <Skeleton className="h-24" />
+          <Skeleton className="h-24" />
+          <Skeleton className="h-24" />
+        </div>
+      </div>
+    );
+  }
+
+  const perf = data?.performance;
+  if (!perf || perf.totalPatterns === 0) {
+    return (
+      <Card>
+        <CardContent className="p-6 text-center">
+          <p className="text-sm text-muted-foreground">
+            Close deals to start building your pattern library. Patterns are auto-extracted when deals close.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const total = perf.patternsByOutcome.success + perf.patternsByOutcome.partialSuccess + perf.patternsByOutcome.failure;
+  const successPct = total > 0 ? Math.round((perf.patternsByOutcome.success / total) * 100) : 0;
+
+  return (
+    <div className="space-y-4">
+      <h2 className="text-lg font-semibold flex items-center gap-2">
+        <BarChart3 className="w-5 h-5 text-primary" />
+        Pattern Performance
+      </h2>
+
+      <div className="grid grid-cols-3 gap-3">
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 text-muted-foreground mb-1">
+              <Target className="w-4 h-4" />
+              <span className="text-xs">Success Rate</span>
+            </div>
+            <p className="text-2xl font-bold">{successPct}%</p>
+            <p className="text-xs text-muted-foreground">{perf.patternsByOutcome.success} of {total} deals</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 text-muted-foreground mb-1">
+              <DollarSign className="w-4 h-4" />
+              <span className="text-xs">Avg ROI</span>
+            </div>
+            <p className="text-2xl font-bold">{perf.averageRoi.toFixed(1)}%</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 text-muted-foreground mb-1">
+              <CheckCircle className="w-4 h-4" />
+              <span className="text-xs">Matches Found</span>
+            </div>
+            <p className="text-2xl font-bold">
+              {perf.topPerformingPatterns.reduce((sum, p) => sum + p.matchCount, 0)}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {perf.topPerformingPatterns.length > 0 && (
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold">Top Performing Patterns</h3>
+          {perf.topPerformingPatterns.slice(0, 5).map((p) => (
+            <div key={p.patternId} className="flex items-center justify-between p-3 rounded-lg border bg-card text-sm">
+              <div className="flex items-center gap-2">
+                <GitBranch className="w-4 h-4 text-primary" />
+                <span>Pattern #{p.patternId}</span>
+              </div>
+              <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                <span>{p.matchCount} matches</span>
+                <Badge variant={p.successRate >= 0.7 ? "default" : "secondary"} className="text-xs">
+                  {Math.round(p.successRate * 100)}% success
+                </Badge>
+                <span className="font-medium text-foreground">${p.avgProfit.toLocaleString()} avg profit</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Outcome breakdown bar */}
+      {total > 0 && (
+        <div className="space-y-1">
+          <div className="flex justify-between text-xs text-muted-foreground">
+            <span>Outcome Distribution</span>
+            <span>{total} patterns</span>
+          </div>
+          <div className="flex h-3 rounded-full overflow-hidden">
+            <div
+              className="bg-emerald-500"
+              style={{ width: `${(perf.patternsByOutcome.success / total) * 100}%` }}
+            />
+            <div
+              className="bg-amber-500"
+              style={{ width: `${(perf.patternsByOutcome.partialSuccess / total) * 100}%` }}
+            />
+            <div
+              className="bg-red-400"
+              style={{ width: `${(perf.patternsByOutcome.failure / total) * 100}%` }}
+            />
+          </div>
+          <div className="flex gap-4 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500" />Success ({perf.patternsByOutcome.success})</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500" />Partial ({perf.patternsByOutcome.partialSuccess})</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400" />Failed ({perf.patternsByOutcome.failure})</span>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -236,6 +381,8 @@ export default function DealPatternsPage() {
           )}
         </div>
       )}
+
+      <PerformanceSection />
     </PageShell>
   );
 }
