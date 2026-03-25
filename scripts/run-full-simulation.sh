@@ -160,20 +160,20 @@ if [[ "$RUN_LAYER" == "all" || "$RUN_LAYER" == "5" ]]; then
     echo "  Layer 5: LLM Visual Intelligence"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-    local layer_start=$(date +%s) 2>/dev/null || layer_start=$(date +%s)
-    local exit_code=0
+    LAYER5_START=$(date +%s)
+    LAYER5_EXIT=0
 
     npx tsx "$PROJECT_ROOT/tests/simulation/visual-intelligence.ts" all \
-      2>&1 | tee "$REPORT_DIR/layer-5.log" || exit_code=$?
+      2>&1 | tee "$REPORT_DIR/layer-5.log" || LAYER5_EXIT=$?
 
-    local layer_end=$(date +%s) 2>/dev/null || layer_end=$(date +%s)
-    local duration=$((layer_end - layer_start)) 2>/dev/null || duration=0
+    LAYER5_END=$(date +%s)
+    LAYER5_DURATION=$((LAYER5_END - LAYER5_START))
 
-    if [[ $exit_code -eq 0 ]]; then
-      LAYER_RESULTS+=("  ✅ Layer 5 (LLM Visual Intelligence): PASSED in ${duration}s")
+    if [[ $LAYER5_EXIT -eq 0 ]]; then
+      LAYER_RESULTS+=("  ✅ Layer 5 (LLM Visual Intelligence): PASSED in ${LAYER5_DURATION}s")
       ((TOTAL_PASS++)) || true
     else
-      LAYER_RESULTS+=("  ❌ Layer 5 (LLM Visual Intelligence): FAILED in ${duration}s")
+      LAYER_RESULTS+=("  ❌ Layer 5 (LLM Visual Intelligence): FAILED in ${LAYER5_DURATION}s")
       ((TOTAL_FAIL++)) || true
     fi
   fi

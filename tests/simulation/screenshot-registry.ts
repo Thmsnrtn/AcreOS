@@ -7,6 +7,10 @@
 
 import * as fs from "fs";
 import * as path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // ── Types ──
 
@@ -228,7 +232,7 @@ export function generateGallery(registry: RegistryIndex): string {
 
 // ── CLI Entry ──
 
-if (require.main === module) {
+if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) {
   console.log("📸 Building screenshot registry...");
   const registry = buildRegistry();
 
