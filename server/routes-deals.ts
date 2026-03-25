@@ -267,6 +267,13 @@ export function registerDealRoutes(app: Express): void {
         }).catch((err) => {
           logger.error("Failed to load marketNetworkContributor", { error: err.message });
         });
+
+        // Auto-fingerprint closed deal for pattern cloning (non-blocking)
+        import("./services/dealPatternCloning").then(({ dealPatternCloningService }) => {
+          dealPatternCloningService.recordPatternFromClosedDeal(org.id, deal.id).catch((err) => {
+            logger.error("deal pattern fingerprint failed", { error: err instanceof Error ? err.message : String(err) });
+          });
+        }).catch(() => {});
       }
 
       // Push notification when deal is accepted (T61)
