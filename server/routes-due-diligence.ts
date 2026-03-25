@@ -186,4 +186,76 @@ router.get("/dossier/:id/recommendation", isAuthenticated, async (req: Request, 
   }
 });
 
+// =====================
+// FULL DD REPORT PDF (6 pages)
+// =====================
+
+router.get("/:propertyId/dd-report", isAuthenticated, getOrCreateOrg, async (req: Request, res: Response) => {
+  try {
+    const org = req.organization;
+    const propertyId = parseInt(req.params.propertyId);
+    if (isNaN(propertyId)) return res.status(400).json({ error: "Invalid property ID" });
+
+    const { generateFullReport } = await import("./services/dueDiligenceReportGenerator");
+    const result = await generateFullReport(propertyId, org.id);
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename=dd-report-${propertyId}.pdf`);
+    res.send(result.pdf);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// =====================
+// PUBLIC DD PREVIEW (lead magnet) — no auth, rate limited
+// =====================
+
+const previewRateLimits = new Map<string, { count: number; date: string }>();
+
+router.post("/public/dd-preview", async (req: Request, res: Response) => {
+  try {
+    const { apn, state, email } = req.body;
+    if (!apn || !state) return res.status(400).json({ error: "apn and state are required" });
+
+    // Rate limit: 3/day per IP, 10/day per email
+    const ip = req.ip || "unknown";
+    const today = new Date().toISOString().slice(0, 10);
+    const ipKey = `ip:${ip}`;
+    const ipEntry = previewRateLimits.get(ipKey);
+
+    if (ipEntry && ipEntry.date === today && ipEntry.count >= 3) {
+      return res.status(429).json({ error: "Preview limit reached. Sign up for unlimited reports." });
+    }
+
+    if (!ipEntry || ipEntry.date !== today) {
+      previewRateLimits.set(ipKey, { count: 1, date: today });
+    } else {
+      ipEntry.count++;
+    }
+
+    if (email) {
+      const emailKey = `email:${email}`;
+      const emailEntry = previewRateLimits.get(emailKey);
+      if (emailEntry && emailEntry.date === today && emailEntry.count >= 10) {
+        return res.status(429).json({ error: "Email preview limit reached." });
+      }
+      if (!emailEntry || emailEntry.date !== today) {
+        previewRateLimits.set(emailKey, { count: 1, date: today });
+      } else {
+        emailEntry.count++;
+      }
+    }
+
+    const { generatePreviewReport } = await import("./services/dueDiligenceReportGenerator");
+    const pdf = await generatePreviewReport(apn, state);
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename=dd-preview-${apn}.pdf`);
+    res.send(pdf);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;
