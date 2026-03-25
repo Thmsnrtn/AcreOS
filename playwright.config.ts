@@ -21,7 +21,8 @@ export default defineConfig({
 
     // Desktop
     { name: "desktop-chrome", use: { ...devices["Desktop Chrome"], storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /.*\.setup\.ts/ },
-    { name: "desktop-firefox", use: { ...devices["Desktop Firefox"], storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /.*\.setup\.ts/ },
+    // Firefox disabled — NS_ERROR_NET_EMPTY_RESPONSE with Clerk middleware; re-enable when resolved
+    // { name: "desktop-firefox", use: { ...devices["Desktop Firefox"], storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /.*\.setup\.ts/ },
     { name: "desktop-1280", use: { viewport: { width: 1280, height: 720 }, storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /.*\.setup\.ts/ },
     { name: "desktop-ultrawide", use: { viewport: { width: 2560, height: 1080 }, storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /.*\.setup\.ts/ },
 

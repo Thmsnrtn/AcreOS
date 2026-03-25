@@ -12,6 +12,10 @@
 import Anthropic from "@anthropic-ai/sdk";
 import * as fs from "fs";
 import * as path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // ── Types ──
 
@@ -457,7 +461,7 @@ export async function runFullVisualIntelligence(): Promise<VisualReport[]> {
 
 // ── CLI Entry ──
 
-if (require.main === module) {
+if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) {
   const mode = process.argv[2] || "all";
   const REPORT_DIR = path.resolve(__dirname, "reports");
   if (!fs.existsSync(REPORT_DIR)) fs.mkdirSync(REPORT_DIR, { recursive: true });
