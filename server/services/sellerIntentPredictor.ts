@@ -799,6 +799,109 @@ What negotiation approach do you recommend?`
       .orderBy(desc(sellerIntentPredictions.createdAt));
   }
 
+  /**
+   * Calibrate signal weights based on predictions with known outcomes.
+   * Uses EMA (0.9 * old + 0.1 * empirical) to smooth adjustments.
+   * Requires 15+ outcome records.
+   */
+  async calibrateWeights(organizationId: number): Promise<void> {
+    const MIN_OUTCOMES = 15;
+    const EMA_ALPHA = 0.1;
+
+    try {
+      // Get predictions with known outcomes
+      const predictions = await db.select().from(sellerIntentPredictions)
+        .where(and(
+          eq(sellerIntentPredictions.organizationId, organizationId),
+          sql`${sellerIntentPredictions.actualOutcome} IS NOT NULL`,
+        ))
+        .orderBy(desc(sellerIntentPredictions.createdAt))
+        .limit(500);
+
+      if (predictions.length < MIN_OUTCOMES) {
+        logger.info("Seller intent calibration skipped — insufficient outcomes", {
+          organizationId,
+          count: predictions.length,
+          required: MIN_OUTCOMES,
+        });
+        return;
+      }
+
+      // Group by outcome category: positive (accepted, countered) vs negative (rejected, no_response, withdrew)
+      const positiveOutcomes = new Set(["accepted", "countered"]);
+
+      // For each signal type, compute correlation with positive outcomes
+      const signalKeys = Object.keys(SIGNAL_WEIGHTS) as (keyof typeof SIGNAL_WEIGHTS)[];
+      const empiricalWeights: Record<string, number> = {};
+
+      for (const signalKey of signalKeys) {
+        const scores: number[] = [];
+        const outcomes: number[] = [];
+
+        for (const pred of predictions) {
+          const signals = (pred.signals as any) || {};
+          const signalScore = signals[signalKey]?.score;
+          if (signalScore == null) continue;
+
+          scores.push(signalScore);
+          outcomes.push(positiveOutcomes.has(pred.actualOutcome || "") ? 1 : 0);
+        }
+
+        if (scores.length < MIN_OUTCOMES) {
+          empiricalWeights[signalKey] = SIGNAL_WEIGHTS[signalKey];
+          continue;
+        }
+
+        // Compute average score for positive vs negative outcomes
+        let posSum = 0, posCount = 0, negSum = 0, negCount = 0;
+        for (let i = 0; i < scores.length; i++) {
+          if (outcomes[i] === 1) { posSum += scores[i]; posCount++; }
+          else { negSum += scores[i]; negCount++; }
+        }
+
+        const posAvg = posCount > 0 ? posSum / posCount : 50;
+        const negAvg = negCount > 0 ? negSum / negCount : 50;
+        const separation = Math.abs(posAvg - negAvg) / 100; // 0..1
+
+        // Higher separation = this signal is more predictive, weight it more
+        empiricalWeights[signalKey] = separation;
+      }
+
+      // Normalize empirical weights to sum to 1
+      const empTotal = Object.values(empiricalWeights).reduce((s, v) => s + v, 0);
+      if (empTotal > 0) {
+        for (const key of signalKeys) {
+          empiricalWeights[key] = empiricalWeights[key] / empTotal;
+        }
+      }
+
+      // Apply EMA: new = 0.9 * old + 0.1 * empirical
+      for (const key of signalKeys) {
+        const oldWeight = SIGNAL_WEIGHTS[key];
+        const empWeight = empiricalWeights[key] ?? oldWeight;
+        (SIGNAL_WEIGHTS as any)[key] = parseFloat(
+          ((1 - EMA_ALPHA) * oldWeight + EMA_ALPHA * empWeight).toFixed(4)
+        );
+      }
+
+      // Normalize to sum to 1
+      const total = signalKeys.reduce((s, k) => s + SIGNAL_WEIGHTS[k], 0);
+      if (total > 0) {
+        for (const key of signalKeys) {
+          (SIGNAL_WEIGHTS as any)[key] = parseFloat((SIGNAL_WEIGHTS[key] / total).toFixed(4));
+        }
+      }
+
+      logger.info("Seller intent weights calibrated", {
+        organizationId,
+        sampleSize: predictions.length,
+        newWeights: { ...SIGNAL_WEIGHTS },
+      });
+    } catch (err) {
+      logger.error("Seller intent calibration failed", err instanceof Error ? err : undefined);
+    }
+  }
+
   private async getLeadMessageContent(leadId: number): Promise<string> {
     const leadConversations = await db.select().from(conversations)
       .where(eq(conversations.leadId, leadId));
