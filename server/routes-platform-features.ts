@@ -357,6 +357,154 @@ export function registerPlatformFeatureRoutes(app: Express): void {
     }
   });
 
+  // ─── Environmental Intelligence ─────────────────────────────────
+
+  app.get("/api/environmental/water-rights/:state", isAuthenticated, async (req, res) => {
+    try {
+      const { getWaterRightsInfo } = await import("./services/environmentalIntelligence");
+      res.json(getWaterRightsInfo(req.params.state));
+    } catch (error) { Errors.internal(res, error); }
+  });
+
+  app.get("/api/environmental/mineral-rights/:state", isAuthenticated, async (req, res) => {
+    try {
+      const { getMineralRightsInfo } = await import("./services/environmentalIntelligence");
+      res.json(getMineralRightsInfo(req.params.state));
+    } catch (error) { Errors.internal(res, error); }
+  });
+
+  app.get("/api/environmental/carbon-credits", isAuthenticated, async (req, res) => {
+    try {
+      const state = String(req.query.state || "TX");
+      const acres = Number(req.query.acres || 0);
+      const landType = req.query.landType ? String(req.query.landType) : undefined;
+      const { estimateCarbonCredits } = await import("./services/environmentalIntelligence");
+      res.json(estimateCarbonCredits(state, acres, landType));
+    } catch (error) { Errors.internal(res, error); }
+  });
+
+  app.get("/api/environmental/climate-risk", isAuthenticated, async (req, res) => {
+    try {
+      const state = String(req.query.state || "TX");
+      const county = req.query.county ? String(req.query.county) : undefined;
+      const { assessClimateRisk } = await import("./services/environmentalIntelligence");
+      res.json(assessClimateRisk(state, county));
+    } catch (error) { Errors.internal(res, error); }
+  });
+
+  app.post("/api/environmental/highest-best-use", isAuthenticated, async (req, res) => {
+    try {
+      const { analyzeHighestBestUse } = await import("./services/environmentalIntelligence");
+      res.json(analyzeHighestBestUse(req.body));
+    } catch (error) { Errors.internal(res, error); }
+  });
+
+  // ─── Entity Portfolio ──────────────────────────────────────────────
+
+  app.get("/api/portfolio/entities", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const { getEntities } = await import("./services/entityPortfolio");
+      const entities = await getEntities(org.id);
+      res.json({ entities });
+    } catch (error) { Errors.internal(res, error); }
+  });
+
+  app.get("/api/portfolio/by-entity", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const entityName = req.query.entity ? String(req.query.entity) : undefined;
+      const { getPortfolioByEntity } = await import("./services/entityPortfolio");
+      const portfolio = await getPortfolioByEntity(org.id, entityName);
+      res.json(portfolio);
+    } catch (error) { Errors.internal(res, error); }
+  });
+
+  app.get("/api/portfolio/entity-tax-summary", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const { getEntityTaxSummary } = await import("./services/entityPortfolio");
+      const summary = await getEntityTaxSummary(org.id);
+      res.json(summary);
+    } catch (error) { Errors.internal(res, error); }
+  });
+
+  app.get("/api/portfolio/opportunity-zones", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const { checkOpportunityZones } = await import("./services/entityPortfolio");
+      const zones = await checkOpportunityZones(org.id);
+      res.json(zones);
+    } catch (error) { Errors.internal(res, error); }
+  });
+
+  // ─── Legal Intelligence ────────────────────────────────────────────
+
+  app.get("/api/legal/adverse-possession/:state", isAuthenticated, async (req, res) => {
+    try {
+      const { getAdversePossessionInfo } = await import("./services/legalIntelligence");
+      res.json(getAdversePossessionInfo(req.params.state));
+    } catch (error) { Errors.internal(res, error); }
+  });
+
+  app.post("/api/legal/partition-risk", isAuthenticated, async (req, res) => {
+    try {
+      const { ownerCount, ownership, hasHeirs, isInherited } = req.body;
+      const { assessPartitionRisk } = await import("./services/legalIntelligence");
+      res.json(assessPartitionRisk(ownerCount || 1, ownership || "unknown", hasHeirs, isInherited));
+    } catch (error) { Errors.internal(res, error); }
+  });
+
+  app.get("/api/legal/tax-lien-context/:state", isAuthenticated, async (req, res) => {
+    try {
+      const { getTaxLienContext } = await import("./services/legalIntelligence");
+      res.json(getTaxLienContext(req.params.state));
+    } catch (error) { Errors.internal(res, error); }
+  });
+
+  app.post("/api/legal/respa-check", isAuthenticated, async (req, res) => {
+    try {
+      const { isSellerFinanced, hasMortgage, isResidential, numberOfUnits } = req.body;
+      const { checkRespaApplicability } = await import("./services/legalIntelligence");
+      res.json(checkRespaApplicability(!!isSellerFinanced, !!hasMortgage, !!isResidential, numberOfUnits));
+    } catch (error) { Errors.internal(res, error); }
+  });
+
+  // ─── Data Network Visibility ─────────────────────────────────────
+
+  app.get("/api/data-network/overview", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const { getCountyIntelligenceOverview } = await import("./services/dataNetworkVisibility");
+      const overview = await getCountyIntelligenceOverview(org.id);
+      res.json(overview);
+    } catch (error) {
+      Errors.internal(res, error);
+    }
+  });
+
+  app.get("/api/data-network/contribution", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const { getDataContributionMetrics } = await import("./services/dataNetworkVisibility");
+      const metrics = await getDataContributionMetrics(org.id);
+      res.json(metrics);
+    } catch (error) {
+      Errors.internal(res, error);
+    }
+  });
+
+  app.get("/api/data-network/lcs-benchmarks", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const { getLcsBenchmarks } = await import("./services/dataNetworkVisibility");
+      const benchmarks = await getLcsBenchmarks(org.id);
+      res.json({ benchmarks });
+    } catch (error) {
+      Errors.internal(res, error);
+    }
+  });
+
   // ─── Pax Relationship Arc ────────────────────────────────────────
 
   app.get("/api/pax/relationship", isAuthenticated, getOrCreateOrg, async (req, res) => {
