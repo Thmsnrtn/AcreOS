@@ -917,6 +917,180 @@ class LandCreditScoring {
       accuracy: Math.round(accuracy),
     };
   }
+
+  /**
+   * Generate a 2-page Land Credit Report PDF
+   */
+  async generateLandCreditReport(propertyId: any, organizationId: any): Promise<Buffer> {
+    const { jsPDF } = await import("jspdf");
+
+    const score = await this.calculateCreditScore(organizationId, propertyId);
+    const property = await db.query.properties.findFirst({
+      where: eq(properties.id, propertyId),
+    });
+
+    const doc = new jsPDF({ unit: "in", format: "letter" });
+    const margin = 0.75;
+    const pageWidth = 8.5;
+
+    // ─── Page 1: Score Overview ────────────────────────────────────────
+    let y = margin;
+    doc.setFontSize(18);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(30, 58, 30);
+    doc.text("Land Credit Score Report", margin, y);
+    y += 0.35;
+
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(120, 120, 120);
+    doc.text("Powered by AcreOS — 18 data sources analyzed", margin, y);
+    y += 0.15;
+    doc.setDrawColor(180, 160, 120);
+    doc.setLineWidth(0.015);
+    doc.line(margin, y, pageWidth - margin, y);
+    y += 0.35;
+
+    // Property info
+    doc.setFontSize(10);
+    doc.setTextColor(40, 40, 40);
+    const address = property?.address || `APN: ${property?.apn || "Unknown"}`;
+    doc.text(`Property: ${address}`, margin, y);
+    y += 0.2;
+    doc.text(`County: ${property?.county || "—"}, ${property?.state || "—"}`, margin, y);
+    y += 0.2;
+    const acreage = property?.acreage ? `${property.acreage} acres` : "Acreage unknown";
+    doc.text(`Size: ${acreage}`, margin, y);
+    y += 0.4;
+
+    // Score circle (simulated as text)
+    doc.setFontSize(36);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(30, 58, 30);
+    doc.text(`${score.overall}`, margin, y);
+    doc.setFontSize(14);
+    doc.text(`(${score.grade})`, margin + 1.2, y);
+    y += 0.15;
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(120, 120, 120);
+    doc.text(`Risk Level: ${score.riskLevel}`, margin, y);
+    y += 0.4;
+
+    // Dimension bars
+    const dims = [
+      { label: "Location", score: score.factors.location.score },
+      { label: "Physical", score: score.factors.physical.score },
+      { label: "Legal", score: score.factors.legal.score },
+      { label: "Financial", score: score.factors.financial.score },
+      { label: "Environmental", score: score.factors.environmental.score },
+      { label: "Market", score: score.factors.market.score },
+    ];
+
+    for (const dim of dims) {
+      doc.setFontSize(9);
+      doc.setTextColor(40, 40, 40);
+      doc.text(dim.label, margin, y);
+      doc.text(`${dim.score}`, margin + 4.5, y);
+
+      // Bar background
+      const barX = margin + 1.5;
+      const barW = 2.8;
+      doc.setFillColor(230, 230, 230);
+      doc.rect(barX, y - 0.1, barW, 0.12, "F");
+
+      // Bar fill
+      const fillW = (dim.score / 100) * barW;
+      if (dim.score >= 70) doc.setFillColor(34, 197, 94);
+      else if (dim.score >= 50) doc.setFillColor(245, 158, 11);
+      else doc.setFillColor(239, 68, 68);
+      doc.rect(barX, y - 0.1, fillW, 0.12, "F");
+      y += 0.25;
+    }
+
+    y += 0.3;
+
+    // Strengths & weaknesses
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(30, 58, 30);
+    doc.text("Top Strengths", margin, y);
+    y += 0.2;
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(40, 40, 40);
+    for (const s of score.strengths.slice(0, 3)) {
+      doc.text(`+ ${s}`, margin + 0.2, y);
+      y += 0.18;
+    }
+
+    y += 0.15;
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(180, 60, 60);
+    doc.text("Areas of Concern", margin, y);
+    y += 0.2;
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(40, 40, 40);
+    for (const w of score.weaknesses.slice(0, 2)) {
+      doc.text(`- ${w}`, margin + 0.2, y);
+      y += 0.18;
+    }
+
+    // Footer
+    doc.setFontSize(8);
+    doc.setTextColor(150, 150, 150);
+    doc.text("Score valid for 30 days.", margin, 10.2);
+
+    // ─── Page 2: Supporting Data ───────────────────────────────────────
+    doc.addPage();
+    y = margin;
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(30, 58, 30);
+    doc.text("Supporting Data & Methodology", margin, y);
+    y += 0.4;
+
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(40, 40, 40);
+
+    // Recommendations
+    doc.setFont("helvetica", "bold");
+    doc.text("Recommendations", margin, y);
+    y += 0.2;
+    doc.setFont("helvetica", "normal");
+    for (const r of score.recommendations.slice(0, 5)) {
+      doc.text(`• ${r}`, margin + 0.2, y);
+      y += 0.18;
+    }
+
+    y += 0.3;
+    doc.setFont("helvetica", "bold");
+    doc.text("Methodology", margin, y);
+    y += 0.2;
+    doc.setFont("helvetica", "normal");
+    const methodology = [
+      "Location (25%): Market strength, growth rate, economic health, accessibility",
+      "Physical (20%): Topography, soil quality, water access, utilities, road access",
+      "Legal (15%): Zoning flexibility, restrictions, mineral rights, water rights, title",
+      "Financial (20%): Cash flow potential, appreciation, liquidity, tax burden",
+      "Environmental (10%): Flood risk, wildfire, contamination, wetlands",
+      "Market (10%): Demand, supply, price history, days on market, comparables",
+    ];
+    for (const line of methodology) {
+      doc.text(line, margin + 0.2, y, { maxWidth: pageWidth - margin * 2 - 0.2 });
+      y += 0.22;
+    }
+
+    y += 0.3;
+    doc.setFontSize(8);
+    doc.setTextColor(150, 150, 150);
+    doc.text("Powered by AcreOS — 18 data sources analyzed", margin, 10.2);
+
+    return Buffer.from(doc.output("arraybuffer"));
+  }
 }
 
 export const landCredit = new LandCreditScoring();

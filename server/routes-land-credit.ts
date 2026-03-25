@@ -141,4 +141,23 @@ router.get('/backtest/:propertyId', async (req: Request, res: Response) => {
   }
 });
 
+// =====================
+// LAND CREDIT REPORT PDF
+// =====================
+
+router.get('/report/:propertyId', async (req: Request, res: Response) => {
+  try {
+    const org = req.organization;
+    const pdf = await landCredit.generateLandCreditReport(
+      req.params.propertyId,
+      org.id.toString(),
+    );
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename=land-credit-report-${req.params.propertyId}.pdf`);
+    res.send(pdf);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;
