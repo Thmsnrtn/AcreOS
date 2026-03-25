@@ -337,3 +337,33 @@ export class DealUnderwritingService {
 }
 
 export const dealUnderwritingService = new DealUnderwritingService();
+
+// Opportunity cost analysis — compares deal return against portfolio avg and risk-free rate
+export function calculateOpportunityCost(
+  investmentAmount: number,
+  projectedAnnualReturn: number, // percentage
+  portfolioAvgRoi: number,       // percentage
+  riskFreeRate: number = 5.0     // percentage
+): {
+  portfolioAvgRoi: number;
+  dealRoi: number;
+  roiSpread: number;
+  riskFreeRate: number;
+  riskFreeAnnualIncome: number;
+  projectedAnnualIncome: number;
+  spreadOverRiskFree: number;
+} {
+  const safeInvestment = Math.max(0, investmentAmount || 0);
+  const projectedAnnualIncome = safeInvestment * (projectedAnnualReturn / 100);
+  const riskFreeAnnualIncome = safeInvestment * (riskFreeRate / 100);
+
+  return {
+    portfolioAvgRoi: Math.round(portfolioAvgRoi * 10) / 10,
+    dealRoi: Math.round(projectedAnnualReturn * 10) / 10,
+    roiSpread: Math.round((projectedAnnualReturn - portfolioAvgRoi) * 10) / 10,
+    riskFreeRate,
+    riskFreeAnnualIncome: Math.round(riskFreeAnnualIncome),
+    projectedAnnualIncome: Math.round(projectedAnnualIncome),
+    spreadOverRiskFree: Math.round(projectedAnnualIncome - riskFreeAnnualIncome),
+  };
+}

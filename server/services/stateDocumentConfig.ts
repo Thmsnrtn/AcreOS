@@ -481,3 +481,15 @@ export function getTransferTaxAmount(state: string, salePrice: number): number {
   if (!config) return 0;
   return salePrice * (config.transferTaxPercent / 100);
 }
+
+// Statute of limitations for debt collection (years)
+export const DEBT_COLLECTION_SOL: Record<string, number> = {
+  TX: 4, FL: 5, AZ: 6, CA: 4, NV: 6, CO: 6, NM: 6,
+  NC: 3, GA: 6, OR: 6, WA: 6, MI: 6, OH: 8, PA: 4,
+  NY: 6, IL: 5, MO: 5, MN: 6, WI: 6, VA: 5, AL: 6,
+  ID: 5, MT: 5, ND: 6, SD: 6, WY: 8, UT: 6, AR: 5,
+};
+
+export function getDebtCollectionSOL(state: string): number {
+  return DEBT_COLLECTION_SOL[state.toUpperCase()] || 6; // 6 year default
+}

@@ -144,6 +144,11 @@ import { registerCommunicationRoutes } from "./routes-communications";
 import { registerVAEngineRoutes } from "./routes-va-engine";
 import { registerMiscRoutes } from "./routes-misc";
 import { registerSupportTicketRoutes } from "./routes-support-tickets";
+import { registerMicroFeatureRoutes } from "./routes-micro-features";
+import { registerClosingRoutes } from "./routes-closing";
+import { registerPlatformFeatureRoutes } from "./routes-platform-features";
+import { registerLeaseRoutes } from "./routes-leases";
+import { registerMaintenanceRoutes } from "./routes-maintenance";
 
 import { logger } from "./utils/logger";
 
@@ -1164,6 +1169,11 @@ export async function registerRoutes(
   await registerVAEngineRoutes(app);
   await registerMiscRoutes(app);
   registerSupportTicketRoutes(app);
+  registerMicroFeatureRoutes(app);
+  registerClosingRoutes(app);
+  registerPlatformFeatureRoutes(app);
+  registerLeaseRoutes(app);
+  registerMaintenanceRoutes(app);
 
   // Register AI Operations (Router-based)
   registerAIOperationsRoutes(app);

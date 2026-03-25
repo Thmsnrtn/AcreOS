@@ -642,6 +642,10 @@ export const properties = pgTable("properties", {
   capRate: numeric("cap_rate"),
   noi: numeric("noi"),
 
+  // Soft delete
+  deletedAt: timestamp("deleted_at"),
+  deletedBy: text("deleted_by"),
+
   // Timestamps
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -745,6 +749,8 @@ export const deals = pgTable("deals", {
   
   notes: text("notes"),
   assignedTo: integer("assigned_to"),
+  deletedAt: timestamp("deleted_at"),
+  deletedBy: text("deleted_by"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
@@ -842,6 +848,8 @@ export const notes = pgTable("notes", {
   delinquencyStatus: text("delinquency_status").default("current"), // current, early_delinquent, delinquent, seriously_delinquent, default_candidate
   
   notes: text("notes_text"), // Renamed to avoid conflict with table name
+  deletedAt: timestamp("deleted_at"),
+  deletedBy: text("deleted_by"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
@@ -11354,4 +11362,85 @@ export const processedFeedback = pgTable("processed_feedback", {
   severity: text("severity"), // low, medium, high, critical
   productArea: text("product_area"),
   processedAt: timestamp("processed_at").defaultNow(),
+});
+
+// ============================================
+// PLATFORM COMPLETION TABLES
+// ============================================
+
+// Leases — buy-and-hold tenant tracking
+export const leases = pgTable("leases", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  propertyId: integer("property_id").references(() => properties.id).notNull(),
+  tenantName: text("tenant_name").notNull(),
+  tenantEmail: text("tenant_email"),
+  tenantPhone: text("tenant_phone"),
+  monthlyRent: numeric("monthly_rent").notNull(),
+  securityDeposit: numeric("security_deposit"),
+  leaseStart: date("lease_start").notNull(),
+  leaseEnd: date("lease_end").notNull(),
+  status: text("status").notNull().default("active"), // active, expiring, expired, terminated
+  terms: jsonb("terms").$type<Record<string, unknown>>(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Maintenance requests — buy-and-hold property maintenance
+export const maintenanceRequests = pgTable("maintenance_requests", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  propertyId: integer("property_id").references(() => properties.id).notNull(),
+  leaseId: integer("lease_id").references(() => leases.id),
+  description: text("description").notNull(),
+  priority: text("priority").notNull().default("normal"), // low, normal, urgent, emergency
+  status: text("status").notNull().default("open"), // open, in_progress, resolved
+  cost: numeric("cost"),
+  resolvedAt: timestamp("resolved_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Shared deal links — attorney/partner sharing
+export const sharedDealLinks = pgTable("shared_deal_links", {
+  id: serial("id").primaryKey(),
+  dealId: integer("deal_id").references(() => deals.id).notNull(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  token: text("token").notNull().unique(),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Webhook delivery log — production reliability tracking
+export const webhookDeliveries = pgTable("webhook_deliveries", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  endpointUrl: text("endpoint_url").notNull(),
+  eventType: text("event_type").notNull(),
+  payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+  statusCode: integer("status_code"),
+  responseBody: text("response_body"),
+  attemptNumber: integer("attempt_number").notNull().default(1),
+  deliveredAt: timestamp("delivered_at"),
+  nextRetryAt: timestamp("next_retry_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Personal bests — milestone tracking
+export const personalBests = pgTable("personal_bests", {
+  id: serial("id").primaryKey(),
+  orgId: integer("org_id").references(() => organizations.id).notNull(),
+  metric: text("metric").notNull(),
+  value: numeric("value").notNull(),
+  previousValue: numeric("previous_value"),
+  achievedAt: timestamp("achieved_at").defaultNow(),
+  dealId: integer("deal_id").references(() => deals.id),
+});
+
+// Model calibration log — ML transparency
+export const modelCalibrationLog = pgTable("model_calibration_log", {
+  id: serial("id").primaryKey(),
+  modelType: text("model_type").notNull(), // lcs, radar, intent
+  recordsAnalyzed: integer("records_analyzed").notNull(),
+  correlation: numeric("correlation"),
+  adjustments: jsonb("adjustments").$type<Array<{ dimension: string; oldWeight: number; newWeight: number }>>(),
+  calibratedAt: timestamp("calibrated_at").defaultNow(),
 });

@@ -31,6 +31,7 @@ import {
   paxMemory, payments, organizations,
 } from "@shared/schema";
 import { eq, and, lt, gt, desc, count } from "drizzle-orm";
+import { voiceLearningService } from "./voiceLearning";
 
 interface AtlasContextBlock {
   text: string;
@@ -263,6 +264,18 @@ export async function buildAtlasContextBlock(
       const countyLines = counties.map((c: any) => `  • ${c.county}, ${c.state} (${c.count} properties)`);
       sections.push(`ACTIVE MARKETS (by property count):\n${countyLines.join("\n")}`);
     }
+
+    // ── Voice profile (so Atlas responds in their voice) ────────────────
+    try {
+      const voiceProfile = await voiceLearningService.getProfile(orgId);
+      if (voiceProfile && voiceProfile.sampleCount >= 3) {
+        sections.push(
+          `COMMUNICATION STYLE:\n` +
+          `  Match this user's voice in all responses.\n` +
+          voiceLearningService.buildStyleInstruction(voiceProfile)
+        );
+      }
+    } catch (_) { /* voice profile unavailable */ }
   } catch (err: any) {
     // Context build failure is non-fatal — Atlas still works without context
     sections.push(`[Context partially unavailable: ${err.message}]`);
