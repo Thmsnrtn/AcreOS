@@ -642,6 +642,9 @@ export const properties = pgTable("properties", {
   capRate: numeric("cap_rate"),
   noi: numeric("noi"),
 
+  // Entity ownership tracking
+  owningEntity: text("owning_entity"), // "Smith Land LLC", "Smith IRA LLC", etc.
+
   // Soft delete
   deletedAt: timestamp("deleted_at"),
   deletedBy: text("deleted_by"),
@@ -847,6 +850,9 @@ export const notes = pgTable("notes", {
   daysDelinquent: integer("days_delinquent").default(0),
   delinquencyStatus: text("delinquency_status").default("current"), // current, early_delinquent, delinquent, seriously_delinquent, default_candidate
   
+  // Entity ownership tracking
+  owningEntity: text("owning_entity"), // "Smith Land LLC", "Smith IRA LLC", etc.
+
   notes: text("notes_text"), // Renamed to avoid conflict with table name
   deletedAt: timestamp("deleted_at"),
   deletedBy: text("deleted_by"),
