@@ -357,6 +357,42 @@ export function registerPlatformFeatureRoutes(app: Express): void {
     }
   });
 
+  // ─── Seller Psychology → Negotiation ─────────────────────────────
+
+  // Get motivation profile + strategy recommendation for a lead
+  app.get("/api/leads/:id/motivation-profile", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const leadId = Number(req.params.id);
+      const { buildMotivationProfile, selectNegotiationStrategy, recommendOfferTier } = await import("./services/sellerPsychologyStrategy");
+
+      const profile = await buildMotivationProfile(org.id, leadId);
+      if (!profile) return res.json({ available: false, message: "No seller intent prediction available for this lead." });
+
+      const strategy = selectNegotiationStrategy(profile);
+      const offerTier = recommendOfferTier(profile);
+
+      res.json({ available: true, profile, strategy, offerTier });
+    } catch (error) {
+      Errors.internal(res, error);
+    }
+  });
+
+  // Get motivation signals for Deal Feed
+  app.post("/api/deals/motivation-signals", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const { dealIds } = req.body as { dealIds?: number[] };
+      if (!dealIds || !Array.isArray(dealIds)) return Errors.badRequest(res, "dealIds array required");
+
+      const { getDealFeedMotivationSignals } = await import("./services/sellerPsychologyStrategy");
+      const signals = await getDealFeedMotivationSignals(org.id, dealIds.slice(0, 50));
+      res.json({ signals });
+    } catch (error) {
+      Errors.internal(res, error);
+    }
+  });
+
   // ─── Calibration Loop ────────────────────────────────────────────
 
   // Full calibration report (LCS, confidence intervals, backtest, seller intent, radar)
