@@ -17,34 +17,28 @@ export default defineConfig({
   },
   projects: [
     // Auth setup project — creates signed-in state for reuse
-    {
-      name: "setup",
-      testMatch: /.*\.setup\.ts/,
-    },
+    { name: "setup", testMatch: /.*\.setup\.ts/ },
 
-    // Main Chromium project — reuses auth state
-    {
-      name: "chromium",
-      use: {
-        ...devices["Desktop Chrome"],
-        storageState: "tests/e2e/.auth/user.json",
-      },
-      dependencies: ["setup"],
-      testIgnore: /.*\.setup\.ts/,
-    },
+    // Desktop
+    { name: "desktop-chrome", use: { ...devices["Desktop Chrome"], storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /.*\.setup\.ts/ },
+    { name: "desktop-firefox", use: { ...devices["Desktop Firefox"], storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /.*\.setup\.ts/ },
+    { name: "desktop-1280", use: { viewport: { width: 1280, height: 720 }, storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /.*\.setup\.ts/ },
+    { name: "desktop-ultrawide", use: { viewport: { width: 2560, height: 1080 }, storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /.*\.setup\.ts/ },
 
-    // Task #254: Mobile viewport test — ensures responsive layout works on phones
-    {
-      name: "mobile-chrome",
-      use: {
-        ...devices["Pixel 5"],
-        storageState: "tests/e2e/.auth/user.json",
-      },
-      dependencies: ["setup"],
-      testIgnore: /.*\.setup\.ts/,
-      // Only run navigation and accessibility tests on mobile to keep CI fast
-      testMatch: /.*\/(navigation|accessibility)\.spec\.ts/,
-    },
+    // Tablets
+    { name: "ipad-portrait", use: { ...devices["iPad (gen 7)"], storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /.*\.setup\.ts/ },
+    { name: "ipad-landscape", use: { ...devices["iPad (gen 7) landscape"], storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /.*\.setup\.ts/ },
+    { name: "ipad-pro", use: { ...devices["iPad Pro 11"], storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /.*\.setup\.ts/ },
+
+    // Phones
+    { name: "iphone-14", use: { ...devices["iPhone 14"], storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /.*\.setup\.ts/ },
+    { name: "iphone-se", use: { ...devices["iPhone SE"], storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /.*\.setup\.ts/ },
+    { name: "pixel-5", use: { ...devices["Pixel 5"], storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /.*\.setup\.ts/ },
+    { name: "galaxy-s9", use: { ...devices["Galaxy S9+"], storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /.*\.setup\.ts/ },
+
+    // Worst case
+    { name: "tiny-phone", use: { viewport: { width: 320, height: 568 }, isMobile: true, storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /.*\.setup\.ts/ },
+    { name: "short-wide", use: { viewport: { width: 1920, height: 600 }, storageState: "tests/e2e/.auth/user.json" }, dependencies: ["setup"], testIgnore: /.*\.setup\.ts/ },
   ],
   // Start the dev server automatically in CI
   webServer: process.env.CI
