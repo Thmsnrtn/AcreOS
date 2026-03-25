@@ -136,4 +136,93 @@ export function registerReferralRoutes(app: Express): void {
       return res.status(500).json({ message: "Internal server error" });
     }
   });
+
+  /**
+   * POST /api/referral/activate
+   * Called when a referred user reaches deal_won activation event.
+   * Rewards BOTH referrer and referred with one free month.
+   */
+  app.post("/api/referral/activate", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const userId = (req.user as any)?.id;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+      // Find referral where this user is the referee
+      const [referral] = await db
+        .select()
+        .from(referrals)
+        .where(eq(referrals.refereeId, userId))
+        .limit(1);
+
+      if (!referral) return res.json({ rewarded: false, message: "No referral found" });
+      if (referral.status === "converted") return res.json({ rewarded: false, message: "Already rewarded" });
+
+      // Update status to converted and set credit
+      const creditAmount = 100; // $1.00 credit (or 1 month free depending on plan)
+      await db
+        .update(referrals)
+        .set({ status: "converted", creditAmount, convertedAt: new Date() })
+        .where(eq(referrals.id, referral.id));
+
+      // Credit the referrer's org
+      if (referral.referrerId) {
+        const [referrerUser] = await db
+          .select()
+          .from(users)
+          .where(eq(users.id, referral.referrerId))
+          .limit(1);
+
+        if (referrerUser) {
+          // Add referral credit to referrer's org
+          await db.execute(
+            sql`UPDATE organizations SET referral_credits = COALESCE(referral_credits, 0) + ${creditAmount}
+                WHERE id = (SELECT organization_id FROM users WHERE id = ${referral.referrerId} LIMIT 1)`
+          );
+        }
+      }
+
+      // Credit the referee's org
+      const org = req.organization;
+      await db.execute(
+        sql`UPDATE organizations SET referral_credits = COALESCE(referral_credits, 0) + ${creditAmount}
+            WHERE id = ${org.id}`
+      );
+
+      return res.json({
+        rewarded: true,
+        message: "Congratulations! You both earned a free month.",
+      });
+    } catch (err) {
+      console.error("[referral] POST /activate error:", err);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  /**
+   * GET /api/referral/referees
+   * Returns list of referred users and their activation status.
+   */
+  app.get("/api/referral/referees", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any)?.id;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+      const refs = await db
+        .select()
+        .from(referrals)
+        .where(eq(referrals.referrerId, userId));
+
+      const referees = refs.map((r) => ({
+        status: r.status,
+        signedUpAt: r.createdAt,
+        convertedAt: (r as any).convertedAt || null,
+        rewarded: r.status === "converted",
+      }));
+
+      return res.json({ referees });
+    } catch (err) {
+      console.error("[referral] GET /referees error:", err);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  });
 }
