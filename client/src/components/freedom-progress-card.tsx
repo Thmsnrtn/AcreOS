@@ -12,6 +12,7 @@ interface FreedomData {
   projectedFreedomDate: string | null;
   accelerationSuggestion: string | null;
   milestoneReached: number;
+  previousMonthIncome: number | null;
 }
 
 function ProgressRing({ percentage }: { percentage: number }) {
@@ -152,6 +153,24 @@ export function FreedomProgressCard() {
           )}
           {data.accelerationSuggestion && (
             <p className="text-xs text-primary">{data.accelerationSuggestion}</p>
+          )}
+
+          {/* Loss-aversion contextual messaging */}
+          {data.previousMonthIncome != null && data.monthlyPassiveIncome > data.previousMonthIncome ? (
+            <p className="text-xs text-emerald-600 dark:text-emerald-400">
+              Your passive income grew {formatCurrency(data.monthlyPassiveIncome - data.previousMonthIncome)} this month.
+              {data.projectedFreedomDate && (
+                <> On track for {new Date(data.projectedFreedomDate + "-01").toLocaleDateString("en-US", { month: "long", year: "numeric" })}.</>
+              )}
+            </p>
+          ) : data.previousMonthIncome != null && data.monthlyPassiveIncome < data.previousMonthIncome ? (
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              Your passive income dropped {formatCurrency(data.previousMonthIncome - data.monthlyPassiveIncome)} this month. Acquiring 1 note at your average terms would recover that and add $150.
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Holding steady at {formatCurrency(data.monthlyPassiveIncome)}/month. Your next acquisition pushes you closer to freedom.
+            </p>
           )}
         </div>
       </CardContent>
