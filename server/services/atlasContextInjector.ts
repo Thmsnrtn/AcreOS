@@ -32,6 +32,7 @@ import {
 } from "@shared/schema";
 import { eq, and, lt, gt, desc, count } from "drizzle-orm";
 import { voiceLearningService } from "./voiceLearning";
+import { getRelationshipState, getStageBehavior, buildPaxSystemPromptAddition } from "./paxRelationshipArc";
 
 interface AtlasContextBlock {
   text: string;
