@@ -493,3 +493,33 @@ export const DEBT_COLLECTION_SOL: Record<string, number> = {
 export function getDebtCollectionSOL(state: string): number {
   return DEBT_COLLECTION_SOL[state.toUpperCase()] || 6; // 6 year default
 }
+
+// ============================================
+// TAX LIEN REDEMPTION PERIODS
+// ============================================
+
+export const TAX_REDEMPTION_PERIODS: Record<string, { months: number; priority: string; notes: string }> = {
+  TX: { months: 24, priority: "first", notes: "2-year redemption for homestead, 6 months for non-homestead" },
+  FL: { months: 24, priority: "first", notes: "2-year redemption period" },
+  AZ: { months: 36, priority: "first", notes: "3-year redemption period" },
+  CA: { months: 12, priority: "first", notes: "1-year redemption period" },
+  CO: { months: 36, priority: "first", notes: "3-year redemption period" },
+  NM: { months: 36, priority: "first", notes: "3-year redemption period" },
+  NC: { months: 0, priority: "first", notes: "No redemption — tax deed state" },
+  GA: { months: 12, priority: "first", notes: "12-month redemption period" },
+  OR: { months: 24, priority: "first", notes: "2-year redemption period" },
+  WA: { months: 36, priority: "first", notes: "3-year redemption period" },
+  NV: { months: 0, priority: "first", notes: "No redemption — tax deed sale state" },
+  OK: { months: 24, priority: "first", notes: "2-year redemption period" },
+  LA: { months: 36, priority: "first", notes: "3-year redemption period" },
+  ND: { months: 36, priority: "first", notes: "3-year redemption period" },
+  PA: { months: 9, priority: "first", notes: "9-month redemption period" },
+  WV: { months: 18, priority: "first", notes: "18-month redemption period" },
+  WY: { months: 48, priority: "first", notes: "4-year redemption period" },
+};
+
+export const ADVERSE_POSSESSION_YEARS: Record<string, number> = {
+  TX: 10, FL: 7, AZ: 10, CA: 5, NV: 15, CO: 18, NM: 10,
+  NC: 20, GA: 20, OR: 10, WA: 10, OK: 15, LA: 30, ND: 20,
+  PA: 21, WV: 10, WY: 10, ID: 20, MT: 5, UT: 7,
+};
