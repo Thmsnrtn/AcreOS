@@ -357,6 +357,32 @@ export function registerPlatformFeatureRoutes(app: Express): void {
     }
   });
 
+  // ─── Pax Relationship Arc ────────────────────────────────────────
+
+  app.get("/api/pax/relationship", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const { getRelationshipState, getStageBehavior } = await import("./services/paxRelationshipArc");
+      const state = await getRelationshipState(org.id);
+      const behavior = getStageBehavior(state.stage);
+      res.json({ ...state, behavior });
+    } catch (error) {
+      Errors.internal(res, error);
+    }
+  });
+
+  // Record Pax interaction (called from Atlas chat)
+  app.post("/api/pax/interaction", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const { recordPaxInteraction } = await import("./services/paxRelationshipArc");
+      await recordPaxInteraction(org.id);
+      res.json({ ok: true });
+    } catch (error) {
+      Errors.internal(res, error);
+    }
+  });
+
   // ─── Trust Scores → Platform Surfaces ────────────────────────────
 
   // Get trust profile for current org (marketplace, shared links, PDFs)
