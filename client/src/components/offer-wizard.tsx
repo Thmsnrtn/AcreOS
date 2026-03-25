@@ -186,23 +186,29 @@ export function OfferWizard({ dealId, trigger }: OfferWizardProps) {
             {/* Step 2: Letter Preview */}
             {step === "letter" && (
               <motion.div key="letter" {...fadeInUp} className="space-y-4">
+                {!isAdvanced && (
+                  <p className="text-sm font-medium">Here's the letter. Send it.</p>
+                )}
                 <Textarea
                   value={letter}
                   onChange={(e) => setLetter(e.target.value)}
-                  rows={12}
+                  rows={isAdvanced ? 12 : 8}
                   className="font-mono text-sm"
                   aria-label="Offer letter content"
+                  readOnly={!isAdvanced}
                 />
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => letterMutation.mutate(selectedTier?.name.toLowerCase() || "market")}
-                    disabled={letterMutation.isPending}
-                  >
-                    Regenerate
-                  </Button>
-                </div>
+                {isAdvanced && (
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => letterMutation.mutate(selectedTier?.name.toLowerCase() || "market")}
+                      disabled={letterMutation.isPending}
+                    >
+                      Regenerate
+                    </Button>
+                  </div>
+                )}
                 <div className="space-y-2">
                   <p className="text-xs font-medium">Delivery method:</p>
                   <div className="flex gap-2">
@@ -223,7 +229,7 @@ export function OfferWizard({ dealId, trigger }: OfferWizardProps) {
                   </div>
                 </div>
                 <Button onClick={() => setStep("confirm")} className="w-full">
-                  Review & Send <ChevronRight className="w-3 h-3 ml-1" />
+                  {isAdvanced ? "Review & Send" : "Send It"} <ChevronRight className="w-3 h-3 ml-1" />
                 </Button>
               </motion.div>
             )}
