@@ -4,6 +4,7 @@ import { campaigns, type Campaign, type InsertCampaignOptimization } from "@shar
 import { storage } from "../storage";
 import { usageMeteringService } from "./credits";
 import OpenAI from "openai";
+import { voiceLearningService } from "./voiceLearning";
 
 function getOpenAIClient(): OpenAI | null {
   if (!process.env.OPENAI_API_KEY) {
@@ -142,7 +143,16 @@ export class CampaignOptimizerService {
       return [];
     }
 
-    const prompt = `You are a marketing optimization expert for land investment campaigns. Analyze this campaign and provide specific, actionable suggestions.
+    // Voice learning: incorporate org's communication style in suggestions
+    let voiceContext = "";
+    try {
+      const profile = await voiceLearningService.getProfile(campaign.organizationId);
+      if (profile && profile.sampleCount >= 3) {
+        voiceContext = `\n\nIMPORTANT: This organization's communication style is ${profile.formality} and ${profile.tone}. ${profile.usesContractions ? "They use contractions." : "They avoid contractions."} Common phrases: ${profile.commonPhrases.slice(0, 3).join(", ") || "none detected"}. Tailor all content suggestions to match this voice.`;
+      }
+    } catch (_) { /* continue without voice */ }
+
+    const prompt = `You are a marketing optimization expert for land investment campaigns. Analyze this campaign and provide specific, actionable suggestions.${voiceContext}
 
 Campaign Details:
 - Name: ${campaign.name}
