@@ -11450,3 +11450,20 @@ export const modelCalibrationLog = pgTable("model_calibration_log", {
   adjustments: jsonb("adjustments").$type<Array<{ dimension: string; oldWeight: number; newWeight: number }>>(),
   calibratedAt: timestamp("calibrated_at").defaultNow(),
 });
+
+// ============================================
+// COUNTY REVIEWS (Community Intelligence)
+// ============================================
+
+export const countyReviews = pgTable("county_reviews", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  state: text("state").notNull(),
+  county: text("county").notNull(),
+  rating: integer("rating").notNull(),
+  pros: text("pros").notNull(),
+  cons: text("cons").notNull(),
+  investorTrustScore: integer("investor_trust_score"),
+  verifiedDeals: integer("verified_deals"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
