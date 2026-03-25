@@ -74,6 +74,13 @@ interface ScoringFactors {
   };
 }
 
+interface CreditScoreConfidence {
+  low: number;
+  high: number;
+  scoredDimensions: number;
+  totalDimensions: number;
+}
+
 interface CreditScore {
   overall: number; // 300-850 (like FICO)
   grade: 'A+' | 'A' | 'B+' | 'B' | 'C+' | 'C' | 'D' | 'F';
@@ -82,6 +89,7 @@ interface CreditScore {
   strengths: string[];
   weaknesses: string[];
   recommendations: string[];
+  confidence: CreditScoreConfidence;
 }
 
 class LandCreditScoring {
@@ -152,6 +160,9 @@ class LandCreditScoring {
 
       const { strengths, weaknesses } = this.identifyStrengthsWeaknesses(factors);
       const recommendations = this.generateRecommendations(factors, creditScore);
+
+      // Compute confidence based on how many dimensions have real data vs defaults
+      const confidence = this.computeConfidence(factors, creditScore);
 
       // Save score to database
       await db.insert(landCreditScores).values({
