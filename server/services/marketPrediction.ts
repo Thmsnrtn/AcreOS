@@ -538,7 +538,6 @@ export class MarketPredictionService {
   async recordPriceTrend(data: InsertPriceTrend) {
     await db.insert(priceTrends).values(data);
   }
-}
 
   /**
    * Seasonal timing intelligence (1f).

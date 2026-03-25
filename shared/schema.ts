@@ -11444,3 +11444,25 @@ export const modelCalibrationLog = pgTable("model_calibration_log", {
   adjustments: jsonb("adjustments").$type<Array<{ dimension: string; oldWeight: number; newWeight: number }>>(),
   calibratedAt: timestamp("calibrated_at").defaultNow(),
 });
+
+// Lead emails — inbound/outbound email thread per lead
+export const leadEmails = pgTable("lead_emails", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  leadId: integer("lead_id").references(() => leads.id).notNull(),
+  direction: text("direction").notNull(), // "inbound" | "outbound"
+  fromEmail: text("from_email").notNull(),
+  toEmail: text("to_email").notNull(),
+  subject: text("subject"),
+  bodyText: text("body_text"),
+  bodyHtml: text("body_html"),
+  messageId: text("message_id"), // SES message ID or inbound Message-ID header
+  inReplyTo: text("in_reply_to"), // threading
+  receivedAt: timestamp("received_at").defaultNow(),
+  readAt: timestamp("read_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertLeadEmailSchema = createInsertSchema(leadEmails).omit({
+  id: true, createdAt: true,
+});
