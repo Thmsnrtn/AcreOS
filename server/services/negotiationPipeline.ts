@@ -79,6 +79,78 @@ export async function initiateOffer(dealId: number, orgId: number): Promise<Offe
   const market = Math.round(estimatedValue * 0.40);
   const generous = Math.round(estimatedValue * 0.55);
 
+  // Build motivation profile if deal has a lead
+  let motivationGrade: string | undefined;
+  let tierStrategy: { aggressive?: NegotiationStrategy; market?: NegotiationStrategy; generous?: NegotiationStrategy } = {};
+  let tierRationale: { aggressive?: string; market?: string; generous?: string } = {};
+  let aggressiveNote = "";
+  let generousNote = "";
+
+  try {
+    const leadId = (deal as any).leadId;
+    if (leadId) {
+      const { buildMotivationProfile } = await import("./sellerPsychologyStrategy");
+      const profile = await buildMotivationProfile(orgId, leadId);
+
+      if (profile) {
+        // Determine motivation grade from intent score
+        if (profile.intentScore >= 80) motivationGrade = "A";
+        else if (profile.intentScore >= 65) motivationGrade = "B";
+        else if (profile.intentScore >= 50) motivationGrade = "C";
+        else if (profile.intentScore >= 35) motivationGrade = "D";
+        else motivationGrade = "F";
+
+        // Map motivation factors to strategies
+        const signals = profile as any;
+        const urgencyLevel = profile.urgencyLevel;
+        const emotionalAttachment = profile.emotionalAttachment;
+        const priceFlexibility = profile.priceFlexibility;
+        const lifeEvent = profile.lifeEvent;
+
+        // Determine recommended strategy based on motivation factors
+        // High "found money" (inherited + high flex) → anchor
+        if (lifeEvent === "inheritance" && priceFlexibility === "high") {
+          tierStrategy.aggressive = "anchor";
+          tierRationale.aggressive = "Inherited property with high price flexibility — anchor low.";
+        }
+        // High "tax delinquent" → urgency
+        else if (lifeEvent === "financial_distress" || urgencyLevel === "high") {
+          tierStrategy.aggressive = "urgency";
+          tierRationale.aggressive = "Financial pressure or high urgency — emphasize quick close.";
+        }
+        // High "emotional attachment" → empathy
+        else if (emotionalAttachment === "high") {
+          tierStrategy.market = "empathy";
+          tierRationale.market = "Strong emotional attachment — lead with empathy and respect.";
+        }
+
+        // Absentee/out-of-state or financial distress → logic
+        if (!tierStrategy.market) {
+          tierStrategy.market = "logic";
+          tierRationale.market = "Use data-backed reasoning to support the market-rate offer.";
+        }
+        if (!tierStrategy.aggressive) {
+          tierStrategy.aggressive = "anchor";
+          tierRationale.aggressive = "Standard aggressive approach — anchor low and negotiate up.";
+        }
+        tierStrategy.generous = emotionalAttachment === "high" ? "empathy" : "logic";
+        tierRationale.generous = emotionalAttachment === "high"
+          ? "Emotional seller — generous offer paired with empathetic approach."
+          : "Rational approach with a competitive offer to maximize acceptance.";
+
+        // Add motivation-informed notes to tiers
+        if (motivationGrade === "A" || motivationGrade === "B") {
+          aggressiveNote = " High-motivation seller. Aggressive offers have 3x acceptance rate for this profile.";
+        }
+        if (motivationGrade === "D" || motivationGrade === "F") {
+          generousNote = " Low-motivation seller. A generous offer with seller financing may be more effective.";
+        }
+      }
+    }
+  } catch (err) {
+    logger.warn("Failed to build motivation profile for negotiation", { dealId, error: err instanceof Error ? err.message : String(err) });
+  }
+
   return {
     dealId,
     tiers: [
@@ -87,7 +159,9 @@ export async function initiateOffer(dealId: number, orgId: number): Promise<Offe
         price: aggressive,
         profit: estimatedValue - aggressive,
         strategy: "Maximum margin — best for tax delinquent or highly motivated sellers",
-        description: `${Math.round((aggressive / estimatedValue) * 100)}% of estimated value. Highest profit potential.`,
+        description: `${Math.round((aggressive / estimatedValue) * 100)}% of estimated value. Highest profit potential.${aggressiveNote}`,
+        recommendedStrategy: tierStrategy.aggressive,
+        strategyRationale: tierRationale.aggressive,
       },
       {
         name: "Market",
@@ -95,18 +169,23 @@ export async function initiateOffer(dealId: number, orgId: number): Promise<Offe
         profit: estimatedValue - market,
         strategy: "Balanced approach — competitive offer with strong margins",
         description: `${Math.round((market / estimatedValue) * 100)}% of estimated value. Good acceptance rate.`,
+        recommendedStrategy: tierStrategy.market,
+        strategyRationale: tierRationale.market,
       },
       {
         name: "Generous",
         price: generous,
         profit: estimatedValue - generous,
         strategy: "Best acceptance rate — use when competition is expected",
-        description: `${Math.round((generous / estimatedValue) * 100)}% of estimated value. Highest acceptance rate.`,
+        description: `${Math.round((generous / estimatedValue) * 100)}% of estimated value. Highest acceptance rate.${generousNote}`,
+        recommendedStrategy: tierStrategy.generous,
+        strategyRationale: tierRationale.generous,
       },
     ],
     compSummary: property?.county
       ? `Based on ${property.county} County market data`
       : "Based on estimated property value",
+    motivationGrade,
   };
 }
 
