@@ -19,7 +19,8 @@ import { logger } from "../utils/logger";
 export interface OwningEntity {
   name: string;
   propertyCount: number;
-  type: "llc" | "trust" | "individual" | "unknown";
+  totalValue: number;
+  type: "llc" | "trust" | "individual" | "corporation" | "unknown";
 }
 
 export interface EntityProperty {
@@ -38,7 +39,7 @@ export interface EntityProperty {
 
 export interface EntityPortfolio {
   entity: string;
-  entityType: "llc" | "trust" | "individual" | "unknown";
+  entityType: "llc" | "trust" | "individual" | "corporation" | "unknown";
   properties: EntityProperty[];
   totalValue: number;
   propertyCount: number;
@@ -46,7 +47,7 @@ export interface EntityPortfolio {
 
 export interface EntityTaxSummary {
   entity: string;
-  entityType: "llc" | "trust" | "individual" | "unknown";
+  entityType: "llc" | "trust" | "individual" | "corporation" | "unknown";
   propertyCount: number;
   totalMarketValue: number;
   totalPurchasePrice: number;
@@ -68,7 +69,7 @@ export interface OzCheckResult {
 /**
  * Infer entity type from the entity name string.
  */
-function inferEntityType(name: string): "llc" | "trust" | "individual" | "unknown" {
+function inferEntityType(name: string): "llc" | "trust" | "individual" | "corporation" | "unknown" {
   const lower = name.toLowerCase();
   if (lower.includes("llc") || lower.includes("l.l.c") || lower.includes("limited liability")) {
     return "llc";
@@ -76,8 +77,11 @@ function inferEntityType(name: string): "llc" | "trust" | "individual" | "unknow
   if (lower.includes("trust") || lower.includes("revocable") || lower.includes("irrevocable")) {
     return "trust";
   }
+  if (lower.includes("inc") || lower.includes("corp") || lower.includes("incorporated")) {
+    return "corporation";
+  }
   // Simple heuristic: if the name has no business suffixes, treat as individual
-  const businessSuffixes = ["inc", "corp", "ltd", "llp", "lp", "co", "company", "partners"];
+  const businessSuffixes = ["ltd", "llp", "lp", "co", "company", "partners", "holdings"];
   if (businessSuffixes.some((s) => lower.includes(s))) {
     return "unknown";
   }
@@ -110,33 +114,40 @@ export async function getEntities(orgId: number): Promise<OwningEntity[]> {
     .select({
       id: properties.id,
       parcelData: properties.parcelData,
+      marketValue: properties.marketValue,
+      purchasePrice: properties.purchasePrice,
     })
     .from(properties)
     .where(
       and(
         eq(properties.organizationId, orgId),
         eq(properties.status, "owned"),
+        sql`${properties.deletedAt} IS NULL`,
       ),
     );
 
-  const entityMap = new Map<string, number>();
+  const entityMap = new Map<string, { count: number; totalValue: number }>();
   for (const row of rows) {
     const name = extractOwnerName(row.parcelData);
-    entityMap.set(name, (entityMap.get(name) ?? 0) + 1);
+    const current = entityMap.get(name) ?? { count: 0, totalValue: 0 };
+    current.count += 1;
+    current.totalValue += parseFloat(row.marketValue ?? row.purchasePrice ?? "0");
+    entityMap.set(name, current);
   }
 
   const entities: OwningEntity[] = [];
-  for (const [name, propertyCount] of entityMap) {
+  for (const [name, data] of entityMap) {
     entities.push({
       name,
-      propertyCount,
+      propertyCount: data.count,
+      totalValue: data.totalValue,
       type: inferEntityType(name),
     });
   }
 
-  entities.sort((a, b) => b.propertyCount - a.propertyCount);
+  entities.sort((a, b) => b.totalValue - a.totalValue);
 
-  logger.info({ orgId, entityCount: entities.length }, "entityPortfolio.getEntities: done");
+  logger.info("Fetched owning entities", { source: "entityPortfolio", organizationId: orgId, metadata: { entityCount: entities.length } });
   return entities;
 }
 
@@ -147,7 +158,7 @@ export async function getPortfolioByEntity(
   orgId: number,
   entityName?: string,
 ): Promise<EntityPortfolio[]> {
-  logger.info({ orgId, entityName }, "entityPortfolio.getPortfolioByEntity: fetching portfolio");
+  logger.info("Fetching entity portfolio view", { source: "entityPortfolio", organizationId: orgId, metadata: { entityFilter: entityName ?? "all" } });
 
   const rows = await db
     .select({
@@ -168,6 +179,7 @@ export async function getPortfolioByEntity(
       and(
         eq(properties.organizationId, orgId),
         eq(properties.status, "owned"),
+        sql`${properties.deletedAt} IS NULL`,
       ),
     );
 
@@ -215,10 +227,7 @@ export async function getPortfolioByEntity(
 
   portfolios.sort((a, b) => b.totalValue - a.totalValue);
 
-  logger.info(
-    { orgId, portfolioCount: portfolios.length },
-    "entityPortfolio.getPortfolioByEntity: done",
-  );
+  logger.info("Fetched entity portfolio view", { source: "entityPortfolio", organizationId: orgId, metadata: { portfolioCount: portfolios.length } });
   return portfolios;
 }
 
@@ -226,7 +235,7 @@ export async function getPortfolioByEntity(
  * Compute per-entity tax summary with optimization suggestions.
  */
 export async function getEntityTaxSummary(orgId: number): Promise<EntityTaxSummary[]> {
-  logger.info({ orgId }, "entityPortfolio.getEntityTaxSummary: computing tax summaries");
+  logger.info("Computing entity tax summaries", { source: "entityPortfolio", organizationId: orgId });
 
   const portfolios = await getPortfolioByEntity(orgId);
 
@@ -262,10 +271,7 @@ export async function getEntityTaxSummary(orgId: number): Promise<EntityTaxSumma
     };
   });
 
-  logger.info(
-    { orgId, summaryCount: summaries.length },
-    "entityPortfolio.getEntityTaxSummary: done",
-  );
+  logger.info("Computed entity tax summaries", { source: "entityPortfolio", organizationId: orgId, metadata: { summaryCount: summaries.length } });
   return summaries;
 }
 
@@ -274,7 +280,7 @@ export async function getEntityTaxSummary(orgId: number): Promise<EntityTaxSumma
  * Uses enrichment data and cross-references the opportunity_zone_holdings table.
  */
 export async function checkOpportunityZones(orgId: number): Promise<OzCheckResult[]> {
-  logger.info({ orgId }, "entityPortfolio.checkOpportunityZones: checking OZ tracts");
+  logger.info("Checking Opportunity Zone eligibility", { source: "entityPortfolio", organizationId: orgId });
 
   const rows = await db
     .select({
@@ -290,6 +296,7 @@ export async function checkOpportunityZones(orgId: number): Promise<OzCheckResul
       and(
         eq(properties.organizationId, orgId),
         eq(properties.status, "owned"),
+        sql`${properties.deletedAt} IS NULL`,
       ),
     );
 
@@ -310,10 +317,7 @@ export async function checkOpportunityZones(orgId: number): Promise<OzCheckResul
   });
 
   const ozCount = results.filter((r) => r.isInOpportunityZone).length;
-  logger.info(
-    { orgId, total: results.length, ozCount },
-    "entityPortfolio.checkOpportunityZones: done",
-  );
+  logger.info("Checked Opportunity Zone eligibility", { source: "entityPortfolio", organizationId: orgId, metadata: { totalProperties: results.length, ozEligible: ozCount } });
 
   return results;
 }
