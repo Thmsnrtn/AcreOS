@@ -11198,6 +11198,97 @@ export const notesReceivable = pgTable("notes_receivable", {
   status: text("status").notNull().default("active"),
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+// ============================================
+// DAILY DEAL FEED (Section 1)
+// ============================================
+
+export interface DealOpportunity {
+  id: string; // deterministic hash of apn+county+state
+  parcel: {
+    apn: string;
+    address: string | null;
+    county: string;
+    state: string;
+    acreage: number;
+    lat: number;
+    lng: number;
+  };
+  scores: {
+    landCredit: number; // 300-850
+    landCreditGrade: string;
+    radarScore: number; // 0-100
+    ownerMotivation: number; // 0-100
+    countyOpportunity: number; // 0-100
+    composite: number; // weighted blend — the sort key
+  };
+  signals: {
+    motivation: string[]; // "tax delinquent", "out of state", "owned 20+ years"
+    environmental: string[]; // "no flood risk", "road access confirmed"
+    market: string[]; // "county values rising 8% YoY"
+    risks: string[]; // "wetlands adjacent", "no road access"
+  };
+  financials: {
+    estimatedValue: number;
+    suggestedOffer: { aggressive: number; market: number; generous: number };
+    cashFlipProfit: { aggressive: number; market: number; generous: number };
+    sellerFinanceYield: number | null;
+  };
+  enrichment: {
+    floodZone: string;
+    elevation: number | null;
+    roadAccess: string;
+    terrain: string;
+    soil: string;
+    nearestTown: string | null;
+    nearestTownDistance: number | null;
+  };
+  matchReason: string; // "Matches your Hudspeth County pattern"
+}
+
+export const dailyDealFeed = pgTable("daily_deal_feed", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  opportunities: jsonb("opportunities").$type<DealOpportunity[]>().notNull(),
+  generatedAt: timestamp("generated_at").defaultNow().notNull(),
+  viewedAt: timestamp("viewed_at"),
+  archivedAt: timestamp("archived_at"),
+}, (t) => [
+  index("ddf_org_generated_idx").on(t.organizationId, t.generatedAt),
+]);
+export type DailyDealFeed = typeof dailyDealFeed.$inferSelect;
+
+export const dealFeedInteractions = pgTable("deal_feed_interactions", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  opportunityId: text("opportunity_id").notNull(),
+  action: text("action").notNull(), // "interested" | "pass" | "offer_sent" | "deal_created"
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => [
+  index("dfi_org_opportunity_idx").on(t.organizationId, t.opportunityId),
+  index("dfi_org_created_idx").on(t.organizationId, t.createdAt),
+]);
+export type DealFeedInteraction = typeof dealFeedInteractions.$inferSelect;
+
+// ============================================
+// ENTITY COMMENTS (Section 11)
+// ============================================
+
+export const entityComments = pgTable("entity_comments", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  entityType: text("entity_type").notNull(), // "lead" | "deal" | "property" | "note"
+  entityId: integer("entity_id").notNull(),
+  userId: text("user_id").notNull(),
+  content: text("content").notNull(),
+  mentions: jsonb("mentions").$type<string[]>().default([]),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => [
+  index("ec_entity_idx").on(t.entityType, t.entityId),
+  index("ec_org_created_idx").on(t.organizationId, t.createdAt),
+]);
+export type EntityComment = typeof entityComments.$inferSelect;
 export type NoteReceivable = typeof notesReceivable.$inferSelect;
 
 // ============================================

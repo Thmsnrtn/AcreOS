@@ -85,6 +85,7 @@ import bookkeepingRouter from "./routes-bookkeeping";
 import abTestsRouter from "./routes-ab-tests";
 import doddFrankRouter from "./routes-dodd-frank";
 import fieldScoutRouter from "./routes-field-scout";
+import dealFeedRouter from "./routes-deal-feed";
 
 // Rate limiting middleware
 import { createRateLimiter, rateLimiters, RATE_LIMIT_CONFIGS, authLimiter, aiLimiter, webhookLimiter, importLimiter } from "./middleware/rateLimit";
@@ -829,6 +830,7 @@ export async function registerRoutes(
   app.use('/api/buyer-qualification', isAuthenticated, getOrCreateOrg, buyerQualificationRouter);
   app.use('/api/due-diligence', isAuthenticated, getOrCreateOrg, dueDiligenceRouter);
   app.use('/api/deal-patterns', isAuthenticated, getOrCreateOrg, dealPatternsRouter);
+  app.use('/api/deal-feed', dealFeedRouter);
   app.use('/api/price-optimizer', isAuthenticated, getOrCreateOrg, priceOptimizerRouter);
   app.use('/api/portfolio-health', isAuthenticated, getOrCreateOrg, portfolioHealthRouter);
   app.use('/api/privacy', isAuthenticated, gdprRouter);

@@ -24,6 +24,7 @@ import { AnomalyAlerts, PredictiveInsights, NextBestActions, TasksDueWidget } fr
 import { PlaybookCard } from "@/components/playbooks/PlaybookCard";
 import { Link } from "wouter";
 import { WorkspaceManager } from "@/components/workspace/WorkspaceManager";
+import { DailyDealFeed } from "@/components/deal-feed/daily-deal-feed";
 
 function getUrgencyStyle(urgency: string) {
   switch (urgency) {
@@ -199,6 +200,33 @@ export default function Dashboard() {
     if (!isWidgetVisible(widgetId)) return null;
 
     switch (widgetId) {
+      case "dealFeed":
+        return (
+          <motion.div
+            key={widgetId}
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.05 * index }}
+          >
+            <Card className="floating-window border-primary/20">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Target className="w-5 h-5 text-primary" />
+                  Today's Opportunities
+                  <Link href="/deal-feed" className="ml-auto">
+                    <Button variant="ghost" size="sm" className="text-xs">
+                      View All <span className="ml-1">→</span>
+                    </Button>
+                  </Link>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <DailyDealFeed compact />
+              </CardContent>
+            </Card>
+          </motion.div>
+        );
+
       case "stats":
         return (
           <motion.div 

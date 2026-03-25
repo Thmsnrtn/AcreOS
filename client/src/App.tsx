@@ -170,6 +170,7 @@ const MarketWatchlistPage = React.lazy(() => import("@/pages/market-watchlist"))
 const PriceOptimizerPage = React.lazy(() => import("@/pages/price-optimizer"));
 const SellerIntentPage = React.lazy(() => import("@/pages/seller-intent"));
 const DealPatternsPage = React.lazy(() => import("@/pages/deal-patterns"));
+const DealFeedPage = React.lazy(() => import("@/pages/deal-feed"));
 const DocumentIntelligencePage = React.lazy(() => import("@/pages/document-intelligence"));
 // VoiceAnalyticsPage removed — AI Voice feature deprecated
 const MarketplaceAnalyticsPage = React.lazy(() => import("@/pages/marketplace-analytics"));
@@ -562,6 +563,9 @@ function Router() {
 
       <Route path="/deal-underwriting">
         {() => <ProtectedRoute component={DealUnderwritingPage} />}
+      </Route>
+      <Route path="/deal-feed">
+        {() => <ProtectedRoute component={DealFeedPage} />}
       </Route>
       <Route path="/team-kpi">
         {() => <ProtectedRoute component={TeamKPIPage} />}
