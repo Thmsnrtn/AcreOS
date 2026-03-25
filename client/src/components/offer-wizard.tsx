@@ -137,8 +137,17 @@ export function OfferWizard({ dealId, trigger }: OfferWizardProps) {
                   </div>
                 ) : initiateMutation.data?.tiers ? (
                   <>
-                    {initiateMutation.data.compSummary && (
+                    {!isAdvanced && (
+                      <p className="text-sm font-medium">Here are 3 offer prices. Pick one.</p>
+                    )}
+                    {isAdvanced && initiateMutation.data.compSummary && (
                       <p className="text-xs text-muted-foreground">{initiateMutation.data.compSummary}</p>
+                    )}
+                    {isAdvanced && initiateMutation.data.strategyRecommendation && (
+                      <p className="text-xs text-primary">{initiateMutation.data.strategyRecommendation}</p>
+                    )}
+                    {isAdvanced && initiateMutation.data.motivationAnalysis && (
+                      <p className="text-xs text-muted-foreground">{initiateMutation.data.motivationAnalysis}</p>
                     )}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       {initiateMutation.data.tiers.map((tier: OfferTier) => (
@@ -155,10 +164,14 @@ export function OfferWizard({ dealId, trigger }: OfferWizardProps) {
                               )}
                             </div>
                             <p className="text-xl font-bold">{formatPrice(tier.price)}</p>
-                            <p className="text-xs text-muted-foreground">
-                              Projected profit: {formatPrice(tier.profit)}
-                            </p>
-                            <p className="text-xs">{tier.strategy}</p>
+                            {isAdvanced && (
+                              <>
+                                <p className="text-xs text-muted-foreground">
+                                  Projected profit: {formatPrice(tier.profit)}
+                                </p>
+                                <p className="text-xs">{tier.strategy}</p>
+                              </>
+                            )}
                           </CardContent>
                         </Card>
                       ))}
