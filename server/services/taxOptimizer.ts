@@ -387,6 +387,31 @@ class TaxOptimizerService {
       });
     }
 
+    // 3b. Cross-entity tax-loss harvesting
+    const entitiesWithGains = new Set(
+      transactions.filter(t => t.realizedGain > 0 && t.owningEntity).map(t => t.owningEntity!)
+    );
+    const entitiesWithLosses = new Set(
+      transactions.filter(t => t.realizedGain < 0 && t.owningEntity).map(t => t.owningEntity!)
+    );
+    const gainEntities = [...entitiesWithGains].filter(e => !entitiesWithLosses.has(e));
+    const lossEntities = [...entitiesWithLosses].filter(e => !entitiesWithGains.has(e));
+    if (gainEntities.length > 0 && lossEntities.length > 0) {
+      recs.push({
+        priority: "medium",
+        category: "loss_harvesting",
+        title: "Cross-Entity Tax-Loss Harvesting Opportunity",
+        description: `Entities with gains (${gainEntities.join(", ")}) and entities with losses (${lossEntities.join(", ")}) may present tax-loss harvesting opportunities across entities. Consult your CPA — cross-entity loss harvesting has strict IRS attribution and related-party rules that must be followed.`,
+        estimatedSavings: 0, // CPA must evaluate
+        actionItems: [
+          "Consult CPA regarding IRC Section 267 related-party loss disallowance rules",
+          "Review entity ownership structures for common control",
+          "Document business purpose for any cross-entity transactions",
+          "Disclaimer: Cross-entity strategies require professional tax advice",
+        ],
+      });
+    }
+
     // 4. QOZ opportunity
     if (totalGains > 50000) {
       recs.push({
