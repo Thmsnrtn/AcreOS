@@ -13,7 +13,9 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { storage, db } from "./storage";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
-import { sql } from "drizzle-orm";
+import { sql, eq, desc } from "drizzle-orm";
+import { countyReviews } from "@shared/schema";
+import { z } from "zod";
 
 export function registerPlatformFeatureRoutes(app: Express): void {
 
@@ -387,12 +389,83 @@ export function registerPlatformFeatureRoutes(app: Express): void {
 
   // ─── Community Intelligence ────────────────────────────────────────
 
-  app.get("/api/community/county-reviews", isAuthenticated, async (req, res) => {
+  app.get("/api/community/county-reviews", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const state = req.query.state ? String(req.query.state) : undefined;
       const { getCountyReviews } = await import("./services/communityIntelligence");
-      const reviews = await getCountyReviews(state);
-      res.json({ reviews });
+      const baseReviews = await getCountyReviews(state);
+
+      // Enrich with reviewer trust score and verified deal count from DB reviews
+      const dbReviews = await db.select().from(countyReviews)
+        .orderBy(desc(countyReviews.createdAt))
+        .limit(100);
+
+      const enrichedDbReviews = dbReviews.map(r => ({
+        state: r.state,
+        county: r.county,
+        rating: r.rating,
+        pros: r.pros,
+        cons: r.cons,
+        investorTrustScore: r.investorTrustScore ?? 0,
+        verifiedDeals: r.verifiedDeals ?? 0,
+        createdAt: r.createdAt,
+      }));
+
+      res.json({ reviews: [...enrichedDbReviews, ...baseReviews] });
+    } catch (error) { Errors.internal(res, error); }
+  });
+
+  app.post("/api/community/county-reviews", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+
+      const bodySchema = z.object({
+        state: z.string().min(1),
+        county: z.string().min(1),
+        rating: z.number().int().min(1).max(5),
+        pros: z.string().min(1),
+        cons: z.string().min(1),
+      });
+
+      const parsed = bodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+
+      // Compute trust score — require > 300 to post
+      const { computeInvestorTrustScore } = await import("./services/investorNetworkService");
+      const trustResult = await computeInvestorTrustScore(org.id);
+
+      if (trustResult.total <= 300) {
+        return Errors.forbidden(res, "Trust score must be greater than 300 to submit county reviews. Current score: " + trustResult.total);
+      }
+
+      // Count verified deals for the reviewer
+      const { count } = await import("drizzle-orm");
+      const { deals } = await import("@shared/schema");
+      const [dealCount] = await db.select({ cnt: count() }).from(deals)
+        .where(eq(deals.organizationId, org.id));
+      const verifiedDealCount = Number(dealCount?.cnt || 0);
+
+      const [review] = await db.insert(countyReviews).values({
+        organizationId: org.id,
+        state: parsed.data.state,
+        county: parsed.data.county,
+        rating: parsed.data.rating,
+        pros: parsed.data.pros,
+        cons: parsed.data.cons,
+        investorTrustScore: trustResult.total,
+        verifiedDeals: verifiedDealCount,
+      }).returning();
+
+      logger.info("county_review_created", {
+        organizationId: org.id,
+        state: parsed.data.state,
+        county: parsed.data.county,
+        trustScore: trustResult.total,
+      });
+
+      res.json({ review });
     } catch (error) { Errors.internal(res, error); }
   });
 
@@ -455,6 +528,38 @@ export function registerPlatformFeatureRoutes(app: Express): void {
   });
 
   // ─── Data Portability ──────────────────────────────────────────────
+
+  app.post("/api/export/full", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const exportId = `export_${org.id}_${Date.now()}`;
+
+      // Generate synchronously and return the data inline
+      const { generateFullExport } = await import("./services/dataPortability");
+      const data = await generateFullExport(org.id);
+
+      logger.info("full_export_generated", { organizationId: org.id, exportId });
+
+      res.json({
+        exportId,
+        status: "ready",
+        downloadUrl: "/api/data/export",
+        data,
+      });
+    } catch (error) { Errors.internal(res, error); }
+  });
+
+  app.get("/api/export/status/:exportId", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const exportId = req.params.exportId;
+      // Since we generate synchronously, status is always ready
+      res.json({
+        exportId,
+        status: "ready",
+        downloadUrl: "/api/data/export",
+      });
+    } catch (error) { Errors.internal(res, error); }
+  });
 
   app.get("/api/data/export", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
