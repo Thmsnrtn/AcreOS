@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { Link } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
+import { AIReasoning } from "@/components/ai-reasoning";
 
 interface DealOpportunity {
   id: string;
@@ -273,6 +274,21 @@ function HeroDealCard({
               <Send className="w-3 h-3 mr-1" /> Send Offer
             </Button>
           </div>
+
+          {/* AI Reasoning — why this deal was ranked #1 */}
+          <AIReasoning
+            feature="recommendation"
+            decision={`Ranked #1 with composite score ${scores.composite}`}
+            reasoning={matchReason}
+            confidence={Math.min(95, Math.round(scores.composite * 1.2))}
+            inputs={{
+              landCredit: scores.landCredit,
+              radarScore: scores.radarScore,
+              ownerMotivation: scores.ownerMotivation,
+              countyOpportunity: scores.countyOpportunity,
+              estimatedValue: financials.estimatedValue,
+            }}
+          />
         </CardContent>
       </Card>
     </motion.div>
@@ -427,6 +443,20 @@ function DealCard({
             </div>
 
             <p className="text-xs text-muted-foreground">{matchReason}</p>
+
+            {/* AI Reasoning — collapsed by default */}
+            <AIReasoning
+              feature="recommendation"
+              decision={`Composite score: ${scores.composite}`}
+              reasoning={matchReason}
+              confidence={Math.min(95, Math.round(scores.composite * 1.2))}
+              inputs={{
+                landCredit: scores.landCredit,
+                radarScore: scores.radarScore,
+                ownerMotivation: scores.ownerMotivation,
+              }}
+              className="mt-1"
+            />
           </div>
         </CardContent>
       </Card>

@@ -10,6 +10,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import { Check, ChevronRight, Send, Download, Mail, FileText, ArrowLeft } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { AIReasoning } from "@/components/ai-reasoning";
 
 interface OfferTier {
   name: string;
@@ -176,6 +177,19 @@ export function OfferWizard({ dealId, trigger }: OfferWizardProps) {
                         </Card>
                       ))}
                     </div>
+                    {isAdvanced && initiateMutation.data.motivationGrade && (
+                      <AIReasoning
+                        feature="offer_tier"
+                        decision={`Motivation grade: ${initiateMutation.data.motivationGrade} — ${initiateMutation.data.strategyRecommendation || "Standard approach"}`}
+                        reasoning={initiateMutation.data.motivationAnalysis || "Offer tiers calculated from comparable sales and market conditions."}
+                        confidence={initiateMutation.data.motivationGrade <= "B" ? 85 : 65}
+                        inputs={{
+                          motivationGrade: initiateMutation.data.motivationGrade,
+                          estimatedValue: initiateMutation.data.tiers?.[1]?.price ? Math.round(initiateMutation.data.tiers[1].price / 0.4) : undefined,
+                          tiers: initiateMutation.data.tiers?.length,
+                        }}
+                      />
+                    )}
                   </>
                 ) : (
                   <p className="text-sm text-muted-foreground">Unable to generate offer analysis.</p>
