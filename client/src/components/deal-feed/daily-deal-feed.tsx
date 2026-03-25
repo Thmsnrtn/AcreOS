@@ -121,7 +121,7 @@ function HeroDealCard({
   opportunity: DealOpportunity;
   onAction: (id: string, action: string) => void;
 }) {
-  const { parcel, scores, signals, financials, enrichment, matchReason } = opportunity;
+  const { parcel, scores, signals, financials, enrichment, matchReason, legal } = opportunity;
   const displayName = parcel.address
     ? parcel.address
     : parcel.apn
@@ -276,7 +276,7 @@ function DealCard({
   opportunity: DealOpportunity;
   onAction: (id: string, action: string) => void;
 }) {
-  const { parcel, scores, signals, financials, enrichment, matchReason } = opportunity;
+  const { parcel, scores, signals, financials, enrichment, matchReason, legal } = opportunity;
   const displayName = parcel.address
     ? parcel.address
     : parcel.apn
@@ -353,6 +353,16 @@ function DealCard({
                   {s}
                 </Badge>
               ))}
+              {legal?.multipleOwners && (
+                <Badge variant="secondary" className="text-[10px] bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                  Multi-owner{legal.ownerCount ? ` (${legal.ownerCount})` : ""}
+                </Badge>
+              )}
+              {legal?.taxDelinquent && legal?.redemptionMonths != null && (
+                <Badge variant="secondary" className="text-[10px] bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">
+                  Tax lien — {legal.redemptionMonths} mo redemption
+                </Badge>
+              )}
             </div>
 
             {enrichmentLine && (
