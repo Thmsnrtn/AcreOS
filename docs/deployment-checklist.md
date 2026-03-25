@@ -18,12 +18,37 @@
 - [ ] DNS configured for custom domain (if not using `*.fly.dev`)
 - [ ] CI pipeline is green (lint, type-check, unit tests, integration tests)
 
+## Exact Commands: Fly.io Setup
+
+```bash
+# Pre-deploy verification
+git status                    # clean working tree
+npm run check                 # 0 TypeScript errors
+npm test                      # all tests pass
+
+# Create Fly.io app
+fly launch --name acreos --region dfw --no-deploy
+fly postgres create --name acreos-db --region dfw
+fly postgres attach acreos-db
+
+# Set secrets (one per line for clarity)
+fly secrets set SESSION_SECRET="$(openssl rand -base64 48)"
+fly secrets set FIELD_ENCRYPTION_KEY="$(openssl rand -hex 32)"
+fly secrets set STRIPE_SECRET_KEY="sk_live_..."
+fly secrets set STRIPE_WEBHOOK_SECRET="whsec_..."
+fly secrets set AWS_ACCESS_KEY_ID="AKIA..."
+fly secrets set AWS_SECRET_ACCESS_KEY="..."
+fly secrets set AWS_SES_FROM_EMAIL="no-reply@acreos.com"
+fly secrets set FOUNDER_EMAIL="thomas@acreos.com"
+fly secrets set APP_URL="https://acreos.fly.dev"
+fly secrets set AI_INTEGRATIONS_OPENAI_API_KEY="sk-..."
+fly secrets set AI_INTEGRATIONS_OPENAI_BASE_URL="https://openrouter.ai/api/v1"
+```
+
 ## Deploy to Fly.io
 
 ```bash
 # First deploy (creates the app):
-fly launch --no-deploy
-fly secrets set $(cat .env.production | xargs)
 fly deploy
 
 # Subsequent deploys:
@@ -150,3 +175,15 @@ Ensure these settings in `fly.toml` for zero-downtime:
 - **Metrics:** `GET /api/metrics` (requires `METRICS_TOKEN` Bearer auth)
 - **Sentry:** Check the Sentry dashboard for new errors after deploy
 - **Uptime:** Fly.io built-in health checks hit `/api/health` automatically
+
+## Custom Domain Setup
+
+```bash
+fly certs add acreos.com
+fly certs add www.acreos.com
+# Add CNAME records in your DNS provider:
+#   acreos.com       → acreos.fly.dev
+#   www.acreos.com   → acreos.fly.dev
+```
+
+Verify certificates are provisioned: `fly certs list`
