@@ -53,7 +53,10 @@ export type AlertType =
   | "price_compression"
   | "comp_staleness"
   | "market_turning_point"
-  | "best_buying_season";
+  | "best_buying_season"
+  | "institutional_buyer_activity"
+  | "tax_delinquent_inventory_drop"
+  | "infrastructure_permits";
 
 export type AlertUrgency = "immediate" | "this_week" | "this_month" | "fyi";
 export type AlertImpact = "very_high" | "high" | "medium" | "low";
