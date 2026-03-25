@@ -540,4 +540,80 @@ export class MarketPredictionService {
   }
 }
 
+  /**
+   * Seasonal timing intelligence (1f).
+   * Computes avg $/acre per quarter over available data and returns
+   * a human-readable insight about the best time to list.
+   */
+  async getSeasonalInsight(state: string, county: string): Promise<string | null> {
+    try {
+      const trends = await db
+        .select()
+        .from(priceTrends)
+        .where(and(eq(priceTrends.state, state), eq(priceTrends.county, county)))
+        .orderBy(desc(priceTrends.periodEnd))
+        .limit(12);
+
+      if (trends.length < 4) return null;
+
+      // Bucket by quarter
+      const qBuckets: Record<string, { total: number; count: number }> = {
+        Q1: { total: 0, count: 0 },
+        Q2: { total: 0, count: 0 },
+        Q3: { total: 0, count: 0 },
+        Q4: { total: 0, count: 0 },
+      };
+
+      for (const t of trends) {
+        const date = new Date(t.periodEnd);
+        const m = date.getMonth(); // 0-11
+        const q = m < 3 ? "Q1" : m < 6 ? "Q2" : m < 9 ? "Q3" : "Q4";
+        const price = parseFloat(t.avgPricePerAcre || "0");
+        if (price > 0) {
+          qBuckets[q].total += price;
+          qBuckets[q].count += 1;
+        }
+      }
+
+      const qAvgs = Object.entries(qBuckets)
+        .filter(([, b]) => b.count > 0)
+        .map(([q, b]) => ({ q, avg: b.total / b.count }));
+
+      if (qAvgs.length < 2) return null;
+
+      qAvgs.sort((a, b) => b.avg - a.avg);
+      const best = qAvgs[0];
+      const worst = qAvgs[qAvgs.length - 1];
+      const pctFaster = worst.avg > 0
+        ? Math.round(((best.avg - worst.avg) / worst.avg) * 100)
+        : 0;
+
+      const qLabels: Record<string, string> = {
+        Q1: "Jan–Mar",
+        Q2: "Apr–Jun",
+        Q3: "Jul–Sep",
+        Q4: "Oct–Dec",
+      };
+
+      const now = new Date();
+      const currentQ = now.getMonth() < 3 ? "Q1" : now.getMonth() < 6 ? "Q2" : now.getMonth() < 9 ? "Q3" : "Q4";
+
+      let timing = "";
+      if (currentQ === best.q) {
+        timing = "Current quarter aligns with peak demand.";
+      } else {
+        const qOrder = ["Q1", "Q2", "Q3", "Q4"];
+        const currentIdx = qOrder.indexOf(currentQ);
+        const bestIdx = qOrder.indexOf(best.q);
+        const weeksUntil = ((bestIdx - currentIdx + 4) % 4) * 13;
+        timing = `Current quarter: ${currentQ} — listing in ${weeksUntil > 0 ? `${Math.max(4, weeksUntil - 6)}–${weeksUntil} weeks` : "now"} aligns with peak demand.`;
+      }
+
+      return `Historical pattern: ${county} land sells ${pctFaster > 0 ? `${pctFaster}% faster` : "better"} in ${best.q} (${qLabels[best.q]}) than ${worst.q} (${qLabels[worst.q]}). ${timing}`;
+    } catch {
+      return null;
+    }
+  }
+}
+
 export const marketPredictionService = new MarketPredictionService();

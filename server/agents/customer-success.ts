@@ -7,6 +7,7 @@
 import { BaseAgent, type AgentDecision } from "./base-agent";
 import { db } from "../storage";
 import { sql } from "drizzle-orm";
+import { voiceLearningService } from "../services/voiceLearning";
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
