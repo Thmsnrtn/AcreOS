@@ -14,6 +14,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, gte, sql, count, avg } from "drizzle-orm";
 import { getOpenAIClient } from "../utils/openaiClient";
+import { logger } from "../utils/logger";
 
 interface SignalScore {
   score: number;
