@@ -139,9 +139,13 @@ export interface MentorMatch {
 
 export async function findMentorMatches(orgId: number): Promise<MentorMatch[]> {
   // Find orgs with significantly more experience in similar markets
+  // Mentors must have trust score > 500 and 10+ closed deals
   const [orgDeals] = await db.select({ cnt: count() }).from(deals)
     .where(and(eq(deals.organizationId, orgId), eq(deals.status, "closed")));
   const myDealCount = Number(orgDeals?.cnt || 0);
+
+  const MIN_MENTOR_DEALS = 10;
+  const MIN_MENTOR_TRUST = 500;
 
   const result = await db.execute(sql`
     SELECT d.organization_id, COUNT(d.id) as deal_count,
@@ -151,18 +155,34 @@ export async function findMentorMatches(orgId: number): Promise<MentorMatch[]> {
     WHERE d.status = 'closed'
       AND d.organization_id != ${orgId}
     GROUP BY d.organization_id
-    HAVING COUNT(d.id) >= ${Math.max(myDealCount * 2, 10)}
+    HAVING COUNT(d.id) >= ${MIN_MENTOR_DEALS}
     ORDER BY COUNT(d.id) DESC
-    LIMIT 5
+    LIMIT 10
   `);
 
-  return ((result as any).rows ?? []).map((r: any) => ({
-    orgId: r.organization_id,
-    dealsClosed: Number(r.deal_count),
-    specialties: (r.states || []).slice(0, 3),
-    matchScore: Math.min(100, Math.round((Number(r.deal_count) / Math.max(myDealCount, 1)) * 20)),
-    matchReason: `${Number(r.deal_count)} deals closed across ${(r.states || []).length} states`,
-  }));
+  // Filter by trust score — only mentors with trust > 500
+  const candidates = (result as any).rows ?? [];
+  const mentors: MentorMatch[] = [];
+
+  for (const r of candidates) {
+    if (mentors.length >= 5) break;
+    try {
+      const { computeInvestorTrustScore } = await import("./investorNetworkService");
+      const trust = await computeInvestorTrustScore(r.organization_id);
+      const trustScore = trust?.score ?? 0;
+      if (trustScore < MIN_MENTOR_TRUST) continue;
+
+      mentors.push({
+        orgId: r.organization_id,
+        dealsClosed: Number(r.deal_count),
+        specialties: (r.states || []).slice(0, 3),
+        matchScore: Math.min(100, Math.round((Number(r.deal_count) / Math.max(myDealCount, 1)) * 20)),
+        matchReason: `${Number(r.deal_count)} deals closed across ${(r.states || []).length} states — Trust Score: ${trustScore}`,
+      });
+    } catch { /* trust score unavailable — skip candidate */ }
+  }
+
+  return mentors;
 }
 
 // ── Achievement Gates ───────────────────────────────────────────────
