@@ -357,6 +357,125 @@ export function registerPlatformFeatureRoutes(app: Express): void {
     }
   });
 
+  // ─── Content Evolution ──────────────────────────────────────────
+
+  app.post("/api/evolution/subject-lines/:campaignId", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const campaignId = Number(req.params.campaignId);
+      const { evolveSubjectLines } = await import("./services/contentEvolution");
+      const result = await evolveSubjectLines(org.id, campaignId);
+      res.json(result);
+    } catch (error) { Errors.internal(res, error); }
+  });
+
+  app.get("/api/evolution/pax-quality", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const { analyzePaxResponseQuality } = await import("./services/contentEvolution");
+      const metrics = await analyzePaxResponseQuality(org.id);
+      res.json(metrics);
+    } catch (error) { Errors.internal(res, error); }
+  });
+
+  app.get("/api/evolution/domain-whitelist", isAuthenticated, async (req, res) => {
+    try {
+      const { getDomainWhitelist } = await import("./services/contentEvolution");
+      res.json(getDomainWhitelist());
+    } catch (error) { Errors.internal(res, error); }
+  });
+
+  // ─── Community Intelligence ────────────────────────────────────────
+
+  app.get("/api/community/county-reviews", isAuthenticated, async (req, res) => {
+    try {
+      const state = req.query.state ? String(req.query.state) : undefined;
+      const { getCountyReviews } = await import("./services/communityIntelligence");
+      const reviews = await getCountyReviews(state);
+      res.json({ reviews });
+    } catch (error) { Errors.internal(res, error); }
+  });
+
+  app.get("/api/community/case-studies", isAuthenticated, async (req, res) => {
+    try {
+      const limit = Number(req.query.limit) || 10;
+      const { getAnonymizedCaseStudies } = await import("./services/communityIntelligence");
+      const studies = await getAnonymizedCaseStudies(limit);
+      res.json({ studies });
+    } catch (error) { Errors.internal(res, error); }
+  });
+
+  app.get("/api/community/mentor-matches", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const { findMentorMatches } = await import("./services/communityIntelligence");
+      const matches = await findMentorMatches(org.id);
+      res.json({ matches });
+    } catch (error) { Errors.internal(res, error); }
+  });
+
+  app.get("/api/community/achievements", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const { getAchievements } = await import("./services/communityIntelligence");
+      const achievements = await getAchievements(org.id);
+      res.json({ achievements });
+    } catch (error) { Errors.internal(res, error); }
+  });
+
+  // ─── Pipeline Intelligence ─────────────────────────────────────────
+
+  app.get("/api/pipeline/throughput", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const days = Number(req.query.days) || 90;
+      const { analyzeThroughput } = await import("./services/pipelineIntelligence");
+      const metrics = await analyzeThroughput(org.id, days);
+      res.json(metrics);
+    } catch (error) { Errors.internal(res, error); }
+  });
+
+  app.get("/api/pipeline/disposition/:dealId", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const dealId = Number(req.params.dealId);
+      const { recommendDisposition } = await import("./services/pipelineIntelligence");
+      const recommendations = await recommendDisposition(org.id, dealId);
+      res.json({ recommendations });
+    } catch (error) { Errors.internal(res, error); }
+  });
+
+  app.get("/api/pipeline/attribution", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const { computeAttributionROI } = await import("./services/pipelineIntelligence");
+      const attribution = await computeAttributionROI(org.id);
+      res.json({ attribution });
+    } catch (error) { Errors.internal(res, error); }
+  });
+
+  // ─── Data Portability ──────────────────────────────────────────────
+
+  app.get("/api/data/export", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const { generateFullExport } = await import("./services/dataPortability");
+      const data = await generateFullExport(org.id);
+      res.setHeader("Content-Type", "application/json");
+      res.setHeader("Content-Disposition", `attachment; filename="acreos-export-${org.id}-${Date.now()}.json"`);
+      res.json(data);
+    } catch (error) { Errors.internal(res, error); }
+  });
+
+  app.get("/api/data/contribution-report", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const { generateContributionReport } = await import("./services/dataPortability");
+      const report = await generateContributionReport(org.id);
+      res.json(report);
+    } catch (error) { Errors.internal(res, error); }
+  });
+
   // ─── Environmental Intelligence ─────────────────────────────────
 
   app.get("/api/environmental/water-rights/:state", isAuthenticated, async (req, res) => {
