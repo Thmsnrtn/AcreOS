@@ -1,7 +1,7 @@
 import { db } from "../db";
-import { 
-  opportunityScores, 
-  radarConfigs, 
+import {
+  opportunityScores,
+  radarConfigs,
   properties,
   agentEvents,
   eventSubscriptions,
@@ -14,6 +14,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, asc, gte, lte, sql, isNull, or } from "drizzle-orm";
 import { DataSourceBroker, type LookupCategory } from "./data-source-broker";
+import { logger } from "../utils/logger";
 
 const dataSourceBroker = new DataSourceBroker();
 

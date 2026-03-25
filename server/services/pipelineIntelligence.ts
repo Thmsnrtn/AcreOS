@@ -164,6 +164,38 @@ export async function recommendDisposition(
   }
 
   recommendations.sort((a, b) => b.score - a.score);
+
+  // Integration point: try dispositionOptimizer for enhanced recommendations
+  try {
+    const { DispositionOptimizerService } = await import("./dispositionOptimizer");
+    const optimizer = new DispositionOptimizerService();
+    if (deal.propertyId) {
+      const analysis = await optimizer.analyzeProperty(orgId, deal.propertyId);
+      // Use optimizer's recommended strategy to boost the matching recommendation
+      const optimizerStrategy = analysis.recommendedStrategy;
+      const strategyMap: Record<string, DispositionStrategy> = {
+        list_retail: "retail",
+        sell_wholesale: "wholesale",
+        owner_finance: "seller_finance",
+        hold: "hold_and_lease",
+        auction: "wholesale",
+      };
+      const mappedStrategy = strategyMap[optimizerStrategy];
+      if (mappedStrategy) {
+        const match = recommendations.find(r => r.strategy === mappedStrategy);
+        if (match) {
+          match.score = Math.min(100, match.score + 15);
+          match.reasoning = `[Enhanced by Disposition Optimizer — confidence ${(analysis.confidence * 100).toFixed(0)}%] ${match.reasoning}`;
+        }
+      }
+      recommendations.sort((a, b) => b.score - a.score);
+      logger.info("disposition_recommendation_enhanced", { orgId, dealId, optimizerStrategy });
+    }
+  } catch {
+    // dispositionOptimizer not available or property analysis failed — using standalone recommendations
+    logger.info("disposition_recommendation_standalone", { orgId, dealId, reason: "optimizer_unavailable" });
+  }
+
   return recommendations;
 }
 
