@@ -236,7 +236,16 @@ export function registerClosingRoutes(app: Express): void {
 
       const items = (checklists[0]?.items as any[]) || [];
 
+      // Include trust tier on shared links
+      let trustTier = "new";
+      try {
+        const { computeInvestorTrustScore } = await import("./services/investorNetworkService");
+        const trust = await computeInvestorTrustScore(link.organization_id);
+        trustTier = trust.trustTier;
+      } catch (_) { /* trust unavailable */ }
+
       res.json({
+        trustTier,
         deal: {
           id: deal.id,
           status: deal.status,

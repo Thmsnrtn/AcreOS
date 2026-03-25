@@ -357,6 +357,39 @@ export function registerPlatformFeatureRoutes(app: Express): void {
     }
   });
 
+  // ─── Trust Scores → Platform Surfaces ────────────────────────────
+
+  // Get trust profile for current org (marketplace, shared links, PDFs)
+  app.get("/api/trust/profile", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const { computeInvestorTrustScore, computeInvestorBadges } = await import("./services/investorNetworkService");
+      const trustProfile = await computeInvestorTrustScore(org.id);
+      const badges = computeInvestorBadges(trustProfile);
+
+      res.json({
+        score: trustProfile.totalScore,
+        tier: trustProfile.trustTier,
+        components: trustProfile.components,
+        badges,
+        achievementProgress: {
+          nextTier: trustProfile.trustTier === "platinum" ? null
+            : trustProfile.trustTier === "gold" ? "platinum"
+            : trustProfile.trustTier === "silver" ? "gold"
+            : trustProfile.trustTier === "bronze" ? "silver"
+            : "bronze",
+          pointsNeeded: trustProfile.trustTier === "platinum" ? 0
+            : trustProfile.trustTier === "gold" ? 800 - trustProfile.totalScore
+            : trustProfile.trustTier === "silver" ? 600 - trustProfile.totalScore
+            : trustProfile.trustTier === "bronze" ? 400 - trustProfile.totalScore
+            : 200 - trustProfile.totalScore,
+        },
+      });
+    } catch (error) {
+      Errors.internal(res, error);
+    }
+  });
+
   // ─── Seller Psychology → Negotiation ─────────────────────────────
 
   // Get motivation profile + strategy recommendation for a lead
