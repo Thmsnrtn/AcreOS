@@ -23,20 +23,48 @@ import { eq, and } from "drizzle-orm";
 import { createHmac } from "crypto";
 
 export type WebhookEventType =
+  // Lead lifecycle
   | 'lead.created'
   | 'lead.updated'
+  | 'lead.deleted'
+  | 'lead.responded'
   | 'lead.status_changed'
   | 'lead.score_changed'
+  // Deal lifecycle
   | 'deal.created'
   | 'deal.stage_changed'
+  | 'deal.closed_won'
+  | 'deal.closed_lost'
   | 'deal.closed'
   | 'deal.offer_sent'
   | 'deal.offer_accepted'
+  // Property
+  | 'property.created'
+  | 'property.enriched'
+  | 'property.lcs_updated'
+  // Note lifecycle
+  | 'note.created'
+  | 'note.payment_received'
+  | 'note.payment_overdue'
+  | 'note.paid_off'
+  | 'note.delinquent'
+  // Payment
   | 'payment.received'
   | 'payment.overdue'
   | 'payment.failed'
-  | 'note.delinquent'
+  // Campaign
+  | 'campaign.sent'
+  | 'campaign.response_received'
   | 'campaign.response'
+  // Marketplace
+  | 'listing.created'
+  | 'listing.offer_received'
+  | 'listing.sold'
+  // System
+  | 'deal_feed.generated'
+  | 'compliance.alert'
+  | 'agent.action_taken'
+  // Legacy
   | 'sms.reply'
   | 'sequence.completed'
   | 'task.completed';
@@ -54,6 +82,7 @@ export interface WebhookPayload {
   timestamp: string;
   organizationId: number;
   data: Record<string, any>;
+  metadata: { version: '1.0'; source: 'acreos' };
 }
 
 /**
