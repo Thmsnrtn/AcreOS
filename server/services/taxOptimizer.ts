@@ -57,6 +57,7 @@ export interface TaxableTransaction {
   propertyAddress?: string;
   county?: string;
   state?: string;
+  owningEntity?: string | null;
   acquisitionDate?: Date;
   dispositionDate?: Date;
   acquisitionCost: number;
@@ -69,6 +70,7 @@ export interface TaxableTransaction {
   gainType: "capital" | "ordinary";  // Ordinary if dealer status
   estimatedTax: number;
   taxSavingOpportunities: string[];
+  entityTaxFlags: string[];
 }
 
 export interface TaxPositionSummary {
@@ -117,6 +119,34 @@ export interface Exchange1031Candidate {
   deadline180Day: Date;
   requiredReplacementValue: number;
   potentialTaxDeferred: number;
+}
+
+// ─── Entity Tax Flags ─────────────────────────────────────────────────────
+
+/**
+ * Returns entity-specific tax compliance flags based on the owning entity name.
+ */
+export function getEntityTaxFlags(owningEntity: string | null): string[] {
+  if (!owningEntity) return [];
+
+  const flags: string[] = [];
+  const upper = owningEntity.toUpperCase();
+
+  // Self-directed IRA / SDIRA detection
+  if (upper.includes("IRA") || upper.includes("SDIRA")) {
+    flags.push(
+      "Self-directed IRA property — no personal use, no sweat equity, no self-dealing per IRC 4975"
+    );
+  }
+
+  // LLC detection — recommend 1031 exchanges within the same entity
+  if (upper.includes("LLC")) {
+    flags.push(
+      "LLC-held property — 1031 exchanges should be conducted within this same entity for like-kind exchange qualification"
+    );
+  }
+
+  return flags;
 }
 
 // ─── Tax Optimizer Service ────────────────────────────────────────────────
@@ -197,6 +227,9 @@ class TaxOptimizerService {
         savingOps.push("Consider holding through 12-month mark for LTCG rates");
       }
 
+      const entityName = (property as any)?.owningEntity ?? null;
+      const entityFlags = getEntityTaxFlags(entityName);
+
       transactions.push({
         dealId: deal.id,
         propertyId: deal.propertyId ?? undefined,
@@ -205,6 +238,7 @@ class TaxOptimizerService {
           : `Deal #${deal.id}`,
         county: property?.county ?? undefined,
         state: property?.state ?? undefined,
+        owningEntity: entityName,
         acquisitionDate: acquisitionDate ?? undefined,
         dispositionDate,
         acquisitionCost,
@@ -216,7 +250,8 @@ class TaxOptimizerService {
         isLongTerm,
         gainType: "capital",
         estimatedTax,
-        taxSavingOpportunities: savingOps,
+        taxSavingOpportunities: [...savingOps, ...entityFlags],
+        entityTaxFlags: entityFlags,
       });
     }
 
