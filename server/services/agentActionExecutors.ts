@@ -620,6 +620,37 @@ export async function executeAction(ctx: ActionContext): Promise<ActionResult> {
     return { success: false, detail: `No executor for ${key}` };
   }
 
+  // Run significant actions through the confidence cascade before executing
+  if (isSignificantAction(ctx.actionName)) {
+    try {
+      const { confidenceCascadeService } = await import("./confidenceCascadeV14");
+      const orgId = ctx.input.orgId || 0;
+      const cascadeResult = await confidenceCascadeService.resolve(orgId, {
+        triggerType: ctx.actionName,
+        triggerContext: ctx.input,
+        originAgent: ctx.agentCodename,
+        decisionNeeded: `Execute ${ctx.actionName} for agent ${ctx.agentCodename}`,
+        currentConfidence: 50,
+      });
+
+      if (cascadeResult.status === "governance-blocked") {
+        return {
+          success: false,
+          detail: `Confidence cascade blocked execution: ${cascadeResult.finalDecision}`,
+        };
+      }
+
+      if (cascadeResult.status === "escalated") {
+        return {
+          success: false,
+          detail: `Action requires founder approval — confidence ${cascadeResult.finalConfidence} below threshold. Escalation ID: ${cascadeResult.resolutionId}`,
+        };
+      }
+    } catch {
+      // Cascade check failure is non-blocking — proceed with execution
+    }
+  }
+
   const startTime = Date.now();
   let result: ActionResult;
 

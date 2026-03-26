@@ -249,50 +249,105 @@ class ConfidenceCascadeService {
     const start = Date.now();
     try {
       const tags = this.extractTagsFromContext(request.triggerContext, request.decisionNeeded);
-      const episodes = await Promise.race([
-        cognitiveMemoryService.recallEpisodes(request.originAgent, { tags, limit: 20 }),
-        this.timeout(LAYER_TIMEOUTS.memory_lookup),
-      ]);
 
-      if (!episodes || !Array.isArray(episodes) || episodes.length === 0) {
+      // Query both episodic memory and institutional chronicle in parallel
+      const [episodes, chronicleEntries] = await Promise.race([
+        Promise.all([
+          cognitiveMemoryService.recallEpisodes(request.originAgent, { tags, limit: 20 }),
+          import("./companyChronicle").then((mod) =>
+            mod.companyChronicleService.search(request.decisionNeeded),
+          ).catch(() => [] as any[]),
+        ]),
+        this.timeout(LAYER_TIMEOUTS.memory_lookup).then(() => [null, []] as const),
+      ]) as [any[] | null, any[]];
+
+      const hasEpisodes = episodes && Array.isArray(episodes) && episodes.length > 0;
+      const hasChronicle = chronicleEntries && Array.isArray(chronicleEntries) && chronicleEntries.length > 0;
+
+      if (!hasEpisodes && !hasChronicle) {
         return this.buildLayerResult("memory_lookup", 0, currentConfidence, start, "skipped", {
-          reason: "No matching episodic memories found",
+          reason: "No matching episodic memories or chronicle entries found",
         });
       }
 
       // Look for episodes with similar action+context and successful outcomes
-      const relevant = episodes.filter(
-        (ep: any) => ep.outcomeSuccess === true,
-      );
-      const successRate = relevant.length / episodes.length;
+      const relevant = hasEpisodes
+        ? episodes.filter((ep: any) => ep.outcomeSuccess === true)
+        : [];
+      const negative = hasEpisodes
+        ? episodes.filter((ep: any) => ep.outcomeSuccess === false)
+        : [];
+      const successRate = hasEpisodes && episodes.length > 0
+        ? relevant.length / episodes.length
+        : 0;
+
+      // Check for strong positive precedent (>70% success) — auto-boost 25
+      const hasWarningFlag = negative.length > 0;
 
       if (relevant.length >= 3 && successRate > 0.7) {
-        // Dynamic boost: scale with signal strength (not hardcoded 20)
-        const dynamicBoost = Math.round(20 * successRate * Math.min(relevant.length / 3, 1.5));
+        // Precedent with positive outcome — auto-boost 25 instead of default
+        const precedentBoost = 25;
         return this.buildLayerResult("memory_lookup", 0, currentConfidence, start, "resolved", {
-          matchingEpisodes: episodes.length,
+          matchingEpisodes: hasEpisodes ? episodes.length : 0,
           successfulEpisodes: relevant.length,
+          negativeEpisodes: negative.length,
           successRate,
-          boost: dynamicBoost,
-        }, Math.min(dynamicBoost, 30));
+          boost: precedentBoost,
+          chronicleEntriesFound: hasChronicle ? chronicleEntries.length : 0,
+          chronicleContext: hasChronicle
+            ? chronicleEntries.slice(0, 3).map((e: any) => e.searchableText || e.title || "entry")
+            : [],
+          precedentMatch: true,
+          ...(hasWarningFlag && {
+            warningFlag: true,
+            warningDetail: `${negative.length} past episode(s) with negative outcomes detected alongside positive precedent`,
+          }),
+        }, Math.min(precedentBoost, 30));
       }
 
       // Partial signal — some relevant memories but not enough for a strong boost
       if (relevant.length > 0) {
         const partialBoost = Math.round(relevant.length * 3);
         return this.buildLayerResult("memory_lookup", 0, currentConfidence, start, "resolved", {
-          matchingEpisodes: episodes.length,
+          matchingEpisodes: hasEpisodes ? episodes.length : 0,
           successfulEpisodes: relevant.length,
+          negativeEpisodes: negative.length,
           successRate,
           boost: partialBoost,
           note: "Partial memory signal — insufficient for full boost",
+          chronicleEntriesFound: hasChronicle ? chronicleEntries.length : 0,
+          chronicleContext: hasChronicle
+            ? chronicleEntries.slice(0, 3).map((e: any) => e.searchableText || e.title || "entry")
+            : [],
+          ...(hasWarningFlag && {
+            warningFlag: true,
+            warningDetail: `${negative.length} past episode(s) with negative outcomes detected`,
+          }),
         }, Math.min(partialBoost, 20));
       }
 
+      // Chronicle-only signal — no successful episodes but chronicle has context
+      if (hasChronicle && !hasEpisodes) {
+        return this.buildLayerResult("memory_lookup", 0, currentConfidence, start, "resolved", {
+          matchingEpisodes: 0,
+          successfulEpisodes: 0,
+          chronicleEntriesFound: chronicleEntries.length,
+          chronicleContext: chronicleEntries.slice(0, 3).map((e: any) => e.searchableText || e.title || "entry"),
+          boost: 5,
+          note: "Chronicle-only signal — institutional context found but no episodic precedent",
+        }, 5);
+      }
+
       return this.buildLayerResult("memory_lookup", 0, currentConfidence, start, "skipped", {
-        matchingEpisodes: episodes.length,
+        matchingEpisodes: hasEpisodes ? episodes.length : 0,
         successfulEpisodes: 0,
+        negativeEpisodes: negative.length,
+        chronicleEntriesFound: hasChronicle ? chronicleEntries.length : 0,
         reason: "No successful outcome memories matched",
+        ...(hasWarningFlag && {
+          warningFlag: true,
+          warningDetail: `${negative.length} past episode(s) with negative outcomes — no positive precedent found`,
+        }),
       });
     } catch (err: any) {
       return this.buildLayerResult("memory_lookup", 0, currentConfidence, start, "failed", {
@@ -772,7 +827,7 @@ class ConfidenceCascadeService {
 
   getLayerConfig(): LayerConfigEntry[] {
     return [
-      { name: "memory_lookup", index: 0, enabled: true, timeoutMs: 2000, maxConfidenceBoost: 20 },
+      { name: "memory_lookup", index: 0, enabled: true, timeoutMs: 2000, maxConfidenceBoost: 30 },
       { name: "strategy_consult", index: 1, enabled: true, timeoutMs: 1000, maxConfidenceBoost: 15 },
       { name: "peer_review", index: 2, enabled: true, timeoutMs: 3000, maxConfidenceBoost: 15 },
       { name: "governance_check", index: 3, enabled: true, timeoutMs: 2000, maxConfidenceBoost: 10 },
