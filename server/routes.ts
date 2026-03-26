@@ -207,6 +207,35 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
+  // ============================================
+  // HEALTH CHECK (Public endpoint - no rate limiting, no middleware)
+  // Mounted BEFORE WhiteLabel/Clerk middleware so health probes never fail
+  // due to domain resolution or auth issues.
+  // ============================================
+  app.get("/api/health", async (req, res) => {
+    try {
+      const { healthCheckService } = await import("./services/healthCheck");
+      const result = await healthCheckService.checkAll();
+      res.json(result);
+    } catch (err: any) {
+      res.json({ overall: "degraded", services: [], timestamp: new Date(), error: err?.message || "health check failed" });
+    }
+  });
+
+  app.get("/api/health/cached", async (req, res) => {
+    try {
+      const { healthCheckService } = await import("./services/healthCheck");
+      const result = healthCheckService.getLastResults();
+      if (!result) {
+        const freshResult = await healthCheckService.checkAll();
+        return res.json(freshResult);
+      }
+      res.json(result);
+    } catch (err: any) {
+      res.json({ overall: "degraded", services: [], timestamp: new Date(), error: err?.message || "health check failed" });
+    }
+  });
+
   // White-label domain middleware — runs before auth so custom domains are resolved early
   app.use(whiteLabelDomainMiddleware);
   app.use(correlationIdMiddleware);
@@ -224,25 +253,6 @@ export async function registerRoutes(
   // T12: OAuth/SSO routes (Google + Microsoft)
   const { registerOAuthRoutes } = await import("./auth/oauth");
   registerOAuthRoutes(app);
-
-  // ============================================
-  // HEALTH CHECK (Public endpoint - no rate limiting)
-  // ============================================
-  app.get("/api/health", async (req, res) => {
-    const { healthCheckService } = await import("./services/healthCheck");
-    const result = await healthCheckService.checkAll();
-    res.json(result);
-  });
-
-  app.get("/api/health/cached", async (req, res) => {
-    const { healthCheckService } = await import("./services/healthCheck");
-    const result = healthCheckService.getLastResults();
-    if (!result) {
-      const freshResult = await healthCheckService.checkAll();
-      return res.json(freshResult);
-    }
-    res.json(result);
-  });
 
   app.get("/api/health/:service", async (req, res) => {
     const { healthCheckService } = await import("./services/healthCheck");
