@@ -14591,6 +14591,40 @@ export const perpetualOpsChecks = pgTable("perpetual_ops_checks", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
+// ============================================
+// PLATFORM ISSUES (Atlas CTO issue tracking)
+// ============================================
+
+export const platformIssues = pgTable("platform_issues", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  severity: text("severity").notNull(), // critical | high | medium | low
+  affectedFiles: jsonb("affected_files").$type<string[]>(),
+  reportedBy: text("reported_by").notNull(),
+  status: text("status").notNull().default("open"), // open | in_progress | resolved
+  fixPrompt: text("fix_prompt"),
+  resolvedAt: timestamp("resolved_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// ============================================
+// CONTENT DRAFTS (Beacon marketing drafts)
+// ============================================
+
+export const contentDrafts = pgTable("content_drafts", {
+  id: serial("id").primaryKey(),
+  type: text("type").notNull(), // social_post | blog_post | email
+  platform: text("platform"), // twitter | linkedin | substack | null
+  title: text("title"),
+  content: text("content").notNull(),
+  draftedBy: text("drafted_by").notNull(),
+  status: text("status").notNull().default("draft"), // draft | approved | published | rejected
+  approvedAt: timestamp("approved_at"),
+  publishedAt: timestamp("published_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // ─── Phase 6-20 Inferred Types ───────────────────────────────────────────────
 
 export type FinancialApproval = typeof financialApprovals.$inferSelect;
