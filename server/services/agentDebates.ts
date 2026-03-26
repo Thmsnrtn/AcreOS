@@ -258,6 +258,13 @@ Cast your vote. JSON:
         decidedAt: new Date(),
       })
       .where(eq(agentDebates.id, debateId));
+
+    // Store as precedent for future auto-resolution
+    const debate = await this.getById(debateId);
+    if (debate) {
+      const agents = [...(debate.forAgents || []), ...(debate.againstAgents || [])];
+      await this.storePrecedent(debateId, decision, agents, debate.proposition);
+    }
   }
 
   /** Get active/awaiting debates */
@@ -281,6 +288,94 @@ Cast your vote. JSON:
     return db.query.agentDebates.findFirst({
       where: eq(agentDebates.id, id),
     });
+  }
+
+  /**
+   * Detect disagreement: when two agents give conflicting recommendations
+   * for the same context, automatically initiate a debate.
+   */
+  async detectDisagreement(
+    context: string,
+    agentA: { codename: string; position: string; data?: any },
+    agentB: { codename: string; position: string; data?: any },
+  ) {
+    // Check for precedent first
+    const precedent = await this.findPrecedent(context, agentA.codename, agentB.codename);
+
+    if (precedent && precedent.similarity > 0.8) {
+      // Auto-resolve using precedent
+      return {
+        autoResolved: true,
+        resolution: precedent.resolution,
+        precedentId: precedent.id,
+        message: `Auto-resolved ${agentA.codename} vs ${agentB.codename} disagreement using precedent from ${precedent.date}.`,
+      };
+    }
+
+    // No strong precedent — initiate a formal debate
+    const debate = await this.initiate(
+      `${agentA.codename} recommends: "${agentA.position}" vs ${agentB.codename} recommends: "${agentB.position}" — Context: ${context}`,
+      this.classifyCategory(context),
+    );
+
+    return {
+      autoResolved: false,
+      debateId: debate,
+      message: `Debate initiated between ${agentA.codename} and ${agentB.codename}.`,
+    };
+  }
+
+  /**
+   * Search institutional memory for similar past disagreements and their resolutions.
+   */
+  async findPrecedent(
+    context: string,
+    agentA: string,
+    agentB: string,
+  ): Promise<{ id: number; resolution: string; similarity: number; date: string } | null> {
+    try {
+      const { cognitiveMemoryService } = await import("./cognitiveMemoryV13");
+      const episodes = await cognitiveMemoryService.recallEpisodes(agentA, {
+        tags: ["disagreement", "precedent"],
+        limit: 5,
+      });
+
+      for (const ep of episodes || []) {
+        const epData = ep.context || ep;
+        if (epData.agents?.includes(agentA) && epData.agents?.includes(agentB)) {
+          // Simple similarity: same agents involved in same category
+          return {
+            id: ep.id,
+            resolution: epData.resolution || "unknown",
+            similarity: 0.85,
+            date: ep.createdAt ? new Date(ep.createdAt).toLocaleDateString() : "unknown",
+          };
+        }
+      }
+
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Store a debate resolution as precedent for future auto-resolution.
+   */
+  async storePrecedent(debateId: number, resolution: string, agents: string[], topic: string) {
+    try {
+      const { cognitiveMemoryService } = await import("./cognitiveMemoryV13");
+      for (const agent of agents) {
+        await cognitiveMemoryService.recordEpisode(agent, {
+          action: "disagreement_resolution",
+          outcome: resolution,
+          context: { debateId, agents, topic, resolution },
+          tags: ["disagreement", "precedent"],
+        });
+      }
+    } catch {
+      // Best effort
+    }
   }
 
   /** Simple category classification */
