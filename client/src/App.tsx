@@ -657,7 +657,7 @@ function Router() {
 
         <Route component={NotFound} />
       </Switch>
-    </Suspense>
+    </React.Suspense>
   );
 }
 
