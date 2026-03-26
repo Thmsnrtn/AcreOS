@@ -10706,6 +10706,12 @@ export const decisionsInboxItems = pgTable("decisions_inbox_items", {
   founderOverrideAction: text("founder_override_action"),
   contextBundle: jsonb("context_bundle").$type<Record<string, any>>(),
   ownerAgentCodename: text("owner_agent_codename"), // company agent that owns this decision
+  expectedOutcome: text("expected_outcome"),
+  checkInDate: timestamp("check_in_date"),
+  actualOutcome: text("actual_outcome"),
+  outcomeScore: integer("outcome_score"), // -2 to +2
+  outcomeRecordedAt: timestamp("outcome_recorded_at"),
+  founderModification: text("founder_modification"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
