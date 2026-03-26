@@ -4504,4 +4504,108 @@ Tone: confident, data-driven, executive. Lead with what's working. Flag concerns
     }
   });
 
+  // ── Tier Override (Section 10) ──
+  app.post("/api/admin/organizations/:id/tier-override", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      if (!org?.isFounder) return res.status(403).json({ message: "Founder access required" });
+      const targetOrgId = parseInt(req.params.id);
+      const { tier, reason, expiresAt } = req.body;
+      if (!tier || !reason) return res.status(400).json({ message: "tier and reason are required" });
+      const { organizations } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+      const [updated] = await db.update(organizations)
+        .set({ subscriptionTier: tier, updatedAt: new Date() } as any)
+        .where(eq(organizations.id, targetOrgId))
+        .returning();
+      if (!updated) return res.status(404).json({ message: "Organization not found" });
+      // Log to audit
+      const { activityLog } = await import("@shared/schema");
+      await db.insert(activityLog).values({
+        organizationId: targetOrgId,
+        entityType: "organization",
+        entityId: targetOrgId,
+        action: "tier_override",
+        details: { tier, reason, expiresAt, overriddenBy: "founder" },
+      } as any);
+      res.json({ success: true, message: `Tier overridden to ${tier} for org #${targetOrgId}`, expiresAt });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/admin/impersonate/:orgId", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      if (!org?.isFounder) return res.status(403).json({ message: "Founder access required" });
+      const targetOrgId = parseInt(req.params.orgId);
+      const { organizations } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+      const target = await db.query.organizations.findFirst({ where: eq(organizations.id, targetOrgId) });
+      if (!target) return res.status(404).json({ message: "Organization not found" });
+      // Log impersonation
+      const { activityLog } = await import("@shared/schema");
+      await db.insert(activityLog).values({
+        organizationId: targetOrgId,
+        entityType: "organization",
+        entityId: targetOrgId,
+        action: "impersonation_started",
+        details: { founderOrgId: org.id, readOnly: true, expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString() },
+      } as any);
+      res.json({
+        success: true,
+        impersonation: {
+          orgId: targetOrgId,
+          orgName: target.name,
+          readOnly: true,
+          expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+        },
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/admin/organizations/:id/features", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      if (!org?.isFounder) return res.status(403).json({ message: "Founder access required" });
+      const targetOrgId = parseInt(req.params.id);
+      const { features } = req.body;
+      if (!features || typeof features !== "object") return res.status(400).json({ message: "features object required" });
+      const { organizations } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+      await db.update(organizations)
+        .set({ featureOverrides: features } as any)
+        .where(eq(organizations.id, targetOrgId));
+      res.json({ success: true, message: `Feature overrides set for org #${targetOrgId}`, features });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/founder/stage", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      if (!org?.isFounder) return res.status(403).json({ message: "Founder access required" });
+      const { detectStage } = await import("./services/companyStageDetector");
+      const stage = await detectStage();
+      res.json(stage);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/founder/leading-indicators", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = (req as any).organization;
+      if (!org?.isFounder) return res.status(403).json({ message: "Founder access required" });
+      const { computeLeadingIndicators } = await import("./services/leadingIndicators");
+      const indicators = await computeLeadingIndicators();
+      res.json(indicators);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
 }
