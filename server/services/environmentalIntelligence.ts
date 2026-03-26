@@ -10,61 +10,215 @@ import { logger } from "../utils/logger";
 export interface WaterRightsInfo {
   state: string;
   doctrine: "prior_appropriation" | "riparian" | "hybrid";
-  summary: string;
-  considerations: string[];
-  requiresPermit: boolean;
+  doctrineDescription: string;
+  permitsRequired: boolean;
+  typicalRightsType: string;
+  transferability: "high" | "moderate" | "low";
+  notes: string;
 }
 
 const WATER_RIGHTS: Record<string, Omit<WaterRightsInfo, "state">> = {
-  TX: { doctrine: "hybrid", summary: "Texas uses a hybrid system — surface water is state-owned (prior appropriation), groundwater follows the rule of capture.", considerations: ["Surface water requires a permit from TCEQ", "Groundwater rights are property rights in TX", "Check local GCD (Groundwater Conservation District) rules"], requiresPermit: true },
-  FL: { doctrine: "riparian", summary: "Florida follows the riparian doctrine with a consumptive use permit system.", considerations: ["Water Management Districts regulate usage", "Riparian owners have reasonable use rights", "Permits required for significant withdrawals"], requiresPermit: true },
-  AZ: { doctrine: "prior_appropriation", summary: "Arizona uses prior appropriation — first in time, first in right.", considerations: ["Groundwater is heavily regulated in Active Management Areas", "Surface water rights must be adjudicated", "Water is a critical factor in AZ land value"], requiresPermit: true },
-  CA: { doctrine: "hybrid", summary: "California uses a hybrid system — riparian and appropriative rights coexist.", considerations: ["State Water Resources Control Board oversees rights", "Drought restrictions can limit usage", "Water rights significantly impact land value in CA"], requiresPermit: true },
-  CO: { doctrine: "prior_appropriation", summary: "Colorado is strictly prior appropriation — no riparian rights.", considerations: ["Water rights are separate from land ownership", "Must verify what water rights convey with the land", "Augmentation plans may be required for wells"], requiresPermit: true },
-  NM: { doctrine: "prior_appropriation", summary: "New Mexico follows prior appropriation for both surface and groundwater.", considerations: ["Office of the State Engineer administers water rights", "Well permits required statewide", "Water rights are valuable and separately transferable"], requiresPermit: true },
-  NC: { doctrine: "riparian", summary: "North Carolina follows riparian rights with a registration system.", considerations: ["Large withdrawals require registration", "Riparian owners can make reasonable use of adjacent waters", "Relatively water-abundant state"], requiresPermit: false },
-  GA: { doctrine: "riparian", summary: "Georgia uses regulated riparian system.", considerations: ["Permits required for withdrawals >100,000 gallons/day", "Reasonable use standard applies", "Water availability varies significantly by region"], requiresPermit: true },
-  OR: { doctrine: "prior_appropriation", summary: "Oregon uses prior appropriation with some limited riparian elements.", considerations: ["Water Resources Department issues permits", "Exempt uses include domestic and stock watering", "Instream water rights recognized"], requiresPermit: true },
-  WA: { doctrine: "prior_appropriation", summary: "Washington uses prior appropriation — first in time, first in right.", considerations: ["Dept of Ecology issues water right permits", "Permit-exempt wells limited to 5,000 gallons/day", "Tribal treaty rights can affect water availability"], requiresPermit: true },
+  TX: {
+    doctrine: "hybrid",
+    doctrineDescription: "Texas uses prior appropriation for surface water and rule of capture for groundwater",
+    permitsRequired: true,
+    typicalRightsType: "Surface: appropriative permit; Groundwater: landowner right",
+    transferability: "moderate",
+    notes: "Groundwater conservation districts regulate pumping locally",
+  },
+  FL: {
+    doctrine: "riparian",
+    doctrineDescription: "Florida follows regulated riparian doctrine with consumptive use permits",
+    permitsRequired: true,
+    typicalRightsType: "Consumptive use permit from water management district",
+    transferability: "low",
+    notes: "Five regional water management districts oversee allocation",
+  },
+  AZ: {
+    doctrine: "prior_appropriation",
+    doctrineDescription: "Arizona uses prior appropriation with active management areas for groundwater",
+    permitsRequired: true,
+    typicalRightsType: "Appropriative right; groundwater rights in AMAs restricted",
+    transferability: "moderate",
+    notes: "Assured water supply required for new subdivisions in AMAs",
+  },
+  CA: {
+    doctrine: "hybrid",
+    doctrineDescription: "California uses both riparian and prior appropriation doctrines",
+    permitsRequired: true,
+    typicalRightsType: "Riparian, pre-1914 appropriative, or post-1914 permit",
+    transferability: "moderate",
+    notes: "SGMA regulates groundwater basins; water rights highly contested",
+  },
+  CO: {
+    doctrine: "prior_appropriation",
+    doctrineDescription: "Colorado is strict prior appropriation — no riparian rights recognized",
+    permitsRequired: true,
+    typicalRightsType: "Decreed appropriative right via water court",
+    transferability: "high",
+    notes: "Water rights are property rights, actively traded; senior rights very valuable",
+  },
+  NM: {
+    doctrine: "prior_appropriation",
+    doctrineDescription: "New Mexico follows prior appropriation for all water",
+    permitsRequired: true,
+    typicalRightsType: "Permit from State Engineer; priority date controls",
+    transferability: "high",
+    notes: "Domestic well permits exempt up to 3 acre-feet/year",
+  },
+  NC: {
+    doctrine: "riparian",
+    doctrineDescription: "North Carolina follows riparian doctrine with regulatory permits",
+    permitsRequired: true,
+    typicalRightsType: "Riparian right; large withdrawals require registration",
+    transferability: "low",
+    notes: "Capacity use areas impose additional restrictions in coastal regions",
+  },
+  GA: {
+    doctrine: "riparian",
+    doctrineDescription: "Georgia follows regulated riparian doctrine",
+    permitsRequired: true,
+    typicalRightsType: "Surface water withdrawal permit; farm use exemptions exist",
+    transferability: "low",
+    notes: "Agricultural withdrawals under 100k gal/day exempt from permitting",
+  },
+  OR: {
+    doctrine: "prior_appropriation",
+    doctrineDescription: "Oregon follows prior appropriation administered by Water Resources Dept",
+    permitsRequired: true,
+    typicalRightsType: "Water right permit or certificate with priority date",
+    transferability: "high",
+    notes: "Exempt groundwater use allowed for domestic/stock up to 15k gal/day",
+  },
+  WA: {
+    doctrine: "prior_appropriation",
+    doctrineDescription: "Washington uses prior appropriation with permit-exempt domestic wells",
+    permitsRequired: true,
+    typicalRightsType: "Water right permit; exempt wells for domestic use",
+    transferability: "high",
+    notes: "Hirst decision limits exempt well use in some areas; instream flow rules apply",
+  },
 };
 
 export function getWaterRightsInfo(state: string): WaterRightsInfo {
-  const data = WATER_RIGHTS[state.toUpperCase()];
+  const st = state.toUpperCase().trim();
+  const data = WATER_RIGHTS[st];
   if (!data) {
-    return { state: state.toUpperCase(), doctrine: "riparian", summary: `Water rights data not available for ${state}. Consult state water authority.`, considerations: ["Research local water regulations before purchasing"], requiresPermit: false };
+    logger.warn("Water rights lookup miss", { metadata: { state: st } });
+    return {
+      state: st,
+      doctrine: "riparian",
+      doctrineDescription: "Data unavailable for this state — defaulting to general riparian assumption",
+      permitsRequired: true,
+      typicalRightsType: "Unknown — verify with state water agency",
+      transferability: "low",
+      notes: "No data on file; consult a water rights attorney for this jurisdiction",
+    };
   }
-  return { state: state.toUpperCase(), ...data };
+  logger.debug("Water rights lookup", { metadata: { state: st, doctrine: data.doctrine } });
+  return { state: st, ...data };
 }
 
 // ── Mineral Rights ──────────────────────────────────────────────────
 
 export interface MineralRightsInfo {
   state: string;
-  commonlySevered: boolean;
-  dominantEstate: boolean;
+  severanceCommon: boolean;
+  severanceRisk: "high" | "moderate" | "low";
+  dominantMinerals: string[];
+  surfaceOwnerProtections: "strong" | "moderate" | "weak";
   notes: string;
-  considerations: string[];
 }
 
 const MINERAL_RIGHTS: Record<string, Omit<MineralRightsInfo, "state">> = {
-  TX: { commonlySevered: true, dominantEstate: true, notes: "Texas has extensive mineral severance. Mineral estate is dominant — surface owner must accommodate reasonable access.", considerations: ["Always run mineral rights search before purchase", "Oil/gas leases may restrict surface use", "Mineral rights can be fractionated across many owners"] },
-  CO: { commonlySevered: true, dominantEstate: true, notes: "Colorado has significant mineral severance, especially in western counties.", considerations: ["Surface Use Agreements recommended", "Coal, gas, and oil rights commonly severed", "Federal mineral reservations are common"] },
-  NM: { commonlySevered: true, dominantEstate: true, notes: "New Mexico has widespread mineral severance with federal mineral reservations.", considerations: ["BLM manages extensive federal mineral rights", "Oil/gas activity can affect surface use", "Check for existing leases and permits"] },
-  CA: { commonlySevered: true, dominantEstate: true, notes: "Mineral rights commonly severed in oil-producing regions.", considerations: ["Particularly common in Kern, Los Angeles, and Ventura counties", "Environmental regulations may limit extraction", "Always verify mineral conveyance in deed"] },
-  FL: { commonlySevered: false, dominantEstate: false, notes: "Florida mineral severance is uncommon. Phosphate mining is the main mineral activity.", considerations: ["Mineral rights generally convey with surface rights", "Phosphate companies may hold subsurface rights in central FL", "Check for any phosphate reservations"], },
-  NC: { commonlySevered: false, dominantEstate: false, notes: "Mineral severance is rare in North Carolina.", considerations: ["Mineral rights typically convey with the land", "Fracking moratorium has limited oil/gas severance", "Clay and aggregate operations may have separate rights"] },
-  GA: { commonlySevered: false, dominantEstate: false, notes: "Mineral severance is uncommon in Georgia.", considerations: ["Kaolin clay rights may be separately held in middle GA", "Generally minerals convey with surface", "Title search should still verify mineral status"] },
-  OR: { commonlySevered: false, dominantEstate: false, notes: "Oregon has limited mineral severance.", considerations: ["Federal mineral reservations exist in some areas", "Timber rights more commonly severed than minerals", "Check for any US Forest Service reservations"] },
-  WA: { commonlySevered: false, dominantEstate: false, notes: "Washington has limited mineral severance outside mining districts.", considerations: ["Check for historical mining claims", "Timber rights may be separately held", "Federal mineral reservations in some areas"] },
-  AZ: { commonlySevered: true, dominantEstate: true, notes: "Arizona has mineral severance particularly on former railroad and mining lands.", considerations: ["Railroad grants often reserved mineral rights", "Copper and gold mining areas may have complex severance", "State trust lands have separate mineral leasing"] },
+  TX: {
+    severanceCommon: true,
+    severanceRisk: "high",
+    dominantMinerals: ["oil", "natural_gas", "lignite"],
+    surfaceOwnerProtections: "weak",
+    notes: "Mineral estate dominant; surface owner has limited accommodation doctrine",
+  },
+  FL: {
+    severanceCommon: false,
+    severanceRisk: "low",
+    dominantMinerals: ["phosphate", "limestone", "sand"],
+    surfaceOwnerProtections: "moderate",
+    notes: "Mineral severance uncommon; phosphate mining concentrated in central FL",
+  },
+  AZ: {
+    severanceCommon: true,
+    severanceRisk: "moderate",
+    dominantMinerals: ["copper", "gold", "silver", "sand_gravel"],
+    surfaceOwnerProtections: "moderate",
+    notes: "Federal land patents often reserved mineral rights to government",
+  },
+  CA: {
+    severanceCommon: true,
+    severanceRisk: "moderate",
+    dominantMinerals: ["oil", "natural_gas", "gold", "sand_gravel"],
+    surfaceOwnerProtections: "strong",
+    notes: "CEQA adds environmental review layer to mineral extraction",
+  },
+  CO: {
+    severanceCommon: true,
+    severanceRisk: "high",
+    dominantMinerals: ["oil", "natural_gas", "coal", "molybdenum"],
+    surfaceOwnerProtections: "moderate",
+    notes: "SB 19-181 strengthened local government authority over oil/gas operations",
+  },
+  NM: {
+    severanceCommon: true,
+    severanceRisk: "high",
+    dominantMinerals: ["oil", "natural_gas", "potash", "uranium"],
+    surfaceOwnerProtections: "weak",
+    notes: "Permian Basin region — mineral rights frequently severed and highly valuable",
+  },
+  NC: {
+    severanceCommon: false,
+    severanceRisk: "low",
+    dominantMinerals: ["granite", "lithium", "sand_gravel"],
+    surfaceOwnerProtections: "strong",
+    notes: "Fracking moratorium; mineral severance rare outside western mountains",
+  },
+  GA: {
+    severanceCommon: false,
+    severanceRisk: "low",
+    dominantMinerals: ["kaolin", "granite", "sand"],
+    surfaceOwnerProtections: "moderate",
+    notes: "Kaolin mining significant in middle GA; mineral severance uncommon",
+  },
+  OR: {
+    severanceCommon: false,
+    severanceRisk: "low",
+    dominantMinerals: ["sand_gravel", "stone", "diatomite"],
+    surfaceOwnerProtections: "strong",
+    notes: "Limited mineral extraction; strong environmental review requirements",
+  },
+  WA: {
+    severanceCommon: false,
+    severanceRisk: "low",
+    dominantMinerals: ["sand_gravel", "coal", "gold"],
+    surfaceOwnerProtections: "strong",
+    notes: "Surface Mining Act provides reclamation requirements; limited severance",
+  },
 };
 
 export function getMineralRightsInfo(state: string): MineralRightsInfo {
-  const data = MINERAL_RIGHTS[state.toUpperCase()];
+  const st = state.toUpperCase().trim();
+  const data = MINERAL_RIGHTS[st];
   if (!data) {
-    return { state: state.toUpperCase(), commonlySevered: false, dominantEstate: false, notes: `Mineral rights data not available for ${state}.`, considerations: ["Verify mineral ownership through title search"] };
+    logger.warn("Mineral rights lookup miss", { metadata: { state: st } });
+    return {
+      state: st,
+      severanceCommon: false,
+      severanceRisk: "low",
+      dominantMinerals: [],
+      surfaceOwnerProtections: "moderate",
+      notes: "No data on file; always run a title search to confirm mineral ownership",
+    };
   }
-  return { state: state.toUpperCase(), ...data };
+  logger.debug("Mineral rights lookup", { metadata: { state: st, severanceRisk: data.severanceRisk } });
+  return { state: st, ...data };
 }
 
 // ── Carbon Credits ──────────────────────────────────────────────────
@@ -73,172 +227,402 @@ export interface CarbonCreditEstimate {
   eligible: boolean;
   estimatedCreditsPerYear: number;
   estimatedValuePerYear: number;
-  creditPriceRange: { low: number; high: number };
   programTypes: string[];
-  requirements: string[];
+  landType: string;
+  acreage: number;
+  state: string;
+  methodology: string;
+  notes: string;
 }
 
-export function estimateCarbonCredits(state: string, acres: number, landType?: string): CarbonCreditEstimate {
-  if (acres < 40) {
-    return { eligible: false, estimatedCreditsPerYear: 0, estimatedValuePerYear: 0, creditPriceRange: { low: 0, high: 0 }, programTypes: [], requirements: ["Minimum 40 acres typically required for carbon credit programs"] };
-  }
+const CARBON_RATES: Record<string, { creditsPerAcre: number; pricePerCredit: number }> = {
+  forest: { creditsPerAcre: 2.5, pricePerCredit: 25 },
+  grassland: { creditsPerAcre: 0.8, pricePerCredit: 20 },
+  cropland: { creditsPerAcre: 1.2, pricePerCredit: 18 },
+  wetland: { creditsPerAcre: 3.5, pricePerCredit: 30 },
+  desert: { creditsPerAcre: 0.1, pricePerCredit: 15 },
+  rangeland: { creditsPerAcre: 0.5, pricePerCredit: 18 },
+};
 
-  // Credits per acre per year (rough estimates by land type)
-  const creditsPerAcre: Record<string, number> = {
-    forest: 3.0,
-    grassland: 0.8,
-    agricultural: 0.5,
-    wetland: 2.5,
-    rangeland: 0.4,
-    default: 0.6,
-  };
+const STATE_CARBON_PROGRAMS: Record<string, string[]> = {
+  TX: ["ACR", "Verra_VCS", "CAR"],
+  FL: ["ACR", "Verra_VCS"],
+  AZ: ["ACR", "Verra_VCS"],
+  CA: ["CA_Cap_and_Trade", "ACR", "Verra_VCS", "CAR"],
+  CO: ["ACR", "Verra_VCS", "CAR"],
+  NM: ["ACR", "Verra_VCS"],
+  NC: ["ACR", "Verra_VCS", "CAR"],
+  GA: ["ACR", "Verra_VCS"],
+  OR: ["ACR", "Verra_VCS", "CAR", "CA_Cap_and_Trade"],
+  WA: ["WA_Cap_and_Invest", "ACR", "Verra_VCS", "CAR"],
+};
 
-  const type = (landType || "default").toLowerCase();
-  const perAcre = creditsPerAcre[type] || creditsPerAcre.default;
-  const totalCredits = Math.round(acres * perAcre);
-  const priceRange = { low: 15, high: 50 }; // $/ton CO2e
+const DEFAULT_LAND_TYPES: Record<string, string> = {
+  TX: "rangeland",
+  FL: "wetland",
+  AZ: "desert",
+  CA: "grassland",
+  CO: "grassland",
+  NM: "desert",
+  NC: "forest",
+  GA: "forest",
+  OR: "forest",
+  WA: "forest",
+};
+
+const MIN_CARBON_ACRES = 40;
+
+export function estimateCarbonCredits(
+  state: string,
+  acres: number,
+  landType?: string,
+): CarbonCreditEstimate {
+  const st = state.toUpperCase().trim();
+  const resolvedType = landType?.toLowerCase() || DEFAULT_LAND_TYPES[st] || "grassland";
+  const rates = CARBON_RATES[resolvedType] || CARBON_RATES.grassland;
+  const programs = STATE_CARBON_PROGRAMS[st] || ["ACR", "Verra_VCS"];
+
+  const eligible = acres >= MIN_CARBON_ACRES;
+  const creditsPerYear = eligible
+    ? Math.round(acres * rates.creditsPerAcre * 10) / 10
+    : 0;
+  const valuePerYear = eligible
+    ? Math.round(creditsPerYear * rates.pricePerCredit)
+    : 0;
+
+  logger.debug("Carbon credit estimate", {
+    metadata: { state: st, acres, landType: resolvedType, eligible, creditsPerYear },
+  });
 
   return {
-    eligible: true,
-    estimatedCreditsPerYear: totalCredits,
-    estimatedValuePerYear: Math.round(totalCredits * (priceRange.low + priceRange.high) / 2),
-    creditPriceRange: priceRange,
-    programTypes: [
-      "Improved Forest Management (IFM)",
-      acres >= 100 ? "Agricultural Land Management (ALM)" : "",
-      type === "grassland" || type === "rangeland" ? "Grassland Conservation" : "",
-      "Avoided Conversion",
-    ].filter(Boolean),
-    requirements: [
-      "Permanence commitment (typically 40-100 years)",
-      "Third-party verification (Verra, Gold Standard, or ACR)",
-      "Additionality — must demonstrate carbon would not have been sequestered otherwise",
-      "Baseline measurement and monitoring plan",
-      acres < 100 ? "Small acreage may need to aggregate with neighbors for viability" : "",
-    ].filter(Boolean),
+    eligible,
+    estimatedCreditsPerYear: creditsPerYear,
+    estimatedValuePerYear: valuePerYear,
+    programTypes: programs,
+    landType: resolvedType,
+    acreage: acres,
+    state: st,
+    methodology: "Static estimate: credits/acre rates by land type with state program availability",
+    notes: eligible
+      ? `Estimated ${creditsPerYear} credits/yr at ~$${rates.pricePerCredit}/credit. Verification and baseline required.`
+      : `Minimum ${MIN_CARBON_ACRES} acres typically required for carbon program enrollment.`,
   };
 }
 
 // ── Climate Risk ────────────────────────────────────────────────────
 
-export interface ClimateRiskAssessment {
-  overallRisk: "low" | "moderate" | "elevated" | "high";
-  floodRisk: { level: string; description: string };
-  fireRisk: { level: string; description: string };
-  droughtRisk: { level: string; description: string };
-  recommendations: string[];
+export interface RiskDetail {
+  level: "low" | "moderate" | "high" | "very_high";
+  score: number; // 0-100
+  description: string;
 }
 
-const STATE_CLIMATE: Record<string, { flood: string; fire: string; drought: string }> = {
-  TX: { flood: "moderate", fire: "moderate", drought: "elevated" },
-  FL: { flood: "high", fire: "low", drought: "low" },
-  AZ: { flood: "moderate", fire: "elevated", drought: "high" },
-  CA: { flood: "moderate", fire: "high", drought: "high" },
-  CO: { flood: "low", fire: "elevated", drought: "moderate" },
-  NM: { flood: "moderate", fire: "elevated", drought: "elevated" },
-  NC: { flood: "moderate", fire: "low", drought: "low" },
-  GA: { flood: "moderate", fire: "low", drought: "low" },
-  OR: { flood: "moderate", fire: "elevated", drought: "moderate" },
-  WA: { flood: "moderate", fire: "moderate", drought: "low" },
+export interface ClimateRiskAssessment {
+  state: string;
+  county?: string;
+  overallRisk: "low" | "moderate" | "high" | "very_high";
+  floodRisk: RiskDetail;
+  fireRisk: RiskDetail;
+  droughtRisk: RiskDetail;
+  hurricaneRisk: RiskDetail;
+  notes: string;
+}
+
+const CLIMATE_DATA: Record<
+  string,
+  Pick<ClimateRiskAssessment, "overallRisk" | "floodRisk" | "fireRisk" | "droughtRisk" | "hurricaneRisk">
+> = {
+  TX: {
+    overallRisk: "high",
+    floodRisk: { level: "high", score: 75, description: "Flash flooding common; Gulf coast hurricane surge" },
+    fireRisk: { level: "high", score: 70, description: "Wildfire risk high in western TX and panhandle" },
+    droughtRisk: { level: "very_high", score: 85, description: "Western TX chronic drought; aquifer depletion" },
+    hurricaneRisk: { level: "high", score: 72, description: "Gulf coast exposed; inland wind damage possible" },
+  },
+  FL: {
+    overallRisk: "very_high",
+    floodRisk: { level: "very_high", score: 90, description: "Sea level rise, storm surge, and inland flooding" },
+    fireRisk: { level: "moderate", score: 45, description: "Seasonal brush fires; controlled burns common" },
+    droughtRisk: { level: "moderate", score: 40, description: "Seasonal dry periods; aquifer generally adequate" },
+    hurricaneRisk: { level: "very_high", score: 95, description: "Highest hurricane exposure in continental US" },
+  },
+  AZ: {
+    overallRisk: "high",
+    floodRisk: { level: "moderate", score: 50, description: "Flash flooding in monsoon season; wash areas" },
+    fireRisk: { level: "very_high", score: 88, description: "Extreme wildfire risk in forested highlands" },
+    droughtRisk: { level: "very_high", score: 92, description: "Chronic drought; Colorado River allocation cuts" },
+    hurricaneRisk: { level: "low", score: 5, description: "Minimal hurricane exposure" },
+  },
+  CA: {
+    overallRisk: "very_high",
+    floodRisk: { level: "high", score: 65, description: "Atmospheric rivers, mudslides after fires" },
+    fireRisk: { level: "very_high", score: 95, description: "Extreme wildfire risk statewide; WUI expansion" },
+    droughtRisk: { level: "very_high", score: 88, description: "Multi-year droughts; water allocation conflicts" },
+    hurricaneRisk: { level: "low", score: 2, description: "No meaningful hurricane risk" },
+  },
+  CO: {
+    overallRisk: "moderate",
+    floodRisk: { level: "moderate", score: 45, description: "Flash floods in canyons; spring snowmelt flooding" },
+    fireRisk: { level: "high", score: 78, description: "Growing WUI wildfire risk; Marshall fire precedent" },
+    droughtRisk: { level: "high", score: 70, description: "Colorado River compact obligations; front range growth" },
+    hurricaneRisk: { level: "low", score: 1, description: "No hurricane risk" },
+  },
+  NM: {
+    overallRisk: "high",
+    floodRisk: { level: "moderate", score: 42, description: "Flash flood risk in arroyos and burn scar areas" },
+    fireRisk: { level: "very_high", score: 85, description: "Severe wildfire risk; post-fire flooding compound risk" },
+    droughtRisk: { level: "very_high", score: 90, description: "Persistent drought; Rio Grande frequently runs dry" },
+    hurricaneRisk: { level: "low", score: 1, description: "No hurricane risk" },
+  },
+  NC: {
+    overallRisk: "high",
+    floodRisk: { level: "high", score: 78, description: "Coastal storm surge and inland river flooding" },
+    fireRisk: { level: "low", score: 25, description: "Limited wildfire risk; prescribed burns in piedmont" },
+    droughtRisk: { level: "moderate", score: 35, description: "Occasional drought periods; generally adequate water" },
+    hurricaneRisk: { level: "high", score: 75, description: "Direct hurricane hits and tropical storm flooding" },
+  },
+  GA: {
+    overallRisk: "moderate",
+    floodRisk: { level: "moderate", score: 55, description: "Coastal flooding; urban flash floods in metro areas" },
+    fireRisk: { level: "moderate", score: 40, description: "Seasonal fire risk in southern pine forests" },
+    droughtRisk: { level: "moderate", score: 45, description: "Periodic drought; water wars with AL/FL" },
+    hurricaneRisk: { level: "moderate", score: 55, description: "Coastal exposure; inland wind damage from landfalls" },
+  },
+  OR: {
+    overallRisk: "moderate",
+    floodRisk: { level: "moderate", score: 50, description: "River flooding in Willamette Valley; coastal erosion" },
+    fireRisk: { level: "high", score: 80, description: "Severe wildfire risk east of Cascades; 2020 fires precedent" },
+    droughtRisk: { level: "moderate", score: 48, description: "Eastern OR drought-prone; western OR generally adequate" },
+    hurricaneRisk: { level: "low", score: 1, description: "No hurricane risk" },
+  },
+  WA: {
+    overallRisk: "moderate",
+    floodRisk: { level: "moderate", score: 52, description: "River flooding; atmospheric rivers; lahar risk near Rainier" },
+    fireRisk: { level: "high", score: 72, description: "Eastern WA wildfire risk high; smoke impacts statewide" },
+    droughtRisk: { level: "moderate", score: 42, description: "Eastern WA irrigation-dependent; snowpack declining" },
+    hurricaneRisk: { level: "low", score: 1, description: "No hurricane risk" },
+  },
 };
 
-export function assessClimateRisk(state: string, county?: string): ClimateRiskAssessment {
-  const data = STATE_CLIMATE[state.toUpperCase()] || { flood: "moderate", fire: "moderate", drought: "moderate" };
+export function assessClimateRisk(
+  state: string,
+  county?: string,
+  lat?: number,
+  lng?: number,
+): ClimateRiskAssessment {
+  const st = state.toUpperCase().trim();
+  const data = CLIMATE_DATA[st];
 
-  const riskLevels = [data.flood, data.fire, data.drought];
-  const highCount = riskLevels.filter(r => r === "high").length;
-  const elevatedCount = riskLevels.filter(r => r === "elevated").length;
-  const overallRisk = highCount >= 2 ? "high" : highCount >= 1 || elevatedCount >= 2 ? "elevated" : elevatedCount >= 1 ? "moderate" : "low";
+  if (!data) {
+    logger.warn("Climate risk lookup miss", { metadata: { state: st, county } });
+    return {
+      state: st,
+      county,
+      overallRisk: "moderate",
+      floodRisk: { level: "moderate", score: 50, description: "Insufficient data for this state" },
+      fireRisk: { level: "moderate", score: 50, description: "Insufficient data for this state" },
+      droughtRisk: { level: "moderate", score: 50, description: "Insufficient data for this state" },
+      hurricaneRisk: { level: "low", score: 10, description: "Insufficient data for this state" },
+      notes: "No state-level climate data on file; recommend FEMA flood map and local hazard review",
+    };
+  }
 
-  const recommendations: string[] = [];
-  if (data.flood === "high" || data.flood === "elevated") recommendations.push("Check FEMA flood maps for specific parcel flood zone designation");
-  if (data.fire === "high" || data.fire === "elevated") recommendations.push("Review state wildfire risk maps and defensible space requirements");
-  if (data.drought === "high" || data.drought === "elevated") recommendations.push("Verify water availability and well depth data for the area");
-  recommendations.push("Consider climate risk in long-term hold value projections");
+  logger.debug("Climate risk assessment", {
+    metadata: { state: st, county, overallRisk: data.overallRisk, lat, lng },
+  });
 
   return {
-    overallRisk,
-    floodRisk: { level: data.flood, description: getClimateDescription("flood", data.flood) },
-    fireRisk: { level: data.fire, description: getClimateDescription("fire", data.fire) },
-    droughtRisk: { level: data.drought, description: getClimateDescription("drought", data.drought) },
-    recommendations,
+    state: st,
+    county,
+    ...data,
+    notes: county
+      ? `State-level assessment for ${st}. County-level data for ${county} may vary — verify with local hazard maps.`
+      : `State-level assessment for ${st}. Provide county for more granular context.`,
   };
-}
-
-function getClimateDescription(type: string, level: string): string {
-  const descriptions: Record<string, Record<string, string>> = {
-    flood: { low: "Minimal flood risk", moderate: "Some flood risk — check specific parcel", elevated: "Notable flood risk in many areas", high: "Significant flood risk — FEMA mapping essential" },
-    fire: { low: "Minimal wildfire risk", moderate: "Some wildfire risk in rural areas", elevated: "Notable wildfire risk — check WUI proximity", high: "High wildfire risk — defensible space required" },
-    drought: { low: "Adequate rainfall and water availability", moderate: "Occasional drought conditions", elevated: "Frequent drought — water rights important", high: "Chronic drought — water is a critical factor" },
-  };
-  return descriptions[type]?.[level] || "Risk assessment unavailable";
 }
 
 // ── Highest and Best Use ────────────────────────────────────────────
 
+export interface LandUseOption {
+  use: "residential" | "agricultural" | "commercial" | "recreational" | "conservation";
+  score: number; // 0-100
+  rationale: string;
+  estimatedValueImpact: "positive" | "neutral" | "negative";
+}
+
+export interface UseFactor {
+  name: string;
+  value: string;
+  impact: "positive" | "neutral" | "negative";
+}
+
 export interface HighestBestUseAnalysis {
-  recommendedUse: string;
-  scores: { use: string; score: number; reasoning: string }[];
-  constraints: string[];
-  opportunities: string[];
+  recommended: LandUseOption;
+  alternatives: LandUseOption[];
+  factors: UseFactor[];
+  notes: string;
 }
 
 export function analyzeHighestBestUse(property: {
-  state: string; county?: string; acres: number;
-  zoning?: string; utilities?: any; roadAccess?: string;
+  state: string;
+  county?: string;
+  acres: number;
+  zoning?: string;
+  utilities?: any;
+  roadAccess?: string;
 }): HighestBestUseAnalysis {
-  const uses: { use: string; score: number; reasoning: string }[] = [];
-  const constraints: string[] = [];
-  const opportunities: string[] = [];
+  const { state, county, acres, zoning, utilities, roadAccess } = property;
+  const st = state.toUpperCase().trim();
 
-  // Residential
-  let residentialScore = 50;
-  if (property.utilities?.electric) residentialScore += 15;
-  if (property.utilities?.water) residentialScore += 10;
-  if (property.roadAccess === "paved") residentialScore += 10;
-  if (property.acres < 5) residentialScore += 10;
-  if (property.acres > 50) residentialScore -= 20;
-  if (property.zoning?.toLowerCase().includes("residential")) residentialScore += 15;
-  uses.push({ use: "Residential", score: Math.max(0, Math.min(100, residentialScore)), reasoning: "Based on utilities, access, and parcel size" });
+  const factors: UseFactor[] = [];
+  const scores: Record<string, number> = {
+    residential: 50,
+    agricultural: 50,
+    commercial: 30,
+    recreational: 50,
+    conservation: 40,
+  };
 
-  // Agricultural
-  let agScore = 40;
-  if (property.acres >= 10) agScore += 15;
-  if (property.acres >= 50) agScore += 10;
-  if (property.utilities?.water) agScore += 10;
-  if (property.zoning?.toLowerCase().includes("ag")) agScore += 15;
-  uses.push({ use: "Agricultural", score: Math.max(0, Math.min(100, agScore)), reasoning: "Based on acreage, water access, and zoning" });
+  // ── Acreage ──
+  if (acres < 5) {
+    scores.residential += 25;
+    scores.commercial += 15;
+    scores.agricultural -= 20;
+    scores.conservation -= 20;
+    factors.push({ name: "acreage", value: `${acres} acres (small)`, impact: "positive" });
+  } else if (acres < 40) {
+    scores.residential += 15;
+    scores.recreational += 15;
+    scores.agricultural += 10;
+    factors.push({ name: "acreage", value: `${acres} acres (medium)`, impact: "neutral" });
+  } else if (acres < 160) {
+    scores.agricultural += 25;
+    scores.recreational += 20;
+    scores.conservation += 15;
+    scores.residential -= 10;
+    factors.push({ name: "acreage", value: `${acres} acres (large)`, impact: "positive" });
+  } else {
+    scores.agricultural += 30;
+    scores.conservation += 30;
+    scores.recreational += 15;
+    scores.residential -= 25;
+    scores.commercial -= 20;
+    factors.push({ name: "acreage", value: `${acres} acres (very large)`, impact: "positive" });
+  }
 
-  // Recreational
-  let recScore = 45;
-  if (property.acres >= 5) recScore += 10;
-  if (property.acres >= 20) recScore += 10;
-  if (property.roadAccess) recScore += 5;
-  uses.push({ use: "Recreational", score: Math.max(0, Math.min(100, recScore)), reasoning: "Based on acreage and accessibility" });
+  // ── Zoning ──
+  if (zoning) {
+    const z = zoning.toUpperCase();
+    if (z.startsWith("R") || z.includes("RESID")) {
+      scores.residential += 20;
+      factors.push({ name: "zoning", value: zoning, impact: "positive" });
+    } else if (z.startsWith("A") || z.includes("AGRI") || z.includes("AG")) {
+      scores.agricultural += 20;
+      scores.conservation += 10;
+      factors.push({ name: "zoning", value: zoning, impact: "positive" });
+    } else if (z.startsWith("C") || z.includes("COMM")) {
+      scores.commercial += 25;
+      factors.push({ name: "zoning", value: zoning, impact: "positive" });
+    } else {
+      factors.push({ name: "zoning", value: zoning, impact: "neutral" });
+    }
+  } else {
+    factors.push({ name: "zoning", value: "unknown", impact: "neutral" });
+  }
 
-  // Commercial
-  let commScore = 30;
-  if (property.roadAccess === "paved") commScore += 15;
-  if (property.utilities?.electric && property.utilities?.water) commScore += 15;
-  if (property.acres < 20) commScore += 10;
-  if (property.zoning?.toLowerCase().includes("commercial")) commScore += 20;
-  uses.push({ use: "Commercial", score: Math.max(0, Math.min(100, commScore)), reasoning: "Based on infrastructure, access, and zoning" });
+  // ── Utilities ──
+  const hasUtilities = utilities && (utilities.water || utilities.electric || utilities.sewer);
+  if (hasUtilities) {
+    scores.residential += 15;
+    scores.commercial += 15;
+    factors.push({ name: "utilities", value: "available", impact: "positive" });
+  } else {
+    scores.residential -= 10;
+    scores.commercial -= 15;
+    scores.conservation += 5;
+    scores.recreational += 5;
+    factors.push({ name: "utilities", value: "unavailable or unknown", impact: "negative" });
+  }
 
-  // Conservation
-  let consScore = 30;
-  if (property.acres >= 40) consScore += 15;
-  if (property.acres >= 100) consScore += 10;
-  uses.push({ use: "Conservation", score: Math.max(0, Math.min(100, consScore)), reasoning: "Based on acreage and conservation program eligibility" });
+  // ── Road access ──
+  if (roadAccess) {
+    const ra = roadAccess.toLowerCase();
+    if (ra.includes("paved") || ra.includes("highway")) {
+      scores.residential += 10;
+      scores.commercial += 15;
+      factors.push({ name: "road_access", value: roadAccess, impact: "positive" });
+    } else if (ra.includes("dirt") || ra.includes("gravel")) {
+      scores.recreational += 10;
+      scores.agricultural += 5;
+      scores.commercial -= 10;
+      factors.push({ name: "road_access", value: roadAccess, impact: "neutral" });
+    } else if (ra.includes("none") || ra.includes("landlocked")) {
+      scores.residential -= 20;
+      scores.commercial -= 25;
+      scores.conservation += 10;
+      factors.push({ name: "road_access", value: roadAccess, impact: "negative" });
+    } else {
+      factors.push({ name: "road_access", value: roadAccess, impact: "neutral" });
+    }
+  }
 
-  uses.sort((a, b) => b.score - a.score);
+  // ── Climate-adjusted ──
+  const climate = CLIMATE_DATA[st];
+  if (climate) {
+    if (climate.fireRisk.score >= 80) {
+      scores.residential -= 10;
+      scores.conservation += 5;
+      factors.push({ name: "fire_risk", value: "high", impact: "negative" });
+    }
+    if (climate.droughtRisk.score >= 80) {
+      scores.agricultural -= 15;
+      factors.push({ name: "drought_risk", value: "high", impact: "negative" });
+    }
+    if (climate.floodRisk.score >= 75) {
+      scores.residential -= 10;
+      scores.commercial -= 10;
+      factors.push({ name: "flood_risk", value: "high", impact: "negative" });
+    }
+  }
 
-  if (!property.utilities?.electric) constraints.push("No electric utility — limits residential/commercial use");
-  if (!property.roadAccess || property.roadAccess === "none") constraints.push("No road access — significant development constraint");
-  if (property.zoning) constraints.push(`Current zoning: ${property.zoning}`);
+  // ── Clamp & rank ──
+  const USES = ["residential", "agricultural", "commercial", "recreational", "conservation"] as const;
+  for (const u of USES) {
+    scores[u] = Math.max(0, Math.min(100, scores[u]));
+  }
 
-  if (property.acres >= 40) opportunities.push("Carbon credit eligibility (40+ acres)");
-  if (property.acres >= 10) opportunities.push("Agricultural exemption may reduce property taxes");
-  if (uses[0].score >= 70) opportunities.push(`Strong ${uses[0].use.toLowerCase()} potential`);
+  const sorted: LandUseOption[] = USES.map((use) => ({
+    use,
+    score: scores[use],
+    rationale: buildRationale(use, scores[use], factors),
+    estimatedValueImpact:
+      scores[use] >= 65 ? ("positive" as const) : scores[use] >= 40 ? ("neutral" as const) : ("negative" as const),
+  })).sort((a, b) => b.score - a.score);
 
-  return { recommendedUse: uses[0].use, scores: uses, constraints, opportunities };
+  const recommended = sorted[0];
+  const alternatives = sorted.slice(1);
+
+  logger.debug("Highest-best-use analysis", {
+    metadata: { state: st, county, acres, recommended: recommended.use, score: recommended.score },
+  });
+
+  return {
+    recommended,
+    alternatives,
+    factors,
+    notes: `Analysis based on ${factors.length} factors. Top use: ${recommended.use} (${recommended.score}/100). Zoning and local market conditions should be verified.`,
+  };
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────
+
+function buildRationale(use: string, score: number, factors: UseFactor[]): string {
+  const strength = score >= 70 ? "Strong" : score >= 50 ? "Moderate" : "Weak";
+  const positives = factors.filter((f) => f.impact === "positive").map((f) => f.name);
+  const negatives = factors.filter((f) => f.impact === "negative").map((f) => f.name);
+
+  let r = `${strength} fit for ${use} use (score: ${score}).`;
+  if (positives.length > 0) r += ` Favorable: ${positives.join(", ")}.`;
+  if (negatives.length > 0) r += ` Concerns: ${negatives.join(", ")}.`;
+  return r;
 }

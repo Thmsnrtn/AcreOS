@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { fadeInUp } from "@/lib/animations";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +10,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import { Check, ChevronRight, Send, Download, Mail, FileText, ArrowLeft } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { AIReasoning } from "@/components/ai-reasoning";
 
 interface OfferTier {
   name: string;
@@ -34,6 +35,12 @@ export function OfferWizard({ dealId, trigger }: OfferWizardProps) {
   const [deliveryMethod, setDeliveryMethod] = useState<string>("email");
   const queryClient = useQueryClient();
   const { toast } = useToast();
+
+  const { data: dealStats } = useQuery<{ offersSent: number }>({
+    queryKey: ["/api/deals/stats"],
+    staleTime: 5 * 60 * 1000,
+  });
+  const isAdvanced = (dealStats?.offersSent ?? 0) >= 3;
 
   const initiateMutation = useMutation({
     mutationFn: async () => {
@@ -131,8 +138,17 @@ export function OfferWizard({ dealId, trigger }: OfferWizardProps) {
                   </div>
                 ) : initiateMutation.data?.tiers ? (
                   <>
-                    {initiateMutation.data.compSummary && (
+                    {!isAdvanced && (
+                      <p className="text-sm font-medium">Here are 3 offer prices. Pick one.</p>
+                    )}
+                    {isAdvanced && initiateMutation.data.compSummary && (
                       <p className="text-xs text-muted-foreground">{initiateMutation.data.compSummary}</p>
+                    )}
+                    {isAdvanced && initiateMutation.data.strategyRecommendation && (
+                      <p className="text-xs text-primary">{initiateMutation.data.strategyRecommendation}</p>
+                    )}
+                    {isAdvanced && initiateMutation.data.motivationAnalysis && (
+                      <p className="text-xs text-muted-foreground">{initiateMutation.data.motivationAnalysis}</p>
                     )}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       {initiateMutation.data.tiers.map((tier: OfferTier) => (
@@ -149,14 +165,31 @@ export function OfferWizard({ dealId, trigger }: OfferWizardProps) {
                               )}
                             </div>
                             <p className="text-xl font-bold">{formatPrice(tier.price)}</p>
-                            <p className="text-xs text-muted-foreground">
-                              Projected profit: {formatPrice(tier.profit)}
-                            </p>
-                            <p className="text-xs">{tier.strategy}</p>
+                            {isAdvanced && (
+                              <>
+                                <p className="text-xs text-muted-foreground">
+                                  Projected profit: {formatPrice(tier.profit)}
+                                </p>
+                                <p className="text-xs">{tier.strategy}</p>
+                              </>
+                            )}
                           </CardContent>
                         </Card>
                       ))}
                     </div>
+                    {isAdvanced && initiateMutation.data.motivationGrade && (
+                      <AIReasoning
+                        feature="offer_tier"
+                        decision={`Motivation grade: ${initiateMutation.data.motivationGrade} — ${initiateMutation.data.strategyRecommendation || "Standard approach"}`}
+                        reasoning={initiateMutation.data.motivationAnalysis || "Offer tiers calculated from comparable sales and market conditions."}
+                        confidence={initiateMutation.data.motivationGrade <= "B" ? 85 : 65}
+                        inputs={{
+                          motivationGrade: initiateMutation.data.motivationGrade,
+                          estimatedValue: initiateMutation.data.tiers?.[1]?.price ? Math.round(initiateMutation.data.tiers[1].price / 0.4) : undefined,
+                          tiers: initiateMutation.data.tiers?.length,
+                        }}
+                      />
+                    )}
                   </>
                 ) : (
                   <p className="text-sm text-muted-foreground">Unable to generate offer analysis.</p>
@@ -167,23 +200,29 @@ export function OfferWizard({ dealId, trigger }: OfferWizardProps) {
             {/* Step 2: Letter Preview */}
             {step === "letter" && (
               <motion.div key="letter" {...fadeInUp} className="space-y-4">
+                {!isAdvanced && (
+                  <p className="text-sm font-medium">Here's the letter. Send it.</p>
+                )}
                 <Textarea
                   value={letter}
                   onChange={(e) => setLetter(e.target.value)}
-                  rows={12}
+                  rows={isAdvanced ? 12 : 8}
                   className="font-mono text-sm"
                   aria-label="Offer letter content"
+                  readOnly={!isAdvanced}
                 />
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => letterMutation.mutate(selectedTier?.name.toLowerCase() || "market")}
-                    disabled={letterMutation.isPending}
-                  >
-                    Regenerate
-                  </Button>
-                </div>
+                {isAdvanced && (
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => letterMutation.mutate(selectedTier?.name.toLowerCase() || "market")}
+                      disabled={letterMutation.isPending}
+                    >
+                      Regenerate
+                    </Button>
+                  </div>
+                )}
                 <div className="space-y-2">
                   <p className="text-xs font-medium">Delivery method:</p>
                   <div className="flex gap-2">
@@ -204,7 +243,7 @@ export function OfferWizard({ dealId, trigger }: OfferWizardProps) {
                   </div>
                 </div>
                 <Button onClick={() => setStep("confirm")} className="w-full">
-                  Review & Send <ChevronRight className="w-3 h-3 ml-1" />
+                  {isAdvanced ? "Review & Send" : "Send It"} <ChevronRight className="w-3 h-3 ml-1" />
                 </Button>
               </motion.div>
             )}

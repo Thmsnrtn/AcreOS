@@ -642,6 +642,9 @@ export const properties = pgTable("properties", {
   capRate: numeric("cap_rate"),
   noi: numeric("noi"),
 
+  // Entity ownership tracking
+  owningEntity: text("owning_entity"), // "Smith Land LLC", "Smith IRA LLC", etc.
+
   // Soft delete
   deletedAt: timestamp("deleted_at"),
   deletedBy: text("deleted_by"),
@@ -847,6 +850,9 @@ export const notes = pgTable("notes", {
   daysDelinquent: integer("days_delinquent").default(0),
   delinquencyStatus: text("delinquency_status").default("current"), // current, early_delinquent, delinquent, seriously_delinquent, default_candidate
   
+  // Entity ownership tracking
+  owningEntity: text("owning_entity"), // "Smith Land LLC", "Smith IRA LLC", etc.
+
   notes: text("notes_text"), // Renamed to avoid conflict with table name
   deletedAt: timestamp("deleted_at"),
   deletedBy: text("deleted_by"),
@@ -11465,4 +11471,21 @@ export const leadEmails = pgTable("lead_emails", {
 
 export const insertLeadEmailSchema = createInsertSchema(leadEmails).omit({
   id: true, createdAt: true,
+});
+
+// ============================================
+// COUNTY REVIEWS (Community Intelligence)
+// ============================================
+
+export const countyReviews = pgTable("county_reviews", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").references(() => organizations.id).notNull(),
+  state: text("state").notNull(),
+  county: text("county").notNull(),
+  rating: integer("rating").notNull(),
+  pros: text("pros").notNull(),
+  cons: text("cons").notNull(),
+  investorTrustScore: integer("investor_trust_score"),
+  verifiedDeals: integer("verified_deals"),
+  createdAt: timestamp("created_at").defaultNow(),
 });
