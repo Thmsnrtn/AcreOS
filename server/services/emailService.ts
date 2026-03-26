@@ -774,6 +774,9 @@ export class EmailService {
 
 export const emailService = new EmailService();
 
+/** Convenience alias for callers that import { sendEmail } */
+export const sendEmail = emailService.sendEmail.bind(emailService);
+
 export async function getEmailServiceStatus(): Promise<{
   isConfigured: boolean;
   defaultFromEmail?: string;
