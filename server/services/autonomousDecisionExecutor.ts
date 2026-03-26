@@ -56,6 +56,7 @@ import { eq, and, desc, isNull, sql, lte } from "drizzle-orm";
 import { routeCriticalTask } from "./aiRouter";
 import { emailService } from "./emailService";
 import { format } from "date-fns";
+import { companyAgentService } from "./companyAgents";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Configuration — all controlled via env vars (founder owns these, system cannot change)
@@ -65,9 +66,12 @@ const EXECUTOR_CONFIG = {
   // Confidence threshold to auto-execute (0-100). Below this → defer 24h, then re-evaluate.
   AUTO_EXECUTE_THRESHOLD: parseInt(process.env.AUTONOMOUS_CONFIDENCE_THRESHOLD || "75"),
 
-  // Maximum financial impact (in cents) that can be autonomously committed.
-  // Items above this are always deferred to founder.
-  MAX_FINANCIAL_IMPACT_CENTS: parseInt(process.env.AUTONOMOUS_MAX_FINANCIAL_IMPACT || "50000"), // $500
+  // v11: Graduated financial authority replaces flat cap.
+  // Tier 1: $0-$500 (single agent), Tier 2: $500-$2,500 (multi-agent), Tier 3: $2,500-$10K,
+  // Tier 4: $10K-$50K (quorum), Tier 5: $50K+ (founder required).
+  // The old flat MAX_FINANCIAL_IMPACT_CENTS is kept as Tier 5 hard stop.
+  MAX_FINANCIAL_IMPACT_CENTS: parseInt(process.env.AUTONOMOUS_MAX_FINANCIAL_IMPACT || "5000000"), // $50,000 — Tier 5 hard stop
+  GRADUATED_FINANCIAL_AUTHORITY_ENABLED: process.env.GRADUATED_FINANCIAL_AUTHORITY !== "false",
 
   // Hard-stop item types that NEVER auto-execute regardless of confidence.
   HARD_STOP_TYPES: (process.env.AUTONOMOUS_HARD_STOP_TYPES || "").split(",").filter(Boolean),
@@ -475,8 +479,61 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
     executedAt: new Date(),
   };
 
-  // Hard stop check: financial impact above threshold
+  // ── Agent Attribution (Sovereign Company Protocol) ──
+  const ownerAgent = companyAgentService.getOwnerForDecisionType(item.itemType);
+  if (ownerAgent && !item.ownerAgentCodename) {
+    try {
+      await db.update(decisionsInboxItems)
+        .set({ ownerAgentCodename: ownerAgent })
+        .where(eq(decisionsInboxItems.id, item.id));
+    } catch {}
+  }
+
+  // v11: Graduated financial authority — route through tiered approval system
   const impactCents = item.estimatedImpactCents ?? 0;
+  if (impactCents > 0 && EXECUTOR_CONFIG.GRADUATED_FINANCIAL_AUTHORITY_ENABLED) {
+    try {
+      const { financialAuthorityGate } = await import("./financialAuthorityGate");
+      const spendResult = await financialAuthorityGate.requestSpend(
+        ownerAgent || "atlas_cto",
+        impactCents,
+        `Autonomous decision: ${item.itemType} (item #${item.id})`,
+        item.itemType
+      );
+      if (spendResult.status === "founder_required") {
+        result.decision = {
+          action: "hard_stop",
+          confidence: 100,
+          reasoning: `Financial impact $${(impactCents / 100).toFixed(2)} is Tier 5 (>$50K). Requires founder approval.`,
+        };
+        result.executedAction = "hard_stop_deferred_tier5";
+        result.executionSuccess = true;
+        result.executed = false;
+        await db.update(decisionsInboxItems)
+          .set({ status: "deferred", deferredUntil: new Date(Date.now() + 72 * 60 * 60 * 1000), updatedAt: new Date() })
+          .where(eq(decisionsInboxItems.id, item.id));
+        return result;
+      }
+      if (spendResult.status === "pending_approval") {
+        result.decision = {
+          action: "defer",
+          confidence: 80,
+          reasoning: `Financial impact $${(impactCents / 100).toFixed(2)} requires Tier ${spendResult.tier} multi-agent consensus. Approval request ${spendResult.requestId} created.`,
+        };
+        result.executedAction = `deferred_multi_agent_approval_tier${spendResult.tier}`;
+        result.executionSuccess = true;
+        await db.update(decisionsInboxItems)
+          .set({ status: "deferred", deferredUntil: new Date(Date.now() + 4 * 60 * 60 * 1000), updatedAt: new Date() })
+          .where(eq(decisionsInboxItems.id, item.id));
+        return result;
+      }
+      // status === "approved" — proceed with execution
+    } catch {
+      // Fallback to legacy flat cap if graduated authority fails
+    }
+  }
+
+  // Legacy hard stop: financial impact above absolute threshold (Tier 5 fallback)
   if (impactCents > EXECUTOR_CONFIG.MAX_FINANCIAL_IMPACT_CENTS) {
     result.decision = {
       action: "hard_stop",
@@ -673,6 +730,24 @@ async function processInboxItem(item: any): Promise<ExecutionResult> {
       .set({ status: "deferred", deferredUntil: new Date(Date.now() + 24 * 60 * 60 * 1000), updatedAt: new Date() })
       .where(eq(decisionsInboxItems.id, item.id));
     result.executedAction = `Deferred by AI: ${aiDecision.reasoning.slice(0, 100)}`;
+  }
+
+  // ── Update owning agent metrics (Sovereign Company Protocol) ──
+  if (ownerAgent) {
+    try {
+      await companyAgentService.recordActivity(ownerAgent);
+      const isCorrect = result.executionSuccess && aiDecision.action !== "defer";
+      if (isCorrect) {
+        const agent = await companyAgentService.getByCodename(ownerAgent);
+        const currentMetrics = (agent?.metrics as any) || { decisionsTotal: 0, decisionsCorrect: 0, escalationsCount: 0, avgConfidence: 0, lastWeekActions: 0 };
+        await companyAgentService.updateMetrics(ownerAgent, {
+          decisionsTotal: (currentMetrics.decisionsTotal || 0) + 1,
+          decisionsCorrect: (currentMetrics.decisionsCorrect || 0) + (result.executionSuccess ? 1 : 0),
+          avgConfidence: Math.round(((currentMetrics.avgConfidence || 0) * (currentMetrics.decisionsTotal || 0) + aiDecision.confidence) / ((currentMetrics.decisionsTotal || 0) + 1)),
+          lastWeekActions: (currentMetrics.lastWeekActions || 0) + 1,
+        });
+      }
+    } catch {}
   }
 
   return result;

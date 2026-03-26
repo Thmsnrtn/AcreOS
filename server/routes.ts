@@ -1113,6 +1113,66 @@ export async function registerRoutes(
     }
   });
 
+  // Sovereign Company Protocol v6 — Self-Running Company
+  {
+    const { registerFounderV6Routes } = await import("./routes-founder-v6");
+    registerFounderV6Routes(app);
+  }
+
+  // Sovereign Company Protocol v7 — The Learning Company
+  {
+    const { registerFounderV7Routes } = await import("./routes-founder-v7");
+    registerFounderV7Routes(app);
+  }
+
+  // Sovereign Company Protocol v8 — The Living Organization
+  {
+    const { registerFounderV8Routes } = await import("./routes-founder-v8");
+    registerFounderV8Routes(app);
+  }
+
+  // Sovereign Company Protocol v9 — The Self-Running Company
+  {
+    const { registerFounderV9Routes } = await import("./routes-founder-v9");
+    registerFounderV9Routes(app);
+  }
+
+  // Sovereign Company Protocol v10 — The Conscious Organization
+  {
+    const { registerFounderV10Routes } = await import("./routes-founder-v10");
+    registerFounderV10Routes(app);
+  }
+
+  // Sovereign Company Protocol v11 — The Anticipatory Enterprise
+  {
+    const { registerFounderV11Routes } = await import("./routes-founder-v11");
+    registerFounderV11Routes(app);
+  }
+
+  // Sovereign Company Protocol v12 — The Real Runtime
+  {
+    const { registerFounderV12Routes } = await import("./routes-founder-v12");
+    registerFounderV12Routes(app);
+  }
+
+  // Sovereign Company Protocol v13 — The Sentient Enterprise
+  {
+    const { registerFounderV13Routes } = await import("./routes-founder-v13");
+    registerFounderV13Routes(app);
+  }
+
+  // Sovereign Company Protocol v14 — The Self-Running Company
+  {
+    const { registerFounderV14Routes } = await import("./routes-founder-v14");
+    registerFounderV14Routes(app);
+  }
+
+  // Sovereign Protocol Integration — Phases A-E (job health, event mesh drain, notifications, collaboration)
+  {
+    const { registerSovereignIntegrationRoutes } = await import("./routes-sovereign-integration");
+    registerSovereignIntegrationRoutes(app);
+  }
+
   // Epic H: Auto-Delinquent Scraper route
   app.post('/api/import/auto-delinquent', isAuthenticated, getOrCreateOrg, async (req, res) => {
     const { county, state } = req.body as { county: string; state: string };

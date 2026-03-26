@@ -2,126 +2,25 @@
 import { db } from "../db";
 import {
   decisionsInboxItems, supportTickets, systemAlerts, featureRequests,
-  organizations, supportTicketMessages,
+  organizations,
 } from "@shared/schema";
 import { eq, and, desc, isNull, or, lt } from "drizzle-orm";
 import OpenAI from "openai";
+import { executeAction, hasExecutor } from "./agentActionExecutors";
+import { customerSupportAutoResolver } from "./customerSupportAutoResolver";
 
 const openai = new OpenAI();
 
-// Confidence thresholds per SOPHIE_CONFIDENCE_MODE env var
-const CONFIDENCE_THRESHOLDS: Record<string, number> = {
-  conservative: 90,
-  balanced: 70,
-  aggressive: 60,
-};
-
-function getConfidenceThreshold(): number {
-  const mode = process.env.SOPHIE_CONFIDENCE_MODE ?? "balanced";
-  return CONFIDENCE_THRESHOLDS[mode] ?? 70;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SOPHIE GENIUS MODE — Opus 4.6 second opinion for borderline support tickets
-//
-// When Sophie's confidence is 40-69% (borderline — too low to auto-send, but
-// not obviously wrong), instead of immediately escalating to the founder inbox,
-// we call Opus 4.6 with the full ticket context for a "second opinion".
-//
-// Opus is trained to be a better support agent and can produce higher-quality,
-// higher-confidence responses on nuanced issues. If Opus confidence >= 80%,
-// we auto-resolve. Only truly stumped tickets (both models < threshold) reach
-// the autonomous executor, which then handles them.
-//
-// Net effect: 90%+ of support tickets never reach any human.
-// ─────────────────────────────────────────────────────────────────────────────
-
-async function sophieGeniusMode(
-  ticketId: number,
-  originalDraft: string | undefined,
-  sophieAnalysis: string | undefined,
-  category: string,
-): Promise<{ resolved: boolean; response?: string; confidence: number }> {
-  try {
-    const ticket = await db.query.supportTickets.findFirst({
-      where: eq(supportTickets.id, ticketId),
-    });
-    if (!ticket) return { resolved: false, confidence: 0 };
-
-    const messages = await db.select()
-      .from(supportTicketMessages)
-      .where(eq(supportTicketMessages.ticketId, ticketId))
-      .orderBy(supportTicketMessages.createdAt)
-      .limit(15);
-
-    const { routeCriticalTask } = await import("./aiRouter");
-    const aiResponse = await routeCriticalTask(
-      "executive_decision",
-      `You are AcreOS's senior support specialist with deep knowledge of the platform.
-AcreOS is a land investment management SaaS (CRM, deal pipeline, seller-financed notes, AI agents, marketplace).
-
-Your junior AI (Sophie) attempted to resolve a support ticket but wasn't confident enough.
-Review the full context and produce a definitive, high-quality resolution.
-
-RESPONSE FORMAT (JSON only):
-{
-  "confidence": 0-100,
-  "response": "the full support response to send to the customer",
-  "internalNote": "brief note on what you think the root cause is"
-}
-
-Be direct and helpful. Resolve the ticket if at all possible. Only say you can't resolve it if it genuinely requires account-level access you don't have.`,
-
-      `SUPPORT TICKET #${ticketId}
-Subject: ${ticket.subject ?? "No subject"}
-Category: ${category}
-Status: ${ticket.status}
-Organization ID: ${ticket.organizationId ?? "unknown"}
-
-CONVERSATION:
-${messages.map(m => `[${m.senderName}]: ${m.content}`).join("\n\n---\n\n")}
-
-SOPHIE'S ANALYSIS: ${sophieAnalysis ?? "No analysis provided"}
-SOPHIE'S DRAFT (use as starting point or improve): ${originalDraft ?? "None"}
-
-Please provide a definitive resolution.`,
-    );
-
-    const parsed = JSON.parse(aiResponse.content.replace(/```json\n?|```/g, "").trim());
-    const confidence = Math.max(0, Math.min(100, parseInt(parsed.confidence) || 0));
-
-    if (confidence >= 80 && parsed.response) {
-      // Opus is confident — auto-send
-      await db.insert(supportTicketMessages).values({
-        ticketId,
-        senderId: "sophie_genius",
-        senderName: "AcreOS Support",
-        content: parsed.response,
-        messageType: "reply",
-        isInternal: false,
-      } as any);
-      await db.update(supportTickets)
-        .set({ status: "resolved", resolvedAt: new Date(), updatedAt: new Date() })
-        .where(eq(supportTickets.id, ticketId));
-      return { resolved: true, response: parsed.response, confidence };
-    }
-
-    return { resolved: false, response: parsed.response, confidence };
-  } catch (err: any) {
-    console.warn("[SophieGeniusMode] Opus second-opinion failed:", err.message);
-    return { resolved: false, confidence: 0 };
-  }
-}
-
 export const decisionsInboxService = {
 
-  /** Called by Sophie's escalate_to_human tool execution.
-   * Resolution ladder:
-   *   1. confidence >= threshold → Sophie auto-resolves directly
-   *   2. confidence 40-69% → Sophie Genius Mode (Opus second opinion)
-   *      - If Opus >= 80% → auto-resolves
-   *      - If Opus < 80% → creates inbox item (handled by Autonomous Executor)
-   *   3. confidence < 40% → Opus genius mode, then inbox if needed
+  /**
+   * Called by Sophie's escalate_to_human tool execution.
+   *
+   * First delegates to customerSupportAutoResolver for automated resolution.
+   * Only creates a founder inbox item if auto-resolution fails.
+   *
+   * This keeps customer support automation cleanly separated from
+   * the founder's decision queue.
    */
   async createFromEscalation(ticketId: number, opts?: {
     sophieAnalysis?: string;
@@ -136,42 +35,21 @@ export const decisionsInboxService = {
     });
     if (!ticket) return { autoResolved: false };
 
-    const threshold = getConfidenceThreshold();
-    const confidence = opts?.confidenceScore ?? 0;
-    const isBilling = (opts?.category ?? ticket.category ?? "") === "billing";
-    const effectiveThreshold = isBilling ? 90 : threshold;
+    // Delegate to the customer support auto-resolver first
+    const resolution = await customerSupportAutoResolver.attemptResolution(ticketId, {
+      sophieAnalysis: opts?.sophieAnalysis,
+      draftResponse: opts?.draftResponse,
+      confidenceScore: opts?.confidenceScore,
+      category: opts?.category,
+    });
 
-    // Path 1: Sophie is confident — auto-resolve directly
-    if (confidence >= effectiveThreshold && opts?.draftResponse) {
-      await db.insert(supportTicketMessages).values({
-        ticketId,
-        senderId: "sophie",
-        senderName: "Sophie (AI)",
-        content: opts.draftResponse,
-        messageType: "reply",
-        isInternal: false,
-      });
-      await db.update(supportTickets)
-        .set({ status: "resolved", resolvedAt: new Date(), updatedAt: new Date() })
-        .where(eq(supportTickets.id, ticketId));
+    if (resolution.autoResolved) {
       return { autoResolved: true };
     }
 
-    // Path 2: Sophie Genius Mode — Opus second opinion for borderline cases (40-89%)
-    // Skip for billing > $100 (too risky for auto-resolve)
-    const shouldTryGenius = confidence >= 40 && !isBilling;
-    if (shouldTryGenius) {
-      const geniusResult = await sophieGeniusMode(
-        ticketId,
-        opts?.draftResponse,
-        opts?.sophieAnalysis,
-        opts?.category ?? ticket.category ?? "general",
-      );
-      if (geniusResult.resolved) {
-        console.log(`[SophieGeniusMode] Ticket #${ticketId} auto-resolved by Opus (confidence: ${geniusResult.confidence}%)`);
-        return { autoResolved: true };
-      }
-    }
+    // Auto-resolution failed — create a founder inbox item
+    const confidence = opts?.confidenceScore ?? 0;
+    const isBilling = (opts?.category ?? ticket.category ?? "") === "billing";
 
     // Deduplicate: check for existing pending item for this org+ticket
     if (ticket.organizationId) {
@@ -192,12 +70,16 @@ export const decisionsInboxService = {
       urgencyScore: isBilling ? 80 : 50,
       sophieAnalysis: opts?.sophieAnalysis ?? `Support ticket #${ticketId} requires founder attention.`,
       sophieConfidenceScore: confidence,
-      recommendedAction: opts?.draftResponse ?? "Review ticket and respond to customer.",
+      recommendedAction: resolution.geniusResponse ?? opts?.draftResponse ?? "Review ticket and respond to customer.",
       recommendedActionLabel: "Resolve Ticket",
       actionPayload: opts?.actionPayload ?? { ticketId, action: "resolve" },
       sourceTicketId: ticketId,
       organizationId: ticket.organizationId ?? null,
-      contextBundle: { ticketTitle: ticket.subject ?? "", category: ticket.category ?? "" },
+      contextBundle: {
+        ticketTitle: ticket.subject ?? "",
+        category: ticket.category ?? "",
+        geniusConfidence: resolution.geniusConfidence,
+      },
       status: "pending",
     }).returning();
 
@@ -286,7 +168,7 @@ export const decisionsInboxService = {
       response_format: { type: "json_object" },
       messages: [{
         role: "system",
-        content: "You are a B2B SaaS product strategist. Evaluate feature requests for revenue impact.",
+        content: "You are a B2B land investment tech product strategist. Evaluate feature requests for revenue impact.",
       }, {
         role: "user",
         content: JSON.stringify({
@@ -362,11 +244,61 @@ export const decisionsInboxService = {
     });
   },
 
-  /** Approve: mark approved + record resolution. Caller executes actionPayload. */
-  async approve(itemId: number): Promise<void> {
+  /** Approve: mark approved, then EXECUTE the action payload. v3 closes the loop. */
+  async approve(itemId: number): Promise<{ executed: boolean; detail?: string }> {
+    // Mark as approved
     await db.update(decisionsInboxItems)
       .set({ status: "approved", resolvedAt: new Date(), resolvedBy: "founder", updatedAt: new Date() })
       .where(eq(decisionsInboxItems.id, itemId));
+
+    // v3: Execute the approved action
+    const item = await db.query.decisionsInboxItems.findFirst({
+      where: eq(decisionsInboxItems.id, itemId),
+    });
+
+    if (!item?.actionPayload) {
+      return { executed: false, detail: "No action payload to execute" };
+    }
+
+    const payload = item.actionPayload as Record<string, any>;
+    const agentCodename = item.ownerAgentCodename || this.inferAgent(item.itemType);
+    const actionName = payload.action || item.itemType;
+
+    // Map common action payloads to registered executors
+    const executionMap: Record<string, { agent: string; action: string }> = {
+      send_retention_email: { agent: "sophie_csm", action: "send_retention_email" },
+      resolve: { agent: "sophie_csm", action: "resolve_stale_ticket" },
+      acknowledge: { agent: "atlas_cto", action: "acknowledge_incident" },
+      add_to_roadmap: { agent: "atlas_research", action: "store_learning" },
+    };
+
+    const mapping = executionMap[actionName];
+    const finalAgent = mapping?.agent || agentCodename;
+    const finalAction = mapping?.action || actionName;
+
+    if (hasExecutor(finalAgent, finalAction)) {
+      const result = await executeAction({
+        agentCodename: finalAgent,
+        actionName: finalAction,
+        input: payload,
+        triggeredBy: "approval",
+      });
+      return { executed: true, detail: result.detail };
+    }
+
+    return { executed: false, detail: `No executor registered for ${finalAgent}:${finalAction}` };
+  },
+
+  /** Infer agent codename from item type when not explicitly set */
+  inferAgent(itemType: string): string {
+    const typeToAgent: Record<string, string> = {
+      support_escalation: "sophie_csm",
+      churn_risk_intervention: "forge_revenue",
+      dunning_recovery: "forge_revenue",
+      critical_alert: "sentinel_devops",
+      feature_request_flagged: "compass_pm",
+    };
+    return typeToAgent[itemType] || "sophie_csm";
   },
 
   async reject(itemId: number, reason?: string): Promise<void> {

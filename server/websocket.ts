@@ -226,6 +226,8 @@ class AcreOSWebSocketServer {
     if (channel.startsWith('listing:')) return true;
     if (channel.startsWith('negotiation:')) return true;
     if (channel.startsWith('market:')) return true;
+    // v3: Allow founder agent activity channel
+    if (channel === 'founder:activity') return true;
     return false;
   }
 
@@ -305,6 +307,23 @@ class AcreOSWebSocketServer {
    */
   broadcastListingEvent(listingId: number, type: string, payload: Record<string, any>): void {
     this.broadcast(`listing:${listingId}`, type, payload);
+  }
+
+  /**
+   * Broadcast a founder notification (briefing, agent event, approval request).
+   * Phase C: Pushes to founder:activity channel for real-time dashboard updates.
+   */
+  broadcastFounderEvent(type: string, payload: Record<string, any>): void {
+    this.broadcast('founder:activity', type, payload);
+  }
+
+  /**
+   * Broadcast an agent collaboration event.
+   * Phase E: Inter-agent messages, delegations, consensus updates.
+   */
+  broadcastAgentEvent(organizationId: number, type: string, payload: Record<string, any>): void {
+    this.broadcast(`org:${organizationId}`, `agent:${type}`, payload);
+    this.broadcast('founder:activity', `agent:${type}`, payload);
   }
 
   getConnectionCount(): number {

@@ -144,6 +144,10 @@ async function withJobLock<T>(
       status: "failed",
       errorMessage: err?.message ?? String(err),
     }).catch(() => {/* best effort */});
+    // Phase B: Publish job failure to event mesh for real-time alerts
+    import("./services/eventMeshPublisher").then(({ eventMeshPublisher }) => {
+      eventMeshPublisher.jobFailed(jobName, err?.message ?? String(err), { durationMs }).catch(() => {});
+    }).catch(() => {});
     throw err;
   } finally {
     await storage.releaseJobLock(jobName, instanceId);
@@ -519,6 +523,14 @@ app.use("/api", apiLimiter);
       // Start real-time alert sync job (every 5 minutes)
       startRealtimeAlertSyncJob();
 
+      // Sovereign Company Protocol — seed AI agent personas and register briefing jobs
+      seedCompanyAgentsOnStartup();
+      startCompanyBriefingJob();
+      startTrustEvolutionJob();
+      startAgentReactionProcessorJob();
+      startAgentProactiveEngineJob();
+      startV5MaintenanceJob();
+
       // Auto-seed county GIS endpoints for free parcel lookups
       seedCountyGisEndpointsOnStartup();
       
@@ -552,6 +564,105 @@ app.use("/api", apiLimiter);
         log("Founder digest job registered (hourly check, sends at 8 AM CST)", "founder-digest");
       }).catch(err => {
         log(`Failed to start founder digest job: ${err}`, "founder-digest");
+      });
+
+      // ─── Phase B: Event Mesh Drain (every 10 seconds) ──────────────────
+      import("./services/eventMeshDrain").then(({ eventMeshDrain }) => {
+        // Initialize subscribers first, then start drain loop
+        eventMeshDrain.initialize().then(() => {
+          log("Event mesh drain initialized — draining every 10s", "event-mesh");
+          setInterval(() => {
+            eventMeshDrain.drain().catch((err: any) => {
+              log(`Event mesh drain error: ${err}`, "event-mesh");
+            });
+          }, 10_000);
+        }).catch((err: any) => {
+          log(`Event mesh drain init failed: ${err}`, "event-mesh");
+        });
+      }).catch(err => {
+        log(`Failed to import event mesh drain: ${err}`, "event-mesh");
+      });
+
+      // ─── Final Mile: Daily Summary, Delegation Check, Retry Queue, Consensus Exec ──
+      import("./services/autonomyFinalMile").then(({
+        generateDailyAutonomousSummary,
+        checkDelegationCompletions,
+        retryFailedActions,
+        executeResolvedConsensus,
+      }) => {
+        // Daily autonomous summary at 7 AM UTC (2 AM CT)
+        setInterval(() => {
+          const now = new Date();
+          if (now.getUTCHours() === 7 && now.getUTCMinutes() < 5) {
+            withJobLock("daily_autonomous_summary", 55 * 60, generateDailyAutonomousSummary)
+              .catch((err: any) => log(`Daily summary failed: ${err}`, "autonomy"));
+          }
+        }, 5 * 60 * 1000);
+
+        // Delegation auto-completion check (every 15 minutes)
+        setInterval(() => {
+          checkDelegationCompletions().catch(() => {});
+        }, 15 * 60 * 1000);
+
+        // Retry failed actions (every 30 minutes)
+        setInterval(() => {
+          retryFailedActions().catch(() => {});
+        }, 30 * 60 * 1000);
+
+        // Consensus auto-execution (every 5 minutes)
+        setInterval(() => {
+          executeResolvedConsensus().catch(() => {});
+        }, 5 * 60 * 1000);
+
+        log("Final mile autonomy jobs registered (summary/delegation/retry/consensus)", "autonomy");
+      }).catch(err => {
+        log(`Failed to import final mile: ${err}`, "autonomy");
+      });
+
+      // ─── Autonomy Bootstrap: seed chains, playbooks, modes, memories, strategies ──
+      import("./services/autonomyBootstrap").then(({ bootstrapAutonomy }) => {
+        // Delay bootstrap by 30s to ensure DB migrations are complete
+        setTimeout(() => {
+          bootstrapAutonomy().catch((err: any) => {
+            log(`Autonomy bootstrap failed: ${err}`, "autonomy");
+          });
+        }, 30_000);
+      }).catch(err => {
+        log(`Failed to import autonomy bootstrap: ${err}`, "autonomy");
+      });
+
+      // ─── Agent Initiative Engine (every 30 minutes) ──
+      import("./services/agentInitiativeEngine").then(({ agentInitiativeEngine }) => {
+        log("Agent initiative engine registered (every 30m)", "initiative");
+        // Run after 5-minute startup delay, then every 30 minutes
+        setTimeout(() => {
+          // Get any org for initiative scanning (use org 1 as default)
+          agentInitiativeEngine.runInitiativeCycle(1).catch(() => {});
+          setInterval(() => {
+            agentInitiativeEngine.runInitiativeCycle(1).catch((err: any) => {
+              log(`Initiative cycle failed: ${err}`, "initiative");
+            });
+          }, 30 * 60 * 1000);
+        }, 5 * 60 * 1000);
+      }).catch(err => {
+        log(`Failed to import initiative engine: ${err}`, "initiative");
+      });
+
+      // ─── Outcome Verification Loop (daily at 2 AM UTC) ──
+      import("./services/outcomeVerificationLoop").then(({ outcomeVerificationLoop }) => {
+        log("Outcome verification loop registered (daily 2am UTC)", "outcome-verify");
+        setInterval(() => {
+          const now = new Date();
+          if (now.getUTCHours() === 2 && now.getUTCMinutes() < 5) {
+            withJobLock("outcome_verification", 55 * 60, async () => {
+              return outcomeVerificationLoop.verify(1);
+            }).catch((err: any) => {
+              log(`Outcome verification failed: ${err}`, "outcome-verify");
+            });
+          }
+        }, 5 * 60 * 1000); // Check every 5 minutes
+      }).catch(err => {
+        log(`Failed to import outcome verification: ${err}`, "outcome-verify");
       });
 
       // Daily job health log cleanup (delete rows older than 30 days)
@@ -1614,4 +1725,146 @@ function startEvolutionPipelineJob() {
       log(`Evolution pipeline lock error: ${err}`, 'evolution-pipeline');
     });
   }, 6 * 60 * 60 * 1000);
+}
+
+// ============================================================================
+// Sovereign Company Protocol — Agent Seeding & Background Jobs
+// ============================================================================
+
+/**
+ * Seed the 10 AI agent personas on startup.
+ * Safe to call repeatedly — upserts only.
+ */
+function seedCompanyAgentsOnStartup() {
+  // Delay 5 seconds after startup to let DB be ready
+  setTimeout(() => {
+    import('./services/companyAgents').then(({ companyAgentService }) => {
+      companyAgentService.seedAgents()
+        .then(() => log('Company agents seeded successfully (10 personas)', 'sovereign'))
+        .catch(err => log(`Company agent seeding failed: ${err}`, 'sovereign'));
+    }).catch(err => log(`Company agents import failed: ${err}`, 'sovereign'));
+  }, 5000);
+}
+
+/**
+ * Pre-generate the CEO briefing daily at 6:45am CT (11:45 UTC)
+ * so it's cached and instant when the founder opens the dashboard at 7am.
+ */
+function startCompanyBriefingJob() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  const TTL_SECONDS = 55 * 60;
+
+  log('Registering company briefing pre-generation job (daily 6:45am CT)', 'sovereign');
+
+  setInterval(() => {
+    const now = new Date();
+    const utcHour = now.getUTCHours();
+    const utcMin = now.getUTCMinutes();
+
+    // 11:45 UTC = 6:45 AM CT
+    if (utcHour === 11 && utcMin >= 45 && utcMin < 50) {
+      import('./services/companyBriefingGenerator').then(({ generateCompanyBriefing }) => {
+        withJobLock('company_briefing_generator', TTL_SECONDS, async () => {
+          const result = await generateCompanyBriefing();
+          // Phase B+C: Publish briefing event + broadcast via WebSocket
+          import('./services/eventMeshPublisher').then(({ eventMeshPublisher }) => {
+            eventMeshPublisher.briefingReady(0, { type: 'morning', highlights: 'Daily briefing generated' }).catch(() => {});
+          }).catch(() => {});
+          wsServer.broadcast('founder:activity', 'briefing_ready', { type: 'morning', timestamp: new Date().toISOString() });
+          return result;
+        }).catch(err => {
+          log(`Company briefing generation failed: ${err}`, 'sovereign');
+        });
+      }).catch(err => log(`Company briefing import failed: ${err}`, 'sovereign'));
+    }
+  }, 5 * 60 * 1000); // Check every 5 minutes
+}
+
+/**
+ * Trust Evolution — runs weekly on Sunday at midnight UTC.
+ * Recalculates trust scores for all agents based on decision accuracy.
+ */
+function startTrustEvolutionJob() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  const TTL_SECONDS = 30 * 60;
+
+  log('Registering trust evolution job (weekly, Sunday midnight UTC)', 'sovereign');
+
+  setInterval(() => {
+    const now = new Date();
+    const dayOfWeek = now.getUTCDay(); // 0 = Sunday
+    const utcHour = now.getUTCHours();
+
+    // Sunday at 0:00 UTC
+    if (dayOfWeek === 0 && utcHour === 0) {
+      import('./services/trustEvolution').then(({ runTrustEvolution }) => {
+        withJobLock('trust_evolution', TTL_SECONDS, runTrustEvolution).catch(err => {
+          log(`Trust evolution failed: ${err}`, 'sovereign');
+        });
+      }).catch(err => log(`Trust evolution import failed: ${err}`, 'sovereign'));
+    }
+  }, ONE_HOUR);
+}
+
+/**
+ * Agent Reaction Processor — every 2 minutes.
+ * Checks for unread inter-agent messages and triggers reactions.
+ */
+function startAgentReactionProcessorJob() {
+  const TWO_MINUTES = 2 * 60 * 1000;
+
+  log('Registering agent reaction processor (every 2 minutes)', 'sovereign');
+
+  setInterval(() => {
+    import('./services/agentReactionEngine').then(({ processAgentReactions }) => {
+      processAgentReactions().catch(err => {
+        log(`Agent reaction processor failed: ${err}`, 'sovereign');
+      });
+    }).catch(err => log(`Reaction engine import failed: ${err}`, 'sovereign'));
+  }, TWO_MINUTES);
+}
+
+/**
+ * Agent Proactive Engine — every 5 minutes.
+ * Agents independently check conditions and take initiative.
+ */
+function startAgentProactiveEngineJob() {
+  const FIVE_MINUTES = 5 * 60 * 1000;
+
+  log('Registering agent proactive engine (every 5 minutes)', 'sovereign');
+
+  // Start after 3 minutes to let agents seed first
+  setTimeout(() => {
+    import('./services/agentProactiveEngine').then(({ runProactiveEngine }) => {
+      runProactiveEngine().catch(err => {
+        log(`Proactive engine startup run failed: ${err}`, 'sovereign');
+      });
+    }).catch(err => log(`Proactive engine import failed: ${err}`, 'sovereign'));
+  }, 3 * 60 * 1000);
+
+  setInterval(() => {
+    import('./services/agentProactiveEngine').then(({ runProactiveEngine }) => {
+      runProactiveEngine().catch(err => {
+        log(`Proactive engine run failed: ${err}`, 'sovereign');
+      });
+    }).catch(err => log(`Proactive engine import failed: ${err}`, 'sovereign'));
+  }, FIVE_MINUTES);
+}
+
+/**
+ * v5 Maintenance Job — every 15 minutes.
+ * Processes the outcome verification queue and checks for stale goals.
+ */
+function startV5MaintenanceJob() {
+  const FIFTEEN_MINUTES = 15 * 60 * 1000;
+
+  log('Registering v5 maintenance job (every 15 minutes)', 'sovereign');
+
+  setInterval(() => {
+    import('./jobs/v5MaintenanceJob').then(({ runV5Maintenance }) => {
+      runV5Maintenance().catch(err => {
+        log(`v5 maintenance run failed: ${err}`, 'sovereign');
+      });
+    }).catch(err => log(`v5 maintenance import failed: ${err}`, 'sovereign'));
+  }, FIFTEEN_MINUTES);
 }

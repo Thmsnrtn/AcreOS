@@ -207,6 +207,21 @@ export class AlertingService {
     });
 
     console.log(`[Alerting] Created ${severity} alert: ${alert.title}`);
+
+    // Sovereign Company Protocol — Sentinel broadcasts to incidents channel
+    if (severity === "critical" || severity === "high") {
+      try {
+        const { agentCommsService } = await import("./agentComms");
+        await agentCommsService.broadcast({
+          from: "sentinel_devops",
+          channel: "incidents",
+          priority: severity === "critical" ? "critical" : "high",
+          subject: `Alert: ${alert.title}`,
+          body: alert.message,
+          data: { alertType: alert.alertType, severity, organizationId },
+        });
+      } catch {}
+    }
   }
 
   async getAlerts(filters?: {

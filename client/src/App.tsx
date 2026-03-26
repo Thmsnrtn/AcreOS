@@ -40,6 +40,7 @@ import { DynamicIsland } from "@/components/dynamic-island";
 import { DynamicIslandProvider } from "@/contexts/dynamic-island-context";
 import { useCursorGlass } from "@/hooks/use-cursor-glass";
 import { TrialBanner } from "@/components/trial-banner";
+import { NotificationBanner } from "@/components/notification-banner";
 
 // Eagerly loaded: must be available immediately with no delay
 import AuthPage from "@/pages/auth-page";
@@ -116,6 +117,9 @@ const MarketplaceAnalyticsPage = React.lazy(() => import("@/pages/marketplace-an
 // Operations
 const MapsPage = React.lazy(() => import("@/pages/maps"));
 const CommandCenterPage = React.lazy(() => import("@/pages/command-center"));
+const ConsciousOrganizationPage = React.lazy(() => import("@/pages/conscious-organization"));
+const AnticipatoryEnterprisePage = React.lazy(() => import("@/pages/anticipatory-enterprise"));
+const RealRuntimePage = React.lazy(() => import("@/pages/real-runtime"));
 const AutomationPage = React.lazy(() => import("@/pages/automation"));
 const WorkflowsPage = React.lazy(() => import("@/pages/workflows"));
 const ToolsPage = React.lazy(() => import("@/pages/tools"));
@@ -170,6 +174,8 @@ const FounderAiObservatory = React.lazy(() => import("@/pages/founder-ai-observa
 const FounderFeatureFlags = React.lazy(() => import("@/pages/founder/feature-flags"));
 const DealUnderwritingPage = React.lazy(() => import("@/pages/deal-underwriting"));
 const TeamKPIPage = React.lazy(() => import("@/pages/team-kpi"));
+const SovereignV13Page = React.lazy(() => import("@/pages/sovereign-v13"));
+const AgentDetailPage = React.lazy(() => import("@/pages/agent-detail"));
 const SafetyGatesPage = React.lazy(() => import("@/pages/safety-gates"));
 const DecisionQueuePage = React.lazy(() => import("@/pages/decision-queue"));
 const OpsDashboardPage = React.lazy(() => import("@/pages/ops-dashboard"));
@@ -181,6 +187,15 @@ const ProactiveMonitorPage = React.lazy(() => import("@/pages/proactive-monitor"
 const BetaDashboardPage = React.lazy(() => import("@/pages/beta-dashboard"));
 const ResellerDashboardPage = React.lazy(() => import("@/pages/reseller-dashboard"));
 const DataMoatDashboardPage = React.lazy(() => import("@/pages/data-moat-dashboard"));
+
+// Sovereign Protocol — Phase A Visibility Layer
+const SovereignDashboardPage = React.lazy(() => import("@/pages/sovereign-dashboard"));
+const BoardOfDirectorsPage = React.lazy(() => import("@/pages/board-of-directors"));
+const AgentPerformancePage = React.lazy(() => import("@/pages/agent-performance"));
+const MemoryBrowserPage = React.lazy(() => import("@/pages/memory-browser"));
+const EventLogPage = React.lazy(() => import("@/pages/event-log"));
+const JobHealthPage = React.lazy(() => import("@/pages/job-health"));
+const AgentCollaborationPage = React.lazy(() => import("@/pages/agent-collaboration"));
 
 // Misc public
 const BorrowerPortal = React.lazy(() => import("@/pages/borrower-portal"));
@@ -516,9 +531,133 @@ function Router() {
         {() => <ProtectedRoute component={TeamKPIPage} />}
       </Route>
 
-      <Route component={NotFound} />
-    </Switch>
-    </React.Suspense>
+        {/* Communications */}
+        <Route path="/inbox">{() => <ProtectedRoute component={InboxPage} />}</Route>
+        <Route path="/campaigns">{() => <ProtectedRoute component={CampaignsPage} />}</Route>
+
+        {/* Finance */}
+        <Route path="/finance">{() => <ProtectedRoute component={FinancePage} />}</Route>
+        <Route path="/portfolio">{() => <ProtectedRoute component={PortfolioPage} />}</Route>
+        <Route path="/cash-flow">{() => <ProtectedRoute component={CashFlowPage} />}</Route>
+        <Route path="/forecasting">{() => <ProtectedRoute component={ForecastingPage} />}</Route>
+        <Route path="/capital-markets">{() => <ProtectedRoute component={CapitalMarketsPage} />}</Route>
+        <Route path="/portfolio-optimizer">{() => <ProtectedRoute component={PortfolioOptimizerPage} />}</Route>
+        <Route path="/portfolio-health">{() => <ProtectedRoute component={PortfolioHealthPage} />}</Route>
+        <Route path="/portfolio-pnl">{() => <ProtectedRoute component={PortfolioPnLPage} />}</Route>
+        <Route path="/exchange-1031">{() => <ProtectedRoute component={Exchange1031Page} />}</Route>
+        <Route path="/tax-optimizer">{() => <ProtectedRoute component={TaxOptimizerPage} />}</Route>
+        <Route path="/tax-delinquent">{() => <ProtectedRoute component={TaxDelinquentPage} />}</Route>
+        <Route path="/bookkeeping">{() => <ProtectedRoute component={BookkeepingPage} />}</Route>
+        <Route path="/depreciation">{() => <ProtectedRoute component={DepreciationCalculatorPage} />}</Route>
+        <Route path="/closing-costs">{() => <ProtectedRoute component={ClosingCostsPage} />}</Route>
+        <Route path="/property-tax">{() => <ProtectedRoute component={PropertyTaxPage} />}</Route>
+        <Route path="/fee-dashboard">{() => <FounderProtectedRoute component={FeeDashboardPage} />}</Route>
+
+        {/* AI / Intelligence */}
+        <Route path="/analytics">{() => <ProtectedRoute component={AnalyticsPage} />}</Route>
+        <Route path="/avm">{() => <ProtectedRoute component={AVMPage} />}</Route>
+        <Route path="/avm-bulk">{() => <ProtectedRoute component={AvmBulkPage} />}</Route>
+        <Route path="/radar">{() => <ProtectedRoute component={AcquisitionRadarPage} />}</Route>
+        <Route path="/negotiation">{() => <ProtectedRoute component={NegotiationCopilotPage} />}</Route>
+        <Route path="/deal-hunter">{() => <ProtectedRoute component={DealHunterPage} />}</Route>
+        <Route path="/vision-ai">{() => <ProtectedRoute component={VisionAIPage} />}</Route>
+        <Route path="/land-credit">{() => <ProtectedRoute component={LandCreditPage} />}</Route>
+        <Route path="/market-intelligence">{() => <ProtectedRoute component={MarketIntelligencePage} />}</Route>
+        <Route path="/market-watchlist">{() => <ProtectedRoute component={MarketWatchlistPage} />}</Route>
+        <Route path="/price-optimizer">{() => <ProtectedRoute component={PriceOptimizerPage} />}</Route>
+        <Route path="/seller-intent">{() => <ProtectedRoute component={SellerIntentPage} />}</Route>
+        <Route path="/deal-patterns">{() => <ProtectedRoute component={DealPatternsPage} />}</Route>
+        <Route path="/document-intelligence">{() => <ProtectedRoute component={DocumentIntelligencePage} />}</Route>
+        <Route path="/tax-researcher">{() => <ProtectedRoute component={TaxResearcherPage} />}</Route>
+        <Route path="/command-center">{() => <ProtectedRoute component={CommandCenterPage} />}</Route>
+        <Route path="/conscious-organization">{() => <ProtectedRoute component={ConsciousOrganizationPage} />}</Route>
+        <Route path="/anticipatory-enterprise">{() => <ProtectedRoute component={AnticipatoryEnterprisePage} />}</Route>
+        <Route path="/real-runtime">{() => <ProtectedRoute component={RealRuntimePage} />}</Route>
+        <Route path="/agent-command-center">{() => <ProtectedRoute component={AgentCommandCenterPage} />}</Route>
+        <Route path="/agents">{() => <Redirect to="/agent-command-center" />}</Route>
+        <Route path="/ai-team">{() => <Redirect to="/agent-command-center" />}</Route>
+
+        {/* Operations */}
+        <Route path="/maps">{() => <ProtectedRoute component={MapsPage} />}</Route>
+        <Route path="/automation">{() => <ProtectedRoute component={AutomationPage} />}</Route>
+        <Route path="/workflows">{() => <ProtectedRoute component={WorkflowsPage} />}</Route>
+        <Route path="/tools">{() => <ProtectedRoute component={ToolsPage} />}</Route>
+        <Route path="/zoning">{() => <ProtectedRoute component={ZoningLookupPage} />}</Route>
+        <Route path="/title-search">{() => <ProtectedRoute component={TitleSearchPage} />}</Route>
+        <Route path="/property-enrichment">{() => <ProtectedRoute component={PropertyEnrichmentPage} />}</Route>
+        <Route path="/syndication">{() => <ProtectedRoute component={SyndicationPage} />}</Route>
+        <Route path="/syndication-status">{() => <ProtectedRoute component={ListingSyndicationPage} />}</Route>
+
+        {/* Team */}
+        <Route path="/team-dashboard">{() => <ProtectedRoute component={TeamDashboardPage} />}</Route>
+        <Route path="/team">{() => <ProtectedRoute component={TeamInboxPage} />}</Route>
+        <Route path="/commissions">{() => <ProtectedRoute component={CommissionsPage} />}</Route>
+        <Route path="/team-leaderboard">{() => <ProtectedRoute component={TeamLeaderboardPage} />}</Route>
+
+        {/* Analytics / Reporting */}
+        <Route path="/kpis">{() => <ProtectedRoute component={KPIDashboardPage} />}</Route>
+        <Route path="/cohort-analysis">{() => <ProtectedRoute component={CohortAnalysisPage} />}</Route>
+        <Route path="/audit-log">{() => <ProtectedRoute component={AuditLogPage} />}</Route>
+        <Route path="/data-export">{() => <ProtectedRoute component={DataExportPage} />}</Route>
+        <Route path="/model-training">{() => <ProtectedRoute component={ModelTrainingPage} />}</Route>
+        <Route path="/investor-network">{() => <ProtectedRoute component={InvestorDirectoryPage} />}</Route>
+        <Route path="/regulatory-intel">{() => <ProtectedRoute component={RegulatoryIntelPage} />}</Route>
+
+        {/* Settings */}
+        <Route path="/settings">{() => <ProtectedRoute component={SettingsPage} />}</Route>
+        <Route path="/settings/email">{() => <ProtectedRoute component={EmailSettingsPage} />}</Route>
+        <Route path="/settings/mail">{() => <ProtectedRoute component={MailSettingsPage} />}</Route>
+        <Route path="/settings/privacy">{() => <ProtectedRoute component={PrivacySettingsPage} />}</Route>
+        <Route path="/usage">{() => <ProtectedRoute component={UsageQuotaPage} />}</Route>
+        <Route path="/goals">{() => <ProtectedRoute component={GoalsPage} />}</Route>
+        <Route path="/webhooks">{() => <ProtectedRoute component={WebhooksPage} />}</Route>
+        <Route path="/compliance">{() => <ProtectedRoute component={CompliancePage} />}</Route>
+        <Route path="/dodd-frank">{() => <ProtectedRoute component={DoddFrankCheckerPage} />}</Route>
+        <Route path="/state-documents">{() => <ProtectedRoute component={StateDocumentsPage} />}</Route>
+        <Route path="/dunning">{() => <ProtectedRoute component={DunningManagerPage} />}</Route>
+        <Route path="/freedom-meter">{() => <ProtectedRoute component={FreedomMeterPage} />}</Route>
+        <Route path="/blind-offer-wizard">{() => <ProtectedRoute component={BlindOfferWizardPage} />}</Route>
+        <Route path="/night-cap">{() => <ProtectedRoute component={NightCapPage} />}</Route>
+
+        {/* Support */}
+        <Route path="/help">{() => <ProtectedRoute component={HelpPage} />}</Route>
+        <Route path="/support">{() => <ProtectedRoute component={SupportPage} />}</Route>
+        <Route path="/admin/support">{() => <ProtectedRoute component={AdminSupportPage} />}</Route>
+
+        {/* Founder / Admin */}
+        <Route path="/founder">{() => <FounderProtectedRoute component={FounderDashboard} />}</Route>
+        <Route path="/founder/v13">{() => <FounderProtectedRoute component={SovereignV13Page} />}</Route>
+        <Route path="/founder/agents/:codename">{() => <FounderProtectedRoute component={AgentDetailPage} />}</Route>
+        <Route path="/founder/ai-observatory">{() => <FounderProtectedRoute component={FounderAiObservatory} />}</Route>
+        <Route path="/founder/feature-flags">{() => <FounderProtectedRoute component={FounderFeatureFlags} />}</Route>
+        <Route path="/founder/agents">{() => <FounderProtectedRoute component={FounderAgentsPage} />}</Route>
+        <Route path="/founder/daily-digest">{() => <FounderProtectedRoute component={FounderDailyDigestPage} />}</Route>
+        <Route path="/admin/beta">{() => <FounderProtectedRoute component={BetaDashboardPage} />}</Route>
+        <Route path="/admin/beta-analytics">{() => <FounderProtectedRoute component={BetaAnalyticsPage} />}</Route>
+        <Route path="/admin/safety-gates">{() => <FounderProtectedRoute component={SafetyGatesPage} />}</Route>
+        <Route path="/admin/decisions">{() => <FounderProtectedRoute component={DecisionQueuePage} />}</Route>
+        <Route path="/admin/ops">{() => <FounderProtectedRoute component={OpsDashboardPage} />}</Route>
+        <Route path="/admin/beta-intake">{() => <FounderProtectedRoute component={BetaIntakePage} />}</Route>
+        <Route path="/admin/queues">{() => <FounderProtectedRoute component={QueueMonitorPage} />}</Route>
+        <Route path="/admin/integrations-health">{() => <FounderProtectedRoute component={IntegrationsHealthPage} />}</Route>
+        <Route path="/admin/monitor">{() => <ProtectedRoute component={ProactiveMonitorPage} />}</Route>
+        <Route path="/reseller">{() => <FounderProtectedRoute component={ResellerDashboardPage} />}</Route>
+        <Route path="/data-moat">{() => <FounderProtectedRoute component={DataMoatDashboardPage} />}</Route>
+        <Route path="/deal-underwriting">{() => <ProtectedRoute component={DealUnderwritingPage} />}</Route>
+        <Route path="/team-kpi">{() => <ProtectedRoute component={TeamKPIPage} />}</Route>
+
+        {/* Sovereign Protocol — Phase A Visibility Layer */}
+        <Route path="/sovereign">{() => <FounderProtectedRoute component={SovereignDashboardPage} />}</Route>
+        <Route path="/board-of-directors">{() => <FounderProtectedRoute component={BoardOfDirectorsPage} />}</Route>
+        <Route path="/agent-performance">{() => <FounderProtectedRoute component={AgentPerformancePage} />}</Route>
+        <Route path="/memory-browser">{() => <FounderProtectedRoute component={MemoryBrowserPage} />}</Route>
+        <Route path="/event-log">{() => <FounderProtectedRoute component={EventLogPage} />}</Route>
+        <Route path="/job-health">{() => <FounderProtectedRoute component={JobHealthPage} />}</Route>
+        <Route path="/agent-collaboration">{() => <FounderProtectedRoute component={AgentCollaborationPage} />}</Route>
+
+        <Route component={NotFound} />
+      </Switch>
+    </Suspense>
   );
 }
 
@@ -586,6 +725,7 @@ function AppContent() {
       {user && <BetaActivationDetector />}
       {user && <PaxCopilotRail />}
       {user && <DynamicIsland />}
+      {user && <NotificationBanner />}
       <PWAInstallPrompt />
     </>
   );
