@@ -57,6 +57,7 @@ export interface TaxableTransaction {
   propertyAddress?: string;
   county?: string;
   state?: string;
+  owningEntity?: string | null;
   acquisitionDate?: Date;
   dispositionDate?: Date;
   acquisitionCost: number;
@@ -69,6 +70,7 @@ export interface TaxableTransaction {
   gainType: "capital" | "ordinary";  // Ordinary if dealer status
   estimatedTax: number;
   taxSavingOpportunities: string[];
+  entityTaxFlags: string[];
 }
 
 export interface TaxPositionSummary {
@@ -117,6 +119,34 @@ export interface Exchange1031Candidate {
   deadline180Day: Date;
   requiredReplacementValue: number;
   potentialTaxDeferred: number;
+}
+
+// ─── Entity Tax Flags ─────────────────────────────────────────────────────
+
+/**
+ * Returns entity-specific tax compliance flags based on the owning entity name.
+ */
+export function getEntityTaxFlags(owningEntity: string | null): string[] {
+  if (!owningEntity) return [];
+
+  const flags: string[] = [];
+  const upper = owningEntity.toUpperCase();
+
+  // Self-directed IRA / SDIRA detection
+  if (upper.includes("IRA") || upper.includes("SDIRA")) {
+    flags.push(
+      "Self-directed IRA property — no personal use, no sweat equity, no self-dealing per IRC 4975"
+    );
+  }
+
+  // LLC detection — recommend 1031 exchanges within the same entity
+  if (upper.includes("LLC")) {
+    flags.push(
+      "LLC-held property — 1031 exchanges should be conducted within this same entity for like-kind exchange qualification"
+    );
+  }
+
+  return flags;
 }
 
 // ─── Tax Optimizer Service ────────────────────────────────────────────────
@@ -197,6 +227,9 @@ class TaxOptimizerService {
         savingOps.push("Consider holding through 12-month mark for LTCG rates");
       }
 
+      const entityName = (property as any)?.owningEntity ?? null;
+      const entityFlags = getEntityTaxFlags(entityName);
+
       transactions.push({
         dealId: deal.id,
         propertyId: deal.propertyId ?? undefined,
@@ -205,6 +238,7 @@ class TaxOptimizerService {
           : `Deal #${deal.id}`,
         county: property?.county ?? undefined,
         state: property?.state ?? undefined,
+        owningEntity: entityName,
         acquisitionDate: acquisitionDate ?? undefined,
         dispositionDate,
         acquisitionCost,
@@ -216,7 +250,8 @@ class TaxOptimizerService {
         isLongTerm,
         gainType: "capital",
         estimatedTax,
-        taxSavingOpportunities: savingOps,
+        taxSavingOpportunities: [...savingOps, ...entityFlags],
+        entityTaxFlags: entityFlags,
       });
     }
 
@@ -348,6 +383,31 @@ class TaxOptimizerService {
           "Confirm losses are properly reported on Schedule D",
           "Consider harvesting additional losses from underperforming holdings before year-end",
           "Capital loss carryforward available if losses exceed gains",
+        ],
+      });
+    }
+
+    // 3b. Cross-entity tax-loss harvesting
+    const entitiesWithGains = new Set(
+      transactions.filter(t => t.realizedGain > 0 && t.owningEntity).map(t => t.owningEntity!)
+    );
+    const entitiesWithLosses = new Set(
+      transactions.filter(t => t.realizedGain < 0 && t.owningEntity).map(t => t.owningEntity!)
+    );
+    const gainEntities = [...entitiesWithGains].filter(e => !entitiesWithLosses.has(e));
+    const lossEntities = [...entitiesWithLosses].filter(e => !entitiesWithGains.has(e));
+    if (gainEntities.length > 0 && lossEntities.length > 0) {
+      recs.push({
+        priority: "medium",
+        category: "loss_harvesting",
+        title: "Cross-Entity Tax-Loss Harvesting Opportunity",
+        description: `Entities with gains (${gainEntities.join(", ")}) and entities with losses (${lossEntities.join(", ")}) may present tax-loss harvesting opportunities across entities. Consult your CPA — cross-entity loss harvesting has strict IRS attribution and related-party rules that must be followed.`,
+        estimatedSavings: 0, // CPA must evaluate
+        actionItems: [
+          "Consult CPA regarding IRC Section 267 related-party loss disallowance rules",
+          "Review entity ownership structures for common control",
+          "Document business purpose for any cross-entity transactions",
+          "Disclaimer: Cross-entity strategies require professional tax advice",
         ],
       });
     }

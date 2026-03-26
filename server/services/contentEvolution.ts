@@ -114,6 +114,73 @@ export async function analyzePaxResponseQuality(orgId: number): Promise<PaxQuali
   };
 }
 
+// ── Safe Evolution Domains ──────────────────────────────────────────
+
+const SAFE_EVOLUTION_DOMAINS = ["campaign_subject", "pax_prompts", "market_predictions"] as const;
+
+export function isEvolutionAllowed(domain: string): boolean {
+  const allowed = (SAFE_EVOLUTION_DOMAINS as readonly string[]).includes(domain);
+  logger.info("evolution_activity", { domain, action: "domain_check", allowed });
+  return allowed;
+}
+
+// ── Evolution Circuit Breaker ──────────────────────────────────────
+
+interface RevertEntry {
+  timestamps: number[];
+  paused: boolean;
+}
+
+const revertTracker = new Map<string, RevertEntry>();
+
+const CIRCUIT_BREAKER_THRESHOLD = 3;
+const CIRCUIT_BREAKER_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
+
+export function recordEvolutionRevert(domain: string): { paused: boolean } {
+  const now = Date.now();
+  let entry = revertTracker.get(domain);
+  if (!entry) {
+    entry = { timestamps: [], paused: false };
+    revertTracker.set(domain, entry);
+  }
+
+  // Prune old timestamps outside the window
+  entry.timestamps = entry.timestamps.filter(t => now - t < CIRCUIT_BREAKER_WINDOW_MS);
+  entry.timestamps.push(now);
+
+  if (entry.timestamps.length >= CIRCUIT_BREAKER_THRESHOLD) {
+    entry.paused = true;
+    logger.info("evolution_activity", {
+      domain,
+      action: "circuit_breaker_triggered",
+      consecutiveReverts: entry.timestamps.length,
+      message: `Auto-paused evolution for domain "${domain}" after ${CIRCUIT_BREAKER_THRESHOLD} consecutive reverts in 5 minutes`,
+    });
+  } else {
+    logger.info("evolution_activity", {
+      domain,
+      action: "revert_recorded",
+      consecutiveReverts: entry.timestamps.length,
+    });
+  }
+
+  return { paused: entry.paused };
+}
+
+export function isEvolutionPaused(domain: string): boolean {
+  const entry = revertTracker.get(domain);
+  return entry?.paused ?? false;
+}
+
+export function resumeEvolution(domain: string): void {
+  const entry = revertTracker.get(domain);
+  if (entry) {
+    entry.paused = false;
+    entry.timestamps = [];
+    logger.info("evolution_activity", { domain, action: "evolution_resumed" });
+  }
+}
+
 // ── Domain Whitelist ────────────────────────────────────────────────
 
 const DEFAULT_WHITELIST = [

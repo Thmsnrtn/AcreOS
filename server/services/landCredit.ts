@@ -74,6 +74,13 @@ interface ScoringFactors {
   };
 }
 
+interface CreditScoreConfidence {
+  low: number;
+  high: number;
+  scoredDimensions: number;
+  totalDimensions: number;
+}
+
 interface CreditScore {
   overall: number; // 300-850 (like FICO)
   grade: 'A+' | 'A' | 'B+' | 'B' | 'C+' | 'C' | 'D' | 'F';
@@ -82,6 +89,7 @@ interface CreditScore {
   strengths: string[];
   weaknesses: string[];
   recommendations: string[];
+  confidence: CreditScoreConfidence;
 }
 
 class LandCreditScoring {
@@ -153,6 +161,9 @@ class LandCreditScoring {
       const { strengths, weaknesses } = this.identifyStrengthsWeaknesses(factors);
       const recommendations = this.generateRecommendations(factors, creditScore);
 
+      // Compute confidence based on how many dimensions have real data vs defaults
+      const confidence = this.computeConfidence(factors, creditScore);
+
       // Save score to database
       await db.insert(landCreditScores).values({
         organizationId,
@@ -174,11 +185,57 @@ class LandCreditScoring {
         strengths,
         weaknesses,
         recommendations,
+        confidence,
       };
     } catch (error) {
       console.error('Credit score calculation failed:', error);
       throw error;
     }
+  }
+
+  /**
+   * Compute confidence interval based on how many dimensions have actual data vs defaulting to 50
+   */
+  private computeConfidence(factors: ScoringFactors, creditScore: number): CreditScoreConfidence {
+    const totalDimensions = 6;
+    let scoredDimensions = 0;
+
+    // A dimension is "scored" if its sub-factors aren't all at the default value of 50
+    const dimensionFactors: Record<string, Record<string, number>> = {
+      location: factors.location.factors as any,
+      physical: factors.physical.factors as any,
+      legal: factors.legal.factors as any,
+      financial: factors.financial.factors as any,
+      environmental: factors.environmental.factors as any,
+      market: factors.market.factors as any,
+    };
+
+    for (const [, subFactors] of Object.entries(dimensionFactors)) {
+      const values = Object.values(subFactors);
+      const allDefault = values.every(v => v === 50);
+      if (!allDefault) {
+        scoredDimensions++;
+      }
+    }
+
+    // Confidence band width based on scored dimensions
+    let band: number;
+    if (scoredDimensions >= 6) {
+      band = 20;
+    } else if (scoredDimensions >= 5) {
+      band = 35;
+    } else if (scoredDimensions >= 4) {
+      band = 50;
+    } else {
+      band = 75;
+    }
+
+    return {
+      low: Math.max(300, creditScore - band),
+      high: Math.min(850, creditScore + band),
+      scoredDimensions,
+      totalDimensions,
+    };
   }
 
   /**

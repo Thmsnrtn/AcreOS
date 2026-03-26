@@ -13,7 +13,9 @@ import { getOrCreateOrg } from "./middleware/getOrCreateOrg";
 import { storage, db } from "./storage";
 import { Errors } from "./utils/errors";
 import { logger } from "./utils/logger";
-import { sql } from "drizzle-orm";
+import { sql, eq, desc } from "drizzle-orm";
+import { countyReviews } from "@shared/schema";
+import { z } from "zod";
 
 export function registerPlatformFeatureRoutes(app: Express): void {
 
@@ -387,12 +389,123 @@ export function registerPlatformFeatureRoutes(app: Express): void {
 
   // ─── Community Intelligence ────────────────────────────────────────
 
-  app.get("/api/community/county-reviews", isAuthenticated, async (req, res) => {
+  // County intelligence — combines network data with community reviews
+  app.get("/api/county-intelligence/:state/:county", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const state = req.params.state;
+      const county = req.params.county;
+
+      // Get network data for this county
+      const { getCountyIntelligenceOverview } = await import("./services/dataNetworkVisibility");
+      const networkOverview = await getCountyIntelligenceOverview(org.id);
+      const countyData = networkOverview.counties?.find(
+        (c: any) => c.state?.toUpperCase() === state.toUpperCase() && c.county?.toUpperCase() === county.toUpperCase()
+      ) || null;
+
+      // Get community reviews for this county
+      const { getCountyReviews } = await import("./services/communityIntelligence");
+      const allReviews = await getCountyReviews(state);
+      const countyReviewsList = allReviews.filter(
+        (r: any) => r.county?.toUpperCase() === county.toUpperCase()
+      );
+
+      // Get LCS benchmarks if available
+      const { getLcsBenchmarks } = await import("./services/dataNetworkVisibility");
+      const benchmarks = await getLcsBenchmarks(org.id);
+
+      res.json({
+        state,
+        county,
+        networkData: countyData,
+        reviews: countyReviewsList,
+        avgRating: countyReviewsList.length > 0
+          ? Math.round(countyReviewsList.reduce((s: number, r: any) => s + (r.rating || 0), 0) / countyReviewsList.length * 10) / 10
+          : null,
+        reviewCount: countyReviewsList.length,
+        lcsBenchmarks: benchmarks,
+        hasSufficientData: (countyData?.dealCount || 0) >= 5,
+      });
+    } catch (error) { Errors.internal(res, error); }
+  });
+
+  app.get("/api/community/county-reviews", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
       const state = req.query.state ? String(req.query.state) : undefined;
       const { getCountyReviews } = await import("./services/communityIntelligence");
-      const reviews = await getCountyReviews(state);
-      res.json({ reviews });
+      const baseReviews = await getCountyReviews(state);
+
+      // Enrich with reviewer trust score and verified deal count from DB reviews
+      const dbReviews = await db.select().from(countyReviews)
+        .orderBy(desc(countyReviews.createdAt))
+        .limit(100);
+
+      const enrichedDbReviews = dbReviews.map(r => ({
+        state: r.state,
+        county: r.county,
+        rating: r.rating,
+        pros: r.pros,
+        cons: r.cons,
+        investorTrustScore: r.investorTrustScore ?? 0,
+        verifiedDeals: r.verifiedDeals ?? 0,
+        createdAt: r.createdAt,
+      }));
+
+      res.json({ reviews: [...enrichedDbReviews, ...baseReviews] });
+    } catch (error) { Errors.internal(res, error); }
+  });
+
+  app.post("/api/community/county-reviews", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+
+      const bodySchema = z.object({
+        state: z.string().min(1),
+        county: z.string().min(1),
+        rating: z.number().int().min(1).max(5),
+        pros: z.string().min(1),
+        cons: z.string().min(1),
+      });
+
+      const parsed = bodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return Errors.validationFailed(res, parsed.error.errors);
+      }
+
+      // Compute trust score — require > 300 to post
+      const { computeInvestorTrustScore } = await import("./services/investorNetworkService");
+      const trustResult = await computeInvestorTrustScore(org.id);
+
+      if (trustResult.total <= 300) {
+        return Errors.forbidden(res, "Trust score must be greater than 300 to submit county reviews. Current score: " + trustResult.total);
+      }
+
+      // Count verified deals for the reviewer
+      const { count } = await import("drizzle-orm");
+      const { deals } = await import("@shared/schema");
+      const [dealCount] = await db.select({ cnt: count() }).from(deals)
+        .where(eq(deals.organizationId, org.id));
+      const verifiedDealCount = Number(dealCount?.cnt || 0);
+
+      const [review] = await db.insert(countyReviews).values({
+        organizationId: org.id,
+        state: parsed.data.state,
+        county: parsed.data.county,
+        rating: parsed.data.rating,
+        pros: parsed.data.pros,
+        cons: parsed.data.cons,
+        investorTrustScore: trustResult.total,
+        verifiedDeals: verifiedDealCount,
+      }).returning();
+
+      logger.info("county_review_created", {
+        organizationId: org.id,
+        state: parsed.data.state,
+        county: parsed.data.county,
+        trustScore: trustResult.total,
+      });
+
+      res.json({ review });
     } catch (error) { Errors.internal(res, error); }
   });
 
@@ -455,6 +568,38 @@ export function registerPlatformFeatureRoutes(app: Express): void {
   });
 
   // ─── Data Portability ──────────────────────────────────────────────
+
+  app.post("/api/export/full", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const exportId = `export_${org.id}_${Date.now()}`;
+
+      // Generate synchronously and return the data inline
+      const { generateFullExport } = await import("./services/dataPortability");
+      const data = await generateFullExport(org.id);
+
+      logger.info("full_export_generated", { organizationId: org.id, exportId });
+
+      res.json({
+        exportId,
+        status: "ready",
+        downloadUrl: "/api/data/export",
+        data,
+      });
+    } catch (error) { Errors.internal(res, error); }
+  });
+
+  app.get("/api/export/status/:exportId", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const exportId = req.params.exportId;
+      // Since we generate synchronously, status is always ready
+      res.json({
+        exportId,
+        status: "ready",
+        downloadUrl: "/api/data/export",
+      });
+    } catch (error) { Errors.internal(res, error); }
+  });
 
   app.get("/api/data/export", isAuthenticated, getOrCreateOrg, async (req, res) => {
     try {
@@ -770,6 +915,113 @@ export function registerPlatformFeatureRoutes(app: Express): void {
     } catch (error) {
       Errors.internal(res, error);
     }
+  });
+
+  // ─── LCS Accuracy + Calibration Triggers ─────────────────────────
+
+  // Land Credit Score accuracy report with current weights
+  app.get("/api/land-credit/accuracy", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const { runBacktestAccuracy } = await import("./services/outcomeCalibrationLoop");
+      const { getCurrentWeights } = await import("./services/lcsCalibrator");
+
+      const backtest = await runBacktestAccuracy(org.id);
+      const { weights, lastUpdated } = getCurrentWeights(org.id);
+
+      const sampleSize = backtest.totalPredictions || 0;
+      if (sampleSize < 20) {
+        return res.json({
+          sampleSize,
+          message: "Insufficient data for accuracy report. Need 20+ closed deals with LCS scores.",
+        });
+      }
+
+      res.json({
+        sampleSize,
+        avgError: backtest.calibrationError,
+        accuracyByRange: backtest.bucketAccuracy,
+        defaultRateByRange: backtest.bucketAccuracy.map((b: any) => ({
+          bucket: b.bucket,
+          rate: b.accuracy,
+        })),
+        weights,
+        lastUpdated,
+      });
+    } catch (error) {
+      Errors.internal(res, error);
+    }
+  });
+
+  // Trigger LCS weight calibration
+  app.post("/api/calibration/lcs", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const { runLcsCalibration } = await import("./services/lcsCalibrator");
+      const result = await runLcsCalibration(org.id);
+      res.json(result);
+    } catch (error) {
+      Errors.internal(res, error);
+    }
+  });
+
+  // Trigger seller intent weight calibration
+  app.post("/api/calibration/seller-intent", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const { sellerIntentPredictorService } = await import("./services/sellerIntentPredictor");
+      await sellerIntentPredictorService.calibrateWeights(org.id);
+      res.json({ ok: true, message: "Seller intent weights calibrated." });
+    } catch (error) {
+      Errors.internal(res, error);
+    }
+  });
+
+  // Trigger radar weight calibration
+  app.post("/api/calibration/radar", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const org = req.organization;
+      const { acquisitionRadar } = await import("./services/acquisitionRadar");
+      await acquisitionRadar.calibrateRadarWeights(org.id);
+      res.json({ ok: true, message: "Radar weights calibrated." });
+    } catch (error) {
+      Errors.internal(res, error);
+    }
+  });
+
+  // ─── Credit Benchmarking ─────────────────────────────────────────
+
+  // Compare LCS to industry benchmarks for a property
+  app.get("/api/land-credit/benchmark/:propertyId", isAuthenticated, getOrCreateOrg, async (req, res) => {
+    try {
+      const propertyId = Number(req.params.propertyId);
+      const { CreditBenchmarkingService } = await import("./services/creditBenchmarking");
+      const benchmarking = new CreditBenchmarkingService();
+
+      // Get property's LCS and state/type
+      const { landCreditScores, properties } = await import("@shared/schema");
+      const { eq, desc } = await import("drizzle-orm");
+      const [score] = await db.select().from(landCreditScores)
+        .where(eq(landCreditScores.propertyId, propertyId))
+        .orderBy(desc(landCreditScores.createdAt)).limit(1);
+      const [property] = await db.select().from(properties)
+        .where(eq(properties.id, propertyId)).limit(1);
+
+      if (!score || !property) return Errors.notFound(res, "Property or LCS");
+
+      const state = property.state || "TX";
+      const propertyType = (property as any).zoning || "agricultural";
+      const comparison = benchmarking.compareToIndustry(score.overall ?? 0, propertyType, state);
+      const benchmarks = benchmarking.getBenchmarks(propertyType, state);
+
+      res.json({
+        score: score.overall,
+        grade: score.grade,
+        comparison,
+        benchmarks,
+        summary: `Your LCS: ${score.overall}. State benchmark: median ${benchmarks.median}, 75th percentile: ${benchmarks.p75}. Your property ranks in the ${comparison.percentile}th percentile for ${state} ${propertyType}.`,
+      });
+    } catch (error) { Errors.internal(res, error); }
   });
 
   // ─── Voice Profile ───────────────────────────────────────────────

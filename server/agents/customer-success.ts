@@ -64,10 +64,19 @@ export class CustomerSuccessAgent extends BaseAgent {
 
       const autonomy = await this.getAutonomyLevel();
       if (autonomy === "supervised" || autonomy === "autonomous") {
+        // Apply founder's voice profile so emails sound personal
+        let personalizedMessage = message;
+        try {
+          const profile = await voiceLearningService.getProfile(org.id);
+          if (profile) {
+            personalizedMessage = await voiceLearningService.applyVoice(message, profile);
+          }
+        } catch { /* voice unavailable — use default message */ }
+
         await this.trySendEmail({
           to: org.owner_id,
           subject: `How's it going with AcreOS?`,
-          html: `<p>Hi,</p><p>${message}</p><p>Reply to this email if you have questions — I read every one.</p>`,
+          html: `<p>Hi,</p><p>${personalizedMessage}</p><p>Reply to this email if you have questions — I read every one.</p>`,
           organizationId: org.id,
         });
         decision.autoApproved = true;

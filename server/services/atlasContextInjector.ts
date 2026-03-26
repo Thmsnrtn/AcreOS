@@ -32,6 +32,7 @@ import {
 } from "@shared/schema";
 import { eq, and, lt, gt, desc, count } from "drizzle-orm";
 import { voiceLearningService } from "./voiceLearning";
+import { getRelationshipState, getStageBehavior, buildPaxSystemPromptAddition } from "./paxRelationshipArc";
 
 interface AtlasContextBlock {
   text: string;
@@ -276,6 +277,60 @@ export async function buildAtlasContextBlock(
         );
       }
     } catch (_) { /* voice profile unavailable */ }
+
+    // ── Relationship stage context ────────────────────────────────────────────
+    try {
+      const relationshipState = await getRelationshipState(orgId);
+      const stage = relationshipState.stage;
+      const behavior = getStageBehavior(stage);
+      const promptAddition = buildPaxSystemPromptAddition(relationshipState);
+
+      const stageGuidance: Record<string, string> = {
+        onboarding:
+          "You are helping a new user. Be explanatory, teach concepts. Suggest: 'How do I find my first deal?', 'What is a Land Credit Score?', 'How do seller-financed notes work?'",
+        building:
+          "Reference the user's recent actions. Adapt suggestions to what they haven't tried yet.",
+        trusted:
+          "Reference deal history and patterns. Proactively surface portfolio insights.",
+        partner:
+          "Operate as a business partner. Proactively identify opportunities and make strategic recommendations.",
+      };
+
+      const suggestedPrompts: Record<string, string[]> = {
+        onboarding: [
+          "How do I find my first deal?",
+          "What is a Land Credit Score?",
+          "How do seller-financed notes work?",
+        ],
+        building: [
+          "What features haven't I tried yet?",
+          "Summarize my recent activity",
+          "What should I focus on this week?",
+        ],
+        trusted: [
+          "Show me patterns in my closed deals",
+          "Which deals in my pipeline need attention?",
+          "What market trends should I know about?",
+        ],
+        partner: [
+          "Let's review my portfolio strategy",
+          "Where should I expand next?",
+          "What's my optimal deal mix right now?",
+        ],
+      };
+
+      const guidance = stageGuidance[stage] || stageGuidance.onboarding;
+      const prompts = suggestedPrompts[stage] || suggestedPrompts.onboarding;
+
+      sections.push(
+        `RELATIONSHIP STAGE: ${stage.toUpperCase()}\n` +
+        `  ${guidance}\n` +
+        `  Greeting: ${behavior.greetingStyle}\n` +
+        `  Proactivity: ${behavior.proactivityLevel}\n` +
+        `  Suggested prompts: ${prompts.map((p) => `"${p}"`).join(", ")}\n` +
+        (promptAddition ? `  ${promptAddition}` : "")
+      );
+    } catch (_) { /* relationship state unavailable — non-fatal */ }
   } catch (err: any) {
     // Context build failure is non-fatal — Atlas still works without context
     sections.push(`[Context partially unavailable: ${err.message}]`);

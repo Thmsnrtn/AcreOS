@@ -12,6 +12,12 @@ import { properties } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { jsPDF } from "jspdf";
 import { logger } from "../utils/logger";
+import {
+  getWaterRightsInfo,
+  getMineralRightsInfo,
+  estimateCarbonCredits,
+  assessClimateRisk,
+} from "./environmentalIntelligence";
 
 interface ReportResult {
   pdf: Buffer;
@@ -193,6 +199,110 @@ export async function generateFullReport(propertyId: number, orgId: number): Pro
     doc.setTextColor(...GRAY);
     doc.text(detail, margin + 0.3, y, { maxWidth: pageWidth - margin * 2 - 0.3 });
     y += 0.25;
+  }
+
+  // ─── Environmental Intelligence (conditional sections) ─────────────
+  const propertyState = property?.state?.toUpperCase()?.trim() ?? "";
+  const WESTERN_WATER_STATES = ["AZ", "NM", "CO", "NV", "UT", "MT", "WY", "ID", "OR", "WA"];
+  const OIL_GAS_STATES = ["TX", "OK", "LA", "ND", "PA", "WV", "NM", "CO", "WY"];
+
+  // Water rights warning
+  try {
+    if (WESTERN_WATER_STATES.includes(propertyState)) {
+      y += 0.1;
+      const waterInfo = getWaterRightsInfo(propertyState);
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(...AMBER);
+      doc.text("△ Water Rights", margin, y);
+      y += 0.15;
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(...DARK);
+      doc.text(
+        `Western water law state — verify water rights before acquisition. Doctrine: ${waterInfo.doctrineDescription}`,
+        margin + 0.3, y, { maxWidth: pageWidth - margin * 2 - 0.3 },
+      );
+      y += 0.3;
+    }
+  } catch (err) {
+    logger.warn("DD report: water rights section failed", { metadata: { propertyId, error: String(err) } });
+  }
+
+  // Mineral rights warning
+  try {
+    if (OIL_GAS_STATES.includes(propertyState)) {
+      const mineralInfo = getMineralRightsInfo(propertyState);
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(...AMBER);
+      doc.text("△ Mineral Rights", margin, y);
+      y += 0.15;
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(...DARK);
+      doc.text(
+        `Mineral rights may be severed from surface rights. Severance risk: ${mineralInfo.severanceRisk}. ${mineralInfo.notes}`,
+        margin + 0.3, y, { maxWidth: pageWidth - margin * 2 - 0.3 },
+      );
+      y += 0.3;
+    }
+  } catch (err) {
+    logger.warn("DD report: mineral rights section failed", { metadata: { propertyId, error: String(err) } });
+  }
+
+  // Carbon credit estimate
+  try {
+    const landCover = (dd?.checks?.landCover as string) || "";
+    if (landCover.toLowerCase().includes("forest") && property?.acreage) {
+      const carbonEst = estimateCarbonCredits(propertyState, property.acreage, "forest");
+      if (carbonEst.eligible) {
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(...GREEN);
+        doc.text("✓ Carbon Credit Potential", margin, y);
+        y += 0.15;
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(...DARK);
+        doc.text(
+          `Carbon credit potential: ~$${carbonEst.estimatedValuePerYear}/year (${carbonEst.estimatedCreditsPerYear} credits/yr). ${carbonEst.notes}`,
+          margin + 0.3, y, { maxWidth: pageWidth - margin * 2 - 0.3 },
+        );
+        y += 0.3;
+      }
+    }
+  } catch (err) {
+    logger.warn("DD report: carbon credit section failed", { metadata: { propertyId, error: String(err) } });
+  }
+
+  // Climate risk note
+  try {
+    if (propertyState) {
+      const climateRisk = assessClimateRisk(propertyState, property?.county ?? undefined);
+      const isDroughtProne = climateRisk.droughtRisk.level === "high" || climateRisk.droughtRisk.level === "very_high";
+      const isCoastal = climateRisk.hurricaneRisk.level === "high" || climateRisk.hurricaneRisk.level === "very_high";
+      if (isDroughtProne || isCoastal) {
+        const riskColor = climateRisk.overallRisk === "very_high" || climateRisk.overallRisk === "high" ? RED : AMBER;
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(...riskColor);
+        const riskLabel = isDroughtProne && isCoastal
+          ? "△ Climate Risk: Drought-Prone & Coastal"
+          : isDroughtProne
+            ? "△ Climate Risk: Drought-Prone Area"
+            : "△ Climate Risk: Coastal Exposure";
+        doc.text(riskLabel, margin, y);
+        y += 0.15;
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(...DARK);
+        const details = [
+          isDroughtProne ? `Drought: ${climateRisk.droughtRisk.description}` : null,
+          isCoastal ? `Hurricane: ${climateRisk.hurricaneRisk.description}` : null,
+        ].filter(Boolean).join(". ");
+        doc.text(details, margin + 0.3, y, { maxWidth: pageWidth - margin * 2 - 0.3 });
+        y += 0.3;
+      }
+    }
+  } catch (err) {
+    logger.warn("DD report: climate risk section failed", { metadata: { propertyId, error: String(err) } });
   }
 
   // ─── Page 3: Physical & Access ──────────────────────────────────────

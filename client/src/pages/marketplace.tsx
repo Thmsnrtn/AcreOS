@@ -21,6 +21,7 @@ import {
   TrendingUp, Star, Share2, Bell, BellOff, ShieldCheck, Copy,
 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
+import { TrustBadge } from '@/components/trust-badge';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -906,7 +907,18 @@ export default function MarketplacePage() {
                         </span>
                       </div>
                       {seller?.name && (
-                        <p className="text-xs text-muted-foreground truncate">by {seller.name}</p>
+                        <p className="text-xs text-muted-foreground truncate flex items-center gap-1.5">
+                          <span>Listed by {seller.name}</span>
+                          {seller.trustTier && (
+                            <>
+                              <TrustBadge tier={seller.trustTier} score={seller.trustScore} compact />
+                              <span className="text-muted-foreground">
+                                (Trust Score: {seller.trustScore ?? '—'})
+                              </span>
+                            </>
+                          )}
+                          {!seller.trustTier && ' — Verified Investor'}
+                        </p>
                       )}
                       <Button
                         variant="outline"
